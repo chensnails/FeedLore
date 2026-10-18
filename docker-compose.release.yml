@@ -124,6 +124,11 @@ services:
       TZ: Asia/Shanghai
       # 只更新显式打标签的容器（app 上面那个 label）
       WATCHTOWER_LABEL_ENABLE: "true"
+      # 宿主机 Docker Engine ≥ 29（daemon MinAPIVersion 1.40）会拒绝旧 client 的
+      # 版本协商（报 client version 1.25 too old），镜像内 SDK 协商结果不稳定 →
+      # 固定客户端 API 版本。宿主机 `docker version` 看 Server.APIVersion，
+      # 取 ≤ 它且 ≥ 1.40 的值；daemon 较老（<1.40）时删掉这一行
+      DOCKER_API_VERSION: "1.44"
       # 轮询间隔（秒）；页面一键更新是立即触发，不等这个间隔
       WATCHTOWER_POLL_INTERVAL: "300"
       # 清理旧镜像，避免磁盘被历史版本占满
