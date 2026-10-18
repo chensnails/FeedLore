@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建前端
+        run: npm run build
+
+      - name: UI 回归测试
+        run: npm run test:ui
+
+      # 含三项静态校验：① Dockerfile 有没有漏拷 lib/（镜像构建成功但容器启动即崩）
+      # ② 抽走的顶层标识符有没有留下裸引用（v2.2.1 的 imgCache 教训）
+      # ③ deploy.sh 的启动期错误日志扫描护栏还在不在（v2.2.2）
+      - name: 后端单测 + 静态校验
+        run: npm run test:server
+
+      - name: 冒烟：Node 端可加载
+        run: node --check server.js

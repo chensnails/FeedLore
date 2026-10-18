@@ -1,0 +1,433 @@
+/* 笺川核心逻辑 · 文章（阅读页）数据源与交互：加载 / 展开正文 / 已读收藏 / 抽屉 / 无限滚动 / 搜索
+ *
+ * v2.1.0 起由原单文件 src/core/app.js 拆分而来：按职责切分，模块之间只用普通 import 组合，
+ * 由 src/core/index.js 汇总成 `core` 单例（组件统一 `import { core } from '@core'`）。
+ * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
+ * ============================================================ */
+
+import { $, apiFetch, toast, emitShell } from './util.js';
+import { state, layoutPref, setLayout, openSettings, lockPageScroll, unlockPageScroll } from './state.js';
+import { loadFeeds } from './feeds.js';
+
+/* ============================================================
+ * 阅读页（文章）：左频道 / 右文章，点标题展开全文
+ * ============================================================ */
+
+/* ============================================================
+ * 阅读页（文章）：逻辑归 app.js，渲染归 React（src/views/ReaderView.jsx）
+ * v1.9.0 起阅读页 React 化：频道侧栏 / 头部工具 / 搜索 / 条目与正文渲染全部移除，
+ * 这里只保留数据 / 加载 / 交互逻辑，需要刷新 UI 时派发 __readerTick（组件监听后读实时 state 重绘）。
+ * ============================================================ */
+
+/** 通知 ReaderView 重绘 */
+export function renderReader() { window.dispatchEvent(new Event('__readerTick')); }
+/** 兼容旧调用名：频道侧栏同样由 ReaderView 渲染，故与 renderReader 同为一次重绘 */
+export function renderReaderChannels() { renderReader(); }
+
+/**
+ * 阅读页当前的筛选条件 → URLSearchParams。
+ * 列表查询、自动刷新、批量标为已读三处共用，保证「屏幕上看到的」和「被操作的」是同一批。
+ * 分组里一个频道都没有时传 `feeds=`（空），服务端会返回空列表 —— 别退化成「不过滤」。
+ */
+export function readerFilterParams() {
+  const params = new URLSearchParams();
+  const feeds = state.feedList || [];
+  let ids = null;
+  if (state.rdFeedId != null) {
+    ids = [Number(state.rdFeedId)];
+  } else if (state.rdGroup != null) {
+    // 分组筛选：把该分组的频道 id 摊平了传给 feeds=（未分组用 '' 表示）
+    ids = feeds.filter((f) => (f.groupName || '').trim() === state.rdGroup).map((f) => f.id);
+  }
+  if (ids) params.set('feeds', ids.join(','));
+  // 阅读页的「全部」看的是全部内容，不受「卡片」开关影响
+  else params.set('scope', 'all');
+  if (state.rdScope === 'unread') params.set('unread', '1');
+  if (state.rdScope === 'favorite') params.set('fav', '1');
+  if (state.rdQ) params.set('q', state.rdQ);
+  return params;
+}
+
+export async function loadReader({ reset = false } = {}) {
+  if (state.rdLoading) return;
+  if (!reset && !state.rdHasMore) return;
+
+  state.rdLoading = true;
+  if (reset) {
+    state.rdOffset = 0;
+    state.rdHasMore = true;
+    state.rdEntries = [];
+    state.rdExpanded.clear();
+    state.rdBody.clear();
+    state.rdBodyErr.clear();
+  }
+  renderReader();
+
+  try {
+    const params = readerFilterParams();
+    params.set('limit', String(state.readerPageSize));
+    params.set('offset', String(state.rdOffset));
+
+    const res = await apiFetch('/api/entries?' + params.toString());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    const list = data.entries || [];
+    state.rdEntries = reset ? list : state.rdEntries.concat(list);
+    state.rdOffset = state.rdEntries.length;
+    state.rdHasMore = !!data.hasMore;
+    state.rdReadError = false;
+  } catch (err) {
+    if (!state.rdEntries.length) {
+      state.rdReadError = true;
+      state.rdReadErrorMsg = '加载失败：' + String((err && err.message) || err);
+    } else {
+      toast('加载失败：' + (err.message || err), false);
+    }
+  } finally {
+    state.rdLoading = false;
+    renderReader();
+  }
+}
+
+/* ---------- 手风琴模式 ---------- */
+export let accordionOn = layoutPref.accordion;
+export function readerAccordionOn() { return accordionOn; }
+export function readerToggleAccordion() {
+  accordionOn = !accordionOn;
+  setLayout('accordion', accordionOn);   // 按账号持久化
+  renderReader();
+  toast(accordionOn ? '已开启单篇展开' : '已改为可同时展开多篇');
+}
+
+/** 找列表里某篇的 DOM：按 data-id 比对，避开 id 里特殊字符对 CSS 选择器的影响（与 kbdItems 取法一致） */
+function findArtItemEl(id) {
+  const want = String(id);
+  const items = document.querySelectorAll('#readerList .art-item');
+  for (const el of items) if (el.dataset.id === want) return el;
+  return null;
+}
+
+export async function expandReaderArt(id) {
+  /* 手风琴（默认开启）：展开这一条之前会先把其它展开的收掉。
+   * 若被收起的那篇在目标文章「上方」，它一收起，列表在目标文章上方就矮了一大截，
+   * 而窗口 scrollTop 保持不变 —— 于是目标文章整体上移、跳离用户点击的位置，甚至滚出屏幕。
+   * 这就是「上一篇没收起时，点下面的会跳到错误位置」的根因。
+   * 对策：展开前记下目标文章的视口位置，DOM 更新后把差值补滚回去，保证「点哪篇、它停在哪」。
+   * 若被收起的那篇在目标文章下方，差值为 0，不会有多余滚动。 */
+  let anchorTop = null;
+  if (accordionOn) {
+    const others = Array.from(state.rdExpanded).filter((openId) => String(openId) !== String(id));
+    if (others.length) {
+      const el = findArtItemEl(id);
+      if (el) anchorTop = el.getBoundingClientRect().top;
+      for (const openId of others) state.rdExpanded.delete(openId);
+    }
+  }
+
+  state.rdExpanded.add(id);
+  renderReader();
+  markEntryRead(id);   // 展开了就算读过了
+
+  if (anchorTop != null) {
+    // renderReader() 只是派发 __readerTick，React 的 setState 在微任务里提交 DOM（早于 rAF），
+    // 所以这里量到的是更新后的位置，补偿也在同一帧完成 —— 用户几乎看不到跳动。
+    // 用瞬时滚动而非 smooth：位移在一帧内被抵消最连贯，平滑动画反而会把这次修正放大成一次可见的滚动。
+    requestAnimationFrame(() => {
+      const el = findArtItemEl(id);
+      if (!el) return;
+      const delta = el.getBoundingClientRect().top - anchorTop;
+      if (Math.abs(delta) > 1) window.scrollBy(0, delta);
+    });
+  }
+
+  if (state.rdBody.has(id) || state.rdBodyErr.has(id)) return;
+  try {
+    const res = await apiFetch('/api/entries/' + encodeURIComponent(id));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    state.rdBody.set(id, await res.json());
+  } catch (_) {
+    state.rdBodyErr.add(id);
+  }
+  renderReader();
+}
+
+export function collapseReaderArt(id) { state.rdExpanded.delete(id); renderReader(); }
+
+export function readerToggleArt(id) {
+  if (state.rdExpanded.has(id)) collapseReaderArt(id);
+  else expandReaderArt(id);
+}
+
+export function readerCollapseAll() {
+  state.rdExpanded.clear();
+  renderReader();
+  toast('已全部收起');
+}
+
+/* ---------- 已读 / 未读 / 收藏 ---------- */
+
+/** 就地改一条的状态：内存 + 侧栏计数 + 重绘（原 paintEntryFlag 的就地 DOM 改类名移除） */
+export function applyEntryFlag(id, patch) {
+  const e = state.rdEntries.find((x) => String(x.id) === String(id));
+  if (!e) return;
+  const wasRead = !!e.isRead;
+  const wasFav = !!e.isFavorite;
+  if (patch.isRead !== undefined) e.isRead = !!patch.isRead;
+  if (patch.isFavorite !== undefined) e.isFavorite = !!patch.isFavorite;
+
+  if (wasRead !== e.isRead) {
+    state.rdFlags.unread = Math.max(0, (state.rdFlags.unread || 0) + (e.isRead ? -1 : 1));
+  }
+  if (wasFav !== e.isFavorite) {
+    state.rdFlags.favorite = Math.max(0, (state.rdFlags.favorite || 0) + (e.isFavorite ? 1 : -1));
+  }
+  renderReader();
+
+  // 在「收藏」范围里取消收藏 = 明确的「移出这里」，立刻从列表拿掉。
+  if (state.rdScope === 'favorite' && !e.isFavorite) {
+    state.rdEntries = state.rdEntries.filter((x) => String(x.id) !== String(id));
+    state.rdOffset = Math.max(0, state.rdOffset - 1);
+    renderReader();
+  }
+}
+
+/** 打标记：先乐观更新界面，再发请求；失败回滚并提示 */
+export async function setEntryFlag(id, patch) {
+  const e = state.rdEntries.find((x) => String(x.id) === String(id));
+  const before = e ? { isRead: !!e.isRead, isFavorite: !!e.isFavorite } : null;
+  if (e) applyEntryFlag(id, patch);
+  try {
+    const res = await apiFetch('/api/entries/' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    if (e) applyEntryFlag(id, { isRead: d.isRead, isFavorite: d.isFavorite });
+    return true;
+  } catch (err) {
+    if (e && before) applyEntryFlag(id, before);
+    toast('标记失败：' + (err.message || err), false);
+    return false;
+  }
+}
+
+/** 展开全文即视为已读（只在还没读过时发请求） */
+export function markEntryRead(id) {
+  const e = state.rdEntries.find((x) => String(x.id) === String(id));
+  if (!e || e.isRead) return;
+  setEntryFlag(id, { isRead: true });
+}
+
+/** 收藏 / 取消收藏（原 toggleFavorite(el) → 改按 id） */
+export function readerToggleFav(id) {
+  const e = state.rdEntries.find((x) => String(x.id) === String(id));
+  const next = !(e && e.isFavorite);
+  setEntryFlag(id, { isFavorite: next }).then((ok) => {
+    if (ok) toast(next ? '已收藏' : '已取消收藏');
+  });
+}
+
+/* ---------- 频道 / 范围 / 分组切换（ReaderView 经桥调用） ---------- */
+export function readerSetScope(scope) {
+  if (scope === state.rdScope && state.rdFeedId == null && state.rdGroup == null) return;
+  state.rdScope = scope;
+  setLayout('rdScope', scope);   // 默认范围按账号持久化
+  state.rdFeedId = null;
+  state.rdGroup = null;
+  renderReader();
+  loadReader({ reset: true });
+  emitShell();
+  setReaderDrawer(false);
+  scrollReaderTop();
+}
+export function readerSetGroup(g) {
+  state.rdScope = 'all';   // 看某个分组 = 回到「全部」范围
+  if (g === state.rdGroup) state.rdGroup = null;
+  else { state.rdGroup = g; state.rdFeedId = null; }
+  renderReader();
+  loadReader({ reset: true });
+  emitShell();
+  setReaderDrawer(false);
+  scrollReaderTop();
+}
+export function readerSetFeed(id) {
+  const next = id != null ? Number(id) : null;
+  state.rdScope = 'all';
+  if (next === state.rdFeedId && state.rdGroup == null) return;
+  state.rdFeedId = next;
+  state.rdGroup = null;
+  renderReader();
+  loadReader({ reset: true });
+  emitShell();
+  setReaderDrawer(false);
+  scrollReaderTop();
+}
+export function readerOpenSource() { openSettings('source'); setReaderDrawer(false); }
+
+/* ---------- 移动端：左侧频道抽屉 ---------- */
+export let readerDrawerLocked = false;   // 抽屉当前是否拿着页面滚动锁
+
+/** 打开/收起左侧频道抽屉。宽屏上没有视觉效果，切走阅读页或窗口变宽时自动收起 */
+export function setReaderDrawer(open) {
+  const on = !!open;
+  if (on === document.body.classList.contains('reader-drawer-open')) return;
+  document.body.classList.toggle('reader-drawer-open', on);
+  // 抽屉铺满整屏，背景也得真的钉住：iOS 上只写 overflow:hidden 挡不住惯性滚动
+  if (on) { lockPageScroll(); readerDrawerLocked = true; }
+  else if (readerDrawerLocked) { readerDrawerLocked = false; unlockPageScroll(); }
+}
+
+/** 换了频道 / 范围 / 分组 = 换了一整个列表，把视线带回顶部，别停在新列表中间 */
+export function scrollReaderTop() {
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+// 抽屉开合按钮（菜单 / 关闭 / 遮罩）已随阅读页 React 化，改由 ReaderView 经桥触发
+export function readerToggleDrawer() { setReaderDrawer(!document.body.classList.contains('reader-drawer-open')); }
+export function readerCloseDrawer() { setReaderDrawer(false); }
+window.addEventListener('resize', () => { if (window.innerWidth > 720) setReaderDrawer(false); });
+
+/* 手势：从左侧滑出频道抽屉（拖拽跟手 + 松手吸附）
+ * 未打开时，手指在左边缘一段区域内向右横滑即可「拖」出抽屉；
+ * 已打开时，向左横滑即可收回。竖滑交给页面自己滚动，互不干扰。
+ * 起手区比旧版更宽（EDGE），避开 iOS / Android 最边缘的系统返回手势，
+ * 否则贴着 0~15px 的触摸常被系统吞掉，用户根本滑不动抽屉。 */
+(() => {
+  const EDGE = 60;          // 未打开时，可起手的左边缘宽度（px）
+  const THRESH = 48;        // 松手判定开 / 关的最小位移（px）
+  const getSide = () => document.getElementById('readerSide');
+  const getMask = () => document.getElementById('readerMask');
+  if (true) {
+    const drawerW = () => Math.min(272, window.innerWidth * 0.84);
+    let x0 = 0, y0 = 0, dragging = false, decided = false, dir = 0;
+
+    // px = 抽屉已滑出的像素（0=关，drawerW=开）→ 换算成 translateX 百分比
+    function place(px) {
+      px = Math.max(0, Math.min(drawerW(), px));
+      const pct = px / drawerW();
+      const side = getSide();
+      if (side) side.style.transform = `translateX(${(-104 + pct * 104).toFixed(2)}%)`;
+      const mask = getMask();
+      if (mask) {
+        mask.style.visibility = 'visible';
+        mask.style.opacity = String(pct);
+      }
+    }
+
+    document.addEventListener('touchstart', (ev) => {
+      const t = ev.touches && ev.touches[0];
+      if (!t) return;
+      const open = document.body.classList.contains('reader-drawer-open');
+      // 未开：只在左边缘一段起手；已开：任意位置都可起手（方便左滑收起）
+      if (!open && t.clientX > EDGE) { dragging = false; return; }
+      x0 = t.clientX; y0 = t.clientY; dragging = true; decided = false; dir = 0;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (ev) => {
+      if (!dragging) return;
+      const t = ev.touches && ev.touches[0];
+      if (!t) return;
+      const dx = t.clientX - x0, dy = t.clientY - y0;
+      if (!decided) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;        // 等方向明确
+        if (Math.abs(dy) > Math.abs(dx)) { dragging = false; return; }  // 竖滑 → 不接管
+        decided = true; dir = dx >= 0 ? 1 : -1;
+        const side0 = getSide(); if (side0) side0.style.transition = 'none';   // 跟手期间关掉过渡
+      }
+      if (dir > 0) place(Math.max(0, dx));                        // 从 0 滑出
+      else place(drawerW() + dx);                                 // 已开 → 从满位左收（dx 为负）
+      if (ev.cancelable) ev.preventDefault();                     // 拦掉默认横滑 / 回弹
+    }, { passive: false });
+
+    document.addEventListener('touchend', (ev) => {
+      if (!dragging) return;
+      dragging = false;
+      if (!decided) return;                                       // 只是轻点，没拖动
+      const t = ev.changedTouches && ev.changedTouches[0];
+      if (!t) return;
+      const dx = t.clientX - x0;
+      const open = dir > 0 ? dx >= THRESH                        // 右滑够距 → 开
+                            : (dx <= -THRESH ? false : true);     // 左滑够距 → 关，否则维持开
+      const sideEl = getSide();
+      if (sideEl) {
+        sideEl.style.transition = '';                             // 恢复过渡，交给 CSS 吸附
+        sideEl.style.transform = open ? 'translateX(0%)' : 'translateX(-104%)';
+      }
+      const maskEl = getMask();
+      if (maskEl) maskEl.style.opacity = open ? '1' : '0';
+      setReaderDrawer(open);                                      // 类切换 + 页面滚动锁
+      // 吸附动画结束后把内联样式交还给 CSS，避免后续用按钮开关时内联值压住类样式
+      setTimeout(() => {
+        const side1 = getSide(); if (side1) side1.style.transform = '';
+        const mask1 = getMask(); if (mask1) { mask1.style.opacity = ''; mask1.style.visibility = ''; }
+      }, 300);
+    }, { passive: true });
+  }
+})();
+
+export let readerAutoBusy = false;
+
+export function readerSentinelNear() {
+  const el = document.getElementById('readerSentinel');
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return r.top < window.innerHeight + 500;
+}
+
+export async function readerAutoLoad() {
+  if (readerAutoBusy) return;
+  if (state.tab !== 'reader' || state.rdLoading || !state.rdHasMore || !state.rdEntries.length) return;
+  readerAutoBusy = true;
+  try {
+    await loadReader();
+  } finally {
+    readerAutoBusy = false;
+    if (state.rdHasMore && readerSentinelNear()) setTimeout(readerAutoLoad, 120);
+  }
+}
+
+window.addEventListener('scroll', () => {
+  if (state.tab !== 'reader') return;
+  if (state.rdLoading || !state.rdHasMore || !state.rdEntries.length) return;
+  if (readerSentinelNear()) readerAutoLoad();
+});
+
+/* 「全部标为已读」：条件与当前列表完全一致，标完刷新徽标（ReaderView 经桥 readerReadAll 调用） */
+export async function readerReadAll() {
+  // 破坏性操作（可能一口气把几百篇标成已读），先确认一次，与「删除订阅/用户」保持一致
+  const label = state.rdScope === 'unread' ? '全部未读'
+    : (state.rdScope === 'favorite' ? '全部收藏' : '当前列表');
+  if (!window.confirm(`确定把「${label}」全部标为已读？此操作不可撤销。`)) return;
+  try {
+    const p = readerFilterParams();
+    const feedsRaw = p.get('feeds');
+    const res = await apiFetch('/api/entries/read-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        // 没传 feeds = 不限频道；传空串 = 分组里没有频道，那就什么都不标
+        feeds: p.has('feeds') ? (feedsRaw ? feedsRaw.split(',').map(Number) : []) : null,
+        q: p.get('q') || '',
+      }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    toast(d.updated ? `已标为已读 ${d.updated} 篇` : '这里没有未读文章');
+    await loadFeeds();
+    renderReader();
+    loadReader({ reset: true });
+  } catch (err) {
+    toast('操作失败：' + (err.message || err), false);
+  }
+}
+
+export function readerSearch(q) {
+  q = String(q || '').trim();
+  if (q === state.rdQ) return;
+  state.rdQ = q;
+  renderReader();
+  loadReader({ reset: true });
+}

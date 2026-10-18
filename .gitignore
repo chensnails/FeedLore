@@ -1,0 +1,34 @@
+# 依赖
+node_modules/
+
+# Vite 构建产物（镜像内构建，不入库）
+dist/
+.vite/
+
+# 环境变量（含数据库密码、模型 Key 等密钥，绝不入库）
+.env
+.env.local
+.env.*.local
+
+# 本地开发辅助（体积大，部署不需要）
+/screenshots/
+.workbuddy-ai/
+# WorkBuddy 本地记忆/配置（可能含服务器信息，绝不入库）
+.workbuddy/
+
+# 部署 / 备份产物
+*.tgz
+*.tar.gz
+backups/
+public-backup-*.tgz
+
+# 系统 / 日志
+.DS_Store
+*.log
+npm-debug.log*
+
+# UI 回归测试的 esbuild 产物
+tests/ui/.build/
+
+# 本地临时脚本产物
+.build/

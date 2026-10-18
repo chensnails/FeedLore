@@ -1,0 +1,25 @@
+# 版本控制 / 本地
+.git
+.gitignore
+*.log
+
+# 依赖：镜像里用 npm ci 重装，不拷本地 node_modules
+node_modules
+npm-debug.log*
+
+# Vite 构建产物：镜像内多阶段构建重新产出，不拷本地 dist（避免陈旧产物）
+dist
+.vite
+
+# 旧版的落盘配置/摘要（v2 起数据全部存 PostgreSQL）
+data
+
+# 开发辅助
+screenshots
+Dockerfile
+.dockerignore
+docker-compose.yml
+.env
+.env.example
+README.md
+.workbuddy-ai

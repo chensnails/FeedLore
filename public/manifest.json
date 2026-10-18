@@ -1,0 +1,22 @@
+{
+  "id": "/",
+  "name": "笺川",
+  "short_name": "笺川",
+  "description": "拾取值得读的 —— RSS 直连聚合：文章阅读、资源卡片与每日 AI 简报",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#f4f6f9",
+  "theme_color": "#185FA5",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "categories": ["news", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

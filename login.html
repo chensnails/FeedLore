@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · 笺川</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#ffffff">
+<script>
+/* 主题：与主站共用同一份偏好，首屏前定好 data-theme 避免闪白 */
+(function () {
+  var KEY = 'shiyue.theme.v1';
+  var mode = 'auto';
+  try { mode = localStorage.getItem(KEY) || 'auto'; } catch (e) { /* 隐私模式 */ }
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  var dark = mode === 'dark' || (mode === 'auto' && mq.matches);
+  var el = document.documentElement;
+  el.setAttribute('data-theme', dark ? 'dark' : 'light');
+  el.setAttribute('data-theme-mode', mode);
+  window.__themeBoot = { KEY: KEY, mq: mq, mode: mode };
+})();
+</script>
+<link rel="stylesheet" href="/login.css">
+</head>
+<body>
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <button type="button" class="theme-toggle" id="themeBtn" title="主题：跟随系统" aria-label="切换主题">◐</button>
+    <svg class="logo" viewBox="0 0 64 64" role="img" aria-label="笺川"><rect width="64" height="64" rx="15" fill="#185FA5"/><rect x="8" y="17" width="33" height="37" rx="6" fill="#ffffff"/><rect x="15" y="25" width="19" height="5" rx="2.5" fill="#185FA5"/><rect x="15" y="35" width="12" height="5" rx="2.5" fill="#185FA5"/><rect x="15" y="45" width="16" height="5" rx="2.5" fill="#185FA5"/><path d="M51.5 6 l2.9 7.1 7.1 2.9 -7.1 2.9 -2.9 7.1 -2.9 -7.1 -7.1 -2.9 7.1 -2.9 z" fill="#ffffff"/></svg>
+    <h1>笺川</h1>
+    <p class="sub">拾取值得读的，登录后查看</p>
+
+    <div class="field">
+      <label for="username">用户名</label>
+      <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+    </div>
+    <div class="field">
+      <label for="password">密码</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+    </div>
+
+    <button type="submit" id="submitBtn">登 录</button>
+    <div class="error" id="error"></div>
+
+    <p class="tip">默认管理员账号 <code>admin</code>（初始密码 admin），登录后请在「设置 → 账号」中修改</p>
+  </form>
+
+<script>
+  const form = document.getElementById('loginForm');
+  const btn = document.getElementById('submitBtn');
+  const errBox = document.getElementById('error');
+
+  /* ---------- 主题切换（与主站共用 shiyue.theme.v1） ---------- */
+  const THEME_KEY = 'shiyue.theme.v1';
+  const THEME_MODES = ['auto', 'light', 'dark'];
+  const THEME_META = {
+    auto: { ico: '◐', label: '跟随系统' },
+    light: { ico: '☀', label: '浅色' },
+    dark: { ico: '☾', label: '深色' },
+  };
+  const themeBtn = document.getElementById('themeBtn');
+
+  function prefersDark() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+  function currentThemeMode() {
+    try {
+      const m = localStorage.getItem(THEME_KEY);
+      return THEME_MODES.indexOf(m) >= 0 ? m : 'auto';
+    } catch (_) { return 'auto'; }
+  }
+  function applyTheme(mode) {
+    const m = THEME_MODES.indexOf(mode) >= 0 ? mode : 'auto';
+    const dark = m === 'dark' || (m === 'auto' && prefersDark());
+    const el = document.documentElement;
+    el.setAttribute('data-theme', dark ? 'dark' : 'light');
+    el.setAttribute('data-theme-mode', m);
+    try { localStorage.setItem(THEME_KEY, m); } catch (_) { /* 忽略 */ }
+    themeBtn.textContent = THEME_META[m].ico;
+    themeBtn.title = '主题：' + THEME_META[m].label + '（点击切换）';
+    themeBtn.setAttribute('aria-label', '主题：' + THEME_META[m].label);
+    const tc = document.querySelector('meta[name="theme-color"]');
+    if (tc) tc.setAttribute('content', dark ? '#171b22' : '#ffffff');
+  }
+
+  themeBtn.addEventListener('click', () => {
+    const next = THEME_MODES[(THEME_MODES.indexOf(currentThemeMode()) + 1) % THEME_MODES.length];
+    applyTheme(next);
+  });
+  try {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (currentThemeMode() === 'auto') applyTheme('auto');
+    });
+  } catch (_) { /* 老浏览器忽略 */ }
+  applyTheme(currentThemeMode());
+
+  /* ---------- 登录 ---------- */
+  function showError(msg) {
+    errBox.textContent = msg;
+    errBox.classList.add('show');
+  }
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    errBox.classList.remove('show');
+    btn.disabled = true;
+    btn.textContent = '登录中…';
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const next = new URLSearchParams(location.search).get('next');
+        location.replace(next && next.startsWith('/') ? next : '/');
+        return;
+      }
+      showError(data.error || '登录失败');
+    } catch (_) {
+      showError('网络异常，请重试');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '登 录';
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+# 笺川（Feedlore）· 项目名 / 镜像 / 容器 / 卷 / 网络沿用 shiyue 前缀
+# 显式声明项目名，这样即使目录被改名，Compose 项目仍然是 shiyue
+name: shiyue
+
+services:
+  # ---------------------------------------------------------------
+  # 专用 PostgreSQL：只为笺川服务，数据卷独立，不对外映射端口
+  # ---------------------------------------------------------------
+  db:
+    # 与宿主机已有 postgres 容器同版本，可复用本地镜像；需要升级时改这里再 up -d
+    image: postgres:18.4-alpine
+    container_name: shiyue-db
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      POSTGRES_DB: ${PG_DB:-shiyue}
+      POSTGRES_USER: ${PG_USER:-shiyue}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?请先在 .env 中设置 PG_PASSWORD}
+      # 放进子目录，避免和镜像自带的 lost+found 之类冲突
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - shiyue
+    # 刻意不写 ports：数据库只允许应用容器经内网访问
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------
+  # 应用：RSS 抓取 / 卡片站 / 每日 AI 简报
+  # ---------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: shiyue:latest
+    container_name: shiyue
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      PORT: "3000"
+      DATABASE_URL: postgres://${PG_USER:-shiyue}:${PG_PASSWORD}@db:5432/${PG_DB:-shiyue}
+
+      # 首次部署时播种的 RSS 地址（逗号分隔）；仅当订阅表为空时生效。留空则启动后手动添加
+      SEED_FEEDS: "${SEED_FEEDS:-}"
+
+      # ---- RSS 抓取（仅首次生成配置时生效，之后以页面设置为准）----
+      REFRESH_MINUTES: ${REFRESH_MINUTES:-30}
+      KEEP_PER_FEED: ${KEEP_PER_FEED:-300}
+      # 条目最长保留天数（0 = 不限，只按条数）
+      KEEP_DAYS: ${KEEP_DAYS:-0}
+      # 网页自动刷新间隔（分钟，0 = 关闭）
+      AUTO_REFRESH_MINUTES: ${AUTO_REFRESH_MINUTES:-0}
+
+      # ---- 大模型（OpenAI 兼容接口）----
+      # LLM_KEY 只在首次生成配置时写入数据库，落库前会加密；之后在页面里改
+      LLM_BASE: ${LLM_BASE:-https://api.siliconflow.cn/v1/chat/completions}
+      LLM_KEY: ${LLM_KEY}
+      LLM_MODEL: ${LLM_MODEL:-Qwen/Qwen3-8B}
+
+      # ---- 每日摘要（仅首次生成配置时生效，之后以页面设置为准）----
+      DIGEST_ENABLED: ${DIGEST_ENABLED:-1}
+      DIGEST_TIME: ${DIGEST_TIME:-08:00}
+      # selected=仅已开启的频道 | all=全部频道
+      DIGEST_SCOPE: ${DIGEST_SCOPE:-selected}
+      DIGEST_MAX_PER_FEED: ${DIGEST_MAX_PER_FEED:-20}
+      DIGEST_MAX_TOTAL: ${DIGEST_MAX_TOTAL:-150}
+      DIGEST_KEEP_DAYS: ${DIGEST_KEEP_DAYS:-30}
+
+      # ---- 初始账号（仅首次生成配置时生效）----
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:-admin}
+
+    ports:
+      - "${HOST_PORT:-3210}:3000"
+
+    # 前端已改为 Vite 构建产物（dist 打进镜像），不再挂载 public/。
+    # 改 public/ 下的静态文件、src/ 下的 React 组件或后端 js，都需要
+    # docker compose up -d --build 重建镜像才生效（ARM 服务器上约 +30~60s）。
+    # 纯前端联调可本地 `npm run dev`（Vite 5173，/api 代理到 3000）。
+    # 镜像里也 COPY 了一份 dist 作为兜底，独立 docker run 时仍能跑。
+
+    networks:
+      - shiyue
+
+    # 让容器能通过 host.docker.internal 访问宿主机上已发布的服务
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # 显式命名，否则会被拼成 shiyue_shiyue
+  shiyue:
+    name: shiyue
+    driver: bridge
+
+volumes:
+  pgdata:
+    name: shiyue-pgdata
