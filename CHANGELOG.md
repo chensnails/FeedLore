@@ -2,6 +2,23 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.1.0] — 2026-10-18
+
+> **镜像发布 + 一键更新**：GitHub Actions 构建双架构镜像推送 ghcr.io；宿主机以镜像模式部署后，发版只需推送 tag，「设置 → 关于」可一键触发更新。
+
+### 1. 镜像发布（CI）
+
+- 新增 `.github/workflows/release.yml`：推送 `v*` tag 时自动构建 amd64 + arm64 镜像，推送 `ghcr.io/chensnails/feedlore`，并创建对应 GitHub Release。
+
+### 2. 一键更新（关于页）
+
+- `POST /api/update`（仅管理员）触发同网络的 Watchtower 立即检查：拉取新镜像、重启容器。页面轮询版本直至变化后自动刷新——session 为无状态 HMAC cookie，重启不掉登录。
+- 新增 `docker-compose.release.yml`（镜像模式 + Watchtower 服务）；`.env.example` 增加 `WATCHTOWER_HTTP_API_TOKEN`。源码构建模式（`docker-compose.yml`）保留，两种模式的容器名 / 数据卷 / 网络完全一致，可随时互切、数据零迁移。
+
+### 3. 其他
+
+- 移除依赖历史 tag 的静态校验（`server-globals.cjs`）：对外历史重置为单一正式版提交后，该守卫失去比对基线；deploy 护栏与 Dockerfile 清单校验保留。
+
 ## [1.0.0] — 2026-10-18
 
 **首个正式版**：自托管的 RSS 阅读器与资源卡片墙。

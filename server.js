@@ -808,6 +808,34 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    /* ---------- 一键更新（镜像 + Watchtower 模式，v1.1.0） ----------
+     * app 容器不碰宿主机：只 POST 同网络的 watchtower 容器 HTTP API，
+     * 让它立即检查并拉取新镜像重启（拉取与重启由 watchtower 完成）。
+     * 未配置 UPDATE_WEBHOOK_URL / _TOKEN（如源码部署模式）时返回 501。 */
+    if (pathname === '/api/update' && req.method === 'POST') {
+      if (!user) { json(res, 401, { error: 'unauthorized' }); return; }
+      if (!isAdmin(user)) { json(res, 403, { error: 'forbidden' }); return; }
+      const hookUrl = process.env.UPDATE_WEBHOOK_URL || '';
+      const hookToken = process.env.UPDATE_WEBHOOK_TOKEN || '';
+      if (!hookUrl || !hookToken) {
+        json(res, 501, { error: '未配置更新通道（UPDATE_WEBHOOK_URL / UPDATE_WEBHOOK_TOKEN），当前部署可能不是镜像模式' });
+        return;
+      }
+      try {
+        const resp = await fetch(hookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + hookToken },
+          body: '{}',
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!resp.ok) throw new Error('watchtower HTTP ' + resp.status);
+        json(res, 200, { ok: true });
+      } catch (e) {
+        json(res, 502, { ok: false, error: '触发更新失败：' + String((e && e.message) || e) });
+      }
+      return;
+    }
+
     /* ---------- 静态资源 ---------- */
     if (pathname === '/login.html') { serveStatic(pathname, res); return; }
     if (pathname === '/favicon.ico' || pathname === '/favicon.svg'

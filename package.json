@@ -1,6 +1,6 @@
 {
   "name": "feedlore",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "笺川（Feedlore）—— 自托管 RSS 阅读器与资源卡片墙，数据存 PostgreSQL",
   "main": "server.js",
@@ -10,8 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:ui": "node tests/ui/build.mjs && node tests/ui/ui-regression.cjs",
-    "test:server": "node tests/server/deploy-guard.cjs && node tests/server/dockerfile-files.cjs && node tests/server/server-globals.cjs && node --test \"tests/server/*.test.js\"",
-    "test": "node tests/ui/build.mjs && node tests/ui/ui-regression.cjs && node tests/server/deploy-guard.cjs && node tests/server/dockerfile-files.cjs && node tests/server/server-globals.cjs && node --test \"tests/server/*.test.js\""
+    "test:server": "node tests/server/deploy-guard.cjs && node tests/server/dockerfile-files.cjs && node --test \"tests/server/*.test.js\"",
+    "test": "node tests/ui/build.mjs && node tests/ui/ui-regression.cjs && node tests/server/deploy-guard.cjs && node tests/server/dockerfile-files.cjs && node --test \"tests/server/*.test.js\""
   },
   "dependencies": {
     "pg": "^8.23.1",

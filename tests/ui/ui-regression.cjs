@@ -1416,6 +1416,53 @@ const withEFP = (el, fn) => {
   await sleep(80);
   t('已是最新 ok 态', () => { const r = document.querySelector('.test-result'); if (!r.classList.contains('ok')) throw new Error('类名: ' + r.className); if (r.textContent.indexOf('已是最新版本') < 0) throw new Error('文案: ' + r.textContent); });
 
+  // ---- 一键更新（v1.1.0）：仅管理员、upd 态出按钮 ----
+  checkResponse = { ok: true, hasUpdate: true, current: '1.2.0', latest: '1.1.0', releaseUrl: 'https://github.com/chensnails/feedlore/releases/tag/v1.1.0' };
+  document.querySelector('#aboutCheckBtn').click();
+  await sleep(80);
+  clickTab('数据源'); await sleep(40); clickTab('关于'); await sleep(80);
+  document.querySelector('#aboutCheckBtn').click();
+  await sleep(80);
+  t('一键更新：upd 态出现按钮（管理员）', () => {
+    if (!document.querySelector('#aboutUpdateBtn')) throw new Error('应有 #aboutUpdateBtn');
+  });
+  adminFlag = false;
+  clickTab('数据源'); await sleep(40); clickTab('关于'); await sleep(80);
+  document.querySelector('#aboutCheckBtn').click();
+  await sleep(80);
+  t('一键更新：非管理员无按钮', () => {
+    if (document.querySelector('#aboutUpdateBtn')) throw new Error('非管理员不应出现按钮');
+  });
+  adminFlag = true;
+  clickTab('数据源'); await sleep(40); clickTab('关于'); await sleep(80);
+  document.querySelector('#aboutCheckBtn').click();
+  await sleep(80);
+  // 桩 confirm / location.reload / apiFetch（轮询到新版本即 reload）
+  const confirmOrig = w.confirm; w.confirm = () => true;
+  try { Object.defineProperty(w.location, 'reload', { value: () => {}, configurable: true }); } catch (_) {}
+  const apiFetchFull2 = w.shiyue.apiFetch;
+  const updateCalls = [];
+  w.shiyue.apiFetch = (url, opts) => {
+    if (url === '/api/update') { updateCalls.push(opts && opts.method); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); }
+    if (url === '/api/version') return Promise.resolve({ ok: true, json: () => Promise.resolve({ version: '1.1.0' }) });
+    return apiFetchFull2(url, opts);
+  };
+  document.querySelector('#aboutUpdateBtn').click();
+  await sleep(40);
+  t('一键更新：POST /api/update + 更新中提示', () => {
+    if (!updateCalls.length || updateCalls[updateCalls.length - 1] !== 'POST') throw new Error('update 调用: ' + JSON.stringify(updateCalls));
+    const tips = [...document.querySelectorAll('.test-result.upd')];
+    if (!tips.some((r) => r.textContent.indexOf('正在更新') >= 0)) throw new Error('更新中提示缺失: ' + tips.map((r) => r.textContent.slice(0, 24)));
+  });
+  await sleep(5600);   // 等第一轮轮询（3s）→ 版本变化 → toast + reload
+  t('一键更新完成：版本变化 toast', () => {
+    if (!callsOf('toast').some((c) => typeof c[1] === 'string' && c[1].indexOf('已更新到 v1.1.0') >= 0)) {
+      throw new Error('无完成 toast: ' + JSON.stringify(callsOf('toast').slice(-2)));
+    }
+  });
+  w.confirm = confirmOrig;
+  w.shiyue.apiFetch = apiFetchFull2;
+
   clickTab('数据源'); await sleep(40);
   const apiFetchFull = w.shiyue.apiFetch;   // 供关闭 / 角色过滤区恢复完整路由
   w.shiyue.apiFetch = (url) => {

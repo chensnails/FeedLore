@@ -1,0 +1,59 @@
+name: Release
+
+# tag 发布：构建双架构镜像推 ghcr.io，并自动创建 GitHub Release。
+# 发版 = git tag -a v1.x.x && git push origin --tags；本站（Watchtower 模式）
+# 会在几分钟内自动拉到新镜像并重启容器，关于页也可一键触发。
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write      # 建 Release
+  packages: write      # 推 ghcr
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ARM64 经 QEMU 模拟构建；GHA cache 接力，只有首次（或 Dockerfile 大改）慢
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录 ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 解析镜像 tag（版本号 + latest）
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/chensnails/feedlore
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: 构建并推送（amd64 + arm64）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            镜像：`ghcr.io/chensnails/feedlore:${{ github.ref_name }}`
+
+            Watchtower 模式（docker-compose.release.yml）下，宿主机几分钟内自动拉取重启；
+            关于页「一键更新」可立即触发。详见 [CHANGELOG.md](https://github.com/chensnails/feedlore/blob/main/CHANGELOG.md)。

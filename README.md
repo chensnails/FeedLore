@@ -59,15 +59,25 @@ docker compose up -d --build
 
 ## 部署与更新
 
-在服务器把项目目录设为 git 工作树，一条命令更新：
+两种部署模式，容器名 / 数据库卷 / 网络完全一致，可随时互切、数据零迁移：
+
+**源码模式**（适合二次开发）：
 
 ```bash
-cd <项目目录>
-./deploy.sh        # 拉取最新代码 → 重建镜像 → 健康检查
+git clone https://github.com/chensnails/feedlore.git
+cd feedlore
+cp .env.example .env
+docker compose up -d --build
 ```
 
-- 前端已随镜像构建（Vite + React），任何改动都要 `docker compose up -d --build` 重建镜像才生效（ARM 服务器约 +30~60s）。
-- 页面本身不主动提示更新（如需拿到新代码，请手动刷新）。
+**镜像模式**（日常使用，推荐）：拉取 ghcr.io 预构建镜像，Watchtower 自动更新——
+
+```bash
+cp .env.example .env       # 填 PG_PASSWORD 与 WATCHTOWER_HTTP_API_TOKEN
+docker compose -f docker-compose.release.yml up -d
+```
+
+之后发版 = 推送 git tag，Watchtower 每 5 分钟自动拉取新镜像重启；也可以到「设置 → 关于 → 检查更新」发现新版本后点「一键更新」立即触发（约 1~2 分钟，期间页面短暂不可用，登录态不受影响）。
 
 ## 在手机上用（PWA）
 
