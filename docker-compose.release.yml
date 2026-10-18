@@ -115,7 +115,7 @@ services:
   # HTTP API 只听内网 8080，供「一键更新」触发；不经反代对外
   # ---------------------------------------------------------------
   watchtower:
-    image: containrrr/watchtower:latest
+    image: containrrr/watchtower:1.7.1   # containrrr 已归档，固定末版；新版环境变量名不同，勿随意 latest
     container_name: watchtower
     restart: unless-stopped
     volumes:
@@ -133,8 +133,11 @@ services:
       WATCHTOWER_POLL_INTERVAL: "300"
       # 清理旧镜像，避免磁盘被历史版本占满
       WATCHTOWER_CLEANUP: "true"
-      # HTTP API：POST /v1/update 立即检查（Authorization: Bearer <token>）
-      WATCHTOWER_HTTP_API: "true"
+      # HTTP API（containrrr 1.7.x 变量名）：POST /v1/update 立即检查
+      # （Authorization: Bearer <token>），供「一键更新」触发
+      WATCHTOWER_HTTP_API_UPDATE: "true"
+      # 开了 HTTP API 默认只按需不轮询 → 显式保留周期检查（与上方 POLL_INTERVAL 配合）
+      WATCHTOWER_HTTP_API_PERIODIC_POLLS: "true"
       WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:?发布态需要 WATCHTOWER_HTTP_API_TOKEN}
     # 刻意不写 ports：8080 只在 compose 内网可达
     networks:
