@@ -2,7 +2,7 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
-## [Unreleased]
+## [1.1.1] — 2026-10-19
 
 - **一键更新（源码模式修复）**：`/api/version` 新增 `updateEnabled` 标记（由 `UPDATE_WEBHOOK_URL` / `UPDATE_WEBHOOK_TOKEN` 决定）。关于页仅在镜像 + Watchtower 部署下显示「一键更新」按钮；源码模式下隐藏按钮并提示「手动更新」，不再出现点击后 501 失败。
 - **AI 日报产品定位**：对外文案弱化「AI」宣导，与 README 的「可选的 AI 日报」表述保持一致——PWA `manifest.json` 描述、部署文件注释、顶栏导航标签改为「日报 / 资源卡片墙」，不再作为宣传重点。
