@@ -777,7 +777,7 @@ const server = http.createServer(async (req, res) => {
     /* ---------- 关于 / 版本（所有登录用户，不依赖数据库）---------- */
     if (pathname === '/api/version' && req.method === 'GET') {
       if (!user) { json(res, 401, { error: 'unauthorized' }); return; }
-      json(res, 200, { version: pkg.version, repo: GITHUB_REPO });
+      json(res, 200, { version: pkg.version, repo: GITHUB_REPO, updateEnabled: !!(process.env.UPDATE_WEBHOOK_URL && process.env.UPDATE_WEBHOOK_TOKEN) });
       return;
     }
 

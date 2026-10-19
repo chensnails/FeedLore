@@ -156,6 +156,38 @@ export function closeLightbox() {
   unlockPageScroll();
 }
 
+/* ---------- 快捷键帮助（v1.1.1） ----------
+ * 全局 `?`（Shift+/）开关一个快捷键速查浮层；命令面板里也有「快捷键帮助」命令。
+ * 核心只维护 state 并派发 __overlaysTick，由 src/ui/Overlays.jsx 渲染。 */
+export let shortcutsHelpState = { show: false };
+
+export function openShortcutsHelp() {
+  if (shortcutsHelpState.show) return;
+  shortcutsHelpState = { show: true };
+  emitOverlays();
+  lockPageScroll();
+}
+
+export function closeShortcutsHelp() {
+  if (!shortcutsHelpState.show) return;
+  shortcutsHelpState = { show: false };
+  emitOverlays();
+  unlockPageScroll();
+}
+
+document.addEventListener('keydown', (ev) => {
+  // `?` 开关帮助；输入框内 / 命令面板或设置弹层开着时不拦截（让 ? 正常输入）
+  if (ev.key === '?' && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+    if (window.__cmdkOpen || window.__settingsOpen) return;
+    ev.preventDefault();
+    if (shortcutsHelpState.show) closeShortcutsHelp(); else openShortcutsHelp();
+    return;
+  }
+  if (ev.key === 'Escape' && shortcutsHelpState.show) { ev.preventDefault(); closeShortcutsHelp(); }
+});
+
 document.addEventListener('click', (ev) => {
   if (lightboxState.show) { closeLightbox(); return; }   // 开着的时候点哪儿都关
   const img = ev.target.closest ? ev.target.closest('.art-img') : null;
@@ -339,9 +371,9 @@ export function isTypingTarget(el) {
   return t === 'INPUT' || t === 'TEXTAREA' || t === 'BUTTON' || t === 'SELECT' || t === 'A' || el.isContentEditable;
 }
 document.addEventListener('keydown', (ev) => {
-  // 面板开着时不响应 j/k（命令面板 / 设置弹层均已 React 化，
-  // 通过 window.__cmdkOpen / window.__settingsOpen 同步开合状态）
-  if (window.__cmdkOpen || window.__settingsOpen) return;
+  // 面板开着时不响应 j/k（命令面板 / 设置弹层 / 快捷键帮助均已 React 化，
+  // 通过 window.__cmdkOpen / window.__settingsOpen / window.__shortcutsOpen 同步开合状态）
+  if (window.__cmdkOpen || window.__settingsOpen || window.__shortcutsOpen) return;
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
   if (isTypingTarget(document.activeElement)) return;
   if (window.__settingsOpen || !lightbox.hidden) return;

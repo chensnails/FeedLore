@@ -17,7 +17,7 @@ import { core } from '@core';
 const VIEWS = [
   { id: 'reader', label: '文章' },
   { id: 'cards', label: '卡片' },
-  { id: 'ai', label: 'AI' },
+  { id: 'ai', label: '日报' },
 ];
 
 /** shell 快照的兜底（核心尚未就绪时） */
@@ -119,6 +119,11 @@ export function TopBar() {
         >
           <svg className="ico" id="themeIco" aria-hidden="true" focusable="false"><use href={'#i-' + snap.themeIco} /></svg>
         </button>
+        <button
+          className="btn btn-ghost" id="shortcutsBtn" type="button"
+          title="键盘快捷键（?）" aria-label="键盘快捷键"
+          onClick={() => { if (s.openShortcutsHelp) s.openShortcutsHelp(); }}
+        >?</button>
         <button className="btn btn-ghost" id="settingsBtn" type="button" title="设置" onClick={() => { if (s.openSettings) s.openSettings(); }}>
           <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-settings" /></svg>
           <span className="btn-label">设置</span>

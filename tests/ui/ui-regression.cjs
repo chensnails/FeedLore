@@ -60,7 +60,7 @@ const appearance = { theme: 'auto', accent: 'blue', fontSize: 'm', readerFont: '
 const fireAppearanceChanged = () => w.dispatchEvent(new w.Event('__appearanceChanged'));
 
 let adminFlag = true;
-let versionResponse = { ok: true, version: '1.2.0' };
+let versionResponse = { ok: true, version: '1.2.0', updateEnabled: true };
 let checkResponse = { ok: true, hasUpdate: true, current: '1.2.0', latest: '1.3.0', releaseUrl: 'https://github.com/chensnails/shiyue/releases/tag/v1.3.0' };
 
 // 模型面板的可变响应（复刻 /api/prefs GET 的 llm 视图字段：不回填明文，只给 set + 掩码）
@@ -1472,6 +1472,18 @@ const withEFP = (el, fn) => {
   clickTab('关于'); await sleep(80);
   t('版本读取失败兜底', () => { if (document.querySelector('#aboutVersion').textContent !== '读取失败') throw new Error('实际: ' + document.querySelector('#aboutVersion').textContent); });
   w.shiyue.apiFetch = apiFetchFull;
+
+  // 源码部署（无 Watchtower）：一键更新按钮不应出现，且应给出手动更新提示（Issue 修复）
+  versionResponse = { ok: true, version: '1.2.0', updateEnabled: false };
+  clickTab('数据源'); await sleep(40); clickTab('关于'); await sleep(80);
+  document.querySelector('#aboutCheckBtn').click();
+  await sleep(80);
+  t('源码模式：无「一键更新」按钮 + 提示手动更新', () => {
+    if (document.querySelector('#aboutUpdateBtn')) throw new Error('源码模式不应出现更新按钮');
+    const note = document.querySelector('.about-note');
+    if (!note || note.textContent.indexOf('未接入一键更新') < 0) throw new Error('缺少源码模式提示: ' + (note ? note.textContent : '无'));
+  });
+  versionResponse = { ok: true, version: '1.2.0', updateEnabled: true };
 
   // ============ 账号面板（P2d React 化） ============
   clickTab('账号');

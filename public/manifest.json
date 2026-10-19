@@ -2,7 +2,7 @@
   "id": "/",
   "name": "笺川",
   "short_name": "笺川",
-  "description": "拾取值得读的 —— RSS 直连聚合：文章阅读、资源卡片与每日 AI 简报",
+  "description": "拾取值得读的 —— 自托管 RSS 阅读器与资源卡片墙",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

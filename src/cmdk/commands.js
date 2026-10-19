@@ -10,7 +10,7 @@ import { cjkPinyin } from './pinyin.js';
 export function buildCommands(S) {
   if (!S || typeof S.switchView !== 'function') return [];
   const cmds = [];
-  [['reader', '文章'], ['cards', '卡片'], ['ai', 'AI']].forEach((v) => {
+  [['reader', '文章'], ['cards', '卡片'], ['ai', '日报']].forEach((v) => {
     cmds.push({
       group: '视图', icon: v[0] === 'reader' ? 'inbox' : (v[0] === 'cards' ? 'grid' : 'sparkle'),
       label: '切换到' + v[1] + '页', hint: v[1], keywords: 'view ' + v[1] + ' 页面切换',

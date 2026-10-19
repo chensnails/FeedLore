@@ -18,6 +18,7 @@ export function AboutPane() {
   const isAdmin = S().isAdmin ? S().isAdmin() : false;
   const [checking, setChecking] = useState(false);
   const [updating, setUpdating] = useState(false);   // 一键更新：已触发，等 watchtower 拉镜像重启
+  const [updateEnabled, setUpdateEnabled] = useState(null); // 是否接入一键更新通道（镜像+watchtower）；null=未知
 
   // 进入「关于」页拉一次版本号（旧 loadAboutPage 的迁移）；
   // 面板随 tab 切换挂载/卸载，每次进入都会重新拉取，与旧行为一致
@@ -29,6 +30,7 @@ export function AboutPane() {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const d = await res.json();
         if (!dead) setVersion('v' + (d.version || '—'));
+        if (!dead && d.updateEnabled !== undefined) setUpdateEnabled(!!d.updateEnabled);
       } catch (err) {
         if (!dead) setVersion('读取失败');
       }
@@ -125,6 +127,9 @@ export function AboutPane() {
           {checking ? '检测中…' : '检查更新'}
         </button>
       </div>
+      {isAdmin && updateEnabled === false && (
+        <p className="about-note">当前部署未接入一键更新通道（仅镜像模式 + Watchtower 支持）。检测到新版本时，请手动更新部署。</p>
+      )}
       {result && result.kind === 'upd' && (
         <div className="test-result show upd" role="status">
           发现新版本 <b>v{result.latest}</b>（当前 v{result.current}）
@@ -134,7 +139,7 @@ export function AboutPane() {
               <a href={result.releaseUrl} target="_blank" rel="noopener">查看发布</a>
             </>
           )}
-          {isAdmin && !updating && (
+          {isAdmin && updateEnabled && !updating && (
             <button
               className="btn btn-primary btn-sm"
               id="aboutUpdateBtn"

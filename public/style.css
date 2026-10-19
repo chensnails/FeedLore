@@ -3020,3 +3020,43 @@ textarea:focus-visible,
   .about-kv-row { flex-direction: column; gap: 2px; }
   .about-kv dd { text-align: left; }
 }
+
+/* 快捷键帮助浮层（v1.1.1）：挂在 #overlaysRoot，复用覆盖层机制 */
+.shortcuts-mask {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+  padding: 24px;
+}
+.shortcuts-panel {
+  width: min(520px, 100%); max-height: min(82vh, 680px); overflow: auto;
+  background: var(--bg, #fff); color: var(--text, #222);
+  border: 1px solid var(--border, rgba(128, 128, 128, .25)); border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .35);
+}
+.shortcuts-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 15px 18px; border-bottom: 1px solid var(--border, rgba(128, 128, 128, .25));
+}
+.shortcuts-head h3 { margin: 0; font-size: 1rem; }
+.shortcuts-close {
+  border: 0; background: transparent; color: var(--text-faint, #888);
+  font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 2px 8px; border-radius: 8px;
+}
+.shortcuts-close:hover { background: var(--bg-soft, rgba(128, 128, 128, .14)); color: var(--text, #222); }
+.shortcuts-body { padding: 6px 18px 2px; }
+.shortcuts-group { padding: 10px 0; border-bottom: 1px solid var(--border, rgba(128, 128, 128, .25)); }
+.shortcuts-group:last-child { border-bottom: 0; }
+.shortcuts-group h4 { margin: 0 0 8px; font-size: .75rem; color: var(--text-faint, #888); font-weight: 600; letter-spacing: .03em; }
+.shortcuts-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 5px 0; font-size: .875rem; }
+.shortcuts-desc { color: var(--text, #222); }
+.shortcuts-keys { display: flex; gap: 6px; flex: none; }
+.shortcuts-keys kbd, .cmdk-foot kbd, .shortcuts-foot kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .75rem; line-height: 1.5;
+  min-width: 1.6em; text-align: center;
+  padding: 2px 7px; border-radius: 6px;
+  background: var(--bg-soft, rgba(128, 128, 128, .14)); color: var(--text, #222);
+  border: 1px solid var(--border, rgba(128, 128, 128, .25)); border-bottom-width: 2px;
+}
+.shortcuts-foot { padding: 12px 18px 16px; font-size: .75rem; color: var(--text-faint, #888); }
