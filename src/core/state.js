@@ -107,6 +107,9 @@ export function applyRoleUI() {
   // 设置弹层 tab 已 React 化：按角色过滤交给宿主（管理员专属 tab 由外壳不再渲染）
   const host = window.__settingsHost;
   if (host && host.setAdminFlag) host.setAdminFlag(admin);
+  // AI 视图（日报设置入口）同样按角色显隐，需经宿主桥异步通知
+  const aiHost = window.__aiHost;
+  if (aiHost && aiHost.setAdminFlag) aiHost.setAdminFlag(admin);
 }
 
 /* ---------- 弹层打开时锁住背景页面 ----------

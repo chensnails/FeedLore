@@ -154,7 +154,7 @@ function DigestView({ digest }) {
 
 export function AiView() {
   const s = S();
-  const [admin] = useState(() => !!(s && s.isAdmin && s.isAdmin()));
+  const [admin, setAdmin] = useState(() => !!(s && s.isAdmin && s.isAdmin()));
   const [active, setActive] = useState(() => !!(s && s.state && s.state.tab === 'ai'));
   const [page, setPage] = useState(() => {
     const p = s && s.getAiPage ? s.getAiPage() : 'digest';
@@ -181,6 +181,15 @@ export function AiView() {
     const onView = (ev) => setActive(ev.detail === 'ai');
     window.addEventListener('__viewChanged', onView);
     return () => window.removeEventListener('__viewChanged', onView);
+  }, []);
+
+  // 管理员身份桥：核心在 /api/session 异步返回后，经 applyRoleUI() → __aiHost.setAdminFlag
+  // 通知本视图。否则 React 挂载早于会话加载，admin 会被永久定格为 false（日报设置入口消失）。
+  useEffect(() => {
+    const host = { setAdminFlag: (a) => setAdmin(!!a) };
+    window.__aiHost = host;
+    setAdmin(!!(s.isAdmin && s.isAdmin()));   // 兜底：若会话已就绪则立即同步
+    return () => { if (window.__aiHost === host) delete window.__aiHost; };
   }, []);
 
   // 激活或切换子页时加载对应数据（切到设置但非管理员则回落日报）

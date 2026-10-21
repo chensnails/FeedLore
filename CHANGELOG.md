@@ -2,6 +2,11 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.1.6] — 2026-10-21
+
+- **修复：管理员看不到「AI → 日报设置」入口**：根因是 React 版 `AiView` 在挂载瞬间用 `useState(() => isAdmin())` 取值，而此刻 `/api/session` 尚未返回（`state.role` 仍为空），`admin` 被永久定格为 `false` 且不再更新。已为 `AiView` 注册 `window.__aiHost.setAdminFlag` 宿主桥，由核心在会话加载完成后经 `applyRoleUI()` 异步通知管理员身份（与设置弹层的 `setAdminFlag` 机制一致）。修复后管理员可正常进入日报设置，配置「摘要范围」mode 下拉与自定义频道清单。
+- **日报条目按钮统一为 SVG 图标**（含于 1.1.5）：「复制链接」`i-link`→复制成功 `i-check`、「打开」`i-external`，去除冗余文字。
+
 ## [1.1.5] — 2026-10-21
 
 - **日报：频道选择结构化配置 + 条目参数可调**：
