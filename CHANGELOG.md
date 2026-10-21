@@ -2,7 +2,7 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
-## [Unreleased]
+## [1.1.3] — 2026-10-21
 
 - **滚动体验修复（移除顶部滚动条 + 消除滚动卡顿）**：
   - 移除顶部阅读进度条（`ReadProgress` 组件、`.read-progress` 样式、`#shellRoot` 挂载点与其首屏渲染），即用户感知的「页面顶部滚动条」。
