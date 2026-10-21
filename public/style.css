@@ -59,6 +59,33 @@
   --shadow-toast: 0 8px 28px rgba(16, 18, 22, .3);
   --radius: 14px;
 
+  /* ---------- 统一设计规范（v1.1.12） ----------
+     下面这组令牌把散落各处的取值收敛成可复用的刻度；组件一律引用令牌，不再硬编码。 */
+  /* 圆角层级：由小到大，同一语义的圆角只用一个令牌 */
+  --radius-sm: 8px;      /* 小控件：图标按钮、小标签 */
+  --radius-md: 10px;     /* 默认控件：按钮、输入框、下拉、Toast */
+  --radius-lg: 14px;     /* 容器：卡片、内容块（= --radius） */
+  --radius-xl: 16px;     /* 弹层：模态窗 */
+  --radius-pill: 999px;  /* 胶囊：标签、徽标 */
+  /* 字号阶梯（由既有取值收敛，覆盖 11px ~ 17px） */
+  --fs-2xs: 0.6875rem;   /* 11px  角标 / 元信息 */
+  --fs-xs: 0.7188rem;    /* 11.5px 次要说明 */
+  --fs-sm: 0.75rem;      /* 12px  提示、小标签 */
+  --fs-md: 0.8125rem;    /* 13px  控件正文（默认） */
+  --fs-base: 0.875rem;   /* 14px  强调文本、Toast */
+  --fs-lg: 0.9375rem;    /* 15px  小标题 */
+  --fs-xl: 1.0625rem;    /* 17px  弹层标题 */
+  /* 动效刻度：统一的时长与缓动 */
+  --dur-fast: .12s;
+  --dur-base: .16s;
+  --dur-slow: .22s;
+  --ease: cubic-bezier(.2, .8, .3, 1);
+  /* 反馈与覆盖层 */
+  --disabled-opacity: .5;              /* 禁用态统一透明度 */
+  --lightbox-bg: rgba(8, 10, 14, .9);  /* 灯箱底色（恒暗，不随主题） */
+  --lightbox-text: rgba(255, 255, 255, .72);
+  --dim: rgba(10, 12, 16, .42);        /* 图片/内容上的压暗层 */
+
   /* ---------- 拟态玻璃（v1.1.7） ----------
      拟态（neumorphism）= 双向柔光阴影 + 渐变面，营造「从背景里浮起来」的立体感，
      不依赖模糊，可在长列表里安全使用；玻璃（glassmorphism）= backdrop-filter 模糊，
@@ -500,13 +527,14 @@ body.modal-open {
 /* ---------- 按钮 ---------- */
 .btn {
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 8px 14px;
-  font-size: 0.8125rem;
+  font-size: var(--fs-md);
   font-weight: 550;
   cursor: pointer;
   font-family: inherit;
-  transition: all .16s ease;
+  transition: border-color var(--dur-base), background var(--dur-base),
+    color var(--dur-base), box-shadow var(--dur-base), transform var(--dur-fast);
   display: inline-flex; align-items: center; gap: 6px;
   white-space: nowrap;
 }
@@ -522,6 +550,33 @@ body.modal-open {
 }
 .btn-primary:hover { background: var(--accent-strong); }
 .btn-primary:active { transform: translateY(1px); }
+/* 禁用态：统一降透明 + 禁止光标 + 不响应 hover/active（v1.1.12 补齐，此前只有个别按钮有） */
+.btn:disabled,
+.btn[disabled],
+.btn[aria-disabled="true"] {
+  opacity: var(--disabled-opacity);
+  cursor: not-allowed;
+  pointer-events: none;
+  box-shadow: none;
+  transform: none;
+}
+.btn-primary:disabled, .btn-primary[disabled] { background: var(--accent); }
+.btn-danger:disabled, .btn-danger[disabled] { background: var(--panel); }
+.btn-ghost:disabled, .btn-ghost[disabled] { background: var(--surface-soft); }
+/* 表单控件禁用态 */
+.select:disabled,
+.form-row input:disabled,
+input:disabled,
+textarea:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+  background: var(--hover);
+}
+.icon-btn:disabled, .icon-btn[disabled] {
+  opacity: var(--disabled-opacity);
+  cursor: not-allowed;
+  pointer-events: none;
+}
 /* ---------- 图标 ----------
    全部图标都来自 index.html 顶部那套 sprite（#i-xxx），不再用 ⟳ ★ ✕ 这类字符：
    字符图标在 Windows / Android / iOS 上的字形、粗细、基线都不一样，同一排按钮
@@ -586,9 +641,9 @@ body.modal-open {
 .select {
   padding: 11px 32px 11px 13px;
   border: 1px solid var(--border-strong);
-  border-radius: 11px;
+  border-radius: var(--radius-md);
   background: var(--panel) var(--select-arrow) no-repeat right 12px center;
-  font-size: 0.8125rem; font-family: inherit; color: var(--text);
+  font-size: var(--fs-md); font-family: inherit; color: var(--text);
   appearance: none; cursor: pointer; outline: none;
 }
 .select:focus { border-color: var(--accent-text); }
@@ -642,7 +697,7 @@ body.modal-open {
 /* 移动端底部弹窗（v1.1.10）：遮罩 + 圆角面板 + 标题栏 + 大触控选项 */
 .dd-mask {
   position: fixed; inset: 0; z-index: 220;
-  background: rgba(15, 18, 24, .38);
+  background: var(--overlay);
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   display: flex; align-items: flex-end;
   animation: ddFade .18s ease;
@@ -790,7 +845,7 @@ body.modal-open {
   width: 32px; height: 32px; padding: 0;
   justify-content: center; align-items: center;
   border-radius: 8px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, .28);
+  box-shadow: var(--shadow-sm);
 }
 .card-media-actions .ico { width: 15px; height: 15px; }
 .card-media-actions .btn-copy {
@@ -967,11 +1022,11 @@ body.modal-open {
   transform: translate(-50%, 20px);
   background: var(--toast-bg); color: var(--toast-text);
   padding: 11px 20px;
-  border-radius: 11px;
-  font-size: 0.8438rem; font-weight: 550;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-base); font-weight: 550;
   box-shadow: var(--shadow-toast);
   opacity: 0; pointer-events: none;
-  transition: opacity .22s, transform .22s;
+  transition: opacity var(--dur-slow), transform var(--dur-slow);
   z-index: 100;
   display: flex; align-items: center; gap: 8px;
 }
@@ -1117,7 +1172,7 @@ body.modal-open {
 .sk-row-line.w40 { width: 40%; height: 10px; }
 
 /* ---------- 设置面板 ---------- */
-.btn-sm { padding: 6px 11px; font-size: 0.7813rem; border-radius: 8px; }
+.btn-sm { padding: 6px 11px; font-size: var(--fs-sm); border-radius: var(--radius-sm); }
 
 .modal-mask {
   position: fixed; inset: 0;
@@ -1137,13 +1192,13 @@ body.modal-open {
 
 .modal {
   background: var(--panel);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   width: 100%; max-width: 620px;
   max-height: 86vh;
   max-height: 86dvh;
   display: flex; flex-direction: column;
   box-shadow: var(--shadow-lg);
-  animation: popIn .18s cubic-bezier(.2, .8, .3, 1);
+  animation: popIn var(--dur-base) var(--ease);
 }
 @keyframes popIn { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
 
@@ -1152,13 +1207,13 @@ body.modal-open {
   padding: 20px 22px 14px;
   border-bottom: 1px solid var(--border);
 }
-.modal-head h2 { margin: 0; font-size: 1.0313rem; font-weight: 650; }
-.modal-sub { margin: 4px 0 0; font-size: 0.7813rem; color: var(--text-faint); }
+.modal-head h2 { margin: 0; font-size: var(--fs-xl); font-weight: 650; }
+.modal-sub { margin: 4px 0 0; font-size: var(--fs-sm); color: var(--text-faint); }
 .modal-close {
   border: none; background: transparent; cursor: pointer;
-  font-size: 0.9375rem; color: var(--text-faint);
-  width: 30px; height: 30px; border-radius: 8px;
-  transition: all .15s;
+  font-size: var(--fs-lg); color: var(--text-faint);
+  width: 30px; height: 30px; border-radius: var(--radius-sm);
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .modal-close:hover { background: var(--hover); color: var(--text); }
 
@@ -1170,10 +1225,10 @@ body.modal-open {
   flex: 1;
   padding: 8px 12px;
   border: 1px solid var(--border-strong);
-  border-radius: 9px;
-  font-size: 0.8125rem; font-family: inherit; outline: none;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-md); font-family: inherit; outline: none;
   background: var(--panel-2); color: var(--text);
-  transition: border-color .15s, box-shadow .15s, background .15s;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
 }
 .feed-search:focus { border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--focus-ring); }
 
@@ -1371,10 +1426,10 @@ body.modal-open {
   width: 100%;
   padding: 10px 13px;
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  font-size: 0.8438rem; font-family: inherit; color: var(--text);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-md); font-family: inherit; color: var(--text);
   outline: none; background: var(--panel-2);
-  transition: border-color .15s, box-shadow .15s, background .15s;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
 }
 .form-row input:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
 .form-tip { display: block; margin-top: 6px; font-size: 0.75rem; color: var(--text-faint); }
@@ -1384,9 +1439,9 @@ body.modal-open {
 .input-with-btn .btn { flex: 0 0 auto; }
 
 .test-result {
-  font-size: 0.7813rem; border-radius: 9px;
+  font-size: var(--fs-sm); border-radius: var(--radius-sm);
   padding: 0; margin: 2px 0 0;
-  transition: all .15s;
+  transition: opacity var(--dur-base), background var(--dur-base);
 }
 .test-result.show { padding: 10px 13px; }
 .test-result.ok { background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok-text); }
@@ -2386,7 +2441,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   height: 100dvh;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 14px; padding: 22px;
-  background: rgba(8, 10, 14, .9);
+  background: var(--lightbox-bg);
   animation: lb-in .16s ease;
   cursor: zoom-out;
 }
@@ -2400,7 +2455,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   background: var(--media-grad);
   cursor: zoom-out;
 }
-.lightbox-hint { margin: 0; font-size: 0.75rem; color: rgba(255, 255, 255, .72); }
+.lightbox-hint { margin: 0; font-size: var(--fs-sm); color: var(--lightbox-text); }
 
 /* 正文按原文换行显示：存的是纯文本，pre-wrap 能保住帖子的行结构
    字体 / 字号 / 行高走外观偏好 token（--font-read / --reader-fs / --reader-lh），可被用户改 */
@@ -2519,7 +2574,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .reader-mask {
     display: block;
     position: fixed; inset: 0; z-index: 55;
-    background: rgba(10, 12, 16, .46);
+    background: var(--dim);
     opacity: 0; visibility: hidden;
     transition: opacity .22s ease, visibility .22s ease;
   }
@@ -3029,7 +3084,7 @@ body { padding-bottom: env(safe-area-inset-bottom, 0px); }
   position: fixed; inset: 0; z-index: 400;
   display: flex; align-items: flex-start; justify-content: center;
   padding: 12vh 16px 16px;
-  background: rgba(10, 12, 16, .42);
+  background: var(--dim);
   backdrop-filter: blur(2px);
   animation: cmdkMaskIn .14s ease-out;
 }
@@ -3128,16 +3183,23 @@ body { padding-bottom: env(safe-area-inset-bottom, 0px); }
   outline-offset: 2px;
   border-radius: 6px;
 }
-/* 输入框 / 按钮自家已有聚焦样式，避免双重描边 */
+/* 输入框自家已有聚焦样式（边框 + 光环），避免双重描边 */
 input:focus-visible,
-textarea:focus-visible,
+textarea:focus-visible { outline: none; }
+/* 无自有焦点环的控件：改用统一光环（此前被上面一刀切 outline:none 抹掉，
+   导致键盘 Tab 到按钮 / 分段控件 / 色块时完全没有可见焦点） */
 .btn:focus-visible,
 .seg-btn:focus-visible,
 .swatch:focus-visible,
 .viewnav-btn:focus-visible,
 .viewmode-btn:focus-visible,
 .ainav-btn:focus-visible,
-.tab:focus-visible { outline: none; }
+.tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+/* 开关：隐藏的 input 获得焦点时，把光环画在滑块上 */
+.switch input:focus-visible + .switch-slider { box-shadow: 0 0 0 3px var(--focus-ring); }
 
 /* ---------- 关于页（版本信息与更新检测） ---------- */
 .about-body { padding: 20px 22px 24px; }
@@ -3165,45 +3227,17 @@ textarea:focus-visible,
   .about-kv dd { text-align: left; }
 }
 
-/* 快捷键帮助浮层（v1.1.1）：挂在 #overlaysRoot，复用覆盖层机制 */
-.shortcuts-mask {
-  position: fixed; inset: 0; z-index: 60;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, .45); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
-  padding: 24px;
-}
-.shortcuts-panel {
-  width: min(520px, 100%); max-height: min(82vh, 680px); overflow: auto;
-  background: var(--bg, #fff); color: var(--text, #222);
-  border: 1px solid var(--border, rgba(128, 128, 128, .25)); border-radius: 14px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, .35);
-}
-.shortcuts-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 15px 18px; border-bottom: 1px solid var(--border, rgba(128, 128, 128, .25));
-}
-.shortcuts-head h3 { margin: 0; font-size: 1rem; }
-.shortcuts-close {
-  border: 0; background: transparent; color: var(--text-faint, #888);
-  font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 2px 8px; border-radius: 8px;
-}
-.shortcuts-close:hover { background: var(--bg-soft, rgba(128, 128, 128, .14)); color: var(--text, #222); }
-.shortcuts-body { padding: 6px 18px 2px; }
-.shortcuts-group { padding: 10px 0; border-bottom: 1px solid var(--border, rgba(128, 128, 128, .25)); }
-.shortcuts-group:last-child { border-bottom: 0; }
-.shortcuts-group h4 { margin: 0 0 8px; font-size: .75rem; color: var(--text-faint, #888); font-weight: 600; letter-spacing: .03em; }
-.shortcuts-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 5px 0; font-size: .875rem; }
-.shortcuts-desc { color: var(--text, #222); }
-.shortcuts-keys { display: flex; gap: 6px; flex: none; }
-.shortcuts-keys kbd, .cmdk-foot kbd, .shortcuts-foot kbd {
+/* 快捷键帮助浮层（v1.1.1）已于 v1.1.7 移除（改为 设置 → 帮助），
+ * 其 .shortcuts-* 样式随之成为死代码（且带一堆硬编码回退色），本次一并清理；
+ * 命令面板底部仍在用的 kbd 样式保留并改为引用令牌。 */
+.cmdk-foot kbd {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: .75rem; line-height: 1.5;
+  font-size: var(--fs-sm); line-height: 1.5;
   min-width: 1.6em; text-align: center;
   padding: 2px 7px; border-radius: 6px;
-  background: var(--bg-soft, rgba(128, 128, 128, .14)); color: var(--text, #222);
-  border: 1px solid var(--border, rgba(128, 128, 128, .25)); border-bottom-width: 2px;
+  background: var(--surface-soft-2); color: var(--text);
+  border: 1px solid var(--border); border-bottom-width: 2px;
 }
-.shortcuts-foot { padding: 12px 18px 16px; font-size: .75rem; color: var(--text-faint, #888); }
 
 /* ============================================================
  * 拟态玻璃统一风格（v1.1.7）
@@ -3279,7 +3313,7 @@ textarea:focus-visible,
   border: 1px solid var(--glass-border);
   backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
 }
-.shortcuts-keys kbd, .cmdk-foot kbd, .shortcuts-foot kbd {
+.cmdk-foot kbd {
   background: var(--surface-soft-2); box-shadow: var(--neu-shadow-inset); border-color: var(--border);
 }
 .lightbox-img { box-shadow: var(--shadow-lg); }
