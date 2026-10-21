@@ -646,6 +646,12 @@ const __mountOverlays = w.__mountOverlays;
 __mount(document.getElementById('settingsRoot'));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// 轮询等待条件成立（最多 ms 毫秒），容忍 jsdom 下 React 渲染 / 副作用的时序抖动
+const waitFor = async (fn, ms = 1000, step = 20) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { try { if (fn()) return true; } catch (_) { /* 元素尚未就绪 */ } await sleep(step); }
+  return false;
+};
 const mask = () => document.querySelector('.modal-mask');
 const tabBtn = (label) => [...document.querySelectorAll('.tabs .tab')].find((b) => b.textContent === label);
 const clickTab = (label) => tabBtn(label).click();
@@ -741,7 +747,7 @@ const withEFP = (el, fn) => {
   t('初始：宿主已注册', () => { if (!w.__settingsHost) throw new Error('宿主未注册'); });
 
   w.__settingsHost.open('source');
-  await sleep(60);
+  await waitFor(() => w.__settingsOpen === true && mask().hidden === false, 1000);
   t('host.open 打开（hidden=false）', () => { if (mask().hidden !== false) throw new Error('未打开'); });
   t('__settingsOpen 同步=true', () => { if (w.__settingsOpen !== true) throw new Error('window.__settingsOpen=' + w.__settingsOpen); });
   t('打开时锁屏', () => { if (!callsOf('lockPageScroll').length) throw new Error('lockPageScroll 未调用'); });
@@ -1874,7 +1880,7 @@ const withEFP = (el, fn) => {
   });
 
   clipboardWrites.length = 0;
-  Q('#digestBody .btn-copy').click();
+  Q('#digestBody .icon-btn').click();
   await sleep(60);
   t('条目复制按钮：写剪贴板 + toast', () => {
     if (!clipboardWrites.length) throw new Error('未写剪贴板');
@@ -1915,7 +1921,7 @@ const withEFP = (el, fn) => {
     if (Q('[data-ai-pane="digest"]')) throw new Error('日报子页应卸载');
     if (Q('#dgTime').value !== '08:00') throw new Error('time: ' + Q('#dgTime').value);
     if (Q('#dgEnabled').checked !== true) throw new Error('enabled 未回填');
-    if (Q('#dgScope').value !== 'selected') throw new Error('scope 未回填');
+    if (Q('#dgMode').value !== 'enabled') throw new Error('mode 未回填: ' + (Q('#dgMode') && Q('#dgMode').value));
     if (Q('#dgMaxPerFeed').value !== '20') throw new Error('maxPerFeed: ' + Q('#dgMaxPerFeed').value);
     if (!callsOf('setAiPage').some((c) => c[1] === 'settings')) throw new Error('未持久化 aiPage');
   });
