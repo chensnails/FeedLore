@@ -291,13 +291,17 @@ export function readerCloseDrawer() { setReaderDrawer(false); }
 window.addEventListener('resize', () => { if (window.innerWidth > 720) setReaderDrawer(false); });
 
 /* 手势：从左侧滑出频道抽屉（拖拽跟手 + 松手吸附）
- * 未打开时，手指在左边缘一段区域内向右横滑即可「拖」出抽屉；
- * 已打开时，向左横滑即可收回。竖滑交给页面自己滚动，互不干扰。
- * 起手区比旧版更宽（EDGE），避开 iOS / Android 最边缘的系统返回手势，
- * 否则贴着 0~15px 的触摸常被系统吞掉，用户根本滑不动抽屉。 */
+ * 未打开时，手指在屏幕左 2/3 区域内向右横滑即可「拖」出抽屉；
+ * 已打开时，向左横滑即可收回；竖滑交给页面自己滚动，互不干扰。
+ * 识别区从旧版 60px 左边缘扩到屏幕左 2/3，单手更易够到；同时做了一组冲突规避：
+ *   - 宽屏并排布局（>720px）/ 非阅读页没有抽屉，不拦截（避免误锁页面滚动）；
+ *   - 设置 / 命令面板 / 快捷键浮层开着时不拦截；
+ *   - 触摸点在可横向滚动的容器内（如 <pre> 代码块）时，让容器自己滚，不抢抽屉手势；
+ *   - 关闭态下的左滑直接放弃，避免把抽屉反向误拉出。 */
 (() => {
-  const EDGE = 60;          // 未打开时，可起手的左边缘宽度（px）
-  const THRESH = 48;        // 松手判定开 / 关的最小位移（px）
+  const THRESH = 48;                                              // 松手判定开 / 关的最小位移（px）
+  const OPEN_ZONE = () => Math.round(window.innerWidth * 2 / 3);  // 关闭态下可起手的左 2/3 屏幕宽
+  const drawerMode = () => window.innerWidth <= 720;              // 与 style.css 的 720px 抽屉断点一致
   const getSide = () => document.getElementById('readerSide');
   const getMask = () => document.getElementById('readerMask');
   if (true) {
@@ -317,12 +321,30 @@ window.addEventListener('resize', () => { if (window.innerWidth > 720) setReader
       }
     }
 
+    // 触摸点是否落在可横向滚动的容器内（如 <pre> 代码块）：是则把横滑让给容器，不抢抽屉手势
+    function inHorizontalScroller(el) {
+      let n = el;
+      while (n && n.nodeType === 1 && n !== document.body) {
+        if (n.scrollWidth > n.clientWidth + 1) {
+          const ox = getComputedStyle(n).overflowX;
+          if (ox === 'auto' || ox === 'scroll' || ox === 'overlay') return true;
+        }
+        n = n.parentElement;
+      }
+      return false;
+    }
+
     document.addEventListener('touchstart', (ev) => {
       const t = ev.touches && ev.touches[0];
       if (!t) return;
+      // 宽屏并排布局 / 非阅读页没有抽屉，不拦截（避免误锁页面滚动）
+      if (!drawerMode() || (state && state.tab !== 'reader')) { dragging = false; return; }
+      if (window.__settingsOpen || window.__cmdkOpen || window.__shortcutsOpen) return;
       const open = document.body.classList.contains('reader-drawer-open');
-      // 未开：只在左边缘一段起手；已开：任意位置都可起手（方便左滑收起）
-      if (!open && t.clientX > EDGE) { dragging = false; return; }
+      // 关闭态：仅在左 2/3 区域内可起手（右滑拉出）；其余区域交给内容本身
+      if (!open && t.clientX > OPEN_ZONE()) { dragging = false; return; }
+      // 触摸点在可横向滚动容器里时，让容器自己滚，不抢手势
+      if (!open && inHorizontalScroller(ev.target)) { dragging = false; return; }
       x0 = t.clientX; y0 = t.clientY; dragging = true; decided = false; dir = 0;
     }, { passive: true });
 
@@ -335,6 +357,9 @@ window.addEventListener('resize', () => { if (window.innerWidth > 720) setReader
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;        // 等方向明确
         if (Math.abs(dy) > Math.abs(dx)) { dragging = false; return; }  // 竖滑 → 不接管
         decided = true; dir = dx >= 0 ? 1 : -1;
+        const open = document.body.classList.contains('reader-drawer-open');
+        // 关闭态只接受「右滑拉出」；左滑直接放弃，避免把抽屉反向误拉出
+        if (!open && dir < 0) { dragging = false; return; }
         const side0 = getSide(); if (side0) side0.style.transition = 'none';   // 跟手期间关掉过渡
       }
       if (dir > 0) place(Math.max(0, dx));                        // 从 0 滑出
