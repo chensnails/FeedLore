@@ -144,7 +144,7 @@ export function AboutPane() {
               className="btn btn-primary btn-sm"
               id="aboutUpdateBtn"
               type="button"
-              style={{ marginLeft: 10 }}
+              style={{ marginLeft: 'var(--sp-3)' }}
               onClick={doUpdate}
             >
               一键更新

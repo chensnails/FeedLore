@@ -237,10 +237,14 @@ export async function promptInstall() {
 
 // 让浏览器地址栏 / 状态栏颜色跟随主题（取顶栏底色 --panel，PWA 独立窗口更协调）
 export function syncThemeColor() {
-  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
   let meta = document.querySelector('meta[name="theme-color"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'theme-color'; document.head.appendChild(meta); }
-  meta.setAttribute('content', dark ? '#171b22' : '#ffffff');
+  // 与主题同源：直接取当前主题的 --panel（亮/暗/GitHub 三主题各自不同），
+  // 不再硬编码 #171b22 / #ffffff（旧写法在 GitHub 主题下与页面底色不一致）。
+  const cs = typeof getComputedStyle === 'function' ? getComputedStyle(document.documentElement) : null;
+  const panel = cs ? String(cs.getPropertyValue('--panel') || '').trim() : '';
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  meta.setAttribute('content', panel || (dark ? '#171b22' : '#ffffff'));
 }
 syncThemeColor();
 new MutationObserver(syncThemeColor).observe(document.documentElement, {

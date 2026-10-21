@@ -115,7 +115,7 @@ function DigestView({ digest }) {
         </div>
         {d.error ? (
           <div className="dg-meta" style={{ borderTop: 'none', paddingTop: 0 }}>
-            <span style={{ color: '#b7791f' }}>模型调用失败，已降级为规则摘要：{d.error}</span>
+            <span style={{ color: 'var(--warn-text)' }}>模型调用失败，已降级为规则摘要：{d.error}</span>
           </div>
         ) : null}
       </div>
@@ -366,7 +366,7 @@ export function AiView() {
       <div className="dg-loading">
         <div className="dg-spinner" />
         正在采集过去 24 小时的新条目并生成摘要…
-        <div className="hint" style={{ marginTop: 8 }}>首次生成约需 30~60 秒，请勿关闭页面</div>
+        <div className="hint" style={{ marginTop: 'var(--sp-2)' }}>首次生成约需 30~60 秒，请勿关闭页面</div>
       </div>
     );
   } else if (view.kind === 'error') {

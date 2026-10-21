@@ -2,6 +2,21 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.1.14] — 2026-10-22
+
+- **UI 审查报告的建议项全量采纳并落地（只改样式 / 展示层，不动功能逻辑）**，明细见 `docs/UI审查报告.md`「四点五」：
+  - 新增间距刻度 `--sp-1…--sp-8`（4px 栅格），全站 padding / margin / gap 就近归入刻度并令牌化（约 519 处，偏差 ≤2px）。
+  - 新增阴影层级 `--elevation-1…4` / `--elevation-toast` 与拟态层级 `--neu-1…3` / `--neu-inset`（语义别名，仍指向各主题原阴影），全站使用处替换。
+  - Toast 成功图标由字符 `✓` 改为 sprite `#i-check`（统一图标体系，避免各平台字形/基线不一）。
+  - 分割线统一：虚线改实线，粗细用 `--divider-w` / `--divider-w-strong`，颜色统一为 `--border` / `--border-strong`。
+  - 补齐表单错误态：`input:user-invalid / textarea:user-invalid / .is-invalid` → `--danger-border` + `--err-bg`（`:user-invalid` 交互后才标红，无需 JS）。
+  - 三主题补齐 `--warn-border`；新增 `--logo-fg`（logo 白色部分令牌化）。
+  - 清理行内硬编码：AiView 降级提示色 → `var(--warn-text)`，各处行内 padding/margin → `var(--sp-*)`，TopBar logo 白 → `var(--logo-fg)`。
+  - 主题色同源：`syncThemeColor()` 改为读取当前主题的 `--panel`（GitHub 主题不再错用暗色灰）。
+  - 弹层动画时长统一到 `--dur-base` / `--dur-slow` + `--ease`；`.ico` 残留 px 尺寸改 rem（随字号偏好缩放）。
+  - 报告修正：「字号 3 个 px 值」属误判——它们是 `html[data-font-size]` 的根字号定义（全站 rem 的基准），保留不动。
+- 批量映射由一次性脚本 `tools/ui-tokens-apply.py` 完成；构建通过，UI 225/225。
+
 ## [1.1.13] — 2026-10-22
 
 - **修复移动端筛选栏仍折三行**：1.1.11 用 `flex: 1 1 auto`，flex-basis 仍按内容宽度计算，长频道名依旧把「视图切换」挤到第三行。改为 `flex: 1 1 0`——频道框宽度只由剩余空间决定（与选中频道名长短无关，视觉定宽），搜索框在 ≤720px 固定独占一行；现在移动端恒为两行：搜索 / 频道+排序+视图切换。

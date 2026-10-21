@@ -68,6 +68,27 @@ hover → 提一层阴影或换 --accent-soft；active → --neu-shadow-inset + 
 
 ---
 
+## 四点五、建议项全量采纳（v1.1.14）
+
+v1.1.12 之后，第二节的待办项与第三节的优化建议**全部执行完毕**：
+
+| 项 | 处理 |
+|---|---|
+| 字号 px 值（15/16/17.5px） | **修正为误判**：这三处是 `html[data-font-size]` 的根字号定义（正是全站 rem 缩放的基准），本身必须用 px，不属于违规；全站已无其它 px 字号。 |
+| Toast 字符图标 `✓` | 改为 sprite：`.toast-ico` 渲染 `#i-check`，删除 `::before { content:"✓" }`（`src/ui/Overlays.jsx`）。 |
+| 分割线三种并存 | 虚线统一为实线，粗细取 `--divider-w` / `--divider-w-strong`，颜色统一 `--border` / `--border-strong`。 |
+| 表单无错误态 | 新增 `input:user-invalid / textarea:user-invalid / .is-invalid` → `--danger-border` + `--err-bg`；用 `:user-invalid`（交互后才标红）无需改任何 JS。 |
+| 组件内行内硬编码 | AiView `#b7791f` → `var(--warn-text)`；各处 `style={{padding:10/20/8}}` → `var(--sp-*)`；TopBar logo 白 → 新增 `--logo-fg` 令牌。 |
+| 主题元数据硬编码 | `ui.js` 的 `syncThemeColor()` 改为读取当前主题的 `--panel`（亮/暗/GitHub 各自正确），不再写死 `#171b22`/`#ffffff`。 |
+| 间距刻度（P2-1） | 新增 `--sp-1…--sp-8`（4px 栅格），脚本把全站 padding / margin / gap 的 px 值就近归入刻度并替换为令牌（约 519 处），偏差 ≤2px。 |
+| 阴影层级（P2-2） | 新增 `--elevation-1…4` + `--elevation-toast`、`--neu-1…3` + `--neu-inset` 作为语义别名（仍指向各主题原有阴影），全站使用处替换为层级令牌。 |
+| 弹层动画（P2-3） | `ddFade / ddUp / fadeIn / lb-in` 时长统一到 `--dur-base` / `--dur-slow` + `--ease`。 |
+| 色板补齐（P2-4） | 三主题新增 `--warn-border`（此前 warn 缺 border 变体），危险态沿用 `--err-bg`（报告所指「反色底文字色」实际由 `--danger` + `--err-bg` 覆盖）。 |
+| 状态叠加（P2-5） | 已在 v1.1.12 落地并写入规范：禁用=降透明+禁光标、hover=提一层、active=内凹+位移、focus=3px 光环。 |
+| 图标尺寸（P2-6） | `.ico` 系列残留的 px 宽高（13~18px）改为 rem，随「字号」偏好一起缩放。 |
+
+> 执行方式：批量映射用一次性脚本 `tools/ui-tokens-apply.py`（只改 padding/margin/gap 与阴影令牌的取值，不动选择器与结构），构建与 225 项 UI 回归全绿后提交。
+
 ## 五、本次修复明细（v1.1.12）
 
 1. 新增统一令牌：圆角 5 级、字号 7 级、动效 3 档 + 缓动、`--disabled-opacity`、`--lightbox-bg/text`、`--dim`。

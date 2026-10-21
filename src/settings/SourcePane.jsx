@@ -1182,9 +1182,9 @@ export function SourcePane({ admin }) {
           <div className="sec-body">
             <div className="feed-list" id="feedList">
               {loadError ? (
-                <div className="hint" style={{ padding: 20 }}>{`读取失败：${loadError}`}</div>
+                <div className="hint" style={{ padding: 'var(--sp-5)' }}>{`读取失败：${loadError}`}</div>
               ) : (!feeds.length ? (
-                <div className="hint" style={{ padding: '24px 12px' }}>还没有订阅源，在上方粘贴一个 RSS 地址试试</div>
+                <div className="hint" style={{ padding: 'var(--sp-6) var(--sp-3)' }}>还没有订阅源，在上方粘贴一个 RSS 地址试试</div>
               ) : (
                 groups.map((g) => {
                   const isCollapsed = !!(g.name && collapsed.has(g.name));

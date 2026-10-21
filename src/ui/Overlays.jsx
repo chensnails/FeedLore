@@ -31,7 +31,10 @@ export function Overlays() {
   return (
     <>
       {/* 轻提示 */}
-      <div className={'toast' + (toast.show ? ' show' + (toast.ok ? ' ok' : '') : '')}>{toast.msg}</div>
+      <div className={'toast' + (toast.show ? ' show' + (toast.ok ? ' ok' : '') : '')}>
+        {toast.ok ? <svg className="ico toast-ico" aria-hidden="true" focusable="false"><use href="#i-check" /></svg> : null}
+        {toast.msg}
+      </div>
 
       {/* 自动刷新发现了新内容、但用户已经滚下去了：点它才套用，避免列表在眼皮底下跳 */}
       <button

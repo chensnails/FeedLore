@@ -355,7 +355,7 @@ export function AccountPane() {
             <div className="sec-body">
               <div className="user-list" id="userList">
                 {!usersLoaded ? null
-                  : usersError ? <div className="hint" style={{ padding: 10 }}>{usersError}</div>
+                  : usersError ? <div className="hint" style={{ padding: 'var(--sp-3)' }}>{usersError}</div>
                     : !users.length ? <div className="hint">还没有用户</div>
                       : users.map((u) => (
                         <div className="user-row" data-id={u.id} key={u.id}>
