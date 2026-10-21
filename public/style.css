@@ -632,10 +632,57 @@ body.modal-open {
 .dd-item-label { overflow: hidden; text-overflow: ellipsis; }
 .dd-check { width: 15px; height: 15px; flex: 0 0 auto; color: var(--accent-text); }
 @media (max-width: 720px) {
-  /* 移动端：触发器文案收窄留出同行空间；面板加宽便于阅读；选项加大触控热区 */
+  /* 移动端：锚定面板不再使用（改为底部弹窗），仅收窄触发器文案留出同行空间 */
   .dd-label { max-width: 40vw; }
-  .dd-panel { min-width: min(300px, calc(100vw - 32px)); }
-  .dd-item { padding: 12px 14px; font-size: .875rem; }
+}
+
+/* 移动端底部弹窗（v1.1.10）：遮罩 + 圆角面板 + 标题栏 + 大触控选项 */
+.dd-mask {
+  position: fixed; inset: 0; z-index: 220;
+  background: rgba(15, 18, 24, .38);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  display: flex; align-items: flex-end;
+  animation: ddFade .18s ease;
+}
+.dd-sheet {
+  width: 100%;
+  max-height: min(72vh, 560px);
+  display: flex; flex-direction: column;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--border-strong);
+  border-bottom: none;
+  border-radius: 18px 18px 0 0;
+  box-shadow: var(--shadow-lg);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: ddUp .22s cubic-bezier(.2, .8, .3, 1);
+}
+.dd-sheet-grip {
+  width: 38px; height: 4px; border-radius: 999px;
+  background: var(--border-strong);
+  margin: 10px auto 2px; flex: 0 0 auto; opacity: .7;
+}
+.dd-sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 12px 6px 20px; flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+}
+.dd-sheet-title { font-size: .9375rem; font-weight: 600; color: var(--text); }
+.dd-sheet-close {
+  border: none; background: none; font-family: inherit;
+  width: 36px; height: 36px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-muted); cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.dd-sheet-close:hover { background: var(--hover); color: var(--text); }
+.dd-sheet-close .ico { width: 17px; height: 17px; }
+.dd-sheet-body { overflow: auto; overscroll-behavior: contain; padding: 8px 10px 14px; }
+.dd-sheet-body .dd-item { padding: 13px 14px; font-size: .9063rem; border-radius: 11px; }
+@keyframes ddFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ddUp { from { transform: translateY(40%); opacity: .6; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .dd-mask, .dd-sheet { animation: none; }
 }
 
 /* ---------- 视图模式切换（卡片 / 列表） ---------- */

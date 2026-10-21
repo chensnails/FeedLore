@@ -2014,6 +2014,26 @@ const withEFP = (el, fn) => {
   await sleep(20);
   CA('#feedDD .dd-item')[0].click();
   await sleep(40);
+
+  // 移动端（≤720px）：频道下拉改为底部弹窗（v1.1.10）
+  const realMM = w.matchMedia;
+  w.matchMedia = (q) => ({ matches: String(q).indexOf('max-width: 720px') >= 0, media: String(q),
+    addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  C('#feedSelect').click();
+  await sleep(20);
+  t('频道下拉（移动端）：底部弹窗渲染（遮罩/标题栏/大选项）', () => {
+    if (!C('#feedDD .dd-mask')) throw new Error('无遮罩');
+    if (!C('#feedDD .dd-sheet')) throw new Error('无弹窗面板');
+    if (!C('#feedDD .dd-sheet-head .dd-sheet-title')) throw new Error('无标题栏');
+    if (CA('#feedDD .dd-sheet .dd-item').length !== 3) throw new Error('弹窗选项 ' + CA('#feedDD .dd-sheet .dd-item').length);
+    if (!C('#feedDD .dd-sheet .dd-item.active')) throw new Error('当前项未高亮');
+  });
+  C('#feedDD .dd-sheet-close').click();
+  await sleep(20);
+  t('频道下拉（移动端）：点关闭收起弹窗', () => {
+    if (C('#feedDD .dd-mask')) throw new Error('弹窗未收起');
+  });
+  w.matchMedia = realMM;
   t('卡片内容：标题 / 来源短名 / 体积 / 标签 / 日期', () => {
     const c1 = C('#grid .card[data-id="e1"]');
     if (c1.querySelector('.card-title').textContent !== '条目一') throw new Error('标题');
