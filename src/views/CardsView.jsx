@@ -308,13 +308,6 @@ export function CardsView() {
           <option value="old">最早上架</option>
           <option value="name">名称排序</option>
         </select>
-        <select id="sizeSelect" className="select" title="体积筛选" value={st.size || 'all'}
-          onChange={(ev) => { if (s.cardsSize) s.cardsSize(ev.target.value); }}>
-          <option value="all">全部体积</option>
-          <option value="small">≤ 1G</option>
-          <option value="mid">1G ~ 20G</option>
-          <option value="big">&gt; 20G</option>
-        </select>
         <div className="viewmode" id="viewMode" role="group" aria-label="视图模式">
           <button className={'viewmode-btn' + (view === 'grid' ? ' active' : '')} type="button" data-mode="grid"
             title="卡片视图" aria-label="卡片视图" onClick={() => { if (s.cardsView) s.cardsView('grid'); }}>
@@ -366,7 +359,7 @@ export function CardsView() {
         </div>
 
         <footer className="foot">
-          笺川 · Feedlore · 数据存于 PostgreSQL
+          笺川 · FeedLora · 数据存于 PostgreSQL
         </footer>
       </main>
     </>

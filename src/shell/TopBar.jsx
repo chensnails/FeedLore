@@ -120,8 +120,8 @@ export function TopBar() {
         </button>
         <button
           className="btn btn-ghost" id="shortcutsBtn" type="button"
-          title="键盘快捷键（?）" aria-label="键盘快捷键"
-          onClick={() => { if (s.openShortcutsHelp) s.openShortcutsHelp(); }}
+          title="帮助（?）" aria-label="帮助"
+          onClick={() => { if (s.openSettings) s.openSettings('help'); }}
         >?</button>
         <button className="btn btn-ghost" id="settingsBtn" type="button" title="设置" onClick={() => { if (s.openSettings) s.openSettings(); }}>
           <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-settings" /></svg>

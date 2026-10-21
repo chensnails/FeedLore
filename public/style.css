@@ -59,6 +59,23 @@
   --shadow-toast: 0 8px 28px rgba(16, 18, 22, .3);
   --radius: 14px;
 
+  /* ---------- 拟态玻璃（v1.1.7） ----------
+     拟态（neumorphism）= 双向柔光阴影 + 渐变面，营造「从背景里浮起来」的立体感，
+     不依赖模糊，可在长列表里安全使用；玻璃（glassmorphism）= backdrop-filter 模糊，
+     仅用于弹层 / 命令面板 / 灯箱等静态覆盖场景（页面已滚动锁定，不会逐帧重采样）。 */
+  --glass-bg: rgba(255, 255, 255, .68);
+  --glass-bg-strong: rgba(255, 255, 255, .82);
+  --glass-border: rgba(255, 255, 255, .55);
+  --glass-blur: 16px;
+  --neu-hi: rgba(255, 255, 255, .9);
+  --neu-lo: rgba(163, 177, 198, .55);
+  --neu-shadow: 7px 7px 18px var(--neu-lo), -7px -7px 18px var(--neu-hi);
+  --neu-shadow-sm: 4px 4px 10px var(--neu-lo), -4px -4px 10px var(--neu-hi);
+  --neu-shadow-hover: 10px 10px 26px var(--neu-lo), -10px -10px 26px var(--neu-hi);
+  --neu-shadow-inset: inset 3px 3px 7px var(--neu-lo), inset -3px -3px 7px var(--neu-hi);
+  --surface-soft: linear-gradient(145deg, #ffffff, #eef1f6);
+  --surface-soft-2: linear-gradient(145deg, #fbfcfe, #e9edf3);
+
   /* ---------- 外观偏好（字号 / 阅读字体 / 行高 / 阅读宽度） ----------
      由 <head> 内联脚本按 localStorage 写进 html 的属性上，首屏即生效。
      页面里所有 font-size 都是 rem，所以改 html 的 font-size 就能整体缩放。 */
@@ -202,6 +219,20 @@ html[data-theme="dark"] {
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, .48);
   --shadow-toast: 0 8px 28px rgba(0, 0, 0, .52);
 
+  /* 拟态玻璃（暗色） */
+  --glass-bg: rgba(46, 50, 58, .66);
+  --glass-bg-strong: rgba(46, 50, 58, .82);
+  --glass-border: rgba(255, 255, 255, .12);
+  --glass-blur: 16px;
+  --neu-hi: rgba(255, 255, 255, .05);
+  --neu-lo: rgba(0, 0, 0, .55);
+  --neu-shadow: 7px 7px 18px var(--neu-lo), -7px -7px 18px var(--neu-hi);
+  --neu-shadow-sm: 4px 4px 10px var(--neu-lo), -4px -4px 10px var(--neu-hi);
+  --neu-shadow-hover: 10px 10px 26px var(--neu-lo), -10px -10px 26px var(--neu-hi);
+  --neu-shadow-inset: inset 3px 3px 7px var(--neu-lo), inset -3px -3px 7px var(--neu-hi);
+  --surface-soft: linear-gradient(145deg, #343434, #262626);
+  --surface-soft-2: linear-gradient(145deg, #323232, #232323);
+
   --sw-blue: #7aa2ff;
   --sw-violet: #a68bff;
   --sw-teal: #4fd1c5;
@@ -331,6 +362,20 @@ html[data-theme="github"] {
   --shadow-lg: 0 20px 60px rgba(1, 4, 9, .7);
   --shadow-sm: 0 1px 3px rgba(1, 4, 9, .62);
   --shadow-toast: 0 8px 28px rgba(1, 4, 9, .6);
+
+  /* 拟态玻璃（GitHub 暗黑） */
+  --glass-bg: rgba(28, 33, 40, .66);
+  --glass-bg-strong: rgba(28, 33, 40, .82);
+  --glass-border: rgba(255, 255, 255, .12);
+  --glass-blur: 16px;
+  --neu-hi: rgba(255, 255, 255, .045);
+  --neu-lo: rgba(0, 0, 0, .6);
+  --neu-shadow: 7px 7px 18px var(--neu-lo), -7px -7px 18px var(--neu-hi);
+  --neu-shadow-sm: 4px 4px 10px var(--neu-lo), -4px -4px 10px var(--neu-hi);
+  --neu-shadow-hover: 10px 10px 26px var(--neu-lo), -10px -10px 26px var(--neu-hi);
+  --neu-shadow-inset: inset 3px 3px 7px var(--neu-lo), inset -3px -3px 7px var(--neu-hi);
+  --surface-soft: linear-gradient(145deg, #1b2129, #0f141b);
+  --surface-soft-2: linear-gradient(145deg, #19202a, #0d1219);
 }
 /* GitHub 主题下不显示主色色板，但 --sw-* 仍要有值（外观页色板可能先渲染） */
   --sw-blue: #7aa2ff;
@@ -584,8 +629,8 @@ body.modal-open {
   background: var(--panel);
   color: var(--text-muted);
   border-radius: 999px;
-  padding: 5px 13px;
-  font-size: 0.7813rem;
+  padding: 4px 11px;
+  font-size: 0.7188rem;
   cursor: pointer;
   transition: all .15s;
   user-select: none;
@@ -3081,3 +3126,100 @@ textarea:focus-visible,
   border: 1px solid var(--border, rgba(128, 128, 128, .25)); border-bottom-width: 2px;
 }
 .shortcuts-foot { padding: 12px 18px 16px; font-size: .75rem; color: var(--text-faint, #888); }
+
+/* ============================================================
+ * 拟态玻璃统一风格（v1.1.7）
+ * 卡片 / 按钮 / 标签 / 侧栏等可滚动元素用拟态柔光阴影（无模糊）；
+ * 弹层 / 命令面板 / 灯箱 / 快捷键浮层等静态覆盖场景用玻璃模糊。
+ * 遵守性能铁律：sticky / fixed 的长列表元素禁用 backdrop-filter。
+ * ============================================================ */
+
+/* 顶栏（sticky，禁用模糊，仅柔光抬升） */
+.topbar {
+  box-shadow: 0 1px 0 var(--border), 0 10px 28px -18px rgba(0, 0, 0, .5);
+}
+
+/* 按钮：拟态浮起 */
+.btn-ghost {
+  background: var(--surface-soft);
+  border-color: var(--border);
+  box-shadow: var(--neu-shadow-sm);
+}
+.btn-ghost:hover { box-shadow: var(--neu-shadow); background: var(--surface-soft); }
+.btn-ghost:active { box-shadow: var(--neu-shadow-inset); transform: translateY(1px); }
+.btn-primary { box-shadow: 0 2px 10px var(--accent-glow), var(--neu-shadow-sm); }
+.btn-primary:hover { box-shadow: 0 4px 14px var(--accent-glow), var(--neu-shadow); }
+.btn-primary:active { box-shadow: var(--neu-shadow-inset); transform: translateY(1px); }
+
+/* 选择框 / 搜索框：拟态内凹 */
+.select { background: var(--surface-soft) var(--select-arrow) no-repeat right 12px center; box-shadow: var(--neu-shadow-sm); }
+.search-box input { background: var(--surface-soft-2); box-shadow: var(--neu-shadow-inset); border-color: var(--border); }
+.search-box input:focus { box-shadow: var(--neu-shadow-inset), 0 0 0 3px var(--focus-ring); }
+
+/* 视图模式分段控件 */
+.viewmode { background: var(--surface-soft-2); box-shadow: var(--neu-shadow-inset); border-color: var(--border); }
+.viewmode-btn.active { background: var(--surface-soft); box-shadow: var(--neu-shadow-sm); }
+
+/* 标签 chips：拟态药丸 */
+.tag-chip { background: var(--surface-soft); box-shadow: var(--neu-shadow-sm); }
+.tag-chip:hover { box-shadow: var(--neu-shadow); }
+.tag-chip.active { box-shadow: 0 2px 10px var(--accent-glow-soft), var(--neu-shadow-sm); }
+
+/* 卡片 / 列表条目：拟态（无模糊，长列表安全） */
+.card { background: var(--surface-soft); box-shadow: var(--neu-shadow); }
+.card:hover { box-shadow: var(--neu-shadow-hover); }
+.row-item { background: var(--surface-soft); box-shadow: var(--neu-shadow-sm); }
+.row-item:hover { box-shadow: var(--neu-shadow); }
+.card.kbd-focus, .row-item.kbd-focus { box-shadow: var(--neu-shadow), 0 0 0 3px var(--focus-ring); }
+.card.is-fav, .row-item.is-fav { box-shadow: var(--neu-shadow-sm), inset 3px 0 0 var(--accent); }
+
+/* 阅读页侧栏（sticky，禁用模糊） */
+.reader-side { background: var(--surface-soft); box-shadow: var(--neu-shadow); }
+
+/* mini-tag / 浮标：轻玻璃 */
+.mini-tag { box-shadow: var(--neu-shadow-inset); }
+.new-pill { box-shadow: 0 2px 10px var(--accent-glow), var(--neu-shadow); }
+
+/* 弹层 / 命令面板 / 灯箱 / 快捷键浮层：玻璃模糊（静态覆盖场景，页面已滚动锁定） */
+.modal-mask { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.modal {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+.cmdk-mask { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.cmdk {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+.cmdk-item.active, .cmdk-item:hover { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent), var(--neu-shadow-inset); }
+.shortcuts-mask { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.shortcuts-panel {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+.shortcuts-keys kbd, .cmdk-foot kbd, .shortcuts-foot kbd {
+  background: var(--surface-soft-2); box-shadow: var(--neu-shadow-inset); border-color: var(--border);
+}
+.lightbox-img { box-shadow: var(--shadow-lg); }
+
+/* 阅读页头部工具：宽屏仅图标 + 悬停提示（窄屏按原约定保留「单篇/多篇」标签） */
+@media (min-width: 561px) {
+  .reader-head-tools .btn-label { display: none; }
+  .reader-head-tools .btn { padding: 8px 9px; }
+}
+
+/* 帮助面板（设置 → 帮助） */
+.help-body { padding: 4px 22px 22px; }
+.help-sec { margin-top: 20px; }
+.help-sec-h {
+  margin: 0 0 10px; font-size: .8125rem; font-weight: 650;
+  color: var(--accent-text); letter-spacing: .02em;
+}
+.help-shortcuts { padding: 0 4px; }
+.help-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.help-item { display: flex; flex-direction: column; gap: 3px; }
+.help-item-h { font-size: .875rem; font-weight: 600; color: var(--text); }
+.help-item-p { font-size: .8125rem; color: var(--text-muted); line-height: 1.65; }

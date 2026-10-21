@@ -1,4 +1,4 @@
-# 笺川（Feedlore）· 发布态 Compose（镜像模式 + Watchtower 自动更新）
+# 笺川（FeedLora）· 发布态 Compose（镜像模式 + Watchtower 自动更新）
 #
 # 与本目录的 docker-compose.yml（源码构建模式）二选一：
 # - docker-compose.yml          ：本地有源码，docker compose up -d --build 现场构建

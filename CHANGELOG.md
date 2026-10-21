@@ -2,6 +2,16 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.1.7] — 2026-10-21
+
+- **英文品牌名（可见）重命名为 FeedLora**：仅改动用户可见的英文品牌串（标题 / About / 页脚 / README / UA 注释等），内部标识 `shiyue_*`、`shiyue-v2` SW 缓存名、容器 / 镜像 / 仓库名等一律保留，避免触发老用户全量重缓存与解密失败。
+- **卡片页移除「体积」筛选**：工具栏去掉体积筛选下拉（`#sizeSelect` 及其 handlers），保留频道 / 排序 / 视图切换。
+- **卡片页标签列表字号缩小**：`.tag-chip` 由 0.7813rem 降至 0.7188rem，与整体 UI 粒度更协调。
+- **修复 j/k 快捷键（及 o/f/r）在多页失效**：根因是 `ui.js` 键盘处理里引用了未定义的 `lightbox.hidden`（正确变量为 `lightboxState.show`），导致 keydown 处理器抛出 `ReferenceError`，j/k/o/f/r 全部失效。修正后文章页与卡片页均可用；同时清理了已废弃的 `window.__shortcutsOpen` 守卫。
+- **设置新增「帮助」页（位于「关于」之前）**：集中呈现完整快捷键说明（从原 `?` 浮层迁来并扩充）+ 基础操作指南；原 `?` 浮层与顶栏「?」按钮、全局 `?` 快捷键统一改为打开 设置 → 帮助，旧浮层渲染与桥接一并移除。
+- **阅读页头部按钮图标化**：「多篇 / 全部已读 / 全部收起」宽屏下仅显示 SVG 图标（`i-accordion` / `i-check-circle` / `i-chevrons-up`），鼠标悬停通过 `title` 显示文字提示；窄屏按原约定保留文字标签。
+- **统一 UI 为拟态玻璃风格**：新增拟态（neumorphism，双向柔光阴影 + 渐变面，用于卡片 / 按钮 / 标签 / 侧栏等长列表可滚动元素，无模糊）与玻璃（glassmorphism 模糊，仅用于弹层 / 命令面板 / 灯箱 / 快捷键浮层等静态覆盖场景）两套设计令牌，并跨 亮 / 暗 / GitHub 三主题一致；严守性能铁律，sticky / fixed 的长列表元素禁用 `backdrop-filter`。
+
 ## [1.1.6] — 2026-10-21
 
 - **修复：管理员看不到「AI → 日报设置」入口**：根因是 React 版 `AiView` 在挂载瞬间用 `useState(() => isAdmin())` 取值，而此刻 `/api/session` 尚未返回（`state.role` 仍为空），`admin` 被永久定格为 `false` 且不再更新。已为 `AiView` 注册 `window.__aiHost.setAdminFlag` 宿主桥，由核心在会话加载完成后经 `applyRoleUI()` 异步通知管理员身份（与设置弹层的 `setAdminFlag` 机制一致）。修复后管理员可正常进入日报设置，配置「摘要范围」mode 下拉与自定义频道清单。

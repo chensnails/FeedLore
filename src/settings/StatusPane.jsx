@@ -95,7 +95,7 @@ function buildDiagnostics(d) {
   const app = d.app || {}; const db = d.db || {}; const rss = d.rss || {}; const dg = d.digest || {};
   const f = rss.feeds || {}; const e = rss.entries || {}; const mem = app.memory || {};
   const L = [];
-  L.push('笺川（Feedlore）诊断信息');
+  L.push('笺川（FeedLora）诊断信息');
   L.push('生成时间: ' + fmtFull(app.now));
   L.push('');
   L.push('[运行实例]');

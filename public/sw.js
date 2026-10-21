@@ -1,4 +1,4 @@
-/* 笺川（Feedlore）Service Worker
+/* 笺川（FeedLora）Service Worker
  * 作用：① 满足浏览器「可安装」条件，让 Edge / Chrome 能「添加到手机」；
  *       ② 断网时静态资源仍可用。
  * 策略：同源 GET 一律「网络优先、失败回退缓存」，保证在线时永远是最新代码；

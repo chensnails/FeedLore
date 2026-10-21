@@ -339,7 +339,7 @@ window.addEventListener('resize', () => { if (window.innerWidth > 720) setReader
       if (!t) return;
       // 宽屏并排布局 / 非阅读页没有抽屉，不拦截（避免误锁页面滚动）
       if (!drawerMode() || (state && state.tab !== 'reader')) { dragging = false; return; }
-      if (window.__settingsOpen || window.__cmdkOpen || window.__shortcutsOpen) return;
+      if (window.__settingsOpen || window.__cmdkOpen) return;
       const open = document.body.classList.contains('reader-drawer-open');
       // 关闭态：仅在左 2/3 区域内可起手（右滑拉出）；其余区域交给内容本身
       if (!open && t.clientX > OPEN_ZONE()) { dragging = false; return; }

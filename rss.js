@@ -457,7 +457,7 @@ function normalizeItem(raw, feedTitle) {
 /* ============================================================
  * 4. 抓取
  * ============================================================ */
-const UA = 'Mozilla/5.0 (compatible; Feedlore/2.8; +RSS reader)';
+const UA = 'Mozilla/5.0 (compatible; FeedLora/2.8; +RSS reader)';
 const FEED_TIMEOUT = Number(process.env.RSS_TIMEOUT_MS || 25000);
 const MAX_BYTES = 12 * 1024 * 1024;
 const { getDispatcher: getProxyDispatcher } = require('./proxy.js');

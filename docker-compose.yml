@@ -1,4 +1,4 @@
-# 笺川（Feedlore）· 项目名 / 镜像 / 容器 / 卷 / 网络沿用 shiyue 前缀
+# 笺川（FeedLora）· 项目名 / 镜像 / 容器 / 卷 / 网络沿用 shiyue 前缀
 # 显式声明项目名，这样即使目录被改名，Compose 项目仍然是 shiyue
 name: shiyue
 

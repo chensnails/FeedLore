@@ -98,7 +98,7 @@ export function AboutPane() {
       <div className="about-brand">
         <img className="about-logo" src="/favicon.svg" alt="笺川" width="56" height="56" />
         <div className="about-brand-txt">
-          <h3 className="about-name">笺川 <span className="about-en">Feedlore</span></h3>
+          <h3 className="about-name">笺川 <span className="about-en">FeedLora</span></h3>
           <p className="about-slogan">拾取值得读的 —— 自托管 RSS 阅读器 · 卡片墙</p>
         </div>
       </div>

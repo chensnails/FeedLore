@@ -10,28 +10,8 @@ import { core } from '@core';
 
 const S = () => core;
 
-/* 快捷键速查内容（命令面板「快捷键帮助」与全局 `?` 浮层共用）。 */
-const SHORTCUTS = [
-  {
-    title: '通用',
-    items: [
-      { keys: ['⌘K', 'Ctrl K'], desc: '打开命令面板' },
-      { keys: ['/'], desc: '聚焦搜索框（文章 / 卡片页）' },
-      { keys: ['?'], desc: '打开本快捷键帮助' },
-      { keys: ['Esc'], desc: '关闭弹层 / 灯箱 / 本帮助' },
-    ],
-  },
-  {
-    title: '浏览列表（文章 / 卡片）',
-    items: [
-      { keys: ['j'], desc: '下一篇' },
-      { keys: ['k'], desc: '上一篇' },
-      { keys: ['o', 'Enter'], desc: '打开当前条目' },
-      { keys: ['f'], desc: '收藏 / 取消收藏' },
-      { keys: ['r'], desc: '标记已读' },
-    ],
-  },
-];
+/* 覆盖层只渲染 toast / 新内容浮标 / 图片灯箱。
+ * 快捷键说明自 v1.1.7 起迁至 设置 → 帮助 面板，不再在此渲染浮层。 */
 
 export function Overlays() {
   const [, bump] = useState(0);
@@ -47,9 +27,6 @@ export function Overlays() {
   const toast = s.getToastState ? s.getToastState() : { msg: '', ok: true, show: false };
   const pill = s.getNewPillState ? s.getNewPillState() : { show: false, text: '' };
   const box = s.getLightboxState ? s.getLightboxState() : { src: '', show: false };
-  const help = s.getShortcutsHelpState ? s.getShortcutsHelpState() : { show: false };
-
-  useEffect(() => { window.__shortcutsOpen = help.show; return () => { window.__shortcutsOpen = false; }; }, [help.show]);
 
   return (
     <>
@@ -78,38 +55,6 @@ export function Overlays() {
         >
           <img className="lightbox-img" src={box.src} alt="" />
           <p className="lightbox-hint">点击任意处关闭 · Esc 退出</p>
-        </div>
-      )}
-      {help.show && (
-        <div
-          className="shortcuts-mask"
-          role="dialog"
-          aria-modal="true"
-          aria-label="键盘快捷键"
-          onClick={() => s.closeShortcutsHelp()}
-        >
-          <div className="shortcuts-panel" onClick={(ev) => ev.stopPropagation()}>
-            <div className="shortcuts-head">
-              <h3>键盘快捷键</h3>
-              <button className="shortcuts-close" type="button" aria-label="关闭" onClick={() => s.closeShortcutsHelp()}>×</button>
-            </div>
-            <div className="shortcuts-body">
-              {SHORTCUTS.map((g) => (
-                <div className="shortcuts-group" key={g.title}>
-                  <h4>{g.title}</h4>
-                  {g.items.map((it) => (
-                    <div className="shortcuts-row" key={it.desc}>
-                      <span className="shortcuts-desc">{it.desc}</span>
-                      <span className="shortcuts-keys">
-                        {it.keys.map((k) => <kbd key={k}>{k}</kbd>)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-            <div className="shortcuts-foot">按 <kbd>?</kbd> 或 <kbd>Esc</kbd> 关闭</div>
-          </div>
         </div>
       )}
     </>

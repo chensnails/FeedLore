@@ -1,4 +1,4 @@
-// 笺川（Feedlore）· Vite 构建配置
+// 笺川（FeedLora）· Vite 构建配置
 //
 // 多页面应用（MPA）：两个入口 HTML 都在仓库根 ——
 //   index.html  主站（阅读 / 卡片 / AI / 设置）

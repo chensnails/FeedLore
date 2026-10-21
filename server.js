@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * 笺川（Feedlore）· RSS 驱动的资源卡片站
+ * 笺川（FeedLora）· RSS 驱动的资源卡片站
  * 数据源：直接抓取 RSS / Atom（不再依赖 CommaFeed）
  * 存储：PostgreSQL（设置 / 账号 / 频道 / 条目 / 日报 全部落库）
  */
@@ -532,7 +532,7 @@ async function fetchAndCache(key, url) {
   const timer = setTimeout(() => ctl.abort(), 15000);
   try {
     const resp = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Feedlore/2.8)' },
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FeedLora/2.8)' },
       signal: ctl.signal,
       redirect: 'follow',
       dispatcher: getProxyDispatcher(settings && settings.source && settings.source.proxyUrl) || undefined,
@@ -1830,7 +1830,7 @@ db.onReady(async () => {
 db.start();
 
 server.listen(PORT, HOST, () => {
-  log(`笺川（Feedlore）已启动: http://${HOST}:${PORT}`);
+  log(`笺川（FeedLora）已启动: http://${HOST}:${PORT}`);
   log(`数据库: ${DATABASE_URL.replace(/:[^:@/]*@/, ':***@')}`);
 });
 
