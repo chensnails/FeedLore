@@ -687,11 +687,15 @@ textarea:disabled {
 .dd-item-label { overflow: hidden; text-overflow: ellipsis; }
 .dd-check { width: 15px; height: 15px; flex: 0 0 auto; color: var(--accent-text); }
 @media (max-width: 720px) {
-  /* 移动端筛选栏一行化：频道(弹性收缩、超长省略) + 排序 + 视图切换 同行 */
-  #feedDD { flex: 1 1 auto; min-width: 0; }
+  /* 移动端筛选栏固定两行：第一行搜索独占；第二行 频道 + 排序 + 视图切换 同行。
+     频道框 flex-basis:0 —— 宽度只由剩余空间决定（与选中频道名长短无关，视觉定宽），
+     否则长频道名会把「视图切换」挤到第三行。频道名超长自动省略。 */
+  .toolbar .search-box { flex-basis: 100%; }
+  #feedDD { flex: 1 1 0; min-width: 0; }
   #feedDD .dd-trigger { width: 100%; min-width: 0; }
   .dd-label { max-width: none; flex: 0 1 auto; min-width: 0; }
   .viewmode-btn { width: 30px; }
+  .toolbar { gap: 10px; }
 }
 
 /* 移动端底部弹窗（v1.1.10）：遮罩 + 圆角面板 + 标题栏 + 大触控选项 */
