@@ -271,13 +271,14 @@ try {
  * （否则会先闪一下默认值），这里负责后续修改、持久化与界面回填。
  * ============================================================ */
 // 默认值与合法值表（与服务端 APPEARANCE_DEFAULTS / APPEARANCE_KEYS 对齐）
-export const APPR_DEFAULTS = { theme: 'auto', accent: 'blue', fontSize: 'm', readerFont: 'sans', readerLh: 'm', readerWidth: 'm' };
+export const APPR_DEFAULTS = { theme: 'auto', accent: 'blue', fontSize: 'm', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
 // 键名 → html 属性名；同时这个属性名就是控件上用来标值的 data 属性名
 export const APPR_ATTR = {
   accent: 'data-accent',
   fontSize: 'data-font-size',
   readerFont: 'data-reader-font',
   readerLh: 'data-reader-lh',
+  readerFs: 'data-reader-fs',
   readerWidth: 'data-reader-width',
 };
 export const APPR_VALUES = {
@@ -286,6 +287,7 @@ export const APPR_VALUES = {
   fontSize: ['s', 'm', 'l'],
   readerFont: ['sans', 'serif'],
   readerLh: ['s', 'm', 'l'],
+  readerFs: ['s', 'm', 'l'],
   readerWidth: ['s', 'm', 'l', 'full'],
 };
 // 注：旧 APPR_GROUP 控件选择器表随外观面板 React 化移除（React 侧自行渲染控件）
@@ -373,7 +375,7 @@ applyAppearance(readAppearance());
     // —— 外观 ——
     const a = JSON.parse(localStorage.getItem('shiyue.appearance.v1') || '{}');
     if (a && typeof a === 'object') {
-      ['accent', 'fontSize', 'readerFont', 'readerLh', 'readerWidth'].forEach((k) => {
+      ['accent', 'fontSize', 'readerFont', 'readerLh', 'readerFs', 'readerWidth'].forEach((k) => {
         if (APPR_VALUES[k] && APPR_VALUES[k].indexOf(a[k]) >= 0) { apref[k] = a[k]; aChanged = true; }
       });
     }

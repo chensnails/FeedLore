@@ -2,6 +2,16 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [Unreleased]
+
+- **阅读排版舒适度提升（对标 CommaFeed）**：
+  - 正文字号由写死的 13.5px 改为 token 化（默认 16px，三档 15/16/18px），新增「正文字号」外观设置项。
+  - 默认行高 1.75 → 1.8；三档整体上移（1.65/1.8/2.1）。
+  - 段间距 0.85em → 1.15em；正文容器留白 15px → 桌面 24/32px（窄屏 16/20px）。
+  - 正文提亮一档（新增 `--text-read` token，暗色/GitHub 主题不再发灰发虚）。
+  - 中文正文默认字距 `letter-spacing: .015em`；`overflow-wrap` 由 `anywhere` 降级为 `break-word`，避免任意字符劈裂。
+  - 正文字体栈显式化（PingFang SC / HarmonyOS Sans / MiSans / 微软雅黑 / Noto Sans SC），默认阅读宽度 820px → 760px（每行约 47 字）。
+
 ## [1.1.1] — 2026-10-19
 
 - **一键更新（源码模式修复）**：`/api/version` 新增 `updateEnabled` 标记（由 `UPDATE_WEBHOOK_URL` / `UPDATE_WEBHOOK_TOKEN` 决定）。关于页仅在镜像 + Watchtower 部署下显示「一键更新」按钮；源码模式下隐藏按钮并提示「手动更新」，不再出现点击后 501 失败。

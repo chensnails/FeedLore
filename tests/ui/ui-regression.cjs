@@ -56,7 +56,7 @@ try { Object.defineProperty(w, 'isSecureContext', { value: true, configurable: t
 // ---- 与线上 window.shiyue 同构的桩 ----
 const calls = [];
 const noop = (name) => (...a) => calls.push([name, ...a]);
-const appearance = { theme: 'auto', accent: 'blue', fontSize: 'm', readerFont: 'sans', readerLh: 'm', readerWidth: 'm' };
+const appearance = { theme: 'auto', accent: 'blue', fontSize: 'm', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
 const fireAppearanceChanged = () => w.dispatchEvent(new w.Event('__appearanceChanged'));
 
 let adminFlag = true;
@@ -443,7 +443,7 @@ w.shiyue = {
   applyTheme: (m, animate) => { calls.push(['applyTheme', m, animate]); appearance.theme = m; fireAppearanceChanged(); },
   resetAppearance: () => {
     calls.push(['resetAppearance']);
-    Object.assign(appearance, { theme: 'auto', accent: 'blue', fontSize: 'm', readerFont: 'sans', readerLh: 'm', readerWidth: 'm' });
+    Object.assign(appearance, { theme: 'auto', accent: 'blue', fontSize: 'm', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' });
     fireAppearanceChanged();
   },
 
@@ -1339,7 +1339,7 @@ const withEFP = (el, fn) => {
   clickTab('外观');
   await sleep(60);
   t('外观面板渲染', () => { if (!document.querySelector('.appr')) throw new Error('无 .appr'); });
-  t('分段控件总数 16', () => { if (document.querySelectorAll('.seg-btn').length !== 16) throw new Error('实际 ' + document.querySelectorAll('.seg-btn').length); });
+  t('分段控件总数 19', () => { if (document.querySelectorAll('.seg-btn').length !== 19) throw new Error('实际 ' + document.querySelectorAll('.seg-btn').length); });
   t('调板 6 色 + 预览 + 重置', () => {
     if (document.querySelectorAll('.swatch').length !== 6) throw new Error('swatch 数不符');
     if (!document.querySelector('.appr-preview-t')) throw new Error('无预览');
@@ -1350,13 +1350,18 @@ const withEFP = (el, fn) => {
     if (!on('[data-theme-mode="auto"]')) throw new Error('auto 未选中');
     if (!on('.swatch[data-accent="blue"]')) throw new Error('blue 未选中');
     if (!on('[data-font-size="m"]')) throw new Error('m 未选中');
-    if (document.querySelectorAll('.seg-btn.active').length !== 5) throw new Error('active seg-btn 应为 5，实际 ' + document.querySelectorAll('.seg-btn.active').length);
+    if (document.querySelectorAll('.seg-btn.active').length !== 6) throw new Error('active seg-btn 应为 6，实际 ' + document.querySelectorAll('.seg-btn.active').length);
   });
 
   document.querySelector('[data-reader-width="full"]').click();
   await sleep(40);
   t('点阅读宽度 → setAppearance(readerWidth, full)', () => { const c = callsOf('setAppearance'); if (!c.length || c[c.length - 1][1] !== 'readerWidth' || c[c.length - 1][2] !== 'full') throw new Error(JSON.stringify(c)); });
   t('外部改动经事件回流（full 选中）', () => { if (!document.querySelector('[data-reader-width="full"].active')) throw new Error('full 未选中'); });
+
+  document.querySelector('[data-reader-fs="l"]').click();
+  await sleep(40);
+  t('点正文字号 → setAppearance(readerFs, l)', () => { const c = callsOf('setAppearance'); if (!c.length || c[c.length - 1][1] !== 'readerFs' || c[c.length - 1][2] !== 'l') throw new Error(JSON.stringify(c)); });
+  t('外部改动经事件回流（l 选中）', () => { if (!document.querySelector('[data-reader-fs="l"].active')) throw new Error('l 未选中'); });
 
   document.querySelector('[data-theme-mode="github"]').click();
   await sleep(40);

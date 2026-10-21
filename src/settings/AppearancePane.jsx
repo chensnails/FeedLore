@@ -35,6 +35,11 @@ const SEG_ROWS = [
     options: [['s', '紧凑'], ['m', '标准'], ['l', '宽松']],
   },
   {
+    key: 'readerFs', label: '正文字号', attr: 'data-reader-fs',
+    small: '只作用于文章正文，界面字号不受影响',
+    options: [['s', '小'], ['m', '中'], ['l', '大']],
+  },
+  {
     key: 'readerWidth', label: '阅读宽度', attr: 'data-reader-width',
     small: '越窄每行字数越少，读起来越省力',
     options: [['s', '窄'], ['m', '标准'], ['l', '宽'], ['full', '全宽']],

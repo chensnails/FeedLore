@@ -9,6 +9,7 @@
   --border-strong: #d5d9e0;
   --text: #1b1f26;
   --text-2: #333c4a;
+  --text-read: #252b36;   /* 长文正文色：比纯黑 --text 略软，比 --text-2 更清晰 */
   --text-muted: #57616f;
   --text-faint: #66717f;
   --toast-bg: #22252b;
@@ -63,9 +64,11 @@
      页面里所有 font-size 都是 rem，所以改 html 的 font-size 就能整体缩放。 */
   --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-read: var(--font-ui);
-  --reader-lh: 1.75;
-  --reader-width: 51.25rem;
+  --font-read: "PingFang SC", "HarmonyOS Sans SC", "MiSans",
+    "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --reader-fs: 1rem;            /* 正文`字号`默认档（m）= 16px；可被 data-reader-fs 覆盖 */
+  --reader-lh: 1.8;             /* 默认档上移 1.8（旧 m = 1.75），行盒更松 */
+  --reader-width: 47.5rem;      /* 默认收藏到 760px，每行约 47 字，中文阅读更省力（旧 820px） */
 
   /* 外观页的 6 个主色色块：跟着「当前主题」深浅换，但不跟选中的主色走，
      所以 6 个色始终能一眼分辨 */
@@ -150,6 +153,7 @@ html[data-theme="dark"] {
   --border-strong: #575757;
   --text: #c9c9c9;
   --text-2: #b8b8b8;
+  --text-read: #d3dae3;   /* 暗色正文提亮一档，不再发灰发虚 */
   --text-muted: #a6a6a6;
   --text-faint: #999999;
   --toast-bg: #e6e6e6;
@@ -279,6 +283,7 @@ html[data-theme="github"] {
   --border-strong: #656c76;
   --text: #f0f6fc;
   --text-2: #c9d1d9;
+  --text-read: #d3dae3;   /* GitHub 暗黑正文提亮一档 */
   --text-muted: #9198a1;
   --text-faint: #8b949e;
   --green: #3fb950;
@@ -354,12 +359,16 @@ html[data-reader-font="serif"] {
     "SimSun", "Times New Roman", serif;
 }
 
-html[data-reader-lh="s"] { --reader-lh: 1.55; }
-html[data-reader-lh="m"] { --reader-lh: 1.75; }
-html[data-reader-lh="l"] { --reader-lh: 2.05; }
+html[data-reader-lh="s"] { --reader-lh: 1.65; }
+html[data-reader-lh="m"] { --reader-lh: 1.8; }
+html[data-reader-lh="l"] { --reader-lh: 2.1; }
+/* 正文`字号`：与字体 / 行高同一套三档机制，默认 m=16px（受 html 根字号整体缩放） */
+html[data-reader-fs="s"]  { --reader-fs: 0.9375rem; }   /* 15px */
+html[data-reader-fs="m"]  { --reader-fs: 1rem; }        /* 16px */
+html[data-reader-fs="l"]  { --reader-fs: 1.125rem; }    /* 18px */
 
 html[data-reader-width="s"] { --reader-width: 42.5rem; }
-html[data-reader-width="m"] { --reader-width: 51.25rem; }
+html[data-reader-width="m"] { --reader-width: 47.5rem; }
 html[data-reader-width="l"] { --reader-width: 62.5rem; }
 /* 铺满全屏：打破 .wrap 的 1280/1600 上限，让阅读区直接撑满视口宽度，
    右侧不再留大块空白（.wrap 内还有 24px 内边距 + 232px 侧栏，主列 = 视口 - 这些）。
@@ -1204,8 +1213,8 @@ body.modal-open {
 .appr-preview-t {
   margin: 0;
   font-family: var(--font-read);
-  font-size: 0.8438rem; line-height: var(--reader-lh);
-  color: var(--text-2);
+  font-size: var(--reader-fs); line-height: var(--reader-lh);
+  color: var(--text-read, var(--text));   /* 预览所见即所得 */
 }
 
 /* 表单 */
@@ -2160,7 +2169,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 /* ---------- 展开体 ---------- */
 .art-body { border-top: 1px solid var(--border); background: var(--panel-2); }
 /* 限一个阅读宽度：不限的话宽屏下一行能排 70+ 个汉字，读起来很累 */
-.art-inner { padding: 15px; max-width: 100%; display: flex; flex-direction: column; gap: 13px; }
+.art-inner { padding: 24px 32px; max-width: 100%; display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 720px) { .art-inner { padding: 16px 20px; gap: 14px; } }
 
 /* 正文图片：跟随阅读栏宽度等比缩放、自适应屏幕、不变形、不溢出；点一下看大图。
    用 max-width:100% + height:auto 让大图填满栏宽、小图保持原尺寸；
@@ -2226,19 +2236,21 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .lightbox-hint { margin: 0; font-size: 0.75rem; color: rgba(255, 255, 255, .72); }
 
 /* 正文按原文换行显示：存的是纯文本，pre-wrap 能保住帖子的行结构
-   字体 / 行高走外观偏好 token（--font-read / --reader-lh），可被用户改 */
+   字体 / 字号 / 行高走外观偏好 token（--font-read / --reader-fs / --reader-lh），可被用户改 */
 .art-text {
   margin: 0;
   font-family: var(--font-read);
-  font-size: 0.8438rem; line-height: var(--reader-lh);
-  color: var(--text-2);
+  font-size: var(--reader-fs);
+  line-height: var(--reader-lh);
+  letter-spacing: .015em;            /* 中文小字距，笔画更舒展 */
+  color: var(--text-read, var(--text));
   white-space: pre-wrap;
   word-break: break-word;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;         /* 仅在词 / 音节边界断行，避免任意字符劈裂 */
 }
 /* 按句读自动分段后，段与段之间留呼吸；散文段首行缩进 2em（字段行不缩） */
 .art-text p { margin: 0; }
-.art-text p + p { margin-top: .85em; }
+.art-text p + p { margin-top: 1.15em; }   /* 段距约 11px → 18px+，段落更分明 */
 .art-text p.is-prose { text-indent: 2em; }
 .art-text-empty { color: var(--text-faint); font-style: italic; }
 

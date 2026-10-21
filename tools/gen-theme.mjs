@@ -286,9 +286,11 @@ out.push('     由 <head> 内联脚本按 localStorage 写进 html 的属性上�
 out.push('     页面里所有 font-size 都是 rem，所以改 html 的 font-size 就能整体缩放。 */');
 out.push('  --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",');
 out.push('    "Microsoft YaHei", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;');
-out.push('  --font-read: var(--font-ui);');
-out.push('  --reader-lh: 1.75;');
-out.push('  --reader-width: 51.25rem;');
+out.push('  --font-read: "PingFang SC", "HarmonyOS Sans SC", "MiSans",');
+out.push('    "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;');
+out.push('  --reader-fs: 1rem;');
+out.push('  --reader-lh: 1.8;');
+out.push('  --reader-width: 47.5rem;');
 out.push('');
 out.push('  /* 外观页的 6 个主色色块：跟着「当前主题」深浅换，但不跟选中的主色走，');
 out.push('     所以 6 个色始终能一眼分辨 */');
