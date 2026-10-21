@@ -8,7 +8,7 @@
  * - 类名 / ID / data 属性与旧 DOM 一致，样式零改动。
  *
  * 跨视图共享机制仍留在 app.js：自动刷新/新内容浮标（fetchHead/applyFresh/checkForNew）、
- * j/k 键盘导航（kbdItems 查 #grid 内的 .card/.row-item）、收藏/已读（cardSetFlag）、
+ * 收藏/已读（cardSetFlag）、
  * 「/」聚焦搜索（经 window.__cardsFocusSearch 委托到本组件的输入框）。
  */
 

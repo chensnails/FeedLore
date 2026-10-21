@@ -59,7 +59,7 @@ export function SettingsModal() {
     return () => { delete window.__settingsHost; };
   }, []);
 
-  // 开合状态同步给旧代码（Escape 关闭 / j/k 键盘导航 / 自动刷新的判据）
+  // 开合状态同步给旧代码（Escape 关闭 / 自动刷新的判据）
   useEffect(() => {
     window.__settingsOpen = open;
     return () => { window.__settingsOpen = false; };

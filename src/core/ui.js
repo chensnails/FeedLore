@@ -1,4 +1,4 @@
-/* 笺川核心逻辑 · 页面级交互：视图切换 / 刷新 / OPML 导出 / 灯箱 / 键盘导航 / 顶栏快照 / PWA 安装 / 折叠分组
+/* 笺川核心逻辑 · 页面级交互：视图切换 / 刷新 / OPML 导出 / 灯箱 / 顶栏快照 / PWA 安装 / 折叠分组
  *
  * v2.1.0 起由原单文件 src/core/app.js 拆分而来：按职责切分，模块之间只用普通 import 组合，
  * 由 src/core/index.js 汇总成 `core` 单例（组件统一 `import { core } from '@core'`）。
@@ -281,10 +281,9 @@ export function bindSections(root) {
 bindSections(document);
 
 /* ============================================================
- * 现代交互增强（渐进增强，与现有快捷键互不冲突）
- *  1) 顶部阅读进度条（滚动驱动）
- *  2) 命令面板 ⌘K / Ctrl+K（参考 Linear / Vercel）
- *  3) 阅读页键盘导航 j/k 上下、o/↵ 展开、f 收藏、r 已读
+ * 现代交互增强（渐进增强）
+ *  1) 顶部阅读进度条（滚动驱动）—— 已移除（滚动卡顿来源）
+ *  2) 命令面板 ⌘K / Ctrl+K（参考 Linear / Vercel，已迁移为 React 组件）
  * ============================================================ */
 
 /* ---------- 1) 阅读进度条 / 2) 命令面板（均已迁移为 React 组件） ----------
@@ -326,64 +325,6 @@ export function focusSearchBox() {
   if (window.__readerFocusSearch) window.__readerFocusSearch();
 }
 
-/* ---------- 3) 阅读页键盘导航 ---------- */
-export let kbdIdx = -1;
-export function kbdItems() {
-  if (state.tab === 'reader') return Array.prototype.slice.call(document.querySelectorAll('#readerList .art-item'));
-  if (state.tab === 'cards') return Array.prototype.slice.call(document.querySelectorAll(state.view === 'list' ? '#grid .row-item' : '#grid .card'));
-  return [];
-}
-export function clearKbdFocus() {
-  document.querySelectorAll('.art-item.kbd-focus, .card.kbd-focus, .row-item.kbd-focus')
-    .forEach((el) => el.classList.remove('kbd-focus'));
-  kbdIdx = -1;
-}
-export function moveKbd(d) {
-  const items = kbdItems();
-  if (!items.length) return;
-  kbdIdx = kbdIdx < 0 ? (d > 0 ? 0 : items.length - 1) : Math.min(items.length - 1, Math.max(0, kbdIdx + d));
-  items.forEach((el, i) => el.classList.toggle('kbd-focus', i === kbdIdx));
-  if (items[kbdIdx]) items[kbdIdx].scrollIntoView({ block: 'nearest' });
-}
-export function isTypingTarget(el) {
-  if (!el) return false;
-  const t = el.tagName;
-  return t === 'INPUT' || t === 'TEXTAREA' || t === 'BUTTON' || t === 'SELECT' || t === 'A' || el.isContentEditable;
-}
-document.addEventListener('keydown', (ev) => {
-  // 面板开着时不响应 j/k（命令面板 / 设置弹层均已 React 化，
-  // 通过 window.__cmdkOpen / window.__settingsOpen 同步开合状态）
-  if (window.__cmdkOpen || window.__settingsOpen) return;
-  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
-  if (isTypingTarget(document.activeElement)) return;
-  if (lightboxState.show) return;
-  const items = kbdItems();
-  if (ev.key === 'j' || ev.key === 'k') {
-    ev.preventDefault();
-    moveKbd(ev.key === 'j' ? 1 : -1);
-  } else if (kbdIdx >= 0 && items[kbdIdx]) {
-    const el = items[kbdIdx];
-    const onCards = state.tab === 'cards';
-    if (ev.key === 'o' || ev.key === 'Enter') {
-      ev.preventDefault();
-      if (onCards) { const b = el.querySelector('.btn-open'); if (b) b.click(); }
-      else readerToggleArt(el.dataset.id);
-    } else if (ev.key === 'f') {
-      ev.preventDefault();
-      if (onCards) cardSetFlag(el.dataset.id, { isFavorite: !isCardFav(el.dataset.id) });
-      else readerToggleFav(el.dataset.id);
-    } else if (ev.key === 'r') {
-      ev.preventDefault();
-      if (onCards) cardSetFlag(el.dataset.id, { isRead: true });
-      else markEntryRead(el.dataset.id);
-    }
-  }
-});
-// 列表重绘（翻页 / 筛选 / 点击）后清掉键盘焦点态，避免错位
-// 阅读页列表由 React 渲染，用事件委托清键盘焦点态
-document.addEventListener('click', (ev) => { if (ev.target.closest && ev.target.closest('#readerList')) clearKbdFocus(); });
-// 卡片列表由 React 渲染，用事件委托清键盘焦点态（旧 grid 常量已移除）
-document.addEventListener('click', (ev) => { if (ev.target.closest && ev.target.closest('#grid')) clearKbdFocus(); });
 
 /* 卡片页条目收藏/已读：复用与阅读页相同的 /api/entries PATCH，但作用于卡片列表 state.entries */
 export function isCardFav(id) {

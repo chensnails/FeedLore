@@ -100,7 +100,7 @@ export function readerToggleAccordion() {
   toast(accordionOn ? '已开启单篇展开' : '已改为可同时展开多篇');
 }
 
-/** 找列表里某篇的 DOM：按 data-id 比对，避开 id 里特殊字符对 CSS 选择器的影响（与 kbdItems 取法一致） */
+/** 找列表里某篇的 DOM：按 data-id 比对，避开 id 里特殊字符对 CSS 选择器的影响 */
 function findArtItemEl(id) {
   const want = String(id);
   const items = document.querySelectorAll('#readerList .art-item');
@@ -295,7 +295,7 @@ window.addEventListener('resize', () => { if (window.innerWidth > 720) setReader
  * 已打开时，向左横滑即可收回；竖滑交给页面自己滚动，互不干扰。
  * 识别区从旧版 60px 左边缘扩到屏幕左 2/3，单手更易够到；同时做了一组冲突规避：
  *   - 宽屏并排布局（>720px）/ 非阅读页没有抽屉，不拦截（避免误锁页面滚动）；
- *   - 设置 / 命令面板 / 快捷键浮层开着时不拦截；
+ *   - 设置 / 命令面板开着时不拦截；
  *   - 触摸点在可横向滚动的容器内（如 <pre> 代码块）时，让容器自己滚，不抢抽屉手势；
  *   - 关闭态下的左滑直接放弃，避免把抽屉反向误拉出。 */
 (() => {

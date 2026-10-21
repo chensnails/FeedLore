@@ -28,7 +28,7 @@ export function CommandPalette() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // 开合状态同步给旧 app（阅读页 j/k 键盘导航在面板开着时不应响应）
+  // 开合状态同步给旧 app（命令面板开着时屏蔽页面级键盘交互）
   useEffect(() => {
     window.__cmdkOpen = open;
     return () => { window.__cmdkOpen = false; };
@@ -129,7 +129,7 @@ export function CommandPalette() {
           <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
           <span><kbd>↵</kbd> 执行</span>
           <span><kbd>Esc</kbd> 关闭</span>
-          <span><kbd>?</kbd> 快捷键</span>
+          <span><kbd>?</kbd> 帮助</span>
         </div>
       </div>
     </div>

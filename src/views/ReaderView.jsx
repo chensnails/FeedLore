@@ -4,7 +4,7 @@
  * 迁移策略（沿用 CardsView 的「共享状态 + tick」约定）：
  * - 数据与逻辑仍归旧 app.js（state.rdEntries / rdExpanded / rdBody / rdScope / rdFeedId /
  *   rdGroup / rdQ / rdFlags，以及 loadReader / 展开取正文 / 已读收藏 / 抽屉 / 手势 /
- *   无限滚动 / 键盘导航 / 自动刷新）；本组件只负责渲染 + 控件，控件经桥改共享 state；
+ *   无限滚动 / 自动刷新）；本组件只负责渲染 + 控件，控件经桥改共享 state；
  * - app.js 每次需要刷新阅读页 UI 时派发 window 事件 `__readerTick`，组件监听后读实时 state 重绘；
  * - 类名 / ID / data 属性与旧 DOM 一致，样式零改动。
  */
