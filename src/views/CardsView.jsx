@@ -14,6 +14,7 @@
 
 import { core } from '@core';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Dropdown } from './Dropdown.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 const SKELETON_N = 8;
@@ -281,12 +282,16 @@ export function CardsView() {
     const name = s.shortFeedName ? s.shortFeedName(title) : title;
     return `${name}（${f.entryCount}）`;
   };
-  const feedOptions = [];
+  // 频道 / 排序下拉选项（v1.1.9 起用自定义弹层 Dropdown 渲染，替代原生 select 的系统弹窗）
+  const feedOpts = [{ value: '', label: `全部频道（${cardFeeds.length}）` }];
   for (const g of groups) {
-    const opts = g.feeds.map((f) => <option value={String(f.id)} key={f.id}>{feedLabel(f)}</option>);
-    if (g.name) feedOptions.push(<optgroup label={g.name} key={g.name}>{opts}</optgroup>);
-    else feedOptions.push(...opts);
+    for (const f of g.feeds) feedOpts.push({ value: String(f.id), label: feedLabel(f), group: g.name || '' });
   }
+  const sortOpts = [
+    { value: 'new', label: '最新发布' },
+    { value: 'old', label: '最早上架' },
+    { value: 'name', label: '名称排序' },
+  ];
 
   return (
     <>
@@ -297,17 +302,10 @@ export function CardsView() {
             placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" autoComplete="off"
             value={qDraft} onChange={onSearchInput} />
         </div>
-        <select id="feedSelect" className="select" title="频道筛选" value={feedValue}
-          onChange={(ev) => { if (s.cardsFilterFeed) s.cardsFilterFeed(ev.target.value); }}>
-          <option value="">全部频道（{cardFeeds.length}）</option>
-          {feedOptions}
-        </select>
-        <select id="sortSelect" className="select" title="排序" value={st.sort || 'new'}
-          onChange={(ev) => { if (s.cardsSort) s.cardsSort(ev.target.value); }}>
-          <option value="new">最新发布</option>
-          <option value="old">最早上架</option>
-          <option value="name">名称排序</option>
-        </select>
+        <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选" value={feedValue}
+          options={feedOpts} onChange={(v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }} />
+        <Dropdown wrapId="sortDD" id="sortSelect" title="排序" value={st.sort || 'new'}
+          options={sortOpts} onChange={(v) => { if (s.cardsSort) s.cardsSort(v); }} />
         <div className="viewmode" id="viewMode" role="group" aria-label="视图模式">
           <button className={'viewmode-btn' + (view === 'grid' ? ' active' : '')} type="button" data-mode="grid"
             title="卡片视图" aria-label="卡片视图" onClick={() => { if (s.cardsView) s.cardsView('grid'); }}>

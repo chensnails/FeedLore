@@ -1988,11 +1988,32 @@ const withEFP = (el, fn) => {
   t('卡片视图渲染：工具栏 + 卡片 + 标签栏', () => {
     if (!C('#searchInput')) throw new Error('无搜索框');
     if (!C('#feedSelect')) throw new Error('无频道下拉');
-    if (CA('#feedSelect option').length !== 3) throw new Error('频道选项 ' + CA('#feedSelect option').length);
+    if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('频道触发器文案: ' + C('#feedSelect .dd-label').textContent);
     if (cardIds().join(',') !== 'e1,e2') throw new Error('卡片 ' + cardIds().join(','));
     if (CA('#tagBar .tag-chip').length !== 3) throw new Error('标签数 ' + CA('#tagBar .tag-chip').length);
     if (!C('#viewMode .viewmode-btn.active[data-mode="grid"]')) throw new Error('grid 未高亮');
   });
+
+  // 频道下拉（v1.1.9 自定义弹层替代原生 select 的系统弹窗）
+  C('#feedSelect').click();
+  await sleep(20);
+  t('频道下拉：自定义弹层 3 项 + 分组标题 + 选中勾', () => {
+    if (CA('#feedDD .dd-item').length !== 3) throw new Error('频道选项 ' + CA('#feedDD .dd-item').length);
+    if (CA('#feedDD .dd-group').length !== 1) throw new Error('分组标题 ' + CA('#feedDD .dd-group').length);
+    if (!C('#feedDD .dd-item.active')) throw new Error('当前项未高亮');
+  });
+  CA('#feedDD .dd-item').find((el) => el.textContent.indexOf('例子星球') >= 0).click();
+  await sleep(40);
+  t('频道下拉：选中频道 → 带 feeds 重拉 + 触发器文案更新 + 弹层收起', () => {
+    if (!callsOf('apiFetch').some((c) => c[1].indexOf('/api/entries?') === 0 && c[1].indexOf('feeds=') >= 0)) throw new Error('未带 feeds 重拉');
+    if (C('#feedSelect .dd-label').textContent.indexOf('例子星球') < 0) throw new Error('触发器文案未更新: ' + C('#feedSelect .dd-label').textContent);
+    if (C('#feedDD .dd-panel')) throw new Error('弹层未收起');
+  });
+  // 还原为「全部频道」，避免影响后续用例
+  C('#feedSelect').click();
+  await sleep(20);
+  CA('#feedDD .dd-item')[0].click();
+  await sleep(40);
   t('卡片内容：标题 / 来源短名 / 体积 / 标签 / 日期', () => {
     const c1 = C('#grid .card[data-id="e1"]');
     if (c1.querySelector('.card-title').textContent !== '条目一') throw new Error('标题');

@@ -593,6 +593,51 @@ body.modal-open {
 }
 .select:focus { border-color: var(--accent-text); }
 
+/* ---------- 自定义下拉（v1.1.9，替代原生 select 的系统级弹窗，统一拟态玻璃风格） ---------- */
+.dd { position: relative; flex: 0 0 auto; }
+.dd-trigger { display: inline-flex; align-items: center; gap: 8px; text-align: left; }
+.dd-label {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 220px;
+}
+.dd-caret { width: 14px; height: 14px; flex: 0 0 auto; opacity: .6; transition: transform .16s; }
+.dd.open .dd-caret { transform: rotate(180deg); }
+.dd-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 90;
+  min-width: max(100%, 264px); width: max-content; max-width: calc(100vw - 24px);
+  max-height: min(440px, 56vh); overflow: auto; overscroll-behavior: contain;
+  padding: 6px;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+}
+.dd-group {
+  padding: 9px 12px 4px;
+  font-size: .7188rem; color: var(--text-faint);
+  user-select: none; white-space: nowrap;
+}
+.dd-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; padding: 9px 12px;
+  border: none; background: none; font-family: inherit;
+  font-size: .8125rem; color: var(--text);
+  border-radius: 9px; cursor: pointer; text-align: left;
+  white-space: nowrap;
+  transition: background .12s;
+}
+.dd-item:hover, .dd-item.hi { background: var(--hover); }
+.dd-item.active { color: var(--accent-text); font-weight: 600; }
+.dd-item-label { overflow: hidden; text-overflow: ellipsis; }
+.dd-check { width: 15px; height: 15px; flex: 0 0 auto; color: var(--accent-text); }
+@media (max-width: 720px) {
+  /* 移动端：触发器文案收窄留出同行空间；面板加宽便于阅读；选项加大触控热区 */
+  .dd-label { max-width: 40vw; }
+  .dd-panel { min-width: min(300px, calc(100vw - 32px)); }
+  .dd-item { padding: 12px 14px; font-size: .875rem; }
+}
+
 /* ---------- 视图模式切换（卡片 / 列表） ---------- */
 .viewmode {
   display: inline-flex;
