@@ -467,6 +467,11 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     (await q('SELECT id FROM feeds WHERE owner_id = $1 AND enabled ORDER BY sort_order, id', [ownerId]))
       .rows.map((r) => r.id);
 
+  /** 该用户拥有的全部频道（不论采集开关）—— 「日报」自定义模式用来把配置的频道裁剪到本人范围内 */
+  const userFeedIds = async (ownerId) =>
+    (await q('SELECT id FROM feeds WHERE owner_id = $1 ORDER BY sort_order, id', [ownerId]))
+      .rows.map((r) => Number(r.id));
+
   /** 卡片开关打开的频道 —— 「卡片」页默认展示的范围 */
   const cardFeedIds = async (ownerId) =>
     (await q('SELECT id FROM feeds WHERE owner_id = $1 AND card_enabled ORDER BY sort_order, id', [ownerId]))
@@ -897,7 +902,7 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     listUsers, getUserById, getUserByName, countUsers, createUser,
     setUserPassword, setUserRole, setUsername, setUserPrefs, deleteUser, bootstrapOwnership,
     listFeeds, getFeed, addFeed, updateFeed, saveFeedMeta, deleteFeed, reorderFeeds,
-    enabledFeedIds, cardFeedIds, allEnabledFeeds, allFeeds, allUserIds,
+    enabledFeedIds, userFeedIds, cardFeedIds, allEnabledFeeds, allFeeds, allUserIds,
     bumpFeedFailStreak, resetFeedFailStreak, setFeedEnabled,
     upsertEntries, queryEntries, getEntry, countEntries, tagCounts, pruneEntries, pruneEntriesByAge, entriesSince,
     setEntryFlags, markEntriesRead, entryFlagCounts,

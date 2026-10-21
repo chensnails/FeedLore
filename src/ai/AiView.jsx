@@ -46,7 +46,7 @@ async function copyToClipboard(text) {
   } catch (_) { return false; }
 }
 
-/** 复制链接按钮（替代旧 bindCardActions 的 [data-copy] 分支） */
+/** 复制链接：统一为图标按钮（i-link → 复制成功后 i-check） */
 function CopyLink({ url }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
@@ -57,8 +57,8 @@ function CopyLink({ url }) {
     setTimeout(() => setCopied(false), 1600);
   };
   return (
-    <button type="button" className={'btn-copy' + (copied ? ' copied' : '')} onClick={onCopy}>
-      {copied ? <><Icon n="check" /> 已复制</> : <><Icon n="link" /> 复制链接</>}
+    <button type="button" className={'icon-btn' + (copied ? ' ok' : '')} title="复制链接" onClick={onCopy}>
+      <Icon n={copied ? 'check' : 'link'} />
     </button>
   );
 }
@@ -83,7 +83,7 @@ function DgItem({ it }) {
         <div className="dg-item-name">{e.name || '(无标题)'}</div>
         <div className="dg-item-foot">
           {e.link ? <CopyLink url={e.link} /> : null}
-          {e.link ? <a className="btn-open" href={e.link} target="_blank" rel="noopener noreferrer">打开</a> : null}
+          {e.link ? <a className="icon-btn" title="打开" href={e.link} target="_blank" rel="noopener noreferrer"><Icon n="external" /></a> : null}
           {e.size ? <span className="dg-item-size">{e.size}</span> : null}
         </div>
       </div>
@@ -167,6 +167,7 @@ export function AiView() {
   const [view, setView] = useState({ kind: 'loading' });
   const [generating, setGenerating] = useState(false);
   const [feedsInfo, setFeedsInfo] = useState({ total: 0, enabled: 0 });
+  const [feedsList, setFeedsList] = useState([]);   // 设置页「自定义频道」清单用
   const [cfgDigest, setCfgDigest] = useState(null);   // 管理员才有（/api/config 的 digest 段）
 
   // 日报设置
@@ -205,8 +206,8 @@ export function AiView() {
     return list;
   }, [dates, today]);
 
-  const scope = (cfgDigest && cfgDigest.scope) || 'selected';
-  const scopeLabel = scope === 'all' ? '全部频道' : '「采集」开启的频道';
+  const mode = (cfgDigest && cfgDigest.mode) || 'enabled';
+  const scopeLabel = mode === 'all' ? '全部频道' : mode === 'custom' ? '自定义频道' : '「采集」开启的频道';
   const subtitle = `把${scopeLabel}过去 24 小时的新条目整理成一份中文简报`
     + ` · 共 ${feedsInfo.total} 个频道，采集开启 ${feedsInfo.enabled} 个`;
 
@@ -219,14 +220,17 @@ export function AiView() {
 
   const applyCfg = (cfg) => {
     const dg = (cfg && cfg.digest) || {};
+    const mode = ['all', 'enabled', 'custom'].includes(dg.mode) ? dg.mode : 'enabled';
+    const feeds = Array.isArray(dg.feeds) ? dg.feeds.map(Number).filter((n) => Number.isFinite(n)) : [];
     setCfgDigest({
-      enabled: !!dg.enabled, time: dg.time || '08:00', scope: dg.scope || 'selected',
+      enabled: !!dg.enabled, time: dg.time || '08:00', mode, feeds,
       maxPerFeed: dg.maxPerFeed, maxTotal: dg.maxTotal, keepDays: dg.keepDays,
     });
     setForm({
       enabled: !!dg.enabled,
       time: dg.time || '08:00',
-      scope: dg.scope || 'selected',
+      mode,
+      feeds,
       maxPerFeed: String(dg.maxPerFeed == null ? 20 : dg.maxPerFeed),
       maxTotal: String(dg.maxTotal == null ? 150 : dg.maxTotal),
       keepDays: String(dg.keepDays == null ? 30 : dg.keepDays),
@@ -238,11 +242,12 @@ export function AiView() {
     let ds = [];
     try { const r = await s.apiFetch('/api/digests'); const d = await r.json(); ds = d.dates || []; } catch (_) { ds = []; }
     setDates(ds);
-    // 频道计数（副标题用）
+    // 频道计数（副标题用）+ 自定义清单（设置页用）
     try {
       const data = await s.loadFeeds();
       const list = (data && data.feeds) || [];
       setFeedsInfo({ total: list.length, enabled: list.filter((f) => f.enabled).length });
+      setFeedsList(list);
     } catch (_) { /* 用已有缓存 */ }
     // 摘要范围（管理员才有权限读）
     if (admin) { try { applyCfg(await (await s.apiFetch('/api/config')).json()); } catch (_) { /* 忽略 */ } }
@@ -290,9 +295,13 @@ export function AiView() {
   async function loadSettings() {
     setSettingsResult(null);
     try {
-      const res = await s.apiFetch('/api/config');
+      const [res, fdata] = await Promise.all([
+        s.apiFetch('/api/config'),
+        s.loadFeeds().catch(() => null),
+      ]);
       if (!res.ok) throw new Error('HTTP ' + res.status);
       applyCfg(await res.json());
+      if (fdata && Array.isArray(fdata.feeds)) setFeedsList(fdata.feeds);
     } catch (err) {
       setSettingsResult({ ok: false, msg: '读取配置失败：' + String((err && err.message) || err) });
     }
@@ -310,7 +319,8 @@ export function AiView() {
           digest: {
             enabled: form.enabled,
             time: form.time || '08:00',
-            scope: form.scope,
+            mode: form.mode,
+            feeds: form.mode === 'custom' ? form.feeds : [],
             maxPerFeed: form.maxPerFeed,
             maxTotal: form.maxTotal,
             keepDays: form.keepDays,
@@ -333,7 +343,7 @@ export function AiView() {
 
   const hintOn = form ? form.enabled : false;
   const hintTime = (form && form.time) || '08:00';
-  const hintScope = form && form.scope === 'all' ? '全部频道' : '仅「采集」开启的频道';
+  const hintScope = form ? (form.mode === 'all' ? '全部频道' : form.mode === 'custom' ? '自定义频道' : '仅「采集」开启的频道') : '';
   const autoSub = form ? (hintOn ? `每天 ${hintTime} · ${hintScope}` : '已关闭') : '';
   const limitsSub = form ? `每频道 ${form.maxPerFeed} 条 · 总计 ${form.maxTotal} 条 · 保留 ${form.keepDays} 天` : '';
 
@@ -444,14 +454,39 @@ export function AiView() {
                       onChange={(e) => setField('time', e.target.value)} />
                   </div>
                   <div className="form-row">
-                    <label htmlFor="dgScope">摘要范围</label>
-                    <select id="dgScope" className="select" value={form.scope}
-                      onChange={(e) => setField('scope', e.target.value)}>
-                      <option value="selected">仅「采集」开启的频道</option>
+                    <label htmlFor="dgMode">摘要范围</label>
+                    <select id="dgMode" className="select" value={form.mode}
+                      onChange={(e) => setField('mode', e.target.value)}>
+                      <option value="enabled">仅「采集」开启的频道</option>
                       <option value="all">全部频道</option>
+                      <option value="custom">自定义频道</option>
                     </select>
                     <small className="form-tip">「采集」开关在「设置 → 数据源」页，按频道单独控制</small>
                   </div>
+                  {form.mode === 'custom' && (
+                    <div className="form-row form-row-block">
+                      <label>纳入日报的频道</label>
+                      <div className="feed-pick">
+                        {feedsList.length ? feedsList.map((f) => {
+                          const fid = Number(f.id);
+                          const checked = form.feeds.includes(fid);
+                          return (
+                            <label key={f.id} className={'feed-pick-row' + (checked ? ' on' : '')}>
+                              <input type="checkbox" checked={checked}
+                                onChange={(e) => {
+                                  const set = new Set(form.feeds);
+                                  if (e.target.checked) set.add(fid); else set.delete(fid);
+                                  setField('feeds', [...set]);
+                                }} />
+                              <span className="feed-pick-name">{f.customTitle || f.title || f.url}</span>
+                              {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
+                            </label>
+                          );
+                        }) : <div className="feed-pick-empty">加载频道列表中…</div>}
+                      </div>
+                      <small className="form-tip">未勾选任何频道时，日报将提示「没有可展示的条目」</small>
+                    </div>
+                  )}
                 </div>
               </details>
 

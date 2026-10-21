@@ -90,7 +90,12 @@ function defaults() {
       maxPerFeed: int(env.DIGEST_MAX_PER_FEED, 20),
       maxTotal: int(env.DIGEST_MAX_TOTAL, 150),
       keepDays: int(env.DIGEST_KEEP_DAYS, 30),
-      scope: env.DIGEST_SCOPE === 'all' ? 'all' : 'selected',
+      // 摘要范围：哪些频道进入日报
+      //   enabled = 仅「采集」开启的频道（默认，等价于旧 scope=selected）
+      //   all     = 该用户全部频道（等价于旧 scope=all）
+      //   custom  = 仅 feeds 列表里指定的频道（新增，可逐频道勾选）
+      mode: ['all', 'custom'].includes(env.DIGEST_MODE) ? env.DIGEST_MODE : 'enabled',
+      feeds: [],
     },
     source: {
       refreshMinutes: clampInt(env.REFRESH_MINUTES, 20, 5, 1440),
@@ -125,10 +130,20 @@ function defaults() {
 function normalizeSettings(s) {
   s.llm.temperature = clampNum(s.llm.temperature, 0.3, 0, 1.5);
 
+  // 旧版 scope('selected'|'all') 在读取库设置后迁移为 mode('enabled'|'all')，避免老库字段缺失
+  if (s.digest.scope && !s.digest.mode) {
+    s.digest.mode = s.digest.scope === 'all' ? 'all' : 'enabled';
+  }
+  delete s.digest.scope;
+  s.digest.mode = ['all', 'custom'].includes(s.digest.mode) ? s.digest.mode : 'enabled';
+  // feeds：自定义模式下生效的频道 id 列表，夹成「有限数字数组」，非 custom 时清空以免误用
+  s.digest.feeds = Array.isArray(s.digest.feeds)
+    ? s.digest.feeds.map(Number).filter((n) => Number.isFinite(n) && n > 0)
+    : [];
+  if (s.digest.mode !== 'custom') s.digest.feeds = [];
   s.digest.maxPerFeed = clampInt(s.digest.maxPerFeed, 20, 1, 100);
   s.digest.maxTotal = clampInt(s.digest.maxTotal, 150, 10, 500);
   s.digest.keepDays = clampInt(s.digest.keepDays, 30, 1, 365);
-  s.digest.scope = s.digest.scope === 'all' ? 'all' : 'selected';
 
   s.source.refreshMinutes = clampInt(s.source.refreshMinutes, 20, 5, 1440);
   // 0 = 不限（只按 keepDays 的时长上限清理）
@@ -1158,7 +1173,8 @@ const server = http.createServer(async (req, res) => {
             maxPerFeed: settings.digest.maxPerFeed,
             maxTotal: settings.digest.maxTotal,
             keepDays: settings.digest.keepDays,
-            scope: settings.digest.scope || 'selected',
+            mode: settings.digest.mode || 'enabled',
+            feeds: settings.digest.feeds || [],
           },
           source: {
             refreshMinutes: settings.source.refreshMinutes,
@@ -1215,7 +1231,15 @@ const server = http.createServer(async (req, res) => {
             next.time = String(d.time);
           }
           if (d.enabled !== undefined) next.enabled = !!d.enabled;
-          if (d.scope !== undefined) next.scope = d.scope === 'all' ? 'all' : 'selected';
+          if (d.mode !== undefined) next.mode = ['all', 'enabled', 'custom'].includes(d.mode) ? d.mode : 'enabled';
+          if (d.feeds !== undefined) {
+            const arr = Array.isArray(d.feeds)
+              ? d.feeds.map(Number).filter((n) => Number.isFinite(n) && n > 0)
+              : [];
+            next.feeds = next.mode === 'custom' ? arr : [];
+          } else if (next.mode === 'custom' && !Array.isArray(next.feeds)) {
+            next.feeds = [];
+          }
           if (d.maxPerFeed !== undefined) next.maxPerFeed = clampInt(d.maxPerFeed, 20, 1, 100);
           if (d.maxTotal !== undefined) next.maxTotal = clampInt(d.maxTotal, 150, 10, 500);
           if (d.keepDays !== undefined) next.keepDays = clampInt(d.keepDays, 30, 1, 365);
@@ -1453,10 +1477,8 @@ const server = http.createServer(async (req, res) => {
         const body = await readBody(req);
         const date = String(body.date || '').trim() || shanghaiDateStr();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { json(res, 400, { error: '日期格式应为 YYYY-MM-DD' }); return; }
-        // 未显式指定频道时，按「摘要范围」设置决定：selected = 仅当前用户已开启的频道，all = 该用户全部
-        const feeds = Array.isArray(body.feeds) && body.feeds.length
-          ? body.feeds.map(Number).filter(Number.isFinite)
-          : (settings.digest.scope === 'all' ? null : await db.enabledFeedIds(user.id));
+        // 未显式指定频道时，按「摘要范围」设置（mode）决定采集哪些频道
+        const feeds = await digestFeedsFor(user.id, Array.isArray(body.feeds) ? body.feeds : null);
         try {
           const r = await digest.generate({ ownerId: user.id, feeds, date, force: !!body.force, llm: resolveUserLlm(user, settings.llm, settings.cryptoSecret) });
           json(res, 200, { ok: true, cached: r.cached, digest: r.digest });
@@ -1503,6 +1525,27 @@ function msUntilNext(timeStr) {
 }
 
 let digestTimer = null;
+
+/** 按「摘要范围」解析本次日报要采集的频道 id 列表。
+ *  - override（手动生成时前端传的 body.feeds）优先，且裁剪到该用户本人拥有的频道内；
+ *  - 否则按 settings.digest.mode 解析：
+ *      all     → null（表示该用户全部频道）
+ *      enabled → 仅「采集」开启的频道
+ *      custom  → settings.digest.feeds 与本人频道的交集
+ * 返回 null 表示「全部频道」；返回数组（可能为空）表示限定范围。 */
+async function digestFeedsFor(userId, override) {
+  const owned = await db.userFeedIds(userId);
+  const ownedSet = new Set(owned);
+  if (Array.isArray(override) && override.length) {
+    return override.map(Number).filter((id) => ownedSet.has(id));
+  }
+  const mode = (settings.digest && settings.digest.mode) || 'enabled';
+  if (mode === 'all') return null;
+  if (mode === 'enabled') return await db.enabledFeedIds(userId);
+  const cfg = (settings.digest.feeds) || [];
+  return cfg.map(Number).filter((id) => ownedSet.has(id));
+}
+
 function scheduleDigest() {
   if (digestTimer) { clearTimeout(digestTimer); digestTimer = null; }
   if (!settings || !settings.digest.enabled) return;
@@ -1517,7 +1560,7 @@ function scheduleDigest() {
         try {
           const u = await db.getUserById(uid);
           const llm = u ? resolveUserLlm(u, settings.llm, settings.cryptoSecret) : settings.llm;
-          const feeds = settings.digest.scope === 'all' ? null : await db.enabledFeedIds(uid);
+          const feeds = await digestFeedsFor(uid, null);
           const r = await digest.generate({ ownerId: uid, feeds, force: true, llm });
           log(`[digest] 用户#${uid} 已生成 ${r.digest.date} 摘要：`
             + `${r.digest.stats.kept}/${r.digest.stats.collected} 条，${r.digest.stats.feeds} 个频道`
@@ -1655,7 +1698,7 @@ async function buildStatus() {
   /* ---- 日报 ---- */
   const dg = (settings && settings.digest) || {};
   const digestInfo = {
-    enabled: !!dg.enabled, time: dg.time || '08:00', scope: dg.scope || 'selected',
+    enabled: !!dg.enabled, time: dg.time || '08:00', mode: dg.mode || 'enabled',
     nextRunAt: null, count: 0, oldestDate: null, latest: null,
   };
   if (digestInfo.enabled) digestInfo.nextRunAt = new Date(now + msUntilNext(dg.time)).toISOString();

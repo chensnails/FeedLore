@@ -394,7 +394,7 @@ export function StatusPane() {
             <StatRow k="下次生成" v={dg.nextRunAt
               ? <>{fmtFull(dg.nextRunAt)} <span className="stat-muted">（{fmtRel(dg.nextRunAt, 'future')}）</span></>
               : '—'} />
-            <StatRow k="摘要范围" v={dg.scope === 'all' ? '全部频道' : '仅「采集」开启的频道'} />
+            <StatRow k="摘要范围" v={dg.mode === 'all' ? '全部频道' : dg.mode === 'custom' ? '自定义频道' : '仅「采集」开启的频道'} />
             <StatRow k="最近一份" v={latestLine} />
           </div>
         </StatSection>

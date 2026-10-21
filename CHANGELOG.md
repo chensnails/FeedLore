@@ -2,6 +2,20 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.1.5] — 2026-10-21
+
+- **日报：频道选择结构化配置 + 条目参数可调**：
+  - 配置项由旧的二值 `scope`（selected/all）升级为清晰可扩展的 `mode` + `feeds` 结构：
+    - `mode: 'enabled'`（默认）= 仅「采集」开启的频道（等价于旧 selected）；
+    - `mode: 'all'` = 该用户全部频道（等价于旧 all）；
+    - `mode: 'custom'` = 仅 `feeds` 列表里指定的频道，可在设置页逐频道勾选。
+  - 旧库字段 `scope` 在加载时自动迁移为 `mode`，并做校验（mode 非法回落 enabled、feeds 夹成有限数字数组、非 custom 时清空 feeds）。
+  - 条目数量参数（每频道条数 `maxPerFeed`、总条数上限 `maxTotal`）保留并纳入同一结构化配置，便于后续扩展（如时间窗、抓取上限等）。
+  - 后端：新增 `digestFeedsFor(userId, override)` 统一按 mode 解析频道范围，生成接口与定时调度共用；`/api/config` 读写 `mode`/`feeds`，`/api/status` 透出 `mode`；`db.userFeedIds` 新增导出。
+- **日报界面简化**：
+  - 条目内的「复制链接」「打开」两个文字按钮统一替换为风格一致的描边 SVG 图标按钮（`i-link` / `i-external`，复制成功后 `i-link` 切换为 `i-check`），去除冗余文字，交互更简洁清晰。
+  - 设置页「摘要范围」改为 mode 下拉 + 自定义频道勾选清单（可滚动、展示采集关闭标记）。
+
 ## [1.1.4] — 2026-10-21
 
 - **频道栏抽屉：左滑（右滑拉出）手势识别区扩大到屏幕左 2/3**：
