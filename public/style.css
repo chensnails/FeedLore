@@ -632,8 +632,11 @@ body.modal-open {
 .dd-item-label { overflow: hidden; text-overflow: ellipsis; }
 .dd-check { width: 15px; height: 15px; flex: 0 0 auto; color: var(--accent-text); }
 @media (max-width: 720px) {
-  /* 移动端：锚定面板不再使用（改为底部弹窗），仅收窄触发器文案留出同行空间 */
-  .dd-label { max-width: 40vw; }
+  /* 移动端筛选栏一行化：频道(弹性收缩、超长省略) + 排序 + 视图切换 同行 */
+  #feedDD { flex: 1 1 auto; min-width: 0; }
+  #feedDD .dd-trigger { width: 100%; min-width: 0; }
+  .dd-label { max-width: none; flex: 0 1 auto; min-width: 0; }
+  .viewmode-btn { width: 30px; }
 }
 
 /* 移动端底部弹窗（v1.1.10）：遮罩 + 圆角面板 + 标题栏 + 大触控选项 */
@@ -2604,10 +2607,6 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
      ID 优先级会压过 .btn-icon，宽度对不齐） */
   .btn-label { display: none; }
   #refreshBtn, #settingsBtn, #themeBtn, #installBtn { padding: 7px 9px; }
-  /* 例外：手风琴开关表示「模式」而不是「动作」，只留图标看不出当前是单篇还是多篇，
-     所以窄屏也保留它那两个字的标签（标签已缩成「单篇 / 多篇」） */
-  #readerAccBtn { padding: 0 9px; }
-  #readerAccBtn .btn-label { display: inline; }
 }
 
 /* ============================================================
@@ -3232,6 +3231,8 @@ textarea:focus-visible,
 
 /* 选择框 / 搜索框：拟态内凹 */
 .select { background: var(--surface-soft) var(--select-arrow) no-repeat right 12px center; box-shadow: var(--neu-shadow-sm); }
+/* 自定义下拉触发器：去掉 .select 内嵌箭头（已有 .dd-caret），避免双箭头 */
+.dd-trigger { background-image: none; padding-right: 12px; }
 .search-box input { background: var(--surface-soft-2); box-shadow: var(--neu-shadow-inset); border-color: var(--border); }
 .search-box input:focus { box-shadow: var(--neu-shadow-inset), 0 0 0 3px var(--focus-ring); }
 
@@ -3283,11 +3284,11 @@ textarea:focus-visible,
 }
 .lightbox-img { box-shadow: var(--shadow-lg); }
 
-/* 阅读页头部工具：宽屏仅图标 + 悬停提示（窄屏按原约定保留「单篇/多篇」标签） */
-@media (min-width: 561px) {
-  .reader-head-tools .btn-label { display: none; }
-  .reader-head-tools .btn { padding: 8px 9px; }
-}
+/* 阅读页头部工具：全宽仅图标 + title 提示（含窄屏，v1.1.11）。
+   「单篇/多篇」模式改用颜色区分：单篇（展开一篇自动收起上一篇）时图标高亮 */
+.reader-head-tools .btn-label { display: none; }
+.reader-head-tools .btn { padding: 8px 9px; }
+#readerAccBtn[aria-pressed="true"] { color: var(--accent-text); }
 
 /* 帮助面板（设置 → 帮助） */
 .help-body { padding: 4px 22px 22px; }
