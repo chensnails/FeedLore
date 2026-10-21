@@ -308,7 +308,7 @@ bindSections(document);
  * ============================================================ */
 
 /* ---------- 1) 阅读进度条 / 2) 命令面板（均已迁移为 React 组件） ----------
-   进度条见 src/shell/TopBar.jsx 的 ReadProgress；
+   顶部阅读进度条已移除（与 sticky 顶栏的 backdrop-filter 同为滚动卡顿来源）；
    实现在 src/cmdk/CommandPalette.jsx，由 <script type="module" src="/src/main.jsx">
    挂载到 index.html 的 #cmdkRoot；旧 DOM（#cmdkMask 等）与 PINYIN 表已一并移除。
    下面的 selectScope / jumpToFeed / focusSearchBox 是普通页面函数，

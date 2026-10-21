@@ -21,7 +21,6 @@ const dom = new JSDOM('<!DOCTYPE html><html><body>' +
   '<div id="cardsRoot"></div>' +
   '<div id="readerRoot"></div>' +
   '<header class="topbar" id="topbarRoot"></header>' +
-  '<div id="shellRoot"></div>' +
   '<div id="overlaysRoot"></div>' +
   '</body></html>', {
   url: 'http://localhost:3000/',
@@ -643,7 +642,6 @@ const __mountAi = w.__mountAi;
 const __mountCards = w.__mountCards;
 const __mountReader = w.__mountReader;
 const __mountTopBar = w.__mountTopBar;
-const __mountReadProgress = w.__mountReadProgress;
 const __mountOverlays = w.__mountOverlays;
 __mount(document.getElementById('settingsRoot'));
 
@@ -717,7 +715,7 @@ const withEFP = (el, fn) => {
   // 设置按钮失效（直到 v1.8.2 才发现）。这里把四个挂载点钉死。
   const indexHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
   t('index.html：React 挂载点齐全', () => {
-    for (const id of ['settingsRoot', 'cmdkRoot', 'aiRoot', 'cardsRoot', 'readerRoot', 'topbarRoot', 'shellRoot', 'overlaysRoot']) {
+    for (const id of ['settingsRoot', 'cmdkRoot', 'aiRoot', 'cardsRoot', 'readerRoot', 'topbarRoot', 'overlaysRoot']) {
       if (indexHtml.indexOf('id="' + id + '"') < 0) throw new Error('缺 #' + id);
     }
   });
@@ -2216,9 +2214,8 @@ const withEFP = (el, fn) => {
   });
   w.shiyue.state.rdReadError = false;
 
-  // ============ App Shell 顶栏 / 进度条（P4a React 化） ============
+  // ============ App Shell 顶栏（P4a React 化） ============
   __mountTopBar(document.getElementById('topbarRoot'));
-  __mountReadProgress(document.getElementById('shellRoot'));
   await sleep(40);
   const S = (sel) => document.querySelector(sel);
   const navBtns = () => [...document.querySelectorAll('#viewNav .viewnav-btn')];
@@ -2290,28 +2287,6 @@ const withEFP = (el, fn) => {
     if (S('#refreshBtn').disabled) throw new Error('仍禁用');
     if (S('#refreshBtn .ico').classList.contains('spin')) throw new Error('仍自旋');
   });
-
-  t('进度条已渲染', () => {
-    const pr = S('#readProgress');
-    if (!pr) throw new Error('无 #readProgress');
-    if (!pr.classList.contains('read-progress')) throw new Error('class 不对');
-  });
-  {
-    const se = w.document.scrollingElement || w.document.documentElement;
-    let stubbed = true;
-    try {
-      Object.defineProperty(se, 'scrollHeight', { value: 1000, configurable: true });
-      Object.defineProperty(se, 'clientHeight', { value: 0, configurable: true });
-      Object.defineProperty(se, 'scrollTop', { value: 250, configurable: true });
-    } catch (_) { stubbed = false; }
-    w.dispatchEvent(new w.Event('scroll'));
-    await sleep(60);
-    t('进度条随滚动更新 scaleX', () => {
-      if (!stubbed) throw new Error('无法桩滚动指标');
-      const tr = S('#readProgress').style.transform;
-      if (!/scaleX\(0\.25\)/.test(tr)) throw new Error('transform: ' + tr);
-    });
-  }
 
   // ============ 覆盖层：toast / 新内容浮标 / 灯箱（v2.1.0 React 化） ============
   __mountOverlays(document.getElementById('overlaysRoot'));

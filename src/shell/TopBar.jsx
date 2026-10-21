@@ -8,9 +8,8 @@
  *   - 「顶栏高度 → CSS 变量 --topbar-h」（阅读页头部吸顶需要）也在此维护，用 ResizeObserver
  *     实测，覆盖字体加载完成 / 横竖屏切换等时机。
  *
- * 注意：`#topbarRoot` 就是 `<header class="topbar">` 本身（sticky + backdrop-filter），
- * 故本组件只渲染其内部内容，不能嵌套第二个 header；进度条必须留在 header 之外
- * （backdrop-filter 会成为 fixed 后代的包含块），挂到 `#shellRoot`。 */
+ * 注意：`#topbarRoot` 就是 `<header class="topbar">` 本身（sticky），
+ * 故本组件只渲染其内部内容，不能嵌套第二个 header。 */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { core } from '@core';
 
@@ -131,33 +130,4 @@ export function TopBar() {
       </div>
     </div>
   );
-}
-
-/** 顶部阅读进度条：滚动驱动，轻量高级感（scroll → rAF 节流） */
-export function ReadProgress() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let raf = 0;
-    const apply = () => {
-      raf = 0;
-      const bar = ref.current;
-      if (!bar) return;
-      const el = document.scrollingElement || document.documentElement;
-      const max = el.scrollHeight - el.clientHeight;
-      const p = max > 8 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
-      bar.style.transform = 'scaleX(' + p + ')';
-    };
-    const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', apply);
-    window.addEventListener('load', apply);
-    apply();
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', apply);
-      window.removeEventListener('load', apply);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, []);
-  return <div className="read-progress" id="readProgress" aria-hidden="true" ref={ref}></div>;
 }

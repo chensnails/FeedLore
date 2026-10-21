@@ -421,7 +421,8 @@ body.modal-open {
   position: sticky;
   top: 0;
   z-index: 30;
-  backdrop-filter: saturate(1.2) blur(6px);
+  /* 不再使用 backdrop-filter：滚动时浏览器每帧要对下方长列表内容重做模糊采样，
+     在文章页 / 卡片页长列表上必掉帧。实色底 + 底边线已足够分隔，滚动更顺滑。 */
 }
 
 .topbar-inner {
@@ -649,7 +650,6 @@ body.modal-open {
   width: 32px; height: 32px; padding: 0;
   justify-content: center; align-items: center;
   border-radius: 8px;
-  backdrop-filter: blur(6px);
   box-shadow: 0 2px 6px rgba(0, 0, 0, .28);
 }
 .card-media-actions .ico { width: 15px; height: 15px; }
@@ -676,7 +676,6 @@ body.modal-open {
   font-size: 0.7188rem; font-weight: 600;
   padding: 3px 9px;
   border-radius: 999px;
-  backdrop-filter: blur(4px);
 }
 .badge-idx {
   position: absolute; right: 10px; top: 10px;
@@ -874,7 +873,6 @@ body.modal-open {
   padding: 2px 8px;
   border-radius: 999px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  backdrop-filter: blur(4px);
 }
 
 /* ---------- 列表视图 ----------
@@ -2857,24 +2855,6 @@ body { padding-bottom: env(safe-area-inset-bottom, 0px); }
     transition-duration: .001ms !important;
     scroll-behavior: auto !important;
   }
-}
-
-/* ============================================================
- * 顶部阅读进度条（滚动驱动，轻量高级感）
- * ============================================================ */
-.read-progress {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  z-index: 240;
-  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
-  transform: scaleX(0);
-  transform-origin: left center;
-  transition: transform .12s linear;
-  pointer-events: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .read-progress { transition: none; }
 }
 
 /* ============================================================
