@@ -67,6 +67,14 @@ docker compose up -d --build
 git clone https://github.com/chensnails/feedlore.git
 cd feedlore
 cp .env.example .env
+
+# 随机密码
+sed -i "s/^PG_PASSWORD=.*/PG_PASSWORD=$(openssl rand -base64 32)/" .env
+
+# 确认密码已更换，并保存好凭据
+grep PG_PASSWORD .env
+
+# 构建并启动
 docker compose up -d --build
 ```
 
