@@ -129,7 +129,6 @@ export function CommandPalette() {
           <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
           <span><kbd>↵</kbd> 执行</span>
           <span><kbd>Esc</kbd> 关闭</span>
-          <span><kbd>?</kbd> 帮助</span>
         </div>
       </div>
     </div>

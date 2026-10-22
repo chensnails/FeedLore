@@ -118,11 +118,6 @@ export function TopBar() {
         >
           <svg className="ico" id="themeIco" aria-hidden="true" focusable="false"><use href={'#i-' + snap.themeIco} /></svg>
         </button>
-        <button
-          className="btn btn-ghost" id="shortcutsBtn" type="button"
-          title="帮助（?）" aria-label="帮助"
-          onClick={() => { if (s.openSettings) s.openSettings('help'); }}
-        >?</button>
         <button className="btn btn-ghost" id="settingsBtn" type="button" title="设置" onClick={() => { if (s.openSettings) s.openSettings(); }}>
           <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-settings" /></svg>
           <span className="btn-label">设置</span>

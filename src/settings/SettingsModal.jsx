@@ -16,7 +16,6 @@ import { ModelPane } from './ModelPane.jsx';
 import { SourcePane } from './SourcePane.jsx';
 import { AccountPane } from './AccountPane.jsx';
 import { StatusPane } from './StatusPane.jsx';
-import { HelpPane } from './HelpPane.jsx';
 
 const TABS = [
   ['source', '数据源'],
@@ -24,7 +23,6 @@ const TABS = [
   ['account', '账号'],
   ['appearance', '外观'],
   ['status', '状态'],
-  ['help', '帮助'],
   ['about', '关于'],
 ];
 // 管理员专属 tab（与管理端约定一致；模型配置每用户独立，普通用户也能配）
@@ -112,7 +110,6 @@ export function SettingsModal() {
           {tab === 'model' && open && <ModelPane />}
           {tab === 'account' && open && <AccountPane />}
           {tab === 'status' && open && <StatusPane />}
-          {tab === 'help' && open && <HelpPane />}
           {tab === 'about' && open && <AboutPane />}
         </div>
       </div>

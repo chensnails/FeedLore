@@ -156,18 +156,6 @@ export function closeLightbox() {
   unlockPageScroll();
 }
 
-/* ---------- `?` 打开设置 → 帮助（v1.1.7） ----------
- * 快捷键说明自 v1.1.7 起统一收进 设置 → 帮助 面板，全局 `?` 直接打开到 help tab。 */
-document.addEventListener('keydown', (ev) => {
-  if (ev.key === '?' && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
-    const ae = document.activeElement;
-    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
-    if (window.__cmdkOpen || window.__settingsOpen) return;
-    ev.preventDefault();
-    openSettings('help');
-  }
-});
-
 document.addEventListener('click', (ev) => {
   if (lightboxState.show) { closeLightbox(); return; }   // 开着的时候点哪儿都关
   const img = ev.target.closest ? ev.target.closest('.art-img') : null;

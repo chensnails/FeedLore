@@ -3357,15 +3357,3 @@ textarea:focus-visible { outline: none; }
 .reader-head-tools .btn { padding:var(--sp-2) var(--sp-2); }
 #readerAccBtn[aria-pressed="true"] { color: var(--accent-text); }
 
-/* 帮助面板（设置 → 帮助） */
-.help-body { padding:var(--sp-1) var(--sp-6) var(--sp-6); }
-.help-sec { margin-top:var(--sp-5); }
-.help-sec-h {
-  margin:0 0 var(--sp-3); font-size: .8125rem; font-weight: 650;
-  color: var(--accent-text); letter-spacing: .02em;
-}
-.help-shortcuts { padding:0 var(--sp-1); }
-.help-list { list-style: none; margin:0; padding:0; display: flex; flex-direction: column; gap:var(--sp-3); }
-.help-item { display: flex; flex-direction: column; gap:var(--sp-1); }
-.help-item-h { font-size: .875rem; font-weight: 600; color: var(--text); }
-.help-item-p { font-size: .8125rem; color: var(--text-muted); line-height: 1.65; }

@@ -751,7 +751,7 @@ const withEFP = (el, fn) => {
   t('host.open 打开（hidden=false）', () => { if (mask().hidden !== false) throw new Error('未打开'); });
   t('__settingsOpen 同步=true', () => { if (w.__settingsOpen !== true) throw new Error('window.__settingsOpen=' + w.__settingsOpen); });
   t('打开时锁屏', () => { if (!callsOf('lockPageScroll').length) throw new Error('lockPageScroll 未调用'); });
-  t('7 个 tab（管理员）', () => { if (document.querySelectorAll('.tabs .tab').length !== 7) throw new Error('实际 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('6 个 tab（管理员）', () => { if (document.querySelectorAll('.tabs .tab').length !== 6) throw new Error('实际 ' + document.querySelectorAll('.tabs .tab').length); });
   t('source tab 默认高亮', () => { if (!tabBtn('数据源').classList.contains('active')) throw new Error('source 未高亮'); });
   t('副标题取 getSettingsSummary', () => { const s = document.querySelector('.modal-sub').textContent; if (s !== '共 12 个订阅源 · 采集开启 10 个 · 卡片展示 8 个') throw new Error('实际: ' + s); });
 
@@ -1798,7 +1798,7 @@ const withEFP = (el, fn) => {
   w.__settingsHost.open('status');
   await sleep(80);
   t('普通用户 open(status) 回落 source', () => { if (!tabBtn('数据源').classList.contains('active')) throw new Error('未回落 source'); });
-  t('普通用户无状态 tab', () => { if (tabBtn('状态')) throw new Error('状态 tab 仍渲染'); if (document.querySelectorAll('.tabs .tab').length !== 6) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('普通用户无状态 tab', () => { if (tabBtn('状态')) throw new Error('状态 tab 仍渲染'); if (document.querySelectorAll('.tabs .tab').length !== 5) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
   t('普通用户：无采集参数区 + 保存按钮隐藏', () => {
     if (document.querySelector('[data-sec="src-params"]')) throw new Error('采集参数区不应渲染');
     if (document.querySelector('#saveSourceBtn').hidden !== true) throw new Error('保存按钮应隐藏');
@@ -1820,7 +1820,7 @@ const withEFP = (el, fn) => {
 
   w.__settingsHost.setAdminFlag(true);
   await sleep(80);
-  t('setAdminFlag(true) 恢复 7 tab', () => { if (document.querySelectorAll('.tabs .tab').length !== 7) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('setAdminFlag(true) 恢复 6 tab', () => { if (document.querySelectorAll('.tabs .tab').length !== 6) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
   t('恢复管理员：采集参数区出现并拉配置', () => {
     if (!document.querySelector('[data-sec="src-params"]')) throw new Error('采集参数区未出现');
     if (document.querySelector('#saveSourceBtn').hidden !== false) throw new Error('保存按钮应可见');

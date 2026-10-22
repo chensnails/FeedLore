@@ -1,6 +1,6 @@
 {
   "name": "feedlore",
-  "version": "1.1.14",
+  "version": "1.1.15",
   "private": true,
   "description": "笺川（FeedLora）—— 自托管 RSS 阅读器与资源卡片墙，数据存 PostgreSQL",
   "main": "server.js",
