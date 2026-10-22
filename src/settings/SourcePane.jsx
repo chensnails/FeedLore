@@ -162,6 +162,7 @@ export function SourcePane({ admin }) {
   const [result, setResult] = useState(null);          // { ok, msg } | null —— #feedResult
   const [collapsed, setCollapsed] = useState(() => new Set((S() && S().state && S().state.collapsedGroups) || []));
   const [renamingId, setRenamingId] = useState(null);  // 正在重命名的频道 id
+  const [editingUrlId, setEditingUrlId] = useState(null); // 正在改订阅地址的频道 id
   const [groupDraft, setGroupDraft] = useState({});        // 频道分组输入草稿 { feedId: string }（提交式：打字不发请求）
   const [renamingGroup, setRenamingGroup] = useState(null); // 正在重命名的分组名（v2.9.0 新增）
   const [renamingGroupDraft, setRenamingGroupDraft] = useState(''); // 组重命名草稿（提交式）
@@ -175,8 +176,10 @@ export function SourcePane({ admin }) {
   const paneRef = useRef(null);
   const urlRef = useRef(null);
   const renameInputRef = useRef(null);
+  const urlEditRef = useRef(null);
   const groupRenameInputRef = useRef(null);
   const renameDone = useRef(false);
+  const urlEditDone = useRef(false);
   const dragRef = useRef(null);
   const moveRef = useRef(null);
   const endRef = useRef(null);
@@ -243,7 +246,8 @@ export function SourcePane({ admin }) {
     pushSummary();
   }, [bump, pushSummary]);
 
-  /** 频道行的开关 / 分组 / 频率 / 重命名统一走这里（旧 patchFeed 的迁移） */
+  /** 频道行的开关 / 分组 / 频率 / 重命名 / 订阅地址统一走这里（旧 patchFeed 的迁移）。
+   *  返回响应 JSON（改地址要用它带回的 probe 判断新地址能不能抓到）。 */
   const patchFeed = useCallback(async (id, patch, okMsg) => {
     const s = S();
     const key = String(id);
@@ -258,6 +262,7 @@ export function SourcePane({ admin }) {
       s.state.tag = null;
       if (s.loadPage) await s.loadPage(true);
       if (s.renderReaderChannels) s.renderReaderChannels();
+      return data;
     } finally {
       setPendingIds((p) => { const n = new Set(p); n.delete(key); return n; });
     }
@@ -500,6 +505,14 @@ export function SourcePane({ admin }) {
       renameInputRef.current.select();
     }
   }, [renamingId]);
+
+  // 订阅地址输入框：同样挂上即聚焦并全选（改地址基本是整串替换）
+  useEffect(() => {
+    if (editingUrlId && urlEditRef.current) {
+      urlEditRef.current.focus();
+      urlEditRef.current.select();
+    }
+  }, [editingUrlId]);
 
   // 分组重命名输入框（v2.9.0）：挂上即聚焦并全选
   useEffect(() => {
@@ -786,6 +799,30 @@ export function SourcePane({ admin }) {
     patchFeed(f.id, { title: val }, '名称已更新').catch(() => { /* 输入框已收回，无需恢复 */ });
   };
 
+  /* ---- 改订阅地址 ----
+   * 校验与「同用户 URL 唯一」判重都在后端（与新增共用 rss.assertFeedUrl），这里只处理编辑态；
+   * 服务端改完会按新地址当场试抓一次，结果走 probe 反馈。 */
+  const startEditUrl = (id) => { urlEditDone.current = false; setEditingUrlId(id); };
+
+  const finishEditUrl = (f, commit) => {
+    if (urlEditDone.current) return;
+    urlEditDone.current = true;
+    const v = urlEditRef.current ? urlEditRef.current.value : '';
+    setEditingUrlId(null);
+    const s = S();
+    if (!commit) return;
+    const val = String(v || '').trim();
+    if (!val || val === f.url) return;
+    patchFeed(f.id, { url: val }, '订阅地址已更新').then((data) => {
+      const probe = data && data.probe;
+      if (!probe) return;
+      if (!probe.ok) s.toast('新地址抓取失败：' + (probe.error || '未知错误') + '（地址已保存，下个周期自动重试）', false);
+      else if (probe.added) s.toast('新地址可用：本次新增 ' + probe.added + ' 条');
+    }).catch((err) => {
+      s.toast('地址未更新：' + (err.message || err), false);
+    });
+  };
+
   /* ---- 采集参数摘要行（收起时也能看到当前值） ---- */
   const paramsSub = (() => {
     const keepDays = Number(cfg.keepDays || 0);
@@ -866,7 +903,26 @@ export function SourcePane({ admin }) {
           ) : (
             <div className="feed-title" title={s.feedTitle(f)}>{name}</div>
           )}
-          <div className="feed-url" title={f.url}>{prettyUrl(f.url)}</div>
+          {editingUrlId === f.id ? (
+            <input
+              ref={urlEditRef}
+              className="feed-url-edit"
+              type="text"
+              inputMode="url"
+              maxLength={600}
+              defaultValue={f.url}
+              spellCheck={false}
+              autoComplete="off"
+              title="订阅地址：需以 http:// 或 https:// 开头，改完会立即按新地址试抓一次"
+              onKeyDown={(ev) => {
+                if (ev.key === 'Enter') { ev.preventDefault(); finishEditUrl(f, true); }
+                else if (ev.key === 'Escape') { ev.preventDefault(); finishEditUrl(f, false); }
+              }}
+              onBlur={() => finishEditUrl(f, true)}
+            />
+          ) : (
+            <div className="feed-url" title={f.url}>{prettyUrl(f.url)}</div>
+          )}
           <div className="feed-stat">
             {feedStatusText(f)}{' '}
             {f.status === 'error' ? (
@@ -940,6 +996,16 @@ export function SourcePane({ admin }) {
           </label>
           <button className="feed-icon-btn" data-rename={f.id} title="重命名" type="button" disabled={pend} onClick={() => startRename(f.id)}>
             <Ico name="edit" />
+          </button>
+          <button
+            className="feed-icon-btn"
+            data-url={f.id}
+            title="修改订阅地址"
+            type="button"
+            disabled={pend}
+            onClick={() => startEditUrl(f.id)}
+          >
+            <Ico name="link" />
           </button>
           <button
             className="feed-icon-btn"

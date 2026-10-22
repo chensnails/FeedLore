@@ -1722,6 +1722,14 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   margin-top:1px;
 }
+/* 订阅地址的行内编辑框（与 .feed-title-edit 同一套语言，只是字号按 URL 行来） */
+.feed-url-edit {
+  width: 100%; box-sizing: border-box;
+  font: inherit; font-size: 0.7188rem; color: var(--text);
+  padding:2px var(--sp-2);
+  border: 1px solid var(--accent); border-radius: 6px;
+  background: var(--bg); outline: none;
+}
 .feed-stat { font-size: 0.7188rem; color: var(--text-faint); margin-top:var(--sp-1); }
 .feed-stat .err { color: var(--danger); }
 

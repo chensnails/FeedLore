@@ -99,6 +99,7 @@ let feedsFailNext = false;
 let feedsEmptyNext = false;
 let cfgHold = null;      // 挂起 GET /api/config（测 cfgLoaded 守卫）
 let patchHold = null;    // 挂起 PATCH（测保存期间控件禁用）
+let urlProbeFail = false; // 改订阅地址后「服务端按新地址试抓」的成败（测当场反馈）
 
 /* ---------- 账号 / 状态面板（P2d）测试可控状态 ---------- */
 let miniUsers = [
@@ -345,7 +346,24 @@ w.feedlore = {
           f.refreshMinutes = (raw === null || raw === '' || raw === 'global' || !Number.isFinite(n) || n <= 0)
             ? null : clampInt(n, 30, 5, 1440);
         }
-        return ok({ ok: true, feed: toDto(f) });
+        // 订阅地址：与真服务端同规则 —— 协议校验、每用户内 URL 唯一、改地址后按新地址试抓（probe）
+        let urlChanged = false;
+        if (body.url !== undefined) {
+          const nu = String(body.url).trim();
+          if (!/^https?:\/\//i.test(nu)) return bad('RSS 地址需以 http:// 或 https:// 开头');
+          if (miniFeeds.some((x) => x.id !== f.id && normUrl(x.url) === normUrl(nu))) {
+            return bad('这个地址已经是你的另一个频道', 409);
+          }
+          if (normUrl(nu) !== normUrl(f.url)) { f.url = nu; urlChanged = true; }
+        }
+        return ok({
+          ok: true,
+          urlChanged: urlChanged || undefined,
+          probe: urlChanged
+            ? (urlProbeFail ? { ok: false, error: '拿不到该地址的 feed' } : { ok: true, added: 4 })
+            : undefined,
+          feed: toDto(f),
+        });
       }
       if (method === 'DELETE') {
         const i = miniFeeds.indexOf(f);
@@ -1072,6 +1090,77 @@ const withEFP = (el, fn) => {
     const bodies = patchesTo('/api/feeds/3').map((c) => JSON.parse(c[3]));
     if (bodies.some((b) => 'title' in b)) throw new Error('不应提交 title');
     if (rowOf('3').querySelector('.feed-title-edit')) throw new Error('编辑框未收回');
+  });
+  /* ---- 改订阅地址：编辑态 / 服务端校验反馈 / 改完按新地址试抓（probe） ---- */
+  clickEl('[data-url="1"]');
+  await sleep(40);
+  t('改地址：编辑框出现且预填完整原地址', () => {
+    const inp = rowOf('1').querySelector('.feed-url-edit');
+    if (!inp) throw new Error('无编辑框');
+    if (inp.value !== 'https://example.com/feed.xml') throw new Error(inp.value);
+  });
+  setVal(rowOf('1').querySelector('.feed-url-edit'), 'ftp://example.com/feed.xml');
+  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Enter');
+  await sleep(80);
+  t('改地址：非法协议 → 失败 toast，原地址不动', () => {
+    const body = lastPatchBody('/api/feeds/1');
+    if (!body || body.url !== 'ftp://example.com/feed.xml') throw new Error(JSON.stringify(body));
+    if (rowOf('1').querySelector('.feed-url').textContent.indexOf('example.com/feed.xml') < 0) throw new Error('地址被改了');
+    if (!callsOf('toast').some((c) => c[2] === false && /地址未更新/.test(c[1]))) throw new Error('无失败 toast');
+  });
+  clickEl('[data-url="1"]');
+  await sleep(40);
+  setVal(rowOf('1').querySelector('.feed-url-edit'), 'https://tg.example/rss/channel/demo');
+  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Enter');
+  await sleep(80);
+  t('改地址：撞上自己另一个频道 → 判重文案进 toast', () => {
+    if (!callsOf('toast').some((c) => /另一个频道/.test(c[1]))) throw new Error('无判重提示');
+    if (rowOf('1').querySelector('.feed-url').textContent.indexOf('example.com/feed.xml') < 0) throw new Error('地址不应变');
+  });
+  clickEl('[data-url="1"]');
+  await sleep(40);
+  setVal(rowOf('1').querySelector('.feed-url-edit'), 'https://example.com/feed.atom');
+  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Enter');
+  await sleep(80);
+  t('改地址提交：PATCH url + 行内换成新地址 + 试抓成功反馈', () => {
+    const body = lastPatchBody('/api/feeds/1');
+    if (!body || body.url !== 'https://example.com/feed.atom') throw new Error(JSON.stringify(body));
+    if (rowOf('1').querySelector('.feed-url').textContent !== 'example.com/feed.atom') {
+      throw new Error(rowOf('1').querySelector('.feed-url').textContent);
+    }
+    if (!callsOf('toast').some((c) => c[1] === '订阅地址已更新')) throw new Error('无成功 toast');
+    if (!callsOf('toast').some((c) => /新地址可用/.test(c[1]))) throw new Error('无试抓反馈');
+  });
+  const patchesBeforeSameUrl = patchesTo('/api/feeds/1').length;
+  clickEl('[data-url="1"]');
+  await sleep(40);
+  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Enter');
+  await sleep(60);
+  t('改地址：原值直接回车不发请求', () => {
+    if (patchesTo('/api/feeds/1').length !== patchesBeforeSameUrl) throw new Error('重复提交');
+    if (rowOf('1').querySelector('.feed-url-edit')) throw new Error('编辑框未收回');
+  });
+  const patchesBeforeUrlEsc = patchesTo('/api/feeds/1').length;
+  clickEl('[data-url="1"]');
+  await sleep(40);
+  setVal(rowOf('1').querySelector('.feed-url-edit'), 'https://never.example/rss');
+  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Escape');
+  await sleep(60);
+  t('改地址取消：Esc 不 PATCH 且编辑框收回', () => {
+    if (patchesTo('/api/feeds/1').length !== patchesBeforeUrlEsc) throw new Error('发了请求');
+    if (rowOf('1').querySelector('.feed-url-edit')) throw new Error('编辑框未收回');
+    if (rowOf('1').querySelector('.feed-url').textContent !== 'example.com/feed.atom') throw new Error('值不该留下');
+  });
+  urlProbeFail = true;
+  clickEl('[data-url="1"]');
+  await sleep(40);
+  setVal(rowOf('1').querySelector('.feed-url-edit'), 'https://mirror.example.com/rss');
+  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Enter');
+  await sleep(80);
+  urlProbeFail = false;
+  t('改地址：新地址当场抓不到 → 失败态提示但地址保留', () => {
+    if (rowOf('1').querySelector('.feed-url').textContent !== 'mirror.example.com/rss') throw new Error('地址应保留');
+    if (!callsOf('toast').some((c) => c[2] === false && /新地址抓取失败/.test(c[1]))) throw new Error('无试抓失败提示');
   });
   clickEl('[data-refresh="1"]');
   await sleep(80);

@@ -376,8 +376,13 @@ module.exports = function createDb({ connectionString, log = console.log }) {
       title: 'title', siteUrl: 'site_url', description: 'description',
       iconUrl: 'icon_url', enabled: 'enabled', cardEnabled: 'card_enabled',
       groupName: 'group_name', sortOrder: 'sort_order', customTitle: 'custom_title',
+      // 订阅地址：调用方负责校验与归一化（rss.assertFeedUrl）+ 查重，这里只落库
+      url: 'url',
       // 抓取频率：正整数 = 该频道单独设置（分钟）；null = 跟随全局
       refreshMinutes: 'refresh_minutes',
+      // 换地址后的「重新起算」：旧地址的 ETag / Last-Modified 对新地址毫无意义（会被判成 304「没更新」）
+      etag: 'etag', lastModified: 'last_modified', lastStatus: 'last_status',
+      lastError: 'last_error', lastFetchedAt: 'last_fetched_at', failStreak: 'fail_streak',
     };
     for (const [k, col] of Object.entries(map)) {
       if (patch[k] !== undefined) { vals.push(patch[k]); sets.push(`${col} = $${vals.length}`); }

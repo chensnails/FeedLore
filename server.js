@@ -1041,10 +1041,41 @@ const server = http.createServer(async (req, res) => {
               || !Number.isFinite(n) || n <= 0)
               ? null : clampInt(n, null, 5, 1440);
           }
+          /* 订阅地址：与新增走同一套校验（协议 / 主机名 / 归一化）。
+           * 同用户内 URL 唯一（feeds_owner_id_url_key），撞了就明确报给用户，不让它默默变成重复频道。 */
+          let urlChanged = false;
+          if (body.url !== undefined) {
+            let nextUrl;
+            try { nextUrl = rss.assertFeedUrl(body.url); }
+            catch (e) { json(res, 400, { error: String(e.message || e) }); return; }
+            if (nextUrl !== feed.url) {
+              const dup = (await db.listFeeds(user.id)).find((x) => x.url === nextUrl && String(x.id) !== String(id));
+              if (dup) {
+                json(res, 409, { error: '这个地址已经是你的另一个频道：' + (dup.custom_title || dup.title || nextUrl) });
+                return;
+              }
+              patch.url = nextUrl;
+              urlChanged = true;
+            }
+          }
+          // 换地址 = 新源，条件请求的游标要一起清掉，否则新地址命中旧 ETag 会被当成「无更新」
+          if (urlChanged) Object.assign(patch, {
+            etag: null, lastModified: null, lastStatus: null, lastError: null, lastFetchedAt: null, failStreak: 0,
+          });
           await db.updateFeed(id, patch, user.id);
           // 手动重新打开采集 = 用户确认「这源我想再试试」：失败计数清零，给足一整轮观察期
           if (patch.enabled === true) await db.resetFeedFailStreak(id, user.id);
-          json(res, 200, { ok: true, feed: toFeedDto(await db.getFeed(id, user.id), settings.source.refreshMinutes) });
+          // 改完地址立刻按新地址试抓一次，当场告诉用户成不成（失败也保留新地址：
+          // 用户往往正是因为旧地址坏了才改，回滚会把他的修改吞掉）
+          let probe = null;
+          if (urlChanged) {
+            const r = await refreshFeed(await db.getFeed(id, user.id));
+            probe = r.error ? { ok: false, error: r.error } : { ok: true, added: r.added || 0 };
+          }
+          json(res, 200, {
+            ok: true, urlChanged: urlChanged || undefined, probe: probe || undefined,
+            feed: toFeedDto(await db.getFeed(id, user.id), settings.source.refreshMinutes),
+          });
           return;
         }
         if (req.method === 'DELETE') {
