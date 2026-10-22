@@ -407,7 +407,7 @@ export function ReaderView() {
         <div className="reader-head">
           <button className="btn btn-ghost btn-sm reader-menu-btn" id="readerMenuBtn" type="button" aria-label="打开频道列表"
             onClick={() => s.readerToggleDrawer && s.readerToggleDrawer()}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg> 频道
+            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg><span className="reader-menu-label">频道</span>
           </button>
           <div className="reader-head-text"><h2 id="readerTitle">{title}</h2></div>
           <div className="reader-head-tools">

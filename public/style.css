@@ -2619,6 +2619,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   /* 阅读页：分栏降级成上下，左侧频道变成左侧抽屉（右滑打开 / 左滑收起） */
   .reader { grid-template-columns: 1fr; gap:0; padding-top:var(--sp-3); }
   .reader-menu-btn { display: inline-flex; align-items: center; gap:var(--sp-1); }
+  /* 移动端只用图标打开频道抽屉，文字「频道」收掉（与顶栏「仅图标」规则一致） */
+  .reader-menu-label { display: none; }
   .reader-side-close { display: inline-flex; }
   .reader-mask {
     display: block;
