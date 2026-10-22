@@ -1,7 +1,7 @@
 /* 卡片视图（v1.8.0 起 React 化，原 index.html 的 #cardsView 内联 DOM + app.js 的卡片渲染迁移至此，P3b）。
  *
  * 迁移策略（沿用 SourcePane 的「共享状态 + tick」约定）：
- * - 数据与状态仍由旧 app.js 持有（state.entries / tags / q / tag / feedFilter / sort / size /
+ * - 数据与状态仍由旧 app.js 持有（state.entries / tags / q / tag / feedFilter / sort /
  *   view / hasMore / loading，以及 loadPage / 自动刷新 / 收藏 PATCH 等逻辑）；
  * - 本组件只负责「渲染 + 控件」，控件经桥函数改共享 state 并触发重绘；
  * - app.js 每次需要刷新卡片 UI 时派发 window 事件 `__cardsTick`，组件监听后重渲染（读实时 state）。

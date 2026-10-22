@@ -626,9 +626,8 @@ textarea:disabled {
 .ico { font-size: 0.9375rem; }
 /* 小尺寸图标按 viewBox 等比缩细后线条会发虚，单独加粗一点 */
 .sec-arrow, .art-caret, .search-ico, .rd-ch-avatar svg { stroke-width: 2.4; }
-.btn-icon { padding:var(--sp-2) var(--sp-3); }
-.btn-icon .ico { font-size: 1rem; }
-.btn-icon .ico.spin { animation: spin 1.1s linear infinite; }
+/* 顶栏「刷新」忙态自旋（.btn-ghost 内的 svg.ico.spin） */
+.ico.spin { animation: spin 1.1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- 工具栏 ---------- */
@@ -1261,21 +1260,6 @@ textarea:disabled {
   transition: background var(--dur-fast), color var(--dur-fast);
 }
 .modal-close:hover { background: var(--hover); color: var(--text); }
-
-.modal-tools {
-  display: flex; gap:var(--sp-2); align-items: center;
-  padding:var(--sp-4) var(--sp-6) var(--sp-3);
-}
-.feed-search {
-  flex: 1;
-  padding:var(--sp-2) var(--sp-3);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  font-size: var(--fs-md); font-family: inherit; outline: none;
-  background: var(--panel-2); color: var(--text);
-  transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
-}
-.feed-search:focus { border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--focus-ring); }
 
 /* 标签页 */
 .tabs {
@@ -2856,11 +2840,6 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 }
 /* 一个分组里放了两段（如「运行实例」+「数据库」）时，后一段要自己带上前间距 */
 .stat-h:not(:first-child) { margin-top:var(--sp-4); }
-.stat-h-n {
-  margin-left:var(--sp-1);
-  font-weight: 400;
-  color: var(--text-muted);
-}
 
 /* 指标卡 */
 /* 弹层正文宽度只有 ~576px，auto-fit 会排出 3+1 这种不齐的布局，
@@ -3419,12 +3398,6 @@ textarea:focus-visible { outline: none; }
   backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .cmdk-item.active, .cmdk-item:hover { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent), var(--neu-inset); }
-.shortcuts-mask { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-.shortcuts-panel {
-  background: var(--glass-bg-strong);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
-}
 .cmdk-foot kbd {
   background: var(--surface-soft-2); box-shadow: var(--neu-inset); border-color: var(--border);
 }

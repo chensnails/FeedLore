@@ -515,7 +515,6 @@ w.feedlore = {
   getNewPillState: () => Object.assign({}, overlayState.pill),
   getLightboxState: () => Object.assign({}, overlayState.box),
   applyPendingFresh: () => { calls.push(['applyPendingFresh']); },
-  openLightbox: (src) => { calls.push(['openLightbox', src]); overlayState.box = { src, show: true }; overlaysTick(); },
   closeLightbox: () => { calls.push(['closeLightbox']); overlayState.box = { src: '', show: false }; overlaysTick(); },
   cycleTheme: () => calls.push(['cycleTheme']),
   openSettings: (t) => { calls.push(['openSettings', t]); },
@@ -540,7 +539,6 @@ w.feedlore = {
   cardsSearch: (v) => { w.feedlore.state.q = v; w.feedlore.state.tag = null; return cardsLoad(true); },
   cardsFilterFeed: (v) => { w.feedlore.state.feedFilter = v ? v : null; w.feedlore.state.tag = null; return cardsLoad(true); },
   cardsSort: (v) => { w.feedlore.state.sort = v; cardsTick(); },
-  cardsSize: (v) => { w.feedlore.state.size = v; cardsTick(); },
   cardsView: (m) => { w.feedlore.state.view = m; cardsTick(); },
   cardsTag: (t) => { w.feedlore.state.tag = t || null; cardsTick(); },
   cardsLoadMore: () => cardsLoad(false),
@@ -2509,11 +2507,11 @@ const withEFP = (el, fn) => {
         'readerSetScope', 'readerSetFeed', 'readerSetGroup', 'readerOpenSource', 'readerSearch',
         'readerToggleArt', 'readerCollapseAll', 'readerReadAll', 'readerToggleFav', 'readerTagToCards',
         'readerToggleAccordion', 'readerAccordionOn', 'readerToggleDrawer', 'readerCloseDrawer', 'fmtFull',
-        'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsSize', 'cardsView', 'cardsTag',
+        'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsView', 'cardsTag',
         'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'getAiPage', 'setAiPage', 'promptInstall',
         'openSettings', 'toast', 'apiFetch', 'isAdmin', 'exportOpml', 'bindSections', 'groupFeeds',
         'getToastState', 'getNewPillState', 'getLightboxState', 'applyPendingFresh',
-        'openLightbox', 'closeLightbox',
+        'closeLightbox',
       ];
       for (const k of need) if (c2[k] === undefined) throw new Error('core 缺 ' + k);
     });

@@ -14,9 +14,9 @@ import { hideNewPill } from './autorefresh.js';
 /* ============================================================
  * 事件绑定
  * ============================================================ */
-// 卡片工具栏（搜索 / 频道 / 排序 / 体积）与视图模式已随卡片视图 React 化
+// 卡片工具栏（搜索 / 频道 / 排序）与视图模式已随卡片视图 React 化
 // （src/views/CardsView.jsx），交互经桥 cardsSearch / cardsFilterFeed / cardsSort /
-// cardsSize / cardsView 改共享 state 并重绘；旧 DOM 绑定移除。
+// cardsView 改共享 state 并重绘；旧 DOM 绑定移除。
 
 /* 刷新：先让服务端去抓一轮最新条目，再重新拉列表。
    顶栏「刷新」按钮已 React 化（src/shell/TopBar.jsx），经桥 switchView / refresh 调用。
@@ -319,10 +319,6 @@ export function focusSearchBox() {
 
 
 /* 卡片页条目收藏/已读：复用与阅读页相同的 /api/entries PATCH，但作用于卡片列表 state.entries */
-export function isCardFav(id) {
-  const e = (state.entries || []).find((x) => String(x.id) === String(id));
-  return !!(e && e.isFavorite);
-}
 export async function cardSetFlag(id, patch) {
   const list = state.entries || [];
   const e = list.find((x) => String(x.id) === String(id));

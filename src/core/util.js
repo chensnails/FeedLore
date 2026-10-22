@@ -41,17 +41,6 @@ export function fmtDate(ts) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
 }
 
-export function sizeToMB(s) {
-  if (!s) return null;
-  const m = String(s).match(/([\d.]+)\s*(TB|GB|G|MB|M|KB|K)?/i);
-  if (!m) return null;
-  const v = parseFloat(m[1]);
-  if (isNaN(v)) return null;
-  const unit = (m[2] || 'MB').toUpperCase();
-  const mult = { TB: 1024 * 1024, GB: 1024, G: 1024, MB: 1, M: 1, KB: 1 / 1024, K: 1 / 1024 }[unit] || 1;
-  return v * mult;
-}
-
 /** 轻提示。v2.1.0 起不再直接改 DOM，改为写状态 + 通知 src/ui/Overlays.jsx 重绘 */
 export let toastTimer = null;
 export let toastState = { msg: '', ok: true, show: false };

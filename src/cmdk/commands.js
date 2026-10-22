@@ -6,7 +6,7 @@ import { cjkPinyin } from './pinyin.js';
 /* 构建命令列表。S = core 单例，需提供：
  * switchView / applyTheme / openSettings / selectScope / jumpToFeed /
  * focusSearchBox / exportOpml / refresh / scrollTop / state /
- * shortFeedName / feedTitle / prefersReducedMotion / THEME_MODES / THEME_META */
+ * shortFeedName / feedTitle / THEME_MODES / THEME_META */
 export function buildCommands(S) {
   if (!S || typeof S.switchView !== 'function') return [];
   const cmds = [];

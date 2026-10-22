@@ -22,7 +22,6 @@ export const state = {
   loadError: false,   // 首屏加载失败（React 卡片视图据此显示错误空态）
   q: '',
   sort: 'new',        // 阅读页排序：new 最新 / old 最早 / name 名称（按账号持久化）
-  size: 'all',
   tag: null,
   view: 'grid',       // 'grid' 卡片视图 | 'list' 列表视图（按账号持久化）
   pageSize: DEFAULT_PAGE_SIZE,

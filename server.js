@@ -29,8 +29,8 @@ const { llmForStore, userLlmForStore, userLlmForView, resolveUserLlm } = require
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
-// 静态根目录：dist 是 Vite 构建产物（前端入口 / React 源码构建结果）；
-// 本地未构建时回退 public/，保证 fresh clone 直接 node server.js 也能跑。
+// 静态根目录：dist 是 Vite 构建产物（前端入口 / React 源码构建结果），运行前必须先 npm run build；
+// 没构建时退回 public/（只有 style.css 等裸静态资源），至少不抛 ENOENT。
 const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'dist'))
   ? path.join(__dirname, 'dist')
   : path.join(__dirname, 'public');
