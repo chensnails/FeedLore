@@ -5,9 +5,11 @@ name: Release
 # 会在几分钟内自动拉到新镜像并重启容器，关于页也可一键触发。
 #
 # 性能（v1.2.0 起）：amd64 与 arm64 各用一个「原生架构」runner 平行构建，不再用
-# QEMU 模拟。此前单 job + QEMU 的方式，arm64 冷构建（层缓存失效时）实测要 40 分钟以上；
-# 拆成两个原生 runner 后，两个架构各自原生编译，通常 2~5 分钟完成。
+# QEMU 模拟。此前单 job + QEMU 的方式，arm64 冷构建（层缓存失效时）实测 40 分钟仍未结束；
+# 拆成两个原生 runner 后，两个架构各自原生编译，实测各 35~40 秒完成。
 # 两个 build job 各自 push-by-digest，最后由 merge job 合并 manifest 清单。
+#
+# 镜像标签约定：版本号去掉 v（1.2.0），另打 latest。
 
 on:
   push:
@@ -55,11 +57,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: 导出 digest
+      # digest 输出是一段字符串（如 sha256:abc...），不是文件路径，
+      # 所以必须先落成文件再上传，否则 upload-artifact 会报「No files were found」。
+      - name: 导出 digest 到文件
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          echo "${{ steps.build.outputs.digest }}" > "${{ runner.temp }}/digests/digest-${{ strategy.job-index }}.txt"
+
+      - name: 上传 digest
         uses: actions/upload-artifact@v4
         with:
-          name: digest-${{ matrix.platform }}
-          path: ${{ steps.build.outputs.digest }}
+          name: digest-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/digests/digest-${{ strategy.job-index }}.txt
           retention-days: 1
           if-no-files-found: error
 
@@ -81,19 +90,38 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 合并 manifest（${{ github.ref_name }} + latest）
+      - name: 合并 manifest（版本号 + latest）
+        id: merge
         working-directory: digests
         run: |
-          docker buildx imagetools create $(printf '${{ env.REGISTRY_IMAGE }}@%s ' *) \
-            --tag "${{ env.REGISTRY_IMAGE }}:${{ github.ref_name }}" \
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          refs=""
+          for f in digest-*.txt; do
+            refs="$refs ${{ env.REGISTRY_IMAGE }}@$(tr -d '[:space:]' < "$f")"
+          done
+          echo "merging:$refs"
+          docker buildx imagetools create $refs \
+            --tag "${{ env.REGISTRY_IMAGE }}:$VERSION" \
             --tag "${{ env.REGISTRY_IMAGE }}:latest"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: 创建 GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          body: |
-            镜像：`${{ env.REGISTRY_IMAGE }}:${{ github.ref_name }}`（amd64 + arm64）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          NOTES=$(cat <<'EOT'
+          镜像：`ghcr.io/chensnails/feedlore:${{ steps.merge.outputs.version }}`（amd64 + arm64）
 
-            Watchtower 模式（docker-compose.release.yml）下，宿主机几分钟内自动拉取重启；
-            关于页「一键更新」可立即触发。详见 [CHANGELOG.md](https://github.com/chensnails/FeedLore/blob/main/CHANGELOG.md)。
+          Watchtower 模式（docker-compose.release.yml）下，宿主机几分钟内自动拉取重启；
+          关于页「一键更新」可立即触发。详见 [CHANGELOG.md](https://github.com/chensnails/FeedLore/blob/main/CHANGELOG.md)。
+          EOT
+          )
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，更新说明"
+            gh release edit "$TAG" --title "$TAG" --notes "$NOTES"
+          else
+            gh release create "$TAG" --title "$TAG" --notes "$NOTES"
+          fi
