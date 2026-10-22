@@ -69,7 +69,7 @@ cd feedlore
 cp .env.example .env
 
 # ⚠️ 生成强随机数据库密码（切勿使用弱密码）
-sed -i "s/^PG_PASSWORD=.*/PG_PASSWORD=$(openssl rand -base64 32)/" .env
+sed -i "s|^PG_PASSWORD=.*|PG_PASSWORD=$(openssl rand -base64 32)|" .env
 
 # 确认密码已更换，并保存好凭据
 grep PG_PASSWORD .env
@@ -89,11 +89,8 @@ cd feedlore
 cp .env.example .env
 
 # 3. ⚠️ 生成强随机数据库密码（切勿使用弱密码）
-sed -i "s/^PG_PASSWORD=.*/PG_PASSWORD=$(openssl rand -base64 32)/" .env
-
-# 4. 填写 WATCHTOWER_HTTP_API_TOKEN（用于「一键更新」功能）
-#    同样建议用随机字符串，例如：
-sed -i "s/^WATCHTOWER_HTTP_API_TOKEN=.*/WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 32)/" .env
+sed -i "s|^PG_PASSWORD=.*|PG_PASSWORD=$(openssl rand -base64 32)|" .env
+sed -i "s|^WATCHTOWER_HTTP_API_TOKEN=.*|WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 32)|" .env
 
 # 5. 确认关键配置已正确写入
 grep -E '^(PG_PASSWORD|WATCHTOWER_HTTP_API_TOKEN)=' .env
