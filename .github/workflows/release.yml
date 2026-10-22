@@ -108,7 +108,9 @@ jobs:
 
       - name: 创建 GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # merge job 没有 checkout，gh 无法从 git remote 推断仓库，必须显式指定
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           TAG="${{ github.ref_name }}"
