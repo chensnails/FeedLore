@@ -2264,7 +2264,7 @@ const withEFP = (el, fn) => {
     if (navBtns().length !== 3) throw new Error('导航按钮 ' + navBtns().length);
     if (S('#statCount').textContent !== '12') throw new Error('statCount: ' + S('#statCount').textContent);
     if (S('#subtitle').textContent !== '拾取值得读的 · 采集 2/3 个频道') throw new Error('subtitle: ' + S('#subtitle').textContent);
-    for (const id of ['refreshBtn', 'installBtn', 'themeBtn', 'settingsBtn']) if (!S('#' + id)) throw new Error('缺 #' + id);
+    for (const id of ['refreshBtn', 'themeBtn', 'settingsBtn']) if (!S('#' + id)) throw new Error('缺 #' + id);
   });
   t('导航高亮跟随 view（reader）', () => {
     const a = navBtns().filter((b) => b.classList.contains('active')).map((b) => b.getAttribute('data-view'));

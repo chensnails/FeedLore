@@ -2540,8 +2540,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
  * ============================================================ */
 @media (max-width: 820px) {
   .btn-label { display: none; }
-  #refreshBtn, #settingsBtn, #themeBtn, #installBtn { padding:var(--sp-2) var(--sp-2); }
-  #refreshBtn .ico, #settingsBtn .ico, #themeBtn .ico, #installBtn .ico { margin-right:0; }
+  #refreshBtn, #settingsBtn, #themeBtn { padding:var(--sp-2) var(--sp-2); }
+  #refreshBtn .ico, #settingsBtn .ico, #themeBtn .ico { margin-right:0; }
 }
 
 @media (max-width: 720px) {

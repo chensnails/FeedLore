@@ -109,14 +109,6 @@ export function TopBar() {
           <span className="btn-label">刷新</span>
         </button>
         <button
-          className="btn btn-ghost install-trigger" id="installBtn" type="button"
-          title="添加到手机" aria-label="添加到手机" hidden={!snap.installReady}
-          onClick={() => { if (s.promptInstall) s.promptInstall(); }}
-        >
-          <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-download" /></svg>
-          <span className="btn-label">安装</span>
-        </button>
-        <button
           className="btn btn-ghost" id="themeBtn" type="button"
           title={'主题：' + snap.themeLabel + '（点击切换）'} aria-label={'主题：' + snap.themeLabel}
           onClick={() => { if (s.cycleTheme) s.cycleTheme(); }}
