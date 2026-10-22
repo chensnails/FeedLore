@@ -343,6 +343,19 @@ export async function cardSetFlag(id, patch) {
   }
 }
 
+/* 卡片详情弹窗打开即算读过：卡片页本身不显示已读态，只把状态写回条目（文章页共享同一行）。
+ * 同一条只发一次 PATCH —— 已读过就直接跳过，避免每次点开都打一次请求。 */
+export function cardDetailRead(id) {
+  const c = (state.entries || []).find((x) => String(x.id) === String(id));
+  if (c && c.isRead) return;
+  if ((state.rdEntries || []).some((x) => String(x.id) === String(id))) {
+    if (c) c.isRead = true;   // PATCH 与文章页列表同步交给 markEntryRead，卡片侧只落标记
+    markEntryRead(id);
+    return;
+  }
+  cardSetFlag(id, { isRead: true });
+}
+
 /** App Shell（顶栏）一次性快照：React 的 TopBar 经桥 getShell() 读取 */
 export function shellSnapshot() {
   const mode = THEME_MODES.indexOf(currentThemeMode()) >= 0 ? currentThemeMode() : 'auto';

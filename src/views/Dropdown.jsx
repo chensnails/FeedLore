@@ -8,8 +8,9 @@
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
 
-/* 与 style.css 的 720px 断点一致；jsdom 无 matchMedia 或无布局时按桌面处理 */
-function isMobileMq() {
+/* 与 style.css 的 720px 断点一致；jsdom 无 matchMedia 或无布局时按桌面处理。
+   卡片详情弹窗（CardDetail）也用这条判据选弹层形态，故导出。 */
+export function isMobileMq() {
   try { return !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches); }
   catch (_) { return false; }
 }

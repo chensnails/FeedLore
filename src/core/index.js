@@ -56,6 +56,7 @@ export const core = {
   cardsTag: (t) => { S.state.tag = t || null; F.render(); window.scrollTo({ top: 0, behavior: U.prefersReducedMotion() ? 'auto' : 'smooth' }); },
   cardsLoadMore: () => F.loadPage(false),
   cardsSetFlag: (id, patch) => UI.cardSetFlag(id, patch),
+  cardsDetailRead: (id) => UI.cardDetailRead(id),
   copyText: U.copyText, openLinkMenu: U.openLinkMenu, fmtDate: U.fmtDate,
   // —— App Shell 顶栏（P4a） ——
   getShell: UI.shellSnapshot,

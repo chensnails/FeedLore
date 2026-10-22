@@ -8,12 +8,16 @@
  * - 类名 / ID / data 属性与旧 DOM 一致，样式零改动。
  *
  * 跨视图共享机制仍留在 app.js：自动刷新/新内容浮标（fetchHead/applyFresh/checkForNew）、
- * 收藏/已读（cardSetFlag）、
+ * 收藏 PATCH（cardSetFlag）、
  * 「/」聚焦搜索（经 window.__cardsFocusSearch 委托到本组件的输入框）。
+ *
+ * 卡面不再有已读 / 未读态（v1.2.x 起）：点卡片打开详情弹窗（src/views/CardDetail.jsx）即记为已读，
+ * 该状态只在文章页显示，卡片页只保留收藏 ★。
  */
 
 import { core } from '@core';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { CardDetail } from './CardDetail.jsx';
 import { Dropdown } from './Dropdown.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -109,7 +113,7 @@ function TagList({ tags, onTag }) {
   ));
 }
 
-function Card({ e, onTag }) {
+function Card({ e, onTag, onOpen }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const hasImg = !!e.image;
@@ -138,11 +142,14 @@ function Card({ e, onTag }) {
   );
 
   return (
-    <article className={'card' + (e.isRead ? ' is-read' : ' is-unread') + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}>
+    <article className={'card' + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
+      onClick={(ev) => openFromClick(ev, e, onOpen)}>
       {media}
       <div className="card-body">
         {metaRow}
-        <h3 className="card-title" title={e.name}>{e.name}</h3>
+        <h3 className="card-title" title={e.name}>
+          <button type="button" className="title-btn" onClick={() => onOpen(e)}>{e.name}</button>
+        </h3>
         {e.desc ? <p className="card-desc">{e.desc}</p> : null}
         <div className="card-tags">{tags}</div>
         {hasImg ? null : <div className="card-foot">{copyBtn}{openBtn}</div>}
@@ -151,13 +158,14 @@ function Card({ e, onTag }) {
   );
 }
 
-function Row({ e, onTag }) {
+function Row({ e, onTag, onOpen }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtDate = s.fmtDate || ((d) => d || '');
   const metaHas = srcName || (e.tags || []).length;
   return (
-    <article className={'row-item' + (e.isRead ? ' is-read' : ' is-unread') + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}>
+    <article className={'row-item' + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
+      onClick={(ev) => openFromClick(ev, e, onOpen)}>
       <div className="row-thumb">
         {e.image
           ? <LazyImg src={e.image} alt={e.name} fallbackClass="row-thumb-fb" fbIcon="image" />
@@ -165,7 +173,9 @@ function Row({ e, onTag }) {
       </div>
       <div className="row-main">
         <div className="row-head">
-          <h3 className="row-title" title={e.name}>{e.name}</h3>
+          <h3 className="row-title" title={e.name}>
+            <button type="button" className="title-btn" onClick={() => onOpen(e)}>{e.name}</button>
+          </h3>
           <span className="row-facts">
             {e.size ? <span className="meta-size">{e.size}</span> : null}
             <span className="row-date">{fmtDate(e.date)}</span>
@@ -185,6 +195,12 @@ function Row({ e, onTag }) {
       </div>
     </article>
   );
+}
+
+/** 点卡片空白处打开详情；卡内的按钮 / 链接 / 标签有自己的动作，不劫持它们 */
+function openFromClick(ev, e, onOpen) {
+  if (ev.target && ev.target.closest && ev.target.closest('button, a, [data-tag]')) return;
+  onOpen(e);
 }
 
 const Skeletons = ({ view }) => {
@@ -219,6 +235,7 @@ export function CardsView() {
   const st = (s && s.state) || {};
 
   const [qDraft, setQDraft] = useState(st.q || '');
+  const [detailId, setDetailId] = useState(null);
 
   // 卡片 UI 重绘信号（app.js 在状态变化时派发）
   useEffect(() => {
@@ -274,6 +291,16 @@ export function CardsView() {
   };
 
   const onTag = (t) => { if (s.cardsTag) s.cardsTag(st.tag === t ? null : t); };
+
+  const detailEntry = detailId == null ? null : (st.entries || []).find((x) => String(x.id) === String(detailId));
+
+  const closeDetail = () => {
+    const id = detailId;
+    setDetailId(null);
+    // 焦点回到来源卡片的标题按钮（弹窗里的控件都已随组件卸载）
+    const el = document.querySelector('[data-id="' + (window.CSS && window.CSS.escape ? window.CSS.escape(String(id)) : id) + '"] .title-btn');
+    if (el && el.focus) el.focus();
+  };
 
   const tags = st.tags || [];
 
@@ -338,8 +365,8 @@ export function CardsView() {
         {showGrid ? (
           <div id="grid" className={'grid' + (view === 'list' ? ' list-mode' : '')}>
             {list.map((e) => (view === 'list'
-              ? <Row e={e} onTag={onTag} key={e.id} />
-              : <Card e={e} onTag={onTag} key={e.id} />))}
+              ? <Row e={e} onTag={onTag} onOpen={(x) => setDetailId(x.id)} key={e.id} />
+              : <Card e={e} onTag={onTag} onOpen={(x) => setDetailId(x.id)} key={e.id} />))}
           </div>
         ) : <div id="grid" className="grid" hidden />}
 
@@ -360,6 +387,11 @@ export function CardsView() {
           笺川 · FeedLore · 数据存于 PostgreSQL
         </footer>
       </main>
+
+      {detailEntry ? (
+        <CardDetail e={detailEntry} onClose={closeDetail}
+          onTag={(t) => { closeDetail(); onTag(t); }} />
+      ) : null}
     </>
   );
 }

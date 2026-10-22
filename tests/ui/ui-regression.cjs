@@ -166,9 +166,21 @@ const todayStr = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shangh
 
 /* ---------- 卡片视图（P3b）测试可控状态 ---------- */
 const miniEntriesAll = () => [
-  { id: 'e1', name: '条目一', desc: '描述一', tags: ['标签A', '标签B'], image: 'https://img.example/1.png', size: '1.2G', date: '2026-10-15T10:00:00Z', link: 'https://pan.quark.cn/s/abc', links: ['https://pan.quark.cn/s/abc', 'https://pan.baidu.com/s/xyz'], sourceUrl: 'https://example.com/a', feedName: '例子星球 - Telegram Channel', isRead: false, isFavorite: false },
-  { id: 'e2', name: '条目二', desc: '', tags: ['标签A'], image: '', size: '', date: '2026-10-14T10:00:00Z', link: '', links: [], sourceUrl: '', feedName: 'demo', isRead: true, isFavorite: true },
+  { id: 'e1', name: '条目一', desc: '描述一', tags: ['标签A', '标签B'], image: 'https://img.example/1.png', size: '1.2G', date: '2026-10-15T10:00:00Z', link: 'https://pan.quark.cn/s/abc', links: ['https://pan.quark.cn/s/abc', 'https://pan.baidu.com/s/xyz'], sourceUrl: 'https://example.com/a', feedId: '1', pwd: 'm8k2', feedName: '例子星球 - Telegram Channel', isRead: false, isFavorite: false },
+  { id: 'e2', name: '条目二', desc: '', tags: ['标签A'], image: '', size: '', date: '2026-10-14T10:00:00Z', link: '', links: [], sourceUrl: '', feedId: '2', pwd: null, feedName: 'demo', isRead: true, isFavorite: true },
 ];
+
+/* 详情接口（GET /api/entries/:id）比卡片多返回正文：e1 有正文与提取码，e2 什么正文都没有 */
+const miniEntryDetail = (id) => {
+  const base = miniEntriesAll().find((x) => x.id === id);
+  if (!base) return null;
+  return Object.assign({}, base, {
+    content: id === 'e1' ? '正文第一段，说明这份资源怎么取。\n附线路两条，第二条是备份。' : '',
+    bodyJson: null,
+    images: [],
+    pwd: id === 'e1' ? 'm8k2' : null,
+  });
+};
 
 const toDto = (f) => ({
   id: String(f.id), url: f.url, title: f.title || f.url,
@@ -430,6 +442,10 @@ w.feedlore = {
     }
     const entryRoute = url.match(/^\/api\/entries\/([^/]+)$/);
     if (entryRoute && method === 'PATCH') return ok({ ok: true });
+    if (entryRoute && method === 'GET') {
+      const d = miniEntryDetail(decodeURIComponent(entryRoute[1]));
+      return d ? ok(d) : bad('条目不存在', 404);
+    }
     return bad('未实现的路由：' + method + ' ' + url, 404);
   },
   isAdmin: () => adminFlag,
@@ -534,6 +550,13 @@ w.feedlore = {
     cardsTick();
     return true;
   },
+  // 打开卡片详情即记为已读（真实实现见 core/ui.js cardDetailRead：卡片页不显示已读态）
+  cardsDetailRead: (id) => {
+    calls.push(['cardsDetailRead', id]);
+    const e = (w.feedlore.state.entries || []).find((x) => String(x.id) === String(id));
+    if (e) e.isRead = true;
+  },
+  jumpToFeed: (id) => { calls.push(['jumpToFeed', id]); },
   // v1.9.0：阅读页桥（P3c，对齐 app.js 语义）
   fmtFull: (d) => (d ? String(d).slice(0, 16).replace('T', ' ') : ''),
   readerAccordionOn: () => true,
@@ -2043,13 +2066,83 @@ const withEFP = (el, fn) => {
     if (c1.querySelector('.badge-idx').textContent !== '2026-10-15') throw new Error('日期: ' + c1.querySelector('.badge-idx').textContent);
     if (!c1.querySelector('.card-media-actions a.btn-open[href]')) throw new Error('有原文地址应有打开按钮');
   });
-  t('无图卡片状态类（已读/收藏）', () => {
+  t('无图卡片状态类（只剩收藏，卡片页不再显示已读）', () => {
     const c2 = C('#grid .card[data-id="e2"]');
-    if (!c2.classList.contains('is-read') || !c2.classList.contains('is-fav')) throw new Error('缺 is-read/is-fav');
+    if (!c2.classList.contains('is-fav')) throw new Error('缺 is-fav');
+    if (c2.classList.contains('is-read') || c2.classList.contains('is-unread')) throw new Error('卡片页不该再带已读 / 未读态');
+    if (!C('#grid .card[data-id="e1"]').querySelector('.title-btn')) throw new Error('标题应是可聚焦按钮');
     if (!c2.querySelector('.card-foot .btn-copy')) throw new Error('无图卡片复制按钮应在底部操作条');
     // v2.2.4：无原文地址不再渲染置灰「打开」按钮（曾被误读为「上锁」）
     if (c2.querySelector('.btn-open')) throw new Error('无原文地址不应渲染打开按钮');
   });
+
+  // 卡片详情弹窗（桌面形态：居中模态）
+  C('#grid .card[data-id="e1"] .card-desc').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  await sleep(60);
+  t('点卡片空白处 → 打开详情弹窗 + 拉正文 + 记为已读', () => {
+    if (!C('.modal-mask [role="dialog"][aria-modal="true"]')) throw new Error('未弹出模态');
+    if (C('#cdTitle').textContent !== '条目一') throw new Error('标题：' + (C('#cdTitle') || {}).textContent);
+    if (!callsOf('apiFetch').some((c) => c[1] === '/api/entries/e1')) throw new Error('未按 id 拉正文');
+    if (!callsOf('cardsDetailRead').some((c) => c[1] === 'e1')) throw new Error('未记已读');
+    if (!C('.cd-pwd-v') || C('.cd-pwd-v').textContent !== 'm8k2') throw new Error('提取码未展示');
+    if (!C('.art-inner')) throw new Error('有正文时应渲染正文区');
+    if (!C('.modal-close')) throw new Error('无关闭按钮');
+  });
+  clipboardWrites.length = 0;
+  C('.cd-pwd .btn').click();
+  await sleep(30);
+  t('弹窗内复制提取码 → 写入剪贴板', () => {
+    if (clipboardWrites.indexOf('m8k2') < 0) throw new Error('未复制：' + clipboardWrites.join(','));
+  });
+  C('#grid .card[data-id="e1"] .btn-copy').click();
+  await sleep(30);
+  t('点卡内复制按钮不应再触发弹窗', () => {
+    if (callsOf('cardsDetailRead').length !== 1) throw new Error('卡内按钮被劫持：' + callsOf('cardsDetailRead').length);
+  });
+  const detailGets = () => callsOf('apiFetch').filter((c) => c[1] === '/api/entries/e1').length;
+  const getsBefore = detailGets();
+  cardsTick();
+  await sleep(40);
+  t('列表重绘不应让弹窗重复拉正文 / 重复记已读', () => {
+    if (detailGets() !== getsBefore) throw new Error('重复拉正文');
+    if (callsOf('cardsDetailRead').length !== 1) throw new Error('重复记已读');
+  });
+  C('.modal .cd-foot .btn:last-child').click();
+  await sleep(40);
+  t('「在文章页查看」→ jumpToFeed(频道) 且弹窗关闭', () => {
+    if (C('.modal-mask')) throw new Error('弹窗未关闭');
+    if (!callsOf('jumpToFeed').some((c) => c[1] === '1')) throw new Error('未跳到该频道');
+  });
+  C('#grid .card[data-id="e2"] .title-btn').click();
+  await sleep(60);
+  t('无正文条目：正文区收起，只留摘要 / 链接动作', () => {
+    if (!C('.modal-mask [role="dialog"]')) throw new Error('未弹出');
+    if (C('.art-inner')) throw new Error('无正文时不应渲染正文区');
+    if (!C('.cd-none')) throw new Error('无兜底区');
+    if (C('.cd-pwd')) throw new Error('无提取码却渲染了提取码行');
+  });
+  document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await sleep(40);
+  t('Esc 关闭详情弹窗', () => {
+    if (C('.modal-mask')) throw new Error('未关闭');
+  });
+
+  // 移动端形态：同一组件切底部抽屉
+  const realMM2 = w.matchMedia;
+  w.matchMedia = (q) => ({ matches: /max-width:\s*720px/.test(q), addEventListener() {}, removeEventListener() {} });
+  C('#grid .card[data-id="e1"] .title-btn').click();
+  await sleep(60);
+  t('移动端形态：详情用底部抽屉（.dd-mask / .dd-sheet）', () => {
+    if (!C('.dd-mask .dd-sheet[role="dialog"]')) throw new Error('未弹出抽屉');
+    if (C('.modal-mask')) throw new Error('移动端不应再用居中模态');
+    if (!C('.dd-sheet-grip')) throw new Error('无抽屉手势条');
+  });
+  C('.dd-sheet .dd-sheet-close').click();
+  await sleep(40);
+  t('移动端：抽屉关闭按钮收起弹窗', () => {
+    if (C('.dd-mask')) throw new Error('未关闭');
+  });
+  w.matchMedia = realMM2;
 
   // 搜索（去抖）
   setVal(C('#searchInput'), '条目一');
@@ -2417,7 +2510,7 @@ const withEFP = (el, fn) => {
         'readerToggleArt', 'readerCollapseAll', 'readerReadAll', 'readerToggleFav', 'readerTagToCards',
         'readerToggleAccordion', 'readerAccordionOn', 'readerToggleDrawer', 'readerCloseDrawer', 'fmtFull',
         'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsSize', 'cardsView', 'cardsTag',
-        'cardsLoadMore', 'cardsSetFlag', 'filterEntries', 'getAiPage', 'setAiPage', 'promptInstall',
+        'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'getAiPage', 'setAiPage', 'promptInstall',
         'openSettings', 'toast', 'apiFetch', 'isAdmin', 'exportOpml', 'bindSections', 'groupFeeds',
         'getToastState', 'getNewPillState', 'getLightboxState', 'applyPendingFresh',
         'openLightbox', 'closeLightbox',

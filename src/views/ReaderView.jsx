@@ -118,7 +118,8 @@ async function copyToClipboard(text) {
   try { await navigator.clipboard.writeText(text); return true; } catch (_) { return false; }
 }
 
-function CopyButton({ e }) {
+/** 复制链接（多条时弹选择菜单）。导出给卡片详情弹窗复用。 */
+export function CopyButton({ e }) {
   const [copied, setCopied] = useState(false);
   const urls = Array.isArray(e.links) ? e.links.filter(Boolean) : [];
   const list = urls.length ? urls : (e.link ? [e.link] : []);
@@ -144,7 +145,7 @@ function CopyButton({ e }) {
   );
 }
 
-function OpenButton({ e }) {
+export function OpenButton({ e }) {
   const url = e.sourceUrl || e.link || null;
   // 无原文地址时干脆不渲染：置灰的「打开」看起来像上了锁，反而引人误会（v2.2.4）
   if (!url) return null;
@@ -154,8 +155,9 @@ function OpenButton({ e }) {
   );
 }
 
-/** 正文（对应旧 artBodyHtml）：图文按原顺序内联；老数据回退为图集 + 段落 */
-function ArtBody({ e, onTag }) {
+/** 正文（对应旧 artBodyHtml）：图文按原顺序内联；老数据回退为图集 + 段落。
+ *  导出给卡片详情弹窗（src/views/CardDetail.jsx）复用，两处正文渲染保持一套。 */
+export function ArtBody({ e, onTag }) {
   const s = S();
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
   const parts = [];
