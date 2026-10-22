@@ -2,6 +2,10 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.1.16] — 2026-10-22
+
+- **阅读页展开条目的高亮调暗（只改样式）**：`.art-item.open` 不再使用主色描边（`--accent-text`）+ 抬高阴影（`--elevation-3`，整块发亮的元凶），改回与 hover 同级的 `--border-strong`、阴影回落到底层 `.art-item` 的 `--elevation-2`；展开标题不再上主色（`.art-item.open .art-title` 规则删除，已读标题也不需再排除 `.open`）；caret 只保留 90° 旋转、不再变主色。展开状态仍靠 caret 旋转与正文展开本身表达。
+
 ## [1.1.15] — 2026-10-22
 
 - **移除「帮助」入口（全站收敛）**：顶栏 `?` 按钮（`shortcutsBtn`）、设置弹层「帮助」tab 与 `HelpPane.jsx`、全局 `?` 快捷键（`ui.js` 的 keydown 监听）、命令面板底部 `? 帮助` 提示一并移除；顺带清理 `public/style.css` 中 `.help-*` 死样式（约 12 行）。帮助面板自 v1.1.7 引入，实际使用率低且占顶栏空间，故整体下线。

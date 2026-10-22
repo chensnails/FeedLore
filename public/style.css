@@ -2350,7 +2350,9 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   contain-intrinsic-size: auto 84px;
 }
 .art-item:hover { border-color: var(--border-strong); }
-.art-item.open { border-color: var(--accent-text); box-shadow: var(--elevation-3); }
+/* 展开态不再做主色描边 + 抬高阴影（整块发亮太抢眼），只留极弱的边框区分，
+   靠 caret 旋转 + 展开的正文本身表达"当前展开的是哪条"。 */
+.art-item.open { border-color: var(--border-strong); }
 
 /* 一行 = 可点开的头部 + 右侧收藏星标。
    星标不能塞进 .art-head：button 里不能再嵌 button，所以外面套一层 .art-row。 */
@@ -2398,18 +2400,17 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   font-size: 0.6875rem; color: var(--text-faint);
   transition: transform .18s ease;
 }
-.art-item.open .art-caret { transform: rotate(90deg); color: var(--accent-text); }
+.art-item.open .art-caret { transform: rotate(90deg); }
 
 .art-title {
   flex: 1; min-width: 0;
   font-size: 0.9063rem; font-weight: 620; line-height: 1.45;
   color: var(--text);
 }
-.art-item.open .art-title { color: var(--accent-text); }
 /* 已读 / 未读：未读标题更重，已读降一档。
-   展开时仍要走 .open 的主色高亮，所以已读这条得排除 .open。 */
+   展开态不再给标题上主色，所以这里不需要再排除 .open。 */
 .art-item.is-unread .art-title { font-weight: 650; }
-.art-item.is-read:not(.open) .art-title { font-weight: 450; color: var(--text-2); }
+.art-item.is-read .art-title { font-weight: 450; color: var(--text-2); }
 .art-item.is-read .art-meta { opacity: .72; }
 
 .art-meta {
