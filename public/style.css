@@ -524,7 +524,11 @@ body.modal-open {
   height: 56px;
 }
 
-.brand { display: flex; align-items: center; gap:var(--sp-3); }
+/* min-width:0 + 文本省略：中等宽度下（约 720–900px）操作区优先占位，
+   品牌文字主动截断而不是把顶栏挤溢出 */
+.brand { display: flex; align-items: center; gap:var(--sp-3); min-width: 0; }
+.brand-text { min-width: 0; }
+.brand-text h1, .brand-text p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .brand-logo {
   width: 30px; height: 30px;
@@ -1771,12 +1775,16 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   padding:var(--sp-1);
   gap:2px;
 }
+/* v1.1.17 起导航也带图标，与右侧操作按钮统一「图标 + 文字」；窄屏由 .btn-label 收掉文字 */
 .viewnav-btn {
   border: none; background: none; font-family: inherit;
   font-size: 0.8125rem; font-weight: 550; color: var(--text-muted);
-  padding:var(--sp-1) var(--sp-4); border-radius: 7px; cursor: pointer;
+  padding:var(--sp-1) var(--sp-3); border-radius: 7px; cursor: pointer;
   transition: background .15s, color .15s;
+  display: inline-flex; align-items: center; justify-content: center; gap:var(--sp-2);
+  white-space: nowrap;   /* 加了图标后更窄，别让「文章」折成两行 */
 }
+.viewnav-btn .ico { font-size: 0.875rem; }
 .viewnav-btn:hover { color: var(--text); }
 .viewnav-btn.active {
   background: var(--panel); color: var(--accent-text);
@@ -2525,6 +2533,17 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-loading i:nth-child(2) { animation-delay: .15s; }
 .art-loading i:nth-child(3) { animation-delay: .3s; }
 
+/* ============================================================
+ * 顶栏「图标 + 文字 → 只有图标」的降级点（v1.1.17）
+ * 给导航配上图标后，全文字版在 720–900px 这段已经放不下（品牌会被压没），
+ * 所以统一降级点定在 820px：桌面端 图标+文字，平板 / 手机 只有图标。
+ * ============================================================ */
+@media (max-width: 820px) {
+  .btn-label { display: none; }
+  #refreshBtn, #settingsBtn, #themeBtn, #installBtn { padding:var(--sp-2) var(--sp-2); }
+  #refreshBtn .ico, #settingsBtn .ico, #themeBtn .ico, #installBtn .ico { margin-right:0; }
+}
+
 @media (max-width: 720px) {
   .wrap { padding:0 var(--sp-4); }
   /* 顶栏始终单行：只给上下内边距，左右留给 .wrap
@@ -2591,15 +2610,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .form-grid { grid-template-columns: 1fr; gap:var(--sp-3); }
   .dg-item-thumb, .dg-item-thumb-fb { width: 52px; height: 52px; }
 
-  /* 顶栏瘦身：把次要信息收起来，操作都变成紧凑图标，给视图切换让位 */
+  /* 顶栏瘦身：把次要信息收起来，操作都变成紧凑图标，给视图切换让位
+     （「图标 + 文字 → 只有图标」的降级已上移到 820px 那段） */
   .stat { display: none; }
   .topbar-actions { gap:var(--sp-2); }
-  .brand { min-width: 0; }
-  .brand-text p { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #refreshBtn { padding:var(--sp-2) var(--sp-2); }
-  #refreshBtn .ico { margin-right:0; }
-  #settingsBtn { padding:var(--sp-2) var(--sp-2); }
-  #settingsBtn .ico { margin-right:0; }
+  .brand-text p { max-width: 150px; }
 
   /* 阅读页：分栏降级成上下，左侧频道变成左侧抽屉（右滑打开 / 左滑收起） */
   .reader { grid-template-columns: 1fr; gap:0; padding-top:var(--sp-3); }
@@ -2678,10 +2693,10 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
 /* ============================================================
  * 手机（≤560px，覆盖绝大多数机型）：顶栏压成一行
- *   [logo] [文章 | 卡片 | 日报 ……] [⟳] [◐] [⚙]
+ *   [logo] [▤ | ▦ | ✦] [⟳] [◐] [⚙]
  * 程序名收掉（logo 已足够识别，省下的宽度全给视图切换）；
- * 「刷新 / 设置」只留图标；视图切换吃掉中间剩余宽度、三个按钮等分，
- * 所以 320px 的窄屏也不会挤出去。
+ * 「图标 + 文字」统一降级为纯图标（导航的文字也在这一档收掉）；
+ * 视图切换吃掉中间剩余宽度、三个按钮等分，所以 320px 的窄屏也不会挤出去。
  * ============================================================ */
 @media (max-width: 560px) {
   .brand-text { display: none; }
@@ -2690,12 +2705,10 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
   .topbar-actions { flex: 1; min-width: 0; gap:var(--sp-2); }
   .viewnav { flex: 1; min-width: 0; padding:2px; gap:2px; }
-  .viewnav-btn { flex: 1; min-width: 0; padding:var(--sp-1) var(--sp-1); font-size: 0.7813rem; text-align: center; }
-
-  /* 文字标签收掉，按钮变纯图标；三个图标按钮统一尺寸（否则 #refreshBtn 的
-     ID 优先级会压过 .btn-icon，宽度对不齐） */
-  .btn-label { display: none; }
-  #refreshBtn, #settingsBtn, #themeBtn, #installBtn { padding:var(--sp-2) var(--sp-2); }
+  /* 文字收掉后只剩图标（.btn-label 已在 ≤720 那一档关掉），
+     图标放到与右侧按钮同一档（1rem），并居中 */
+  .viewnav-btn { flex: 1; min-width: 0; padding:var(--sp-1) var(--sp-1); font-size: 0.7813rem; text-align: center; gap:0; }
+  .viewnav-btn .ico { font-size: 1rem; }
 }
 
 /* ============================================================

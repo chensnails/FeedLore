@@ -13,10 +13,13 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { core } from '@core';
 
+/* 顶栏统一样式（v1.1.17）：所有可点项都是「图标 + 文字」，
+ * 窄屏（≤560px）由 CSS 统一收掉文字只留图标（.btn-label 隐藏），
+ * 所以导航与操作按钮共用 .btn-label 这一套约定。 */
 const VIEWS = [
-  { id: 'reader', label: '文章' },
-  { id: 'cards', label: '卡片' },
-  { id: 'ai', label: '日报' },
+  { id: 'reader', label: '文章', ico: 'inbox' },
+  { id: 'cards', label: '卡片', ico: 'grid' },
+  { id: 'ai', label: '日报', ico: 'sparkle' },
 ];
 
 /** shell 快照的兜底（核心尚未就绪时） */
@@ -92,7 +95,8 @@ export function TopBar() {
               data-view={v.id}
               onClick={() => { if (s.switchView) s.switchView(v.id); }}
             >
-              {v.label}
+              <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + v.ico} /></svg>
+              <span className="btn-label">{v.label}</span>
             </button>
           ))}
         </nav>
@@ -105,18 +109,20 @@ export function TopBar() {
           <span className="btn-label">刷新</span>
         </button>
         <button
-          className="btn btn-ghost btn-icon install-trigger" id="installBtn" type="button"
+          className="btn btn-ghost install-trigger" id="installBtn" type="button"
           title="添加到手机" aria-label="添加到手机" hidden={!snap.installReady}
           onClick={() => { if (s.promptInstall) s.promptInstall(); }}
         >
           <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-download" /></svg>
+          <span className="btn-label">安装</span>
         </button>
         <button
-          className="btn btn-ghost btn-icon" id="themeBtn" type="button"
+          className="btn btn-ghost" id="themeBtn" type="button"
           title={'主题：' + snap.themeLabel + '（点击切换）'} aria-label={'主题：' + snap.themeLabel}
           onClick={() => { if (s.cycleTheme) s.cycleTheme(); }}
         >
           <svg className="ico" id="themeIco" aria-hidden="true" focusable="false"><use href={'#i-' + snap.themeIco} /></svg>
+          <span className="btn-label">主题</span>
         </button>
         <button className="btn btn-ghost" id="settingsBtn" type="button" title="设置" onClick={() => { if (s.openSettings) s.openSettings(); }}>
           <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-settings" /></svg>
