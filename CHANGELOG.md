@@ -2,7 +2,7 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
-## [未发布]
+## [1.2.2] — 2026-10-22
 
 - **修复顶栏「刷新」忙态图标不自旋**：自旋动画的样式选择器是 `.btn-icon .ico.spin`，而 React 化后的刷新按钮实际是 `.btn.btn-ghost`，选择器早已匹配不到任何元素（图标只是加了 `.spin` 类，没有动画）。改为 `.ico.spin` 后动画恢复；顺带删掉 `.btn-icon` 的两条无用规则。
 - **死代码清理**：移除卡片「体积」筛选下线后残留的整条链路（桥 `cardsSize`、`state.size`、`applyFilters` 的体积分支、`sizeToMB`）；移除无人调用的桥 `prefersReducedMotion` / `openLightbox`（灯箱仍由内部点击委托打开，`closeLightbox` 保留）与 `isCardFav`；清理零命中的样式段 `.modal-tools` / `.feed-search` / `.stat-h-n` / `.shortcuts-mask` / `.shortcuts-panel`（`.shortcuts-*` 是 v1.1.7 浮层迁到「设置 → 帮助」时漏删的）与预留未用的 `.is-invalid`；删除 `index.html` 里四个没有引用的图标 `<symbol>`。
