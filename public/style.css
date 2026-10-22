@@ -1462,11 +1462,9 @@ textarea:disabled {
 }
 .form-row input:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
 .form-tip { display: block; margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-faint); }
-/* 表单错误态：:user-invalid 只在用户交互过之后才标红（不会一进页面就满屏红框），
-   无需任何 JS 参与；.is-invalid 供将来手动标记复用 */
+/* 表单错误态：:user-invalid 只在用户交互过之后才标红（不会一进页面就满屏红框），无需任何 JS 参与 */
 input:user-invalid,
-textarea:user-invalid,
-.is-invalid {
+textarea:user-invalid {
   border-color: var(--danger-border);
   background: var(--err-bg);
 }

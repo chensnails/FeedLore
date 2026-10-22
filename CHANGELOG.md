@@ -5,7 +5,9 @@
 ## [未发布]
 
 - **修复顶栏「刷新」忙态图标不自旋**：自旋动画的样式选择器是 `.btn-icon .ico.spin`，而 React 化后的刷新按钮实际是 `.btn.btn-ghost`，选择器早已匹配不到任何元素（图标只是加了 `.spin` 类，没有动画）。改为 `.ico.spin` 后动画恢复；顺带删掉 `.btn-icon` 的两条无用规则。
-- **死代码清理**：移除卡片「体积」筛选下线后残留的整条链路（桥 `cardsSize`、`state.size`、`applyFilters` 的体积分支、`sizeToMB`）；移除无人调用的桥 `prefersReducedMotion` / `openLightbox`（灯箱仍由内部点击委托打开，`closeLightbox` 保留）与 `isCardFav`；清理零命中的样式段 `.modal-tools` / `.feed-search` / `.stat-h-n` / `.shortcuts-mask` / `.shortcuts-panel`（`.shortcuts-*` 是 v1.1.7 浮层迁到「设置 → 帮助」时漏删的）；删除 `index.html` 里四个没有引用的图标 `<symbol>`；删除一次性脚本 `tools/ui-tokens-apply.py`（映射已在 v1.1.12 落地）。
+- **死代码清理**：移除卡片「体积」筛选下线后残留的整条链路（桥 `cardsSize`、`state.size`、`applyFilters` 的体积分支、`sizeToMB`）；移除无人调用的桥 `prefersReducedMotion` / `openLightbox`（灯箱仍由内部点击委托打开，`closeLightbox` 保留）与 `isCardFav`；清理零命中的样式段 `.modal-tools` / `.feed-search` / `.stat-h-n` / `.shortcuts-mask` / `.shortcuts-panel`（`.shortcuts-*` 是 v1.1.7 浮层迁到「设置 → 帮助」时漏删的）与预留未用的 `.is-invalid`；删除 `index.html` 里四个没有引用的图标 `<symbol>`。
+- **后端模块收敛导出面**：`lib/filter.js` 只留 `applyFilters` / `ruleHit`，`lib/image.js` 只留 `compressImage` / `MAX_BYTES`（`MAX_DIM` / `WEBP_QUALITY` / `RASTER` 只在模块内用），`lib/crypto.js` 去掉只在内部用的 `secretKey`，`rss.js` 只留 server 实际调用的 `loadFeed` / `assertFeedUrl`（其余解析函数全在模块内闭环，测试也不依赖）。
+- **删除 `tools/` 整个目录**：`ui-tokens-apply.py`（v1.1.12 一次性令牌映射）与 `gen-theme.mjs`（主题色生成校验）都是仓库内零引用的一次性脚本，需要时从 git 历史取回。
 - **文档纠偏**：`server.js` 的静态目录注释原先声称「未构建时回退 `public/` 也能跑」，实际 `public/` 没有 `index.html` / `login.html`，必须先 `npm run build`；README 卡片墙描述去掉已下线的「体积筛选」。
 - 测试：UI 回归 231/231、服务端 77/77、`vite build` 通过（自旋动画为 CSS 效果，jsdom 不计算样式，需在浏览器里目视确认）。
 

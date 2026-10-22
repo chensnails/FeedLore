@@ -606,7 +606,4 @@ async function loadFeed(url, cond = {}) {
   };
 }
 
-module.exports = {
-  parseXml, parseFeed, normalizeItem, loadFeed, fetchFeed, assertFeedUrl,
-  decodeEntities, localName, child, children, textOfNode,
-};
+module.exports = { loadFeed, assertFeedUrl };
