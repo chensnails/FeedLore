@@ -3,6 +3,11 @@ name: Release
 # tag 发布：构建双架构镜像推 ghcr.io，并自动创建 GitHub Release。
 # 发版 = git tag -a v1.x.x && git push origin --tags；本站（Watchtower 模式）
 # 会在几分钟内自动拉到新镜像并重启容器，关于页也可一键触发。
+#
+# 性能（v1.2.0 起）：amd64 与 arm64 各用一个「原生架构」runner 平行构建，不再用
+# QEMU 模拟。此前单 job + QEMU 的方式，arm64 冷构建（层缓存失效时）实测要 40 分钟以上；
+# 拆成两个原生 runner 后，两个架构各自原生编译，通常 2~5 分钟完成。
+# 两个 build job 各自 push-by-digest，最后由 merge job 合并 manifest 清单。
 
 on:
   push:
@@ -12,15 +17,25 @@ permissions:
   contents: write      # 建 Release
   packages: write      # 推 ghcr
 
+env:
+  REGISTRY_IMAGE: ghcr.io/chensnails/feedlore
+
 jobs:
-  docker:
-    runs-on: ubuntu-24.04
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
-      # ARM64 经 QEMU 模拟构建；GHA cache 接力，只有首次（或 Dockerfile 大改）慢
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - name: 设置 Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: 登录 ghcr.io
         uses: docker/login-action@v3
@@ -29,31 +44,56 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 解析镜像 tag（版本号 + latest）
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/chensnails/feedlore
-          tags: |
-            type=semver,pattern={{version}}
-            type=raw,value=latest
-
-      - name: 构建并推送（amd64 + arm64）
+      - name: 构建并推送（${{ matrix.platform }}，按 digest）
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: 导出 digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.platform }}
+          path: ${{ steps.build.outputs.digest }}
+          retention-days: 1
+          if-no-files-found: error
+
+  merge:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 下载各架构 digest
+        uses: actions/download-artifact@v4
+        with:
+          path: digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - name: 登录 ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 合并 manifest（${{ github.ref_name }} + latest）
+        working-directory: digests
+        run: |
+          docker buildx imagetools create $(printf '${{ env.REGISTRY_IMAGE }}@%s ' *) \
+            --tag "${{ env.REGISTRY_IMAGE }}:${{ github.ref_name }}" \
+            --tag "${{ env.REGISTRY_IMAGE }}:latest"
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           body: |
-            镜像：`ghcr.io/chensnails/feedlore:${{ github.ref_name }}`
+            镜像：`${{ env.REGISTRY_IMAGE }}:${{ github.ref_name }}`（amd64 + arm64）
 
             Watchtower 模式（docker-compose.release.yml）下，宿主机几分钟内自动拉取重启；
-            关于页「一键更新」可立即触发。详见 [CHANGELOG.md](https://github.com/chensnails/feedlore/blob/main/CHANGELOG.md)。
+            关于页「一键更新」可立即触发。详见 [CHANGELOG.md](https://github.com/chensnails/FeedLore/blob/main/CHANGELOG.md)。

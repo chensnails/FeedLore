@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # 笺川（FeedLore）—— RSS 直连聚合与资源卡片墙（ARM64 / AMD64 通用）
 # ---------------------------------------------------------------
 # 阶段一：构建前端（Vite + React，产出 dist/）
@@ -8,8 +9,9 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # 先装依赖再拷源码，源码改动不会让依赖层缓存失效
+# npm 缓存挂到 BuildKit cache mount：重装时不必重新下载依赖包（镜像层内不留缓存）
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # 构建输入：Vite 配置、两个入口 HTML、React 源码、public/ 静态资源
 # （style.css / sw.js / 图标经 publicDir 原样拷入 dist）
@@ -42,7 +44,7 @@ ENV NODE_ENV=production \
 
 # 只装生产依赖（pg / undici）；React / Vite 属于构建期依赖，不进最终镜像
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 COPY server.js db.js rss.js digest.js proxy.js ./
 # lib/：后端纯函数（v2.2.0 起 server.js 会 require ./lib/*，漏拷会在容器启动时报 MODULE_NOT_FOUND）

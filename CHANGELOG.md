@@ -9,7 +9,8 @@
   - 部署层：Compose 项目名 / 容器名 / 网络 / 卷名、`shiyue:latest` 构建镜像、`.env.example` 默认 `PG_DB`/`PG_USER`（由 `shiyue` 改为 `feedlore`）、`package.json` / `package-lock.json` 的 `name`、可见品牌串 `FeedLora` → `FeedLore` 全部统一。
   - **破坏性提示（需重新部署 + 迁移）**：加密盐与数据库名均已变更，旧部署不可原地平滑升级——已加密的 RSS 凭据需重新填写、本地偏好（主题 / 视图等）会重置为默认、PostgreSQL 旧库 `shiyue` 需迁移到新库 `feedlore`（迁移步骤见下方「部署更新」说明）。
   - 说明：本次为「干净统一」路线，未保留旧盐的兼容回退层。
-  - 测试：顺带清理 v1.1.18 移除顶栏安装按钮后遗留的失效断言（`#installBtn`），修正 `npm test` 因点击已不存在的元素而 FATAL 中断的问题；UI 222/222、服务端 77/77。
+  - 测试：顺带清理 v1.1.18 移除顶栏安装按钮后遗留的失效断言（#installBtn），修正 `npm test` 因点击已不存在的元素而 FATAL 中断的问题；UI 222/222、服务端 77/77。
+- **发布流水线改为「双原生 runner」构建（修复 arm64 镜像构建极慢）**：原 `release.yml` 用单 job + QEMU 模拟构建 arm64，层缓存一旦失效（本次因 `package-lock.json` 改名、`Dockerfile` 首行注释改动导致全量失效）实测要 40 分钟以上仍不结束。现改为矩阵：amd64 跑 `ubuntu-24.04`、arm64 跑 `ubuntu-24.04-arm`，各架构原生编译、各自 push-by-digest，最后由 `merge` job 用 `docker buildx imagetools create` 合并 manifest 清单并打 `:${{version}}` 与 `:latest` 标签、再创建 Release。产物与原来一致（仍是 amd64 + arm64 双架构镜像），但不再依赖 QEMU 模拟。`Dockerfile` 另加 `# syntax=docker/dockerfile:1` 与 npm cache mount（`--mount=type=cache,target=/root/.npm`），避免每次重建都重新下载依赖包（缓存落在 mount 里，不进镜像层）。
 
 ## [1.1.19] — 2026-10-22
 
