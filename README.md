@@ -68,7 +68,7 @@ git clone https://github.com/chensnails/feedlore.git
 cd feedlore
 cp .env.example .env
 
-# 随机密码
+# ⚠️ 生成强随机数据库密码（切勿使用弱密码）
 sed -i "s/^PG_PASSWORD=.*/PG_PASSWORD=$(openssl rand -base64 32)/" .env
 
 # 确认密码已更换，并保存好凭据
@@ -81,7 +81,24 @@ docker compose up -d --build
 **镜像模式**（日常使用，推荐）：拉取 ghcr.io 预构建镜像，Watchtower 自动更新——
 
 ```bash
-cp .env.example .env       # 填 PG_PASSWORD 与 WATCHTOWER_HTTP_API_TOKEN
+# 1. 克隆仓库（仅为了获取 .env.example 和 docker-compose.release.yml）
+git clone https://github.com/chensnails/feedlore.git
+cd feedlore
+
+# 2. 创建环境配置文件
+cp .env.example .env
+
+# 3. ⚠️ 生成强随机数据库密码（切勿使用弱密码）
+sed -i "s/^PG_PASSWORD=.*/PG_PASSWORD=$(openssl rand -base64 32)/" .env
+
+# 4. 填写 WATCHTOWER_HTTP_API_TOKEN（用于「一键更新」功能）
+#    同样建议用随机字符串，例如：
+sed -i "s/^WATCHTOWER_HTTP_API_TOKEN=.*/WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 32)/" .env
+
+# 5. 确认关键配置已正确写入
+grep -E '^(PG_PASSWORD|WATCHTOWER_HTTP_API_TOKEN)=' .env
+
+# 6. 使用 release 专用 compose 文件启动（预构建镜像 + Watchtower）
 docker compose -f docker-compose.release.yml up -d
 ```
 
