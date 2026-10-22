@@ -9,7 +9,7 @@
 <script>
 /* 主题：与主站共用同一份偏好，首屏前定好 data-theme 避免闪白 */
 (function () {
-  var KEY = 'shiyue.theme.v1';
+  var KEY = 'feedlore.theme.v1';
   var mode = 'auto';
   try { mode = localStorage.getItem(KEY) || 'auto'; } catch (e) { /* 隐私模式 */ }
   var mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -49,8 +49,8 @@
   const btn = document.getElementById('submitBtn');
   const errBox = document.getElementById('error');
 
-  /* ---------- 主题切换（与主站共用 shiyue.theme.v1） ---------- */
-  const THEME_KEY = 'shiyue.theme.v1';
+  /* ---------- 主题切换（与主站共用 feedlore.theme.v1） ---------- */
+  const THEME_KEY = 'feedlore.theme.v1';
   const THEME_MODES = ['auto', 'light', 'dark'];
   const THEME_META = {
     auto: { ico: '◐', label: '跟随系统' },

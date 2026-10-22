@@ -1,4 +1,4 @@
-# 笺川 · FeedLora
+# 笺川 · FeedLore
 
 > 拾取值得读的 —— 一个干净、顺手的**自托管 RSS 阅读器**，附资源卡片墙。多用户、无广告、无遥测，数据都在你自己的服务器上。
 
@@ -42,7 +42,7 @@ cd feedlore
 cp .env.example .env
 
 # ⚠️ 生成强随机数据库密码（切勿使用弱密码）
-sed -i "s|^PG_PASSWORD=.*|PG_PASSWORD=$(openssl rand -base64 32)|" .env
+sed -i "s#^PG_PASSWORD=.*#PG_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)#" .env
 
 # 确认密码已更换，并保存好凭据
 grep PG_PASSWORD .env
@@ -77,7 +77,7 @@ cd feedlore
 cp .env.example .env
 
 # ⚠️ 生成强随机数据库密码（切勿使用弱密码）
-sed -i "s|^PG_PASSWORD=.*|PG_PASSWORD=$(openssl rand -base64 32)|" .env
+sed -i "s#^PG_PASSWORD=.*#PG_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)#" .env
 
 # 确认密码已更换，并保存好凭据
 grep PG_PASSWORD .env
@@ -97,7 +97,7 @@ cd feedlore
 cp .env.example .env
 
 # 3. ⚠️ 生成强随机数据库密码（切勿使用弱密码）
-sed -i "s|^PG_PASSWORD=.*|PG_PASSWORD=$(openssl rand -base64 32)|" .env
+sed -i "s#^PG_PASSWORD=.*#PG_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)#" .env
 sed -i "s|^WATCHTOWER_HTTP_API_TOKEN=.*|WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 32)|" .env
 
 # 5. 确认关键配置已正确写入

@@ -1,4 +1,4 @@
-// 笺川（FeedLora）· Vite 构建配置
+// 笺川（FeedLore）· Vite 构建配置
 //
 // 多页面应用（MPA）：两个入口 HTML 都在仓库根 ——
 //   index.html  主站（阅读 / 卡片 / AI / 设置）
@@ -6,7 +6,7 @@
 // 其余静态资源（style.css / sw.js / 图标）仍放 public/，由 publicDir 原样拷入 dist/。
 //
 // 全部界面已 React 化（v2.0.0）：核心逻辑拆在 src/core/*.js（util / state / feeds / reader / autorefresh / ui / bootstrap），经别名 `@core` 暴露 `core` 单例，
-// 组件统一 `import { core } from '@core'`；原先的 window.shiyue 全局桥已拆除，
+// 组件统一 `import { core } from '@core'`；原先的 window.feedlore 全局桥已拆除，
 // public/app.js 亦已退役（不再有经典脚本）。
 
 import { defineConfig } from 'vite';

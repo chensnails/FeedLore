@@ -29,7 +29,7 @@
 
   var mode = 'auto';
   if (sa && typeof sa.theme === 'string') mode = sa.theme;
-  else { var lm = lsGet('shiyue.theme.v1'); if (lm) mode = lm; }
+  else { var lm = lsGet('feedlore.theme.v1'); if (lm) mode = lm; }
   if (['auto', 'light', 'dark', 'github'].indexOf(mode) < 0) mode = 'auto';
   el.setAttribute('data-theme-mode', mode);
   // github 是整包主题，不进「跟随系统」；data-theme 直接写 github 走另一套 CSS 变量块
@@ -38,7 +38,7 @@
   el.setAttribute('data-theme', mode === 'github' ? 'github' : (dark ? 'dark' : 'light'));
 
   // 主色调：github 主题写死 GitHub 蓝；其余用账号保存的值（无则用本机旧值）
-  var accent = (sa && typeof sa.accent === 'string') ? sa.accent : (lsGet('shiyue.appearance.accent.v1') || 'blue');
+  var accent = (sa && typeof sa.accent === 'string') ? sa.accent : (lsGet('feedlore.appearance.accent.v1') || 'blue');
   el.setAttribute('data-accent', mode === 'github' ? 'github' : pick(accent, ACCENTS, 'blue'));
 
   var ap = sa || {};

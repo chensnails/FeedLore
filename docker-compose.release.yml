@@ -1,4 +1,4 @@
-# 笺川（FeedLora）· 发布态 Compose（镜像模式 + Watchtower 自动更新）
+# 笺川（FeedLore）· 发布态 Compose（镜像模式 + Watchtower 自动更新）
 #
 # 与本目录的 docker-compose.yml（源码构建模式）二选一：
 # - docker-compose.yml          ：本地有源码，docker compose up -d --build 现场构建
@@ -12,9 +12,9 @@
 #   3. 之后发版 = git push tag；Watchtower 每 5 分钟检查一次，
 #      或在「设置 → 关于」点「一键更新」立即触发。
 #
-# 项目名 / 容器 / 卷 / 网络沿用 shiyue 前缀，与源码模式完全一致：
-# 从源码模式切换过来时，数据库卷（shiyue-pgdata）原样复用，数据零迁移。
-name: shiyue
+# 项目名 / 容器 / 卷 / 网络沿用 feedlore 前缀，与源码模式完全一致：
+# 从源码模式切换过来时，数据库卷（feedlore-pgdata）原样复用，数据零迁移。
+name: feedlore
 
 services:
   # ---------------------------------------------------------------
@@ -23,12 +23,12 @@ services:
   db:
     # 与宿主机已有 postgres 容器同版本，可复用本地镜像；需要升级时改这里再 up -d
     image: postgres:18.4-alpine
-    container_name: shiyue-db
+    container_name: feedlore-db
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
-      POSTGRES_DB: ${PG_DB:-shiyue}
-      POSTGRES_USER: ${PG_USER:-shiyue}
+      POSTGRES_DB: ${PG_DB:-feedlore}
+      POSTGRES_USER: ${PG_USER:-feedlore}
       POSTGRES_PASSWORD: ${PG_PASSWORD:?请先在 .env 中设置 PG_PASSWORD}
       # 放进子目录，避免和镜像自带的 lost+found 之类冲突
       PGDATA: /var/lib/postgresql/data/pgdata
@@ -41,7 +41,7 @@ services:
       retries: 12
       start_period: 20s
     networks:
-      - shiyue
+      - feedlore
     # 刻意不写 ports：数据库只允许应用容器经内网访问
     logging:
       driver: json-file
@@ -54,7 +54,7 @@ services:
   # ---------------------------------------------------------------
   app:
     image: ghcr.io/chensnails/feedlore:latest
-    container_name: shiyue
+    container_name: feedlore
     restart: unless-stopped
     depends_on:
       db:
@@ -62,7 +62,7 @@ services:
     environment:
       TZ: Asia/Shanghai
       PORT: "3000"
-      DATABASE_URL: postgres://${PG_USER:-shiyue}:${PG_PASSWORD}@db:5432/${PG_DB:-shiyue}
+      DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD}@db:5432/${PG_DB:-feedlore}
 
       # 一键更新：app 容器只与同网络的 watchtower 通信，不碰宿主机。
       # 按钮（设置 → 关于）POST /api/update 即转发到这里触发立即检查。
@@ -98,7 +98,7 @@ services:
       - "${HOST_PORT:-3210}:3000"
 
     networks:
-      - shiyue
+      - feedlore
 
     # 让容器能通过 host.docker.internal 访问宿主机上已发布的服务
     extra_hosts:
@@ -141,7 +141,7 @@ services:
       WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:?发布态需要 WATCHTOWER_HTTP_API_TOKEN}
     # 刻意不写 ports：8080 只在 compose 内网可达
     networks:
-      - shiyue
+      - feedlore
     logging:
       driver: json-file
       options:
@@ -149,11 +149,11 @@ services:
         max-file: "3"
 
 networks:
-  # 显式命名，否则会被拼成 shiyue_shiyue
-  shiyue:
-    name: shiyue
+  # 显式命名，否则会被拼成 feedlore_feedlore
+  feedlore:
+    name: feedlore
     driver: bridge
 
 volumes:
   pgdata:
-    name: shiyue-pgdata
+    name: feedlore-pgdata

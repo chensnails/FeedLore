@@ -2,6 +2,15 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.2.0] — 2026-10-22
+
+- **全量统一品牌与内部标识为 feedlore / 笺川 FeedLore**：推翻 v1.1.7「仅改可见品牌串、保留 `shiyue_*` 内部标识」的旧决策，将所有文件名、目录、代码、配置与部署产物彻底统一为 feedlore：
+  - 内部加密盐 `ENC_SALT` 由 `shiyue.secret.v1` 改为 `feedlore.secret.v1`；本地存储键 `shiyue.*` 全部改为 `feedlore.*`；Service Worker 缓存版本 `shiyue-v2` 改为 `feedlore-v1`；会话 Cookie 名 `shiyue_sid` 改为 `feedlore_sid`；OPML 导出文件名 `shiyue-subscriptions` 改为 `feedlore-subscriptions`；`server.js` 占位 salt `shiyue.dummy.salt` 改为 `feedlore.dummy.salt`。
+  - 部署层：Compose 项目名 / 容器名 / 网络 / 卷名、`shiyue:latest` 构建镜像、`.env.example` 默认 `PG_DB`/`PG_USER`（由 `shiyue` 改为 `feedlore`）、`package.json` / `package-lock.json` 的 `name`、可见品牌串 `FeedLora` → `FeedLore` 全部统一。
+  - **破坏性提示（需重新部署 + 迁移）**：加密盐与数据库名均已变更，旧部署不可原地平滑升级——已加密的 RSS 凭据需重新填写、本地偏好（主题 / 视图等）会重置为默认、PostgreSQL 旧库 `shiyue` 需迁移到新库 `feedlore`（迁移步骤见下方「部署更新」说明）。
+  - 说明：本次为「干净统一」路线，未保留旧盐的兼容回退层。
+  - 测试：顺带清理 v1.1.18 移除顶栏安装按钮后遗留的失效断言（`#installBtn`），修正 `npm test` 因点击已不存在的元素而 FATAL 中断的问题；UI 222/222、服务端 77/77。
+
 ## [1.1.19] — 2026-10-22
 
 - **移动端文章页「频道」抽屉按钮只留图标**：`reader-menu-btn` 的「频道」文字包进 `.reader-menu-label`，在 ≤720px 抽屉模式下一并隐藏（与顶栏「仅图标」规则一致），桌面端该按钮本就隐藏、文字不受影响。
@@ -76,7 +85,7 @@
 
 ## [1.1.7] — 2026-10-21
 
-- **英文品牌名（可见）重命名为 FeedLora**：仅改动用户可见的英文品牌串（标题 / About / 页脚 / README / UA 注释等），内部标识 `shiyue_*`、`shiyue-v2` SW 缓存名、容器 / 镜像 / 仓库名等一律保留，避免触发老用户全量重缓存与解密失败。
+- **英文品牌名（可见）重命名为 FeedLore**：仅改动用户可见的英文品牌串（标题 / About / 页脚 / README / UA 注释等），内部标识 `shiyue_*`、`shiyue-v2` SW 缓存名、容器 / 镜像 / 仓库名等一律保留，避免触发老用户全量重缓存与解密失败。（注：该保留策略已在 **v1.2.0** 被推翻，内部标识一并统一为 feedlore。）
 - **卡片页移除「体积」筛选**：工具栏去掉体积筛选下拉（`#sizeSelect` 及其 handlers），保留频道 / 排序 / 视图切换。
 - **卡片页标签列表字号缩小**：`.tag-chip` 由 0.7813rem 降至 0.7188rem，与整体 UI 粒度更协调。
 - **修复 j/k 快捷键（及 o/f/r）在多页失效**：根因是 `ui.js` 键盘处理里引用了未定义的 `lightbox.hidden`（正确变量为 `lightboxState.show`），导致 keydown 处理器抛出 `ReferenceError`，j/k/o/f/r 全部失效。修正后文章页与卡片页均可用；同时清理了已废弃的 `window.__shortcutsOpen` 守卫。

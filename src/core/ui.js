@@ -73,13 +73,13 @@ export function exportOpml() {
   body += ungrouped.map(feedOutline).join('\n') + (ungrouped.length ? '\n' : '');
   const xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
     + '<opml version="2.0">\n'
-    + '  <head><title>ShiYue 订阅导出</title></head>\n'
+    + '  <head><title>FeedLore 订阅导出</title></head>\n'
     + '  <body>\n' + body + '  </body>\n</opml>\n';
   const blob = new Blob([xml], { type: 'text/x-opml' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'shiyue-subscriptions-' + new Date().toISOString().slice(0, 10) + '.opml';
+  a.download = 'feedlore-subscriptions-' + new Date().toISOString().slice(0, 10) + '.opml';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('已导出 ' + feeds.length + ' 个订阅源');

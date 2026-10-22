@@ -2,7 +2,7 @@
  * 产物写到 tests/ui/.build/（gitignored）。运行：`npm run test:ui`。
  *
  * 关键点：组件统一 `import { core } from '@core'`，这里把 `@core` 别名指向 tests/ui/stub-core.js，
- * 于是测试能完全接管核心逻辑（不再需要挂 window.shiyue）。真实的 src/core 只由 core-entry.js
+ * 于是测试能完全接管核心逻辑（不再需要挂 window.feedlore）。真实的 src/core 只由 core-entry.js
  * （冒烟用，不做别名）加载。 */
 import { build } from 'esbuild';
 import path from 'node:path';

@@ -1,6 +1,6 @@
-# 笺川（FeedLora）· 项目名 / 镜像 / 容器 / 卷 / 网络沿用 shiyue 前缀
-# 显式声明项目名，这样即使目录被改名，Compose 项目仍然是 shiyue
-name: shiyue
+# 笺川（FeedLore）· 项目名 / 镜像 / 容器 / 卷 / 网络沿用 feedlore 前缀
+# 显式声明项目名，这样即使目录被改名，Compose 项目仍然是 feedlore
+name: feedlore
 
 services:
   # ---------------------------------------------------------------
@@ -9,12 +9,12 @@ services:
   db:
     # 与宿主机已有 postgres 容器同版本，可复用本地镜像；需要升级时改这里再 up -d
     image: postgres:18.4-alpine
-    container_name: shiyue-db
+    container_name: feedlore-db
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
-      POSTGRES_DB: ${PG_DB:-shiyue}
-      POSTGRES_USER: ${PG_USER:-shiyue}
+      POSTGRES_DB: ${PG_DB:-feedlore}
+      POSTGRES_USER: ${PG_USER:-feedlore}
       POSTGRES_PASSWORD: ${PG_PASSWORD:?请先在 .env 中设置 PG_PASSWORD}
       # 放进子目录，避免和镜像自带的 lost+found 之类冲突
       PGDATA: /var/lib/postgresql/data/pgdata
@@ -27,7 +27,7 @@ services:
       retries: 12
       start_period: 20s
     networks:
-      - shiyue
+      - feedlore
     # 刻意不写 ports：数据库只允许应用容器经内网访问
     logging:
       driver: json-file
@@ -42,8 +42,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: shiyue:latest
-    container_name: shiyue
+    image: feedlore:latest
+    container_name: feedlore
     restart: unless-stopped
     depends_on:
       db:
@@ -51,7 +51,7 @@ services:
     environment:
       TZ: Asia/Shanghai
       PORT: "3000"
-      DATABASE_URL: postgres://${PG_USER:-shiyue}:${PG_PASSWORD}@db:5432/${PG_DB:-shiyue}
+      DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD}@db:5432/${PG_DB:-feedlore}
 
       # 首次部署时播种的 RSS 地址（逗号分隔）；仅当订阅表为空时生效。留空则启动后手动添加
       SEED_FEEDS: "${SEED_FEEDS:-}"
@@ -93,7 +93,7 @@ services:
     # 镜像里也 COPY 了一份 dist 作为兜底，独立 docker run 时仍能跑。
 
     networks:
-      - shiyue
+      - feedlore
 
     # 让容器能通过 host.docker.internal 访问宿主机上已发布的服务
     extra_hosts:
@@ -106,11 +106,11 @@ services:
         max-file: "3"
 
 networks:
-  # 显式命名，否则会被拼成 shiyue_shiyue
-  shiyue:
-    name: shiyue
+  # 显式命名，否则会被拼成 feedlore_feedlore
+  feedlore:
+    name: feedlore
     driver: bridge
 
 volumes:
   pgdata:
-    name: shiyue-pgdata
+    name: feedlore-pgdata

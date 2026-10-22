@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * 笺川（FeedLora）· RSS 驱动的资源卡片站
+ * 笺川（FeedLore）· RSS 驱动的资源卡片站
  * 数据源：直接抓取 RSS / Atom（不再依赖 CommaFeed）
  * 存储：PostgreSQL（设置 / 账号 / 频道 / 条目 / 日报 全部落库）
  */
@@ -36,11 +36,11 @@ const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'dist'))
   : path.join(__dirname, 'public');
 
 const DATABASE_URL = process.env.DATABASE_URL
-  || `postgres://${process.env.PG_USER || 'shiyue'}:${process.env.PG_PASSWORD || 'shiyue'}`
-  + `@${process.env.PG_HOST || 'postgres'}:${process.env.PG_PORT || 5432}/${process.env.PG_DB || 'shiyue'}`;
+  || `postgres://${process.env.PG_USER || 'feedlore'}:${process.env.PG_PASSWORD || 'feedlore'}`
+  + `@${process.env.PG_HOST || 'postgres'}:${process.env.PG_PORT || 5432}/${process.env.PG_DB || 'feedlore'}`;
 
 const SESSION_TTL = 7 * 24 * 3600 * 1000;
-const COOKIE_NAME = 'shiyue_sid';
+const COOKIE_NAME = 'feedlore_sid';
 const LOGIN_MAX_FAILS = 6;
 const LOGIN_LOCK_MS = 60 * 1000;
 
@@ -532,7 +532,7 @@ async function fetchAndCache(key, url) {
   const timer = setTimeout(() => ctl.abort(), 15000);
   try {
     const resp = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FeedLora/2.8)' },
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FeedLore/2.8)' },
       signal: ctl.signal,
       redirect: 'follow',
       dispatcher: getProxyDispatcher(settings && settings.source && settings.source.proxyUrl) || undefined,
@@ -763,7 +763,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req);
       const row = await db.getUserByName(body.username);
       // 用户名不存在时也走一次哈希，避免「响应快慢」暴露某个用户名是否存在
-      const salt = row ? row.salt : 'shiyue.dummy.salt';
+      const salt = row ? row.salt : 'feedlore.dummy.salt';
       const okPass = row ? safeEqual(hashPassword(body.password || '', salt), row.password_hash) : false;
       if (!row || !okPass) { noteLoginFail(ip); json(res, 401, { error: '用户名或密码错误' }); return; }
       loginFails.delete(ip);
@@ -1830,7 +1830,7 @@ db.onReady(async () => {
 db.start();
 
 server.listen(PORT, HOST, () => {
-  log(`笺川（FeedLora）已启动: http://${HOST}:${PORT}`);
+  log(`笺川（FeedLore）已启动: http://${HOST}:${PORT}`);
   log(`数据库: ${DATABASE_URL.replace(/:[^:@/]*@/, ':***@')}`);
 });
 

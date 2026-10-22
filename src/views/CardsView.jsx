@@ -357,7 +357,7 @@ export function CardsView() {
         </div>
 
         <footer className="foot">
-          笺川 · FeedLora · 数据存于 PostgreSQL
+          笺川 · FeedLore · 数据存于 PostgreSQL
         </footer>
       </main>
     </>

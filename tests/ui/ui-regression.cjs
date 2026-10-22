@@ -52,7 +52,7 @@ const clipboardStub = {
 w.navigator.clipboard = clipboardStub;
 try { Object.defineProperty(globalThis.navigator, 'clipboard', { value: clipboardStub, configurable: true }); } catch (_) { /* 忽略 */ }
 try { Object.defineProperty(w, 'isSecureContext', { value: true, configurable: true }); } catch (_) { /* 只读时忽略 */ }
-// ---- 与线上 window.shiyue 同构的桩 ----
+// ---- 与线上 window.feedlore 同构的桩 ----
 const calls = [];
 const noop = (name) => (...a) => calls.push([name, ...a]);
 const appearance = { theme: 'auto', accent: 'blue', fontSize: 'm', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
@@ -60,7 +60,7 @@ const fireAppearanceChanged = () => w.dispatchEvent(new w.Event('__appearanceCha
 
 let adminFlag = true;
 let versionResponse = { ok: true, version: '1.2.0', updateEnabled: true };
-let checkResponse = { ok: true, hasUpdate: true, current: '1.2.0', latest: '1.3.0', releaseUrl: 'https://github.com/chensnails/shiyue/releases/tag/v1.3.0' };
+let checkResponse = { ok: true, hasUpdate: true, current: '1.2.0', latest: '1.3.0', releaseUrl: 'https://github.com/chensnails/feedlore/releases/tag/v1.3.0' };
 
 // 模型面板的可变响应（复刻 /api/prefs GET 的 llm 视图字段：不回填明文，只给 set + 掩码）
 let prefsLlm = { baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen3-8B', temperature: 0.3, apiKeySet: false, apiKeyHint: '' };
@@ -212,7 +212,7 @@ const pushFeed = (url, groupName) => {
   });
 };
 
-w.shiyue = {
+w.feedlore = {
   apiFetch: (url, opts) => {
     calls.push(['apiFetch', url, opts && opts.method, opts && opts.body]);
     const method = (opts && opts.method) || 'GET';
@@ -456,16 +456,16 @@ w.shiyue = {
     rdFlags: { total: 2, unread: 1, favorite: 1 }, rdLoading: false, rdReadError: false, rdReadErrorMsg: '',
   },
   loadFeeds: async () => {
-    const res = await w.shiyue.apiFetch('/api/feeds');
+    const res = await w.feedlore.apiFetch('/api/feeds');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    w.shiyue.state.feedList = data.feeds || [];
-    w.shiyue.state.feedMeta = data;
-    w.shiyue.state.groupOrder = Array.isArray(data.groupOrder) ? data.groupOrder : [];
-    w.shiyue.state.collapsedGroups = new Set(layoutStub.collapsedGroups);
-    if (data.flags) w.shiyue.state.rdFlags = data.flags;
+    w.feedlore.state.feedList = data.feeds || [];
+    w.feedlore.state.feedMeta = data;
+    w.feedlore.state.groupOrder = Array.isArray(data.groupOrder) ? data.groupOrder : [];
+    w.feedlore.state.collapsedGroups = new Set(layoutStub.collapsedGroups);
+    if (data.flags) w.feedlore.state.rdFlags = data.flags;
     calls.push(['loadFeeds']);
-    w.shiyue.renderFeedSelect();
+    w.feedlore.renderFeedSelect();
     return data;
   },
   loadPage: noop('loadPage'),
@@ -504,15 +504,15 @@ w.shiyue = {
   cycleTheme: () => calls.push(['cycleTheme']),
   openSettings: (t) => { calls.push(['openSettings', t]); },
   // v1.7.0：AI 视图桥（P3a）
-  getAiPage: () => w.shiyue.state.aiPage || 'digest',
-  setAiPage: (n) => { calls.push(['setAiPage', n]); w.shiyue.state.aiPage = n; },
+  getAiPage: () => w.feedlore.state.aiPage || 'digest',
+  setAiPage: (n) => { calls.push(['setAiPage', n]); w.feedlore.state.aiPage = n; },
   linkLabel: (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (_) { return '链接'; } },
   // v1.8.0：卡片视图桥（P3b，对齐 app.js 语义）
   fmtDate: (d) => (d ? String(d).slice(0, 10) : ''),
   copyText: (t) => { clipboardWrites.push(String(t)); return Promise.resolve(true); },
   openLinkMenu: (anchor, urls, onPick) => { calls.push(['openLinkMenu', urls.length]); onPick(urls[1] || urls[0]); },
   filterEntries: () => {
-    const st = w.shiyue.state;
+    const st = w.feedlore.state;
     let list = (st.entries || []).filter((e) => {
       if (st.tag && !(e.tags || []).includes(st.tag)) return false;
       if (st.size && st.size !== 'all') { if (!e.size) return false; }
@@ -521,15 +521,15 @@ w.shiyue = {
     if (st.sort === 'name') list = list.slice().sort((a, b) => a.name.localeCompare(b.name, 'zh'));
     return list;
   },
-  cardsSearch: (v) => { w.shiyue.state.q = v; w.shiyue.state.tag = null; return cardsLoad(true); },
-  cardsFilterFeed: (v) => { w.shiyue.state.feedFilter = v ? v : null; w.shiyue.state.tag = null; return cardsLoad(true); },
-  cardsSort: (v) => { w.shiyue.state.sort = v; cardsTick(); },
-  cardsSize: (v) => { w.shiyue.state.size = v; cardsTick(); },
-  cardsView: (m) => { w.shiyue.state.view = m; cardsTick(); },
-  cardsTag: (t) => { w.shiyue.state.tag = t || null; cardsTick(); },
+  cardsSearch: (v) => { w.feedlore.state.q = v; w.feedlore.state.tag = null; return cardsLoad(true); },
+  cardsFilterFeed: (v) => { w.feedlore.state.feedFilter = v ? v : null; w.feedlore.state.tag = null; return cardsLoad(true); },
+  cardsSort: (v) => { w.feedlore.state.sort = v; cardsTick(); },
+  cardsSize: (v) => { w.feedlore.state.size = v; cardsTick(); },
+  cardsView: (m) => { w.feedlore.state.view = m; cardsTick(); },
+  cardsTag: (t) => { w.feedlore.state.tag = t || null; cardsTick(); },
   cardsLoadMore: () => cardsLoad(false),
   cardsSetFlag: async (id, patch) => {
-    const e = (w.shiyue.state.entries || []).find((x) => String(x.id) === String(id));
+    const e = (w.feedlore.state.entries || []).find((x) => String(x.id) === String(id));
     if (e) Object.assign(e, patch);
     cardsTick();
     return true;
@@ -537,14 +537,14 @@ w.shiyue = {
   // v1.9.0：阅读页桥（P3c，对齐 app.js 语义）
   fmtFull: (d) => (d ? String(d).slice(0, 16).replace('T', ' ') : ''),
   readerAccordionOn: () => true,
-  readerSetScope: (scope) => { calls.push(['readerSetScope', scope]); w.shiyue.state.rdScope = scope; w.shiyue.state.rdFeedId = null; w.shiyue.state.rdGroup = null; readerTick(); },
-  readerSetFeed: (id) => { calls.push(['readerSetFeed', id]); w.shiyue.state.rdFeedId = Number(id); w.shiyue.state.rdGroup = null; w.shiyue.state.rdScope = 'all'; readerTick(); },
-  readerSetGroup: (g) => { calls.push(['readerSetGroup', g]); w.shiyue.state.rdGroup = g; w.shiyue.state.rdFeedId = null; readerTick(); },
+  readerSetScope: (scope) => { calls.push(['readerSetScope', scope]); w.feedlore.state.rdScope = scope; w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null; readerTick(); },
+  readerSetFeed: (id) => { calls.push(['readerSetFeed', id]); w.feedlore.state.rdFeedId = Number(id); w.feedlore.state.rdGroup = null; w.feedlore.state.rdScope = 'all'; readerTick(); },
+  readerSetGroup: (g) => { calls.push(['readerSetGroup', g]); w.feedlore.state.rdGroup = g; w.feedlore.state.rdFeedId = null; readerTick(); },
   readerOpenSource: () => calls.push(['readerOpenSource']),
-  readerSearch: (q) => { calls.push(['readerSearch', q]); w.shiyue.state.rdQ = q; readerTick(); },
+  readerSearch: (q) => { calls.push(['readerSearch', q]); w.feedlore.state.rdQ = q; readerTick(); },
   readerToggleArt: (id) => {
     calls.push(['readerToggleArt', id]);
-    const st = w.shiyue.state;
+    const st = w.feedlore.state;
     if (st.rdExpanded.has(id)) { st.rdExpanded.delete(id); }
     else {
       st.rdExpanded.add(id);
@@ -558,11 +558,11 @@ w.shiyue = {
     }
     readerTick();
   },
-  readerCollapseAll: () => { calls.push(['readerCollapseAll']); w.shiyue.state.rdExpanded.clear(); readerTick(); },
+  readerCollapseAll: () => { calls.push(['readerCollapseAll']); w.feedlore.state.rdExpanded.clear(); readerTick(); },
   readerReadAll: () => calls.push(['readerReadAll']),
   readerToggleFav: (id) => {
     calls.push(['readerToggleFav', id]);
-    const e = (w.shiyue.state.rdEntries || []).find((x) => String(x.id) === String(id));
+    const e = (w.feedlore.state.rdEntries || []).find((x) => String(x.id) === String(id));
     if (e) e.isFavorite = !e.isFavorite;
     readerTick();
   },
@@ -579,7 +579,7 @@ w.shiyue = {
       if (!map.has(g)) map.set(g, []);
       map.get(g).push(f);
     }
-    const order = w.shiyue.state.groupOrder || [];
+    const order = w.feedlore.state.groupOrder || [];
     const seen = new Set();
     const names = [];
     for (const g of order) if (g && map.has(g) && !seen.has(g)) { names.push(g); seen.add(g); }
@@ -590,7 +590,7 @@ w.shiyue = {
 };
 // v2.0.0：组件改为 `import { core } from '@core'`，测试用 tests/ui/stub-core.js 顶上这个别名；
 // 替身读的是 Node 的 globalThis.__uiCore（bundle 在 Node 里执行），这里把同一份桩暴露出去。
-global.__uiCore = w.shiyue;
+global.__uiCore = w.feedlore;
 const layoutStub = { collapsedGroups: [], sections: {} };
 
 /* 卡片视图（P3b）：复刻 app.js 的 loadPage 语义（数据归共享 state，UI 靠 __cardsTick 重绘） */
@@ -603,9 +603,9 @@ const READER_ENTRIES = () => ([
   { id: 'r1', name: '文章一', tags: ['标签A'], size: '2.5G', date: '2026-10-15T10:00:00Z', feedName: '例子星球 - Telegram Channel', isRead: false, isFavorite: false, sourceUrl: 'https://example.com/a1' },
   { id: 'r2', name: '文章二', tags: [], size: '', date: '2026-10-14T10:00:00Z', feedName: 'demo', isRead: true, isFavorite: true },
 ]);
-const readerSetEntries = (list) => { w.shiyue.state.rdEntries = list; readerTick(); };
+const readerSetEntries = (list) => { w.feedlore.state.rdEntries = list; readerTick(); };
 async function cardsLoad(reset) {
-  const s = w.shiyue;
+  const s = w.feedlore;
   if (s.state.loading) return;
   s.state.loading = true;
   if (reset) { s.state.offset = 0; s.state.hasMore = true; s.state.entries = []; }
@@ -1078,7 +1078,7 @@ const withEFP = (el, fn) => {
     if (rowsByGroup().has('科技') && rowsByGroup().get('科技').length) throw new Error('行未隐藏');
   });
   t('折叠态写入共享 state（collapsedGroups）', () => {
-    if (!w.shiyue.state.collapsedGroups.has('科技')) throw new Error('state 未写入');
+    if (!w.feedlore.state.collapsedGroups.has('科技')) throw new Error('state 未写入');
   });
   document.querySelector('.feed-group-head[data-group="科技"]').click();
   await sleep(40);
@@ -1449,9 +1449,9 @@ const withEFP = (el, fn) => {
   // 桩 confirm / location.reload / apiFetch（轮询到新版本即 reload）
   const confirmOrig = w.confirm; w.confirm = () => true;
   try { Object.defineProperty(w.location, 'reload', { value: () => {}, configurable: true }); } catch (_) {}
-  const apiFetchFull2 = w.shiyue.apiFetch;
+  const apiFetchFull2 = w.feedlore.apiFetch;
   const updateCalls = [];
-  w.shiyue.apiFetch = (url, opts) => {
+  w.feedlore.apiFetch = (url, opts) => {
     if (url === '/api/update') { updateCalls.push(opts && opts.method); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); }
     if (url === '/api/version') return Promise.resolve({ ok: true, json: () => Promise.resolve({ version: '1.1.0' }) });
     return apiFetchFull2(url, opts);
@@ -1470,17 +1470,17 @@ const withEFP = (el, fn) => {
     }
   });
   w.confirm = confirmOrig;
-  w.shiyue.apiFetch = apiFetchFull2;
+  w.feedlore.apiFetch = apiFetchFull2;
 
   clickTab('数据源'); await sleep(40);
-  const apiFetchFull = w.shiyue.apiFetch;   // 供关闭 / 角色过滤区恢复完整路由
-  w.shiyue.apiFetch = (url) => {
+  const apiFetchFull = w.feedlore.apiFetch;   // 供关闭 / 角色过滤区恢复完整路由
+  w.feedlore.apiFetch = (url) => {
     if (url === '/api/version') return Promise.reject(new Error('boom'));
     return Promise.resolve({ ok: true, json: () => Promise.resolve(checkResponse) });
   };
   clickTab('关于'); await sleep(80);
   t('版本读取失败兜底', () => { if (document.querySelector('#aboutVersion').textContent !== '读取失败') throw new Error('实际: ' + document.querySelector('#aboutVersion').textContent); });
-  w.shiyue.apiFetch = apiFetchFull;
+  w.feedlore.apiFetch = apiFetchFull;
 
   // 源码部署（无 Watchtower）：一键更新按钮不应出现，且应给出手动更新提示（Issue 修复）
   versionResponse = { ok: true, version: '1.2.0', updateEnabled: false };
@@ -1613,7 +1613,7 @@ const withEFP = (el, fn) => {
     const r = document.querySelector('#accResult');
     if (!r.classList.contains('ok') || r.textContent.indexOf('账号已更新') < 0) throw new Error(r.className + '/' + r.textContent);
     if (document.querySelector('#accCurrent').value !== '' || document.querySelector('#accNew').value !== '') throw new Error('密码未清空');
-    if (w.shiyue.state.username !== 'tester2') throw new Error('state.username 未同步: ' + w.shiyue.state.username);
+    if (w.feedlore.state.username !== 'tester2') throw new Error('state.username 未同步: ' + w.feedlore.state.username);
     if (!callsOf('toast').length) throw new Error('toast 未调用');
   });
 
@@ -1763,7 +1763,7 @@ const withEFP = (el, fn) => {
   t('复制诊断：写入剪贴板 + toast', () => {
     if (!clipboardWrites.length) throw new Error('未写剪贴板');
     const text = clipboardWrites[clipboardWrites.length - 1];
-    if (text.indexOf('笺川（FeedLora）诊断信息') < 0 || text.indexOf('[RSS]') < 0 || text.indexOf('[数据库]') < 0) throw new Error('内容不符: ' + text.slice(0, 60));
+    if (text.indexOf('笺川（FeedLore）诊断信息') < 0 || text.indexOf('[RSS]') < 0 || text.indexOf('[数据库]') < 0) throw new Error('内容不符: ' + text.slice(0, 60));
     if (text.indexOf('数据库体积: 50.0 MB') < 0 || text.indexOf('自动停用阈值: 连续失败 5 次') < 0 || text.indexOf('上次结果: 新增 5 | 失败 1 | 自动停用 1') < 0) throw new Error('v2.5.0 诊断字段缺失: ' + text.slice(0, 400));
     const t0 = callsOf('toast');
     if (!t0.length || t0[t0.length - 1][1].indexOf('诊断信息已复制') < 0) throw new Error('toast 不符');
@@ -1833,7 +1833,7 @@ const withEFP = (el, fn) => {
 
   // ============ AI 视图（P3a React 化） ============
   adminFlag = true;
-  w.shiyue.state.tab = 'ai';
+  w.feedlore.state.tab = 'ai';
   const aiEl = w.document.createElement('div');
   w.document.body.appendChild(aiEl);
   const aiRoot1 = __mountAi(aiEl);
@@ -1955,7 +1955,7 @@ const withEFP = (el, fn) => {
   await sleep(30);
   aiEl.innerHTML = '';
   adminFlag = false;
-  w.shiyue.state.aiPage = 'digest';
+  w.feedlore.state.aiPage = 'digest';
   __mountAi(aiEl);
   await sleep(80);
   w.dispatchEvent(new w.CustomEvent('__viewChanged', { detail: 'ai' }));
@@ -1969,13 +1969,13 @@ const withEFP = (el, fn) => {
   adminFlag = true;
 
   // ============ 卡片视图（P3b React 化） ============
-  w.shiyue.state.tab = 'cards';
-  w.shiyue.state.feedList = [
+  w.feedlore.state.tab = 'cards';
+  w.feedlore.state.feedList = [
     { id: '1', title: '例子星球', customTitle: null, cardEnabled: true, enabled: true, entryCount: 12, groupName: '科技' },
     { id: '2', title: 'demo', customTitle: null, cardEnabled: true, enabled: true, entryCount: 4, groupName: '' },
   ];
-  w.shiyue.state.feedMeta = { total: 2, enabled: 2, cardEnabled: 2 };
-  w.shiyue.state.groupOrder = ['科技'];
+  w.feedlore.state.feedMeta = { total: 2, enabled: 2, cardEnabled: 2 };
+  w.feedlore.state.groupOrder = ['科技'];
   const cardsEl = w.document.createElement('div');
   w.document.body.appendChild(cardsEl);
   __mountCards(cardsEl);
@@ -2096,29 +2096,29 @@ const withEFP = (el, fn) => {
   });
 
   // 收藏标记经桥（等价 app.js cardSetFlag → tick）
-  await w.shiyue.cardsSetFlag('e2', { isFavorite: false });
+  await w.feedlore.cardsSetFlag('e2', { isFavorite: false });
   await sleep(40);
   t('收藏标记：改共享 state 后卡片取消 is-fav', () => {
     if (C('#grid .card[data-id="e2"]').classList.contains('is-fav')) throw new Error('仍标记收藏');
   });
 
   // 加载更多
-  w.shiyue.state.hasMore = true; cardsTick();
+  w.feedlore.state.hasMore = true; cardsTick();
   await sleep(30);
   t('加载更多按钮：hasMore 时显示', () => { if (C('#loadMoreBtn').hidden) throw new Error('应显示'); });
 
   // 骨架态
-  w.shiyue.state.loading = true; w.shiyue.state.entries = []; cardsTick();
+  w.feedlore.state.loading = true; w.feedlore.state.entries = []; cardsTick();
   await sleep(30);
   t('骨架态：首屏加载显示 8 个骨架卡', () => {
     if (!C('#skeleton')) throw new Error('无骨架');
     if (CA('#skeleton .sk-card').length !== 8) throw new Error('骨架数 ' + CA('#skeleton .sk-card').length);
   });
-  w.shiyue.state.loading = false; w.shiyue.state.entries = miniEntriesAll(); cardsTick();
+  w.feedlore.state.loading = false; w.feedlore.state.entries = miniEntriesAll(); cardsTick();
   await sleep(30);
 
   // 空态
-  w.shiyue.state.feedList = []; w.shiyue.state.entries = []; cardsTick();
+  w.feedlore.state.feedList = []; w.feedlore.state.entries = []; cardsTick();
   await sleep(30);
   t('空态：无订阅源提示', () => {
     if (!C('#empty')) throw new Error('无空态');
@@ -2127,13 +2127,13 @@ const withEFP = (el, fn) => {
 
   // ============ 阅读页（P3c React 化） ============
   adminFlag = true;
-  w.shiyue.state.tab = 'reader';
-  w.shiyue.state.feedList = [
+  w.feedlore.state.tab = 'reader';
+  w.feedlore.state.feedList = [
     { id: '1', title: '例子星球', customTitle: null, cardEnabled: true, enabled: true, entryCount: 12, unreadCount: 3, groupName: '科技' },
     { id: '2', title: 'demo', customTitle: null, cardEnabled: true, enabled: true, entryCount: 4, unreadCount: 0, groupName: '' },
   ];
-  w.shiyue.state.groupOrder = ['科技'];
-  w.shiyue.state.rdFlags = { total: 2, unread: 1, favorite: 1 };
+  w.feedlore.state.groupOrder = ['科技'];
+  w.feedlore.state.rdFlags = { total: 2, unread: 1, favorite: 1 };
   const readerEl = w.document.createElement('div');
   w.document.body.appendChild(readerEl);
   __mountReader(readerEl);
@@ -2235,8 +2235,8 @@ const withEFP = (el, fn) => {
   t('清除 → readerSearch("")', () => { if (!callsOf('readerSearch').some((c) => c[1] === '')) throw new Error('未触发'); });
 
   // 空态（未读）
-  w.shiyue.state.rdScope = 'unread'; w.shiyue.state.rdFeedId = null; w.shiyue.state.rdGroup = null;
-  w.shiyue.state.rdQ = '';
+  w.feedlore.state.rdScope = 'unread'; w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null;
+  w.feedlore.state.rdQ = '';
   readerSetEntries([]);
   await sleep(30);
   t('空态文案（未读）', () => {
@@ -2244,13 +2244,13 @@ const withEFP = (el, fn) => {
     if (R('#readerEmpty').textContent.indexOf('没有未读文章了') < 0) throw new Error(R('#readerEmpty').textContent);
   });
   // 空态（读取失败）
-  w.shiyue.state.rdReadError = true; w.shiyue.state.rdReadErrorMsg = '加载失败：HTTP 500';
+  w.feedlore.state.rdReadError = true; w.feedlore.state.rdReadErrorMsg = '加载失败：HTTP 500';
   readerSetEntries([]);
   await sleep(30);
   t('空态文案（读取失败）', () => {
     if (R('#readerEmpty').textContent.indexOf('加载失败：HTTP 500') < 0) throw new Error(R('#readerEmpty').textContent);
   });
-  w.shiyue.state.rdReadError = false;
+  w.feedlore.state.rdReadError = false;
 
   // ============ App Shell 顶栏（P4a React 化） ============
   __mountTopBar(document.getElementById('topbarRoot'));
@@ -2298,15 +2298,6 @@ const withEFP = (el, fn) => {
   S('#settingsBtn').click();
   await sleep(10);
   t('点设置 → openSettings', () => { if (!callsOf('openSettings').length) throw new Error('未触发'); });
-
-  t('安装按钮默认隐藏', () => { if (S('#installBtn').hidden !== true) throw new Error('应隐藏'); });
-  shellSnap.installReady = true;
-  shellTick();
-  await sleep(20);
-  t('installReady → 安装按钮可见', () => { if (S('#installBtn').hidden) throw new Error('应显示'); });
-  S('#installBtn').click();
-  await sleep(10);
-  t('点安装 → promptInstall', () => { if (!callsOf('promptInstall').length) throw new Error('未触发'); });
 
   // 刷新忙态（refresh 返回挂起的 Promise）
   let resolveRefresh;

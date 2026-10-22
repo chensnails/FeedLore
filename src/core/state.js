@@ -376,38 +376,38 @@ applyAppearance(readAppearance());
   let aChanged = false, lChanged = false;
   try {
     // —— 外观 ——
-    const a = JSON.parse(localStorage.getItem('shiyue.appearance.v1') || '{}');
+    const a = JSON.parse(localStorage.getItem('feedlore.appearance.v1') || '{}');
     if (a && typeof a === 'object') {
       ['accent', 'fontSize', 'readerFont', 'readerLh', 'readerFs', 'readerWidth'].forEach((k) => {
         if (APPR_VALUES[k] && APPR_VALUES[k].indexOf(a[k]) >= 0) { apref[k] = a[k]; aChanged = true; }
       });
     }
-    const t = localStorage.getItem('shiyue.theme.v1');
+    const t = localStorage.getItem('feedlore.theme.v1');
     if (t && APPR_VALUES.theme.indexOf(t) >= 0 && t !== 'auto') { apref.theme = t; aChanged = true; }
     // —— 布局 ——
-    const v = localStorage.getItem('shiyue.view.v1');
+    const v = localStorage.getItem('feedlore.view.v1');
     if (LAYOUT_VALUES.view.indexOf(v) >= 0) { lpref.view = v; lChanged = true; }
-    const tb = localStorage.getItem('shiyue.tab.v1');
+    const tb = localStorage.getItem('feedlore.tab.v1');
     if (LAYOUT_VALUES.tab.indexOf(tb) >= 0) { lpref.tab = tb; lChanged = true; }
-    const cg = JSON.parse(localStorage.getItem('shiyue.collapsedGroups.v1') || 'null');
+    const cg = JSON.parse(localStorage.getItem('feedlore.collapsedGroups.v1') || 'null');
     if (Array.isArray(cg)) {
       lpref.collapsedGroups = cg.filter((g) => typeof g === 'string').map((g) => g.slice(0, 40));
       lChanged = true;
     }
-    const ac = localStorage.getItem('shiyue.reader.accordion.v1');
+    const ac = localStorage.getItem('feedlore.reader.accordion.v1');
     if (ac === '0' || ac === '1') { lpref.accordion = ac !== '0'; lChanged = true; }
-    const ai = localStorage.getItem('shiyue.ai.page.v1');
+    const ai = localStorage.getItem('feedlore.ai.page.v1');
     if (LAYOUT_VALUES.aiPage.indexOf(ai) >= 0) { lpref.aiPage = ai; lChanged = true; }
-    const sec = JSON.parse(localStorage.getItem('shiyue.settings.sections.v1') || 'null');
+    const sec = JSON.parse(localStorage.getItem('feedlore.settings.sections.v1') || 'null');
     if (sec && typeof sec === 'object') { lpref.sections = sec; lChanged = true; }
   } catch (_) { return; }
   if (aChanged) appearancePref = sanitizeAppearanceLocal(apref);
   if (lChanged) layoutPref = sanitizeLayoutLocal(lpref);
   if (aChanged || lChanged) saveUserPrefs();   // 一次合并写账号
   try {
-    ['shiyue.appearance.v1', 'shiyue.theme.v1', 'shiyue.appearance.accent.v1',
-     'shiyue.view.v1', 'shiyue.tab.v1', 'shiyue.collapsedGroups.v1',
-     'shiyue.reader.accordion.v1', 'shiyue.ai.page.v1', 'shiyue.settings.sections.v1']
+    ['feedlore.appearance.v1', 'feedlore.theme.v1', 'feedlore.appearance.accent.v1',
+     'feedlore.view.v1', 'feedlore.tab.v1', 'feedlore.collapsedGroups.v1',
+     'feedlore.reader.accordion.v1', 'feedlore.ai.page.v1', 'feedlore.settings.sections.v1']
       .forEach((k) => localStorage.removeItem(k));
   } catch (_) { /* 忽略 */ }
 })();

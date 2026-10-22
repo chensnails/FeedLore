@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 笺川（FeedLora）—— 从 GitHub 拉取最新代码并重建容器
+# 笺川（FeedLore）—— 从 GitHub 拉取最新代码并重建容器
 # 用法：在项目目录执行  ./deploy.sh
 set -euo pipefail
 cd "$(dirname "$0")"
