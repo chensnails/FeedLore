@@ -32,3 +32,6 @@ tests/ui/.build/
 
 # 本地临时脚本产物
 .build/
+
+# 论坛发布稿：只在本地留着贴论坛，不上 GitHub
+/docs/论坛发布稿.md
