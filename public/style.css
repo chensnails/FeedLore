@@ -2385,6 +2385,21 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 /* 展开态不再做主色描边 + 抬高阴影（整块发亮太抢眼），只留极弱的边框区分，
    靠 caret 旋转 + 展开的正文本身表达"当前展开的是哪条"。 */
 .art-item.open { border-color: var(--border-strong); }
+/* 落点指示（v1.3.7）：从卡片页「在文章页查看」跳过来时，滚到这篇并让文章框闪一下，
+   告诉用户「你要的那条在这里」。只动描边与阴影，不动布局；类由 core 的 focusReaderArt
+   挂 1.5s 后摘掉（时长要和这里的 1.5s 对齐）。 */
+.art-item.is-flash { animation: artFlash 1.5s var(--ease); }
+@keyframes artFlash {
+  0%, 55% { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-2); }
+  100% { border-color: var(--border); box-shadow: var(--elevation-2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 不做闪烁动画，改成静止描边停一瞬 —— 指示作用留着，动效去掉 */
+  .art-item.is-flash {
+    animation: none;
+    border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-2);
+  }
+}
 
 /* 一行 = 可点开的头部 + 右侧收藏星标。
    星标不能塞进 .art-head：button 里不能再嵌 button，所以外面套一层 .art-row。 */

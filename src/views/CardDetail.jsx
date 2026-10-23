@@ -85,7 +85,7 @@ export function CardDetail({ e, onClose, onTag }) {
   };
 
   const toReader = () => {
-    s.jumpToFeed(e.feedId);
+    s.jumpToFeed(e.feedId, e.id);
     onClose();
   };
 

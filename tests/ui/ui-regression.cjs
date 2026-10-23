@@ -582,7 +582,7 @@ w.feedlore = {
     const e = (w.feedlore.state.entries || []).find((x) => String(x.id) === String(id));
     if (e) e.isRead = true;
   },
-  jumpToFeed: (id) => { calls.push(['jumpToFeed', id]); },
+  jumpToFeed: (id, focusId) => { calls.push(['jumpToFeed', id, focusId]); },
   // v1.9.0：阅读页桥（P3c，对齐 app.js 语义）
   fmtFull: (d) => (d ? String(d).slice(0, 16).replace('T', ' ') : ''),
   readerAccordionOn: () => true,
@@ -800,6 +800,25 @@ const withEFP = (el, fn) => {
     if (/\.dd-page|\.dd-mask-page|ddUp|ddFade/.test(css)) throw new Error('半屏 / 整屏已合并，那些是死类与死动画');
     for (const f of ['src/views/Dropdown.jsx', 'src/views/CardDetail.jsx']) {
       if (fs.readFileSync(path.join(root, f), 'utf8').indexOf('dd-page') >= 0) throw new Error(f + ' 仍在渲染 dd-page');
+    }
+  });
+
+  // 卡片页跳文章页的高亮：CSS 动画时长必须与 core 里清除 rdFlashId 的定时器一致，
+  // 否则类先消失（看不到高亮）或动画先结束（高亮框一直亮着）
+  t('style.css + reader.js：跳转高亮的时长与类名对齐', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const rule = css.match(/\.art-item\.is-flash\s*\{([^}]*)\}/);
+    if (!rule) throw new Error('缺 .art-item.is-flash 规则');
+    const anim = css.match(/@keyframes artFlash\s*\{([\s\S]*?)\n\}/);
+    if (!anim) throw new Error('缺 @keyframes artFlash');
+    const dur = rule[1].match(/animation:\s*artFlash\s+([\d.]+)s/);
+    if (!dur) throw new Error('.is-flash 未按秒设 artFlash 时长，实际：' + rule[1].trim());
+    const js = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8');
+    const flashMs = js.match(/const FLASH_MS\s*=\s*(\d+)/);
+    if (!flashMs) throw new Error('reader.js 缺 FLASH_MS');
+    if (Number(dur[1]) * 1000 !== Number(flashMs[1])) {
+      throw new Error(`CSS ${dur[1]}s 与 FLASH_MS ${flashMs[1]}ms 不一致`);
     }
   });
 
@@ -2301,9 +2320,11 @@ const withEFP = (el, fn) => {
   });
   C('.modal .art-actions .btn-jump').click();
   await sleep(40);
-  t('「在文章页查看」→ jumpToFeed(频道) 且弹窗关闭', () => {
+  t('「在文章页查看」→ jumpToFeed(频道, 条目) 且弹窗关闭', () => {
     if (C('.modal-mask')) throw new Error('弹窗未关闭');
-    if (!callsOf('jumpToFeed').some((c) => c[1] === '1')) throw new Error('未跳到该频道');
+    const hit = callsOf('jumpToFeed').find((c) => c[1] === '1');
+    if (!hit) throw new Error('未跳到该频道');
+    if (hit[2] !== 'e1') throw new Error('没带上要高亮的那条 id：' + hit[2]);
   });
   C('#grid .card[data-id="e2"] .title-btn').click();
   await sleep(60);
@@ -2505,6 +2526,41 @@ const withEFP = (el, fn) => {
     if (it1.querySelector('.src-pill').textContent !== '例子星球') throw new Error('来源短名: ' + it1.querySelector('.src-pill').textContent);
     const it2 = R('#readerList .art-item[data-id="r2"]');
     if (!it2.classList.contains('is-read') || !it2.classList.contains('is-fav')) throw new Error('r2 状态类不符');
+  });
+
+  // 卡片页跳过来的那条：高亮类只跟着 state.rdFlashId 走（React 每帧重写 className）
+  t('默认无高亮：列表里没有 is-flash', () => {
+    if (document.querySelectorAll('#readerList .art-item.is-flash').length !== 0) throw new Error('不该有高亮');
+  });
+  w.feedlore.state.rdFlashId = 'r1';
+  readerTick();
+  await sleep(40);
+  t('rdFlashId 只点亮对应文章框', () => {
+    const on = [...document.querySelectorAll('#readerList .art-item.is-flash')];
+    if (on.length !== 1) throw new Error('高亮项数 ' + on.length);
+    if (on[0].getAttribute('data-id') !== 'r1') throw new Error('高亮了 ' + on[0].getAttribute('data-id'));
+  });
+  w.feedlore.state.rdFlashId = null;
+  readerTick();
+  await sleep(40);
+  t('rdFlashId 清空后高亮消失', () => {
+    if (document.querySelectorAll('#readerList .art-item.is-flash').length !== 0) throw new Error('高亮未清除');
+  });
+
+  // 搜索框非受控：外部（jumpToFeed 跳过来时）改 rdQ 必须把框刷回去，否则旧关键词还挂在框上
+  w.feedlore.state.rdQ = '旧关键词';
+  readerTick();
+  await sleep(40);
+  t('外部改 rdQ → 搜索框跟随、清除键出现', () => {
+    if (R('#readerSearch').value !== '旧关键词') throw new Error('框里还是 ' + JSON.stringify(R('#readerSearch').value));
+    if (R('.reader-search-clear').hidden) throw new Error('清除键应显示');
+  });
+  w.feedlore.state.rdQ = '';
+  readerTick();
+  await sleep(40);
+  t('外部清空 rdQ → 搜索框一起清空（跳转过来的路径靠这条）', () => {
+    if (R('#readerSearch').value !== '') throw new Error('框里残留 ' + JSON.stringify(R('#readerSearch').value));
+    if (!R('.reader-search-clear').hidden) throw new Error('清除键应隐藏');
   });
 
   // 展开 → 正文

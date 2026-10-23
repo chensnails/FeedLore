@@ -165,6 +165,39 @@ export function readerCollapseAll() {
   toast('已全部收起');
 }
 
+const FLASH_MS = 1500;      // 高亮停留时长（与 style.css 的 artFlash 对齐）
+const FOCUS_MAX_PAGES = 8;  // 为目标文章最多往后翻几页：再远就不该假装找得到
+
+/** 把某篇文章「指给用户看」：滚到它并让文章框闪一下（卡片页 → 文章页的落点指示）。
+ *  列表是分页的，目标可能不在首屏 —— 往后翻若干页找，翻不到就明说，不静默。
+ *  高亮走 state.rdFlashId 而不是直接给 DOM 加类：阅读页整棵列表由 React 渲染，
+ *  任何一次重绘都会按自己算出的 className 覆盖掉手写上去的类。 */
+export async function focusReaderArt(id) {
+  const want = String(id);
+  let el = findArtItemEl(want);
+  for (let i = 0; !el && i < FOCUS_MAX_PAGES && state.rdHasMore; i++) {
+    await loadReader();
+    el = findArtItemEl(want);
+  }
+  if (!el) {
+    toast('这条不在该频道最近的内容里，已跳到频道列表');
+    return false;
+  }
+  state.rdFlashId = want;
+  renderReader();
+  // renderReader() 只派发一次 tick，React 在微任务里提交 DOM，所以滚动放到下一帧
+  requestAnimationFrame(() => {
+    const target = findArtItemEl(want);
+    if (target && target.scrollIntoView) target.scrollIntoView({ block: 'center' });
+  });
+  setTimeout(() => {
+    if (state.rdFlashId !== want) return;   // 期间又跳了别处，交给那一次去收
+    state.rdFlashId = null;
+    renderReader();
+  }, FLASH_MS);
+  return true;
+}
+
 /* ---------- 已读 / 未读 / 收藏 ---------- */
 
 /** 就地改一条的状态：内存 + 侧栏计数 + 重绘（原 paintEntryFlag 的就地 DOM 改类名移除） */

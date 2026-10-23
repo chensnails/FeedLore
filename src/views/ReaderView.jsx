@@ -231,13 +231,14 @@ export function ArtBody({ e, onTag, extraActions }) {
 }
 
 /** 列表项（对应旧 artItemHtml + expandArt/collapseArt） */
-function ArtItem({ e, expanded, full, bodyErr, onToggle, onFav, onTag }) {
+function ArtItem({ e, expanded, full, bodyErr, flash, onToggle, onFav, onTag }) {
   const s = S();
   const src = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
   const fmtDate = s.fmtDate || ((d) => (d ? String(d) : ''));
   const fav = !!e.isFavorite;
-  const cls = 'art-item' + (e.isRead ? ' is-read' : ' is-unread') + (fav ? ' is-fav' : '') + (expanded ? ' open' : '');
+  const cls = 'art-item' + (e.isRead ? ' is-read' : ' is-unread') + (fav ? ' is-fav' : '') + (expanded ? ' open' : '')
+    + (flash ? ' is-flash' : '');
 
   let inner = null;
   if (expanded) {
@@ -363,6 +364,7 @@ export function ReaderView() {
   const bodyMap = st.rdBody || new Map();
   const bodyErrSet = st.rdBodyErr || new Set();
   const accordionOn = !!(s && s.readerAccordionOn && s.readerAccordionOn());
+  const flashId = st.rdFlashId == null ? null : String(st.rdFlashId);
 
   // 标题
   const cur = st.rdFeedId == null ? null : feeds.find((f) => String(f.id) === String(st.rdFeedId));
@@ -375,6 +377,16 @@ export function ReaderView() {
   const hasUnread = entries.some((e) => !e.isRead);
   const anyExpanded = expanded.size > 0;
   const q = st.rdQ || '';
+
+  // 搜索框故意做成非受控（受控会在打字时抢光标），代价是外部改 rdQ 时框里不会跟着变 ——
+  // 从卡片页跳过来会把关键词清空（否则目标文章被旧关键词筛掉），此时必须把手动的框刷回去。
+  // 正在框里打字时不抢：那时 value 是用户刚敲的，比 debounce 后的 state 更新。
+  useEffect(() => {
+    const el = searchRef.current;
+    if (!el || el === document.activeElement || el.value === q) return;
+    el.value = q;
+    el.dataset.hasval = q ? '1' : '';
+  }, [q]);
 
   let emptyMsg = '';
   if (!entries.length) {
@@ -463,6 +475,7 @@ export function ReaderView() {
           {entries.map((e) => (
             <ArtItem key={e.id} e={e} expanded={expanded.has(e.id)}
               full={bodyMap.get(e.id)} bodyErr={bodyErrSet.has(e.id)}
+              flash={flashId != null && flashId === String(e.id)}
               onToggle={(id) => s.readerToggleArt && s.readerToggleArt(id)}
               onFav={(id) => s.readerToggleFav && s.readerToggleFav(id)}
               onTag={(t) => s.readerTagToCards && s.readerTagToCards(t)} />

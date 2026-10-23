@@ -54,6 +54,9 @@ export const state = {
   rdBodyErr: new Set(),    // 拉正文失败的 id，避免反复重试
   rdReadError: false,      // 首屏加载失败（React 阅读页据此显示错误空态）
   rdReadErrorMsg: '',
+  /* 刚从卡片页跳过来、要在文章框上闪一下高亮的那条 id（字符串比较）；
+     只活一瞬（core/reader.js 的 focusReaderArt 设、定时器清），不落任何持久化。 */
+  rdFlashId: null,
 };
 
 /* ---------------- 按账号保存的 UI 布局偏好 ----------------

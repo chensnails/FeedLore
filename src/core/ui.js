@@ -8,7 +8,7 @@
 import { $, apiFetch, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle } from './util.js';
 import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, THEME_MODES, THEME_META, currentThemeMode, isAdmin } from './state.js';
 import { TABS, loadFeeds, loadPage, applyFilters, render, subtitleText, setViewMode } from './feeds.js';
-import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, readerToggleArt, readerToggleFav, markEntryRead } from './reader.js';
+import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, readerToggleArt, readerToggleFav, markEntryRead, focusReaderArt } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
 
 /* ============================================================
@@ -297,16 +297,20 @@ export function selectScope(scope) {
   setReaderDrawer(false);
   scrollReaderTop();
 }
-export function jumpToFeed(id) {
+/** 跳到阅读页并锁定某个频道；传了 focusId 就把那篇文章指给用户看（滚过去 + 闪一下高亮）。
+ *  focusId 只在这一次跳转里用，不写进任何持久化偏好。 */
+export function jumpToFeed(id, focusId) {
   switchView('reader');
   state.rdScope = 'all';
   state.rdFeedId = Number(id);
   state.rdGroup = null;
+  if (focusId != null) state.rdQ = '';   // 搜索框里的旧关键词会把目标文章筛掉
   renderReaderChannels();
-  loadReader({ reset: true });
   emitShell();
   setReaderDrawer(false);
   scrollReaderTop();
+  const p = loadReader({ reset: true });
+  if (focusId != null) p.then(() => focusReaderArt(focusId));
 }
 export function focusSearchBox() {
   if (state.tab === 'cards') {
