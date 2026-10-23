@@ -1,10 +1,9 @@
-/* 卡片工具栏自定义下拉（v1.1.9，v1.1.10 移动端改为底部弹窗，v1.3.4 长列表改整屏）。
+/* 卡片工具栏自定义下拉（v1.1.9，v1.1.10 移动端改为底部弹窗，v1.3.4 长列表改整屏，
+ * v1.3.6 移动端一律整屏 —— 排序那种三四项的也不再留半屏，用户要的是「弹层都长一个样」）。
  * 原生 <select> 的展开弹窗由操作系统渲染，与应用风格不统一 —— 以自绘浮层替代：
  * - 桌面（>720px）：锚定玻璃面板（分组标题、选中勾、键盘 ↑↓/Enter/Esc、外点关闭）；
- * - 移动（≤720px）：遮罩 + 圆角面板 + 标题栏 + 大触控选项，打开期间锁页面滚动，支持底部安全区。
- *   选项多的（频道筛选）用 fullPage 走整屏形态，读起来像进入一个页面；
- *   只有三四项的排序仍用半屏底部抽屉 —— 四项内容铺满一整屏反而更空。
- *   两种形态都能往下拖收起（useSwipeDismiss），手势条因此一直留着。
+ * - 移动（≤720px）：遮罩 + 整屏面板 + 标题栏 + 大触控选项，打开期间锁页面滚动，支持底部安全区。
+ *   往下拖就能收起（useSwipeDismiss），手势条是这枚提示。
  * 触发按钮沿用 .select 外观；弹层均为静态覆盖层（absolute/fixed），符合「弹层才用模糊」铁律。 */
 
 import { core } from '@core';
@@ -18,7 +17,7 @@ export function isMobileMq() {
   catch (_) { return false; }
 }
 
-export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChange, fullPage }) {
+export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChange }) {
   // options: [{ value, label, group }]；group 为分组名（'' / undefined 表示无分组）
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);   // 打开瞬间定格，本次开合内不切换形态
@@ -65,7 +64,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChang
 
   const openPanel = () => { setMobile(isMobileMq()); setOpen(true); setHi(-1); };
 
-  // 移动端：往下拖就能收起（整屏与半屏同一套手势，见 useSwipeDismiss.js）
+  // 移动端：往下拖就能收起（见 useSwipeDismiss.js）
   const { panelRef: sheetRef, handlers: sheetHandlers } = useSwipeDismiss(close);
 
   const pick = (v) => {
@@ -124,10 +123,10 @@ export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChang
       )}
 
       {open && mobile && (
-        <div className={'dd-mask' + (fullPage ? ' dd-mask-page' : '')} onClick={close}>
-          <div ref={sheetRef} className={'dd-sheet' + (fullPage ? ' dd-page' : '')} role="dialog" aria-modal="true"
+        <div className="dd-mask" onClick={close}>
+          <div ref={sheetRef} className="dd-sheet" role="dialog" aria-modal="true"
             aria-label={ariaLabel || title} onClick={(ev) => ev.stopPropagation()} {...sheetHandlers}>
-            {/* 手势条 = 「往下拖就能收起」的提示，两种形态都支持这个手势，所以都留着 */}
+            {/* 手势条 = 「往下拖就能收起」的提示 */}
             <div className="dd-sheet-grip" aria-hidden="true" />
             <div className="dd-sheet-head">
               <span className="dd-sheet-title">{title}</span>

@@ -790,6 +790,19 @@ const withEFP = (el, fn) => {
     if (m[1].indexOf('display: contents') < 0) throw new Error('应设 display:contents，实际：' + m[1].trim());
   });
 
+  // 移动端弹层只有一种形态（v1.3.6）：.dd-sheet 自己就是整屏，别再长出 .dd-page 这类形态变体类
+  t('style.css：移动端弹层单一整屏形态（.dd-sheet 自带 100dvh，无 .dd-page 变体）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const m = css.match(/\.dd-sheet\s*\{([^}]*)\}/);
+    if (!m) throw new Error('缺 .dd-sheet 规则');
+    if (m[1].indexOf('100dvh') < 0) throw new Error('.dd-sheet 应自带整屏高度，实际：' + m[1].trim());
+    if (/\.dd-page|\.dd-mask-page|ddUp|ddFade/.test(css)) throw new Error('半屏 / 整屏已合并，那些是死类与死动画');
+    for (const f of ['src/views/Dropdown.jsx', 'src/views/CardDetail.jsx']) {
+      if (fs.readFileSync(path.join(root, f), 'utf8').indexOf('dd-page') >= 0) throw new Error(f + ' 仍在渲染 dd-page');
+    }
+  });
+
   // ============ 外壳与宿主 ============
   t('初始：遮罩常驻但 hidden', () => { const m = mask(); if (!m) throw new Error('无遮罩'); if (m.hidden !== true) throw new Error('初始应隐藏'); });
   t('初始：__settingsOpen 未定义/false', () => { if (w.__settingsOpen) throw new Error('__settingsOpen=' + w.__settingsOpen); });
@@ -2154,7 +2167,7 @@ const withEFP = (el, fn) => {
   await sleep(20);
   t('频道下拉（移动端）：整屏形态（无遮罩留白 / 标题栏 / 大选项 / 手势条）', () => {
     if (!C('#feedDD .dd-mask')) throw new Error('无遮罩');
-    if (!C('#feedDD .dd-sheet.dd-page')) throw new Error('频道选项多，移动端应整屏铺开');
+    if (!C('#feedDD .dd-sheet')) throw new Error('频道选项多，移动端应整屏铺开');
     if (!C('#feedDD .dd-sheet-grip')) throw new Error('整屏也支持往下拖收起，手势条是这枚提示');
     if (!C('#feedDD .dd-sheet-head .dd-sheet-title')) throw new Error('无标题栏');
     if (CA('#feedDD .dd-sheet .dd-item').length !== 3) throw new Error('弹窗选项 ' + CA('#feedDD .dd-sheet .dd-item').length);
@@ -2201,20 +2214,21 @@ const withEFP = (el, fn) => {
   t('频道下拉（移动端）：点关闭收起弹窗', () => {
     if (C('#feedDD .dd-mask')) throw new Error('弹窗未收起');
   });
-  // 排序只有三四项，仍走半屏抽屉（整屏会把四个选项撑得很空）；手势两种形态通用
+  // 排序（三四项）从 v1.3.6 起与频道筛选走同一形态：移动端一律整屏，不再留半屏变体
   C('#sortSelect').click();
   await sleep(20);
-  t('排序下拉（移动端）：选项少，仍是半屏抽屉（带手势条、非整屏）', () => {
+  t('排序下拉（移动端）：与频道筛选同一形态（整屏 + 手势条），弹层不再有第二种变体', () => {
     const sheet = C('#sortDD .dd-sheet');
     if (!sheet) throw new Error('未弹出');
-    if (sheet.classList.contains('dd-page')) throw new Error('四个选项不该整屏铺开');
-    if (!C('#sortDD .dd-sheet-grip')) throw new Error('半屏抽屉应有手势条');
+    if (sheet.className !== 'dd-sheet') throw new Error('不该再有形态变体类：' + sheet.className);
+    if (!C('#sortDD .dd-sheet-grip')) throw new Error('应有手势条');
+    if (CA('#sortDD .dd-sheet .dd-item').length !== 3) throw new Error('选项数');
   });
-  t('下拉手势：半屏抽屉同样能往下拖收起', () => {
+  t('下拉手势：排序往下拖同样能收起', () => {
     swipe(C('#sortDD .dd-sheet'), 200, [260, 320]);
   });
   await sleep(240);
-  t('下拉手势：半屏抽屉松手后关闭（排序未变）', () => {
+  t('下拉手势：排序松手后关闭（排序未变）', () => {
     if (C('#sortDD .dd-mask')) throw new Error('未收起');
     if (C('#sortSelect .dd-label').textContent.indexOf('最新发布') < 0) throw new Error('关闭不该改排序');
   });
@@ -2338,13 +2352,13 @@ const withEFP = (el, fn) => {
   await sleep(40);
   detailBodyMode = 'text';
 
-  // 移动端形态：同一组件切底部抽屉
+  // 移动端形态：同一组件切整屏弹层
   const realMM2 = w.matchMedia;
   w.matchMedia = (q) => ({ matches: /max-width:\s*720px/.test(q), addEventListener() {}, removeEventListener() {} });
   C('#grid .card[data-id="e1"] .title-btn').click();
   await sleep(60);
-  t('移动端形态：详情整屏铺开（.dd-sheet.dd-page），带手势条、无标题栏 / 底栏', () => {
-    if (!C('.dd-mask.dd-mask-page .dd-sheet.dd-page[role="dialog"]')) throw new Error('未整屏弹出');
+  t('移动端形态：详情整屏铺开（.dd-mask > .dd-sheet），带手势条、无标题栏 / 底栏', () => {
+    if (!C('.dd-mask > .dd-sheet[role="dialog"]')) throw new Error('未整屏弹出');
     if (C('.modal-mask')) throw new Error('移动端不应再用居中模态');
     if (!C('.dd-sheet-grip')) throw new Error('往下拖就能收起，手势条是这枚提示');
     if (C('.dd-sheet .dd-sheet-head') || C('.dd-sheet .cd-foot')) throw new Error('整屏同样不再有标题栏 / 底栏');

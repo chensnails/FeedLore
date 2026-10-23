@@ -721,26 +721,23 @@ textarea:disabled {
   .toolbar { gap:var(--sp-3); }
 }
 
-/* 移动端弹层（v1.1.10）：遮罩 + 圆角面板 + 标题栏 + 大触控选项；加 .dd-page 则整屏铺开（v1.3.4） */
+/* 移动端弹层（v1.1.10 底部抽屉 → v1.3.4 起整屏 → v1.3.6 一律整屏，不再有半屏形态）：
+   从下方推入铺满一整屏，读起来是「进入一个页面」，不是「盖了一层浮窗」。
+   背后没有内容可透，所以是实底、不做玻璃模糊（白花钱），遮罩也不压暗。
+   面板内可往下拖收起（useSwipeDismiss），.dd-sheet-grip 就是这枚提示。 */
 .dd-mask {
   position: fixed; inset: 0; z-index: 220;
-  background: var(--overlay);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   display: flex; align-items: flex-end;
-  animation: ddFade var(--dur-base) ease;
 }
 .dd-sheet {
   width: 100%;
-  max-height: min(72vh, 560px);
+  height: 100vh;
+  height: 100dvh;
   display: flex; flex-direction: column;
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
-  border: 1px solid var(--border-strong);
-  border-bottom: none;
-  border-radius: 18px 18px 0 0;
-  box-shadow: var(--elevation-4);
+  background: var(--bg);
+  padding-top: env(safe-area-inset-top, 0px);
   padding-bottom:env(safe-area-inset-bottom, 0px);
-  animation: ddUp var(--dur-slow) var(--ease);
+  animation: ddPush var(--dur-slow) var(--ease);
 }
 .dd-sheet-grip {
   width: 38px; height: 4px; border-radius: 999px;
@@ -773,27 +770,9 @@ textarea:disabled {
 .dd-sheet-body { overflow: auto; overscroll-behavior: contain; padding:var(--sp-2) var(--sp-3) var(--sp-4); }
 .dd-sheet-body .dd-item { padding:var(--sp-3) var(--sp-4); font-size: .9063rem; border-radius: 11px; }
 
-/* 整屏形态（v1.3.4）：选项多的下拉与卡片详情不再用半屏抽屉，改成整屏从下方推入 ——
-   读起来是「进入一个页面」，不是「盖了一层浮窗」。铺满后背后没有内容可透，
-   所以换成实底并关掉玻璃模糊（白花钱），遮罩也不再压暗。 */
-.dd-page {
-  max-height: none;
-  height: 100vh;
-  height: 100dvh;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  background: var(--bg);
-  backdrop-filter: none; -webkit-backdrop-filter: none;
-  padding-top: env(safe-area-inset-top, 0px);
-  animation: ddPush var(--dur-slow) var(--ease);
-}
-.dd-mask-page { background: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
 @keyframes ddPush { from { transform: translateY(100%); } to { transform: none; } }
-@keyframes ddFade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes ddUp { from { transform: translateY(40%); opacity: .6; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .dd-mask, .dd-sheet { animation: none; }
+  .dd-sheet { animation: none; }
 }
 
 /* ---------- 视图模式切换（卡片 / 列表） ---------- */
@@ -3266,7 +3245,7 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 .row-item.is-fav { box-shadow: inset 3px 0 0 var(--accent); }
 
 /* ---------- 卡片详情弹窗（src/views/CardDetail.jsx） ----------
- * 桌面用 .modal-mask / .modal 一族，窄屏用 .dd-mask / .dd-sheet 底部抽屉（与 Dropdown 同一约定）；
+ * 桌面用 .modal-mask / .modal 一族，窄屏用 .dd-mask / .dd-sheet 整屏弹层（与 Dropdown 同一约定）；
  * 正文区沿用文章页的 .art-* 样式。v1.3.3 起弹窗不再有标题栏和底栏，整个面板只剩正文，
  * 动作全在正文底部那一排图标按钮里，所以这里只补悬浮关闭键与几处留白。 */
 .cd-scroll {
