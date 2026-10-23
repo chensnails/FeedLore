@@ -13,7 +13,7 @@
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
 import { isMobileMq } from './Dropdown.jsx';
-import { ArtBody, CopyButton, OpenButton } from './ReaderView.jsx';
+import { ArtBody, bodyShowsText, CopyButton, OpenButton } from './ReaderView.jsx';
 
 const S = () => core;
 
@@ -93,8 +93,9 @@ export function CardDetail({ e, onClose, onTag }) {
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtDate = s.fmtDate || ((d) => (d ? String(d) : ''));
   const showBody = !!full && hasBody(full);
-  // 正文自带文本时，卡片摘要作为「摘要」单独列一行；正文缺位时摘要交给下面的兜底区，避免重复
-  const descIsSummary = showBody && !!(full.content || full.bodyJson);
+  /* 摘要与正文同源（rss.js 里 desc 就是 content 压平换行得来的），正文区自己会渲染文字时
+   * 再列一行摘要就是把同一段话摆两遍，所以只在正文区没有文字（纯图正文 / 无正文）时才列摘要。 */
+  const descIsSummary = showBody && !bodyShowsText(full);
 
   const titleId = 'cdTitle';
   const metaBar = (

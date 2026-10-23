@@ -99,6 +99,19 @@ function readerBodyText(e) {
   return t.trim();
 }
 
+/** ArtBody 会不会自己渲染出文字 —— 卡片详情弹窗用它决定要不要另列一行摘要。
+ *  判定口径必须和 ArtBody 的分支一致：有块数组就只看非图片块（首行与标题重复的那行会被丢掉），
+ *  没有块数组则回退到 readerBodyText（它本身就会拿 desc 当正文）。 */
+export function bodyShowsText(e) {
+  if (!e) return false;
+  const blocks = parseBlocks(e.bodyJson);
+  if (blocks) {
+    return blocks.some((b, i) => b && b.t !== 'img' && String(b.text || '').trim()
+      && !(i === 0 && isDuplicateTitleLine(b.text, e.name)));
+  }
+  return !!readerBodyText(e);
+}
+
 const proxied = (u) => (/^https?:\/\//i.test(u) ? '/api/img?u=' + encodeURIComponent(u) : u);
 
 /** 正文图片：加载失败直接移除（旧行为）；点开走全局灯箱（app.js 的 document 委托） */

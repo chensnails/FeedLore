@@ -171,16 +171,26 @@ const miniEntriesAll = () => [
   { id: 'e2', name: '条目二', desc: '', tags: ['标签A'], image: '', size: '', date: '2026-10-14T10:00:00Z', link: '', links: [], sourceUrl: '', feedId: '2', pwd: null, feedName: 'demo', isRead: true, isFavorite: true },
 ];
 
-/* 详情接口（GET /api/entries/:id）比卡片多返回正文：e1 有正文与提取码，e2 什么正文都没有 */
+/* 详情接口（GET /api/entries/:id）比卡片多返回正文：e1 有正文与提取码，e2 什么正文都没有。
+ * detailBodyMode 切换 e1 的正文形态（text 有文字 / images 纯图块 / no-text 老数据无文字），
+ * 用来验证「摘要不会和正文重复出现两遍」。 */
+let detailBodyMode = 'text';
 const miniEntryDetail = (id) => {
   const base = miniEntriesAll().find((x) => x.id === id);
   if (!base) return null;
-  return Object.assign({}, base, {
+  const d = Object.assign({}, base, {
     content: id === 'e1' ? '正文第一段，说明这份资源怎么取。\n附线路两条，第二条是备份。' : '',
     bodyJson: null,
     images: [],
     pwd: id === 'e1' ? 'm8k2' : null,
   });
+  if (id === 'e1' && detailBodyMode === 'images') {
+    d.content = '';
+    d.bodyJson = JSON.stringify([{ t: 'img', src: 'https://img.example/1.png' }]);
+  } else if (id === 'e1' && detailBodyMode === 'no-text') {
+    d.content = '';
+  }
+  return d;
 };
 
 const toDto = (f) => ({
@@ -2213,6 +2223,36 @@ const withEFP = (el, fn) => {
   t('Esc 关闭详情弹窗', () => {
     if (C('.modal-mask')) throw new Error('未关闭');
   });
+
+  // 摘要与正文同源（rss.js 里 desc 就是 content 压平换行），正文有文字时再列摘要等于同一段话摆两遍
+  C('#grid .card[data-id="e1"] .title-btn').click();
+  await sleep(60);
+  t('正文有文字 → 不再另列摘要行', () => {
+    if (C('.cd-desc')) throw new Error('正文已含文字，不该再列一行摘要');
+    if (!C('.art-inner .art-text')) throw new Error('正文没渲染出来');
+  });
+  C('.modal-close').click();
+  await sleep(40);
+  detailBodyMode = 'images';
+  C('#grid .card[data-id="e1"] .title-btn').click();
+  await sleep(60);
+  t('正文只有图片 → 摘要仍单独列一行（此时它是唯一的文字）', () => {
+    if (!C('.cd-desc') || C('.cd-desc').textContent !== '描述一') throw new Error('纯图正文缺少摘要行');
+    if (!C('.art-inner .art-img')) throw new Error('正文图没渲染');
+  });
+  C('.modal-close').click();
+  await sleep(40);
+  detailBodyMode = 'no-text';
+  C('#grid .card[data-id="e1"] .title-btn').click();
+  await sleep(60);
+  t('老数据没有正文文字 → desc 只出现一次（当正文渲染，不再重复列摘要）', () => {
+    if (C('.cd-desc')) throw new Error('回退路径已把 desc 当正文，不该再列摘要');
+    const txt = C('.art-inner .art-text');
+    if (!txt || txt.textContent !== '描述一') throw new Error('desc 未作为正文渲染：' + (txt ? txt.textContent : 'null'));
+  });
+  C('.modal-close').click();
+  await sleep(40);
+  detailBodyMode = 'text';
 
   // 移动端形态：同一组件切底部抽屉
   const realMM2 = w.matchMedia;
