@@ -8,6 +8,10 @@
  * 正文渲染直接复用文章页的 ArtBody / CopyButton / OpenButton（同一套 .art-* 样式），
  * 两处展示保持一份实现。打开弹窗即把该条记为已读：卡片页不显示已读态，
  * 状态只体现在文章页（同一批 entries 行），逻辑见 core 的 cardsDetailRead。
+ *
+ * 弹窗顶部刻意不再列频道 / 大小 / 日期 / 提取码（v1.3.2，用户要求）：这些信息正文里本来就有
+ * （ArtBody 自带「发布时间」，提取码与大小来自正文解析出的行），再列一遍只是重复，
+ * 而且那两条灰底 chip 与提取码灰框跟玻璃底不搭。别把它们当漏掉的功能加回来。
  */
 
 import { core } from '@core';
@@ -39,7 +43,6 @@ export function CardDetail({ e, onClose, onTag }) {
   const s = S();
   const [full, setFull] = useState(null);
   const [err, setErr] = useState(false);
-  const [copied, setCopied] = useState(false);
   // 打开瞬间定格形态（与 Dropdown 同一约定），避免开合途中换布局
   const [mobile] = useState(isMobileMq());
   const closeRef = useRef(null);
@@ -77,44 +80,17 @@ export function CardDetail({ e, onClose, onTag }) {
     });
   };
 
-  const copyPwd = async () => {
-    const ok = await s.copyText(e.pwd);
-    if (!ok) { s.toast('复制失败，请手动选择提取码', false); return; }
-    setCopied(true);
-    s.toast('已复制提取码');
-    setTimeout(() => setCopied(false), 1600);
-  };
-
   const toReader = () => {
     s.jumpToFeed(e.feedId);
     onClose();
   };
 
-  const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
-  const fmtDate = s.fmtDate || ((d) => (d ? String(d) : ''));
   const showBody = !!full && hasBody(full);
   /* 摘要与正文同源（rss.js 里 desc 就是 content 压平换行得来的），正文区自己会渲染文字时
    * 再列一行摘要就是把同一段话摆两遍，所以只在正文区没有文字（纯图正文 / 无正文）时才列摘要。 */
   const descIsSummary = showBody && !bodyShowsText(full);
 
   const titleId = 'cdTitle';
-  const metaBar = (
-    <div className="cd-meta">
-      {srcName ? <span className="src-pill" title={e.feedName}>{srcName}</span> : null}
-      {e.size ? <span className="meta-size">{e.size}</span> : null}
-      {e.date ? <span className="meta-date">{fmtDate(e.date)}</span> : null}
-    </div>
-  );
-
-  const pwdRow = e.pwd ? (
-    <div className="cd-pwd">
-      <span className="cd-pwd-k">提取码</span>
-      <code className="cd-pwd-v">{e.pwd}</code>
-      <button type="button" className="btn btn-ghost" onClick={copyPwd}>
-        {copied ? <><Icon n="check" /> 已复制</> : <>复制</>}
-      </button>
-    </div>
-  ) : null;
 
   let inner = null;
   if (err) inner = <div className="hint">正文加载失败，刷新页面重试</div>;
@@ -153,8 +129,6 @@ export function CardDetail({ e, onClose, onTag }) {
             </button>
           </div>
           <div className="dd-sheet-body cd-body">
-            {metaBar}
-            {pwdRow}
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
           </div>
@@ -175,8 +149,6 @@ export function CardDetail({ e, onClose, onTag }) {
         </div>
         <div className="modal-body">
           <div className="cd-scroll">
-            {metaBar}
-            {pwdRow}
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
           </div>

@@ -2181,15 +2181,9 @@ const withEFP = (el, fn) => {
     if (C('#cdTitle').textContent !== '条目一') throw new Error('标题：' + (C('#cdTitle') || {}).textContent);
     if (!callsOf('apiFetch').some((c) => c[1] === '/api/entries/e1')) throw new Error('未按 id 拉正文');
     if (!callsOf('cardsDetailRead').some((c) => c[1] === 'e1')) throw new Error('未记已读');
-    if (!C('.cd-pwd-v') || C('.cd-pwd-v').textContent !== 'm8k2') throw new Error('提取码未展示');
+    if (C('.cd-meta') || C('.cd-pwd')) throw new Error('弹窗顶部不该再重复列频道 / 大小 / 日期 / 提取码');
     if (!C('.art-inner')) throw new Error('有正文时应渲染正文区');
     if (!C('.modal-close')) throw new Error('无关闭按钮');
-  });
-  clipboardWrites.length = 0;
-  C('.cd-pwd .btn').click();
-  await sleep(30);
-  t('弹窗内复制提取码 → 写入剪贴板', () => {
-    if (clipboardWrites.indexOf('m8k2') < 0) throw new Error('未复制：' + clipboardWrites.join(','));
   });
   C('#grid .card[data-id="e1"] .btn-copy').click();
   await sleep(30);
@@ -2216,7 +2210,8 @@ const withEFP = (el, fn) => {
     if (!C('.modal-mask [role="dialog"]')) throw new Error('未弹出');
     if (C('.art-inner')) throw new Error('无正文时不应渲染正文区');
     if (!C('.cd-none')) throw new Error('无兜底区');
-    if (C('.cd-pwd')) throw new Error('无提取码却渲染了提取码行');
+    if (!C('.cd-none .art-actions')) throw new Error('兜底区缺复制 / 打开动作');
+    if (C('.cd-meta') || C('.cd-pwd')) throw new Error('顶部信息条 / 提取码行不该再渲染');
   });
   document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   await sleep(40);

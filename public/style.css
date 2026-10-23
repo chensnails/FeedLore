@@ -3224,7 +3224,7 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 
 /* ---------- 卡片详情弹窗（src/views/CardDetail.jsx） ----------
  * 桌面用 .modal-mask / .modal 一族，窄屏用 .dd-mask / .dd-sheet 底部抽屉（与 Dropdown 同一约定）；
- * 正文区沿用文章页的 .art-* 样式，这里只补弹窗自己的元信息条、提取码行与底栏。
+ * 正文区沿用文章页的 .art-* 样式，这里只补弹窗自己的摘要行与底栏。
  * 横向留白由弹窗内各块自己负责（.art-inner 已带 padding），所以容器不再补 padding。 */
 .cd-scroll {
   flex: 1; min-height: 0;
@@ -3233,24 +3233,6 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 /* 移动端挂在 .dd-sheet-body 上：抹掉抽屉自带的一圈 padding，避免和下面的块叠加成双倍留白。
    同特异度，靠本块位于 .dd-sheet-body 之后取胜。 */
 .cd-body { padding: 0; }
-.cd-meta {
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3);
-  padding: var(--sp-4) var(--sp-6) var(--sp-1);
-  font-size: var(--fs-sm); color: var(--text-faint);
-}
-.cd-pwd {
-  display: flex; align-items: center; gap: var(--sp-2);
-  margin: 0 var(--sp-6);
-  padding: var(--sp-2) var(--sp-3);
-  background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-md);
-}
-.cd-pwd-k { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--text-faint); }
-.cd-pwd-v {
-  flex: 1; min-width: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--fs-md); color: var(--accent-text);
-  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-}
 .cd-desc {
   margin: var(--sp-3) var(--sp-6) 0;
   font-size: var(--fs-md); line-height: 1.6; color: var(--text-2);
@@ -3266,7 +3248,7 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
   display: flex; align-items: center; gap: var(--sp-2);
   padding: var(--sp-3) var(--sp-6);
   border-top: 1px solid var(--border);
-  background: var(--panel-2);
+  /* 不铺自己的底色：弹窗是玻璃底，脚部再刷一层不透明 panel 就成了「一个卡片三种颜色」 */
 }
 .cd-foot-sp { flex: 1; }
 .dd-sheet .cd-foot { border-radius: 0; padding: var(--sp-3); }
