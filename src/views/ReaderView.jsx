@@ -153,7 +153,7 @@ export function CopyButton({ e }) {
   return (
     <button type="button" className={'btn-copy' + (copied ? ' copied' : '')} onClick={onClick}
       title={many ? `复制链接（${list.length} 条，可选择）` : '复制链接'} aria-label="复制链接">
-      {copied ? <><Icon n="check" /> 已复制</> : <Icon n="copy" />}
+      {copied ? <><Icon n="check" /><span className="btn-label">已复制</span></> : <Icon n="copy" />}
     </button>
   );
 }
@@ -169,8 +169,9 @@ export function OpenButton({ e }) {
 }
 
 /** 正文（对应旧 artBodyHtml）：图文按原顺序内联；老数据回退为图集 + 段落。
- *  导出给卡片详情弹窗（src/views/CardDetail.jsx）复用，两处正文渲染保持一套。 */
-export function ArtBody({ e, onTag }) {
+ *  导出给卡片详情弹窗（src/views/CardDetail.jsx）复用，两处正文渲染保持一套。
+ *  extraActions：弹窗会把「收藏 / 在文章页查看」也塞进这条动作行，保证一个弹窗只有一排按钮。 */
+export function ArtBody({ e, onTag, extraActions }) {
   const s = S();
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
   const parts = [];
@@ -225,7 +226,7 @@ export function ArtBody({ e, onTag }) {
       </div>
     );
   }
-  parts.push(<div className="art-actions" key="acts"><CopyButton e={e} /><OpenButton e={e} /></div>);
+  parts.push(<div className="art-actions" key="acts"><CopyButton e={e} /><OpenButton e={e} />{extraActions}</div>);
   return <div className="art-inner">{parts}</div>;
 }
 

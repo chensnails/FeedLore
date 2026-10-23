@@ -1,7 +1,7 @@
 /* 卡片详情弹窗（点击卡片页的卡片后展示整条内容）。
  *
  * 弹层形态沿用 src/views/Dropdown.jsx 的既有约定，不新增第二套弹层语言：
- * - 桌面（>720px）：遮罩 + 居中模态，复用 .modal-mask / .modal / .modal-head 一族；
+ * - 桌面（>720px）：遮罩 + 居中模态，复用 .modal-mask / .modal 一族；
  * - 移动（≤720px）：底部抽屉，复用 v1.1.10 的 .dd-mask / .dd-sheet；
  * 形态在打开瞬间定格，本次开合内不随窗口变化重排。
  *
@@ -9,9 +9,11 @@
  * 两处展示保持一份实现。打开弹窗即把该条记为已读：卡片页不显示已读态，
  * 状态只体现在文章页（同一批 entries 行），逻辑见 core 的 cardsDetailRead。
  *
- * 弹窗顶部刻意不再列频道 / 大小 / 日期 / 提取码（v1.3.2，用户要求）：这些信息正文里本来就有
- * （ArtBody 自带「发布时间」，提取码与大小来自正文解析出的行），再列一遍只是重复，
- * 而且那两条灰底 chip 与提取码灰框跟玻璃底不搭。别把它们当漏掉的功能加回来。
+ * 弹窗只剩正文一种语言（v1.3.3，用户要求）：标题栏和底栏都撤掉，收藏与「在文章页查看」
+ * 并进正文底部的动作行，和复制 / 打开并排成四个同尺寸图标按钮。
+ * 因此这里刻意不再列频道 / 大小 / 日期 / 提取码（v1.3.2），也不再渲染标题（v1.3.3）：
+ * 这些信息正文里本来就有（ArtBody 自带「发布时间」，提取码与大小来自正文解析出的行），
+ * 卡片页的卡面在弹窗背后也已经写着标题。别把它们当漏掉的功能加回来。
  */
 
 import { core } from '@core';
@@ -90,49 +92,51 @@ export function CardDetail({ e, onClose, onTag }) {
    * 再列一行摘要就是把同一段话摆两遍，所以只在正文区没有文字（纯图正文 / 无正文）时才列摘要。 */
   const descIsSummary = showBody && !bodyShowsText(full);
 
-  const titleId = 'cdTitle';
+  /* 与 CopyButton / OpenButton 并排的另两个动作：只做图标，靠 title + aria-label 说明。
+   * 图标沿用顶栏语义（收藏 ★ / 文章页 = inbox），不新造第三套符号。 */
+  const extraActions = (
+    <>
+      <button type="button" className={'btn-fav' + (fav ? ' is-fav' : '')} onClick={toggleFav}
+        aria-pressed={fav ? 'true' : 'false'} title={fav ? '取消收藏' : '收藏'}
+        aria-label={fav ? '取消收藏' : '收藏'}>
+        <Icon n={fav ? 'star' : 'star-o'} />
+      </button>
+      <button type="button" className="btn-jump" onClick={toReader} title="在文章页查看" aria-label="在文章页查看">
+        <Icon n="inbox" />
+      </button>
+    </>
+  );
+
+  const closeBtn = (
+    <button type="button" className="modal-close cd-close" ref={closeRef} aria-label="关闭详情" onClick={onClose}>
+      <Icon n="x" />
+    </button>
+  );
+
+  const dialogLabel = e.name || '条目详情';
 
   let inner = null;
   if (err) inner = <div className="hint">正文加载失败，刷新页面重试</div>;
   else if (!full) inner = <div className="art-loading"><i /><i /><i /></div>;
-  else if (showBody) inner = <div className="art-body"><ArtBody e={full} onTag={onTag} /></div>;
+  else if (showBody) inner = <div className="art-body cd-art"><ArtBody e={full} onTag={onTag} extraActions={extraActions} /></div>;
   else inner = (
-    <div className="art-body">
-      <div className="cd-none">
-        {e.desc ? <p className="cd-desc">{e.desc}</p> : null}
-        <div className="art-actions"><CopyButton e={e} /><OpenButton e={e} /></div>
-      </div>
-    </div>
-  );
-
-  const foot = (
-    <div className="cd-foot">
-      <button type="button" className={'btn' + (fav ? ' is-fav' : '')} aria-pressed={fav ? 'true' : 'false'}
-        onClick={toggleFav}>
-        <Icon n={fav ? 'star' : 'star-o'} /> {fav ? '已收藏' : '收藏'}
-      </button>
-      <span className="cd-foot-sp" />
-      <button type="button" className="btn" onClick={toReader}>在文章页查看</button>
+    <div className="cd-none">
+      {e.desc ? <p className="cd-desc">{e.desc}</p> : null}
+      <div className="art-actions"><CopyButton e={e} /><OpenButton e={e} />{extraActions}</div>
     </div>
   );
 
   if (mobile) {
     return (
       <div className="dd-mask" onClick={onClose}>
-        <div className="dd-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId}
+        <div className="dd-sheet cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel}
           onClick={(ev) => ev.stopPropagation()}>
           <div className="dd-sheet-grip" aria-hidden="true" />
-          <div className="dd-sheet-head">
-            <span className="dd-sheet-title" id={titleId}>{e.name}</span>
-            <button type="button" className="dd-sheet-close" ref={closeRef} aria-label="关闭详情" onClick={onClose}>
-              <Icon n="x" />
-            </button>
-          </div>
+          {closeBtn}
           <div className="dd-sheet-body cd-body">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
           </div>
-          {foot}
         </div>
       </div>
     );
@@ -140,20 +144,14 @@ export function CardDetail({ e, onClose, onTag }) {
 
   return (
     <div className="modal-mask" onClick={(ev) => { if (ev.target === ev.currentTarget) onClose(); }}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId}>
-        <div className="modal-head">
-          <h2 id={titleId}>{e.name}</h2>
-          <button type="button" className="modal-close" ref={closeRef} aria-label="关闭详情" onClick={onClose}>
-            <Icon n="x" />
-          </button>
-        </div>
+      <div className="modal cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel}>
+        {closeBtn}
         <div className="modal-body">
           <div className="cd-scroll">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
           </div>
         </div>
-        {foot}
       </div>
     </div>
   );

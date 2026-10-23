@@ -753,6 +753,10 @@ textarea:disabled {
   border-bottom: 1px solid var(--border);
 }
 .dd-sheet-title { font-size: .9375rem; font-weight: 600; color: var(--text); }
+/* 抽屉标题单行截断，否则长标题会把关闭按钮挤走 */
+.dd-sheet-head .dd-sheet-title {
+  min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
 .dd-sheet-close {
   border: none; background: none; font-family: inherit;
   width: 36px; height: 36px; border-radius: 50%;
@@ -1018,6 +1022,19 @@ textarea:disabled {
 .btn-copy:disabled, .btn-open.disabled {
   opacity: .45; cursor: not-allowed;
 }
+
+/* 收藏 / 跳文章页：与复制、打开同族的纯图标按钮（卡片详情弹窗的动作行） */
+.btn-fav, .btn-jump {
+  background: var(--panel); color: var(--text-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  font-family: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.btn-fav:hover { border-color: var(--star); color: var(--star); }
+.btn-fav.is-fav { color: var(--star); border-color: var(--star); background: var(--star-soft); }
+.btn-jump:hover { border-color: var(--accent-text); color: var(--accent-text); }
 
 /* ---------- 骨架屏 ---------- */
 .sk-card {
@@ -2526,9 +2543,13 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
 .art-tags { display: flex; align-items: center; flex-wrap: wrap; gap:var(--sp-2); }
 .art-actions { display: flex; align-items: center; gap:var(--sp-2); flex-wrap: wrap; }
-/* 正文操作收成小方块图标按钮（复制 / 打开原文章，纯 SVG 无文字） */
+/* 正文操作收成小方块图标按钮（复制 / 打开原文章 / 收藏 / 跳文章页，纯 SVG 无文字） */
 .art-actions .btn-copy,
-.art-actions .btn-open { flex: 0 0 auto; width: 34px; height: 34px; padding:0; justify-content: center; }
+.art-actions .btn-open,
+.art-actions .btn-fav,
+.art-actions .btn-jump { flex: 0 0 auto; width: 34px; height: 34px; padding:0; justify-content: center; }
+/* 复制成功态自带「已复制」文字，在这一排方块里会溢出到按钮外，只留勾图标（文字靠 toast 播报） */
+.art-actions .btn-label { display: none; }
 
 .art-loading { display: inline-flex; gap:var(--sp-2); padding:var(--sp-2) 0; }
 .art-loading i {
@@ -3224,15 +3245,17 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 
 /* ---------- 卡片详情弹窗（src/views/CardDetail.jsx） ----------
  * 桌面用 .modal-mask / .modal 一族，窄屏用 .dd-mask / .dd-sheet 底部抽屉（与 Dropdown 同一约定）；
- * 正文区沿用文章页的 .art-* 样式，这里只补弹窗自己的摘要行与底栏。
- * 横向留白由弹窗内各块自己负责（.art-inner 已带 padding），所以容器不再补 padding。 */
+ * 正文区沿用文章页的 .art-* 样式。v1.3.3 起弹窗不再有标题栏和底栏，整个面板只剩正文，
+ * 动作全在正文底部那一排图标按钮里，所以这里只补悬浮关闭键与几处留白。 */
 .cd-scroll {
   flex: 1; min-height: 0;
   overflow-y: auto; overscroll-behavior: contain;
+  /* 给右上角悬浮的关闭键让位，否则正文首行 / 首图会被压在它下面 */
+  padding-top: var(--sp-8);
 }
 /* 移动端挂在 .dd-sheet-body 上：抹掉抽屉自带的一圈 padding，避免和下面的块叠加成双倍留白。
    同特异度，靠本块位于 .dd-sheet-body 之后取胜。 */
-.cd-body { padding: 0; }
+.cd-body { padding: var(--sp-8) 0 0; }
 .cd-desc {
   margin: var(--sp-3) var(--sp-6) 0;
   font-size: var(--fs-md); line-height: 1.6; color: var(--text-2);
@@ -3243,19 +3266,19 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
 }
 .cd-none .cd-desc { margin: 0; }
-.cd-foot {
-  flex: 0 0 auto;
-  display: flex; align-items: center; gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-6);
-  border-top: 1px solid var(--border);
-  /* 不铺自己的底色：弹窗是玻璃底，脚部再刷一层不透明 panel 就成了「一个卡片三种颜色」 */
+/* 弹窗面板：为悬浮关闭键提供定位参照（桌面 .modal 与移动 .dd-sheet 共用） */
+.cd-modal { position: relative; }
+.cd-close {
+  position: absolute; top: var(--sp-3); right: var(--sp-3); z-index: 2;
+  width: 34px; height: 34px; font-size: var(--fs-md);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--panel); color: var(--text-muted);
+  border: 1px solid var(--border-strong); border-radius: 9px;
 }
-.cd-foot-sp { flex: 1; }
-.dd-sheet .cd-foot { border-radius: 0; padding: var(--sp-3); }
-/* 抽屉标题单行截断，否则长标题会把关闭按钮挤走 */
-.dd-sheet-head .dd-sheet-title {
-  min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-}
+.cd-close:hover { background: var(--panel); border-color: var(--accent-text); color: var(--accent-text); }
+/* 正文块在弹窗里不再铺自己的底色：.art-body 的文章页样式（不透明 panel-2 + 顶部分隔线）
+   放进玻璃面板就成了「一个卡片三种颜色」，撤掉后整个弹窗只剩一层底。 */
+.cd-art { border-top: none; background: transparent; }
 /* 统一的键盘可见焦点环（无障碍 + 现代观感） */
 :focus-visible {
   outline: 2px solid var(--accent);

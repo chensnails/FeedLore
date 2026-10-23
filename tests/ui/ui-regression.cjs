@@ -2177,13 +2177,35 @@ const withEFP = (el, fn) => {
   C('#grid .card[data-id="e1"] .card-desc').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   await sleep(60);
   t('点卡片空白处 → 打开详情弹窗 + 拉正文 + 记为已读', () => {
-    if (!C('.modal-mask [role="dialog"][aria-modal="true"]')) throw new Error('未弹出模态');
-    if (C('#cdTitle').textContent !== '条目一') throw new Error('标题：' + (C('#cdTitle') || {}).textContent);
+    const dlg = C('.modal-mask [role="dialog"][aria-modal="true"]');
+    if (!dlg) throw new Error('未弹出模态');
+    if (dlg.getAttribute('aria-label') !== '条目一') throw new Error('弹窗缺可读名称：' + dlg.getAttribute('aria-label'));
     if (!callsOf('apiFetch').some((c) => c[1] === '/api/entries/e1')) throw new Error('未按 id 拉正文');
     if (!callsOf('cardsDetailRead').some((c) => c[1] === 'e1')) throw new Error('未记已读');
     if (C('.cd-meta') || C('.cd-pwd')) throw new Error('弹窗顶部不该再重复列频道 / 大小 / 日期 / 提取码');
     if (!C('.art-inner')) throw new Error('有正文时应渲染正文区');
     if (!C('.modal-close')) throw new Error('无关闭按钮');
+  });
+  t('弹窗只剩正文：标题栏与底栏都撤掉，四个动作并到正文底部一行', () => {
+    if (C('.modal .modal-head')) throw new Error('标题栏没撤干净');
+    if (C('.modal .cd-foot')) throw new Error('底栏没撤干净');
+    if (CA('.modal .art-actions > *').length !== 4) throw new Error('动作行应有复制 / 打开 / 收藏 / 跳文章页四个：' + CA('.modal .art-actions > *').length);
+    if (!C('.modal .art-actions .btn-copy') || !C('.modal .art-actions .btn-open')) throw new Error('复制 / 打开不在动作行里');
+    if (!C('.modal .art-actions .btn-fav') || !C('.modal .art-actions .btn-jump')) throw new Error('收藏 / 在文章页查看没并进动作行');
+    if (CA('.modal .art-actions .ico').length !== 4) throw new Error('动作行四个按钮都该是 SVG 图标');
+    if (C('.modal .art-actions .btn-fav').textContent.trim()) throw new Error('纯图标按钮不该再带文字');
+    if (C('.modal .art-actions .btn-jump').textContent.trim()) throw new Error('纯图标按钮不该再带文字');
+  });
+  C('.modal .art-actions .btn-fav').click();
+  await sleep(40);
+  t('动作行里的收藏按钮：切收藏态但不关弹窗', () => {
+    if (!C('.modal .art-actions .btn-fav.is-fav')) throw new Error('未切到已收藏');
+    if (!C('.modal-mask')) throw new Error('点收藏不该关闭弹窗');
+  });
+  C('.modal .art-actions .btn-fav').click();
+  await sleep(40);
+  t('再点一次取消收藏（回到初始态，不影响后续用例）', () => {
+    if (C('.modal .art-actions .btn-fav.is-fav')) throw new Error('未取消收藏');
   });
   C('#grid .card[data-id="e1"] .btn-copy').click();
   await sleep(30);
@@ -2198,7 +2220,7 @@ const withEFP = (el, fn) => {
     if (detailGets() !== getsBefore) throw new Error('重复拉正文');
     if (callsOf('cardsDetailRead').length !== 1) throw new Error('重复记已读');
   });
-  C('.modal .cd-foot .btn:last-child').click();
+  C('.modal .art-actions .btn-jump').click();
   await sleep(40);
   t('「在文章页查看」→ jumpToFeed(频道) 且弹窗关闭', () => {
     if (C('.modal-mask')) throw new Error('弹窗未关闭');
@@ -2211,6 +2233,8 @@ const withEFP = (el, fn) => {
     if (C('.art-inner')) throw new Error('无正文时不应渲染正文区');
     if (!C('.cd-none')) throw new Error('无兜底区');
     if (!C('.cd-none .art-actions')) throw new Error('兜底区缺复制 / 打开动作');
+    if (!C('.cd-none .art-actions .btn-fav') || !C('.cd-none .art-actions .btn-jump')) throw new Error('无正文时收藏 / 跳文章页也要在动作行里');
+    if (C('.cd-foot') || C('.modal-head')) throw new Error('无正文分支也不该出现底栏 / 标题栏');
     if (C('.cd-meta') || C('.cd-pwd')) throw new Error('顶部信息条 / 提取码行不该再渲染');
   });
   document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -2258,8 +2282,10 @@ const withEFP = (el, fn) => {
     if (!C('.dd-mask .dd-sheet[role="dialog"]')) throw new Error('未弹出抽屉');
     if (C('.modal-mask')) throw new Error('移动端不应再用居中模态');
     if (!C('.dd-sheet-grip')) throw new Error('无抽屉手势条');
+    if (C('.dd-sheet .dd-sheet-head') || C('.dd-sheet .cd-foot')) throw new Error('抽屉同样不再有标题栏 / 底栏');
+    if (!C('.dd-sheet .art-actions .btn-fav') || !C('.dd-sheet .art-actions .btn-jump')) throw new Error('抽屉的动作行缺收藏 / 跳文章页');
   });
-  C('.dd-sheet .dd-sheet-close').click();
+  C('.dd-sheet .cd-close').click();
   await sleep(40);
   t('移动端：抽屉关闭按钮收起弹窗', () => {
     if (C('.dd-mask')) throw new Error('未关闭');
