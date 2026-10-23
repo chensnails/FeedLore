@@ -116,7 +116,10 @@ services:
   # ---------------------------------------------------------------
   watchtower:
     image: containrrr/watchtower:1.7.1   # containrrr 已归档，固定末版；新版环境变量名不同，勿随意 latest
-    container_name: watchtower
+    # 宿主机上常已有别的服务在用名为 watchtower 的容器，撞名会让本次 up 直接失败。
+    # 只改 container_name：app 侧的 UPDATE_WEBHOOK_URL 走的是 compose 服务名 DNS
+    # （仍叫 watchtower），改名不影响「一键更新」的转发。
+    container_name: feedlore-watchtower
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

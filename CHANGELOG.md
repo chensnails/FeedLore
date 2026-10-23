@@ -4,7 +4,7 @@
 
 ## [未发布]
 
-（暂无）
+- **镜像模式的 Watchtower 容器改名 `watchtower` → `feedlore-watchtower`**（`docker-compose.release.yml`）：宿主机上常常已经有别的服务在跑一个叫 `watchtower` 的容器，撞名会让新装用户的 `docker compose up -d` 直接失败。只改 `container_name`，compose 服务名仍是 `watchtower`，所以后端「一键更新」用的 `http://watchtower:8080/v1/update` 不变、无需改 `.env`。已装好的机器不受影响（要拿这个名字就重新 `up -d` 一次）。
 
 ## [1.3.7] — 2026-10-23
 
