@@ -2141,9 +2141,10 @@ const withEFP = (el, fn) => {
     addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   C('#feedSelect').click();
   await sleep(20);
-  t('频道下拉（移动端）：底部弹窗渲染（遮罩/标题栏/大选项）', () => {
+  t('频道下拉（移动端）：整屏形态（无遮罩留白 / 标题栏 / 大选项 / 无手势条）', () => {
     if (!C('#feedDD .dd-mask')) throw new Error('无遮罩');
-    if (!C('#feedDD .dd-sheet')) throw new Error('无弹窗面板');
+    if (!C('#feedDD .dd-sheet.dd-page')) throw new Error('频道选项多，移动端应整屏铺开');
+    if (C('#feedDD .dd-sheet-grip')) throw new Error('整屏形态不该再画抽屉手势条');
     if (!C('#feedDD .dd-sheet-head .dd-sheet-title')) throw new Error('无标题栏');
     if (CA('#feedDD .dd-sheet .dd-item').length !== 3) throw new Error('弹窗选项 ' + CA('#feedDD .dd-sheet .dd-item').length);
     if (!C('#feedDD .dd-sheet .dd-item.active')) throw new Error('当前项未高亮');
@@ -2153,6 +2154,17 @@ const withEFP = (el, fn) => {
   t('频道下拉（移动端）：点关闭收起弹窗', () => {
     if (C('#feedDD .dd-mask')) throw new Error('弹窗未收起');
   });
+  // 排序只有三四项，仍走半屏抽屉（整屏会把四个选项撑得很空）
+  C('#sortSelect').click();
+  await sleep(20);
+  t('排序下拉（移动端）：选项少，仍是半屏抽屉（带手势条、非整屏）', () => {
+    const sheet = C('#sortDD .dd-sheet');
+    if (!sheet) throw new Error('未弹出');
+    if (sheet.classList.contains('dd-page')) throw new Error('四个选项不该整屏铺开');
+    if (!C('#sortDD .dd-sheet-grip')) throw new Error('半屏抽屉应有手势条');
+  });
+  C('#sortDD .dd-sheet-close').click();
+  await sleep(20);
   w.matchMedia = realMM;
   t('卡片内容：标题 / 来源短名 / 体积 / 标签 / 日期', () => {
     const c1 = C('#grid .card[data-id="e1"]');
@@ -2278,12 +2290,13 @@ const withEFP = (el, fn) => {
   w.matchMedia = (q) => ({ matches: /max-width:\s*720px/.test(q), addEventListener() {}, removeEventListener() {} });
   C('#grid .card[data-id="e1"] .title-btn').click();
   await sleep(60);
-  t('移动端形态：详情用底部抽屉（.dd-mask / .dd-sheet）', () => {
-    if (!C('.dd-mask .dd-sheet[role="dialog"]')) throw new Error('未弹出抽屉');
+  t('移动端形态：详情整屏铺开（.dd-sheet.dd-page），无手势条 / 标题栏 / 底栏', () => {
+    if (!C('.dd-mask.dd-mask-page .dd-sheet.dd-page[role="dialog"]')) throw new Error('未整屏弹出');
     if (C('.modal-mask')) throw new Error('移动端不应再用居中模态');
-    if (!C('.dd-sheet-grip')) throw new Error('无抽屉手势条');
-    if (C('.dd-sheet .dd-sheet-head') || C('.dd-sheet .cd-foot')) throw new Error('抽屉同样不再有标题栏 / 底栏');
-    if (!C('.dd-sheet .art-actions .btn-fav') || !C('.dd-sheet .art-actions .btn-jump')) throw new Error('抽屉的动作行缺收藏 / 跳文章页');
+    if (C('.dd-sheet-grip')) throw new Error('整屏不该画抽屉手势条');
+    if (C('.dd-sheet .dd-sheet-head') || C('.dd-sheet .cd-foot')) throw new Error('整屏同样不再有标题栏 / 底栏');
+    if (!C('.dd-sheet .cd-close')) throw new Error('整屏没有「点遮罩关闭」，右上角 × 是唯一指针出口');
+    if (!C('.dd-sheet .art-actions .btn-fav') || !C('.dd-sheet .art-actions .btn-jump')) throw new Error('动作行缺收藏 / 跳文章页');
   });
   C('.dd-sheet .cd-close').click();
   await sleep(40);

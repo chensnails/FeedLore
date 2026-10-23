@@ -1,8 +1,9 @@
-/* 卡片工具栏自定义下拉（v1.1.9，v1.1.10 移动端改为底部弹窗）。
+/* 卡片工具栏自定义下拉（v1.1.9，v1.1.10 移动端改为底部弹窗，v1.3.4 长列表改整屏）。
  * 原生 <select> 的展开弹窗由操作系统渲染，与应用风格不统一 —— 以自绘浮层替代：
  * - 桌面（>720px）：锚定玻璃面板（分组标题、选中勾、键盘 ↑↓/Enter/Esc、外点关闭）；
- * - 移动（≤720px）：底部弹窗（bottom sheet）—— 遮罩模糊 + 圆角面板 + 标题栏/关闭 + 大触控选项，
- *   打开期间锁页面滚动，支持底部安全区（env(safe-area-inset-bottom)）。
+ * - 移动（≤720px）：遮罩模糊 + 标题栏/关闭 + 大触控选项，打开期间锁页面滚动，支持底部安全区。
+ *   选项多的（频道筛选）用 fullPage 走整屏形态，读起来像进入一个页面；
+ *   只有三四项的排序仍用半屏底部抽屉 —— 四项内容铺满一整屏反而更空。
  * 触发按钮沿用 .select 外观；弹层均为静态覆盖层（absolute/fixed），符合「弹层才用模糊」铁律。 */
 
 import { core } from '@core';
@@ -15,7 +16,7 @@ export function isMobileMq() {
   catch (_) { return false; }
 }
 
-export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChange }) {
+export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChange, fullPage }) {
   // options: [{ value, label, group }]；group 为分组名（'' / undefined 表示无分组）
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);   // 打开瞬间定格，本次开合内不切换形态
@@ -118,10 +119,11 @@ export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChang
       )}
 
       {open && mobile && (
-        <div className="dd-mask" onClick={close}>
-          <div className="dd-sheet" role="dialog" aria-modal="true" aria-label={ariaLabel || title}
-            onClick={(ev) => ev.stopPropagation()}>
-            <div className="dd-sheet-grip" aria-hidden="true" />
+        <div className={'dd-mask' + (fullPage ? ' dd-mask-page' : '')} onClick={close}>
+          <div className={'dd-sheet' + (fullPage ? ' dd-page' : '')} role="dialog" aria-modal="true"
+            aria-label={ariaLabel || title} onClick={(ev) => ev.stopPropagation()}>
+            {/* 整屏形态没有「往下拖收起」这回事，手势条留着反而是在骗人 */}
+            {fullPage ? null : <div className="dd-sheet-grip" aria-hidden="true" />}
             <div className="dd-sheet-head">
               <span className="dd-sheet-title">{title}</span>
               <button type="button" className="dd-sheet-close" aria-label="关闭" onClick={close}>

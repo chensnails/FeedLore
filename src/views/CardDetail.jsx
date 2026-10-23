@@ -2,7 +2,8 @@
  *
  * 弹层形态沿用 src/views/Dropdown.jsx 的既有约定，不新增第二套弹层语言：
  * - 桌面（>720px）：遮罩 + 居中模态，复用 .modal-mask / .modal 一族；
- * - 移动（≤720px）：底部抽屉，复用 v1.1.10 的 .dd-mask / .dd-sheet；
+ * - 移动（≤720px）：v1.3.4 起整屏铺开（.dd-sheet.dd-page），从下方推入像进入一个页面；
+ *   整屏没有「点遮罩关闭」这回事了，右上角那枚悬浮 × 是指针唯一的出口，别把它当多余装饰删掉。
  * 形态在打开瞬间定格，本次开合内不随窗口变化重排。
  *
  * 正文渲染直接复用文章页的 ArtBody / CopyButton / OpenButton（同一套 .art-* 样式），
@@ -128,10 +129,9 @@ export function CardDetail({ e, onClose, onTag }) {
 
   if (mobile) {
     return (
-      <div className="dd-mask" onClick={onClose}>
-        <div className="dd-sheet cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel}
+      <div className="dd-mask dd-mask-page" onClick={onClose}>
+        <div className="dd-sheet dd-page cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel}
           onClick={(ev) => ev.stopPropagation()}>
-          <div className="dd-sheet-grip" aria-hidden="true" />
           {closeBtn}
           <div className="dd-sheet-body cd-body">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}

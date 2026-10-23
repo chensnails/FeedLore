@@ -329,7 +329,7 @@ export function CardsView() {
             placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" autoComplete="off"
             value={qDraft} onChange={onSearchInput} />
         </div>
-        <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选" value={feedValue}
+        <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选" value={feedValue} fullPage
           options={feedOpts} onChange={(v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }} />
         <Dropdown wrapId="sortDD" id="sortSelect" title="排序" value={st.sort || 'new'}
           options={sortOpts} onChange={(v) => { if (s.cardsSort) s.cardsSort(v); }} />
