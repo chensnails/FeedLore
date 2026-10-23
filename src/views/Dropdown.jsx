@@ -1,13 +1,15 @@
 /* 卡片工具栏自定义下拉（v1.1.9，v1.1.10 移动端改为底部弹窗，v1.3.4 长列表改整屏）。
  * 原生 <select> 的展开弹窗由操作系统渲染，与应用风格不统一 —— 以自绘浮层替代：
  * - 桌面（>720px）：锚定玻璃面板（分组标题、选中勾、键盘 ↑↓/Enter/Esc、外点关闭）；
- * - 移动（≤720px）：遮罩模糊 + 标题栏/关闭 + 大触控选项，打开期间锁页面滚动，支持底部安全区。
+ * - 移动（≤720px）：遮罩 + 圆角面板 + 标题栏 + 大触控选项，打开期间锁页面滚动，支持底部安全区。
  *   选项多的（频道筛选）用 fullPage 走整屏形态，读起来像进入一个页面；
  *   只有三四项的排序仍用半屏底部抽屉 —— 四项内容铺满一整屏反而更空。
+ *   两种形态都能往下拖收起（useSwipeDismiss），手势条因此一直留着。
  * 触发按钮沿用 .select 外观；弹层均为静态覆盖层（absolute/fixed），符合「弹层才用模糊」铁律。 */
 
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
+import { useSwipeDismiss } from './useSwipeDismiss.js';
 
 /* 与 style.css 的 720px 断点一致；jsdom 无 matchMedia 或无布局时按桌面处理。
    卡片详情弹窗（CardDetail）也用这条判据选弹层形态，故导出。 */
@@ -62,6 +64,9 @@ export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChang
   }, [open]);
 
   const openPanel = () => { setMobile(isMobileMq()); setOpen(true); setHi(-1); };
+
+  // 移动端：往下拖就能收起（整屏与半屏同一套手势，见 useSwipeDismiss.js）
+  const { panelRef: sheetRef, handlers: sheetHandlers } = useSwipeDismiss(close);
 
   const pick = (v) => {
     setOpen(false);
@@ -120,10 +125,10 @@ export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChang
 
       {open && mobile && (
         <div className={'dd-mask' + (fullPage ? ' dd-mask-page' : '')} onClick={close}>
-          <div className={'dd-sheet' + (fullPage ? ' dd-page' : '')} role="dialog" aria-modal="true"
-            aria-label={ariaLabel || title} onClick={(ev) => ev.stopPropagation()}>
-            {/* 整屏形态没有「往下拖收起」这回事，手势条留着反而是在骗人 */}
-            {fullPage ? null : <div className="dd-sheet-grip" aria-hidden="true" />}
+          <div ref={sheetRef} className={'dd-sheet' + (fullPage ? ' dd-page' : '')} role="dialog" aria-modal="true"
+            aria-label={ariaLabel || title} onClick={(ev) => ev.stopPropagation()} {...sheetHandlers}>
+            {/* 手势条 = 「往下拖就能收起」的提示，两种形态都支持这个手势，所以都留着 */}
+            <div className="dd-sheet-grip" aria-hidden="true" />
             <div className="dd-sheet-head">
               <span className="dd-sheet-title">{title}</span>
               <button type="button" className="dd-sheet-close" aria-label="关闭" onClick={close}>

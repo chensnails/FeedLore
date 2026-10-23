@@ -2139,22 +2139,69 @@ const withEFP = (el, fn) => {
   const realMM = w.matchMedia;
   w.matchMedia = (q) => ({ matches: String(q).indexOf('max-width: 720px') >= 0, media: String(q),
     addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  // v1.3.5 下拉关闭手势：合成触摸轨迹。tt 单步派发，便于在 touchend 之前先断言「跟手」
+  const tt = (el, type, y) => {
+    const ev = new w.Event(type, { bubbles: true, cancelable: true });
+    ev.touches = y === null ? [] : [{ clientY: y }];
+    el.dispatchEvent(ev);
+  };
+  const swipe = (el, from, ys) => {
+    tt(el, 'touchstart', from);
+    for (let i = 0; i < ys.length; i++) tt(el, 'touchmove', ys[i]);
+    tt(el, 'touchend', null);
+  };
   C('#feedSelect').click();
   await sleep(20);
-  t('频道下拉（移动端）：整屏形态（无遮罩留白 / 标题栏 / 大选项 / 无手势条）', () => {
+  t('频道下拉（移动端）：整屏形态（无遮罩留白 / 标题栏 / 大选项 / 手势条）', () => {
     if (!C('#feedDD .dd-mask')) throw new Error('无遮罩');
     if (!C('#feedDD .dd-sheet.dd-page')) throw new Error('频道选项多，移动端应整屏铺开');
-    if (C('#feedDD .dd-sheet-grip')) throw new Error('整屏形态不该再画抽屉手势条');
+    if (!C('#feedDD .dd-sheet-grip')) throw new Error('整屏也支持往下拖收起，手势条是这枚提示');
     if (!C('#feedDD .dd-sheet-head .dd-sheet-title')) throw new Error('无标题栏');
     if (CA('#feedDD .dd-sheet .dd-item').length !== 3) throw new Error('弹窗选项 ' + CA('#feedDD .dd-sheet .dd-item').length);
     if (!C('#feedDD .dd-sheet .dd-item.active')) throw new Error('当前项未高亮');
   });
+  t('下拉手势：位移跟手，写的是面板内联 transform', () => {
+    const sheet = C('#feedDD .dd-sheet');
+    tt(sheet, 'touchstart', 100);
+    tt(sheet, 'touchmove', 104);   // 4px < SLOP，手抖不算拖拽
+    if (sheet.style.transform !== '') throw new Error('小于阈值不该动: ' + sheet.style.transform);
+    tt(sheet, 'touchmove', 250);
+    if (sheet.style.transform !== 'translateY(150px)') throw new Error('位移没跟手: ' + sheet.style.transform);
+    if (!C('#feedDD .dd-mask')) throw new Error('拖拽途中不该提前卸载弹层');
+  });
+  t('下拉手势：往下拖过阈值 → 飞出，松手后收起（筛选未变）', () => {
+    const sheet = C('#feedDD .dd-sheet');
+    tt(sheet, 'touchend', null);
+    if (sheet.style.transform !== 'translateY(100%)') throw new Error('超阈值应整块飞出: ' + sheet.style.transform);
+    if (!C('#feedDD .dd-mask')) throw new Error('飞出动画跑完前不该卸载');
+  });
+  await sleep(240);
+  t('下拉手势：飞出动画结束后弹窗关闭', () => {
+    if (C('#feedDD .dd-mask')) throw new Error('下拉超阈值后应收起');
+    if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('关闭不该改筛选');
+  });
+  // 位移不足阈值 → 弹回，不关；且抬手补发的那次 click 要吞掉，否则拖一下就改了频道
+  C('#feedSelect').click();
+  await sleep(20);
+  t('下拉手势：只拖一点点就弹回，弹窗仍开着', () => {
+    const sheet = C('#feedDD .dd-sheet');
+    swipe(sheet, 100, [120, 135]);
+    if (sheet.style.transform !== '') throw new Error('应弹回原位: ' + sheet.style.transform);
+    if (!C('#feedDD .dd-mask')) throw new Error('短拖不该关闭');
+  });
+  t('下拉手势：抬手后浏览器补发的 click 被吞掉（没顺手选中选项）', () => {
+    CA('#feedDD .dd-sheet .dd-item')[1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    if (!C('#feedDD .dd-mask')) throw new Error('被吞的 click 不该关闭弹窗');
+    if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('补发的 click 把选项点上了');
+  });
+  // 吞点击的窗口只有一瞬，等它过去才轮到正常的点关闭
+  await sleep(320);
   C('#feedDD .dd-sheet-close').click();
   await sleep(20);
   t('频道下拉（移动端）：点关闭收起弹窗', () => {
     if (C('#feedDD .dd-mask')) throw new Error('弹窗未收起');
   });
-  // 排序只有三四项，仍走半屏抽屉（整屏会把四个选项撑得很空）
+  // 排序只有三四项，仍走半屏抽屉（整屏会把四个选项撑得很空）；手势两种形态通用
   C('#sortSelect').click();
   await sleep(20);
   t('排序下拉（移动端）：选项少，仍是半屏抽屉（带手势条、非整屏）', () => {
@@ -2163,8 +2210,14 @@ const withEFP = (el, fn) => {
     if (sheet.classList.contains('dd-page')) throw new Error('四个选项不该整屏铺开');
     if (!C('#sortDD .dd-sheet-grip')) throw new Error('半屏抽屉应有手势条');
   });
-  C('#sortDD .dd-sheet-close').click();
-  await sleep(20);
+  t('下拉手势：半屏抽屉同样能往下拖收起', () => {
+    swipe(C('#sortDD .dd-sheet'), 200, [260, 320]);
+  });
+  await sleep(240);
+  t('下拉手势：半屏抽屉松手后关闭（排序未变）', () => {
+    if (C('#sortDD .dd-mask')) throw new Error('未收起');
+    if (C('#sortSelect .dd-label').textContent.indexOf('最新发布') < 0) throw new Error('关闭不该改排序');
+  });
   w.matchMedia = realMM;
   t('卡片内容：标题 / 来源短名 / 体积 / 标签 / 日期', () => {
     const c1 = C('#grid .card[data-id="e1"]');
@@ -2290,17 +2343,37 @@ const withEFP = (el, fn) => {
   w.matchMedia = (q) => ({ matches: /max-width:\s*720px/.test(q), addEventListener() {}, removeEventListener() {} });
   C('#grid .card[data-id="e1"] .title-btn').click();
   await sleep(60);
-  t('移动端形态：详情整屏铺开（.dd-sheet.dd-page），无手势条 / 标题栏 / 底栏', () => {
+  t('移动端形态：详情整屏铺开（.dd-sheet.dd-page），带手势条、无标题栏 / 底栏', () => {
     if (!C('.dd-mask.dd-mask-page .dd-sheet.dd-page[role="dialog"]')) throw new Error('未整屏弹出');
     if (C('.modal-mask')) throw new Error('移动端不应再用居中模态');
-    if (C('.dd-sheet-grip')) throw new Error('整屏不该画抽屉手势条');
+    if (!C('.dd-sheet-grip')) throw new Error('往下拖就能收起，手势条是这枚提示');
     if (C('.dd-sheet .dd-sheet-head') || C('.dd-sheet .cd-foot')) throw new Error('整屏同样不再有标题栏 / 底栏');
-    if (!C('.dd-sheet .cd-close')) throw new Error('整屏没有「点遮罩关闭」，右上角 × 是唯一指针出口');
+    if (!C('.dd-sheet .cd-close')) throw new Error('整屏没有「点遮罩关闭」，右上角 × 是指针出口');
     if (!C('.dd-sheet .art-actions .btn-fav') || !C('.dd-sheet .art-actions .btn-jump')) throw new Error('动作行缺收藏 / 跳文章页');
+  });
+  t('下拉手势：正文滚到中部时不接管，不跟手', () => {
+    const sc = C('.dd-sheet .dd-sheet-body');
+    Object.defineProperty(sc, 'scrollTop', { value: 120, configurable: true });
+    swipe(C('.dd-sheet'), 300, [420, 560]);
+    if (C('.dd-sheet').style.transform !== '') throw new Error('列表还在滚动就不该抢走手势');
+    if (!C('.dd-mask')) throw new Error('滚动中拖拽不该关闭弹窗');
+    delete sc.scrollTop;
   });
   C('.dd-sheet .cd-close').click();
   await sleep(40);
   t('移动端：抽屉关闭按钮收起弹窗', () => {
+    if (C('.dd-mask')) throw new Error('未关闭');
+  });
+  C('#grid .card[data-id="e1"] .title-btn').click();
+  await sleep(60);
+  t('下拉手势：整屏详情往下拖过阈值 → 整块飞出', () => {
+    const sheet = C('.dd-sheet');
+    swipe(sheet, 60, [200, 260]);
+    if (sheet.style.transform !== 'translateY(100%)') throw new Error('超阈值应整块飞出: ' + sheet.style.transform);
+    if (!C('.dd-mask')) throw new Error('飞出动画跑完前不该卸载');
+  });
+  await sleep(240);
+  t('下拉手势：详情松手后收起弹窗', () => {
     if (C('.dd-mask')) throw new Error('未关闭');
   });
   w.matchMedia = realMM2;

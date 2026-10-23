@@ -746,8 +746,12 @@ textarea:disabled {
   width: 38px; height: 4px; border-radius: 999px;
   background: var(--border-strong);
   margin:var(--sp-3) auto 2px; flex: 0 0 auto; opacity: .7;
+  /* 手势条本身不是滚动区：让浏览器别把从它这里开始的下滑当成页面下拉刷新 */
+  touch-action: none;
 }
+/* 头部固定区（下拉的标题行）也拒绝浏览器手势：从标题往下拖应当算「拖动面板」，不是刷新页面 */
 .dd-sheet-head {
+  touch-action: none;
   display: flex; align-items: center; justify-content: space-between;
   padding:var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-5); flex: 0 0 auto;
   border-bottom: 1px solid var(--border);
