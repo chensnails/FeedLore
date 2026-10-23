@@ -2,21 +2,29 @@
 
 > 拾取值得读的 —— 一个干净、顺手的**自托管 RSS 阅读器**，附资源卡片墙。多用户、无广告、无遥测，数据都在你自己的服务器上。
 
+## 在线体验
+
+**https://read.9610000.xyz** · 账户 `demo` / 密码 `demo`
+
+演示账户是普通用户角色，功能全部可点；订阅源与已读状态会随真实使用变动，也可能随时重置。想试多用户隔离，就自己部署一份。
+
 ## 这是什么
 
 笺川把「订阅 → 阅读 → 沉淀」收在一处：左边订阅源、右边文章，点开就地读全文；值得回头看的资源进卡片墙。所有数据存在你自己的 PostgreSQL 里，不经过任何第三方。
 
 ## 功能一览
 
-- **专注阅读**：左频道（按分组）右文章，点标题就地展开全文；已读 / 未读 / 收藏齐全，顶部搜索，可开自动刷新。
+- **专注阅读**：左频道（按分组）右文章，点标题就地展开全文；已读 / 未读 / 收藏齐全，顶部搜索走服务端检索，可开自动刷新。
 - **图文原样呈现**：图片按原文顺序内联，统一经服务端代理加载，源站防盗链也不裂图。
-- **订阅管理**：OPML 导入 / 导出（含分组、自动去重），频道重命名、订阅地址可改、分组重命名与拖拽排序，单频道可设抓取频率。
-- **卡片墙**：网格 / 列表展示资源卡片，可按频道筛选与搜索，点卡片直接弹出详情。
-- **条目过滤**：按关键词 / 正则设置「只收」或「屏蔽」，新抓取的条目入库前自动过滤，每个账号独立配置。
-- **外观可定制**：4 套主题、6 套主色，字号 / 字体 / 行高 / 阅读宽度可调，即时生效。
+- **订阅管理**：OPML 导入 / 导出（含分组、自动去重），频道重命名、**订阅地址可改**、分组重命名与拖拽排序，单频道可设抓取频率；抓取连续失败的频道会自动停用并提示。
+- **卡片墙**：网格 / 列表展示资源卡片，可按频道、标签筛选与搜索，点卡片直接弹出详情看全文。
+- **两个视图互相指路**：卡片详情里点「在文章页查看」，会切到文章页、滚到那一条并让它闪一下描边，不用自己在列表里翻。
+- **条目过滤**：按关键词或正则设置「只收」或「屏蔽」，可选只匹配标题 / 摘要 / 正文；新抓取的条目入库前逐人生效，每个账号独立配置。
+- **外观可定制**：4 套主题（跟随系统 / 浅色 / CommaFeed 暗色 / GitHub 暗黑）、6 套主色，字号 / 字体 / 行高 / 阅读宽度可调，即时生效。
 - **多用户与角色**：每人独立订阅源 / 已读 / 收藏；**模型配置按账户绑定**（自己的 Key 优先，未配回退站点默认）。
-- **移动端友好 + PWA**：可「添加到主屏幕」离线使用。
+- **移动端当 App 用**：弹层一律整屏推入、可下拉手势关闭；HTTPS 下「添加到主屏幕」即可安装，外壳离线可开。
 - **可选的 AI 日报**：需要者在「设置 → 模型」填入自己的大模型 Key 后，即可按账号把过去 24 小时的新条目整理成中文简报；不配 Key 不影响任何其它功能。
+- **自带更新通道**：「设置 → 关于」检查新版本，配合 Watchtower 可一键更新（推送 git tag 即发版）。
 
 ## 界面截图
 
@@ -28,30 +36,42 @@
 | --- | --- |
 | ![卡片墙](docs/screenshots/03-cards.png) | ![卡片墙 · 暗色](docs/screenshots/07-cards-dark.png) |
 
-| 数据源管理（分组 / 采集参数） |
+| 卡片详情弹窗 | 数据源管理（分组 / 采集参数） |
+| --- | --- |
+| ![卡片详情弹窗](docs/screenshots/04-card-detail.png) | ![数据源管理](docs/screenshots/05-settings.png) |
+
+| 从卡片页跳到文章页：滚到那条并闪一下描边 |
 | --- |
-| ![数据源管理](docs/screenshots/05-settings.png) |
+| ![落点高亮](docs/screenshots/08-jump-flash.png) |
+
+| 手机端 · 卡片墙 | 手机端 · 整屏详情（可下拉关闭） |
+| --- | --- |
+| ![手机端卡片墙](docs/screenshots/09-mobile-cards.png) | ![手机端整屏详情](docs/screenshots/10-mobile-detail.png) |
 
 ## 快速开始
 
-需要 **Docker（含 Compose）**。
+需要 **Docker（含 Compose）**。推荐**镜像模式**：拉 ghcr.io 预构建镜像，配 Watchtower 自动更新。
 
 ```bash
-git clone https://github.com/chensnails/feedlore.git
-cd feedlore
+# 1. 克隆仓库（仅为了获取 .env.example 和 docker-compose.release.yml）
+git clone https://github.com/chensnails/FeedLore.git
+cd FeedLore
+
+# 2. 创建环境配置文件
 cp .env.example .env
 
-# ⚠️ 生成强随机数据库密码（切勿使用弱密码）
+# 3. ⚠️ 生成强随机数据库密码与更新令牌（切勿使用弱密码）
 sed -i "s#^PG_PASSWORD=.*#PG_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)#" .env
+sed -i "s|^WATCHTOWER_HTTP_API_TOKEN=.*|WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 32)|" .env
 
-# 确认密码已更换，并保存好凭据
-grep PG_PASSWORD .env
+# 4. 确认关键配置已正确写入，并保存好凭据
+grep -E '^(PG_PASSWORD|WATCHTOWER_HTTP_API_TOKEN)=' .env
 
-# 构建并启动
-docker compose up -d --build
+# 5. 启动（预构建镜像 + Watchtower）
+docker compose -f docker-compose.release.yml up -d
 ```
 
-打开 `http://<主机>:3210`，默认账号 **admin / admin**，登录后请到「设置 → 账号」改密码。
+打开 `http://<主机>:3210`，首次启动的默认账号是 **admin / admin**，登录后请到「设置 → 账号」改密码。
 
 **上手两步**：①「设置 → 数据源」粘贴 RSS / Atom 添加频道，或导入 OPML；② 回「文章」页开始读。
 
@@ -65,15 +85,13 @@ docker compose up -d --build
 - 账号只由管理员创建，无开放注册。
 - 不同用户订阅同一 URL 互不影响；频道 / 文章 / 已读 / 收藏均按账号隔离。
 
-## 部署与更新
+## 换成源码模式（二次开发）
 
-两种部署模式，容器名 / 数据库卷 / 网络完全一致，可随时互切、数据零迁移：
-
-**源码模式**（适合二次开发）：
+两种部署模式的容器名 / 数据库卷 / 网络完全一致，可随时互切、数据零迁移。想改代码就直接构建：
 
 ```bash
-git clone https://github.com/chensnails/feedlore.git
-cd feedlore
+git clone https://github.com/chensnails/FeedLore.git
+cd FeedLore
 cp .env.example .env
 
 # ⚠️ 生成强随机数据库密码（切勿使用弱密码）
@@ -86,32 +104,15 @@ grep PG_PASSWORD .env
 docker compose up -d --build
 ```
 
-**镜像模式**（日常使用，推荐）：拉取 ghcr.io 预构建镜像，Watchtower 自动更新——
+## 更新
 
-```bash
-# 1. 克隆仓库（仅为了获取 .env.example 和 docker-compose.release.yml）
-git clone https://github.com/chensnails/feedlore.git
-cd feedlore
+镜像模式下升级是全自动的：作者推送 git tag → CI 出双架构镜像 → 你这边的 Watchtower 每 5 分钟拉一次并重启容器。不想等的话，到「设置 → 关于 → 检查更新」点「一键更新」立即触发（约 1~2 分钟，期间页面短暂不可用，登录态不受影响）。
 
-# 2. 创建环境配置文件
-cp .env.example .env
-
-# 3. ⚠️ 生成强随机数据库密码（切勿使用弱密码）
-sed -i "s#^PG_PASSWORD=.*#PG_PASSWORD=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)#" .env
-sed -i "s|^WATCHTOWER_HTTP_API_TOKEN=.*|WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 32)|" .env
-
-# 5. 确认关键配置已正确写入
-grep -E '^(PG_PASSWORD|WATCHTOWER_HTTP_API_TOKEN)=' .env
-
-# 6. 使用 release 专用 compose 文件启动（预构建镜像 + Watchtower）
-docker compose -f docker-compose.release.yml up -d
-```
-
-之后发版 = 推送 git tag，Watchtower 每 5 分钟自动拉取新镜像重启；也可以到「设置 → 关于 → 检查更新」发现新版本后点「一键更新」立即触发（约 1~2 分钟，期间页面短暂不可用，登录态不受影响）。
+源码模式升级：`git pull && docker compose up -d --build`。
 
 ## 在手机上用（PWA）
 
-HTTPS 下用浏览器「添加到主屏幕」即可当 App；建议用反向代理挂域名与证书。
+窄屏下弹层是整屏推入、支持下拉手势关闭，卡片墙与文章页共用一套筛选逻辑。HTTPS 下用浏览器「添加到主屏幕」即可安装成 App（外壳与静态资源走 Service Worker 缓存，`/api` 一律网络优先、不缓存数据，所以离线能打开界面但读不到新内容）；建议用反向代理挂域名与证书。
 
 ## 常见问题
 
@@ -120,6 +121,8 @@ HTTPS 下用浏览器「添加到主屏幕」即可当 App；建议用反向代�
 - **数据备份？** 备份 PostgreSQL 数据卷（`db` 服务）。
 - **怎么知道有没有新版本？** 「设置 → 关于 → 检查更新」（向 GitHub 查最新 Release，结果缓存 10 分钟）。
 - **端口占用？** 改 `.env` 的 `HOST_PORT` 后 `docker compose up -d`。
+- **不想自己部署能先用吗？** 可以，上面的演示地址用 `demo / demo` 登录；但演示库会重置，长期用请自托管。
+- **为什么不开放注册？** 定位是个人 / 小圈子自托管，账号由管理员在「设置 → 账号」创建。
 
 ## 配置（`.env`）
 
@@ -127,4 +130,4 @@ HTTPS 下用浏览器「添加到主屏幕」即可当 App；建议用反向代�
 
 ## 技术栈
 
-Node 22 + PostgreSQL + Vite / React 前端，单容器部署。许可证：[MIT](LICENSE)。
+后端 Node 22 原生 `http`（不引框架）+ PostgreSQL（`pg` 直连，无 ORM）；前端 Vite + React 19，视图与内核通过一个 `core` 单例桥接、共享状态驱动重绘；单容器部署，镜像同时出 amd64 / arm64。许可证：[MIT](LICENSE)。
