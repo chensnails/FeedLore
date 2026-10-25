@@ -85,6 +85,9 @@
   /* 间距刻度：4px 栅格，组件 padding / margin / gap 一律取刻度 */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+  /* 阅读页频道栏宽度：初值与 core/state.js 的 READER_SIDE_DEFAULT 同源，
+     实际值由 JS 按账号偏好写到 :root（可拖拽调整） */
+  --reader-side-w: 232px;
   /* 阴影层级：静态容器用 elevation（4 级 + 反馈层），可滚动元素用 neu（3 级 + 内凹） */
   --elevation-1: var(--shadow-sm);
   --elevation-2: var(--shadow);
@@ -463,7 +466,7 @@ html[data-reader-width="s"] { --reader-width: 42.5rem; }
 html[data-reader-width="m"] { --reader-width: 47.5rem; }
 html[data-reader-width="l"] { --reader-width: 62.5rem; }
 /* 铺满全屏：打破 .wrap 的 1280/1600 上限，让阅读区直接撑满视口宽度，
-   右侧不再留大块空白（.wrap 内还有 24px 内边距 + 232px 侧栏，主列 = 视口 - 这些）。
+   右侧不再留大块空白（.wrap 内还有 24px 内边距 + 频道栏 --reader-side-w，主列 = 视口 - 这些）。
    4K 等极宽屏会觉得一行太长，可手动切回「宽」。 */
 html[data-reader-width="full"] { --reader-width: 100%; }
 html[data-reader-width="full"] .wrap { max-width: none; }
@@ -1150,6 +1153,9 @@ textarea:disabled {
   box-shadow: var(--elevation-2);
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s;
   cursor: pointer;
+  /* 与 .card / .art-item 同口径：视口外的行跳过渲染（此前只有卡片和文章页有） */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 76px;
 }
 .row-item:hover {
   transform: translateX(2px);
@@ -2066,8 +2072,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
  * ============================================================ */
 .reader {
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
-  gap:var(--sp-6);
+  /* 中间 0 宽的一列专门给频道栏的拖宽分隔条落脚：分隔条靠 ::after 往左右各溢出一点，
+     既不吃掉侧栏的 overflow（放进侧栏会被裁），也不额外撑开两栏间距（gap 收到 sp-3，
+     两段相加仍是原来的 24px）。 */
+  grid-template-columns: var(--reader-side-w) 0px minmax(0, 1fr);
+  gap:var(--sp-3);
   align-items: start;
   padding-top:var(--sp-5);
 }
@@ -2202,6 +2211,28 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   color: var(--text-faint);
   width: 18px; text-align: center;
 }
+/* 收起状态没有未读时的占位：改报「这组有几个频道」，展开键按下去知道会出来多少 */
+.rd-ch-group-n {
+  font-size: 0.6875rem; font-weight: 600;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  width: 18px; text-align: center;
+}
+
+/* 分组行左侧的折叠键：比频道行轻一档，别抢分组名的视觉重量 */
+.rd-ch-fold {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; flex: 0 0 auto;
+  border: none; background: none; cursor: pointer;
+  color: var(--text-faint);
+  border-radius: 6px;
+  transition: background .15s, color .15s;
+}
+.rd-ch-fold:hover { background: var(--hover); color: var(--text); }
+.rd-ch-fold:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.rd-ch-fold .ico { width: 0.75rem; height: 0.75rem; }
+/* 收起时整行略弱一档，与展开的分组拉开层次 */
+.rd-ch-group-row.is-collapsed .rd-ch-group { color: var(--text-muted); }
 
 /* 分组标题与「本组全部已读」按钮同行：标题占满，按钮贴右 */
 .rd-ch-group-row {
@@ -2241,6 +2272,44 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 }
 .reader-side-close:hover { background: var(--hover); color: var(--text); }
 .reader-mask { display: none; }
+
+/* 频道栏头部的「收起 / 展开全部分组」：与侧栏标题同排的小图标按钮 */
+.reader-side-fold {
+  margin-left:auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: 0 0 auto;
+  border: none; background: none; cursor: pointer;
+  color: var(--text-faint);
+  border-radius: 7px;
+  transition: background .15s, color .15s;
+}
+.reader-side-fold:hover { background: var(--hover); color: var(--text); }
+.reader-side-fold:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.reader-side-fold .ico { width: 0.875rem; height: 0.875rem; }
+/* 移动端头部右侧要让位给关闭键（关闭键自带 margin-left:auto） */
+.reader-side-head .reader-side-fold + .reader-side-close { margin-left: var(--sp-1); }
+
+/* 频道栏右缘的拖宽分隔条：本身 0 宽，靠 ::after 撑出一条 14px 命中区。
+   sticky + 与侧栏同高，滚动时始终贴着可见的侧栏，不会长成正文那么高的一条。 */
+.reader-resize {
+  position: sticky;
+  top: 88px;
+  align-self: start;
+  width: 0;
+  height: calc(100vh - 108px);
+  height: calc(100dvh - 108px);
+  cursor: col-resize;
+  touch-action: none;
+}
+.reader-resize::after {
+  content: '';
+  position: absolute; top: 0; bottom: 0; left: -7px; width: 14px;
+  border-radius: var(--radius-pill);
+  transition: background .15s;
+}
+.reader-resize:hover::after, .reader-resize:active::after { background: var(--accent-soft); }
+.reader-resize:focus-visible { outline: none; }
+.reader-resize:focus-visible::after { background: var(--accent-soft); box-shadow: var(--focus-ring); }
 
 /* ---------- 右侧文章 ---------- */
 .reader-main { min-width: 0; }
@@ -2661,6 +2730,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
   /* 阅读页：分栏降级成上下，左侧频道变成左侧抽屉（右滑打开 / 左滑收起） */
   .reader { grid-template-columns: 1fr; gap:0; padding-top:var(--sp-3); }
+  /* 抽屉宽度由 min(272px,84vw) 定，拖宽分隔条在窄屏没有意义 */
+  .reader-resize { display: none; }
   .reader-menu-btn { display: inline-flex; align-items: center; gap:var(--sp-1); }
   /* 移动端只用图标打开频道抽屉，文字「频道」收掉（与顶栏「仅图标」规则一致） */
   .reader-menu-label { display: none; }

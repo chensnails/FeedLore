@@ -10,7 +10,7 @@
  */
 
 import { core } from '@core';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -230,8 +230,11 @@ export function ArtBody({ e, onTag, extraActions }) {
   return <div className="art-inner">{parts}</div>;
 }
 
-/** 列表项（对应旧 artItemHtml + expandArt/collapseArt） */
-function ArtItem({ e, expanded, full, bodyErr, flash, onToggle, onFav, onTag }) {
+/** 列表项（对应旧 artItemHtml + expandArt/collapseArt）。
+ *  做成 memo：每次 __readerTick 都会把整列 entries 重新 map 一遍，而条目对象只在
+ *  状态真的变化时才换新（core/reader.js 的 applyEntryFlag / ui.js 的 cardSetFlag 同口径），
+ *  所以没变的那几百条不必跟着重新渲染。 */
+const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, onToggle, onFav, onTag }) {
   const s = S();
   const src = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
@@ -269,12 +272,12 @@ function ArtItem({ e, expanded, full, bodyErr, flash, onToggle, onFav, onTag }) 
       <div className="art-body" hidden={!expanded}>{inner}</div>
     </article>
   );
-}
+});
 
-/** 频道侧栏（对应旧 renderReaderChannels） */
-function ReaderChannels({ feeds, flags, scope, feedId, group }) {
+/** 频道侧栏（对应旧 renderReaderChannels）。
+ *  grouped / collapsed 由 ReaderView 一次算好传入：头部按钮的「是否全收起」要和列表同源。 */
+function ReaderChannels({ grouped, collapsed, hasGroups, flags, scope, feedId, group }) {
   const s = S();
-  const grouped = (s.groupFeeds) ? s.groupFeeds(feeds) : [{ name: '', feeds }];
   const atScope = feedId == null && group == null;
   const scopeBtn = (key, ico, name, n, cls) => (
     <button className={'rd-ch' + (atScope && scope === key ? ' active' : '')} type="button" data-scope={key}
@@ -284,7 +287,6 @@ function ReaderChannels({ feeds, flags, scope, feedId, group }) {
       {n > 0 ? <span className="rd-ch-n">{n}</span> : null}
     </button>
   );
-  const hasGroups = grouped.some((g) => g.name);
 
   return (
     <>
@@ -295,22 +297,37 @@ function ReaderChannels({ feeds, flags, scope, feedId, group }) {
       {grouped.map((g) => {
         const gname = g.name || '';
         const gUnread = g.feeds.reduce((sum, x) => sum + Number(x.unreadCount || 0), 0);
+        const isCollapsed = collapsed.has(gname);
+        // 收起的分组里若正看着其中一条，只留那一条 —— 别让「收起」把当前频道变没，
+        // 也不该把整组都放出来（那就等于没收起）
+        const shown = isCollapsed
+          ? (feedId == null ? [] : g.feeds.filter((f) => String(f.id) === String(feedId)))
+          : g.feeds;
         return (
           <div key={'g:' + gname}>
             {hasGroups ? (
-              <div className="rd-ch-group-row">
+              <div className={'rd-ch-group-row' + (isCollapsed ? ' is-collapsed' : '')}>
+                <button type="button" className="rd-ch-fold" data-group-fold={gname}
+                  aria-expanded={isCollapsed ? 'false' : 'true'}
+                  title={isCollapsed ? '展开该分组' : '收起该分组'}
+                  aria-label={(isCollapsed ? '展开' : '收起') + `分组「${gname || '未分组'}」`}
+                  onClick={() => s.readerToggleGroupCollapse(gname)}>
+                  <svg className="ico" aria-hidden="true" focusable="false"><use href={isCollapsed ? '#i-chevron-right' : '#i-chevron-down'} /></svg>
+                </button>
                 <button type="button"
                   className={'rd-ch-group' + (gname ? '' : ' muted') + (group === gname ? ' active' : '') + (gUnread > 0 ? ' has-unread' : '')}
                   data-group={gname} title={`只看「${gname || '未分组'}」分组下的文章`}
                   onClick={() => s.readerSetGroup(gname)}>
                   <span className="rd-ch-group-name">{gname || '未分组'}</span>
                   {gUnread > 0
-                    ? <span className="rd-ch-n hot">{gUnread}</span>
-                    : <span className="rd-ch-group-empty" aria-hidden="true">✓</span>}
+                    ? <span className="rd-ch-n hot" title={`${gUnread} 条未读`}>{gUnread}</span>
+                    : isCollapsed
+                      ? <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道，全部已读`}>{g.feeds.length}</span>
+                      : <span className="rd-ch-group-empty" aria-hidden="true">✓</span>}
                 </button>
               </div>
             ) : null}
-            {g.feeds.map((f) => {
+            {shown.map((f) => {
               const name = s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(f) : f.title) : f.title;
               const tip = f.enabled ? (s.feedTitle ? s.feedTitle(f) : f.title) : `${s.feedTitle ? s.feedTitle(f) : f.title}（已停止采集）`;
               const unread = Number(f.unreadCount || 0);
@@ -333,6 +350,67 @@ function ReaderChannels({ feeds, flags, scope, feedId, group }) {
         <span>添加频道</span>
       </button>
     </>
+  );
+}
+
+/* ---------- 频道栏宽度分隔条 ----------
+ * 拖拽期间只写 :root 上的 --reader-side-w（一次拖拽几十帧，走 state 会把整棵阅读页重渲染），
+ * 松手才落一次账号偏好；双击复位默认宽度；方向键微调（键盘也要能调，不能只有鼠标）。 */
+function ReaderSideResize() {
+  const ref = useRef(null);
+  const dragRef = useRef(null);
+
+  const onPointerDown = (ev) => {
+    // 移动端抽屉宽度由 CSS 的 min(272px,84vw) 决定，拖了也没意义
+    if (window.innerWidth <= 720) return;
+    const s = S();
+    ev.preventDefault();
+    const side = document.getElementById('readerSide');
+    const measured = side ? side.getBoundingClientRect().width : 0;
+    const startX = ev.clientX;
+    // 量不到（宽度为 0，如无布局的测试环境）时以偏好值起算
+    const startW = measured > 0 ? measured : s.getReaderSideWidth();
+    dragRef.current = startW;
+    const move = (e) => {
+      const w = Math.min(s.readerSideCap(), Math.max(s.READER_SIDE_MIN, startW + (e.clientX - startX)));
+      dragRef.current = w;
+      s.applyReaderSideWidth(w);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (dragRef.current != null) S().setReaderSideWidth(dragRef.current);
+      dragRef.current = null;
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
+  const onDoubleClick = () => {
+    const s = S();
+    s.setReaderSideWidth(s.READER_SIDE_DEFAULT);
+    s.toast('频道栏宽度已恢复默认');
+  };
+
+  const onKeyDown = (ev) => {
+    const s = S();
+    const step = 16;
+    const cur = s.getReaderSideWidth();
+    if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+      ev.preventDefault();
+      s.setReaderSideWidth(cur + (ev.key === 'ArrowRight' ? step : -step));
+    } else if (ev.key === 'Home') {
+      ev.preventDefault();
+      s.setReaderSideWidth(s.READER_SIDE_DEFAULT);
+    }
+  };
+
+  return (
+    <div ref={ref} className="reader-resize" id="readerResize" role="separator" aria-orientation="vertical"
+      tabIndex={0} title="拖动调整频道栏宽度，双击恢复默认"
+      onPointerDown={onPointerDown} onDoubleClick={onDoubleClick} onKeyDown={onKeyDown} />
   );
 }
 
@@ -365,6 +443,12 @@ export function ReaderView() {
   const bodyErrSet = st.rdBodyErr || new Set();
   const accordionOn = !!(s && s.readerAccordionOn && s.readerAccordionOn());
   const flashId = st.rdFlashId == null ? null : String(st.rdFlashId);
+
+  // 频道栏：分组与折叠状态一次算好，头部「全部折叠」按钮与列表必须同源
+  const grouped = (s.groupFeeds) ? s.groupFeeds(feeds) : [{ name: '', feeds }];
+  const collapsed = (s.readerCollapsedGroups) ? s.readerCollapsedGroups() : new Set();
+  const hasGroups = grouped.some((g) => g.name);
+  const allCollapsed = hasGroups && grouped.every((g) => collapsed.has(g.name || ''));
 
   // 标题
   const cur = st.rdFeedId == null ? null : feeds.find((f) => String(f.id) === String(st.rdFeedId));
@@ -414,6 +498,12 @@ export function ReaderView() {
     if (ev.key === 'Enter') { clearTimeout(debounceRef.current); if (s.readerSearch) s.readerSearch(String(ev.target.value).trim()); }
   };
 
+  // memo 的前提是回调稳定：写成行内箭头函数的话，每次 tick 每个条目都会拿到新函数 props，
+  // 几百条一起重渲染，等于把 memo 白加。core 是单例，回调里现取即可。
+  const onToggleArt = useCallback((id) => { const c = S(); if (c.readerToggleArt) c.readerToggleArt(id); }, []);
+  const onFavArt = useCallback((id) => { const c = S(); if (c.readerToggleFav) c.readerToggleFav(id); }, []);
+  const onTagArt = useCallback((t) => { const c = S(); if (c.readerTagToCards) c.readerTagToCards(t); }, []);
+
   return (
     <>
       <div className="reader-mask" id="readerMask" onClick={() => s.readerCloseDrawer && s.readerCloseDrawer()} />
@@ -421,15 +511,23 @@ export function ReaderView() {
         <div className="reader-side-head">
           <span>频道</span>
           <span className="reader-side-n" id="readerSideN">{feeds.length ? `${feeds.length} 个` : ''}</span>
+          <button className="reader-side-fold" id="readerFoldAll" type="button" hidden={!hasGroups}
+            title={allCollapsed ? '展开全部分组' : '收起全部分组'}
+            aria-label={allCollapsed ? '展开全部分组' : '收起全部分组'}
+            onClick={() => s.readerToggleAllGroups && s.readerToggleAllGroups()}>
+            <svg className="ico" aria-hidden="true" focusable="false"><use href={allCollapsed ? '#i-chevrons-down' : '#i-chevrons-up'} /></svg>
+          </button>
           <button className="reader-side-close" id="readerSideClose" type="button" aria-label="收起频道列表"
             onClick={() => s.readerCloseDrawer && s.readerCloseDrawer()}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
           </button>
         </div>
         <nav className="reader-channels" id="readerChannels">
-          <ReaderChannels feeds={feeds} flags={flags} scope={st.rdScope} feedId={st.rdFeedId} group={st.rdGroup} />
+          <ReaderChannels grouped={grouped} collapsed={collapsed} hasGroups={hasGroups}
+            flags={flags} scope={st.rdScope} feedId={st.rdFeedId} group={st.rdGroup} />
         </nav>
       </aside>
+      <ReaderSideResize />
 
       <section className="reader-main">
         <div className="reader-head">
@@ -476,9 +574,7 @@ export function ReaderView() {
             <ArtItem key={e.id} e={e} expanded={expanded.has(e.id)}
               full={bodyMap.get(e.id)} bodyErr={bodyErrSet.has(e.id)}
               flash={flashId != null && flashId === String(e.id)}
-              onToggle={(id) => s.readerToggleArt && s.readerToggleArt(id)}
-              onFav={(id) => s.readerToggleFav && s.readerToggleFav(id)}
-              onTag={(t) => s.readerTagToCards && s.readerTagToCards(t)} />
+              onToggle={onToggleArt} onFav={onFavArt} onTag={onTagArt} />
           ))}
         </div>
 

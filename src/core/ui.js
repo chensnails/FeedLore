@@ -322,13 +322,21 @@ export function focusSearchBox() {
 }
 
 
-/* 卡片页条目收藏/已读：复用与阅读页相同的 /api/entries PATCH，但作用于卡片列表 state.entries */
+/* 卡片页条目收藏/已读：复用与阅读页相同的 /api/entries PATCH，但作用于卡片列表 state.entries。
+ * 条目对象按「换一个新的」处理，不原地改字段：卡片是 React.memo 组件，引用不变就不会重绘。 */
 export async function cardSetFlag(id, patch) {
   const list = state.entries || [];
-  const e = list.find((x) => String(x.id) === String(id));
-  if (!e) return false;
-  const before = { isRead: !!e.isRead, isFavorite: !!e.isFavorite };
-  Object.assign(e, patch);
+  const idx = list.findIndex((x) => String(x.id) === String(id));
+  if (idx < 0) return false;
+  const before = list[idx];
+  const applied = Object.assign({}, before, patch);
+  const withPatch = (entry) => {
+    const arr = state.entries.slice();
+    const i = arr.findIndex((x) => String(x.id) === String(id));
+    if (i >= 0) arr[i] = entry;
+    state.entries = arr;
+  };
+  withPatch(applied);
   render();   // 卡片由 React 渲染：改共享 state 后 tick 重绘（旧 paintCardFlag 就地改 DOM 移除）
   try {
     const res = await apiFetch('/api/entries/' + encodeURIComponent(id), {
@@ -337,7 +345,7 @@ export async function cardSetFlag(id, patch) {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return true;
   } catch (err) {
-    Object.assign(e, before); render();
+    withPatch(before); render();
     toast('标记失败：' + (err.message || err), false);
     return false;
   }
@@ -349,7 +357,10 @@ export function cardDetailRead(id) {
   const c = (state.entries || []).find((x) => String(x.id) === String(id));
   if (c && c.isRead) return;
   if ((state.rdEntries || []).some((x) => String(x.id) === String(id))) {
-    if (c) c.isRead = true;   // PATCH 与文章页列表同步交给 markEntryRead，卡片侧只落标记
+    // PATCH 与文章页列表同步交给 markEntryRead，卡片侧只落标记
+    if (c) {
+      state.entries = (state.entries || []).map((x) => (String(x.id) === String(id) ? Object.assign({}, x, { isRead: true }) : x));
+    }
     markEntryRead(id);
     return;
   }

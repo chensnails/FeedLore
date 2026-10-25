@@ -570,17 +570,23 @@ w.feedlore = {
   cardsView: (m) => { w.feedlore.state.view = m; cardsTick(); },
   cardsTag: (t) => { w.feedlore.state.tag = t || null; cardsTick(); },
   cardsLoadMore: () => cardsLoad(false),
+  // 条目状态改动一律「换新对象」，与 core 同口径（列表项是 React.memo 的，引用不变不重绘）
   cardsSetFlag: async (id, patch) => {
-    const e = (w.feedlore.state.entries || []).find((x) => String(x.id) === String(id));
-    if (e) Object.assign(e, patch);
+    const st = w.feedlore.state;
+    const idx = (st.entries || []).findIndex((x) => String(x.id) === String(id));
+    if (idx >= 0) {
+      const arr = st.entries.slice();
+      arr[idx] = Object.assign({}, arr[idx], patch);
+      st.entries = arr;
+    }
     cardsTick();
     return true;
   },
   // 打开卡片详情即记为已读（真实实现见 core/ui.js cardDetailRead：卡片页不显示已读态）
   cardsDetailRead: (id) => {
     calls.push(['cardsDetailRead', id]);
-    const e = (w.feedlore.state.entries || []).find((x) => String(x.id) === String(id));
-    if (e) e.isRead = true;
+    const st = w.feedlore.state;
+    st.entries = (st.entries || []).map((x) => (String(x.id) === String(id) ? Object.assign({}, x, { isRead: true }) : x));
   },
   jumpToFeed: (id, focusId) => { calls.push(['jumpToFeed', id, focusId]); },
   // v1.9.0：阅读页桥（P3c，对齐 app.js 语义）
@@ -611,14 +617,50 @@ w.feedlore = {
   readerReadAll: () => calls.push(['readerReadAll']),
   readerToggleFav: (id) => {
     calls.push(['readerToggleFav', id]);
-    const e = (w.feedlore.state.rdEntries || []).find((x) => String(x.id) === String(id));
-    if (e) e.isFavorite = !e.isFavorite;
+    const st = w.feedlore.state;
+    // 与 core/reader.js applyEntryFlag 同口径：换掉那一条对象，其余保持同一引用
+    st.rdEntries = (st.rdEntries || []).map((x) => (String(x.id) === String(id) ? Object.assign({}, x, { isFavorite: !x.isFavorite }) : x));
     readerTick();
   },
   readerTagToCards: (t) => calls.push(['readerTagToCards', t]),
   readerToggleAccordion: () => calls.push(['readerToggleAccordion']),
   readerToggleDrawer: () => calls.push(['readerToggleDrawer']),
   readerCloseDrawer: () => calls.push(['readerCloseDrawer']),
+  // —— 频道栏分组折叠 + 栏宽（折叠集合与栏宽存在 stub 的 state 上，模拟账号布局偏好） ——
+  readerCollapsedGroups: () => new Set((w.feedlore.state.rdCollapsedGroups || []).map(String)),
+  readerToggleGroupCollapse: (g) => {
+    calls.push(['readerToggleGroupCollapse', g]);
+    const st = w.feedlore.state;
+    const set = new Set((st.rdCollapsedGroups || []).map(String));
+    const k = String(g || '');
+    if (set.has(k)) set.delete(k); else set.add(k);
+    st.rdCollapsedGroups = Array.from(set);
+    readerTick();
+  },
+  readerToggleAllGroups: () => {
+    calls.push(['readerToggleAllGroups']);
+    const st = w.feedlore.state;
+    const names = (st.feedList || []).map((f) => String(f.groupName || '').trim());
+    const uniq = Array.from(new Set(names));
+    const cur = (st.rdCollapsedGroups || []).map(String);
+    st.rdCollapsedGroups = (uniq.length && uniq.every((n) => cur.indexOf(n) >= 0)) ? [] : uniq;
+    readerTick();
+  },
+  READER_SIDE_DEFAULT: 232,
+  READER_SIDE_MIN: 180,
+  READER_SIDE_MAX: 400,
+  readerSideCap: () => Math.max(180, Math.min(400, Math.floor((w.innerWidth || 1024) * 0.4))),
+  getReaderSideWidth: () => (w.feedlore.state.readerSideWidth == null ? 232 : w.feedlore.state.readerSideWidth),
+  applyReaderSideWidth: (px) => {
+    const v = Math.min(w.feedlore.readerSideCap(), Math.max(180, Math.round(Number(px)) || 232));
+    document.documentElement.style.setProperty('--reader-side-w', v + 'px');
+    return v;
+  },
+  setReaderSideWidth: (px) => {
+    const v = w.feedlore.applyReaderSideWidth(px);
+    calls.push(['setReaderSideWidth', v]);
+    w.feedlore.state.readerSideWidth = v;
+  },
   feedTitle: (f) => (!f || typeof f !== 'object' ? (f || '') : f.customTitle || f.title || f.url || ''),
   shortFeedName: (n) => String(n || '').replace(/\s*-\s*Telegram Channel\s*$/i, '').trim(),
   groupFeeds(feeds) {
@@ -2649,6 +2691,197 @@ const withEFP = (el, fn) => {
   });
   w.feedlore.state.rdReadError = false;
 
+  // ============ 阅读页频道栏：分组折叠 + 拖宽（v1.4.0-test） ============
+  w.feedlore.state.rdQ = '';
+  w.feedlore.state.rdFeedId = null;
+  w.feedlore.state.rdGroup = null;
+  w.feedlore.state.rdCollapsedGroups = [];
+  w.feedlore.state.readerSideWidth = 232;
+  w.feedlore.state.feedList = [
+    { id: '1', title: '例子星球', customTitle: null, cardEnabled: true, enabled: true, entryCount: 12, unreadCount: 3, groupName: '科技' },
+    { id: '3', title: '科技二手', customTitle: null, cardEnabled: true, enabled: true, entryCount: 5, unreadCount: 2, groupName: '科技' },
+    { id: '2', title: 'demo', customTitle: null, cardEnabled: true, enabled: true, entryCount: 4, unreadCount: 0, groupName: '' },
+  ];
+  w.feedlore.state.rdEntries = READER_ENTRIES();
+  readerTick();
+  await sleep(50);
+  const feedRows = () => RA('#readerChannels .rd-ch[data-feed]');
+  const foldBtn = (g) => R(`#readerChannels .rd-ch-fold[data-group-fold="${g}"]`);
+
+  t('频道栏基线：两个分组 3 个频道全展开', () => {
+    if (feedRows().length !== 3) throw new Error('频道行 ' + feedRows().length);
+    if (RA('#readerChannels .rd-ch-group').length !== 2) throw new Error('组行 ' + RA('#readerChannels .rd-ch-group').length);
+  });
+
+  foldBtn('科技').click();
+  await sleep(40);
+  t('点组头折叠键：只收起该组的频道行', () => {
+    if (!callsOf('readerToggleGroupCollapse').some((c) => c[1] === '科技')) throw new Error('未调用桥');
+    const ids = feedRows().map((el) => el.getAttribute('data-feed'));
+    if (ids.join(',') !== '2') throw new Error('剩余频道行: ' + ids.join(','));
+    if (!R('#readerChannels .rd-ch-group-row.is-collapsed')) throw new Error('组行缺 is-collapsed');
+    if (foldBtn('科技').getAttribute('aria-expanded') !== 'false') throw new Error('aria-expanded 未跟上');
+  });
+  t('折叠态组头仍汇总未读数（收起不等于没新东西）', () => {
+    const badge = R('#readerChannels .rd-ch-group[data-group="科技"] .rd-ch-n.hot');
+    if (!badge) throw new Error('折叠后未读徽标消失');
+    if (badge.textContent !== '5') throw new Error('未读汇总: ' + badge.textContent);
+  });
+  foldBtn('科技').click();
+  await sleep(40);
+  t('再点折叠键：该组频道行回来', () => {
+    if (feedRows().length !== 3) throw new Error('频道行 ' + feedRows().length);
+    if (R('#readerChannels .rd-ch-group-row.is-collapsed')) throw new Error('仍是折叠态');
+  });
+
+  // 全已读的组收起后，徽标位改报频道数（没有未读可报时也要有信息）
+  w.feedlore.state.rdCollapsedGroups = [''];
+  readerTick();
+  await sleep(40);
+  t('全已读组折叠时显示组内频道数', () => {
+    const n = R('#readerChannels .rd-ch-group[data-group=""] .rd-ch-group-n');
+    if (!n) throw new Error('无 .rd-ch-group-n');
+    if (n.textContent !== '1') throw new Error('频道数: ' + n.textContent);
+  });
+  w.feedlore.state.rdCollapsedGroups = [];
+  readerTick();
+  await sleep(40);
+
+  R('#readerFoldAll').click();
+  await sleep(40);
+  t('「收起全部分组」：频道行全消失 + 按钮换成展开态图标', () => {
+    if (!callsOf('readerToggleAllGroups').length) throw new Error('未调用桥');
+    if (feedRows().length !== 0) throw new Error('仍有 ' + feedRows().length + ' 行');
+    const b = R('#readerFoldAll');
+    if (b.title !== '展开全部分组') throw new Error('title: ' + b.title);
+    if (b.querySelector('use').getAttribute('href') !== '#i-chevrons-down') throw new Error('图标未切换');
+  });
+  R('#readerFoldAll').click();
+  await sleep(40);
+  t('再点「展开全部分组」：频道行全回来', () => {
+    if (feedRows().length !== 3) throw new Error('频道行 ' + feedRows().length);
+    if (R('#readerFoldAll').querySelector('use').getAttribute('href') !== '#i-chevrons-up') throw new Error('图标未回切');
+  });
+
+  // 收起的组里若正看着其中一条，那一条必须还在（否则「我在读哪个频道」从界面上消失）
+  w.feedlore.state.rdFeedId = 1;
+  w.feedlore.state.rdCollapsedGroups = ['科技'];
+  readerTick();
+  await sleep(40);
+  t('折叠组含当前频道：只留那一条，同组其它仍收起', () => {
+    const ids = feedRows().map((el) => el.getAttribute('data-feed'));
+    // 科技组收起后只露出正在看的 1；同组的 3 仍隐藏；未折叠的 '' 组照常显示 2
+    if (ids.join(',') !== '1,2') throw new Error('频道行: ' + ids.join(','));
+    if (!R('#readerChannels .rd-ch[data-feed="1"].active')) throw new Error('当前频道未高亮');
+  });
+  w.feedlore.state.rdFeedId = null;
+  w.feedlore.state.rdCollapsedGroups = [];
+  readerTick();
+  await sleep(40);
+
+  // ---- 拖宽分隔条 ----
+  const side = R('#readerSide');
+  side.getBoundingClientRect = () => ({ width: 232, height: 300, top: 0, left: 0, right: 232, bottom: 300, x: 0, y: 0 });
+  const rail = R('#readerResize');
+  t('分隔条存在且可聚焦（键盘也能调宽）', () => {
+    if (!rail) throw new Error('无 #readerResize');
+    if (rail.getAttribute('role') !== 'separator') throw new Error('role: ' + rail.getAttribute('role'));
+    if (rail.getAttribute('tabindex') !== '0') throw new Error('不可聚焦');
+  });
+  rail.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 240, clientY: 100 }));
+  w.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 266, clientY: 100 }));
+  t('拖拽跟手：CSS 变量随移动实时更新（不走 React 重渲染）', () => {
+    // 起始宽度 232（测得）+ dx (266-240) = 258
+    if (document.documentElement.style.getPropertyValue('--reader-side-w') !== '258px') {
+      throw new Error('当前值: ' + document.documentElement.style.getPropertyValue('--reader-side-w'));
+    }
+  });
+  t('拖拽中不落偏好：只有松手才写一次', () => {
+    if (callsOf('setReaderSideWidth').length) throw new Error('拖拽途中就落了宽度');
+  });
+  w.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 290, clientY: 100 }));
+  w.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true, clientX: 290, clientY: 100 }));
+  await sleep(40);
+  t('松手才落一次宽度：232 + 50 = 282', () => {
+    const set = callsOf('setReaderSideWidth');
+    if (!set.length) throw new Error('未落宽度');
+    if (set[set.length - 1][1] !== 282) throw new Error('值: ' + set[set.length - 1][1]);
+  });
+  rail.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 0, clientY: 100 }));
+  w.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 4000, clientY: 100 }));
+  w.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true, clientX: 4000, clientY: 100 }));
+  await sleep(40);
+  t('往右拖过头：收到自适应上限（40vw 与 400px 取小）', () => {
+    const want = Math.max(180, Math.min(400, Math.floor((w.innerWidth || 1024) * 0.4)));
+    const got = document.documentElement.style.getPropertyValue('--reader-side-w');
+    if (got !== want + 'px') throw new Error('实际 ' + got + '，期望 ' + want + 'px');
+  });
+  rail.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 900, clientY: 100 }));
+  w.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: -900, clientY: 100 }));
+  w.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true, clientX: -900, clientY: 100 }));
+  await sleep(40);
+  t('往左拖过头：收在下限 180px，不会把频道名挤没', () => {
+    if (document.documentElement.style.getPropertyValue('--reader-side-w') !== '180px') {
+      throw new Error('实际 ' + document.documentElement.style.getPropertyValue('--reader-side-w'));
+    }
+  });
+  rail.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
+  await sleep(40);
+  t('双击分隔条：复位默认 232 并提示', () => {
+    const set = callsOf('setReaderSideWidth');
+    if (set[set.length - 1][1] !== 232) throw new Error('值: ' + set[set.length - 1][1]);
+    if (document.documentElement.style.getPropertyValue('--reader-side-w') !== '232px') throw new Error('CSS 变量未复位');
+    if (!callsOf('toast').some((c) => String(c[1]).indexOf('频道栏宽度已恢复默认') === 0)) throw new Error('无 toast');
+  });
+  rail.dispatchEvent(new w.KeyboardEvent('keydown', { bubbles: true, key: 'ArrowRight' }));
+  await sleep(40);
+  t('方向键调宽：→ 加一档 16px', () => {
+    const set = callsOf('setReaderSideWidth');
+    if (set[set.length - 1][1] !== 248) throw new Error('值: ' + set[set.length - 1][1]);
+  });
+  rail.dispatchEvent(new w.KeyboardEvent('keydown', { bubbles: true, key: 'Home' }));
+  await sleep(40);
+  t('Home 键回到默认宽度', () => {
+    const set = callsOf('setReaderSideWidth');
+    if (set[set.length - 1][1] !== 232) throw new Error('值: ' + set[set.length - 1][1]);
+  });
+
+  // ---- 性能改动的静态守卫（改了实现就要保住这些约束） ----
+  t('源码守卫：列表项全部 memo 化，回调不再是行内箭头函数', () => {
+    const root = path.join(__dirname, '..', '..');
+    const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
+    if (rv.indexOf('const ArtItem = memo(') < 0) throw new Error('ArtItem 未 memo');
+    if (/onToggle=\{\(id\)/.test(rv) || /onFav=\{\(id\)/.test(rv)) throw new Error('条目回调仍是行内函数，memo 会失效');
+    if (rv.indexOf('useCallback((id)') < 0) throw new Error('回调未 useCallback 化');
+    const cv = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
+    if (cv.indexOf('const Card = memo(') < 0 || cv.indexOf('const Row = memo(') < 0) throw new Error('卡片 / 行未 memo');
+    if (/onOpen=\{\(x\)/.test(cv)) throw new Error('卡片回调仍是行内函数');
+  });
+  t('源码守卫：条目状态一律换新对象（原地改字段会让 memo 漏掉更新）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const rd = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8');
+    const fn = rd.match(/function applyEntryFlag\([\s\S]*?\n\}/);
+    if (!fn) throw new Error('找不到 applyEntryFlag');
+    if (/e\.isRead = |e\.isFavorite = /.test(fn[0])) throw new Error('applyEntryFlag 仍在原地改条目字段');
+    if (rd.indexOf('state.rdEntries = replaceEntry(') < 0) throw new Error('阅读页条目未换新对象');
+    const ui = fs.readFileSync(path.join(root, 'src', 'core', 'ui.js'), 'utf8');
+    if (ui.indexOf('Object.assign(e, patch)') >= 0) throw new Error('卡片条目仍在原地改对象');
+  });
+  t('style.css：栏宽走 --reader-side-w，列表视图也跳过离屏渲染', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const m = css.match(/\.reader\s*\{([^}]*)\}/);
+    if (!m) throw new Error('缺 .reader 规则');
+    if (m[1].indexOf('var(--reader-side-w)') < 0) throw new Error('.reader 未引用栏宽变量：' + m[1].trim());
+    if (/grid-template-columns:\s*232px/.test(css)) throw new Error('仍有写死的 232px 列宽');
+    if (!/^\s*--reader-side-w:/m.test(css)) throw new Error(':root 缺 --reader-side-w 初值');
+    const row = css.match(/\.row-item\s*\{([^}]*)\}/);
+    if (!row || row[1].indexOf('content-visibility') < 0) throw new Error('.row-item 未做离屏跳过');
+    const resize = css.match(/\.reader-resize\s*\{([^}]*)\}/);
+    if (!resize) throw new Error('缺 .reader-resize 规则');
+    if (resize[1].indexOf('col-resize') < 0) throw new Error('分隔条应有 col-resize 光标');
+  });
+
   // ============ App Shell 顶栏（P4a React 化） ============
   __mountTopBar(document.getElementById('topbarRoot'));
   await sleep(40);
@@ -2813,6 +3046,8 @@ const withEFP = (el, fn) => {
         'readerSetScope', 'readerSetFeed', 'readerSetGroup', 'readerOpenSource', 'readerSearch',
         'readerToggleArt', 'readerCollapseAll', 'readerReadAll', 'readerToggleFav', 'readerTagToCards',
         'readerToggleAccordion', 'readerAccordionOn', 'readerToggleDrawer', 'readerCloseDrawer', 'fmtFull',
+        'readerCollapsedGroups', 'readerToggleGroupCollapse', 'readerToggleAllGroups',
+        'getReaderSideWidth', 'setReaderSideWidth', 'applyReaderSideWidth', 'readerSideCap',
         'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsView', 'cardsTag',
         'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'getAiPage', 'setAiPage', 'promptInstall',
         'openSettings', 'toast', 'apiFetch', 'isAdmin', 'exportOpml', 'bindSections', 'groupFeeds',

@@ -7,7 +7,7 @@
 
 import { $, apiFetch, toast, emitShell } from './util.js';
 import { state, layoutPref, setLayout, openSettings, lockPageScroll, unlockPageScroll } from './state.js';
-import { loadFeeds } from './feeds.js';
+import { loadFeeds, groupFeeds } from './feeds.js';
 
 /* ============================================================
  * 阅读页（文章）：左频道 / 右文章，点标题展开全文
@@ -200,25 +200,38 @@ export async function focusReaderArt(id) {
 
 /* ---------- 已读 / 未读 / 收藏 ---------- */
 
+/** 就地换掉一条条目（不改原对象）：列表项是 React.memo 的，
+ *  引用不变就不会重绘，所以状态变化必须产出新对象。返回替换后的那条。 */
+function replaceEntry(list, idx, patch) {
+  const next = Object.assign({}, list[idx], patch);
+  const arr = list.slice();
+  arr[idx] = next;
+  return arr;
+}
+
 /** 就地改一条的状态：内存 + 侧栏计数 + 重绘（原 paintEntryFlag 的就地 DOM 改类名移除） */
 export function applyEntryFlag(id, patch) {
-  const e = state.rdEntries.find((x) => String(x.id) === String(id));
-  if (!e) return;
+  const idx = state.rdEntries.findIndex((x) => String(x.id) === String(id));
+  if (idx < 0) return;
+  const e = state.rdEntries[idx];
   const wasRead = !!e.isRead;
   const wasFav = !!e.isFavorite;
-  if (patch.isRead !== undefined) e.isRead = !!patch.isRead;
-  if (patch.isFavorite !== undefined) e.isFavorite = !!patch.isFavorite;
+  const next = {};
+  if (patch.isRead !== undefined) next.isRead = !!patch.isRead;
+  if (patch.isFavorite !== undefined) next.isFavorite = !!patch.isFavorite;
+  state.rdEntries = replaceEntry(state.rdEntries, idx, next);
+  const now = state.rdEntries[idx];
 
-  if (wasRead !== e.isRead) {
-    state.rdFlags.unread = Math.max(0, (state.rdFlags.unread || 0) + (e.isRead ? -1 : 1));
+  if (wasRead !== now.isRead) {
+    state.rdFlags.unread = Math.max(0, (state.rdFlags.unread || 0) + (now.isRead ? -1 : 1));
   }
-  if (wasFav !== e.isFavorite) {
-    state.rdFlags.favorite = Math.max(0, (state.rdFlags.favorite || 0) + (e.isFavorite ? 1 : -1));
+  if (wasFav !== now.isFavorite) {
+    state.rdFlags.favorite = Math.max(0, (state.rdFlags.favorite || 0) + (now.isFavorite ? 1 : -1));
   }
   renderReader();
 
   // 在「收藏」范围里取消收藏 = 明确的「移出这里」，立刻从列表拿掉。
-  if (state.rdScope === 'favorite' && !e.isFavorite) {
+  if (state.rdScope === 'favorite' && !now.isFavorite) {
     state.rdEntries = state.rdEntries.filter((x) => String(x.id) !== String(id));
     state.rdOffset = Math.max(0, state.rdOffset - 1);
     renderReader();
@@ -263,6 +276,42 @@ export function readerToggleFav(id) {
   });
 }
 
+/* ---------- 频道栏分组折叠（v1.4.0-test） ----------
+ * 与设置面板的 collapsedGroups 各存一份（layout.rdCollapsedGroups）：数据源面板收起的是
+ * 管理清单，频道栏收起的是阅读时的干扰项，两件事不该互相牵连。 */
+export function rdCollapsedGroups() {
+  const arr = Array.isArray(layoutPref.rdCollapsedGroups) ? layoutPref.rdCollapsedGroups : [];
+  return new Set(arr.filter((g) => typeof g === 'string'));
+}
+
+export function readerToggleGroupCollapse(name) {
+  const g = String(name || '');
+  const set = rdCollapsedGroups();
+  if (set.has(g)) set.delete(g); else set.add(g);
+  setLayout('rdCollapsedGroups', Array.from(set));
+  renderReader();
+}
+
+/** 一键收起 / 展开全部分组：全都收着就展开，否则一次收齐 */
+export function readerToggleAllGroups() {
+  const names = groupFeeds(state.feedList || []).map((g) => g.name || '');
+  if (!names.length) return;
+  const set = rdCollapsedGroups();
+  const allCollapsed = names.every((n) => set.has(n));
+  setLayout('rdCollapsedGroups', allCollapsed ? [] : names);
+  renderReader();
+  toast(allCollapsed ? '已展开全部分组' : '已收起全部分组');
+}
+
+/** 展开某个分组（选中组内频道 / 组名时调用，避免「点了却看不见」） */
+function expandRdGroup(name) {
+  const g = String(name || '');
+  const set = rdCollapsedGroups();
+  if (!set.has(g)) return;
+  set.delete(g);
+  setLayout('rdCollapsedGroups', Array.from(set));
+}
+
 /* ---------- 频道 / 范围 / 分组切换（ReaderView 经桥调用） ---------- */
 export function readerSetScope(scope) {
   if (scope === state.rdScope && state.rdFeedId == null && state.rdGroup == null) return;
@@ -279,7 +328,7 @@ export function readerSetScope(scope) {
 export function readerSetGroup(g) {
   state.rdScope = 'all';   // 看某个分组 = 回到「全部」范围
   if (g === state.rdGroup) state.rdGroup = null;
-  else { state.rdGroup = g; state.rdFeedId = null; }
+  else { state.rdGroup = g; state.rdFeedId = null; expandRdGroup(g); }
   renderReader();
   loadReader({ reset: true });
   emitShell();
@@ -290,8 +339,10 @@ export function readerSetFeed(id) {
   const next = id != null ? Number(id) : null;
   state.rdScope = 'all';
   if (next === state.rdFeedId && state.rdGroup == null) return;
+  const f = next == null ? null : (state.feedList || []).find((x) => String(x.id) === String(next));
   state.rdFeedId = next;
   state.rdGroup = null;
+  if (f) expandRdGroup(String(f.groupName || '').trim());   // 折叠着就选不到它，选了必须看得见
   renderReader();
   loadReader({ reset: true });
   emitShell();

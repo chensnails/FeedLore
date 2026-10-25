@@ -16,7 +16,7 @@
  */
 
 import { core } from '@core';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CardDetail } from './CardDetail.jsx';
 import { Dropdown } from './Dropdown.jsx';
 
@@ -113,7 +113,9 @@ function TagList({ tags, onTag }) {
   ));
 }
 
-function Card({ e, onTag, onOpen }) {
+/* 卡片与列表行都做成 memo：一次 __cardsTick 会把整列重新 map，
+ * 而条目对象只在状态真的变化时换新（core/ui.js 的 cardSetFlag），没变的卡面不必重渲染。 */
+const Card = memo(function Card({ e, onTag, onOpen }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const hasImg = !!e.image;
@@ -156,9 +158,9 @@ function Card({ e, onTag, onOpen }) {
       </div>
     </article>
   );
-}
+});
 
-function Row({ e, onTag, onOpen }) {
+const Row = memo(function Row({ e, onTag, onOpen }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtDate = s.fmtDate || ((d) => d || '');
@@ -195,7 +197,7 @@ function Row({ e, onTag, onOpen }) {
       </div>
     </article>
   );
-}
+});
 
 /** 点卡片空白处打开详情；卡内的按钮 / 链接 / 标签有自己的动作，不劫持它们 */
 function openFromClick(ev, e, onOpen) {
@@ -290,7 +292,13 @@ export function CardsView() {
     debounceRef.current = setTimeout(() => { if (s.cardsSearch) s.cardsSearch(v); }, 420);
   };
 
-  const onTag = (t) => { if (s.cardsTag) s.cardsTag(st.tag === t ? null : t); };
+  // memo 的前提是回调稳定：这两个必须与本次渲染无关（标签取调用时的 state.tag），
+  // 否则每张卡片每次 tick 都会拿到新函数 props 而一起重渲染。
+  const onTag = useCallback((t) => {
+    const c = S();
+    if (c.cardsTag) c.cardsTag(c.state.tag === t ? null : t);
+  }, []);
+  const onOpenCard = useCallback((e) => setDetailId(e.id), []);
 
   const detailEntry = detailId == null ? null : (st.entries || []).find((x) => String(x.id) === String(detailId));
 
@@ -365,8 +373,8 @@ export function CardsView() {
         {showGrid ? (
           <div id="grid" className={'grid' + (view === 'list' ? ' list-mode' : '')}>
             {list.map((e) => (view === 'list'
-              ? <Row e={e} onTag={onTag} onOpen={(x) => setDetailId(x.id)} key={e.id} />
-              : <Card e={e} onTag={onTag} onOpen={(x) => setDetailId(x.id)} key={e.id} />))}
+              ? <Row e={e} onTag={onTag} onOpen={onOpenCard} key={e.id} />
+              : <Card e={e} onTag={onTag} onOpen={onOpenCard} key={e.id} />))}
           </div>
         ) : <div id="grid" className="grid" hidden />}
 

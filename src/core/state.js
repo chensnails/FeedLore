@@ -59,13 +59,48 @@ export const state = {
   rdFlashId: null,
 };
 
+/* ---------------- 频道栏宽度 ----------------
+ * 实际生效的是 :root 上的 --reader-side-w（.reader 网格第一列引用它）。
+ * 拖拽跟手期间由组件直接写这个变量（一次拖拽几十帧，走 state 会把整棵阅读页重渲染），
+ * 松手才调一次 setReaderSideWidth 落账号偏好 —— 与主题 / 字号同一条防抖写入通道。
+ * 两道上限：持久化只按硬边界 180~400 收（换设备屏幕不同，不该把值改没），
+ * 渲染时再按 40vw 自适应收紧（窄笔记本上拖不爆内容区）。 */
+export const READER_SIDE_DEFAULT = 232;   // 与 style.css 里 --reader-side-w 的回退值同源
+export const READER_SIDE_MIN = 180;
+export const READER_SIDE_MAX = 400;
+
+/** 持久化用的硬边界：非法值（0 / NaN / 串）一律回落默认 */
+export function clampReaderSide(px) {
+  const n = Math.round(Number(px));
+  if (!Number.isFinite(n) || n <= 0) return READER_SIDE_DEFAULT;
+  return Math.min(READER_SIDE_MAX, Math.max(READER_SIDE_MIN, n));
+}
+
+/** 渲染上限：硬边界之内再按屏幕宽度收一道 */
+export function readerSideCap() {
+  return Math.max(READER_SIDE_MIN, Math.min(READER_SIDE_MAX, Math.floor((window.innerWidth || 1280) * 0.4)));
+}
+
+export function applyReaderSideWidth(px) {
+  const w = Math.min(readerSideCap(), clampReaderSide(px));
+  document.documentElement.style.setProperty('--reader-side-w', w + 'px');
+  return w;
+}
+
+export function setReaderSideWidth(px) {
+  const hard = clampReaderSide(px);
+  applyReaderSideWidth(hard);
+  if (hard === layoutPref.readerSideWidth) return;
+  setLayout('readerSideWidth', hard);
+}
+
 /* ---------------- 按账号保存的 UI 布局偏好 ----------------
  * 视图模式 / 当前页面 / 分组折叠 / 阅读手风琴 / AI 子页 / 设置分组开合 /
- * 阅读页排序方式 / 阅读页默认范围，
+ * 阅读页排序方式 / 阅读页默认范围 / 阅读页频道栏折叠 / 频道栏宽度，
  * 统一按账号维度持久化到服务端（users.prefs.layout），不再落浏览器 localStorage，
  * 换设备也一致。首屏初值由 server.js 注入的 window.__LAYOUT__ 提供。
  * 单一可信源是 window.__LAYOUT__（缺省回落默认）。 */
-export const LAYOUT_DEFAULTS = { view: 'grid', tab: 'reader', collapsedGroups: [], accordion: true, aiPage: 'digest', sections: {}, sort: 'new', rdScope: 'all' };
+export const LAYOUT_DEFAULTS = { view: 'grid', tab: 'reader', collapsedGroups: [], accordion: true, aiPage: 'digest', sections: {}, sort: 'new', rdScope: 'all', rdCollapsedGroups: [], readerSideWidth: READER_SIDE_DEFAULT };
 export const LAYOUT_VALUES = { view: ['grid', 'list'], tab: ['reader', 'cards', 'ai'], aiPage: ['digest', 'settings'], sort: ['new', 'old', 'name'], rdScope: ['all', 'unread', 'favorite'] };
 export function sanitizeLayoutLocal(raw) {
   const out = Object.assign({}, LAYOUT_DEFAULTS);
@@ -84,10 +119,20 @@ export function sanitizeLayoutLocal(raw) {
     }
     if (LAYOUT_VALUES.sort.indexOf(raw.sort) >= 0) out.sort = raw.sort;
     if (LAYOUT_VALUES.rdScope.indexOf(raw.rdScope) >= 0) out.rdScope = raw.rdScope;
+    // 阅读页频道栏的分组折叠：与设置面板的 collapsedGroups 各存一份，互不影响
+    if (Array.isArray(raw.rdCollapsedGroups)) {
+      out.rdCollapsedGroups = raw.rdCollapsedGroups.filter((g) => typeof g === 'string').map((g) => g.slice(0, 40));
+    }
+    out.readerSideWidth = clampReaderSide(raw.readerSideWidth);
   }
   return out;
 }
 export let layoutPref = sanitizeLayoutLocal(window.__LAYOUT__);
+
+// 频道栏宽度首屏生效（偏好来自服务端注入，晚一步会让侧栏先按默认宽画一帧再跳）
+applyReaderSideWidth(layoutPref.readerSideWidth);
+// 窗口变窄时重新收一道上限：40vw 是个跟随屏幕的边界，不重算就会把内容区挤没
+window.addEventListener('resize', () => applyReaderSideWidth(layoutPref.readerSideWidth));
 
 // 排序方式与默认阅读范围：从账号偏好取初值（服务端未注入时回落默认）
 state.sort = layoutPref.sort;

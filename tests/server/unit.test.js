@@ -18,7 +18,8 @@ const { int, bool, clampInt, clampNum, normUrl, compareVersion, isPrivateHost, g
 const { parseOpml, parseOpmlAttrs } = require('../../lib/opml');
 const {
   APPEARANCE_DEFAULTS, sanitizeAppearance, userAppearance,
-  LAYOUT_DEFAULTS, sanitizeLayout, userLayout,
+  LAYOUT_DEFAULTS, sanitizeLayout, userLayout, clampReaderSide,
+  READER_SIDE_MIN, READER_SIDE_MAX, READER_SIDE_DEFAULT,
 } = require('../../lib/prefs');
 const { proxyBodyJson, toCard, toFeedDto, proxied } = require('../../lib/dto');
 const { encryptSecret, decryptSecret, maskSecret, hashPassword, safeEqual, ENC_PREFIX } = require('../../lib/crypto');
@@ -276,6 +277,29 @@ test('sanitizeLayout：collapsedGroups 只留字符串且截断到 40 字符', (
   assert.equal(got.collapsedGroups.length, 2);
   assert.equal(got.collapsedGroups[0], '甲组');
   assert.equal(got.collapsedGroups[1].length, 40);
+});
+
+test('sanitizeLayout：频道栏折叠与设置面板折叠各存一份，互不牵连', () => {
+  const got = sanitizeLayout({ collapsedGroups: ['设置面板'], rdCollapsedGroups: ['频道栏', 7, 'x'.repeat(60)] });
+  assert.deepEqual(got.collapsedGroups, ['设置面板']);
+  assert.equal(got.rdCollapsedGroups.length, 2);
+  assert.equal(got.rdCollapsedGroups[0], '频道栏');
+  assert.equal(got.rdCollapsedGroups[1].length, 40);
+  // 没传就该回落空数组，而不是把设置面板那份带过来
+  assert.deepEqual(sanitizeLayout({ collapsedGroups: ['甲'] }).rdCollapsedGroups, []);
+});
+
+test('sanitizeLayout：频道栏宽度收在硬边界内，非法值回落默认', () => {
+  assert.equal(sanitizeLayout({ readerSideWidth: 300 }).readerSideWidth, 300);
+  assert.equal(sanitizeLayout({ readerSideWidth: '300' }).readerSideWidth, 300);
+  assert.equal(sanitizeLayout({ readerSideWidth: 9999 }).readerSideWidth, READER_SIDE_MAX);
+  assert.equal(sanitizeLayout({ readerSideWidth: 10 }).readerSideWidth, READER_SIDE_MIN);
+  assert.equal(sanitizeLayout({ readerSideWidth: 299.6 }).readerSideWidth, 300);   // 取整
+  for (const bad of [undefined, null, 'abc', 0, -5, NaN, {}, []]) {
+    assert.equal(sanitizeLayout({ readerSideWidth: bad }).readerSideWidth, READER_SIDE_DEFAULT, String(bad));
+  }
+  // 自适应上限（40vw）只在渲染时收，持久化值不该因屏幕窄而被改写
+  assert.equal(clampReaderSide(400), 400);
 });
 
 test('sanitizeLayout：collapsedGroups 不是数组时回落空数组', () => {

@@ -67,4 +67,12 @@ export const core = {
   readerToggleFav: R.readerToggleFav, readerTagToCards: UI.readerTagToCards,
   readerToggleAccordion: R.readerToggleAccordion, readerAccordionOn: R.readerAccordionOn,
   readerToggleDrawer: R.readerToggleDrawer, readerCloseDrawer: R.readerCloseDrawer,
+  // —— 频道栏分组折叠 + 栏宽（v1.4.0-test） ——
+  readerCollapsedGroups: R.rdCollapsedGroups,
+  readerToggleGroupCollapse: R.readerToggleGroupCollapse,
+  readerToggleAllGroups: R.readerToggleAllGroups,
+  getReaderSideWidth: () => S.layoutPref.readerSideWidth,
+  setReaderSideWidth: S.setReaderSideWidth, applyReaderSideWidth: S.applyReaderSideWidth,
+  readerSideCap: S.readerSideCap, READER_SIDE_DEFAULT: S.READER_SIDE_DEFAULT,
+  READER_SIDE_MIN: S.READER_SIDE_MIN, READER_SIDE_MAX: S.READER_SIDE_MAX,
 };

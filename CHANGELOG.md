@@ -4,6 +4,11 @@
 
 ## [未发布]
 
+- **文章页频道栏支持分组折叠**：组头左边多了一枚折叠键，收起后该组的频道行从列表里消失，只剩组头一行；组头右侧仍汇总组内未读数（收起不等于没新东西），全已读时改报组内频道数。顶栏「收起全部分组 / 展开全部分组」一键切换整侧。收起的组里若正看着其中某个频道，那一条会保留并高亮 —— 否则「我在读哪个频道」会从界面上凭空消失。折叠状态存进账号偏好（`users.prefs.layout.rdCollapsedGroups`），换设备/清缓存后仍在。
+- **频道栏宽度可拖拽调整**：侧栏与正文之间那条 1px 分隔线现在就是握把（鼠标悬停变粗、可 Tab 聚焦）。拖动实时写 CSS 变量、不走 React 重渲染，松手才落一次偏好；双击复位默认 232px，方向键左右各 16px、Home 回默认。硬区间 180–400px 是落库值，渲染时再压一道自适应上限（`min(400px, 40vw)`），窄屏不会把频道名挤没、也不会因为一次拖拽就把超出屏幕的值永久记下来。≤720px 不显示分隔条（移动端抽屉宽度交给 CSS）。
+- **阅读页 / 卡片列表渲染优化**：列表项（`.art-item` / `.card` / `.row-item`）改用 `React.memo`，配套把「原地改条目字段」的地方（收藏、已读、卡片详情打开即读）一律换成新对象，否则 memo 会漏掉更新；行内箭头回调提出为 `useCallback` 稳定引用。`.row-item` 补上 `content-visibility: auto` + `contain-intrinsic-size`，长列表滚动时离屏行不再参与布局与绘制。
+- **新增 `test` 分支与 `:test` 镜像**：`.github/workflows/release-test.yml` 在 push 到 `test` 时先跑一遍构建 + UI/服务端测试，通过后用两个原生架构 runner 平行构建、合成 `ghcr.io/chensnails/feedlore:test`。它只打 `:test`，不碰 `:latest` 与版本号标签，也不建 GitHub Release，生产部署不受影响。配套的 `docker-compose.test.yml` 与 release 版共用同一套 project / 容器名 / 卷 / 网络（二选一，不是并排跑），数据库卷 `feedlore-pgdata` 原样复用、数据零迁移，试完 down 再 up release 版即可回退。
+- 测试：UI 回归 281/281（新增折叠/展开、组头未读汇总、当前频道保留、全组收起与展开、分隔条存在与键盘调宽、拖拽跟手与上限下限收口、松手只落一次、双击复位；另加两项静态守卫「列表项全部 memo 化且回调用 useCallback」「条目状态一律换新对象」）；服务端 79/79（新增折叠组与其它偏好互不干扰、宽度钳制与 `clampReaderSide` 边界）。
 - **镜像模式的 Watchtower 容器改名 `watchtower` → `feedlore-watchtower`**（`docker-compose.release.yml`）：宿主机上常常已经有别的服务在跑一个叫 `watchtower` 的容器，撞名会让新装用户的 `docker compose up -d` 直接失败。只改 `container_name`，compose 服务名仍是 `watchtower`，所以后端「一键更新」用的 `http://watchtower:8080/v1/update` 不变、无需改 `.env`。已装好的机器不受影响（要拿这个名字就重新 `up -d` 一次）。
 
 ## [1.3.7] — 2026-10-23
