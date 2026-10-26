@@ -3289,6 +3289,38 @@ const withEFP = (el, fn) => {
     }
   });
 
+  // 吸顶与动作行对齐都是「一眼看得出没对上，但代码改回去没人会发现」的规则，
+  // 所以钉在这里：吸顶必须在基础规则里（桌面也要吸顶，只剩移动端那份等于没做），
+  // 动作行右对齐必须带一份窄屏回退（移动端复制键独占一行，右对齐反而更别扭）。
+  t('style.css：阅读页头部整条吸顶写在基础规则里（桌面也生效）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const head = css.match(/\.reader-head\s*\{([^}]*)\}/);
+    if (!head) throw new Error('缺 .reader-head 基础规则');
+    if (head[1].indexOf('position: sticky') < 0) throw new Error('头部基础规则没吸顶（桌面端标题会跟着文章滚走）');
+    if (head[1].indexOf('top: var(--topbar-h') < 0) throw new Error('吸顶位置没跟顶栏实测高度，刘海屏 / 顶栏换行会重叠');
+    if (head[1].indexOf('background: var(--bg)') < 0) throw new Error('吸顶底色必须不透明，否则文章从头部底下透出来');
+    const dup = [...css.matchAll(/\.reader-head\s*\{([^}]*)\}/g)];
+    if (dup.length > 1 && dup.slice(1).some((m) => /position:\s*sticky/.test(m[1]))) {
+      throw new Error('.reader-head 的吸顶在别处又写了一份（基础规则已负责，两处会漂）');
+    }
+    if (dup.length < 2) throw new Error('窄屏那份 .reader-head 内边距覆盖不见了');
+  });
+
+  t('style.css：正文动作行桌面靠右下、窄屏回退靠左', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const acts = css.match(/\.art-actions\s*\{([^}]*)\}/);
+    if (!acts) throw new Error('缺 .art-actions 基础规则');
+    if (acts[1].indexOf('justify-content: flex-end') < 0) throw new Error('动作键没靠右（读完正文视线落在末尾，按钮应在落点）');
+    if (!/@media \(max-width: 720px\)[\s\S]*?\.art-actions\s*\{[^}]*justify-content: flex-start/.test(css)) {
+      throw new Error('窄屏没回退成靠左（移动端「复制链接」独占一行，右对齐反而别扭）');
+    }
+    // 卡片详情复用同一族 .art-* 样式：不该再另造一个动作行类名
+    const cd = fs.readFileSync(path.join(root, 'src', 'views', 'CardDetail.jsx'), 'utf8');
+    if (cd.indexOf('className="art-actions"') < 0) throw new Error('卡片详情没复用 .art-actions，两处动作行会各改一半');
+  });
+
   // ============ App Shell 顶栏（P4a React 化） ============
   __mountTopBar(document.getElementById('topbarRoot'));
   await sleep(40);

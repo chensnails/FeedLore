@@ -2334,6 +2334,14 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   margin:0 auto;
   /* 分组徽标 + 「全部已读 / 全部收起」一起出现时给窄屏留条退路 */
   flex-wrap: wrap;
+  /* 整条吸顶（v1.3.7-test4，桌面与移动同一套）：滚到列表中段也认得出「现在在看哪个频道」，
+     三个工具按钮不用再翻回列表顶部。top 取 --topbar-h —— 由 TopBar.jsx 实测顶栏高度写进
+     :root，刘海屏安全区、顶栏换行等变化都不用写死数值。背景必须不透明，否则文章会从底下透出来。 */
+  position: sticky;
+  top: var(--topbar-h, 0px);
+  z-index: 5;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
 }
 .reader-head-text {
   flex: 1 1 auto; min-width: 0;
@@ -2635,7 +2643,9 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-text-empty { color: var(--text-faint); font-style: italic; }
 
 .art-tags { display: flex; align-items: center; flex-wrap: wrap; gap:var(--sp-2); }
-.art-actions { display: flex; align-items: center; gap:var(--sp-2); flex-wrap: wrap; }
+/* 动作键靠右下：正文读完后视线落在末尾，复制 / 打开就在落点处等着，不用再扫回左边。
+   卡片详情弹窗复用同一族 .art-* 样式，所以一处改动两处生效。 */
+.art-actions { display: flex; align-items: center; gap:var(--sp-2); flex-wrap: wrap; justify-content: flex-end; }
 /* 正文操作收成小方块图标按钮（复制 / 打开原文章 / 收藏 / 跳文章页，纯 SVG 无文字） */
 .art-actions .btn-copy,
 .art-actions .btn-open,
@@ -2785,17 +2795,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   /* 抽屉里分组标题可以正常显示，别藏 */
   .rd-ch-group { display: flex; }
 
-  /* 阅读页头部吸顶：滚动时「频道」按钮始终可点，不用再翻回列表顶部。
-     top 取 --topbar-h —— 由 app.js 实测顶栏高度写进 :root，这样刘海屏安全区、
-     顶栏换行等变化都不用写死数值。背景必须不透明，否则文章会从底下透出来。 */
-  .reader-head {
-    position: sticky;
-    top: var(--topbar-h, 0px);
-    z-index: 5;
-    padding:var(--sp-2) 0 var(--sp-3);
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-  }
+  /* 吸顶本身已收进基础规则（桌面与移动同一套），这里只改窄屏的下边距 */
+  .reader-head { padding:var(--sp-2) 0 var(--sp-3); }
   .reader-head h2 { font-size: var(--rd-head-fs); }
   .reader-head-tools .btn { padding:0 var(--sp-2); }
   /* 窄屏正文图片：跟着屏宽走，只对特别高的长图用视口高度兜底，避免占满整屏 */
@@ -2811,6 +2812,9 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .art-meta { flex: 1 0 100%; padding-left:var(--sp-7); }
   .art-meta .src-pill { max-width: none; }
   .art-inner { padding:var(--sp-3) var(--sp-3); gap:var(--sp-3); }
+  /* 动作键右对齐只在桌面生效：窄屏一屏就那几个按钮，且弹窗里的「复制链接」会独占一行，
+     保持靠左反而和上面的正文/标签同一侧，不用横向扫视 */
+  .art-actions { justify-content: flex-start; }
   .art-text { font-size: 0.8125rem; }
   .art-img { max-height: 72vh; max-height: 72dvh; }
 }

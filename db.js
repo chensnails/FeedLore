@@ -653,6 +653,41 @@ module.exports = function createDb({ connectionString, log = console.log }) {
   }
 
   /**
+   * 模板图判据 · 第一步（判据本身在 lib/templateImg.js）：
+   * 批量按主键取图片指纹 (size, width, height) —— 三个数在建缓存时顺手写好了，
+   * 判「两张图是不是同一张」不必读任何图片字节。
+   * key 由调用方用 lib/util 的 imageCacheKey(url) 算，与 getImageCache 同一口径：
+   * SQL 里对原始 URL 直接 sha256 会漏掉约 40%（带 ?x-bce-process=image/format 这类
+   * 需要百分号编码的 URL，new URL() 归一化后和原文不一样）。
+   */
+  async function imagePrints(keys) {
+    const list = Array.from(new Set((keys || []).filter((k) => typeof k === 'string' && k)));
+    if (!list.length) return [];
+    const { rows } = await q(
+      'SELECT key, size, width, height FROM image_cache WHERE key = ANY($1::text[])',
+      [list]
+    );
+    return rows;
+  }
+
+  /**
+   * 模板图判据 · 第二步：某个频道最近 limit 条文章显示过的图片 URL。
+   * 只读 image / images 两列，不碰 body_json —— 那是正文 JSON，整频道取出来
+   * 会把一次「顺手少显示一张徽标」的判定拖成全表读大字段。
+   */
+  async function feedImageUrls(feedId, limit) {
+    const { rows } = await q(
+      `SELECT e.id, array_cat(coalesce(e.images, '{}'), ARRAY[e.image]) AS urls
+       FROM entries e
+       WHERE e.feed_id = $1
+       ORDER BY e.published_at DESC NULLS LAST, e.id DESC
+       LIMIT $2`,
+      [feedId, Number(limit) || 200]
+    );
+    return rows;
+  }
+
+  /**
    * 单条打标记：只改传进来的字段，没传的保持原样。
    * 时间戳跟着布尔一起写：标已读记 read_at，取消收藏把 favorited_at 清空。
    */
@@ -914,5 +949,6 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     tableCounts, entryWindow, ping, pgDatabaseSize,
     saveDigest, readDigest, listDigestDates, hasDigest, digestStatsAll, pruneDigests,
     getImageCache, setImageCache, pruneImageCache, clearImageCache, imageCacheStats,
+    imagePrints, feedImageUrls,
   };
 };
