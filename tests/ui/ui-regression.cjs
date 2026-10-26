@@ -893,6 +893,18 @@ const withEFP = (el, fn) => {
     }
   });
 
+  // 设置弹层的 tab 栏 / 标题栏不许被压扁（v1.3.9）：.tabs 一旦 overflow 不是 visible，
+  // 它作为 flex item 的自动最小尺寸就变成 0，会被 .modal-body 的长内容挤到 0 高，
+  // 再被 overflow-y:hidden 整条裁掉 —— 症状就是「设置里子页全没了」。
+  t('style.css：.tabs / .modal-head / .confirm-foot 不参与压缩', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    for (const sel of ['.tabs', '.modal-head', '.confirm-foot']) {
+      const m = css.match(new RegExp(sel.replace('.', '\\.') + '\\s*\\{([^}]*)\\}'));
+      if (!m) throw new Error('缺 ' + sel + ' 规则');
+      if (!/flex:\s*0\s+0\s+auto/.test(m[1])) throw new Error(sel + ' 必须 flex:0 0 auto，否则长内容会把它挤扁：' + m[1].trim().slice(0, 120));
+    }
+  });
+
   // 卡片页频道筛选的组头折叠（v1.3.8）：整行可点 + 移动端命中区够大 + 能力默认关
   t('style.css + 视图：分组折叠开关（整行可点、触屏 44px、不传 collapsible 仍是纯标题）', () => {
     const root = path.join(__dirname, '..', '..');

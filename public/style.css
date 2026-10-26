@@ -1334,6 +1334,7 @@ textarea:disabled {
 
 .modal-head {
   display: flex; align-items: flex-start; justify-content: space-between;
+  flex: 0 0 auto;   /* 不参与压缩：标题栏被压扁比正文溢出更糟 */
   padding:var(--sp-5) var(--sp-6) var(--sp-4);
   border-bottom: 1px solid var(--border);
 }
@@ -1371,6 +1372,7 @@ textarea:disabled {
 .confirm-input:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
 .confirm-foot {
   display: flex; justify-content: flex-end; gap: var(--sp-2);
+  flex: 0 0 auto;   /* 同 .tabs：按钮行不能被正文压扁 */
   padding: var(--sp-5) var(--sp-6) var(--sp-6);
 }
 /* 实心危险按钮：确认框的「删除 / 清空」用，比描边版更能表达不可撤销 */
@@ -1382,9 +1384,16 @@ textarea:disabled {
 .btn-danger-solid:hover { filter: brightness(1.06); }
 .btn-danger-solid:active { transform: translateY(1px); }
 
-/* 标签页：7 个 tab 在窄屏放不下时必须能横向滚，而不是压成两行 */
+/* 标签页：7 个 tab 在窄屏放不下时必须能横向滚，而不是压成两行
+ *
+ * ⚠️ flex: 0 0 auto 不能省。一旦容器 overflow 不是 visible，它作为 flex item 的自动
+ * 最小尺寸就变成 0，于是会被 .modal-body 的长内容挤扁；再叠加 overflow-y:hidden，
+ * tab 就被整条裁掉（v1.3.8-test2 的「设置里子页全没了」就是这么来的：
+ * .modal 有 max-height，.modal-body 的 flex-basis:0% 在高度不定时按内容解析，
+ * 压缩量全摊到 head / tabs 上）。同理见 .modal-head / .confirm-foot。 */
 .tabs {
   display: flex; gap:var(--sp-1);
+  flex: 0 0 auto;
   padding:0 var(--sp-6);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
