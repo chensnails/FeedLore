@@ -3,11 +3,10 @@
 # 与其它几份 compose 的分工：
 # - docker-compose.yml            ：源码模式，但用的是生产的容器名/卷/端口（3210）
 # - docker-compose.release.yml    ：生产，跟 ghcr 的 :latest
-# - docker-compose.test.yml       ：换装试用，跟 ghcr 的 :test，与生产二选一
 # - 本文件                        ：跟【本地工作区源码】，与生产同时跑、互不影响
 #
-# 为什么是源码模式而不是 :test 镜像：改一行 CSS 就想在 3211 上看效果，
-# 走 CI 出镜像要等几分钟，本地 --build 十几秒。
+# 为什么是源码模式而不是镜像：test 分支不出镜像了，改一行 CSS 就想在 3211 上看效果，
+# 走 --build 要十几秒；更快的做法是 npm run build 后把 dist 与后端源码 docker cp 进去重启。
 #
 # 用法：
 #   docker compose -f docker-compose.side-test.yml up -d --build   # 改完代码重建
