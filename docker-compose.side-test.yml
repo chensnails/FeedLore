@@ -12,11 +12,12 @@
 #   docker compose -f docker-compose.side-test.yml up -d --build   # 改完代码重建
 #   docker compose -f docker-compose.side-test.yml logs -f app     # 看后端日志
 #   docker compose -f docker-compose.side-test.yml down            # 停掉，保留数据卷
-#   打开 http://127.0.0.1:3211 （初始账号 admin / admin）
+#   打开 http://127.0.0.1:3211 （初始账号 admin / admin；局域网内用本机 IP + 3211）
 #
 # 两处刻意与生产不同：
-#   1. 端口只绑 127.0.0.1，不把 admin/admin 的测试站裸露在局域网；
-#      要从别的机器访问就去掉前缀，或做 SSH 端口转发。
+#   1. 监听 0.0.0.0（不是 127.0.0.1）：要能从局域网里别的机器打开这个测试站。
+#      代价是 admin/admin 这套初始账号也一起暴露在网段里 —— 只在可信网络里这么用，
+#      用完记得把前缀改回 127.0.0.1（或换掉管理员密码）。
 #   2. 没有 watchtower：镜像是本机 build 出来的，没有远端 tag 可拉。
 #      「设置 → 关于」里的一键更新因此不可用，重建请用上面那条 --build。
 name: feedlore-test
@@ -76,7 +77,7 @@ services:
       ADMIN_PASS: ${ADMIN_PASS:-admin}
 
     ports:
-      - "127.0.0.1:${TEST_HOST_PORT:-3211}:3000"
+      - "0.0.0.0:${TEST_HOST_PORT:-3211}:3000"
 
     networks:
       - feedlore-test
