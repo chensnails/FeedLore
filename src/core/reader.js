@@ -209,6 +209,25 @@ function replaceEntry(list, idx, patch) {
   return arr;
 }
 
+/** 改某条目已读态后，同步所属频道在 feedList 里的未读计数（侧栏频道 / 分组据此渲染）。
+ *  不在此处 reloadFeeds（避免一次标已读就打一次 /api/feeds），而是就地算准；
+ *  下次切换频道 / 拉取订阅源 / 自动刷新时再从服务端校正。 */
+function bumpFeedUnread(feedId, delta) {
+  if (feedId == null) return;
+  const list = state.feedList;
+  if (!Array.isArray(list)) return;
+  const id = String(feedId);
+  const idx = list.findIndex((f) => String(f.id) === id);
+  if (idx < 0) return;
+  const f = list[idx];
+  const next = Math.max(0, (Number(f.unreadCount) || 0) + delta);
+  if (next === Number(f.unreadCount)) return;
+  // 换新对象：与 replaceEntry 同口径，保证引用变化、侧栏重算时拿到的就是最新值
+  const arr = list.slice();
+  arr[idx] = Object.assign({}, f, { unreadCount: next });
+  state.feedList = arr;
+}
+
 /** 就地改一条的状态：内存 + 侧栏计数 + 重绘（原 paintEntryFlag 的就地 DOM 改类名移除） */
 export function applyEntryFlag(id, patch) {
   const idx = state.rdEntries.findIndex((x) => String(x.id) === String(id));
@@ -224,6 +243,9 @@ export function applyEntryFlag(id, patch) {
 
   if (wasRead !== now.isRead) {
     state.rdFlags.unread = Math.max(0, (state.rdFlags.unread || 0) + (now.isRead ? -1 : 1));
+    // 同步所属频道的未读计数：侧栏频道徽标与分组计数都从 feedList 实时重算，否则
+    // 把一组文章全点完已读，分组 / 频道栏的未读数还停在旧值（本页不重新拉订阅源）。
+    bumpFeedUnread(now.feedId, now.isRead ? -1 : 1);
   }
   if (wasFav !== now.isFavorite) {
     state.rdFlags.favorite = Math.max(0, (state.rdFlags.favorite || 0) + (now.isFavorite ? 1 : -1));
