@@ -130,6 +130,7 @@ let overlayState = {
   toast: { msg: '', ok: true, show: false },
   pill: { show: false, text: '' },
   box: { src: '', show: false },
+  confirm: { open: false, title: '', desc: '', confirmText: '确定', cancelText: '取消', danger: false, input: null },
 };
 const overlaysTick = () => w.dispatchEvent(new w.Event('__overlaysTick'));
 // /api/status 快照（字段对齐 server.js 的实际返回）
@@ -571,6 +572,11 @@ w.feedlore = {
   getToastState: () => Object.assign({}, overlayState.toast),
   getNewPillState: () => Object.assign({}, overlayState.pill),
   getLightboxState: () => Object.assign({}, overlayState.box),
+  // v1.3.8-test2：统一确认框（组件在 Overlays，设置面板只 await 结果）
+  getConfirmState: () => Object.assign({}, overlayState.confirm),
+  confirm: (opts) => { calls.push(['confirm', opts]); return Promise.resolve(opts && opts.input ? promptValue : true); },
+  settleConfirm: (ok, v) => { calls.push(['settleConfirm', ok, v]); overlayState.confirm = Object.assign({}, overlayState.confirm, { open: false }); overlaysTick(); },
+  cancelConfirm: () => { calls.push(['cancelConfirm']); overlayState.confirm = Object.assign({}, overlayState.confirm, { open: false }); overlaysTick(); },
   applyPendingFresh: () => { calls.push(['applyPendingFresh']); },
   closeLightbox: () => { calls.push(['closeLightbox']); overlayState.box = { src: '', show: false }; overlaysTick(); },
   cycleTheme: () => calls.push(['cycleTheme']),
@@ -1578,7 +1584,7 @@ const withEFP = (el, fn) => {
     const r = document.querySelector('#llmResult');
     if (!r || !r.classList.contains('ok')) throw new Error('结果类名: ' + (r && r.className));
     if (r.textContent.indexOf('模型配置与 API Key 已保存') < 0) throw new Error('文案: ' + r.textContent);
-    if (!callsOf('toast').length) throw new Error('toast 未调用');
+    // 表单保存只发内联结果（v1.3.8-test2 起不再重复 toast）
   });
   t('保存后重拉：掩码态更新（set + hint + 清除可见 + Key 清空）', () => {
     if (document.querySelector('#llmApiKey').value !== '') throw new Error('Key 未清空');
@@ -3426,9 +3432,11 @@ const withEFP = (el, fn) => {
   overlayState.toast = { msg: '操作失败', ok: false, show: true };
   overlaysTick();
   await sleep(20);
-  t('toast：失败态无 .ok', () => {
+  t('toast：失败态带 .err 且无 .ok', () => {
     const el = O('.toast');
-    if (el.className !== 'toast show') throw new Error('class: ' + el.className);
+    if (el.className !== 'toast show err') throw new Error('class: ' + el.className);
+    if (!O('.toast .toast-ico.err')) throw new Error('失败态应换成警示图标');
+    if (el.getAttribute('role') !== 'status' || el.getAttribute('aria-live') !== 'polite') throw new Error('缺 aria-live 播报');
   });
 
   t('浮标：默认隐藏', () => { if (!O('.new-pill') || O('.new-pill').hidden !== true) throw new Error('应隐藏'); });
@@ -3463,6 +3471,55 @@ const withEFP = (el, fn) => {
   t('点灯箱 → closeLightbox', () => {
     if (!callsOf('closeLightbox').length) throw new Error('未触发');
   });
+
+  // 统一确认框（v1.3.8-test2：替代原生 confirm / prompt）
+  t('确认框：默认不渲染', () => { if (O('.confirm')) throw new Error('不应存在'); });
+  overlayState.confirm = { open: true, title: '删除订阅「例子」？', desc: '该频道已抓取的条目会一并删除。', confirmText: '删除订阅', cancelText: '取消', danger: true, input: null };
+  overlaysTick();
+  await sleep(20);
+  t('确认框：alertdialog + 危险样式 + 文案', () => {
+    const box = O('.confirm');
+    if (!box) throw new Error('无 .confirm');
+    if (box.getAttribute('role') !== 'alertdialog') throw new Error('role 不对');
+    if (box.className.indexOf('is-danger') < 0) throw new Error('class: ' + box.className);
+    const title = O('#confirmTitle');
+    if (!title || title.textContent !== '删除订阅「例子」？') throw new Error('标题不符');
+    if (!O('#confirmDesc')) throw new Error('缺说明');
+    const btns = [...box.querySelectorAll('.confirm-foot button')].map((b) => b.textContent);
+    if (btns.join('|') !== '取消|删除订阅') throw new Error('按钮: ' + btns.join('|'));
+    if (!O('.confirm-foot .btn-danger-solid')) throw new Error('确认按钮应是实心危险色');
+  });
+  O('.confirm-foot .btn-danger-solid').click();
+  await sleep(20);
+  t('确认框：确认 → settleConfirm(true)', () => {
+    const c = callsOf('settleConfirm');
+    if (!c.length || c[c.length - 1][1] !== true) throw new Error('未结算');
+  });
+
+  overlayState.confirm = { open: true, title: '设置新密码', desc: '', confirmText: '设置密码', cancelText: '取消', danger: false, input: { label: '新密码', type: 'password', required: true } };
+  overlaysTick();
+  await sleep(20);
+  t('确认框：输入模式渲染密码框', () => {
+    const i = O('#confirmInput');
+    if (!i) throw new Error('无输入框');
+    if (i.type !== 'password') throw new Error('type: ' + i.type);
+  });
+  {
+    const inp = O('#confirmInput');
+    const setter = Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set;
+    setter.call(inp, 'abc123');
+    inp.dispatchEvent(new w.Event('input', { bubbles: true }));
+    await sleep(20);
+    O('.confirm-foot .btn-primary').click();
+    await sleep(20);
+    t('确认框：输入值随确认返回', () => {
+      const c = callsOf('settleConfirm');
+      if (c[c.length - 1][2] !== 'abc123') throw new Error('值: ' + c[c.length - 1][2]);
+    });
+  }
+  overlayState.confirm = Object.assign({}, overlayState.confirm, { open: false });
+  overlaysTick();
+  await sleep(10);
 
   // ============ 冒烟：真实核心模块（src/core/index.js）顶层加载无异常 ============
   // 背景：v1.9.0 曾因桥里引用了不存在的标识符，顶层抛 ReferenceError → 整页 JS 中断
@@ -3510,6 +3567,7 @@ const withEFP = (el, fn) => {
         'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'promptInstall',
         'openSettings', 'toast', 'apiFetch', 'isAdmin', 'exportOpml', 'bindSections', 'groupFeeds',
         'getToastState', 'getNewPillState', 'getLightboxState', 'applyPendingFresh',
+        'getConfirmState', 'confirm', 'settleConfirm', 'cancelConfirm',
         'closeLightbox',
         'digestIsEnabled', 'setDigestEnabled',
       ];

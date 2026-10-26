@@ -114,9 +114,8 @@ export function ModelPane() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setResult({ ok: false, msg: data.error || '保存失败' }); return; }
       const msg = typedKey ? '模型配置与 API Key 已保存' : '模型配置已保存';
+      // 表单保存只用内联结果，不再叠一层 toast（列表级动作才用 toast）
       setResult({ ok: true, msg });
-      const s = S();
-      if (s && s.toast) s.toast(msg);
       await load();
     } catch (err) {
       setResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
@@ -126,7 +125,13 @@ export function ModelPane() {
   };
 
   const onClearKey = async () => {
-    if (!confirm('确定清除已保存的 API Key？\n清除后这个账号将无法调用模型，日报直到重新填写前都生成不了。')) return;
+    const ok = await S().confirm({
+      title: '清除已保存的 API Key？',
+      desc: '清除后这个账号将无法调用模型，日报直到重新填写前都生成不了。',
+      confirmText: '清除',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy('clear');
     try {
       const res = await S().apiFetch('/api/prefs', {
@@ -137,8 +142,6 @@ export function ModelPane() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setResult({ ok: false, msg: data.error || '清除失败' }); return; }
       setResult({ ok: true, msg: 'API Key 已清除' });
-      const s = S();
-      if (s && s.toast) s.toast('API Key 已清除');
       await load();
     } catch (err) {
       setResult({ ok: false, msg: '清除失败：' + String((err && err.message) || err) });

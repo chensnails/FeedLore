@@ -142,6 +142,7 @@ export function CardDetail({ e, onClose, onTag }) {
           <div className="dd-sheet-body cd-body">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
+            <p className="cd-read-tip">打开此详情已将它标记为已读（已读态只在文章页显示）</p>
           </div>
         </div>
       </div>
@@ -156,6 +157,7 @@ export function CardDetail({ e, onClose, onTag }) {
           <div className="cd-scroll">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
+            <p className="cd-read-tip">打开此详情已将它标记为已读（已读态只在文章页显示）</p>
           </div>
         </div>
       </div>

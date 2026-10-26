@@ -222,7 +222,7 @@ export function ArtBody({ e, onTag, extraActions }) {
   if (e.tags && e.tags.length) {
     parts.push(
       <div className="art-tags" key="tags">
-        {e.tags.map((t) => <span className="mini-tag" data-tag={t} key={t} onClick={() => onTag(t)}>#{t}</span>)}
+        {e.tags.map((t) => <button className="mini-tag" type="button" data-tag={t} key={t} onClick={() => onTag(t)}>#{t}</button>)}
       </div>
     );
   }
@@ -320,7 +320,7 @@ function ReaderChannels({ grouped, collapsed, hasGroups, flags, scope, feedId, g
                     ? <span className="rd-ch-n hot" title={`${gUnread} 条未读`}>{gUnread}</span>
                     : isCollapsed
                       ? <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道，全部已读`}>{g.feeds.length}</span>
-                      : <span className="rd-ch-group-empty" aria-hidden="true">✓</span>}
+                      : <span className="rd-ch-group-empty" aria-hidden="true"><svg className="ico" focusable="false"><use href="#i-check" /></svg></span>}
                 </button>
                 {/* 低频动作平时隐身，悬停 / 键盘聚焦 / 正在筛选该组时才现身（触屏常显在 CSS 里） */}
                 <button type="button" className="rd-ch-filter" data-group-filter={gname}

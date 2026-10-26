@@ -75,6 +75,14 @@ export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChang
     if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
   }, [open]);
 
+  // 键盘 ↑↓ 高亮时把那一项滚进视野（长频道列表里否则看不到当前高亮在哪）
+  useEffect(() => {
+    if (!open || hi < 0 || !panelRef.current) return;
+    const items = panelRef.current.querySelectorAll('.dd-item');
+    const el = items[hi];
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+  }, [hi, open]);
+
   const openPanel = () => { setMobile(isMobileMq()); setOpen(true); setHi(-1); };
 
   // 移动端：往下拖就能收起（见 useSwipeDismiss.js）
@@ -83,6 +91,8 @@ export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChang
   const pick = (v) => {
     setOpen(false);
     setHi(-1);
+    // 点选后焦点回到触发键：否则焦点随面板卸载而丢到 body，键盘用户要从头 Tab
+    if (triggerRef.current) triggerRef.current.focus();
     if (onChange) onChange(v);
   };
 

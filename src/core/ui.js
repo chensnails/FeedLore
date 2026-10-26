@@ -86,8 +86,16 @@ export function exportOpml() {
 }
 
 
+/* Esc = 关闭「最上面那一层」。这里只负责设置弹层，但要先看有没有更上层的覆盖物：
+   整屏下拉弹层 / 命令面板 / 灯箱 / 确认框开着时，这一击归它们，不能顺手把设置也关掉。 */
 document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape' && window.__settingsOpen) closeSettings();
+  if (ev.key !== 'Escape' || !window.__settingsOpen) return;
+  if (document.querySelector('.dd-mask')) return;                    // 移动端整屏下拉
+  const cmdk = document.querySelector('.cmdk-mask:not([hidden])');
+  if (cmdk) return;                                                  // 命令面板
+  if (document.querySelector('.lightbox')) return;                   // 图片灯箱
+  if (window.__confirmOpen) return;                                  // 统一确认框
+  closeSettings();
 });
 
 /* ============================================================

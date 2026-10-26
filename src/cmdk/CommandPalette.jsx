@@ -66,7 +66,7 @@ export function CommandPalette() {
     if (ev.key === 'ArrowDown') { ev.preventDefault(); setActive((i) => (items.length ? (i + 1) % items.length : 0)); }
     else if (ev.key === 'ArrowUp') { ev.preventDefault(); setActive((i) => (items.length ? (i - 1 + items.length) % items.length : 0)); }
     else if (ev.key === 'Enter') { ev.preventDefault(); runCmdk(active); }
-    else if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); if (!window.__confirmOpen) close(); }
   };
 
   const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) close(); };

@@ -9,7 +9,7 @@
  */
 
 import { core } from '@core';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AboutPane } from './AboutPane.jsx';
 import { AppearancePane } from './AppearancePane.jsx';
 import { ModelPane } from './ModelPane.jsx';
@@ -38,6 +38,8 @@ export function SettingsModal() {
   const [tab, setTab] = useState('source');
   const [summary, setSummary] = useState('');
   const [admin, setAdmin] = useState(isAdminNow);
+  const modalRef = useRef(null);
+  const openerRef = useRef(null);
 
   // 宿主注册：旧 app 的 openSettings/closeSettings 委托到这里
   useEffect(() => {
@@ -73,6 +75,45 @@ export function SettingsModal() {
     return () => { if (s && s.unlockPageScroll) s.unlockPageScroll(); };
   }, [open]);
 
+  // 焦点：打开时记住来源、把焦点送进弹层；关闭时还给来源（此前两头都不管，
+  // 键盘用户关掉设置后焦点会丢到 body，得从头 Tab）。
+  useEffect(() => {
+    if (open) {
+      openerRef.current = document.activeElement;
+      const t = setTimeout(() => {
+        const el = modalRef.current && modalRef.current.querySelector('.modal-close');
+        if (el) el.focus();
+      }, 0);
+      return () => clearTimeout(t);
+    }
+    const back = openerRef.current;
+    openerRef.current = null;
+    if (back && back.focus && document.contains(back)) back.focus();
+    return undefined;
+  }, [open]);
+
+  // 焦点陷阱：Tab / Shift+Tab 在弹层内循环，不会跑到背后的页面上
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (ev) => {
+      if (ev.key !== 'Tab') return;
+      const root = modalRef.current;
+      if (!root) return;
+      const nodes = root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+      const list = Array.prototype.filter.call(nodes, (el) => !el.disabled && el.offsetParent !== null);
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (ev.shiftKey && (document.activeElement === first || document.activeElement === root)) {
+        ev.preventDefault(); last.focus();
+      } else if (!ev.shiftKey && document.activeElement === last) {
+        ev.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
   const close = () => setOpen(false);
   const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) close(); };
 
@@ -80,7 +121,7 @@ export function SettingsModal() {
 
   return (
     <div className="modal-mask" hidden={!open} onClick={onMaskClick}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" ref={modalRef} tabIndex={-1}>
         <div className="modal-head">
           <div>
             <h2 id="settingsTitle">设置</h2>

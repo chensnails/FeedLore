@@ -623,7 +623,13 @@ export function SourcePane({ admin }) {
   const onDelete = async (f) => {
     const s = S();
     const name = s.shortFeedName(s.feedTitle(f));
-    if (!confirm(`确定删除订阅「${name}」？\n该频道已抓取的条目会一并删除。`)) return;
+    const ok = await s.confirm({
+      title: `删除订阅「${name}」？`,
+      desc: '该频道已抓取的条目会一并删除，且不可恢复。',
+      confirmText: '删除订阅',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       const res = await s.apiFetch('/api/feeds/' + f.id, { method: 'DELETE' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -659,8 +665,8 @@ export function SourcePane({ admin }) {
       }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setResult({ ok: false, msg: data.error || '保存失败' }); return; }
+      // 表单保存只用内联结果，不再叠一层 toast（列表级动作才用 toast）
       setResult({ ok: true, msg: '抓取设置已保存' });
-      s.toast('抓取设置已保存');
       if (s.scheduleAutoRefresh) s.scheduleAutoRefresh();   // 立刻按新的「页面自动刷新」间隔重排
     } catch (err) {
       setResult({ ok: false, msg: '保存失败：' + (err.message || err) });
@@ -673,7 +679,13 @@ export function SourcePane({ admin }) {
   const onClearImgCache = async () => {
     const s = S();
     const n = Number(imgStats.count) || 0;
-    if (!confirm(`确定清空图片缓存（${n} 张）？\n已缓存的图片会从库里删除，下次浏览时按当前压缩参数重新缓存。`)) return;
+    const ok = await s.confirm({
+      title: `清空图片缓存（${n} 张）？`,
+      desc: '已缓存的图片会从库里删除，下次浏览时按当前压缩参数重新缓存。',
+      confirmText: '清空缓存',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy('imgclear');
     try {
       const res = await s.apiFetch('/api/image-cache/clear', { method: 'POST' });
@@ -1248,9 +1260,9 @@ export function SourcePane({ admin }) {
           <div className="sec-body">
             <div className="feed-list" id="feedList">
               {loadError ? (
-                <div className="hint" style={{ padding: 'var(--sp-5)' }}>{`读取失败：${loadError}`}</div>
+                <div className="hint pane-msg lg">{`读取失败：${loadError}`}</div>
               ) : (!feeds.length ? (
-                <div className="hint" style={{ padding: 'var(--sp-6) var(--sp-3)' }}>还没有订阅源，在上方粘贴一个 RSS 地址试试</div>
+                <div className="hint pane-msg empty-tip">还没有订阅源，在上方粘贴一个 RSS 地址试试</div>
               ) : (
                 groups.map((g) => {
                   const isCollapsed = !!(g.name && collapsed.has(g.name));
@@ -1294,7 +1306,7 @@ export function SourcePane({ admin }) {
                           {GRIP}
                         </span>
                       ) : null}
-                      <span className="feed-group-caret" aria-hidden="true"></span>
+                      <svg className="ico feed-group-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-down" /></svg>
                       <span className={'feed-group-name' + (g.name ? '' : ' muted')}>{g.name || '未分组'}</span>
                       <span className="feed-group-n">{g.feeds.length}</span>
                       {g.name ? (

@@ -117,7 +117,6 @@ export function DigestPane() {
       setForm(next);
       setSaved(JSON.stringify(next));
       setResult({ ok: true, msg: '日报设置已保存，下次生成生效' });
-      S().toast('日报设置已保存');
     } catch (err) {
       setResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
     } finally {

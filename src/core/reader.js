@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { $, apiFetch, toast, emitShell } from './util.js';
+import { $, apiFetch, toast, emitShell, confirm } from './util.js';
 import { state, layoutPref, setLayout, openSettings, lockPageScroll, unlockPageScroll } from './state.js';
 import { loadFeeds, groupFeeds } from './feeds.js';
 
@@ -540,7 +540,12 @@ export async function readerReadAll() {
   // 破坏性操作（可能一口气把几百篇标成已读），先确认一次，与「删除订阅/用户」保持一致
   const label = state.rdScope === 'unread' ? '全部未读'
     : (state.rdScope === 'favorite' ? '全部收藏' : '当前列表');
-  if (!window.confirm(`确定把「${label}」全部标为已读？此操作不可撤销。`)) return;
+  const ok = await confirm({
+    title: `把「${label}」全部标为已读？`,
+    desc: '此操作不可撤销。',
+    confirmText: '全部标为已读',
+  });
+  if (!ok) return;
   try {
     const p = readerFilterParams();
     const feedsRaw = p.get('feeds');

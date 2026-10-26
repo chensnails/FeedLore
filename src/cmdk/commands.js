@@ -26,7 +26,7 @@ export function buildCommands(S) {
       keywords: 'theme dark light 暗色 浅色 外观', run: () => S.applyTheme(m, true),
     });
   });
-  [['source', '数据源'], ['model', '模型'], ['digest', '日报'], ['account', '账号'], ['appearance', '外观'], ['status', '状态']].forEach((t) => {
+  [['source', '数据源'], ['model', '模型'], ['digest', '日报'], ['account', '账号'], ['appearance', '外观'], ['status', '状态'], ['about', '关于']].forEach((t) => {
     cmds.push({
       group: '设置', icon: 'settings', label: '打开设置 · ' + t[1], hint: t[1], keywords: 'settings ' + t[1],
       run: () => S.openSettings(t[0]),

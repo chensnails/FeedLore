@@ -33,7 +33,8 @@ function useResult(state) {
 }
 
 const Result = ({ id, result }) => (
-  <div id={id} className={'test-result' + (result ? ' show ' + (result.ok ? 'ok' : 'err') : '')}>
+  <div id={id} role="status" aria-live="polite"
+    className={'test-result' + (result ? ' show ' + (result.ok ? 'ok' : 'err') : '')}>
     {result ? result.msg : ''}
   </div>
 );
@@ -129,7 +130,6 @@ export function AccountPane() {
       showFilterResult(true, dropped > 0
         ? `已保存 ${saved.length} 条规则（${dropped} 条为空或非法，已丢弃）`
         : `已保存 ${saved.length} 条规则`);
-      s.toast('过滤规则已保存');
     } catch (err) {
       showFilterResult(false, '保存失败：' + String((err && err.message) || err));
     } finally {
@@ -165,7 +165,6 @@ export function AccountPane() {
       const data = await res.json();
       if (!res.ok) { showAccResult(false, data.error || '保存失败'); return; }
       showAccResult(true, '账号已更新');
-      s.toast('账号已更新');
       setCurrent('');
       setNewPass('');
       setUsername(data.username);
@@ -187,7 +186,13 @@ export function AccountPane() {
   async function userAction(act, u) {
     try {
       if (act === 'del') {
-        if (!confirm(`确定删除用户「${u.username}」？其订阅源、条目与日报都会一并删除，且不可恢复。`)) return;
+        const ok = await s.confirm({
+          title: `删除用户「${u.username}」？`,
+          desc: '其订阅源、条目与日报都会一并删除，且不可恢复。',
+          confirmText: '删除用户',
+          danger: true,
+        });
+        if (!ok) return;
         const res = await s.apiFetch('/api/users/' + u.id, { method: 'DELETE' });
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
@@ -205,7 +210,12 @@ export function AccountPane() {
         showUserResult(true, `已将 ${u.username} 设为${next === 'admin' ? '管理员' : '普通用户'}`);
         await loadUsers();
       } else if (act === 'pass') {
-        const np = prompt(`为「${u.username}」设置新密码（至少 4 位）：`);
+        const np = await s.confirm({
+          title: `为「${u.username}」设置新密码`,
+          desc: '至少 4 位，设置后立即生效。',
+          confirmText: '设置密码',
+          input: { label: '新密码', placeholder: '至少 4 位', type: 'password', autoComplete: 'new-password', required: true },
+        });
         if (np == null) return;
         if (np.length < 4) { showUserResult(false, '密码至少 4 位'); return; }
         const res = await s.apiFetch('/api/users/' + u.id, {
@@ -355,7 +365,7 @@ export function AccountPane() {
             <div className="sec-body">
               <div className="user-list" id="userList">
                 {!usersLoaded ? null
-                  : usersError ? <div className="hint" style={{ padding: 'var(--sp-3)' }}>{usersError}</div>
+                  : usersError ? <div className="hint pane-msg">{usersError}</div>
                     : !users.length ? <div className="hint">还没有用户</div>
                       : users.map((u) => (
                         <div className="user-row" data-id={u.id} key={u.id}>

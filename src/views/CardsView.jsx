@@ -109,7 +109,7 @@ function LazyImg({ src, alt, fallbackClass, fbIcon }) {
 
 function TagList({ tags, onTag }) {
   return (tags || []).slice(0, 4).map((t) => (
-    <span className="mini-tag" data-tag={t} key={t} onClick={() => onTag(t)}>#{t}</span>
+    <button className="mini-tag" type="button" data-tag={t} key={t} onClick={() => onTag(t)}>#{t}</button>
   ));
 }
 
@@ -258,6 +258,20 @@ export function CardsView() {
   // 外部（命令面板 / 深链）改了搜索词时同步草稿
   useEffect(() => { setQDraft(st.q || ''); }, [st.q]);
 
+  // 滚动到底部自动加载：与文章页一致（此前只有卡片页要手动点「加载更多」）。
+  // 按钮保留，作为键盘用户与自动加载失灵时的降级入口。
+  useEffect(() => {
+    if (!st.hasMore) return undefined;
+    const onScroll = () => {
+      if (st.loading || !st.hasMore) return;
+      const doc = document.documentElement;
+      const gap = doc.scrollHeight - window.scrollY - window.innerHeight;
+      if (gap < 480) { if (s.cardsLoadMore) s.cardsLoadMore(); }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [st.hasMore, st.loading]);
+
   const feeds = st.feedList || [];
   const list = (s && s.filterEntries) ? s.filterEntries() : (st.entries || []);
   const view = st.view || 'grid';
@@ -290,7 +304,19 @@ export function CardsView() {
     const v = ev.target.value;
     setQDraft(v);
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => { if (s.cardsSearch) s.cardsSearch(v); }, 420);
+    // 与文章页统一 300ms；回车立即检索
+    debounceRef.current = setTimeout(() => { if (s.cardsSearch) s.cardsSearch(v.trim()); }, 300);
+  };
+  const onSearchKey = (ev) => {
+    if (ev.key !== 'Enter') return;
+    clearTimeout(debounceRef.current);
+    if (s.cardsSearch) s.cardsSearch(String(ev.target.value).trim());
+  };
+  const onSearchClear = () => {
+    clearTimeout(debounceRef.current);
+    setQDraft('');
+    if (s.cardsSearch) s.cardsSearch('');
+    if (searchRef.current) searchRef.current.focus();
   };
 
   // memo 的前提是回调稳定：这两个必须与本次渲染无关（标签取调用时的 state.tag），
@@ -342,8 +368,12 @@ export function CardsView() {
         <div className="search-box">
           <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
           <input id="searchInput" name="q" type="search" ref={searchRef}
-            placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" autoComplete="off"
-            value={qDraft} onChange={onSearchInput} />
+            placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索"
+            value={qDraft} onChange={onSearchInput} onKeyDown={onSearchKey} />
+          <button className="search-clear" id="searchClear" type="button" hidden={!qDraft}
+            aria-label="清除搜索" onClick={onSearchClear}>
+            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+          </button>
         </div>
         <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选" value={feedValue}
           options={feedOpts} onChange={(v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }}
@@ -365,10 +395,13 @@ export function CardsView() {
       <div className="wrap" id="tagBar">
         {tags.length ? (
           <>
-            <span className={'tag-chip' + (st.tag ? '' : ' active')} data-tag="" onClick={() => onTag(null)}>全部</span>
+            <span className={'tag-chip' + (st.tag ? '' : ' active')} data-tag="" role="button" tabIndex={0}
+              onClick={() => onTag(null)} onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onTag(null); } }}>全部</span>
             {tags.slice(0, 16).map(({ tag, n }) => (
               <span className={'tag-chip' + (st.tag === tag ? ' active' : '')} data-tag={tag} key={tag}
-                onClick={() => onTag(tag)}>{tag}<span className="cnt">{n}</span></span>
+                role="button" tabIndex={0}
+                onClick={() => onTag(tag)}
+                onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onTag(tag); } }}>{tag}<span className="cnt">{n}</span></span>
             ))}
           </>
         ) : null}

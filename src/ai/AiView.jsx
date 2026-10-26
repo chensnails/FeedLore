@@ -102,8 +102,11 @@ function DigestView({ digest }) {
     <>
       <div className="dg-card">
         <div className="dg-overview">
-          {d.overview || '（无概览）'}
-          {d.fallback ? <span className="dg-tag-fallback">规则摘要</span> : null}
+          <svg className="ico dg-pin" aria-hidden="true" focusable="false"><use href="#i-pin" /></svg>
+          <span>
+            {d.overview || '（无概览）'}
+            {d.fallback ? <span className="dg-tag-fallback">规则摘要</span> : null}
+          </span>
         </div>
         <div className="dg-meta">
           <span><b>生成时间</b> {gen}</span>
@@ -113,8 +116,8 @@ function DigestView({ digest }) {
           {d.usedMapReduce ? <span><b>模式</b> 分批汇总</span> : null}
         </div>
         {d.error ? (
-          <div className="dg-meta" style={{ borderTop: 'none', paddingTop: 0 }}>
-            <span style={{ color: 'var(--warn-text)' }}>模型调用失败，已降级为规则摘要：{d.error}</span>
+          <div className="dg-meta is-plain">
+            <span className="dg-warn">模型调用失败，已降级为规则摘要：{d.error}</span>
           </div>
         ) : null}
       </div>
@@ -258,7 +261,7 @@ export function AiView() {
       <div className="dg-loading">
         <div className="dg-spinner" />
         正在采集过去 24 小时的新条目并生成摘要…
-        <div className="hint" style={{ marginTop: 'var(--sp-2)' }}>首次生成约需 30~60 秒，请勿关闭页面</div>
+        <div className="hint mt-2">首次生成约需 30~60 秒，请勿关闭页面</div>
       </div>
     );
   } else if (view.kind === 'error') {

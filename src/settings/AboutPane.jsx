@@ -60,7 +60,12 @@ export function AboutPane() {
   /* 一键更新（v1.1.0）：触发 watchtower 立即检查 → 拉新镜像 → 重启容器。
    * 轮询 /api/version 直至版本号变化；期间请求失败 = 容器正在重启，继续等。 */
   const doUpdate = async () => {
-    if (!window.confirm('将拉取最新镜像并重启容器（约 1~2 分钟），期间页面短暂不可用。确定更新？')) return;
+    const ok = await S().confirm({
+      title: '立即更新到最新镜像？',
+      desc: '将拉取最新镜像并重启容器（约 1~2 分钟），期间页面短暂不可用。',
+      confirmText: '立即更新',
+    });
+    if (!ok) return;
     setUpdating(true);
     try {
       const res = await S().apiFetch('/api/update', { method: 'POST' });
@@ -141,10 +146,9 @@ export function AboutPane() {
           )}
           {isAdmin && updateEnabled && !updating && (
             <button
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm ml-3"
               id="aboutUpdateBtn"
               type="button"
-              style={{ marginLeft: 'var(--sp-3)' }}
               onClick={doUpdate}
             >
               一键更新
