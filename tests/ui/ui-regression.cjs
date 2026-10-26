@@ -3307,14 +3307,15 @@ const withEFP = (el, fn) => {
     if (dup.length < 2) throw new Error('窄屏那份 .reader-head 内边距覆盖不见了');
   });
 
-  t('style.css：正文动作行桌面靠右下、窄屏回退靠左', () => {
+  t('style.css：正文动作行靠右下（桌面与窄屏同一套）', () => {
     const root = path.join(__dirname, '..', '..');
     const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
     const acts = css.match(/\.art-actions\s*\{([^}]*)\}/);
     if (!acts) throw new Error('缺 .art-actions 基础规则');
     if (acts[1].indexOf('justify-content: flex-end') < 0) throw new Error('动作键没靠右（读完正文视线落在末尾，按钮应在落点）');
-    if (!/@media \(max-width: 720px\)[\s\S]*?\.art-actions\s*\{[^}]*justify-content: flex-start/.test(css)) {
-      throw new Error('窄屏没回退成靠左（移动端「复制链接」独占一行，右对齐反而别扭）');
+    // 窄屏不再回退靠左：移动端读正文一样是「读完 → 视线落在末尾」
+    if (/\.art-actions\s*\{[^}]*justify-content: flex-start/.test(css)) {
+      throw new Error('窄屏把动作键拉回靠左了（移动端也要靠右下）');
     }
     // 卡片详情复用同一族 .art-* 样式：不该再另造一个动作行类名
     const cd = fs.readFileSync(path.join(root, 'src', 'views', 'CardDetail.jsx'), 'utf8');

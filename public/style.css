@@ -2812,9 +2812,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .art-meta { flex: 1 0 100%; padding-left:var(--sp-7); }
   .art-meta .src-pill { max-width: none; }
   .art-inner { padding:var(--sp-3) var(--sp-3); gap:var(--sp-3); }
-  /* 动作键右对齐只在桌面生效：窄屏一屏就那几个按钮，且弹窗里的「复制链接」会独占一行，
-     保持靠左反而和上面的正文/标签同一侧，不用横向扫视 */
-  .art-actions { justify-content: flex-start; }
+  /* 动作键右对齐在窄屏也生效（基础规则已负责，这里不再回退靠左）：
+     读完正文视线落在末尾，复制 / 打开就该在落点，不用再扫回左边。 */
   .art-text { font-size: 0.8125rem; }
   .art-img { max-height: 72vh; max-height: 72dvh; }
 }
