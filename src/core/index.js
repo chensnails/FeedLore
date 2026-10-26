@@ -42,8 +42,6 @@ export const core = {
   bindSections: UI.bindSections, groupFeeds: F.groupFeeds,
   // —— 账号 / 状态面板（P2d） ——
   promptInstall: UI.promptInstall,
-  // —— AI 视图（P3a） ——
-  getAiPage: S.getAiPage, setAiPage: S.setAiPage,
   linkLabel: U.linkLabel,
   // —— 卡片视图（P3b） ——
   filterEntries: () => F.applyFilters(),
@@ -58,6 +56,8 @@ export const core = {
   copyText: U.copyText, openLinkMenu: U.openLinkMenu, fmtDate: U.fmtDate,
   // —— App Shell 顶栏（P4a） ——
   getShell: UI.shellSnapshot,
+  // —— 日报开关（账号级，关掉即收起顶栏入口） ——
+  digestIsEnabled: UI.digestIsEnabled, setDigestEnabled: UI.setDigestEnabled,
   fmtFull: U.fmtFull,
   // —— 文章视图（P3c） ——
   readerSetScope: R.readerSetScope, readerSetFeed: R.readerSetFeed, readerSetGroup: R.readerSetGroup,

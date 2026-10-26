@@ -95,13 +95,13 @@ export function setReaderSideWidth(px) {
 }
 
 /* ---------------- 按账号保存的 UI 布局偏好 ----------------
- * 视图模式 / 当前页面 / 分组折叠 / 阅读手风琴 / AI 子页 / 设置分组开合 /
- * 阅读页排序方式 / 阅读页默认范围 / 阅读页频道栏折叠 / 频道栏宽度，
+ * 视图模式 / 当前页面 / 分组折叠 / 阅读手风琴 /
+ * 阅读页排序方式 / 阅读页默认范围 / 阅读页频道栏折叠 / 频道栏宽度 / 日报是否开启，
  * 统一按账号维度持久化到服务端（users.prefs.layout），不再落浏览器 localStorage，
  * 换设备也一致。首屏初值由 server.js 注入的 window.__LAYOUT__ 提供。
  * 单一可信源是 window.__LAYOUT__（缺省回落默认）。 */
-export const LAYOUT_DEFAULTS = { view: 'grid', tab: 'reader', collapsedGroups: [], accordion: true, aiPage: 'digest', sections: {}, sort: 'new', rdScope: 'all', rdCollapsedGroups: [], readerSideWidth: READER_SIDE_DEFAULT };
-export const LAYOUT_VALUES = { view: ['grid', 'list'], tab: ['reader', 'cards', 'ai'], aiPage: ['digest', 'settings'], sort: ['new', 'old', 'name'], rdScope: ['all', 'unread', 'favorite'] };
+export const LAYOUT_DEFAULTS = { view: 'grid', tab: 'reader', collapsedGroups: [], accordion: true, sections: {}, sort: 'new', rdScope: 'all', rdCollapsedGroups: [], readerSideWidth: READER_SIDE_DEFAULT, digestEnabled: true };
+export const LAYOUT_VALUES = { view: ['grid', 'list'], tab: ['reader', 'cards', 'ai'], sort: ['new', 'old', 'name'], rdScope: ['all', 'unread', 'favorite'] };
 export function sanitizeLayoutLocal(raw) {
   const out = Object.assign({}, LAYOUT_DEFAULTS);
   if (raw && typeof raw === 'object') {
@@ -111,7 +111,6 @@ export function sanitizeLayoutLocal(raw) {
       out.collapsedGroups = raw.collapsedGroups.filter((g) => typeof g === 'string').map((g) => g.slice(0, 40));
     }
     out.accordion = raw.accordion === false ? false : true;
-    if (LAYOUT_VALUES.aiPage.indexOf(raw.aiPage) >= 0) out.aiPage = raw.aiPage;
     if (raw.sections && typeof raw.sections === 'object') {
       const sec = {};
       Object.keys(raw.sections).forEach((k) => { sec[k] = raw.sections[k] === true; });
@@ -124,6 +123,8 @@ export function sanitizeLayoutLocal(raw) {
       out.rdCollapsedGroups = raw.rdCollapsedGroups.filter((g) => typeof g === 'string').map((g) => g.slice(0, 40));
     }
     out.readerSideWidth = clampReaderSide(raw.readerSideWidth);
+    // 日报对本账号是否开启（与服务端 lib/prefs.js 同一口径：只有显式 false 才关）
+    out.digestEnabled = raw.digestEnabled === false ? false : true;
   }
   return out;
 }
@@ -148,15 +149,12 @@ state.rdScope = layoutPref.rdScope;
 export const isAdmin = () => state.role === 'admin';
 
 /** 按角色显隐：设置弹层的管理员专属 tab 由 React 外壳过滤；
- *  采集参数 / 用户管理 / 日报设置分别在各自 React 面板内按 admin 显隐（P3a 起 AI 视图亦 React 化） */
+ *  采集参数 / 用户管理 分别在各自 React 面板内按 admin 显隐（P3a 起 AI 视图亦 React 化） */
 export function applyRoleUI() {
   const admin = isAdmin();
   // 设置弹层 tab 已 React 化：按角色过滤交给宿主（管理员专属 tab 由外壳不再渲染）
   const host = window.__settingsHost;
   if (host && host.setAdminFlag) host.setAdminFlag(admin);
-  // AI 视图（日报设置入口）同样按角色显隐，需经宿主桥异步通知
-  const aiHost = window.__aiHost;
-  if (aiHost && aiHost.setAdminFlag) aiHost.setAdminFlag(admin);
 }
 
 /* ---------- 弹层打开时锁住背景页面 ----------
@@ -215,13 +213,6 @@ export function getSettingsSummary() {
 export function setSettingsSummary(text) {
   const host = window.__settingsHost;
   if (host && host.setSummary) host.setSummary(text);
-}
-
-let aiPage = (['digest', 'settings'].indexOf(layoutPref.aiPage) >= 0) ? layoutPref.aiPage : 'digest';
-export function getAiPage() { return aiPage; }
-export function setAiPage(n) {
-  aiPage = (['digest', 'settings'].indexOf(n) >= 0) ? n : 'digest';
-  setLayout('aiPage', aiPage);
 }
 
 /* ============================================================
@@ -443,8 +434,6 @@ applyAppearance(readAppearance());
     }
     const ac = localStorage.getItem('feedlore.reader.accordion.v1');
     if (ac === '0' || ac === '1') { lpref.accordion = ac !== '0'; lChanged = true; }
-    const ai = localStorage.getItem('feedlore.ai.page.v1');
-    if (LAYOUT_VALUES.aiPage.indexOf(ai) >= 0) { lpref.aiPage = ai; lChanged = true; }
     const sec = JSON.parse(localStorage.getItem('feedlore.settings.sections.v1') || 'null');
     if (sec && typeof sec === 'object') { lpref.sections = sec; lChanged = true; }
   } catch (_) { return; }
@@ -454,7 +443,7 @@ applyAppearance(readAppearance());
   try {
     ['feedlore.appearance.v1', 'feedlore.theme.v1', 'feedlore.appearance.accent.v1',
      'feedlore.view.v1', 'feedlore.tab.v1', 'feedlore.collapsedGroups.v1',
-     'feedlore.reader.accordion.v1', 'feedlore.ai.page.v1', 'feedlore.settings.sections.v1']
+     'feedlore.reader.accordion.v1', 'feedlore.settings.sections.v1']
       .forEach((k) => localStorage.removeItem(k));
   } catch (_) { /* 忽略 */ }
 })();

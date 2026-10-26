@@ -18,14 +18,15 @@ const { getDispatcher: getProxyDispatcher } = require('./proxy');
 const createDigest = require('./digest');
 const pkg = require('./package.json');
 // 纯函数已抽到 lib/（v2.2.0）：无副作用、可直接单测，见 tests/server/
-const { int, bool, clampInt, clampNum, normUrl, compareVersion, isPrivateHost, groupsOf, imageCacheKey, groupByUrl } = require('./lib/util');
+const { int, bool, clampInt, normUrl, compareVersion, isPrivateHost, groupsOf, imageCacheKey, groupByUrl } = require('./lib/util');
 const { compressImage, MAX_BYTES: IMG_MAX_BYTES } = require('./lib/image');
 const { parseOpml } = require('./lib/opml');
-const { sanitizeAppearance, userAppearance, sanitizeLayout, userLayout, sanitizeFilters, userFilters } = require('./lib/prefs');
+const { sanitizeAppearance, userAppearance, sanitizeLayout, userLayout, sanitizeFilters, userFilters,
+  sanitizeDigest, userDigest, DIGEST_DEFAULTS, DIGEST_MODES } = require('./lib/prefs');
 const { applyFilters } = require('./lib/filter');
 const { toCard, toFeedDto } = require('./lib/dto');
-const { decryptSecret, maskSecret, hashPassword, safeEqual } = require('./lib/crypto');
-const { llmForStore, userLlmForStore, userLlmForView, resolveUserLlm } = require('./lib/llm');
+const { hashPassword, safeEqual } = require('./lib/crypto');
+const { userLlmForStore, userLlmForView, userLlm, llmComplete, thinkingBudget } = require('./lib/llm');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
@@ -63,9 +64,9 @@ const db = createDb({ connectionString: DATABASE_URL, log });
  * 同时让接口不再回吐明文（前端只看到掩码）。
  * ============================================================ */
 /* ============================================================
- * 每用户模型配置（与站点级 settings.llm 同构，但跟随账号生效）
- * 内存里持有明文 apiKey；落库前换 apiKeyEnc；前端只见「是否设置 + 掩码」。
- * 站点级 settings.llm 作为兜底 / 默认值：用户自己配了就用用户的，否则回退站点默认。
+ * 模型与日报：都只认「这个账号自己那份」（prefs.llm / prefs.digest）
+ * 站点级 settings.llm / settings.digest 已整层退场：普通用户不该被别人的模型和
+ * 调度时间绑架，管理员也不该替所有人决定。库里残留的这两组旧值不再被读取。
  * ============================================================ */
 
 function defaults() {
@@ -77,25 +78,6 @@ function defaults() {
       salt,
       // 默认 admin / admin；可用 ADMIN_USER / ADMIN_PASS 覆盖（仅首次初始化时生效）
       passwordHash: hashPassword(env.ADMIN_PASS || 'admin', salt),
-    },
-    llm: {
-      baseUrl: (env.LLM_BASE || '').replace(/\/+$/, ''),
-      apiKey: env.LLM_KEY || '',
-      model: env.LLM_MODEL || '',
-      temperature: clampNum(env.LLM_TEMPERATURE, 0.3, 0, 1.5),
-    },
-    digest: {
-      enabled: bool(env.DIGEST_ENABLED, false),
-      time: env.DIGEST_TIME || '08:00',
-      maxPerFeed: int(env.DIGEST_MAX_PER_FEED, 20),
-      maxTotal: int(env.DIGEST_MAX_TOTAL, 150),
-      keepDays: int(env.DIGEST_KEEP_DAYS, 30),
-      // 摘要范围：哪些频道进入日报
-      //   enabled = 仅「采集」开启的频道（默认，等价于旧 scope=selected）
-      //   all     = 该用户全部频道（等价于旧 scope=all）
-      //   custom  = 仅 feeds 列表里指定的频道（新增，可逐频道勾选）
-      mode: ['all', 'custom'].includes(env.DIGEST_MODE) ? env.DIGEST_MODE : 'enabled',
-      feeds: [],
     },
     source: {
       refreshMinutes: clampInt(env.REFRESH_MINUTES, 20, 5, 1440),
@@ -128,23 +110,6 @@ function defaults() {
 
 /** 把一组设置里的数值/枚举夹回合法区间（读库后和保存前都要过一遍） */
 function normalizeSettings(s) {
-  s.llm.temperature = clampNum(s.llm.temperature, 0.3, 0, 1.5);
-
-  // 旧版 scope('selected'|'all') 在读取库设置后迁移为 mode('enabled'|'all')，避免老库字段缺失
-  if (s.digest.scope && !s.digest.mode) {
-    s.digest.mode = s.digest.scope === 'all' ? 'all' : 'enabled';
-  }
-  delete s.digest.scope;
-  s.digest.mode = ['all', 'custom'].includes(s.digest.mode) ? s.digest.mode : 'enabled';
-  // feeds：自定义模式下生效的频道 id 列表，夹成「有限数字数组」，非 custom 时清空以免误用
-  s.digest.feeds = Array.isArray(s.digest.feeds)
-    ? s.digest.feeds.map(Number).filter((n) => Number.isFinite(n) && n > 0)
-    : [];
-  if (s.digest.mode !== 'custom') s.digest.feeds = [];
-  s.digest.maxPerFeed = clampInt(s.digest.maxPerFeed, 20, 1, 100);
-  s.digest.maxTotal = clampInt(s.digest.maxTotal, 150, 10, 500);
-  s.digest.keepDays = clampInt(s.digest.keepDays, 30, 1, 365);
-
   s.source.refreshMinutes = clampInt(s.source.refreshMinutes, 20, 5, 1440);
   // 0 = 不限（只按 keepDays 的时长上限清理）
   s.source.keepPerFeed = clampInt(s.source.keepPerFeed, 300, 0, 5000);
@@ -171,8 +136,6 @@ async function loadSettings() {
 
   const merged = normalizeSettings({
     auth: Object.assign({}, def.auth, stored.auth || {}),
-    llm: Object.assign({}, def.llm, stored.llm || {}),
-    digest: Object.assign({}, def.digest, stored.digest || {}),
     source: Object.assign({}, def.source, stored.source || {}),
     sessionSecret: stored.sessionSecret || def.sessionSecret,
     cryptoSecret: stored.cryptoSecret || def.cryptoSecret,
@@ -181,42 +144,23 @@ async function loadSettings() {
     merged.auth.salt = def.auth.salt;
     merged.auth.passwordHash = def.auth.passwordHash;
   }
-
-  // 先落到 settings，解密要用到 cryptoSecret
   settings = merged;
-
-  /* API Key：库里是密文，内存里保留明文副本供调用模型时使用。
-   * 老版本把明文直接写在 llm.apiKey 里，这里一并读出来（下面会迁成密文）。 */
-  const legacyKey = typeof merged.llm.apiKey === 'string' ? merged.llm.apiKey : '';
-  merged.llm.apiKey = decryptSecret(merged.llm.apiKeyEnc, merged.cryptoSecret) || legacyKey;
 
   // 回写缺失的键，保证库里是完整的
   const patch = {};
-  for (const k of ['auth', 'digest', 'source']) {
+  for (const k of ['auth', 'source']) {
     if (!stored[k]) patch[k] = merged[k];
-  }
-  // llm 组要特殊处理：只要库里还是明文形态（有 apiKey / 没有 apiKeyEnc），就重写一次
-  if (!stored.llm || stored.llm.apiKey !== undefined || stored.llm.apiKeyEnc === undefined) {
-    patch.llm = llmForStore(merged.llm, merged.cryptoSecret);
   }
   if (!stored.sessionSecret) patch.sessionSecret = merged.sessionSecret;
   if (!stored.cryptoSecret) patch.cryptoSecret = merged.cryptoSecret;
   if (Object.keys(patch).length) await db.setSettings(patch);
-  if (patch.llm && legacyKey) log('[app] 模型 API Key 已从明文迁移为加密存储');
 
   return merged;
 }
 
 async function saveSettings(patch) {
   Object.assign(settings, patch);
-  const persisted = Object.assign({}, patch);
-  // llm 组内存里是明文，落库前换成密文，并把密文同步回内存副本，
-  // 否则下一次保存会把 apiKeyEnc 当成「没有」而清掉
-  if (persisted.llm) {
-    persisted.llm = llmForStore(persisted.llm, settings.cryptoSecret);
-    settings.llm.apiKeyEnc = persisted.llm.apiKeyEnc;
-  }
-  await db.setSettings(persisted);
+  await db.setSettings(patch);
 }
 
 /* ============================================================
@@ -1183,30 +1127,13 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      /* ---- 站点级设置（LLM / 采集 / 日报调度）—— 仅管理员 ---- */
+      /* ---- 站点级设置（采集参数）—— 仅管理员 ----
+       * 模型与日报不在这张表里：它们已经整层改为用户级（/api/prefs）。 */
       if (pathname === '/api/config' && req.method === 'GET') {
         if (!isAdmin(user)) { json(res, 403, { error: '需要管理员权限' }); return; }
         json(res, 200, {
           username: user.username,
           role: user.role,
-          llm: {
-            baseUrl: settings.llm.baseUrl,
-            // 明文 Key 一律不回传：前端只知道「有没有存」和掩码，要换就重新填
-            apiKey: '',
-            apiKeySet: !!settings.llm.apiKey,
-            apiKeyHint: maskSecret(settings.llm.apiKey),
-            model: settings.llm.model,
-            temperature: settings.llm.temperature,
-          },
-          digest: {
-            enabled: !!settings.digest.enabled,
-            time: settings.digest.time,
-            maxPerFeed: settings.digest.maxPerFeed,
-            maxTotal: settings.digest.maxTotal,
-            keepDays: settings.digest.keepDays,
-            mode: settings.digest.mode || 'enabled',
-            feeds: settings.digest.feeds || [],
-          },
           source: {
             refreshMinutes: settings.source.refreshMinutes,
             keepPerFeed: settings.source.keepPerFeed,
@@ -1234,49 +1161,6 @@ const server = http.createServer(async (req, res) => {
         const body = await readBody(req);
         const patch = {};
 
-        if (body.llm) {
-          const baseUrl = String(body.llm.baseUrl || '').trim().replace(/\/+$/, '');
-          if (baseUrl && !/^https?:\/\//i.test(baseUrl)) { json(res, 400, { error: '模型地址需以 http:// 或 https:// 开头' }); return; }
-          const next = Object.assign({}, settings.llm);
-          next.baseUrl = baseUrl;
-          next.model = String(body.llm.model || '').trim();
-          next.temperature = clampNum(body.llm.temperature, settings.llm.temperature, 0, 1.5);
-          /* Key 三态（前端不再回填明文，所以「留空」必须等于「不改」）：
-           *   clearApiKey=true → 清除
-           *   apiKey 有内容    → 换成新的（落库前加密）
-           *   apiKey 空 / 未传 → 保持原值 */
-          if (body.llm.clearApiKey) {
-            next.apiKey = '';
-            next.apiKeyEnc = '';
-          } else if (typeof body.llm.apiKey === 'string' && body.llm.apiKey.trim()) {
-            next.apiKey = body.llm.apiKey.trim();
-          }
-          patch.llm = next;
-        }
-
-        if (body.digest) {
-          const d = body.digest;
-          const next = Object.assign({}, settings.digest);
-          if (d.time !== undefined) {
-            if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(d.time))) { json(res, 400, { error: '生成时间格式应为 HH:MM' }); return; }
-            next.time = String(d.time);
-          }
-          if (d.enabled !== undefined) next.enabled = !!d.enabled;
-          if (d.mode !== undefined) next.mode = ['all', 'enabled', 'custom'].includes(d.mode) ? d.mode : 'enabled';
-          if (d.feeds !== undefined) {
-            const arr = Array.isArray(d.feeds)
-              ? d.feeds.map(Number).filter((n) => Number.isFinite(n) && n > 0)
-              : [];
-            next.feeds = next.mode === 'custom' ? arr : [];
-          } else if (next.mode === 'custom' && !Array.isArray(next.feeds)) {
-            next.feeds = [];
-          }
-          if (d.maxPerFeed !== undefined) next.maxPerFeed = clampInt(d.maxPerFeed, 20, 1, 100);
-          if (d.maxTotal !== undefined) next.maxTotal = clampInt(d.maxTotal, 150, 10, 500);
-          if (d.keepDays !== undefined) next.keepDays = clampInt(d.keepDays, 30, 1, 365);
-          patch.digest = next;
-        }
-
         if (body.source) {
           const s = body.source;
           const next = Object.assign({}, settings.source);
@@ -1299,7 +1183,6 @@ const server = http.createServer(async (req, res) => {
 
         if (!Object.keys(patch).length) { json(res, 400, { error: '没有可保存的字段' }); return; }
         await saveSettings(patch);
-        if (patch.digest) scheduleDigest();
         if (patch.source) scheduleRefresh();
         json(res, 200, { ok: true });
         return;
@@ -1336,6 +1219,7 @@ const server = http.createServer(async (req, res) => {
           appearance: userAppearance(user),
           layout: userLayout(user),
           filters: userFilters(user),
+          digest: userDigest(user),
           llm: userLlmForView(user.prefs, settings.cryptoSecret),
         });
         return;
@@ -1362,6 +1246,16 @@ const server = http.createServer(async (req, res) => {
         if (Array.isArray(body.filters)) {
           prefs.filters = sanitizeFilters(body.filters);
         }
+        /* 日报配置（自动生成 / 时间 / 范围 / 条数与保留 / 风格要求）按账号保存。
+         * 与已有配置合并：lastAuto 是服务端调度器独占写入的字段，
+         * 客户端提交的同名字段一律被忽略，否则用户每改一次别的选项就会把「今天已跑过」抹掉、
+         * 导致调度器在同一个时间点反复重跑。 */
+        if (body.digest && typeof body.digest === 'object') {
+          const prev = (user.prefs && user.prefs.digest) || {};
+          const next = sanitizeDigest(Object.assign({}, prev, body.digest));
+          next.lastAuto = prev.lastAuto || '';
+          prefs.digest = next;
+        }
         // 模型配置按账号保存：与已有配置合并（只覆盖传入字段，避免未改的 Key 被清空）；
         // apiKey 仅在填写时加密成文，clearApiKey 则清空
         if (body.llm && typeof body.llm === 'object') {
@@ -1376,6 +1270,7 @@ const server = http.createServer(async (req, res) => {
           appearance: sanitizeAppearance(prefs.appearance),
           layout: sanitizeLayout(prefs.layout),
           filters: sanitizeFilters(prefs.filters),
+          digest: sanitizeDigest(prefs.digest),
         });
         return;
       }
@@ -1478,15 +1373,24 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      /* ---- 摘要：测试模型（所有登录用户，用自己的配置）---- */
+      /* ---- 摘要：测试模型（所有登录用户，只用自己的配置，不再回落站点默认）---- */
       if (pathname === '/api/digest/test-llm' && req.method === 'POST') {
         const body = await readBody(req);
-        const llm = resolveUserLlm(user, settings.llm, settings.cryptoSecret);
-        // 允许前端临时覆盖（填了就用填的，留空沿用已保存 / 站点默认）
+        const llm = userLlm(user, settings.cryptoSecret);
+        // 允许前端临时覆盖（填了就用填的，留空沿用本账号已保存的配置）
         if (body.llm) {
           if (body.llm.baseUrl !== undefined && body.llm.baseUrl.trim()) llm.baseUrl = body.llm.baseUrl.trim().replace(/\/+$/, '');
           if (body.llm.model !== undefined && body.llm.model.trim()) llm.model = body.llm.model.trim();
           if (typeof body.llm.apiKey === 'string' && body.llm.apiKey.trim()) llm.apiKey = body.llm.apiKey.trim();
+          // 思考设置也接受临时覆盖：刚在面板里把开关拨开、还没保存，就该能试出上游认不认
+          if (typeof body.llm.thinking === 'boolean') {
+            llm.thinking = body.llm.thinking;
+            llm.thinkingBudget = thinkingBudget(body.llm.thinkingDepth || llm.thinkingDepth);
+          }
+        }
+        if (!llmComplete(llm)) {
+          json(res, 200, { ok: false, error: '模型未配置完整：地址、API Key、模型名都要在本账号填写后才能测试' });
+          return;
         }
         try { json(res, 200, await digest.testLlm(llm)); }
         catch (e) { json(res, 200, { ok: false, error: String((e && e.message) || e) }); }
@@ -1505,13 +1409,24 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (pathname === '/api/digest/generate' && req.method === 'POST') {
+        // 账号自己关掉了日报：手动生成也一并挡掉，别留一条绕过开关烧额度的路
+        if (userLayout(user).digestEnabled === false) {
+          json(res, 400, { error: '日报已在本账号关闭。要在「设置 · 日报」里重新开启才能生成。' });
+          return;
+        }
         const body = await readBody(req);
         const date = String(body.date || '').trim() || shanghaiDateStr();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { json(res, 400, { error: '日期格式应为 YYYY-MM-DD' }); return; }
-        // 未显式指定频道时，按「摘要范围」设置（mode）决定采集哪些频道
-        const feeds = await digestFeedsFor(user.id, Array.isArray(body.feeds) ? body.feeds : null);
+        const cfg = userDigest(user);
+        // 未显式指定频道时，按本账号的「摘要范围」决定采集哪些频道
+        const feeds = await digestFeedsFor(user.id, Array.isArray(body.feeds) ? body.feeds : null, cfg);
         try {
-          const r = await digest.generate({ ownerId: user.id, feeds, date, force: !!body.force, llm: resolveUserLlm(user, settings.llm, settings.cryptoSecret) });
+          const r = await digest.generate({
+            ownerId: user.id, feeds, date, force: !!body.force,
+            llm: userLlm(user, settings.cryptoSecret),
+            style: cfg.style,
+            limits: { maxPerFeed: cfg.maxPerFeed, maxTotal: cfg.maxTotal, keepDays: cfg.keepDays },
+          });
           json(res, 200, { ok: true, cached: r.cached, digest: r.digest });
         } catch (e) {
           json(res, 502, { error: String((e && e.message) || e) });
@@ -1557,56 +1472,78 @@ function msUntilNext(timeStr) {
 
 let digestTimer = null;
 
-/** 按「摘要范围」解析本次日报要采集的频道 id 列表。
+/** 按本账号的「摘要范围」解析本次日报要采集的频道 id 列表。
  *  - override（手动生成时前端传的 body.feeds）优先，且裁剪到该用户本人拥有的频道内；
- *  - 否则按 settings.digest.mode 解析：
+ *  - 否则按 cfg.mode 解析：
  *      all     → null（表示该用户全部频道）
  *      enabled → 仅「采集」开启的频道
- *      custom  → settings.digest.feeds 与本人频道的交集
+ *      custom  → cfg.feeds 与本人频道的交集
  * 返回 null 表示「全部频道」；返回数组（可能为空）表示限定范围。 */
-async function digestFeedsFor(userId, override) {
+async function digestFeedsFor(userId, override, cfg) {
+  const d = cfg || DIGEST_DEFAULTS;
   const owned = await db.userFeedIds(userId);
   const ownedSet = new Set(owned);
   if (Array.isArray(override) && override.length) {
     return override.map(Number).filter((id) => ownedSet.has(id));
   }
-  const mode = (settings.digest && settings.digest.mode) || 'enabled';
+  const mode = DIGEST_MODES.indexOf(d.mode) >= 0 ? d.mode : 'enabled';
   if (mode === 'all') return null;
   if (mode === 'enabled') return await db.enabledFeedIds(userId);
-  const cfg = (settings.digest.feeds) || [];
-  return cfg.map(Number).filter((id) => ownedSet.has(id));
+  return (d.feeds || []).map(Number).filter((id) => ownedSet.has(id));
 }
 
-function scheduleDigest() {
-  if (digestTimer) { clearTimeout(digestTimer); digestTimer = null; }
-  if (!settings || !settings.digest.enabled) return;
+/* 调度改成「每分钟 tick 一次，逐个账号看它自己的时间到没到」：
+ * 站点级只有一个时间，任何用户改时间都要重算定时器；每人一份配置时这样最简单，
+ * 而且容器夜里重启也不会漏掉某个账号的那一次（tick 以「今天的日期」判断，不依赖进程连续运行）。 */
+const DIGEST_TICK_MS = 60 * 1000;
 
-  const wait = msUntilNext(settings.digest.time);
-  digestTimer = setTimeout(async () => {
-    digestTimer = null;
+function scheduleDigest() {
+  if (digestTimer) { clearInterval(digestTimer); digestTimer = null; }
+  digestTimer = setInterval(() => { runDigestTick().catch((e) => logErr('[digest] 定时检查失败：' + ((e && e.message) || e))); }, DIGEST_TICK_MS);
+  digestTimer.unref?.();
+  log('[digest] 自动生成按账号调度中：每分钟检查一次各自的开关与时间');
+}
+
+/** 到点的那一批账号：每个账号自己决定开不开、几点跑、跑过没有 */
+async function runDigestTick(now = new Date()) {
+  const today = shanghaiDateStr(now);
+  // 服务端时区固定是上海，这里同样按上海钟点比较，避免「服务器 UTC + 用户 08:00」差八小时
+  const hhmm = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit',
+  }).format(now);
+  // 用内存注册表而不是每分钟查库：账号表本来就是内存态（改偏好后 loadUsers 刷新），
+  // 每小时 60 次 × 每人一次 SELECT 在无人使用的夜里纯属浪费
+  let touched = false;
+  for (const u of usersById.values()) {
     try {
-      // 到点给「每个用户」各生成一份自己的日报（各用各自的订阅源）
-      const ids = await db.allUserIds();
-      for (const uid of ids) {
-        try {
-          const u = await db.getUserById(uid);
-          const llm = u ? resolveUserLlm(u, settings.llm, settings.cryptoSecret) : settings.llm;
-          const feeds = await digestFeedsFor(uid, null);
-          const r = await digest.generate({ ownerId: uid, feeds, force: true, llm });
-          log(`[digest] 用户#${uid} 已生成 ${r.digest.date} 摘要：`
-            + `${r.digest.stats.kept}/${r.digest.stats.collected} 条，${r.digest.stats.feeds} 个频道`
-            + (r.digest.fallback ? '（规则降级）' : `（${r.digest.model}）`));
-        } catch (e) {
-          logErr(`[digest] 用户#${uid} 自动生成失败：` + ((e && e.message) || e));
-        }
+      // 关掉了日报入口的账号，定时也不该替他烧额度
+      if (userLayout(u).digestEnabled === false) continue;
+      const d = userDigest(u);
+      if (!d.auto || d.time !== hhmm || d.lastAuto === today) continue;
+      // 先落「今天已处理」再干活：宁可少跑一次，也不能让失败/降级的账号每分钟重跑
+      await db.setUserPrefs(u.id, Object.assign({}, u.prefs || {}, {
+        digest: Object.assign({}, d, { lastAuto: today }),
+      }));
+      touched = true;
+      const llm = userLlm(u, settings.cryptoSecret);
+      if (!llmComplete(llm)) {
+        log(`[digest] 用户#${u.id} 到点但模型没配齐，跳过（今天不再重试）`);
+        continue;
       }
+      const feeds = await digestFeedsFor(u.id, null, d);
+      const r = await digest.generate({
+        ownerId: u.id, feeds, force: true, llm,
+        style: d.style,
+        limits: { maxPerFeed: d.maxPerFeed, maxTotal: d.maxTotal, keepDays: d.keepDays },
+      });
+      log(`[digest] 用户#${u.id} 已生成 ${r.digest.date} 摘要：`
+        + `${r.digest.stats.kept}/${r.digest.stats.collected} 条，${r.digest.stats.feeds} 个频道`
+        + (r.digest.fallback ? '（规则降级）' : `（${r.digest.model}）`));
     } catch (e) {
-      logErr('[digest] 自动生成失败：' + ((e && e.message) || e));
-    } finally {
-      scheduleDigest();
+      logErr(`[digest] 用户#${u.id} 自动生成失败：` + ((e && e.message) || e));
     }
-  }, wait);
-  log(`[digest] 下次自动生成：${settings.digest.time}（约 ${Math.round(wait / 60000)} 分钟后，覆盖全部用户）`);
+  }
+  if (touched) await loadUsers();
 }
 
 /* ============================================================
@@ -1726,14 +1663,27 @@ async function buildStatus() {
   }
   if (dbInfo.tables) entryInfo.total = dbInfo.tables.entries;
 
-  /* ---- 日报 ---- */
-  const dg = (settings && settings.digest) || {};
+  /* ---- 日报 ----
+   * 配置已按账号走（prefs.digest），站点级不再有一份；
+   * 状态页是管理员视角，只报「有多少账号开了自动生成」+ 最近一份日报的事实。 */
   const digestInfo = {
-    enabled: !!dg.enabled, time: dg.time || '08:00', mode: dg.mode || 'enabled',
+    autoUsers: 0, totalUsers: 0,
     nextRunAt: null, count: 0, oldestDate: null, latest: null,
   };
-  if (digestInfo.enabled) digestInfo.nextRunAt = new Date(now + msUntilNext(dg.time)).toISOString();
   if (st.ready) {
+    try {
+      const list = await db.listUsers();
+      digestInfo.totalUsers = list.length;
+      let earliest = null;
+      for (const u of list) {
+        const d = userDigest(u);
+        if (!d.auto || userLayout(u).digestEnabled === false) continue;
+        digestInfo.autoUsers += 1;
+        const at = Date.now() + msUntilNext(d.time);
+        if (earliest === null || at < earliest) earliest = at;
+      }
+      if (earliest !== null) digestInfo.nextRunAt = new Date(earliest).toISOString();
+    } catch (_) { /* 静默：日报不是关键路径 */ }
     try {
       const ds = await db.digestStatsAll();
       digestInfo.count = (dbInfo.tables && dbInfo.tables.digests) || ds.count;
@@ -1850,7 +1800,7 @@ db.onReady(async () => {
   await loadUsers();
   const names = [...usersById.values()].map((u) => `${u.username}(${u.role})`).join(', ');
   log(`[app] 设置已载入 | 用户: ${names || '（无）'} | 库: ${DATABASE_URL.replace(/:[^:@/]*@/, ':***@')}`);
-  digest = createDigest({ db, getSettings: () => settings, log });
+  digest = createDigest({ db, log });
   scheduleDigest();
   scheduleRefresh();
   await seedFeeds().catch((e) => logErr('[seed] 失败：' + ((e && e.message) || e)));

@@ -26,7 +26,7 @@ const VIEWS = [
 const EMPTY = {
   stat: '—', subtitle: '正在加载频道…', view: 'reader',
   themeLabel: '跟随系统', themeIco: 'theme-auto',
-  installReady: false, statVisible: false,
+  installReady: false, statVisible: false, digestVisible: true,
 };
 
 function readShell() {
@@ -69,6 +69,8 @@ export function TopBar() {
   }, []);
 
   const s = core;
+  // 日报被账号关掉时整个入口不渲染（不是 disabled 灰着）：留着只会让人以为点坏了
+  const views = snap.digestVisible === false ? VIEWS.filter((v) => v.id !== 'ai') : VIEWS;
   return (
     <div className="wrap topbar-inner" ref={rootRef}>
       <div className="brand">
@@ -87,7 +89,7 @@ export function TopBar() {
       </div>
       <div className="topbar-actions">
         <nav className="viewnav" id="viewNav">
-          {VIEWS.map((v) => (
+          {views.map((v) => (
             <button
               type="button"
               key={v.id}

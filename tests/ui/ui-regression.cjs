@@ -63,8 +63,15 @@ let versionResponse = { ok: true, version: '1.2.0', updateEnabled: true };
 let checkResponse = { ok: true, hasUpdate: true, current: '1.2.0', latest: '1.3.0', releaseUrl: 'https://github.com/chensnails/feedlore/releases/tag/v1.3.0' };
 
 // 模型面板的可变响应（复刻 /api/prefs GET 的 llm 视图字段：不回填明文，只给 set + 掩码）
-let prefsLlm = { baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen3-8B', temperature: 0.3, apiKeySet: false, apiKeyHint: '' };
+let prefsLlm = { baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen3-8B', temperature: 0.3, thinking: false, thinkingDepth: 'medium', apiKeySet: false, apiKeyHint: '' };
 let prefsPostOk = true;
+// 日报：账号级开关（layout.digestEnabled）+ 整组按账号配置（prefs.digest）
+let prefsDigestEnabled = true;
+const DIGEST_CFG_DEFAULT = {
+  auto: false, time: '08:00', mode: 'enabled', feeds: [],
+  maxPerFeed: 20, maxTotal: 150, keepDays: 30, style: '', lastAuto: '',
+};
+let prefsDigest = Object.assign({}, DIGEST_CFG_DEFAULT);
 
 /* ---------- 迷你服务端（内存版，契约对齐 server.js / db.js） ---------- */
 let miniNextId = 10;
@@ -115,7 +122,7 @@ const clipboardWrites = [];
 let shellSnap = {
   stat: 12, subtitle: '拾取值得读的 · 采集 2/3 个频道', view: 'reader',
   themeLabel: '跟随系统', themeIco: 'theme-auto',
-  installReady: false, statVisible: false,
+  installReady: false, statVisible: false, digestVisible: true,
 };
 let refreshDeferred = null;   // 非空时 refresh() 返回它（测忙态）
 /* ---- 覆盖层（toast / 新内容浮标 / 灯箱，v2.1.0 React 化）测试可控状态 ---- */
@@ -144,14 +151,13 @@ const statusPayload = () => ({
     problems: [{ feedId: '2', title: 'demo - Telegram Channel', error: '502 Bad Gateway', enabled: false, failStreak: 5 }],
   },
   digest: {
-    enabled: true, time: '08:00', nextRunAt: Date.now() + 86400000, scope: 'enabled',
+    autoUsers: 2, totalUsers: 5, nextRunAt: Date.now() + 86400000,
     latest: { date: '2026-10-16', fallback: false, model: 'Qwen/Qwen3-8B', stats: { collected: 20, kept: 12, feeds: 3 } },
     oldestDate: '2026-10-01', count: 5,
   },
 });
 
 /* ---------- AI 视图（P3a）测试可控状态 ---------- */
-let miniDigestCfg = { enabled: true, time: '08:00', scope: 'selected', maxPerFeed: 20, maxTotal: 150, keepDays: 30 };
 let miniDigestDates = ['2026-10-15'];
 let genFailNext = false;const miniDigestFor = (date) => {
   if (date !== '2026-10-15') return null;
@@ -245,7 +251,10 @@ w.feedlore = {
 
     // ---- 模型 / 关于 / 偏好 ----
     if (url === '/api/prefs' && method === 'GET') {
-      return ok({ llm: prefsLlm, groupOrder: miniGroupOrder.slice(), appearance: {}, layout: {}, filters: miniFilters.slice() });
+      return ok({
+        llm: prefsLlm, groupOrder: miniGroupOrder.slice(), appearance: {}, filters: miniFilters.slice(),
+        layout: { digestEnabled: prefsDigestEnabled }, digest: Object.assign({}, prefsDigest),
+      });
     }
     if (url === '/api/prefs' && method === 'POST') {
       if (!prefsPostOk) return bad('炸了', 500);
@@ -257,9 +266,28 @@ w.feedlore = {
         if (typeof body.llm.baseUrl === 'string') patch.baseUrl = body.llm.baseUrl;
         if (typeof body.llm.model === 'string') patch.model = body.llm.model;
         if (body.llm.temperature != null) patch.temperature = body.llm.temperature;
+        // 与 lib/llm.js sanitizeUserLlm 同口径：思考只认严格布尔 / 三档白名单
+        if (typeof body.llm.thinking === 'boolean') patch.thinking = body.llm.thinking;
+        if (['low', 'medium', 'high'].indexOf(body.llm.thinkingDepth) >= 0) patch.thinkingDepth = body.llm.thinkingDepth;
         if (body.llm.clearApiKey) { patch.apiKeySet = false; patch.apiKeyHint = ''; }
         else if (body.llm.apiKey) { patch.apiKeySet = true; patch.apiKeyHint = 'sk-…abcd'; }
         prefsLlm = patch;
+      }
+      // 日报整组：服务端 lib/prefs.js sanitizeDigest 的口径（白名单 + clamp + lastAuto 由服务端独占）
+      if (body && body.digest && typeof body.digest === 'object') {
+        const d = body.digest;
+        const merged = Object.assign({}, prefsDigest, d);
+        prefsDigest = {
+          auto: merged.auto === true,
+          time: /^\d{2}:\d{2}$/.test(String(merged.time)) && merged.time < '24:00' ? String(merged.time) : DIGEST_CFG_DEFAULT.time,
+          mode: ['enabled', 'all', 'custom'].indexOf(merged.mode) >= 0 ? merged.mode : 'enabled',
+          feeds: Array.isArray(merged.feeds) ? merged.feeds.map(Number).filter((n) => Number.isFinite(n) && n > 0) : [],
+          maxPerFeed: clampInt(merged.maxPerFeed, 20, 1, 100),
+          maxTotal: clampInt(merged.maxTotal, 150, 10, 500),
+          keepDays: clampInt(merged.keepDays, 30, 1, 365),
+          style: typeof merged.style === 'string' ? merged.style.trim().slice(0, 2000) : '',
+          lastAuto: prefsDigest.lastAuto,   // 客户端提交一律不影响
+        };
       }
       // v2.7.0：过滤规则 —— 复刻服务端 sanitizeFilters 的清洗口径（空模式丢弃）后回填
       if (Array.isArray(body && body.filters)) {
@@ -275,7 +303,7 @@ w.feedlore = {
             pattern: f.pattern.trim().slice(0, 200),
           }));
       }
-      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), appearance: {}, layout: {}, filters: miniFilters.slice() });
+      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), appearance: {}, layout: {}, filters: miniFilters.slice(), digest: Object.assign({}, prefsDigest) });
     }
     if (url === '/api/digest/test-llm') return ok({ ok: true, reply: 'pong' });
     if (url === '/api/version') return ok(versionResponse);
@@ -384,18 +412,10 @@ w.feedlore = {
     if (url === '/api/config' && method === 'GET') {
       if (cfgHold) return cfgHold;
       if (!adminFlag) return bad('需要管理员权限', 403);
-      return ok({ username: 'tester', role: 'admin', llm: {}, digest: Object.assign({}, miniDigestCfg), source: Object.assign({}, miniSettingsSource) });
+      // 站点级只剩采集参数：模型与日报都改走 /api/prefs（账号级）
+      return ok({ username: 'tester', role: 'admin', source: Object.assign({}, miniSettingsSource) });
     }
     if (url === '/api/config' && method === 'POST') {
-      if (body && body.digest) {
-        const d = body.digest;
-        if (d.enabled !== undefined) miniDigestCfg.enabled = !!d.enabled;
-        if (d.time !== undefined) miniDigestCfg.time = String(d.time || '08:00');
-        if (d.scope !== undefined) miniDigestCfg.scope = d.scope === 'all' ? 'all' : 'selected';
-        if (d.maxPerFeed !== undefined) miniDigestCfg.maxPerFeed = clampInt(d.maxPerFeed, 20, 1, 100);
-        if (d.maxTotal !== undefined) miniDigestCfg.maxTotal = clampInt(d.maxTotal, 150, 10, 500);
-        if (d.keepDays !== undefined) miniDigestCfg.keepDays = clampInt(d.keepDays, 30, 1, 365);
-      }
       if (body && body.source) {
         const s = body.source;
         if (s.refreshMinutes !== undefined) miniSettingsSource.refreshMinutes = clampInt(s.refreshMinutes, 20, 5, 1440);
@@ -537,6 +557,15 @@ w.feedlore = {
   // —— v1.10.0：App Shell 顶栏（P4a，组件见 src/shell/TopBar.jsx） ——
   getShell: () => Object.assign({}, shellSnap),
   switchView: (v) => { calls.push(['switchView', v]); shellSnap.view = v; shellSnap.statVisible = v === 'cards'; shellTick(); },
+  // 日报开关：与 core/reader.js 同口径——写偏好 + 刷顶栏快照；关掉时正停在日报页要弹回文章页
+  digestIsEnabled: () => shellSnap.digestVisible !== false,
+  setDigestEnabled: (on) => {
+    calls.push(['setDigestEnabled', on]);
+    const next = on !== false;
+    shellSnap.digestVisible = next;
+    if (!next && shellSnap.view === 'ai') shellSnap.view = 'reader';
+    shellTick();
+  },
   refresh: () => { calls.push(['refresh']); return refreshDeferred || Promise.resolve(); },
   // —— v2.1.0：覆盖层（组件见 src/ui/Overlays.jsx） ——
   getToastState: () => Object.assign({}, overlayState.toast),
@@ -546,9 +575,7 @@ w.feedlore = {
   closeLightbox: () => { calls.push(['closeLightbox']); overlayState.box = { src: '', show: false }; overlaysTick(); },
   cycleTheme: () => calls.push(['cycleTheme']),
   openSettings: (t) => { calls.push(['openSettings', t]); },
-  // v1.7.0：AI 视图桥（P3a）
-  getAiPage: () => w.feedlore.state.aiPage || 'digest',
-  setAiPage: (n) => { calls.push(['setAiPage', n]); w.feedlore.state.aiPage = n; },
+  // v1.7.0：AI 视图桥（P3a；v1.4.0 起子页导航随「日报设置」一起删除）
   linkLabel: (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (_) { return '链接'; } },
   // v1.8.0：卡片视图桥（P3b，对齐 app.js 语义）
   fmtDate: (d) => (d ? String(d).slice(0, 10) : ''),
@@ -594,7 +621,14 @@ w.feedlore = {
   readerAccordionOn: () => true,
   readerSetScope: (scope) => { calls.push(['readerSetScope', scope]); w.feedlore.state.rdScope = scope; w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null; readerTick(); },
   readerSetFeed: (id) => { calls.push(['readerSetFeed', id]); w.feedlore.state.rdFeedId = Number(id); w.feedlore.state.rdGroup = null; w.feedlore.state.rdScope = 'all'; readerTick(); },
-  readerSetGroup: (g) => { calls.push(['readerSetGroup', g]); w.feedlore.state.rdGroup = g; w.feedlore.state.rdFeedId = null; readerTick(); },
+  readerSetGroup: (g) => {
+    calls.push(['readerSetGroup', g]);
+    const st = w.feedlore.state;
+    // 与 core/reader.js 同口径：再点同一个组 = 取消筛选
+    st.rdGroup = (g === st.rdGroup) ? null : g;
+    st.rdFeedId = null;
+    readerTick();
+  },
   readerOpenSource: () => calls.push(['readerOpenSource']),
   readerSearch: (q) => { calls.push(['readerSearch', q]); w.feedlore.state.rdQ = q; readerTick(); },
   readerToggleArt: (id) => {
@@ -755,6 +789,12 @@ const setInput = (sel, v) => {
   setter.call(input, v);
   input.dispatchEvent(new w.Event('input', { bubbles: true }));
 };
+const setArea = (sel, v) => {
+  const el = document.querySelector(sel);
+  const setter = Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, 'value').set;
+  setter.call(el, v);
+  el.dispatchEvent(new w.Event('input', { bubbles: true }));
+};
 const setVal = (el, v) => {
   const setter = Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set;
   setter.call(el, v);
@@ -874,7 +914,7 @@ const withEFP = (el, fn) => {
   t('host.open 打开（hidden=false）', () => { if (mask().hidden !== false) throw new Error('未打开'); });
   t('__settingsOpen 同步=true', () => { if (w.__settingsOpen !== true) throw new Error('window.__settingsOpen=' + w.__settingsOpen); });
   t('打开时锁屏', () => { if (!callsOf('lockPageScroll').length) throw new Error('lockPageScroll 未调用'); });
-  t('6 个 tab（管理员）', () => { if (document.querySelectorAll('.tabs .tab').length !== 6) throw new Error('实际 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('7 个 tab（管理员）', () => { if (document.querySelectorAll('.tabs .tab').length !== 7) throw new Error('实际 ' + document.querySelectorAll('.tabs .tab').length); });
   t('source tab 默认高亮', () => { if (!tabBtn('数据源').classList.contains('active')) throw new Error('source 未高亮'); });
   t('副标题取 getSettingsSummary', () => { const s = document.querySelector('.modal-sub').textContent; if (s !== '共 12 个订阅源 · 采集开启 10 个 · 卡片展示 8 个') throw new Error('实际: ' + s); });
 
@@ -1378,7 +1418,7 @@ const withEFP = (el, fn) => {
     if (!r.classList.contains('err') || r.textContent.indexOf('设置尚未加载完成') < 0) throw new Error(r.className + '/' + r.textContent);
     if (postsTo('/api/config').length !== cfgPostsBefore) throw new Error('不应 POST');
   });
-  releaseCfg({ ok: true, json: () => Promise.resolve({ username: 'tester', role: 'admin', llm: {}, digest: {}, source: Object.assign({}, miniSettingsSource) }) });
+  releaseCfg({ ok: true, json: () => Promise.resolve({ username: 'tester', role: 'admin', source: Object.assign({}, miniSettingsSource) }) });
   await sleep(60);
   cfgHold = null;
   t('迟到配置到达后回填', () => { if (document.querySelector('#srcRefresh').value !== '30') throw new Error(document.querySelector('#srcRefresh').value); });
@@ -1449,6 +1489,30 @@ const withEFP = (el, fn) => {
   t('模型预设 datalist 5 项', () => { if (document.querySelectorAll('#modelPresets option').length !== 5) throw new Error('实际 ' + document.querySelectorAll('#modelPresets option').length); });
   t('温度输入为 number 0~1.5', () => { const el = document.querySelector('#llmTemp'); if (el.type !== 'number' || el.min !== '0' || el.max !== '1.5') throw new Error(el.type + '/' + el.min + '/' + el.max); });
 
+  // 思考模式：默认关，档位行平时不显示（关着还摆一档 = 让人以为在发）
+  const depthRow = () => document.querySelector('#llmDepth').closest('.form-row');
+  t('思考默认关 + 档位行隐藏', () => {
+    if (!document.querySelector('#llmThinking')) throw new Error('无 #llmThinking');
+    if (document.querySelector('#llmThinking').checked !== false) throw new Error('开关应为未勾选');
+    if (depthRow().hidden !== true) throw new Error('未关思考时深度行不该可见');
+  });
+  // 点的是「看得见的那颗滑块」而不是 input：input 本身被 CSS 收成 0×0，
+  // 用户手点的其实是 label 命中区（早先这里用 span 包 input，导致开关点不动）
+  const thinkSw = document.querySelector('#llmThinking ~ .switch-slider');
+  thinkSw.click();
+  await sleep(40);
+  t('开思考 → 深度行现身，三档可选、默认中档', () => {
+    if (depthRow().hidden !== false) throw new Error('深度行未出现');
+    const vals = [...document.querySelectorAll('#llmDepth option')].map((o) => o.value);
+    if (vals.join() !== 'low,medium,high') throw new Error('档位: ' + vals.join());
+    if (document.querySelector('#llmDepth').value !== 'medium') throw new Error('默认档位: ' + document.querySelector('#llmDepth').value);
+  });
+  t('开思考后：模型名的提示跟着改口（不再宣称内置 /no_think）', () => {
+    const tip = [...document.querySelectorAll('#llmModel ~ .form-tip, .form-tip')].map((e) => e.textContent).join(' | ');
+    if (tip.indexOf('已开启思考') < 0) throw new Error('提示未跟着变: ' + tip.slice(0, 120));
+    if (tip.indexOf('内置 /no_think') >= 0) throw new Error('还挂着「内置 /no_think」的旧说法');
+  });
+
   // 显示/隐藏 Key
   document.querySelector('#toggleLlmKey').click();
   await sleep(30);
@@ -1470,11 +1534,15 @@ const withEFP = (el, fn) => {
     if (body.llm.baseUrl !== 'https://api.example.com/v1') throw new Error('baseUrl: ' + body.llm.baseUrl);
     if (body.llm.apiKey !== 'sk-test123') throw new Error('apiKey: ' + body.llm.apiKey);
     if (body.llm.model !== 'deepseek-ai/DeepSeek-V3') throw new Error('model: ' + body.llm.model);
+    // 思考设置跟着临时覆盖发出去：拨开开关还没保存就该能测出上游认不认
+    if (body.llm.thinking !== true) throw new Error('thinking: ' + body.llm.thinking);
+    if (body.llm.thinkingDepth !== 'medium') throw new Error('thinkingDepth: ' + body.llm.thinkingDepth);
   });
   t('测试 ok 态', () => { const r = document.querySelector('#llmResult'); if (!r || !r.classList.contains('ok')) throw new Error('类名: ' + (r && r.className)); if (r.textContent.indexOf('模型可用') < 0) throw new Error('文案: ' + r.textContent); });
 
   // 保存（带 Key）：temperature 数值化、apiKey 仅在填写时传
   setInput('#llmTemp', '0.4');
+  setSel('#llmDepth', 'high');
   await sleep(30);
   document.querySelector('#saveLlmBtn').click();
   await sleep(80);
@@ -1484,6 +1552,8 @@ const withEFP = (el, fn) => {
     if (body.llm.apiKey !== 'sk-test123') throw new Error('apiKey 未传');
     if (body.llm.temperature !== 0.4 || typeof body.llm.temperature !== 'number') throw new Error('temperature 应数值化: ' + JSON.stringify(body.llm.temperature));
     if (body.llm.baseUrl !== 'https://api.example.com/v1') throw new Error('baseUrl 未传');
+    if (body.llm.thinking !== true) throw new Error('thinking 未传: ' + body.llm.thinking);
+    if (body.llm.thinkingDepth !== 'high') throw new Error('thinkingDepth 未传: ' + body.llm.thinkingDepth);
   });
   t('保存 ok + toast', () => {
     const r = document.querySelector('#llmResult');
@@ -1532,6 +1602,152 @@ const withEFP = (el, fn) => {
   // GET 计数：进入 1 + 保存1重拉 1 + 保存2重拉 1 + 清除重拉 1 + 再进入 1 = 5
   clickTab('数据源'); await sleep(40); clickTab('模型'); await sleep(80);
   t('模型二次进入重新拉取', () => { if (callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length !== 5) throw new Error('GET 次数=' + callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length); });
+
+  // ============ 日报面板（整组按账号：开关 / 自动生成 / 范围 / 上限 / 风格） ============
+  // 造一个「已关掉 + 写过要求 + 自定义范围」的账号态，一次覆盖回填、脏态、开关、保存、清空
+  prefsDigestEnabled = false;
+  prefsDigest = Object.assign({}, DIGEST_CFG_DEFAULT, {
+    auto: true, time: '07:30', mode: 'custom', feeds: [3], style: '侧重新版影视，语气随意些。', lastAuto: '2026-10-25',
+  });
+  clickTab('日报');
+  await sleep(80);
+  t('日报面板渲染', () => {
+    if (!document.querySelector('.tab-pane[data-pane="digest"]')) throw new Error('无 digest 面板');
+    for (const id of ['#digEnable', '#digAuto', '#digTime', '#digMode', '#digMaxPerFeed', '#digMaxTotal', '#digKeepDays', '#digPrompt']) {
+      if (!document.querySelector(id)) throw new Error('无 ' + id);
+    }
+    // input 被 CSS 收成 0×0，能点的其实是包着它的 label；不包就变成「看得见点不着」
+    for (const id of ['#digEnable', '#digAuto']) {
+      const head = document.querySelector(id).closest('.form-row-head');
+      if (!head || head.tagName !== 'LABEL') throw new Error(id + ' 开关行不是 label，整行点不动');
+    }
+  });
+  t('进入即拉 /api/prefs 回填整组配置', () => {
+    if (document.querySelector('#digEnable').checked !== false) throw new Error('使用日报应按账号偏好为关');
+    if (document.querySelector('#digAuto').checked !== true) throw new Error('auto 未回填');
+    if (document.querySelector('#digTime').value !== '07:30') throw new Error('time: ' + document.querySelector('#digTime').value);
+    if (document.querySelector('#digMode').value !== 'custom') throw new Error('mode: ' + document.querySelector('#digMode').value);
+    if (document.querySelector('#digMaxPerFeed').value !== '20') throw new Error('maxPerFeed: ' + document.querySelector('#digMaxPerFeed').value);
+    if (document.querySelector('#digPrompt').value !== '侧重新版影视，语气随意些。') throw new Error('要求未回填: ' + document.querySelector('#digPrompt').value);
+    const tip = document.querySelector('#digPrompt ~ .form-tip');
+    if (!tip || tip.textContent.indexOf('13 / 2000 字') < 0) throw new Error('字数提示: ' + (tip && tip.textContent));
+    // 自定义范围才展开频道勾选清单
+    if (!document.querySelector('.feed-pick')) throw new Error('custom 模式未渲染频道清单');
+  });
+  t('未改动：保存禁用、清空风格可用（已存过要求）', () => {
+    if (document.querySelector('#digSaveBtn').disabled !== true) throw new Error('无改动时保存不该可用');
+    if (document.querySelector('#digResetBtn').disabled !== false) throw new Error('已有要求时清空该可用');
+  });
+
+  document.querySelector('#digEnable ~ .switch-slider').click();
+  await sleep(40);
+  t('点「使用日报」→ setDigestEnabled(true) + toast（顶栏入口随之回来）', () => {
+    const c = lastCall('setDigestEnabled');
+    if (!c || c[1] !== true) throw new Error('桥调用: ' + JSON.stringify(c));
+    if (shellSnap.digestVisible !== true) throw new Error('顶栏快照未跟着开');
+    const tc = lastCall('toast');
+    if (!tc || tc[1].indexOf('已开启日报') < 0) throw new Error('toast: ' + JSON.stringify(tc));
+  });
+
+  // 关掉自动生成 → 时间/范围行收起（这三项只在开自动时才有意义）
+  document.querySelector('#digAuto ~ .switch-slider').click();
+  await sleep(30);
+  t('关掉自动生成：时间/范围行收起、保存解禁', () => {
+    if (document.querySelector('#digTime').closest('.form-row').hidden !== true) throw new Error('时间行未收起');
+    if (document.querySelector('#digMode').closest('.form-row').hidden !== true) throw new Error('范围行未收起');
+    if (document.querySelector('.feed-pick')) throw new Error('清单未收起');
+    if (document.querySelector('#digSaveBtn').disabled !== false) throw new Error('有改动时保存该可用');
+  });
+  document.querySelector('#digAuto ~ .switch-slider').click();
+  await sleep(30);
+
+  setArea('#digPrompt', '侧重新版影视，语气随意些。技术教程只挑有用的。');
+  await sleep(30);
+  t('改动后：字数提示跟着涨', () => {
+    const tip = document.querySelector('#digPrompt ~ .form-tip');
+    if (tip.textContent.indexOf('23 / 2000 字') < 0) throw new Error('字数提示: ' + tip.textContent);
+  });
+  setInput('#digMaxPerFeed', '25');
+  setSel('#digMode', 'all');
+  await sleep(30);
+  document.querySelector('#digSaveBtn').click();
+  await sleep(80);
+  t('保存：POST /api/prefs 只带 digest 整组', () => {
+    const body = lastPostBody('/api/prefs');
+    if (Object.keys(body).join() !== 'digest') throw new Error('不该顺带别的键: ' + Object.keys(body).join());
+    if (body.digest.style !== '侧重新版影视，语气随意些。技术教程只挑有用的。') throw new Error('style: ' + JSON.stringify(body.digest.style));
+    if (body.digest.maxPerFeed !== '25' || body.digest.mode !== 'all') throw new Error('body: ' + JSON.stringify(body.digest));
+    // 切回 all 时不该把上一次的自定义频道留着
+    if (body.digest.feeds.length !== 0) throw new Error('非 custom 仍带 feeds: ' + JSON.stringify(body.digest.feeds));
+    const r = document.querySelector('#digResult');
+    if (!r || !r.classList.contains('ok')) throw new Error('结果类名: ' + (r && r.className));
+    if (r.textContent.indexOf('日报设置已保存') < 0) throw new Error('文案: ' + r.textContent);
+    if (prefsDigest.style !== '侧重新版影视，语气随意些。技术教程只挑有用的。') throw new Error('桩未落库');
+    if (prefsDigest.maxPerFeed !== 25 || prefsDigest.mode !== 'all') throw new Error('桩: ' + JSON.stringify(prefsDigest));
+  });
+  t('lastAuto 是服务端独占字段：客户端提交不改它', () => {
+    if (prefsDigest.lastAuto !== '2026-10-25') throw new Error('lastAuto: ' + prefsDigest.lastAuto);
+  });
+  t('保存后回到干净态（保存禁用）', () => {
+    if (document.querySelector('#digSaveBtn').disabled !== true) throw new Error('保存后不该还算脏');
+  });
+
+  // 首尾空白不该存进去：服务端会 trim，前端提前 trim 才能让「保存后按钮禁用」成立
+  setArea('#digPrompt', '  多给点音乐  ');
+  await sleep(30);
+  document.querySelector('#digSaveBtn').click();
+  await sleep(80);
+  t('保存去首尾空白（与服务端 trim 同口径）', () => {
+    if (lastPostBody('/api/prefs').digest.style !== '多给点音乐') throw new Error('未 trim: ' + JSON.stringify(lastPostBody('/api/prefs').digest.style));
+    if (document.querySelector('#digPrompt').value !== '多给点音乐') throw new Error('输入框未回写去空白后的值');
+  });
+
+  // 脏值夹回区间：服务端 clamp 后要用回包重建表单
+  setInput('#digMaxPerFeed', '9999');
+  await sleep(30);
+  document.querySelector('#digSaveBtn').click();
+  await sleep(80);
+  t('越界值按服务端回包夹回（界面显示真正落库的值）', () => {
+    if (prefsDigest.maxPerFeed !== 100) throw new Error('桩 clamp: ' + prefsDigest.maxPerFeed);
+    if (document.querySelector('#digMaxPerFeed').value !== '100') throw new Error('界面: ' + document.querySelector('#digMaxPerFeed').value);
+    if (document.querySelector('#digSaveBtn').disabled !== true) throw new Error('夹回后不该还算脏');
+  });
+
+  document.querySelector('#digResetBtn').click();
+  await sleep(30);
+  t('清空风格：只清这一项，落库要点保存', () => {
+    if (document.querySelector('#digPrompt').value !== '') throw new Error('输入框未清空');
+    if (document.querySelector('#digSaveBtn').disabled !== false) throw new Error('清空后该能保存');
+  });
+  document.querySelector('#digSaveBtn').click();
+  await sleep(80);
+  t('保存清空后的风格', () => {
+    if (prefsDigest.style !== '') throw new Error('桩未清空');
+    const r = document.querySelector('#digResult');
+    if (r.textContent.indexOf('日报设置已保存') < 0) throw new Error('文案: ' + r.textContent);
+  });
+  t('默认态：两个按钮都禁用（没要求可清、没改动可存）', () => {
+    if (document.querySelector('#digResetBtn').disabled !== true) throw new Error('清空不该可用');
+    if (document.querySelector('#digSaveBtn').disabled !== true) throw new Error('保存不该可用');
+  });
+
+  prefsPostOk = false;
+  setArea('#digPrompt', '写入失败试试');
+  await sleep(30);
+  document.querySelector('#digSaveBtn').click();
+  await sleep(80);
+  t('保存失败：err 横幅且不算已保存（保存仍可用）', () => {
+    const r = document.querySelector('#digResult');
+    if (!r.classList.contains('err')) throw new Error('类名: ' + r.className);
+    if (r.textContent.indexOf('炸了') < 0) throw new Error('文案: ' + r.textContent);
+    if (document.querySelector('#digSaveBtn').disabled !== false) throw new Error('失败后不该丢掉改动');
+  });
+  prefsPostOk = true;
+
+  clickTab('外观'); await sleep(40);
+  prefsDigestEnabled = true;
+  prefsDigest = Object.assign({}, DIGEST_CFG_DEFAULT);
+  shellSnap.digestVisible = true;
 
   // ============ 外观面板 ============
   clickTab('外观');
@@ -1992,7 +2208,7 @@ const withEFP = (el, fn) => {
   w.__settingsHost.open('status');
   await sleep(80);
   t('普通用户 open(status) 回落 source', () => { if (!tabBtn('数据源').classList.contains('active')) throw new Error('未回落 source'); });
-  t('普通用户无状态 tab', () => { if (tabBtn('状态')) throw new Error('状态 tab 仍渲染'); if (document.querySelectorAll('.tabs .tab').length !== 5) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('普通用户无状态 tab', () => { if (tabBtn('状态')) throw new Error('状态 tab 仍渲染'); if (document.querySelectorAll('.tabs .tab').length !== 6) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
   t('普通用户：无采集参数区 + 保存按钮隐藏', () => {
     if (document.querySelector('[data-sec="src-params"]')) throw new Error('采集参数区不应渲染');
     if (document.querySelector('#saveSourceBtn').hidden !== true) throw new Error('保存按钮应隐藏');
@@ -2014,7 +2230,7 @@ const withEFP = (el, fn) => {
 
   w.__settingsHost.setAdminFlag(true);
   await sleep(80);
-  t('setAdminFlag(true) 恢复 6 tab', () => { if (document.querySelectorAll('.tabs .tab').length !== 6) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('setAdminFlag(true) 恢复 7 tab', () => { if (document.querySelectorAll('.tabs .tab').length !== 7) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
   t('恢复管理员：采集参数区出现并拉配置', () => {
     if (!document.querySelector('[data-sec="src-params"]')) throw new Error('采集参数区未出现');
     if (document.querySelector('#saveSourceBtn').hidden !== false) throw new Error('保存按钮应可见');
@@ -2037,18 +2253,19 @@ const withEFP = (el, fn) => {
   const Q = (sel) => aiEl.querySelector(sel);
   const QA = (sel) => [...aiEl.querySelectorAll(sel)];
 
-  t('AI 视图渲染：导航 + 日报子页', () => {
+  t('AI 视图渲染：单页（无二级导航）', () => {
     if (!Q('.ai-head')) throw new Error('无 ai-head');
-    if (QA('#aiNav .ainav-btn').length !== 2) throw new Error('导航项数 ' + QA('#aiNav .ainav-btn').length);
+    if (QA('#aiNav .ainav-btn').length !== 0) throw new Error('二级导航应已删除');
     if (!Q('[data-ai-pane="digest"]')) throw new Error('无日报子页');
+    if (Q('[data-ai-pane="settings"]')) throw new Error('日报设置子页应已搬走');
     if (!countApi('/api/digests')) throw new Error('未 GET /api/digests');
     if (!callsOf('apiFetch').some((c) => c[1].indexOf('/api/digest?') === 0)) throw new Error('未 GET /api/digest');
   });
-  t('日报子页默认高亮 + 副标题含范围/频道数', () => {
-    if (!Q('#aiNav .ainav-btn[data-ai="digest"]').classList.contains('active')) throw new Error('digest 未高亮');
+  t('日报副标题含范围/频道数（范围读本账号 prefs.digest）', () => {
     const sub = Q('#digestSub').textContent;
     if (sub.indexOf('把「采集」开启的频道过去') < 0) throw new Error('subtitle: ' + sub);
     if (sub.indexOf('个频道，采集开启') < 0) throw new Error('subtitle 频道数: ' + sub);
+    if (!callsOf('apiFetch').some((c) => c[1] === '/api/prefs' && !c[2])) throw new Error('未 GET /api/prefs 取范围');
   });
   t('日期选择：今天置顶 + 历史日期', () => {
     const opts = QA('#digestDate option').map((o) => o.value);
@@ -2107,57 +2324,23 @@ const withEFP = (el, fn) => {
     if (err.textContent.indexOf('检查模型地址') < 0) throw new Error('缺模型提示');
   });
 
-  // 子页：日报设置
-  Q('#aiNav .ainav-btn[data-ai="settings"]').click();
-  await sleep(150);
-  t('切到日报设置：拉配置 + 表单回填 + 持久化 aiPage', () => {
-    if (!Q('[data-ai-pane="settings"]')) throw new Error('设置子页未渲染');
-    if (Q('[data-ai-pane="digest"]')) throw new Error('日报子页应卸载');
-    if (Q('#dgTime').value !== '08:00') throw new Error('time: ' + Q('#dgTime').value);
-    if (Q('#dgEnabled').checked !== true) throw new Error('enabled 未回填');
-    if (Q('#dgMode').value !== 'enabled') throw new Error('mode 未回填: ' + (Q('#dgMode') && Q('#dgMode').value));
-    if (Q('#dgMaxPerFeed').value !== '20') throw new Error('maxPerFeed: ' + Q('#dgMaxPerFeed').value);
-    if (!callsOf('setAiPage').some((c) => c[1] === 'settings')) throw new Error('未持久化 aiPage');
-  });
-  t('设置分组摘要行', () => {
-    const autoSub = Q('[data-sec="dg-auto"] .sec-sub').textContent;
-    if (autoSub !== '每天 08:00 · 仅「采集」开启的频道') throw new Error('autoSub: ' + autoSub);
-    const limSub = Q('[data-sec="dg-limits"] .sec-sub').textContent;
-    if (limSub.indexOf('每频道 20 条') < 0) throw new Error('limSub: ' + limSub);
-  });
-
-  // 修改并保存
-  Q('#dgEnabled').click();
-  setVal(Q('#dgMaxPerFeed'), '25');
-  await sleep(40);
-  Q('#saveDgBtn').click();
-  await sleep(120);
-  t('保存日报设置：POST /api/config digest + ok + toast', () => {
-    const body = lastPostBody('/api/config');
-    if (!body.digest) throw new Error('无 digest 段');
-    if (body.digest.enabled !== false || body.digest.maxPerFeed !== '25') throw new Error('body: ' + JSON.stringify(body.digest));
-    const r = Q('[data-ai-pane="settings"] .test-result');
-    if (!r.classList.contains('ok') || r.textContent.indexOf('日报设置已保存') < 0) throw new Error(r.className + '/' + r.textContent);
-    if (!callsOf('toast').some((c) => c[1] === '日报设置已保存')) throw new Error('无 toast');
-  });
-  t('保存后 hint 更新为已关闭', () => {
-    if (Q('#dgHint').textContent.indexOf('自动生成已关闭') < 0) throw new Error('hint: ' + Q('#dgHint').textContent);
-  });
-
-  // 普通用户：无日报设置导航
+  // 普通用户与管理员看到的是同一页（日报配置已在「设置 → 日报」，不再分角色）
   aiRoot1.unmount();
   await sleep(30);
   aiEl.innerHTML = '';
   adminFlag = false;
-  w.feedlore.state.aiPage = 'digest';
+  // 之前 SourcePane 拉过 /api/config，这里只比本次挂载新增的请求
+  const cfgCallsBefore = callsOf('apiFetch').filter((c) => c[1] === '/api/config' && !c[2]).length;
   __mountAi(aiEl);
   await sleep(80);
   w.dispatchEvent(new w.CustomEvent('__viewChanged', { detail: 'ai' }));
   await sleep(140);
-  t('普通用户：仅日报导航、无日报设置入口', () => {
-    if (QA('#aiNav .ainav-btn').length !== 1) throw new Error('导航项 ' + QA('#aiNav .ainav-btn').length);
+  t('普通用户：同样只有日报一页，无 /api/config 请求', () => {
     if (Q('[data-ai="settings"]')) throw new Error('不应有日报设置入口');
     if (!Q('[data-ai-pane="digest"]')) throw new Error('无日报子页');
+    if (!Q('#genDigestBtn')) throw new Error('无生成按钮');
+    const now = callsOf('apiFetch').filter((c) => c[1] === '/api/config' && !c[2]).length;
+    if (now !== cfgCallsBefore) throw new Error('AI 页不该再读站点级配置');
   });
 
   adminFlag = true;
@@ -2706,17 +2889,21 @@ const withEFP = (el, fn) => {
   readerTick();
   await sleep(50);
   const feedRows = () => RA('#readerChannels .rd-ch[data-feed]');
-  const foldBtn = (g) => R(`#readerChannels .rd-ch-fold[data-group-fold="${g}"]`);
+  // 整行就是折叠开关（.rd-ch-group 带 data-group-fold），筛选让位给右端那枚漏斗
+  const foldBtn = (g) => R(`#readerChannels .rd-ch-group[data-group-fold="${g}"]`);
+  const filterBtn = (g) => R(`#readerChannels .rd-ch-filter[data-group-filter="${g}"]`);
 
   t('频道栏基线：两个分组 3 个频道全展开', () => {
     if (feedRows().length !== 3) throw new Error('频道行 ' + feedRows().length);
     if (RA('#readerChannels .rd-ch-group').length !== 2) throw new Error('组行 ' + RA('#readerChannels .rd-ch-group').length);
+    if (RA('#readerChannels .rd-ch-filter').length !== 2) throw new Error('漏斗 ' + RA('#readerChannels .rd-ch-filter').length);
   });
 
   foldBtn('科技').click();
   await sleep(40);
-  t('点组头折叠键：只收起该组的频道行', () => {
+  t('点组头整行：只收起该组的频道行，且不触发筛选', () => {
     if (!callsOf('readerToggleGroupCollapse').some((c) => c[1] === '科技')) throw new Error('未调用桥');
+    if (callsOf('readerSetGroup').length) throw new Error('点组名连带触发了筛选');
     const ids = feedRows().map((el) => el.getAttribute('data-feed'));
     if (ids.join(',') !== '2') throw new Error('剩余频道行: ' + ids.join(','));
     if (!R('#readerChannels .rd-ch-group-row.is-collapsed')) throw new Error('组行缺 is-collapsed');
@@ -2761,6 +2948,24 @@ const withEFP = (el, fn) => {
   t('再点「展开全部分组」：频道行全回来', () => {
     if (feedRows().length !== 3) throw new Error('频道行 ' + feedRows().length);
     if (R('#readerFoldAll').querySelector('use').getAttribute('href') !== '#i-chevrons-up') throw new Error('图标未回切');
+  });
+
+  // 筛选让位给右端漏斗：点漏斗才筛选，两者互不牵连
+  filterBtn('科技').click();
+  await sleep(40);
+  t('点漏斗：只看该组，且频道行不因筛选而收起', () => {
+    if (!callsOf('readerSetGroup').some((c) => c[1] === '科技')) throw new Error('未调用筛选桥');
+    if (w.feedlore.state.rdGroup !== '科技') throw new Error('rdGroup: ' + w.feedlore.state.rdGroup);
+    if (!R('#readerChannels .rd-ch-group-row.is-filtered')) throw new Error('组行缺 is-filtered');
+    if (filterBtn('科技').getAttribute('aria-pressed') !== 'true') throw new Error('aria-pressed 未跟上');
+    if (feedRows().length !== 3) throw new Error('筛选把频道行收掉了: ' + feedRows().length);
+  });
+  filterBtn('科技').click();
+  await sleep(40);
+  t('再点同一个漏斗：取消筛选（漏斗是开关，不是单向）', () => {
+    if (w.feedlore.state.rdGroup !== null) throw new Error('仍锁在 ' + w.feedlore.state.rdGroup);
+    if (R('#readerChannels .rd-ch-group-row.is-filtered')) throw new Error('仍挂着 is-filtered');
+    if (filterBtn('科技').getAttribute('aria-pressed') !== 'false') throw new Error('aria-pressed 未回到 false');
   });
 
   // 收起的组里若正看着其中一条，那一条必须还在（否则「我在读哪个频道」从界面上消失）
@@ -2867,6 +3072,22 @@ const withEFP = (el, fn) => {
     const ui = fs.readFileSync(path.join(root, 'src', 'core', 'ui.js'), 'utf8');
     if (ui.indexOf('Object.assign(e, patch)') >= 0) throw new Error('卡片条目仍在原地改对象');
   });
+  // 两套 sanitizer 必须同构：漏一边的键，刷新后会被另一边的默认值悄悄抹掉
+  // （digestEnabled 就是这样——服务端不认这个键，关一次等于没关）
+  t('源码守卫：布局偏好默认键服务端与前端一致', () => {
+    const root = path.join(__dirname, '..', '..');
+    const keysOf = (file, marker) => {
+      const src = fs.readFileSync(path.join(root, file), 'utf8');
+      const at = src.indexOf(marker);
+      if (at < 0) throw new Error(file + ' 找不到 ' + marker);
+      const body = src.slice(at + marker.length, src.indexOf('};', at));
+      return [...body.matchAll(/([A-Za-z_$][\w$]*)\s*:/g)].map((m) => m[1]).sort().join();
+    };
+    const server = keysOf(path.join('lib', 'prefs.js'), 'LAYOUT_DEFAULTS = {');
+    const client = keysOf(path.join('src', 'core', 'state.js'), 'LAYOUT_DEFAULTS = {');
+    if (server !== client) throw new Error('服务端 ' + server + ' / 前端 ' + client);
+    if (server.indexOf('digestEnabled') < 0) throw new Error('两边都缺 digestEnabled？');
+  });
   t('style.css：栏宽走 --reader-side-w，列表视图也跳过离屏渲染', () => {
     const root = path.join(__dirname, '..', '..');
     const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
@@ -2880,6 +3101,42 @@ const withEFP = (el, fn) => {
     const resize = css.match(/\.reader-resize\s*\{([^}]*)\}/);
     if (!resize) throw new Error('缺 .reader-resize 规则');
     if (resize[1].indexOf('col-resize') < 0) throw new Error('分隔条应有 col-resize 光标');
+  });
+  // 目录树层级：组头贴左，频道行缩进到组名起线（折叠键 18 + 间隙 4 = 22px）。
+  // 层级只靠这条起线表达，所以组名左侧那条 3px 色块不能长回来，
+  // 且缩进只能落在 data-feed 上 —— 顶部三个固定入口不属于任何分组。
+  t('style.css：频道栏目录树层级（组头贴左 + 频道缩进 22px）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const feed = css.match(/\.rd-ch\[data-feed\]\s*\{([^}]*)\}/);
+    if (!feed) throw new Error('缺 .rd-ch[data-feed] 缩进规则');
+    if (!/padding-left:\s*22px/.test(feed[1])) throw new Error('频道未缩进 22px：' + feed[1].trim());
+    const grp = css.match(/\.rd-ch-group\s*\{([^}]*)\}/);
+    if (!grp) throw new Error('缺 .rd-ch-group 规则');
+    if (/padding:\s*var\(--sp-3\)\s+var\(--sp-2\)/.test(grp[1])) throw new Error('组头仍有左内边距，没贴左');
+    if (/\.rd-ch-group::before/.test(css)) throw new Error('组名左侧的 3px 色块又长回来了（层级已由缩进表达）');
+    if (/has-unread/.test(css)) throw new Error('.has-unread 已无样式，别再留在 CSS 里');
+    const jsx = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
+    if (/has-unread/.test(jsx)) throw new Error('ReaderView 仍渲染死类 has-unread');
+  });
+  // 折叠的命中区是整行，漏斗只在悬停 / 键盘聚焦时现身；触屏没有 hover，必须常显。
+  // 这三条都是「看不见就等于坏掉」的规则，写死在测试里防止后续改动悄悄退化。
+  t('style.css：整行折叠 + 悬停浮现漏斗（触屏常显）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    if (/\.rd-ch-fold\b/.test(css)) throw new Error('.rd-ch-fold 已被整行折叠取代，别再留死类');
+    const row = css.match(/\.rd-ch-group-row\s*\{([^}]*)\}/);
+    if (!row || row[1].indexOf('position: relative') < 0) throw new Error('组行要 relative，漏斗才有定位父');
+    if (!/\.rd-ch-group-row:hover\s*\{[^}]*var\(--hover\)/.test(css)) throw new Error('整行悬停没有底色，看不出可点');
+    const f = css.match(/\.rd-ch-filter\s*\{([^}]*)\}/);
+    if (!f) throw new Error('缺 .rd-ch-filter 规则');
+    if (f[1].indexOf('opacity: 0') < 0) throw new Error('漏斗默认应隐身，别常年占着右端');
+    if (!/\.rd-ch-group-row:is\(:hover, :focus-within\)\s*\.rd-ch-filter\s*\{[^}]*opacity: 1/.test(css)) {
+      throw new Error('悬停 / 键盘聚焦没让漏斗现身（键盘用户点不到「只看这组」）');
+    }
+    if (!/@media \(hover: none\)[\s\S]*?\.rd-ch-filter\s*\{[^}]*opacity: 1/.test(css)) {
+      throw new Error('触屏没有 hover，漏斗必须常显');
+    }
   });
 
   // ============ App Shell 顶栏（P4a React 化） ============
@@ -2901,6 +3158,24 @@ const withEFP = (el, fn) => {
     if (a.join() !== 'reader') throw new Error('active: ' + a.join());
   });
   t('reader 视图下「条资源」隐藏', () => { if (S('#stat').hidden !== true) throw new Error('应隐藏'); });
+
+  // 日报开关（账号级）：入口整枚消失，不是灰着 —— 留着只会让人以为点坏了
+  shellSnap.digestVisible = false;
+  shellTick();
+  await sleep(20);
+  t('日报关闭：顶栏不渲染「日报」入口（不是 disabled）', () => {
+    const ids = navBtns().map((b) => b.getAttribute('data-view'));
+    if (ids.length !== 2) throw new Error('导航按钮: ' + ids.join());
+    if (ids.indexOf('ai') >= 0) throw new Error('日报入口仍在');
+    if (navBtns().some((b) => b.disabled)) throw new Error('不该出现禁用态');
+  });
+  shellSnap.digestVisible = true;
+  shellTick();
+  await sleep(20);
+  t('日报重新开启：入口回来', () => {
+    const ids = navBtns().map((b) => b.getAttribute('data-view'));
+    if (ids.indexOf('ai') < 0) throw new Error('导航按钮: ' + ids.join());
+  });
 
   navBtns()[1].click();
   await sleep(20);
@@ -3049,12 +3324,33 @@ const withEFP = (el, fn) => {
         'readerCollapsedGroups', 'readerToggleGroupCollapse', 'readerToggleAllGroups',
         'getReaderSideWidth', 'setReaderSideWidth', 'applyReaderSideWidth', 'readerSideCap',
         'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsView', 'cardsTag',
-        'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'getAiPage', 'setAiPage', 'promptInstall',
+        'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'promptInstall',
         'openSettings', 'toast', 'apiFetch', 'isAdmin', 'exportOpml', 'bindSections', 'groupFeeds',
         'getToastState', 'getNewPillState', 'getLightboxState', 'applyPendingFresh',
         'closeLightbox',
+        'digestIsEnabled', 'setDigestEnabled',
       ];
       for (const k of need) if (c2[k] === undefined) throw new Error('core 缺 ' + k);
+    });
+    // 关掉日报后，所有入口都靠 switchView 这一道守卫回落（#digest 深链、命令面板遗留项
+    // 走的都是它）；假 core 桩测的是组件，这里验真实 core 的判定本身。
+    t('冒烟：日报关掉时 switchView(ai) 回落文章页，重开后能进', () => {
+      const c2 = sw.__coreForTest;
+      c2.setLayout('digestEnabled', false);
+      if (c2.digestIsEnabled() !== false) throw new Error('digestIsEnabled 未反映关闭态');
+      c2.switchView('ai');
+      if (c2.state.tab !== 'reader') throw new Error('关闭后仍进了 ai：' + c2.state.tab);
+      c2.setLayout('digestEnabled', true);
+      c2.switchView('ai');
+      if (c2.state.tab !== 'ai') throw new Error('重开后仍进不去 ai：' + c2.state.tab);
+      c2.switchView('reader');
+    });
+    t('冒烟：setDigestEnabled(false) 关掉时把停在日报页的人带回文章页', () => {
+      const c2 = sw.__coreForTest;
+      c2.setDigestEnabled(false);
+      if (c2.state.tab !== 'reader') throw new Error('未回落：' + c2.state.tab);
+      c2.setDigestEnabled(true);
+      if (c2.digestIsEnabled() !== true) throw new Error('未能重新开启');
     });
     sw.close();
   }

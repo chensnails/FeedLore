@@ -5,12 +5,14 @@ import { cjkPinyin } from './pinyin.js';
 
 /* 构建命令列表。S = core 单例，需提供：
  * switchView / applyTheme / openSettings / selectScope / jumpToFeed /
- * focusSearchBox / exportOpml / refresh / scrollTop / state /
+ * focusSearchBox / exportOpml / refresh / scrollTop / state / digestIsEnabled /
  * shortFeedName / feedTitle / THEME_MODES / THEME_META */
 export function buildCommands(S) {
   if (!S || typeof S.switchView !== 'function') return [];
   const cmds = [];
   [['reader', '文章'], ['cards', '卡片'], ['ai', '日报']].forEach((v) => {
+    // 日报关掉后连命令都不该出现（真按到也进不去：switchView 那侧有守卫）
+    if (v[0] === 'ai' && S.digestIsEnabled && !S.digestIsEnabled()) return;
     cmds.push({
       group: '视图', icon: v[0] === 'reader' ? 'inbox' : (v[0] === 'cards' ? 'grid' : 'sparkle'),
       label: '切换到' + v[1] + '页', hint: v[1], keywords: 'view ' + v[1] + ' 页面切换',
@@ -24,7 +26,7 @@ export function buildCommands(S) {
       keywords: 'theme dark light 暗色 浅色 外观', run: () => S.applyTheme(m, true),
     });
   });
-  [['source', '数据源'], ['model', '模型'], ['account', '账号'], ['appearance', '外观'], ['status', '状态']].forEach((t) => {
+  [['source', '数据源'], ['model', '模型'], ['digest', '日报'], ['account', '账号'], ['appearance', '外观'], ['status', '状态']].forEach((t) => {
     cmds.push({
       group: '设置', icon: 'settings', label: '打开设置 · ' + t[1], hint: t[1], keywords: 'settings ' + t[1],
       run: () => S.openSettings(t[0]),

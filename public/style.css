@@ -1475,7 +1475,15 @@ textarea:disabled {
   color: var(--text); margin-bottom:var(--sp-2);
 }
 .form-row label .req { color: var(--danger); }
-.form-row input {
+/* 开关类偏好：标题与控件同一行，且整行都是命中区（label 把开关包在里面，点文字也切得动）。
+   两级选择器是必须的：上面 .form-row label 的 display:block 特异度更高，会把这行压回块级、
+   开关掉到第二行。 */
+.form-row .form-row-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap:var(--sp-3); margin-bottom:0; cursor:pointer;
+}
+.form-row input,
+.form-row textarea {
   width: 100%;
   padding:var(--sp-3) var(--sp-3);
   border: 1px solid var(--border-strong);
@@ -1484,7 +1492,11 @@ textarea:disabled {
   outline: none; background: var(--panel-2);
   transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
 }
-.form-row input:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
+/* 自定义提示词那类长文本：允许纵向拉，横向拉会把面板撑出滚动条 */
+.form-row textarea { min-height: 96px; resize: vertical; line-height: 1.6; }
+.form-row .select { width: 100%; }
+.form-row input:focus,
+.form-row textarea:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
 .form-tip { display: block; margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-faint); }
 /* 表单错误态：:user-invalid 只在用户交互过之后才标红（不会一进页面就满屏红框），无需任何 JS 参与 */
 input:user-invalid,
@@ -1823,9 +1835,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
 /* ============================================================
  * AI 页
- * 大模型能力的聚合入口，内部用 #aiNav 切子页。
- * 日报是第一个子页，「日报设置」也从设置弹层搬了过来；
- * 以后加新功能只要在 #aiNav 里再加一个 .ainav-btn + 一个 .ai-pane。
+ * 只有一个子页（日报），所以页面内的二级导航已随「日报设置」一起撤除；
+ * 「日报设置」改到「设置 → 日报」，因为它现在是每个账号自己的配置，不再是站点级。
  * ============================================================ */
 .ai-head {
   display: flex; align-items: flex-end; justify-content: space-between;
@@ -1835,51 +1846,10 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .ai-head h2 {
   margin:0; font-size: 1.3125rem; font-weight: 650; letter-spacing: -.2px;
 }
-/* 子页导航：沿用顶栏 .viewnav 的视觉语言，只是低一档 */
-.ainav {
-  display: inline-flex;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding:var(--sp-1);
-  gap:2px;
-}
-.ainav-btn {
-  border: none; background: none; font-family: inherit;
-  font-size: 0.8125rem; font-weight: 550; color: var(--text-muted);
-  padding:var(--sp-1) var(--sp-4); border-radius: 7px; cursor: pointer;
-  transition: background .15s, color .15s;
-}
-.ainav-btn:hover { color: var(--text); }
-.ainav-btn.active {
-  background: var(--panel); color: var(--accent-text);
-  box-shadow: var(--elevation-1);
-}
 
 .ai-pane { min-width: 0; }
 /* 子页里的一行说明（如日报页的那句「把…整理成一份中文简报」） */
 .ai-sub { margin:0; font-size: 0.8125rem; color: var(--text-muted); }
-
-/* 「日报设置」子页：把分组包成一张卡片，视觉上和设置弹层里的分组一致。
-   .sec 自带 border-top 作分隔线，卡片里的第一条要去掉，否则和卡片边框叠成双线。 */
-.ai-pane[data-ai-pane="settings"] {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--elevation-2);
-  overflow: hidden;
-}
-.ai-pane[data-ai-pane="settings"] > .sec:first-of-type { border-top: 0; }
-/* 保存结果放在分组外面，收起任何一组都能看到 */
-.ai-pane[data-ai-pane="settings"] > .test-result { margin:var(--sp-4) var(--sp-6) 0; }
-
-/* 子页底部操作条 */
-.ai-foot {
-  display: flex; align-items: center; justify-content: space-between;
-  gap:var(--sp-3); flex-wrap: wrap;
-  padding:var(--sp-4) var(--sp-6) var(--sp-5);
-  border-top: 1px solid var(--border);
-}
 
 /* ============================================================
  * 日报
@@ -2125,6 +2095,10 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 }
 .rd-ch:hover { background: var(--hover); color: var(--text); }
 .rd-ch.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 650; }
+/* 目录树层级：分组行贴左（折叠箭头 14px + 组按钮间隙 8px = 组名起线 22px），
+   频道行的头像对齐这条起线，一眼看出「这些频道属于上面那组」。
+   只挑 data-feed：顶部「全部 / 未读 / 收藏」三个固定入口不属于任何分组，保持贴左。 */
+.rd-ch[data-feed] { padding-left: 22px; }
 
 .rd-ch-avatar {
   width: 24px; height: 24px; flex: 0 0 24px;
@@ -2174,13 +2148,14 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .rd-ch.off { opacity: .55; }
 .rd-ch.off:hover, .rd-ch.off.active { opacity: 1; }
 
-/* 阅读页侧栏的分组标题 —— 现在是个按钮，点了就只看这个分组 */
+/* 阅读页侧栏的分组标题 —— 现在是个按钮，点了就只看这个分组。
+   贴左排版：左侧不留内边距，层级全靠「组名 22px / 频道再缩进」那条起线表达 */
 .rd-ch-group {
   display: flex; align-items: center; gap:var(--sp-2);
   width: 100%;
   border: none; background: none; font-family: inherit;
   text-align: left; cursor: pointer;
-  padding:var(--sp-3) var(--sp-2) var(--sp-1);
+  padding:var(--sp-3) 0 var(--sp-1);
   font-size: 0.6875rem; font-weight: 700;
   color: var(--text-muted);
   letter-spacing: .03em;
@@ -2188,20 +2163,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   transition: color .15s ease, background .15s ease;
 }
 .rd-ch-group-row:first-of-type { margin-top:2px; }
-.rd-ch-group:hover { color: var(--text); background: var(--hover); }
+.rd-ch-group:hover { color: var(--text); }
 .rd-ch-group:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .rd-ch-group.muted { color: var(--text-faint); font-weight: 600; }
-.rd-ch-group.active { color: var(--accent-text); }
-/* 默认在分组名左侧留一个细色块提示层级；选中时填充主色 */
-.rd-ch-group::before {
-  content: '';
-  width: 3px; height: 12px; flex: 0 0 auto;
-  background: var(--border-strong); border-radius: 2px;
-  transition: background .15s ease, transform .15s ease;
-}
-.rd-ch-group:hover::before { background: var(--text-muted); }
-.rd-ch-group.has-unread::before { background: var(--accent-text); }
-.rd-ch-group.active::before { background: var(--accent-text); transform: scaleY(1.15); }
+/* 正在「只看这组」：筛选状态是整行的属性，不是组名自己的 */
+.rd-ch-group-row.is-filtered .rd-ch-group { color: var(--accent-text); }
 .rd-ch-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 /* 分组徽标 = 组内未读总数（与频道行的 hot 徽标风格一致） */
 .rd-ch-group > .rd-ch-n { margin-left:0; }
@@ -2219,27 +2185,44 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   width: 18px; text-align: center;
 }
 
-/* 分组行左侧的折叠键：比频道行轻一档，别抢分组名的视觉重量 */
-.rd-ch-fold {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; flex: 0 0 auto;
-  border: none; background: none; cursor: pointer;
-  color: var(--text-faint);
-  border-radius: 6px;
-  transition: background .15s, color .15s;
-}
-.rd-ch-fold:hover { background: var(--hover); color: var(--text); }
-.rd-ch-fold:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-.rd-ch-fold .ico { width: 0.75rem; height: 0.75rem; }
+/* 折叠状态指示。整行已经是折叠开关，箭头只负责说明现在是展开还是收起，
+   14px + 组按钮的 8px 间隙 = 组名起线 22px，正好是频道行头像的缩进位。 */
+.rd-ch-caret { width: 14px; height: 14px; color: var(--text-faint); }
+.rd-ch-group:hover .rd-ch-caret { color: var(--text-muted); }
 /* 收起时整行略弱一档，与展开的分组拉开层次 */
 .rd-ch-group-row.is-collapsed .rd-ch-group { color: var(--text-muted); }
 
-/* 分组标题与「本组全部已读」按钮同行：标题占满，按钮贴右 */
+/* 分组行：整行 = 折叠开关，右端浮一枚「只看这组」漏斗。
+   未读数要和下面频道行的徽标排成同一列，所以漏斗平时不占排版宽度：
+   悬停 / 键盘聚焦时浮到徽标位上，徽标同时淡出（列表行「悬停换出操作」那套）。
+   触屏没有 hover，下面的 @media 把漏斗改成在排版里占位并常显。 */
 .rd-ch-group-row {
-  display: flex; align-items: center; gap:var(--sp-1);
+  position: relative;
+  display: flex; align-items: center;
   margin-top:var(--sp-1);
+  border-radius: 9px;
 }
-.rd-ch-group-row .rd-ch-group { flex: 1; width: auto; margin-top:0; }
+.rd-ch-group-row:hover { background: var(--hover); }
+.rd-ch-group-row .rd-ch-group { flex: 1; min-width: 0; width: auto; margin-top:0; }
+.rd-ch-filter {
+  position: absolute; right: 1px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: 0 0 auto;
+  border: none; background: var(--hover); border-radius: 6px; cursor: pointer;
+  color: var(--text-faint);
+  opacity: 0; pointer-events: none;
+  transition: opacity .12s ease, color .15s ease;
+}
+.rd-ch-group-row:is(:hover, :focus-within) .rd-ch-filter { opacity: 1; pointer-events: auto; }
+.rd-ch-group-row:is(:hover, :focus-within) :is(.rd-ch-n, .rd-ch-group-empty, .rd-ch-group-n) { opacity: 0; }
+.rd-ch-filter:hover { color: var(--text); }
+.rd-ch-filter.is-active { color: var(--accent-text); }
+.rd-ch-filter:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+@media (hover: none) {
+  /* 触屏：漏斗没有悬停可依赖，就回到排版里占一格，未读徽标往左让位 */
+  .rd-ch-filter { position: static; transform: none; opacity: 1; pointer-events: auto; }
+  .rd-ch-group-row:is(:hover, :focus-within) :is(.rd-ch-n, .rd-ch-group-empty, .rd-ch-group-n) { opacity: 1; }
+}
 
 /* 侧栏底部的「添加频道」入口：跟普通频道行同槽，区别是不带头像、不带徽标 */
 .rd-ch-add {
@@ -3382,7 +3365,6 @@ textarea:focus-visible { outline: none; }
 .swatch:focus-visible,
 .viewnav-btn:focus-visible,
 .viewmode-btn:focus-visible,
-.ainav-btn:focus-visible,
 .tab:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--focus-ring);

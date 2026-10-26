@@ -137,7 +137,7 @@ function buildDiagnostics(d) {
   (rss.problems || []).forEach((p) => L.push('  ! ' + p.title + (p.enabled === false ? '（已自动停用）' : '') + ' → ' + p.error));
   L.push('');
   L.push('[日报]');
-  L.push('自动生成: ' + (dg.enabled ? '开 · ' + dg.time : '关') + ' | 存档 ' + dg.count + ' 份');
+  L.push('自动生成: ' + (dg.autoUsers || 0) + ' / ' + (dg.totalUsers || 0) + ' 个账号（配置跟随账号） | 存档 ' + dg.count + ' 份');
   if (dg.latest) L.push('最近一份: ' + dg.latest.date + ' | ' + (dg.latest.fallback ? '规则降级' : dg.latest.model));
   return L.join('\n');
 }
@@ -388,13 +388,16 @@ export function StatusPane() {
           </StatSection>
         )}
 
-        <StatSection secKey="st-digest" title="日报" sub={dg.enabled ? `已开启 · 每天 ${dg.time}` : '未开启'}>
+        <StatSection
+          secKey="st-digest"
+          title="日报"
+          sub={(dg.autoUsers || 0) ? `${dg.autoUsers} 个账号开了自动生成（配置跟随账号）` : '没有账号开自动生成'}
+        >
           <div className="stat-list">
-            <StatRow k="自动生成" v={dg.enabled ? `已开启 · 每天 ${dg.time}` : '未开启'} />
-            <StatRow k="下次生成" v={dg.nextRunAt
+            <StatRow k="自动生成" v={`${dg.autoUsers || 0} / ${dg.totalUsers || 0} 个账号`} />
+            <StatRow k="最近一次到点" v={dg.nextRunAt
               ? <>{fmtFull(dg.nextRunAt)} <span className="stat-muted">（{fmtRel(dg.nextRunAt, 'future')}）</span></>
               : '—'} />
-            <StatRow k="摘要范围" v={dg.mode === 'all' ? '全部频道' : dg.mode === 'custom' ? '自定义频道' : '仅「采集」开启的频道'} />
             <StatRow k="最近一份" v={latestLine} />
           </div>
         </StatSection>

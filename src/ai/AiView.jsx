@@ -3,18 +3,17 @@
  * 迁移说明（对照旧实现）：
  * - 视图容器仍是 index.html 的 `<div class="wrap" id="aiView">`（switchView 负责显隐），
  *   内容整体由本组件渲染到其内的 `#aiRoot` 挂载点；顶栏 #viewNav / #stat 不属本视图，仍在旧代码。
- * - 子页：日报（展示 / 生成 / 日期选择）、日报设置（仅管理员，/api/config 的 digest 段）。
- * - 子页光标按账号持久化（users.prefs.layout.aiPage），经桥 getAiPage/setAiPage 读写；
- *   进入视图时经 `__viewChanged` 事件感知（React 常驻挂载，但只在切到 AI 页时拉数据）。
+ * - 只有一页：日报。「日报设置」在 v1.4.0 里整块搬进了「设置 → 日报」（改按账号配置后
+ *   它就不再是管理员的站点设置，留在 AI 页会变成两个入口）；
+ *   二级导航只剩「日报」一项，因此一并删掉——一条只有一个按钮的导航不传达任何信息。
  * - 日报展示由 innerHTML 字符串拼接改为 JSX；条目复制按钮 / 图片兜底改由 React 处理。
- * - 类名 / ID / data 属性与旧 DOM 一致，样式零改动；设置页可折叠分组复用桥 bindSections。
+ * - 类名 / ID / data 属性与旧 DOM 一致，样式零改动。
  */
 
 import { core } from '@core';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
-const AI_PAGES = ['digest', 'settings'];
 
 const Icon = ({ n }) => (
   <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
@@ -154,12 +153,7 @@ function DigestView({ digest }) {
 
 export function AiView() {
   const s = S();
-  const [admin, setAdmin] = useState(() => !!(s && s.isAdmin && s.isAdmin()));
   const [active, setActive] = useState(() => !!(s && s.state && s.state.tab === 'ai'));
-  const [page, setPage] = useState(() => {
-    const p = s && s.getAiPage ? s.getAiPage() : 'digest';
-    return AI_PAGES.indexOf(p) >= 0 ? p : 'digest';
-  });
 
   // 日报
   const [dates, setDates] = useState([]);
@@ -167,14 +161,8 @@ export function AiView() {
   const [view, setView] = useState({ kind: 'loading' });
   const [generating, setGenerating] = useState(false);
   const [feedsInfo, setFeedsInfo] = useState({ total: 0, enabled: 0 });
-  const [feedsList, setFeedsList] = useState([]);   // 设置页「自定义频道」清单用
-  const [cfgDigest, setCfgDigest] = useState(null);   // 管理员才有（/api/config 的 digest 段）
-
-  // 日报设置
-  const [form, setForm] = useState(null);
-  const [settingsResult, setSettingsResult] = useState(null);
-  const [savingDg, setSavingDg] = useState(false);
-  const settingsRef = useRef(null);
+  // 摘要范围读本账号的 prefs.digest（v1.4.0 起不再有站点级那一份）
+  const [scope, setScope] = useState({ mode: 'enabled', feeds: [] });
 
   // 视图激活感知（React 常驻挂载，只在切到 AI 页时拉数据）
   useEffect(() => {
@@ -183,30 +171,10 @@ export function AiView() {
     return () => window.removeEventListener('__viewChanged', onView);
   }, []);
 
-  // 管理员身份桥：核心在 /api/session 异步返回后，经 applyRoleUI() → __aiHost.setAdminFlag
-  // 通知本视图。否则 React 挂载早于会话加载，admin 会被永久定格为 false（日报设置入口消失）。
   useEffect(() => {
-    const host = { setAdminFlag: (a) => setAdmin(!!a) };
-    window.__aiHost = host;
-    setAdmin(!!(s.isAdmin && s.isAdmin()));   // 兜底：若会话已就绪则立即同步
-    return () => { if (window.__aiHost === host) delete window.__aiHost; };
-  }, []);
-
-  // 激活或切换子页时加载对应数据（切到设置但非管理员则回落日报）
-  useEffect(() => {
-    if (!active) return;
-    if (page === 'settings' && !admin) { setPage('digest'); return; }
-    if (page === 'digest') loadDigest();
-    else loadSettings();
+    if (active) loadDigest();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, page]);
-
-  // 设置页可折叠分组：套上按账号记住的开合状态（复用桥 bindSections）
-  useEffect(() => {
-    if (page === 'settings' && admin && s && s.bindSections && settingsRef.current) {
-      s.bindSections(settingsRef.current);
-    }
-  });
+  }, [active]);
 
   const today = shanghaiToday();
   const dateOptions = useMemo(() => {
@@ -215,51 +183,32 @@ export function AiView() {
     return list;
   }, [dates, today]);
 
-  const mode = (cfgDigest && cfgDigest.mode) || 'enabled';
-  const scopeLabel = mode === 'all' ? '全部频道' : mode === 'custom' ? '自定义频道' : '「采集」开启的频道';
+  const mode = scope.mode || 'enabled';
+  const scopeLabel = mode === 'all' ? '全部频道'
+    : mode === 'custom' ? `自定义的 ${scope.feeds.length} 个频道`
+      : '「采集」开启的频道';
   const subtitle = `把${scopeLabel}过去 24 小时的新条目整理成一份中文简报`
     + ` · 共 ${feedsInfo.total} 个频道，采集开启 ${feedsInfo.enabled} 个`;
-
-  function goPage(name) {
-    if (AI_PAGES.indexOf(name) < 0) name = 'digest';
-    if (name === 'settings' && !admin) name = 'digest';
-    setPage(name);
-    if (s.setAiPage) s.setAiPage(name);
-  }
-
-  const applyCfg = (cfg) => {
-    const dg = (cfg && cfg.digest) || {};
-    const mode = ['all', 'enabled', 'custom'].includes(dg.mode) ? dg.mode : 'enabled';
-    const feeds = Array.isArray(dg.feeds) ? dg.feeds.map(Number).filter((n) => Number.isFinite(n)) : [];
-    setCfgDigest({
-      enabled: !!dg.enabled, time: dg.time || '08:00', mode, feeds,
-      maxPerFeed: dg.maxPerFeed, maxTotal: dg.maxTotal, keepDays: dg.keepDays,
-    });
-    setForm({
-      enabled: !!dg.enabled,
-      time: dg.time || '08:00',
-      mode,
-      feeds,
-      maxPerFeed: String(dg.maxPerFeed == null ? 20 : dg.maxPerFeed),
-      maxTotal: String(dg.maxTotal == null ? 150 : dg.maxTotal),
-      keepDays: String(dg.keepDays == null ? 30 : dg.keepDays),
-    });
-  };
 
   async function loadDigest() {
     // 日期列表
     let ds = [];
     try { const r = await s.apiFetch('/api/digests'); const d = await r.json(); ds = d.dates || []; } catch (_) { ds = []; }
     setDates(ds);
-    // 频道计数（副标题用）+ 自定义清单（设置页用）
+    // 频道计数（副标题用）
     try {
       const data = await s.loadFeeds();
       const list = (data && data.feeds) || [];
       setFeedsInfo({ total: list.length, enabled: list.filter((f) => f.enabled).length });
-      setFeedsList(list);
     } catch (_) { /* 用已有缓存 */ }
-    // 摘要范围（管理员才有权限读）
-    if (admin) { try { applyCfg(await (await s.apiFetch('/api/config')).json()); } catch (_) { /* 忽略 */ } }
+    // 摘要范围：本账号自己的日报配置
+    try {
+      const d = (await (await s.apiFetch('/api/prefs')).json()).digest || {};
+      setScope({
+        mode: ['all', 'enabled', 'custom'].indexOf(d.mode) >= 0 ? d.mode : 'enabled',
+        feeds: Array.isArray(d.feeds) ? d.feeds.map(Number) : [],
+      });
+    } catch (_) { /* 拿不到就按默认范围显示 */ }
     const opts = ds.includes(today) ? ds : [today, ...ds];
     const cur = opts.includes(selected) ? selected : opts[0];
     await showDigest(cur);
@@ -301,63 +250,6 @@ export function AiView() {
     }
   }
 
-  async function loadSettings() {
-    setSettingsResult(null);
-    try {
-      const [res, fdata] = await Promise.all([
-        s.apiFetch('/api/config'),
-        s.loadFeeds().catch(() => null),
-      ]);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      applyCfg(await res.json());
-      if (fdata && Array.isArray(fdata.feeds)) setFeedsList(fdata.feeds);
-    } catch (err) {
-      setSettingsResult({ ok: false, msg: '读取配置失败：' + String((err && err.message) || err) });
-    }
-  }
-
-  async function saveSettings() {
-    if (!form) return;
-    setSavingDg(true);
-    setSettingsResult(null);
-    try {
-      const res = await s.apiFetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          digest: {
-            enabled: form.enabled,
-            time: form.time || '08:00',
-            mode: form.mode,
-            feeds: form.mode === 'custom' ? form.feeds : [],
-            maxPerFeed: form.maxPerFeed,
-            maxTotal: form.maxTotal,
-            keepDays: form.keepDays,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setSettingsResult({ ok: false, msg: data.error || '保存失败' }); return; }
-      setSettingsResult({ ok: true, msg: '日报设置已保存' });
-      s.toast('日报设置已保存');
-      setCfgDigest((prev) => ({ ...(prev || {}), ...form }));
-    } catch (err) {
-      setSettingsResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
-    } finally {
-      setSavingDg(false);
-    }
-  }
-
-  const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  const hintOn = form ? form.enabled : false;
-  const hintTime = (form && form.time) || '08:00';
-  const hintScope = form ? (form.mode === 'all' ? '全部频道' : form.mode === 'custom' ? '自定义频道' : '仅「采集」开启的频道') : '';
-  const autoSub = form ? (hintOn ? `每天 ${hintTime} · ${hintScope}` : '已关闭') : '';
-  const limitsSub = form ? `每频道 ${form.maxPerFeed} 条 · 总计 ${form.maxTotal} 条 · 保留 ${form.keepDays} 天` : '';
-
-  const pages = admin ? [['digest', '日报'], ['settings', '日报设置']] : [['digest', '日报']];
-
   let body = null;
   if (view.kind === 'loading') {
     body = <div className="dg-loading"><div className="dg-spinner" />读取中…</div>;
@@ -393,154 +285,30 @@ export function AiView() {
 
   return (
     <>
+      {/* 二级导航随「日报设置」一起撤了：只剩一项的导航不传达信息。
+          .ai-head 留着——它提供页面顶部留白，h2 也和卡片/设置页的标题同构。 */}
       <div className="ai-head">
         <h2>AI</h2>
-        <nav className="ainav" id="aiNav" aria-label="AI 功能">
-          {pages.map(([name, label]) => (
-            <button
-              key={name}
-              type="button"
-              className={'ainav-btn' + (page === name ? ' active' : '')}
-              data-ai={name}
-              aria-pressed={page === name ? 'true' : 'false'}
-              onClick={() => goPage(name)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
       </div>
-
-      {page === 'digest' && (
-        <section className="ai-pane" data-ai-pane="digest">
-          <div className="digest-head">
-            <p className="ai-sub" id="digestSub">{subtitle}</p>
-            <div className="digest-actions">
-              <select id="digestDate" className="select" title="选择日期" value={selected}
-                onChange={(e) => showDigest(e.target.value)}>
-                {dateOptions.map((d) => <option key={d} value={d}>{d === today ? '今天 · ' : ''}{d}</option>)}
-              </select>
-              <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"
-                disabled={generating} onClick={() => generate(true)}>重新生成</button>
-              <button className="btn btn-primary" id="genDigestBtn" type="button"
-                disabled={generating} onClick={() => generate(false)}>生成摘要</button>
-            </div>
+      <section className="ai-pane" data-ai-pane="digest">
+        <div className="digest-head">
+          <p className="ai-sub" id="digestSub">{subtitle}</p>
+          <div className="digest-actions">
+            <select id="digestDate" className="select" title="选择日期" value={selected}
+              onChange={(e) => showDigest(e.target.value)}>
+              {dateOptions.map((d) => <option key={d} value={d}>{d === today ? '今天 · ' : ''}{d}</option>)}
+            </select>
+            <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"
+              disabled={generating} onClick={() => generate(true)}>重新生成</button>
+            <button className="btn btn-primary" id="genDigestBtn" type="button"
+              disabled={generating} onClick={() => generate(false)}>生成摘要</button>
           </div>
-          <div id="digestBody">{body}</div>
-          <footer className="foot">
-            摘要由大模型生成，可能存在偏差，请以原始条目为准
-          </footer>
-        </section>
-      )}
-
-      {page === 'settings' && admin && (
-        <section className="ai-pane" data-ai-pane="settings" ref={settingsRef}>
-          <div className={'test-result' + (settingsResult ? ' show ' + (settingsResult.ok ? 'ok' : 'err') : '')}>
-            {settingsResult ? settingsResult.msg : ''}
-          </div>
-
-          {form && (
-            <>
-              <details className="sec" data-sec="dg-auto" open>
-                <summary className="sec-head">
-                  <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-                  <span className="sec-title">自动生成</span>
-                  <span className="sec-sub">{autoSub}</span>
-                </summary>
-                <div className="sec-body">
-                  <div className="form-row form-row-inline">
-                    <label htmlFor="dgEnabled">每日自动生成</label>
-                    <label className="switch">
-                      <input id="dgEnabled" type="checkbox" checked={form.enabled}
-                        onChange={(e) => setField('enabled', e.target.checked)} />
-                      <span className="switch-slider" />
-                    </label>
-                    <small className="form-tip">开启后按下方时间自动生成，需保持服务运行</small>
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="dgTime">生成时间（北京时间）</label>
-                    <input id="dgTime" type="time" value={form.time}
-                      onChange={(e) => setField('time', e.target.value)} />
-                  </div>
-                  <div className="form-row">
-                    <label htmlFor="dgMode">摘要范围</label>
-                    <select id="dgMode" className="select" value={form.mode}
-                      onChange={(e) => setField('mode', e.target.value)}>
-                      <option value="enabled">仅「采集」开启的频道</option>
-                      <option value="all">全部频道</option>
-                      <option value="custom">自定义频道</option>
-                    </select>
-                    <small className="form-tip">「采集」开关在「设置 → 数据源」页，按频道单独控制</small>
-                  </div>
-                  {form.mode === 'custom' && (
-                    <div className="form-row form-row-block">
-                      <label>纳入日报的频道</label>
-                      <div className="feed-pick">
-                        {feedsList.length ? feedsList.map((f) => {
-                          const fid = Number(f.id);
-                          const checked = form.feeds.includes(fid);
-                          return (
-                            <label key={f.id} className={'feed-pick-row' + (checked ? ' on' : '')}>
-                              <input type="checkbox" checked={checked}
-                                onChange={(e) => {
-                                  const set = new Set(form.feeds);
-                                  if (e.target.checked) set.add(fid); else set.delete(fid);
-                                  setField('feeds', [...set]);
-                                }} />
-                              <span className="feed-pick-name">{f.customTitle || f.title || f.url}</span>
-                              {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
-                            </label>
-                          );
-                        }) : <div className="feed-pick-empty">加载频道列表中…</div>}
-                      </div>
-                      <small className="form-tip">未勾选任何频道时，日报将提示「没有可展示的条目」</small>
-                    </div>
-                  )}
-                </div>
-              </details>
-
-              <details className="sec" data-sec="dg-limits" open>
-                <summary className="sec-head">
-                  <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-                  <span className="sec-title">条数与保留</span>
-                  <span className="sec-sub">{limitsSub}</span>
-                </summary>
-                <div className="sec-body">
-                  <div className="form-grid">
-                    <div className="form-row">
-                      <label htmlFor="dgMaxPerFeed">每频道条数上限</label>
-                      <input id="dgMaxPerFeed" type="number" min="1" max="100" value={form.maxPerFeed}
-                        onChange={(e) => setField('maxPerFeed', e.target.value)} />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="dgMaxTotal">总条数上限</label>
-                      <input id="dgMaxTotal" type="number" min="10" max="500" value={form.maxTotal}
-                        onChange={(e) => setField('maxTotal', e.target.value)} />
-                    </div>
-                    <div className="form-row">
-                      <label htmlFor="dgKeepDays">摘要保留天数</label>
-                      <input id="dgKeepDays" type="number" min="1" max="365" value={form.keepDays}
-                        onChange={(e) => setField('keepDays', e.target.value)} />
-                    </div>
-                  </div>
-                </div>
-              </details>
-            </>
-          )}
-
-          <div className="ai-foot">
-            <span className="hint" id="dgHint">
-              {form
-                ? (hintOn
-                  ? <>每天 <strong>{hintTime}</strong>（北京时间）自动生成 · 范围：{hintScope}</>
-                  : '自动生成已关闭，可随时在「日报」页手动生成')
-                : ''}
-            </span>
-            <button className="btn btn-primary" id="saveDgBtn" type="button"
-              disabled={savingDg} onClick={saveSettings}>{savingDg ? '保存中…' : '保存日报设置'}</button>
-          </div>
-        </section>
-      )}
+        </div>
+        <div id="digestBody">{body}</div>
+        <footer className="foot">
+          摘要由大模型生成，可能存在偏差，请以原始条目为准
+        </footer>
+      </section>
     </>
   );
 }

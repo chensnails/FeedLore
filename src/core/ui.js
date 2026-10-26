@@ -95,6 +95,9 @@ document.addEventListener('keydown', (ev) => {
  * ============================================================ */
 export function switchView(name) {
   if (TABS.indexOf(name) < 0) name = 'reader';
+  // 日报关掉后这里兜一道：#digest 深链、命令面板遗留项、外部调用都从同一个口子回落，
+  // 不用在每个入口各写一遍判断（顶栏按钮的隐藏只是让它平时看不见）
+  if (name === 'ai' && layoutPref.digestEnabled === false) name = 'reader';
   const apply = () => {
     state.tab = name;
     setLayout('tab', name);   // 按账号持久化当前页面，刷新后保持一致
@@ -367,6 +370,19 @@ export function cardDetailRead(id) {
   cardSetFlag(id, { isRead: true });
 }
 
+/** 日报对本账号是否开启（顶栏入口、命令面板项、设置面板的开关都读这一个判据） */
+export const digestIsEnabled = () => layoutPref.digestEnabled !== false;
+
+/** 开 / 关日报（设置面板的开关经桥调用）。
+ *  关掉时如果正停在日报页，得把人带走 —— 否则入口消失了、页面还杵在那儿。 */
+export function setDigestEnabled(on) {
+  const next = on !== false;
+  if (digestIsEnabled() === next) return;
+  setLayout('digestEnabled', next);
+  if (!next && state.tab === 'ai') switchView('reader');
+  emitShell();
+}
+
 /** App Shell（顶栏）一次性快照：React 的 TopBar 经桥 getShell() 读取 */
 export function shellSnapshot() {
   const mode = THEME_MODES.indexOf(currentThemeMode()) >= 0 ? currentThemeMode() : 'auto';
@@ -379,5 +395,6 @@ export function shellSnapshot() {
     themeIco: meta.ico,
     installReady: !!deferredInstall,
     statVisible: state.tab === 'cards',
+    digestVisible: digestIsEnabled(),
   };
 }

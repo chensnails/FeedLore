@@ -2,8 +2,8 @@
  *
  * 渐进式迁移策略（与命令面板一致的混合期方案）：
  * - 弹层外壳（遮罩 / 标题 / tab 栏 / 关闭）由 React 渲染；
- * - 全部六个面板均已 React 化（本目录 SourcePane / ModelPane / AppearancePane /
- *   AboutPane / AccountPane / StatusPane，P2d 起账号与状态迁出）；
+ * - 全部七个面板均已 React 化（本目录 SourcePane / ModelPane / DigestPane /
+ *   AppearancePane / AboutPane / AccountPane / StatusPane，P2d 起账号与状态迁出）；
  * - 旧 #legacyPanes 隐藏容器与 legacy-slot 搬运机制随 P2d 一并退役。
  * - 旧 app.js 的 openSettings/closeSettings 委托给本组件注册的宿主。
  */
@@ -13,6 +13,7 @@ import React, { useEffect, useState } from 'react';
 import { AboutPane } from './AboutPane.jsx';
 import { AppearancePane } from './AppearancePane.jsx';
 import { ModelPane } from './ModelPane.jsx';
+import { DigestPane } from './DigestPane.jsx';
 import { SourcePane } from './SourcePane.jsx';
 import { AccountPane } from './AccountPane.jsx';
 import { StatusPane } from './StatusPane.jsx';
@@ -20,6 +21,7 @@ import { StatusPane } from './StatusPane.jsx';
 const TABS = [
   ['source', '数据源'],
   ['model', '模型'],
+  ['digest', '日报'],
   ['account', '账号'],
   ['appearance', '外观'],
   ['status', '状态'],
@@ -108,6 +110,7 @@ export function SettingsModal() {
           {tab === 'source' && open && <SourcePane admin={admin} />}
           {tab === 'appearance' && open && <AppearancePane />}
           {tab === 'model' && open && <ModelPane />}
+          {tab === 'digest' && open && <DigestPane />}
           {tab === 'account' && open && <AccountPane />}
           {tab === 'status' && open && <StatusPane />}
           {tab === 'about' && open && <AboutPane />}

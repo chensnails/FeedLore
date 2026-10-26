@@ -44,7 +44,7 @@ function extractJson(text) {
   return JSON.parse(t.slice(start, end + 1));
 }
 
-module.exports = function createDigest({ db, getSettings, log = console.log }) {
+module.exports = function createDigest({ db, log = console.log }) {
   /* ---------- 数据库行 → 内部条目结构 ---------- */
   function fromRow(r) {
     return {
@@ -121,11 +121,11 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
     return base + '/v1/chat/completions';
   }
 
-  async function chat(messages, temperature, llmOverride) {
-    const cfg = getSettings();
-    const llm = llmOverride || cfg.llm;
+  /* llm 一律由调用方给「这个账号自己那份」：站点级兜底（settings.llm）已随 /api/config 的
+   * llm 段一起退场，缺配置就在这里停下报清楚，而不是悄悄换成别人的模型跑一轮。 */
+  async function chat(messages, temperature, llm) {
     const { baseUrl, apiKey, model } = llm || {};
-    if (!baseUrl || !apiKey || !model) throw new Error('模型未配置完整（地址 / Key / 模型名）');
+    if (!baseUrl || !apiKey || !model) throw new Error('模型未配置完整（地址 / Key / 模型名）——到「设置 · 模型」补齐');
 
     // 显式传入的温度优先；否则用设置里的「温度」，再兜底 0.3
     const configured = llm && llm.temperature;
@@ -133,19 +133,31 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
       ? (Number.isFinite(Number(configured)) ? Number(configured) : 0.3)
       : temperature;
 
+    const body = { model, temperature: temp, messages };
+    /* 开思考时把预算交给推理模板。chat_template_kwargs 是 vLLM / SiliconFlow 这类
+     * OpenAI 兼容服务的透传口，模板里对应 enable_thinking 与 thinking_budget；
+     * 不支持的上游会忽略这个字段（顶多没生效，不会因为未知键拒请求）。 */
+    if (llm && llm.thinking) {
+      body.chat_template_kwargs = {
+        enable_thinking: true,
+        thinking_budget: Number(llm.thinkingBudget) || 2048,
+      };
+    }
+
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), LLM_TIMEOUT);
     try {
       const resp = await fetch(llmEndpoint(baseUrl), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
-        body: JSON.stringify({ model, temperature: temp, messages }),
+        body: JSON.stringify(body),
         signal: ctl.signal,
       });
       const text = await resp.text();
       if (!resp.ok) throw new Error(`模型返回 ${resp.status}：${clamp(text, 160)}`);
       let data;
       try { data = JSON.parse(text); } catch (_) { throw new Error('模型响应不是合法 JSON'); }
+      // 只取 content：思考链（reasoning_content）是过程产物，日报不需要留档
       const content = data.choices && data.choices[0] && data.choices[0].message
         && data.choices[0].message.content;
       if (!content) throw new Error('模型响应缺少 content');
@@ -158,12 +170,20 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
     }
   }
 
-  // /no_think 关闭 Qwen3 系列默认开启的思考模式（实测快 10 倍以上），对其它模型无副作用
-  const SYSTEM = '你是一名资源情报编辑。用户订阅了若干 RSS / Telegram 频道，你负责把每天的新条目整理成一份中文简报。'
+  /* /no_think 与 /think 是 Qwen3 混合思考模型的模板指令（实测关思考快 10 倍以上），
+   * 对其它模型无副作用。系统提示里那句「只输出 JSON」是后端解析的地基，不对用户开放。 */
+  const SYSTEM_BODY = '你是一名资源情报编辑。用户订阅了若干 RSS / Telegram 频道，你负责把每天的新条目整理成一份中文简报。'
     + '你只输出 JSON，不输出任何解释性文字、不使用 Markdown 代码块。'
-    + '注意：条目前的 #编号 仅用于标记引用，你在 comment 和 text 中不要重复输出该编号。 /no_think';
+    + '注意：条目前的 #编号 仅用于标记引用，你在 comment 和 text 中不要重复输出该编号。';
+  const thinkTag = (llm) => (llm && llm.thinking ? ' /think' : ' /no_think');
+  const systemPrompt = (llm) => SYSTEM_BODY + thinkTag(llm);
 
-  function buildFinalPrompt(compact, lines, meta) {
+  /* 用户自定义的「风格要求」只能追加在这句之后：JSON 骨架、键名和 ref 编号是解析契约，
+   * 用户写飞了最多是日报难读，不该把结构改坏（改坏会静默降级成规则摘要）。 */
+  const STYLE_GUARD = '额外要求（只影响选材、语气与篇幅；上面的 JSON 结构、键名和 #编号 约定不得改变）：';
+
+  function buildFinalPrompt(compact, lines, meta, style) {
+    const tail = style ? ['', STYLE_GUARD, style] : [];
     return [
       `以下是过去 24 小时（${meta.range}）来自 ${meta.feedCount} 个频道的 ${compact.length} 条新条目：`,
       '',
@@ -183,19 +203,20 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
       '3. 每个 section 的 items 最多 6 条，只挑真正有价值的，ref 必须是上面出现过的编号；',
       '4. comment 要具体，说明这是什么、适合谁，不要写"值得一看"这类空话；',
       '5. 只输出 JSON。',
+      ...tail,
     ].join('\n');
   }
 
-  async function singlePass(compact, meta, llm) {
+  async function singlePass(compact, meta, llm, style) {
     const lines = compact.map((e, i) => toLine(e, i + 1));
     const content = await chat([
-      { role: 'system', content: SYSTEM },
-      { role: 'user', content: buildFinalPrompt(compact, lines, meta) },
+      { role: 'system', content: systemPrompt(llm) },
+      { role: 'user', content: buildFinalPrompt(compact, lines, meta, style) },
     ], null, llm);
     return extractJson(content);
   }
 
-  async function mapReduce(compact, meta, llm) {
+  async function mapReduce(compact, meta, llm, style) {
     const chunks = [];
     for (let i = 0; i < compact.length; i += CHUNK) chunks.push(compact.slice(i, i + CHUNK));
 
@@ -203,7 +224,7 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
     for (const ch of chunks) {
       const lines = ch.map((e, i) => toLine(e, i + 1));
       const content = await chat([
-        { role: 'system', content: SYSTEM },
+        { role: 'system', content: systemPrompt(llm) },
         {
           role: 'user',
           content: [
@@ -211,6 +232,8 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
             lines.join('\n'), '',
             '请输出 JSON：{ "summary": "这一批的 2 句话概括", "notable": [ { "ref": 批内编号, "why": "值得关注的原因，15 字内" } ] }',
             'notable 最多 6 条，只挑真正有价值的。只输出 JSON。',
+            // 选材侧重要在这一轮就起作用：终稿只能从这批挑出的 notable 里选
+            ...(style ? ['', STYLE_GUARD, style] : []),
           ].join('\n'),
         },
       ], null, llm);
@@ -230,11 +253,11 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
       }
     });
 
-    if (!flat.length) return singlePass(compact.slice(0, SINGLE_LIMIT), meta, llm);
+    if (!flat.length) return singlePass(compact.slice(0, SINGLE_LIMIT), meta, llm, style);
 
     const content = await chat([
-      { role: 'system', content: SYSTEM },
-      { role: 'user', content: buildFinalPrompt(flat, digestLines, meta) },
+      { role: 'system', content: systemPrompt(llm) },
+      { role: 'user', content: buildFinalPrompt(flat, digestLines, meta, style) },
     ], null, llm);
     return extractJson(content);
   }
@@ -265,11 +288,9 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
     };
   }
 
-  /* ---------- 主流程 ---------- */
-  async function generate({ ownerId, feeds, date, force, llm }) {
-    const cfg = getSettings();
-    // 用户级 llm 优先；缺字段（未完整配置）则回退站点默认
-    const effectiveLlm = (llm && llm.baseUrl && llm.apiKey && llm.model) ? llm : cfg.llm;
+  /* ---------- 主流程 ----------
+   * llm / style / limits 全部来自「发起生成那个账号」的偏好，本模块不再读任何站点级配置。 */
+  async function generate({ ownerId, feeds, date, force, llm, style, limits }) {
     const d = date || shanghaiDate();
 
     if (!force) {
@@ -279,8 +300,7 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
 
     const now = Date.now();
     const sinceMs = now - WINDOW_MS;
-    const maxTotal = (cfg.digest && cfg.digest.maxTotal) || 150;
-    const maxPerFeed = (cfg.digest && cfg.digest.maxPerFeed) || 20;
+    const { maxPerFeed = 20, maxTotal = 150, keepDays = 30 } = limits || {};
 
     const collected = await collect({ ownerId, feeds, sinceMs });
     const compact = compress(collected, maxPerFeed, maxTotal);
@@ -296,9 +316,10 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
       result = { overview: '过去 24 小时没有采集到新条目。', highlights: [], sections: [], fallback: true };
     } else {
       try {
+        const styleText = typeof style === 'string' ? style.trim() : '';
         result = compact.length > SINGLE_LIMIT
-          ? await mapReduce(compact, meta, effectiveLlm)
-          : await singlePass(compact, meta, effectiveLlm);
+          ? await mapReduce(compact, meta, llm, styleText)
+          : await singlePass(compact, meta, llm, styleText);
       } catch (e) {
         llmError = String((e && e.message) || e);
         result = ruleDigest(compact, meta, llmError);
@@ -332,7 +353,7 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
       generatedAt: now,
       windowFrom: sinceMs,
       windowTo: now,
-      model: (effectiveLlm && effectiveLlm.model) || '',
+      model: (llm && llm.model) || '',
       usedMapReduce: compact.length > SINGLE_LIMIT,
       fallback: !!result.fallback,
       error: llmError,
@@ -347,7 +368,7 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
     };
 
     await db.saveDigest(ownerId, d, digest, digest.model, digest.fallback);
-    await db.pruneDigests(ownerId, (cfg.digest && cfg.digest.keepDays) || 30).catch(() => 0);
+    await db.pruneDigests(ownerId, keepDays).catch(() => 0);
     return { digest, cached: false };
   }
 
@@ -355,11 +376,12 @@ module.exports = function createDigest({ db, getSettings, log = console.log }) {
     generate,
     readDigest: (ownerId, date) => db.readDigest(ownerId, date),
     listDigests: (ownerId) => db.listDigestDates(ownerId),
-    testLlm: async (llmOverride) => {
+    testLlm: async (llm) => {
       const content = await chat([
-        { role: 'system', content: '你是一个测试助手，只输出 JSON。' },
+        // 带上思考指令，让「测试模型」真的走一遍保存后的实际请求形态
+        { role: 'system', content: '你是一个测试助手，只输出 JSON。' + thinkTag(llm) },
         { role: 'user', content: '输出 {"ok": true, "msg": "连接正常"}' },
-      ], 0, llmOverride);
+      ], 0, llm);
       const j = extractJson(content);
       return { ok: true, reply: j.msg || '连接正常' };
     },

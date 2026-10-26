@@ -20,7 +20,10 @@ const MODEL_PRESETS = [
   'THUDM/GLM-4-9B-0414',
 ];
 
-const EMPTY = { baseUrl: '', model: '', temperature: '0.3', apiKeySet: false, apiKeyHint: '' };
+const EMPTY = {
+  baseUrl: '', model: '', temperature: '0.3', apiKeySet: false, apiKeyHint: '',
+  thinking: false, thinkingDepth: 'medium',
+};
 
 const parseTemp = (v) => {
   const n = Number(v);
@@ -50,6 +53,8 @@ export function ModelPane() {
         baseUrl: llm.baseUrl || '',
         model: llm.model || '',
         temperature: String(llm.temperature == null ? 0.3 : llm.temperature),
+        thinking: llm.thinking === true,
+        thinkingDepth: ['low', 'medium', 'high'].indexOf(llm.thinkingDepth) >= 0 ? llm.thinkingDepth : 'medium',
         apiKeySet: !!llm.apiKeySet,
         apiKeyHint: llm.apiKeyHint || '••••',
       });
@@ -71,7 +76,11 @@ export function ModelPane() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          llm: { baseUrl: form.baseUrl, apiKey, model: form.model },
+          llm: {
+            baseUrl: form.baseUrl, apiKey, model: form.model,
+            // 思考两项也带上：刚把开关拨开、还没保存就能试出这上游认不认
+            thinking: form.thinking, thinkingDepth: form.thinkingDepth,
+          },
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -89,6 +98,8 @@ export function ModelPane() {
     baseUrl: form.baseUrl,
     model: form.model,
     temperature: parseTemp(form.temperature),
+    thinking: form.thinking,
+    thinkingDepth: form.thinkingDepth,
   }, extra);
 
   const onSave = async () => {
@@ -115,7 +126,7 @@ export function ModelPane() {
   };
 
   const onClearKey = async () => {
-    if (!confirm('确定清除已保存的 API Key？\n清除后将回退使用站点默认模型配置（如有），否则日报将无法调用模型。')) return;
+    if (!confirm('确定清除已保存的 API Key？\n清除后这个账号将无法调用模型，日报直到重新填写前都生成不了。')) return;
     setBusy('clear');
     try {
       const res = await S().apiFetch('/api/prefs', {
@@ -207,7 +218,9 @@ export function ModelPane() {
             <datalist id="modelPresets">
               {MODEL_PRESETS.map((m) => <option key={m} value={m} />)}
             </datalist>
-            <small className="form-tip">免费额度推荐 <strong>Qwen/Qwen3-8B</strong>；系统提示已内置 <code>/no_think</code> 关闭思考模式，速度更快</small>
+            <small className="form-tip">免费额度推荐 <strong>Qwen/Qwen3-8B</strong>；{form.thinking
+              ? '已开启思考：系统提示改用 /think，并随请求下发思考预算'
+              : '系统提示内置 /no_think 关闭思考模式，速度更快'}</small>
           </div>
           <div className="form-row">
             <label htmlFor="llmTemp">温度</label>
@@ -223,6 +236,33 @@ export function ModelPane() {
             <small className="form-tip">越低越稳定保守，越高越发散。摘要建议 0.2 ~ 0.5</small>
           </div>
         </div>
+        <div className="form-row">
+          <label className="form-row-head">
+            <span>开启模型思考</span>
+            <span className="switch">
+              <input
+                id="llmThinking"
+                type="checkbox"
+                checked={form.thinking}
+                onChange={(ev) => setForm((f) => Object.assign({}, f, { thinking: ev.target.checked }))}
+              />
+              <span className="switch-slider" />
+            </span>
+          </label>
+          <small className="form-tip">
+            让模型先推理再产出简报，选材和点评通常更贴要求，代价是明显更慢、更耗额度。
+            只对 Qwen3 / DeepSeek 这类支持思考的模型有效，不支持的上游会忽略这两项设置
+          </small>
+        </div>
+        <div className="form-row" hidden={!form.thinking}>
+          <label htmlFor="llmDepth">思考深度</label>
+          <select id="llmDepth" className="select" value={form.thinkingDepth} onChange={set('thinkingDepth')}>
+            <option value="low">轻 · 少量推理，接近不开思考</option>
+            <option value="medium">中 · 默认，够它把选材想过一遍</option>
+            <option value="high">深 · 充分推理，长清单时更明显</option>
+          </select>
+          <small className="form-tip">日报是每天一次的后台任务，「中」通常就够；只有条目很多、分类总跑偏时才值得上「深」</small>
+        </div>
         {result && (
           <div className={'test-result show ' + (result.ok ? 'ok' : 'err')} id="llmResult" role="status">
             {result.msg}
@@ -230,7 +270,7 @@ export function ModelPane() {
         )}
       </div>
       <div className="pane-foot">
-        <span className="hint">这是你自己的模型配置，仅对当前账号生效（用于「日报」等 AI 功能）；留空的项会回退到站点默认模型</span>
+        <span className="hint">模型配置完全跟随账号：这一份只对你自己生效，不会用上别人的地址或 Key，也没有站点默认值可回退——三项都填好才能生成日报</span>
         <div className="pane-foot-btns">
           <button
             className="btn btn-ghost"

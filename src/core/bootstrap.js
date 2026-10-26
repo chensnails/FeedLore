@@ -6,7 +6,7 @@
  * ============================================================ */
 
 import { toast, emitShell } from './util.js';
-import { state, applyRoleUI, applyTheme, currentThemeMode, setAiPage, openSettings } from './state.js';
+import { state, applyRoleUI, applyTheme, currentThemeMode, openSettings } from './state.js';
 import { currentViewMode, applyViewMode, currentTab, loadFeeds, loadPage } from './feeds.js';
 import { scheduleAutoRefresh } from './autorefresh.js';
 import { switchView, bindSections } from './ui.js';
@@ -64,13 +64,8 @@ requestAnimationFrame(() => requestAnimationFrame(bootThemeAndView));
   else if (location.hash.startsWith('#unread')) { tab = 'reader'; state.rdScope = 'unread'; }
   else if (location.hash.startsWith('#reader')) tab = 'reader';
   // #digest 是老深链，那个页面已经升级成「AI」了，仍然认
-  else if (location.hash.startsWith('#digest')) { tab = 'ai'; setAiPage('digest'); }
-  else if (location.hash.startsWith('#ai')) {
-    tab = 'ai';
-    // #ai/settings 这种可以直达某个子页
-    const sub = location.hash.slice(3).replace(/^[/:]+/, '');
-    if (['digest', 'settings'].indexOf(sub) >= 0) setAiPage(sub);
-  }
+  else if (location.hash.startsWith('#digest')) tab = 'ai';
+  else if (location.hash.startsWith('#ai')) tab = 'ai';
   switchView(tab);
 
   if (location.hash.startsWith('#settings')) openSettings();

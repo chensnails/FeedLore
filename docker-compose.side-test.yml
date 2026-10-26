@@ -1,0 +1,101 @@
+# 笺川（FeedLore）· 本机常驻测试环境（源码模式，与生产并排，端口 3211）
+#
+# 与其它几份 compose 的分工：
+# - docker-compose.yml            ：源码模式，但用的是生产的容器名/卷/端口（3210）
+# - docker-compose.release.yml    ：生产，跟 ghcr 的 :latest
+# - docker-compose.test.yml       ：换装试用，跟 ghcr 的 :test，与生产二选一
+# - 本文件                        ：跟【本地工作区源码】，与生产同时跑、互不影响
+#
+# 为什么是源码模式而不是 :test 镜像：改一行 CSS 就想在 3211 上看效果，
+# 走 CI 出镜像要等几分钟，本地 --build 十几秒。
+#
+# 用法：
+#   docker compose -f docker-compose.side-test.yml up -d --build   # 改完代码重建
+#   docker compose -f docker-compose.side-test.yml logs -f app     # 看后端日志
+#   docker compose -f docker-compose.side-test.yml down            # 停掉，保留数据卷
+#   打开 http://127.0.0.1:3211 （初始账号 admin / admin）
+#
+# 两处刻意与生产不同：
+#   1. 端口只绑 127.0.0.1，不把 admin/admin 的测试站裸露在局域网；
+#      要从别的机器访问就去掉前缀，或做 SSH 端口转发。
+#   2. 没有 watchtower：镜像是本机 build 出来的，没有远端 tag 可拉。
+#      「设置 → 关于」里的一键更新因此不可用，重建请用上面那条 --build。
+name: feedlore-test
+
+services:
+  db:
+    image: postgres:18.4-alpine
+    container_name: feedlore-test-db
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      POSTGRES_DB: ${PG_DB:-feedlore}
+      POSTGRES_USER: ${PG_USER:-feedlore}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-feedlore-test-local}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - test-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - feedlore-test
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # 本地 tag，刻意不叫 :latest / :test，避免和 CI 产物混在一起看不清跑的是哪份
+    image: feedlore:test-src
+    container_name: feedlore-test
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      PORT: "3000"
+      DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD:-feedlore-test-local}@db:5432/${PG_DB:-feedlore}
+
+      SEED_FEEDS: "${SEED_FEEDS:-}"
+      REFRESH_MINUTES: ${REFRESH_MINUTES:-30}
+      KEEP_PER_FEED: ${KEEP_PER_FEED:-300}
+      KEEP_DAYS: ${KEEP_DAYS:-0}
+      AUTO_REFRESH_MINUTES: ${AUTO_REFRESH_MINUTES:-0}
+
+      # 大模型 / 每日摘要：v1.4.0 起跟随账号，无环境变量
+
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:-admin}
+
+    ports:
+      - "127.0.0.1:${TEST_HOST_PORT:-3211}:3000"
+
+    networks:
+      - feedlore-test
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  feedlore-test:
+    name: feedlore-test
+    driver: bridge
+
+volumes:
+  test-pgdata:
+    name: feedlore-test-pgdata

@@ -306,24 +306,28 @@ function ReaderChannels({ grouped, collapsed, hasGroups, flags, scope, feedId, g
         return (
           <div key={'g:' + gname}>
             {hasGroups ? (
-              <div className={'rd-ch-group-row' + (isCollapsed ? ' is-collapsed' : '')}>
-                <button type="button" className="rd-ch-fold" data-group-fold={gname}
+              <div className={'rd-ch-group-row' + (isCollapsed ? ' is-collapsed' : '') + (group === gname ? ' is-filtered' : '')}>
+                {/* 整行就是折叠开关：收起/展开是高频动作，命中区不该只有左侧那 18px 箭头。
+                    箭头降成状态指示，「只看这组」让位给右侧的漏斗按钮。 */}
+                <button type="button" className={'rd-ch-group' + (gname ? '' : ' muted')}
+                  data-group={gname} data-group-fold={gname}
                   aria-expanded={isCollapsed ? 'false' : 'true'}
-                  title={isCollapsed ? '展开该分组' : '收起该分组'}
-                  aria-label={(isCollapsed ? '展开' : '收起') + `分组「${gname || '未分组'}」`}
+                  title={(isCollapsed ? '展开' : '收起') + `分组「${gname || '未分组'}」`}
                   onClick={() => s.readerToggleGroupCollapse(gname)}>
-                  <svg className="ico" aria-hidden="true" focusable="false"><use href={isCollapsed ? '#i-chevron-right' : '#i-chevron-down'} /></svg>
-                </button>
-                <button type="button"
-                  className={'rd-ch-group' + (gname ? '' : ' muted') + (group === gname ? ' active' : '') + (gUnread > 0 ? ' has-unread' : '')}
-                  data-group={gname} title={`只看「${gname || '未分组'}」分组下的文章`}
-                  onClick={() => s.readerSetGroup(gname)}>
+                  <svg className="ico rd-ch-caret" aria-hidden="true" focusable="false"><use href={isCollapsed ? '#i-chevron-right' : '#i-chevron-down'} /></svg>
                   <span className="rd-ch-group-name">{gname || '未分组'}</span>
                   {gUnread > 0
                     ? <span className="rd-ch-n hot" title={`${gUnread} 条未读`}>{gUnread}</span>
                     : isCollapsed
                       ? <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道，全部已读`}>{g.feeds.length}</span>
                       : <span className="rd-ch-group-empty" aria-hidden="true">✓</span>}
+                </button>
+                {/* 低频动作平时隐身，悬停 / 键盘聚焦 / 正在筛选该组时才现身（触屏常显在 CSS 里） */}
+                <button type="button" className="rd-ch-filter" data-group-filter={gname}
+                  aria-pressed={group === gname ? 'true' : 'false'}
+                  title={`只看「${gname || '未分组'}」分组下的文章`}
+                  onClick={() => s.readerSetGroup(gname)}>
+                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-filter" /></svg>
                 </button>
               </div>
             ) : null}

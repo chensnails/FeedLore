@@ -20,10 +20,12 @@ const {
   APPEARANCE_DEFAULTS, sanitizeAppearance, userAppearance,
   LAYOUT_DEFAULTS, sanitizeLayout, userLayout, clampReaderSide,
   READER_SIDE_MIN, READER_SIDE_MAX, READER_SIDE_DEFAULT,
+  DIGEST_PROMPT_MAX, DIGEST_DEFAULTS, DIGEST_FEEDS_MAX,
+  sanitizeDigestTime, sanitizeDigest, userDigest, userDigestPrompt,
 } = require('../../lib/prefs');
 const { proxyBodyJson, toCard, toFeedDto, proxied } = require('../../lib/dto');
 const { encryptSecret, decryptSecret, maskSecret, hashPassword, safeEqual, ENC_PREFIX } = require('../../lib/crypto');
-const { llmForStore, sanitizeUserLlm, userLlmForStore, userLlmForView, resolveUserLlm } = require('../../lib/llm');
+const { sanitizeUserLlm, userLlmForStore, userLlmForView, userLlm, llmComplete, thinkingBudget } = require('../../lib/llm');
 
 /* ============================================================
  * 数值
@@ -248,18 +250,23 @@ test('userAppearance：从 user.prefs 取，缺路径安全', () => {
 test('sanitizeLayout：枚举字段白名单', () => {
   assert.deepEqual(sanitizeLayout(undefined), LAYOUT_DEFAULTS);
   const got = sanitizeLayout({
-    view: 'list', tab: 'cards', aiPage: 'settings',
+    view: 'list', tab: 'cards',
     sort: 'old', rdScope: 'unread',
   });
   assert.equal(got.view, 'list');
   assert.equal(got.tab, 'cards');
-  assert.equal(got.aiPage, 'settings');
   assert.equal(got.sort, 'old');
   assert.equal(got.rdScope, 'unread');
 
   const bad = sanitizeLayout({ view: 'grid-3col', tab: 'evil' });
   assert.equal(bad.view, LAYOUT_DEFAULTS.view);
   assert.equal(bad.tab, LAYOUT_DEFAULTS.tab);
+});
+
+test('sanitizeLayout：aiPage 随二级导航一起退场（不再接受也不输出）', () => {
+  assert.equal(Object.prototype.hasOwnProperty.call(LAYOUT_DEFAULTS, 'aiPage'), false);
+  const got = sanitizeLayout({ aiPage: 'settings' });
+  assert.equal(got.aiPage, undefined);
 });
 
 test('sanitizeLayout：accordion 只有显式 false 才关', () => {
@@ -316,6 +323,91 @@ test('sanitizeLayout：sections 强制转布尔', () => {
   assert.equal(got.sections['外观'], false);
   assert.deepEqual(sanitizeLayout({}).sections, {});
   assert.deepEqual(sanitizeLayout({ sections: 'x' }).sections, {});
+});
+
+test('sanitizeLayout：digestEnabled 只有显式 false 才关（与 accordion 同一口径）', () => {
+  assert.equal(sanitizeLayout({ digestEnabled: false }).digestEnabled, false);
+  assert.equal(sanitizeLayout({ digestEnabled: true }).digestEnabled, true);
+  // 脏值不该把用户的日报关掉：'false' / 0 / null 一律算「没关」
+  for (const v of [undefined, null, 'false', 0, '']) {
+    assert.equal(sanitizeLayout({ digestEnabled: v }).digestEnabled, true, String(v));
+  }
+  // 整组缺失走默认 —— 老账号升级后默认仍有入口
+  assert.equal(LAYOUT_DEFAULTS.digestEnabled, true);
+  assert.deepEqual(sanitizeLayout(undefined), LAYOUT_DEFAULTS);
+  assert.equal(userLayout({ prefs: {} }).digestEnabled, true);
+});
+
+test('sanitizeDigest：风格要求换行归一、剔控制字符、截到上限，非字符串当没写', () => {
+  const NUL = String.fromCharCode(0);
+  const ESC = String.fromCharCode(27);
+  const style = (v) => sanitizeDigest({ style: v }).style;
+  assert.equal(style('侧重新版影视\r\n别用「抓手」'), '侧重新版影视\n别用「抓手」');
+  assert.equal(style('  两边空白收掉  '), '两边空白收掉');
+  assert.equal(style('a\tb'), 'a\tb');            // 制表符是排版用的，留着
+  assert.equal(style('a' + NUL + ESC + 'b'), 'ab');
+  assert.equal(style('x'.repeat(DIGEST_PROMPT_MAX + 500)).length, DIGEST_PROMPT_MAX);
+  for (const bad of [undefined, null, 42, true, {}, []]) {
+    assert.equal(style(bad), '', String(bad));
+  }
+  assert.equal(style('   \n  '), '');
+});
+
+test('sanitizeDigest：默认值 + 自动生成分默认关（不自动烧额度）', () => {
+  assert.deepEqual(sanitizeDigest(undefined), Object.assign({}, DIGEST_DEFAULTS, { feeds: [] }));
+  assert.equal(DIGEST_DEFAULTS.auto, false);
+  // 与 layout.digestEnabled 默认 true 相反：一个是「用不用日报」，一个是「到点自己跑不跑」
+  assert.equal(LAYOUT_DEFAULTS.digestEnabled, true);
+  assert.equal(sanitizeDigest({}).auto, false);
+  assert.equal(sanitizeDigest({ auto: 'yes' }).auto, false);   // 只认严格 true
+  assert.equal(sanitizeDigest({ auto: true }).auto, true);
+});
+
+test('sanitizeDigest：时间格式白名单，脏值回落默认', () => {
+  assert.equal(sanitizeDigestTime('07:30'), '07:30');
+  assert.equal(sanitizeDigestTime('23:59'), '23:59');
+  for (const bad of ['24:00', '8:00', '07:60', 'abc', '', null, 7, '07-30']) {
+    assert.equal(sanitizeDigestTime(bad), DIGEST_DEFAULTS.time, String(bad));
+  }
+  assert.equal(sanitizeDigest({ time: '乱写的' }).time, '08:00');
+});
+
+test('sanitizeDigest：范围模式与频道清单（去重、正整数、只留 custom 之外的空清单）', () => {
+  assert.equal(sanitizeDigest({ mode: 'all' }).mode, 'all');
+  assert.equal(sanitizeDigest({ mode: 'nonsense' }).mode, DIGEST_DEFAULTS.mode);
+  const d = sanitizeDigest({ mode: 'custom', feeds: ['3', 3, 5, -1, 0, null, 'x', 7] });
+  assert.deepEqual(d.feeds, [3, 5, 7]);
+  assert.deepEqual(sanitizeDigest({ mode: 'all', feeds: [1] }).feeds.length, 1); // 清洗只管形状，是否清空由调用方按模式决定
+  assert.deepEqual(sanitizeDigest({ feeds: 'not-an-array' }).feeds, []);
+  const many = sanitizeDigest({ mode: 'custom', feeds: Array.from({ length: DIGEST_FEEDS_MAX + 60 }, (_, i) => i + 1) });
+  assert.equal(many.feeds.length, DIGEST_FEEDS_MAX);
+});
+
+test('sanitizeDigest：条数与保留越界夹回区间', () => {
+  const d = sanitizeDigest({ maxPerFeed: 9999, maxTotal: 9999, keepDays: 9999 });
+  assert.equal(d.maxPerFeed, 100);
+  assert.equal(d.maxTotal, 500);
+  assert.equal(d.keepDays, 365);
+  const low = sanitizeDigest({ maxPerFeed: 0, maxTotal: 1, keepDays: 0 });
+  assert.equal(low.maxPerFeed, 1);
+  assert.equal(low.maxTotal, 10);
+  assert.equal(low.keepDays, 1);
+  assert.equal(sanitizeDigest({ maxPerFeed: 'abc' }).maxPerFeed, 20);
+});
+
+test('sanitizeDigest：lastAuto 只认 YYYY-MM-DD（调度器独占字段）', () => {
+  assert.equal(sanitizeDigest({ lastAuto: '2026-10-26' }).lastAuto, '2026-10-26');
+  assert.equal(sanitizeDigest({ lastAuto: '今天' }).lastAuto, '');
+  assert.equal(sanitizeDigest({ lastAuto: 20261026 }).lastAuto, '');
+});
+
+test('userDigest：从 user.prefs 取，缺路径安全；老库顶层 digestPrompt 兼容读进 style', () => {
+  assert.deepEqual(userDigest(null), Object.assign({}, DIGEST_DEFAULTS, { feeds: [] }));
+  assert.deepEqual(userDigest({ prefs: {} }), Object.assign({}, DIGEST_DEFAULTS, { feeds: [] }));
+  assert.equal(userDigest({ prefs: { digest: { style: '只要音乐' } } }).style, '只要音乐');
+  assert.equal(userDigestPrompt({ prefs: { digest: { style: '走 prefs.digest' } } }), '走 prefs.digest');
+  // 升级前的账号：风格还存在顶层 digestPrompt，读得到就不用重填
+  assert.equal(userDigestPrompt({ prefs: { digestPrompt: '只要音乐' } }), '只要音乐');
 });
 
 test('userLayout：从 user.prefs 取，缺路径安全', () => {
@@ -396,25 +488,6 @@ test('safeEqual：相等为真，长度不等为假，无时序侧信道', () =>
 /* ============================================================
  * 模型配置：落库形态 / 前端视图 / 有效配置解析
  * ============================================================ */
-test('llmForStore：明文转密文，内存副本不留明文', () => {
-  const out = llmForStore({ baseUrl: 'https://api.x.com', model: 'm', apiKey: 'sk-secret' }, SECRET);
-  assert.equal(out.apiKey, undefined);
-  assert.ok(out.apiKeyEnc.startsWith(ENC_PREFIX));
-  assert.equal(decryptSecret(out.apiKeyEnc, SECRET), 'sk-secret');
-  assert.equal(out.model, 'm');
-});
-
-test('llmForStore：没传明文 Key 时沿用原密文（不误抹）', () => {
-  const enc = encryptSecret('keep-me', SECRET);
-  const out = llmForStore({ baseUrl: 'u', apiKeyEnc: enc }, SECRET);
-  assert.equal(out.apiKeyEnc, enc);
-});
-
-test('llmForStore：显式空 apiKeyEnc 表示「清除」', () => {
-  const out = llmForStore({ apiKeyEnc: '' }, SECRET);
-  assert.equal(out.apiKeyEnc, '');
-});
-
 test('sanitizeUserLlm：字段清洗 + temperature 夹取', () => {
   // 非对象输入直接返回空对象（与 v2.2.0 之前的行为一致）：
   // userLlmForStore 会在这之上补 apiKeyEnc，所以这里刻意不填默认值。
@@ -463,39 +536,84 @@ test('userLlmForView：没配 Key 时 set=false 且 hint 为空', () => {
   assert.equal(view.temperature, 0.3);
 });
 
-test('resolveUserLlm：用户配置优先，未配回退站点默认', () => {
-  const site = { baseUrl: 'https://site', model: 'site-m', temperature: 0.7, apiKey: 'site-key' };
-  // 全都用站点的
-  assert.deepEqual(resolveUserLlm(null, site, SECRET), {
-    baseUrl: 'https://site', model: 'site-m', temperature: 0.7, apiKey: 'site-key',
-  });
-  // 用户配了 baseUrl / model，但没配 Key → 逐字段混用
-  const u = { prefs: { llm: { baseUrl: 'https://user', model: 'user-m' } } };
-  const got = resolveUserLlm(u, site, SECRET);
-  assert.equal(got.baseUrl, 'https://user');
-  assert.equal(got.model, 'user-m');
-  assert.equal(got.temperature, 0.7);
-  assert.equal(got.apiKey, 'site-key');
-});
-
-test('resolveUserLlm：用户自己的 Key 解密后生效', () => {
+test('userLlm：只认这个账号自己那份，没有站点兜底', () => {
   const enc = encryptSecret('user-key', SECRET);
-  const u = { prefs: { llm: { apiKeyEnc: enc, temperature: 0.1 } } };
-  const got = resolveUserLlm(u, { apiKey: 'site-key' }, SECRET);
-  assert.equal(got.apiKey, 'user-key');
-  assert.equal(got.temperature, 0.1);
-});
-
-test('resolveUserLlm：用户密文解不开时回退站点 Key（不返回空）', () => {
-  const enc = encryptSecret('user-key', 'wrong-secret');   // 用别的密钥加的
-  const got = resolveUserLlm({ prefs: { llm: { apiKeyEnc: enc } } }, { apiKey: 'site-key' }, SECRET);
-  assert.equal(got.apiKey, 'site-key');
-});
-
-test('resolveUserLlm：全空时给安全默认', () => {
-  assert.deepEqual(resolveUserLlm(null, null, SECRET), {
-    baseUrl: '', model: '', temperature: 0.3, apiKey: '',
+  const u = { prefs: { llm: { baseUrl: 'https://user', model: 'user-m', temperature: 0.1, apiKeyEnc: enc } } };
+  assert.deepEqual(userLlm(u, SECRET), {
+    baseUrl: 'https://user', model: 'user-m', temperature: 0.1, apiKey: 'user-key',
+    thinking: false, thinkingDepth: 'medium', thinkingBudget: 2048,
   });
+});
+
+test('userLlm：全空时给安全默认（空地址空 Key，交给 llmComplete 判）', () => {
+  assert.deepEqual(userLlm(null, SECRET), {
+    baseUrl: '', model: '', temperature: 0.3, apiKey: '',
+    thinking: false, thinkingDepth: 'medium', thinkingBudget: 2048,
+  });
+  assert.deepEqual(userLlm({ prefs: {} }, SECRET).baseUrl, '');
+});
+
+test('userLlm：密文解不开时给空串，不再悄悄用别人的 Key', () => {
+  const enc = encryptSecret('user-key', 'wrong-secret');   // 用别的密钥加的
+  assert.equal(userLlm({ prefs: { llm: { apiKeyEnc: enc } } }, SECRET).apiKey, '');
+});
+
+test('llmComplete：地址 / Key / 模型名三项齐了才算配好', () => {
+  const full = { baseUrl: 'https://x/v1', apiKey: 'sk-1', model: 'm' };
+  assert.equal(llmComplete(full), true);
+  assert.equal(llmComplete(Object.assign({}, full, { apiKey: '' })), false);
+  assert.equal(llmComplete(Object.assign({}, full, { baseUrl: '' })), false);
+  assert.equal(llmComplete(Object.assign({}, full, { model: '' })), false);
+  assert.equal(llmComplete(null), false);
+  assert.equal(llmComplete({}), false);
+});
+
+/* ---------- 思考模式：档位 → 预算，以及「谁说了算」 ---------- */
+
+test('thinkingBudget：三档各有预算，未知档位回落中档', () => {
+  assert.equal(thinkingBudget('low'), 512);
+  assert.equal(thinkingBudget('medium'), 2048);
+  assert.equal(thinkingBudget('high'), 8192);
+  for (const bad of ['ultra', '', null, undefined, 0, { toString() { return 'low'; } }]) {
+    assert.equal(thinkingBudget(bad), 2048, String(bad));
+  }
+});
+
+test('sanitizeUserLlm：思考两项只在显式提交时落键（不写死默认，未提交才算「没表过态」）', () => {
+  assert.equal('thinking' in sanitizeUserLlm({ baseUrl: 'https://x', model: 'm' }), false);
+  assert.equal('thinkingDepth' in sanitizeUserLlm({ baseUrl: 'https://x', model: 'm' }), false);
+  assert.deepEqual(sanitizeUserLlm({ thinking: false }), {
+    baseUrl: '', model: '', temperature: 0.3, thinking: false,
+  });
+  assert.deepEqual(sanitizeUserLlm({ thinking: true, thinkingDepth: 'high' }).thinkingDepth, 'high');
+  // 字符串 'true' / 越界档位一律不当真
+  assert.equal('thinking' in sanitizeUserLlm({ thinking: 'true' }), false);
+  assert.equal('thinkingDepth' in sanitizeUserLlm({ thinkingDepth: 'very-deep' }), false);
+});
+
+test('userLlm：思考只看账号自己（只填档位不该自动开思考）', () => {
+  const on = userLlm({ prefs: { llm: { thinking: true, thinkingDepth: 'high' } } }, SECRET);
+  assert.equal(on.thinking, true);
+  assert.equal(on.thinkingDepth, 'high');
+  assert.equal(on.thinkingBudget, 8192);
+  const off = userLlm({ prefs: { llm: { thinking: false, thinkingDepth: 'low' } } }, SECRET);
+  assert.equal(off.thinking, false);
+  // 关着也把档位照实解析出来：日志与「档位 → 预算」映射要能对上
+  assert.equal(off.thinkingDepth, 'low');
+  assert.equal(off.thinkingBudget, 512);
+  const depthOnly = userLlm({ prefs: { llm: { thinkingDepth: 'high' } } }, SECRET);
+  assert.equal(depthOnly.thinking, false);
+  // 脏档位回落中档，不会把预算做成 undefined
+  assert.equal(userLlm({ prefs: { llm: { thinking: true, thinkingDepth: 'ultra' } } }, SECRET).thinkingBudget, 2048);
+});
+
+test('userLlmForView：思考字段给前端可读形态（缺省 = 关 + 中档）', () => {
+  const bare = userLlmForView({}, SECRET);
+  assert.equal(bare.thinking, false);
+  assert.equal(bare.thinkingDepth, 'medium');
+  const on = userLlmForView({ llm: { thinking: true, thinkingDepth: 'nonsense' } }, SECRET);
+  assert.equal(on.thinking, true);
+  assert.equal(on.thinkingDepth, 'medium');
 });
 
 /* ============================================================
@@ -639,3 +757,141 @@ test('toFeedDto：failStreak 透传，缺列为 0（v2.5.0 自动停用计数）
   const dirty = toFeedDto({ id: 1, url: 'u', title: 'T', fail_streak: null }, 30);
   assert.equal(dirty.failStreak, 0);
 });
+
+/* ============================================================
+ * 日报出站请求（digest.js：思考下发 + 风格附加段）
+ *
+ * 这两件事都只有「真的发出去那一次」才看得出对错：提示词拼错一个字、
+ * chat_template_kwargs 少一层，页面上一切正常，日报只是悄悄变笨或变慢。
+ * 所以这里桩掉 fetch，按 generate() 的真实调用链跑，断言请求体本身。
+ * ============================================================ */
+const createDigest = require('../../digest');
+
+const mkRows = (n) => Array.from({ length: n }, (_, i) => ({
+  id: i + 1,
+  feed_id: 7,
+  feed_name: '测试频道',
+  title: '条目 ' + (i + 1),
+  description: '描述 ' + (i + 1),
+  link: 'https://example.com/' + (i + 1),
+  published_at: new Date(Date.now() - i * 1000).toISOString(),
+}));
+
+/** 跑一次 generate，返回模型侧收到的每个请求体。map 阶段按「批内编号」识别。
+ *  限额由调用方经 limits 传入（v1.4.0 起日报不再有站点级配置，digest.js 只吃参数）。 */
+async function captureDigest({ rows = 3, llm, style, limits } = {}) {
+  const bodies = [];
+  const db = {
+    entriesSince: async () => mkRows(rows),
+    readDigest: async () => null,
+    saveDigest: async () => {},
+    pruneDigests: async () => 0,
+  };
+  const digest = createDigest({ db, log: () => {} });
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    const body = JSON.parse(opts.body);
+    bodies.push(body);
+    const isMap = body.messages[body.messages.length - 1].content.indexOf('批内编号') >= 0;
+    const payload = isMap
+      ? { summary: '这一批的概括', notable: [{ ref: 1, why: '值得看' }] }
+      : { overview: '今天的概览', highlights: [], sections: [] };
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ choices: [{ message: { content: JSON.stringify(payload) } }] }),
+    };
+  };
+  try {
+    const out = await digest.generate({ ownerId: 1, feeds: [7], force: true, llm, style, limits });
+    return { bodies, out };
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+const FULL_LLM = { baseUrl: 'https://example.test/v1', apiKey: 'sk-x', model: 'Test/Model' };
+// 放开限额：默认每频道 20 条会把造出来的 91 条直接砍没，走不到 map-reduce
+const NO_LIMITS = { maxPerFeed: 500, maxTotal: 500, keepDays: 30 };
+
+test('generate：模型配置缺任一项 → 规则降级，错误文案说「模型未配置」', async () => {
+  // 缺配置不是崩溃：日报照样出（规则摘要），但绝不拿别人的 Key 去跑
+  const db = {
+    entriesSince: async () => mkRows(3),
+    readDigest: async () => null,
+    saveDigest: async () => {},
+    pruneDigests: async () => 0,
+  };
+  const digest = createDigest({ db, log: () => {} });
+  let fetched = 0;
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => { fetched += 1; throw new Error('不该发出请求'); };
+  try {
+    for (const bad of [undefined, null, {}, Object.assign({}, FULL_LLM, { apiKey: '' })]) {
+      const out = await digest.generate({ ownerId: 1, feeds: [7], force: true, llm: bad });
+      assert.equal(out.digest.fallback, true, JSON.stringify(bad));
+      assert.match(String(out.digest.error), /模型未配置/, JSON.stringify(bad));
+    }
+    assert.equal(fetched, 0, '配置不齐时一次请求都不该发出去');
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test('generate：limits 决定每频道与总条数上限', async () => {
+  const perFeed = await captureDigest({ rows: 30, llm: FULL_LLM, limits: { maxPerFeed: 5, maxTotal: 30, keepDays: 30 } });
+  assert.equal(perFeed.out.digest.stats.kept, 5, '每频道上限没生效');
+  // 上限压到 4 条 → 到不了 map-reduce 的门槛，只发一次请求，正好也能看出清单被截断了
+  const total = await captureDigest({
+    rows: 30, llm: FULL_LLM, limits: { maxPerFeed: 30, maxTotal: 4, keepDays: 30 },
+  });
+  assert.equal(total.out.digest.stats.kept, 4, '总上限没生效');
+  assert.equal(total.out.digest.stats.collected, 30, 'collected 应是压缩前的采集数');
+});
+
+test('generate：不开思考 → 模板指令是 /no_think，且不下发 chat_template_kwargs', async () => {
+  const { bodies, out } = await captureDigest({ llm: Object.assign({}, FULL_LLM, { thinking: false }) });
+  assert.equal(bodies.length, 1);
+  assert.match(bodies[0].messages[0].content, /\/no_think$/);
+  assert.equal(bodies[0].chat_template_kwargs, undefined);
+  assert.equal(out.digest.fallback, false, '降级成规则摘要说明请求根本没走通');
+});
+
+test('generate：开思考 → /think + enable_thinking + 档位预算', async () => {
+  const { bodies } = await captureDigest({ llm: Object.assign({}, FULL_LLM, { thinking: true, thinkingBudget: thinkingBudget('high') }) });
+  assert.match(bodies[0].messages[0].content, /\/think$/);
+  assert.deepEqual(bodies[0].chat_template_kwargs, { enable_thinking: true, thinking_budget: 8192 });
+});
+
+test('generate：思考预算按档位折算（轻 512 / 中 2048 / 深 8192）', async () => {
+  assert.equal(thinkingBudget('low'), 512);
+  assert.equal(thinkingBudget('medium'), 2048);
+  assert.equal(thinkingBudget('high'), 8192);
+  assert.equal(thinkingBudget('胡写'), 2048);   // 脏档位不能把预算变成 undefined
+  const { bodies } = await captureDigest({ llm: Object.assign({}, FULL_LLM, { thinking: true, thinkingBudget: thinkingBudget('low') }) });
+  assert.equal(bodies[0].chat_template_kwargs.thinking_budget, 512);
+});
+
+test('generate：风格要求只追加在 JSON 骨架之后，骨架本身不动', async () => {
+  const { bodies } = await captureDigest({ llm: FULL_LLM, style: '语气随意些，别用「赋能」这类词' });
+  const user = bodies[0].messages[1].content;
+  assert.ok(user.includes('语气随意些'), '风格要求没进提示词');
+  assert.ok(user.includes('额外要求（只影响选材、语气与篇幅'), '缺守卫句');
+  // 顺序即契约：风格段必须在「只输出 JSON」之后，否则等于给了模型改写结构的机会
+  assert.ok(user.lastIndexOf('语气随意些') > user.lastIndexOf('只输出 JSON'), '风格段抢在骨架前面了');
+  assert.ok(user.includes('"highlights"') && user.includes('"sections"'), 'JSON 骨架被改坏');
+});
+
+test('generate：没写风格要求时不出现「额外要求」段', async () => {
+  const { bodies } = await captureDigest({ llm: FULL_LLM, style: '   ' });
+  assert.ok(!bodies[0].messages[1].content.includes('额外要求'));
+});
+
+test('generate：走 map-reduce 时长清单的每一批都带上风格要求', async () => {
+  // 终稿只能从各批挑出的 notable 里选，选材侧重不在这一轮生效等于白写
+  const { bodies } = await captureDigest({ rows: 91, llm: FULL_LLM, style: '侧重新版影视和音乐', limits: NO_LIMITS });
+  assert.ok(bodies.length > 1, '91 条应拆批调用，实际 ' + bodies.length + ' 次');
+  const miss = bodies.filter((b) => !b.messages[b.messages.length - 1].content.includes('侧重新版影视和音乐'));
+  assert.equal(miss.length, 0, miss.length + ' 次调用漏了风格要求');
+});
+

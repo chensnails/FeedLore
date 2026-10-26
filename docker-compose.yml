@@ -64,20 +64,8 @@ services:
       # 网页自动刷新间隔（分钟，0 = 关闭）
       AUTO_REFRESH_MINUTES: ${AUTO_REFRESH_MINUTES:-0}
 
-      # ---- 大模型（OpenAI 兼容接口）----
-      # LLM_KEY 只在首次生成配置时写入数据库，落库前会加密；之后在页面里改
-      LLM_BASE: ${LLM_BASE:-https://api.siliconflow.cn/v1/chat/completions}
-      LLM_KEY: ${LLM_KEY}
-      LLM_MODEL: ${LLM_MODEL:-Qwen/Qwen3-8B}
-
-      # ---- 每日摘要（仅首次生成配置时生效，之后以页面设置为准）----
-      DIGEST_ENABLED: ${DIGEST_ENABLED:-1}
-      DIGEST_TIME: ${DIGEST_TIME:-08:00}
-      # selected=仅已开启的频道 | all=全部频道
-      DIGEST_SCOPE: ${DIGEST_SCOPE:-selected}
-      DIGEST_MAX_PER_FEED: ${DIGEST_MAX_PER_FEED:-20}
-      DIGEST_MAX_TOTAL: ${DIGEST_MAX_TOTAL:-150}
-      DIGEST_KEEP_DAYS: ${DIGEST_KEEP_DAYS:-30}
+      # ---- 大模型 / 每日摘要 ----
+      # 没有环境变量：v1.4.0 起完全跟随账号，各人在「设置 → 模型 / 日报」里填，Key 落库前加密
 
       # ---- 初始账号（仅首次生成配置时生效）----
       ADMIN_USER: ${ADMIN_USER:-admin}

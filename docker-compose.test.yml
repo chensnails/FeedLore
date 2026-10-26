@@ -70,9 +70,7 @@ services:
       KEEP_DAYS: ${KEEP_DAYS:-0}
       AUTO_REFRESH_MINUTES: ${AUTO_REFRESH_MINUTES:-0}
 
-      LLM_BASE: ${LLM_BASE:-https://api.siliconflow.cn/v1/chat/completions}
-      LLM_KEY: ${LLM_KEY}
-      LLM_MODEL: ${LLM_MODEL:-Qwen/Qwen3-8B}
+      # 大模型 / 每日摘要：v1.4.0 起跟随账号，无环境变量
 
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASS: ${ADMIN_PASS:-admin}
