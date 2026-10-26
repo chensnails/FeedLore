@@ -131,4 +131,86 @@ docker compose up -d --build
 
 ## 技术栈
 
-后端 Node 22 原生 `http`（不引框架）+ PostgreSQL（`pg` 直连，无 ORM）；前端 Vite + React 19，视图与内核通过一个 `core` 单例桥接、共享状态驱动重绘；单容器部署，镜像同时出 amd64 / arm64。许可证：[MIT](LICENSE)。
+后端 Node 22 原生 `http`（不引框架）+ PostgreSQL（`pg` 直连，无 ORM）；前端 Vite + React 19，视图与内核通过一个 `core` 单例桥接、共享状态驱动重绘；单容器部署，镜像同时出 amd64 / arm64。许可证：[MIT](LICENSE).
+
+## 目录结构
+
+```
+FeedLore/
+├── server.js                    # Node 原生 http 后端：路由分发、会话鉴权、抓取调度、API
+├── db.js                       # PostgreSQL 直连（pg）：建表 / 迁移 / 查询
+├── rss.js                      # RSS/Atom 抓取与解析、条件请求、连续失败自动停用
+├── lib/
+│   ├── filter.js               # 条目过滤规则（只收 / 屏蔽 / 正则），入库前逐人生效
+│   ├── opml.js                 # OPML 解析（导入）与导出拼装
+│   └── prefs.js                # 用户偏好 / 过滤规则 / 日报配置清洗
+├── digest.js                   # AI 日报生成（调用各账号自配模型）
+├── proxy.js                    # 开发态反向代理辅助
+├── docker-compose.release.yml  # 镜像模式部署（ghcr + Watchtower）
+├── docker-compose.yml          # 源码构建模式部署
+├── deploy.sh                   # 源码模式一键拉取重建 + 健康检查 + 启动期错误扫描
+├── Dockerfile                  # 多阶段构建，同时出 amd64 / arm64
+├── .env.example                # 配置样例（不入库）
+├── public/                     # 构建产物与静态资源、PWA（sw.js / manifest.json / style.css）
+├── src/
+│   ├── core/                   # 内核单例 core：状态、宿主桥、引导、PWA 安装
+│   ├── shell/                  # 顶栏与整体框架
+│   ├── views/                  # 文章页、卡片墙、卡片详情、下拉等视图
+│   ├── settings/               # 设置模态：数据源 / 模型 / 日报 / 账号 / 外观 / 状态 / 关于
+│   ├── ui/                     # 弹层、Toast、灯箱等通用 UI
+│   ├── ai/                     # AI 日报视图
+│   └── cmdk/                   # 命令面板
+├── tests/                      # UI 回归 + 服务端单测 / 部署守卫
+└── docs/                       # 截图等文档资源
+```
+
+## API 接口
+
+除 `/api/health`、`/api/login`、`/api/logout`、`/api/session` 外，其余接口均需登录（会话 Cookie）；标注「管理员」的还需管理员角色。所有请求与响应均为 JSON。
+
+**接口一览**
+
+| 分组 | 接口 | 说明 | 权限 |
+| --- | --- | --- | --- |
+| 鉴权/版本 | `GET /api/health` | 健康检查 | 公开 |
+| | `POST /api/login` · `POST /api/logout` | 登录 / 登出 | 登录 |
+| | `GET /api/session` | 当前登录态 | 公开 |
+| | `GET /api/version` · `POST /api/version/check` | 版本 / 查 GitHub 最新版（缓存 10 分钟） | 登录 |
+| | `POST /api/update` | 一键更新（转发 Watchtower） | 管理员 |
+| 订阅源 | `GET/POST /api/feeds` · `POST /api/feeds/import` · `POST /api/feeds/reorder` | 列表 / 新增 / OPML 导入 / 拖拽排序 | 登录 |
+| | `GET/POST/PATCH/DELETE /api/feeds/:id` | 查看 / 刷新 / 改（地址·分组·标题·频率·开关）/ 删除 | 登录 |
+| 条目 | `GET /api/entries`（支持 `q`/`feed`/`tag`/`unread`/`fav`） | 列表与搜索 | 登录 |
+| | `GET /api/entries/flags` · `POST /api/entries/read-all` | 标记态 / 全部已读 | 登录 |
+| | `GET/PATCH /api/entries/:id` · `GET /api/img` | 正文 / 标记已读收藏 / 图片代理 | 登录 |
+| 设置/用户 | `GET/POST /api/config` · `GET /api/status` | 站点采集参数 / 状态页 | 管理员 |
+| | `GET/POST /api/users` · `PATCH/DELETE /api/users/:id` | 用户列表·创建 / 改角色密码·删除 | 管理员 |
+| | `GET/POST /api/prefs` · `POST /api/account` | 本账号偏好（含模型/日报）/ 改自己用户名密码 | 登录 |
+| | `GET/POST /api/image-cache` · `/api/image-cache/clear` | 图片缓存状态 / 清理 | 管理员 |
+| AI 日报 | `GET /api/digests` · `GET /api/digest?date=` · `POST /api/digest/generate` · `POST /api/digest/test-llm` | 历史列表 / 单篇 / 生成 / 测连通 | 登录 |
+
+## 使用示例
+
+健康检查：
+
+```bash
+curl http://localhost:3210/api/health
+# => {"ok":true,"authed":false,"db":{"ready":true,...}}
+```
+
+登录并复用会话（后续请求带 `-b cookies.txt`）：
+
+```bash
+curl -c cookies.txt -X POST http://localhost:3210/api/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"admin"}'
+```
+
+查看订阅源、查更新、触发一键更新：
+
+```bash
+curl -b cookies.txt http://localhost:3210/api/feeds
+curl -b cookies.txt -X POST http://localhost:3210/api/version/check
+curl -b cookies.txt -X POST http://localhost:3210/api/update
+```
+
+OPML 备份在页面内完成：进入「设置 → 数据源」点「导出 OPML」，或用命令面板（Ctrl/Cmd+K）搜「导出 OPML」，浏览器会下载 `feedlore-subscriptions-日期.opml`。
