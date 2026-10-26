@@ -699,6 +699,25 @@ textarea:disabled {
   font-size: .7188rem; color: var(--text-faint);
   user-select: none; white-space: nowrap;
 }
+/* 分组标题 = 折叠开关（卡片页频道筛选，与文章页侧栏共用同一份偏好）。
+   整行可点，箭头只是状态指示；配色字号沿用上面那行灰字，只补按钮复位与命中区。 */
+.dd-group-fold {
+  display: flex; align-items: center; gap:var(--sp-2);
+  width: 100%; border: none; background: none; font-family: inherit;
+  text-align: left; cursor: pointer; border-radius: 9px;
+  transition: background .12s, color .12s;
+}
+.dd-group-fold:hover { background: var(--hover); color: var(--text-muted); }
+.dd-group-fold:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+/* 收起的组略弱一档，与展开的分组拉开层次（同文章页侧栏） */
+.dd-group-fold.is-collapsed { color: var(--text-muted); }
+.dd-group-caret { width: .8125rem; height: .8125rem; flex: 0 0 auto; opacity: .6; }
+.dd-group-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+/* 收起时组里一个频道都不列，改报「这组有几个频道」，免得读成「这组没内容」 */
+.dd-group-n {
+  font-size: .6875rem; font-weight: 600; color: var(--text-faint);
+  font-variant-numeric: tabular-nums; width: 18px; text-align: center; flex: 0 0 auto;
+}
 .dd-item {
   display: flex; align-items: center; justify-content: space-between; gap:var(--sp-3);
   width: 100%; padding:var(--sp-2) var(--sp-3);
@@ -772,6 +791,12 @@ textarea:disabled {
 .dd-sheet-close .ico { width: 1.0625rem; height: 1.0625rem; }
 .dd-sheet-body { overflow: auto; overscroll-behavior: contain; padding:var(--sp-2) var(--sp-3) var(--sp-4); }
 .dd-sheet-body .dd-item { padding:var(--sp-3) var(--sp-4); font-size: .9063rem; border-radius: 11px; }
+/* 整屏弹层里组头也是可点开关，得够拇指点得着：命中区提到 44px、字号抬一档，
+   否则一条 24px 的灰字既难点中、又看着像不可点的分隔标签。 */
+.dd-sheet-body .dd-group-fold {
+  min-height: 44px; padding:var(--sp-3) var(--sp-4);
+  font-size: .8125rem; border-radius: 11px;
+}
 
 @keyframes ddPush { from { transform: translateY(100%); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) {

@@ -265,6 +265,7 @@ export function CardsView() {
 
   const cardFeeds = feeds.filter((f) => f.cardEnabled);
   const groups = (s && s.groupFeeds) ? s.groupFeeds(cardFeeds) : [{ name: '', feeds: cardFeeds }];
+  const collapsedGroups = (s && s.readerCollapsedGroups) ? s.readerCollapsedGroups() : new Set();
   const feedValue = st.feedFilter == null ? '' : String(st.feedFilter);
 
   const noFeeds = !feeds.length;
@@ -299,6 +300,13 @@ export function CardsView() {
     if (c.cardsTag) c.cardsTag(c.state.tag === t ? null : t);
   }, []);
   const onOpenCard = useCallback((e) => setDetailId(e.id), []);
+
+  // 频道筛选里的组头折叠：与文章页侧栏共用同一份偏好（layout.rdCollapsedGroups），
+  // 核心改动后会同时派发 __readerTick 与 __cardsTick，本组件靠上面的监听重绘即可。
+  const toggleGroupFold = useCallback((name) => {
+    const c = S();
+    if (c.readerToggleGroupCollapse) c.readerToggleGroupCollapse(name);
+  }, []);
 
   const detailEntry = detailId == null ? null : (st.entries || []).find((x) => String(x.id) === String(detailId));
 
@@ -338,7 +346,8 @@ export function CardsView() {
             value={qDraft} onChange={onSearchInput} />
         </div>
         <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选" value={feedValue}
-          options={feedOpts} onChange={(v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }} />
+          options={feedOpts} onChange={(v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }}
+          collapsible collapsedGroups={collapsedGroups} onToggleGroup={toggleGroupFold} />
         <Dropdown wrapId="sortDD" id="sortSelect" title="排序" value={st.sort || 'new'}
           options={sortOpts} onChange={(v) => { if (s.cardsSort) s.cardsSort(v); }} />
         <div className="viewmode" id="viewMode" role="group" aria-label="视图模式">

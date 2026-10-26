@@ -284,12 +284,19 @@ export function rdCollapsedGroups() {
   return new Set(arr.filter((g) => typeof g === 'string'));
 }
 
+/* 收起的是同一份偏好，看它的却有两处 UI（文章页侧栏 + 卡片页频道筛选下拉），
+   而两边的重绘信号各自独立 —— 改一次要两边都派发，否则另一边拿着旧集合渲染。 */
+function renderGroupFold() {
+  renderReader();
+  window.dispatchEvent(new Event('__cardsTick'));
+}
+
 export function readerToggleGroupCollapse(name) {
   const g = String(name || '');
   const set = rdCollapsedGroups();
   if (set.has(g)) set.delete(g); else set.add(g);
   setLayout('rdCollapsedGroups', Array.from(set));
-  renderReader();
+  renderGroupFold();
 }
 
 /** 一键收起 / 展开全部分组：全都收着就展开，否则一次收齐 */
@@ -299,7 +306,7 @@ export function readerToggleAllGroups() {
   const set = rdCollapsedGroups();
   const allCollapsed = names.every((n) => set.has(n));
   setLayout('rdCollapsedGroups', allCollapsed ? [] : names);
-  renderReader();
+  renderGroupFold();
   toast(allCollapsed ? '已展开全部分组' : '已收起全部分组');
 }
 
@@ -310,6 +317,8 @@ function expandRdGroup(name) {
   if (!set.has(g)) return;
   set.delete(g);
   setLayout('rdCollapsedGroups', Array.from(set));
+  // 调用方随后自己 renderReader()，这里只补卡片页那半边
+  window.dispatchEvent(new Event('__cardsTick'));
 }
 
 /* ---------- 频道 / 范围 / 分组切换（ReaderView 经桥调用） ---------- */

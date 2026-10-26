@@ -4,6 +4,8 @@
  * - 桌面（>720px）：锚定玻璃面板（分组标题、选中勾、键盘 ↑↓/Enter/Esc、外点关闭）；
  * - 移动（≤720px）：遮罩 + 整屏面板 + 标题栏 + 大触控选项，打开期间锁页面滚动，支持底部安全区。
  *   往下拖就能收起（useSwipeDismiss），手势条是这枚提示。
+ * - 传 collapsible 时分组标题变成整行折叠开关（卡片页频道筛选，与文章页侧栏共用同一份偏好）；
+ *   不传就还是纯文本分组标题，排序那种下拉不受影响。
  * 触发按钮沿用 .select 外观；弹层均为静态覆盖层（absolute/fixed），符合「弹层才用模糊」铁律。 */
 
 import { core } from '@core';
@@ -17,16 +19,27 @@ export function isMobileMq() {
   catch (_) { return false; }
 }
 
-export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChange }) {
+export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChange, collapsible, collapsedGroups, onToggleGroup }) {
   // options: [{ value, label, group }]；group 为分组名（'' / undefined 表示无分组）
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);   // 打开瞬间定格，本次开合内不切换形态
-  const [hi, setHi] = useState(-1);              // 键盘 ↑↓ / 悬停高亮的下标
+  const [hi, setHi] = useState(-1);              // 键盘 ↑↓ / 悬停高亮的下标（在「可见选项」里数）
   const rootRef = useRef(null);
   const panelRef = useRef(null);                 // 可滚动列表容器（桌面面板 / 移动弹窗体共用）
   const triggerRef = useRef(null);
 
   const cur = options.find((o) => String(o.value) === String(value));
+  const isActive = (o) => !!cur && String(o.value) === String(cur.value);
+
+  /* 折叠集合：只有 collapsible 才生效。收起的组里若藏着当前选中项，那一条要留下 ——
+     否则「筛选中」的频道会从列表里凭空消失，触发按钮还写着它的名字。 */
+  const foldSet = collapsible
+    ? (collapsedGroups instanceof Set ? collapsedGroups : new Set(Array.isArray(collapsedGroups) ? collapsedGroups : []))
+    : null;
+  const isVisible = (o) => !foldSet || !o.group || !foldSet.has(o.group) || isActive(o);
+  const visible = foldSet ? options.filter(isVisible) : options;
+  const groupTotal = {};
+  for (const o of options) { const g = o.group || ''; groupTotal[g] = (groupTotal[g] || 0) + 1; }
 
   const close = () => {
     setOpen(false);
@@ -76,25 +89,50 @@ export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChang
   const onKeyDown = (ev) => {
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
       ev.preventDefault();
-      if (!open) { openPanel(); setHi(options.findIndex((o) => o === cur)); return; }
+      const at = visible.findIndex((o) => o === cur);
+      if (!open) { openPanel(); setHi(at); return; }
       setHi((h) => {
-        const base = h < 0 ? options.findIndex((o) => o === cur) : h;
-        return ev.key === 'ArrowDown' ? Math.min(options.length - 1, base + 1) : Math.max(0, base - 1);
+        const base = h < 0 ? at : h;
+        return ev.key === 'ArrowDown' ? Math.min(visible.length - 1, base + 1) : Math.max(0, base - 1);
       });
     } else if (ev.key === 'Enter' && open && hi >= 0) {
       ev.preventDefault();
-      pick(options[hi].value);
+      pick(visible[hi].value);
     }
   };
 
-  // 按分组插入标题行（「全部频道」无分组，排最前）
+  // 按分组插入标题行（「全部频道」无分组，排最前）；折叠态下整组频道不再入列，标题行仍在，
+  // 否则收起后那组连「点开它」的入口都没有了。
   const rows = [];
   let lastGroup;
-  options.forEach((o, i) => {
+  let vi = -1;
+  options.forEach((o) => {
     const g = o.group || '';
-    if (g && g !== lastGroup) rows.push(<div className="dd-group" key={'g:' + g}>{g}</div>);
+    if (g && g !== lastGroup) {
+      if (foldSet) {
+        const folded = foldSet.has(g);
+        rows.push(
+          <button type="button" key={'g:' + g} data-group-fold={g}
+            className={'dd-group dd-group-fold' + (folded ? ' is-collapsed' : '')}
+            aria-expanded={folded ? 'false' : 'true'}
+            title={(folded ? '展开' : '收起') + `分组「${g}」`}
+            onClick={() => { setHi(-1); if (onToggleGroup) onToggleGroup(g); }}>
+            <svg className="ico dd-group-caret" aria-hidden="true" focusable="false">
+              <use href={folded ? '#i-chevron-right' : '#i-chevron-down'} />
+            </svg>
+            <span className="dd-group-name">{g}</span>
+            {folded ? <span className="dd-group-n" title={`该分组 ${groupTotal[g] || 0} 个频道`}>{groupTotal[g] || 0}</span> : null}
+          </button>
+        );
+      } else {
+        rows.push(<div className="dd-group" key={'g:' + g}>{g}</div>);
+      }
+    }
     lastGroup = g;
-    const active = !!cur && String(o.value) === String(cur.value);
+    if (!isVisible(o)) return;
+    vi++;
+    const i = vi;
+    const active = isActive(o);
     rows.push(
       <button type="button" role="option" key={String(o.value)}
         className={'dd-item' + (active ? ' active' : '') + (hi === i ? ' hi' : '')}

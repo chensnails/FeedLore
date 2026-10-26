@@ -670,6 +670,7 @@ w.feedlore = {
     if (set.has(k)) set.delete(k); else set.add(k);
     st.rdCollapsedGroups = Array.from(set);
     readerTick();
+    cardsTick();   // 折叠集合两边共用（侧栏 + 卡片页筛选），核心改动会派发两个信号
   },
   readerToggleAllGroups: () => {
     calls.push(['readerToggleAllGroups']);
@@ -679,6 +680,7 @@ w.feedlore = {
     const cur = (st.rdCollapsedGroups || []).map(String);
     st.rdCollapsedGroups = (uniq.length && uniq.every((n) => cur.indexOf(n) >= 0)) ? [] : uniq;
     readerTick();
+    cardsTick();
   },
   READER_SIDE_DEFAULT: 232,
   READER_SIDE_MIN: 180,
@@ -882,6 +884,23 @@ const withEFP = (el, fn) => {
     if (/\.dd-page|\.dd-mask-page|ddUp|ddFade/.test(css)) throw new Error('半屏 / 整屏已合并，那些是死类与死动画');
     for (const f of ['src/views/Dropdown.jsx', 'src/views/CardDetail.jsx']) {
       if (fs.readFileSync(path.join(root, f), 'utf8').indexOf('dd-page') >= 0) throw new Error(f + ' 仍在渲染 dd-page');
+    }
+  });
+
+  // 卡片页频道筛选的组头折叠（v1.3.8）：整行可点 + 移动端命中区够大 + 能力默认关
+  t('style.css + 视图：分组折叠开关（整行可点、触屏 44px、不传 collapsible 仍是纯标题）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const fold = css.match(/\.dd-group-fold\s*\{([^}]*)\}/);
+    if (!fold) throw new Error('缺 .dd-group-fold 规则');
+    if (fold[1].indexOf('cursor: pointer') < 0) throw new Error('组头不该用默认光标，实际：' + fold[1].trim());
+    const touch = css.match(/\.dd-sheet-body \.dd-group-fold\s*\{([^}]*)\}/);
+    if (!touch) throw new Error('缺移动端 .dd-sheet-body .dd-group-fold 规则');
+    if (touch[1].indexOf('min-height: 44px') < 0) throw new Error('移动端组头命中区应 ≥44px，实际：' + touch[1].trim());
+    const dd = fs.readFileSync(path.join(root, 'src', 'views', 'Dropdown.jsx'), 'utf8');
+    if (dd.indexOf('<div className="dd-group"') < 0) throw new Error('不传 collapsible 时仍应是纯文本分组标题');
+    if (fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8').indexOf('collapsible') < 0) {
+      throw new Error('卡片页频道筛选未开启折叠能力');
     }
   });
 
@@ -2392,6 +2411,91 @@ const withEFP = (el, fn) => {
   CA('#feedDD .dd-item')[0].click();
   await sleep(40);
 
+  // 频道筛选里的分组折叠（与文章页侧栏共用同一份偏好 layout.rdCollapsedGroups）
+  C('#feedSelect').click();
+  await sleep(20);
+  t('频道下拉：分组标题是整行折叠开关（箭头 + aria-expanded）', () => {
+    const g = C('#feedDD .dd-group');
+    if (g.tagName !== 'BUTTON') throw new Error('组头应为按钮，实际 ' + g.tagName);
+    if (!g.classList.contains('dd-group-fold')) throw new Error('缺 dd-group-fold');
+    if (g.getAttribute('aria-expanded') !== 'true') throw new Error('展开态 aria-expanded=' + g.getAttribute('aria-expanded'));
+    if (!g.querySelector('.dd-group-caret')) throw new Error('无折叠箭头');
+    if (g.querySelector('.dd-group-n')) throw new Error('展开态不该报频道数');
+    if (g.textContent.indexOf('科技') < 0) throw new Error('组名: ' + g.textContent);
+  });
+  C('#feedDD .dd-group').click();
+  await sleep(40);
+  t('点组头收起：该组频道不再入列，组头改报频道数并写进偏好', () => {
+    if (CA('#feedDD .dd-item').length !== 2) throw new Error('收起后选项 ' + CA('#feedDD .dd-item').length);
+    const g = C('#feedDD .dd-group');
+    if (!g.classList.contains('is-collapsed')) throw new Error('组头未标记收起');
+    if (g.getAttribute('aria-expanded') !== 'false') throw new Error('aria-expanded=' + g.getAttribute('aria-expanded'));
+    if (g.querySelector('.dd-group-n').textContent !== '1') throw new Error('频道数 ' + g.querySelector('.dd-group-n').textContent);
+    if (CA('#feedDD .dd-item').some((el) => el.textContent.indexOf('例子星球') >= 0)) throw new Error('收起的组里频道还在');
+    if (!w.feedlore.readerCollapsedGroups().has('科技')) throw new Error('偏好未写入 rdCollapsedGroups');
+  });
+  const dk = (k) => C('#feedDD').dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+  dk('ArrowUp');
+  await sleep(20);
+  t('键盘 ↑↓ 只在可见频道里走，组头不进遍历', () => {
+    const hi = CA('#feedDD .dd-item.hi');
+    if (hi.length !== 1) throw new Error('高亮项 ' + hi.length);
+    if (hi[0].textContent.indexOf('全部频道') < 0) throw new Error('高亮落在: ' + hi[0].textContent);
+    if (C('#feedDD .dd-group.hi')) throw new Error('组头不该进键盘遍历');
+  });
+  dk('Enter');
+  await sleep(40);
+  t('Enter 选中高亮频道：弹层收起且筛选没跳走', () => {
+    if (C('#feedDD .dd-panel')) throw new Error('Enter 后弹层未收起');
+    if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('触发器文案: ' + C('#feedSelect .dd-label').textContent);
+  });
+  C('#feedSelect').click();
+  await sleep(20);
+  C('#feedDD .dd-group').click();
+  await sleep(40);
+  t('再点组头展开：频道回到 3 项、收起标记与偏好一起清掉', () => {
+    if (CA('#feedDD .dd-item').length !== 3) throw new Error('展开后选项 ' + CA('#feedDD .dd-item').length);
+    if (C('#feedDD .dd-group').classList.contains('is-collapsed')) throw new Error('组头仍标记收起');
+    if (w.feedlore.readerCollapsedGroups().size !== 0) throw new Error('偏好未清空: ' + Array.from(w.feedlore.readerCollapsedGroups()).join(','));
+  });
+  // 收起的组里藏着当前筛选中的频道 → 那一条得留着，否则触发按钮还写着名字、选项却找不到
+  CA('#feedDD .dd-item').find((el) => el.textContent.indexOf('例子星球') >= 0).click();
+  await sleep(40);
+  C('#feedSelect').click();
+  await sleep(20);
+  C('#feedDD .dd-group').click();
+  await sleep(40);
+  t('收起的组里正看着其中一条：那一条不随组收起，且仍高亮', () => {
+    const items = CA('#feedDD .dd-item');
+    if (!C('#feedDD .dd-group').classList.contains('is-collapsed')) throw new Error('组头未标记收起');
+    if (items.length !== 3) throw new Error('应保留当前项，实际 ' + items.length);
+    const act = C('#feedDD .dd-item.active');
+    if (!act || act.textContent.indexOf('例子星球') < 0) throw new Error('高亮项: ' + (act ? act.textContent : '无'));
+  });
+  // 还原：展开分组 + 回到全部频道，避免影响后续用例
+  C('#feedDD .dd-group').click();
+  await sleep(20);
+  CA('#feedDD .dd-item')[0].click();
+  await sleep(40);
+  t('还原：折叠偏好与频道筛选均归零', () => {
+    if (w.feedlore.readerCollapsedGroups().size !== 0) throw new Error('折叠偏好未清空');
+    if (w.feedlore.state.feedFilter != null) throw new Error('筛选未还原: ' + w.feedlore.state.feedFilter);
+    if (C('#feedDD .dd-panel')) throw new Error('弹层未收起');
+  });
+  // 同一份偏好被两处 UI 共读：侧栏（这里直接走核心的收起动作）改了，下拉不能只在打开时读一次
+  C('#feedSelect').click();
+  await sleep(20);
+  w.feedlore.readerToggleGroupCollapse('科技');
+  await sleep(40);
+  t('别处改了折叠态：卡片页下拉跟着收起（靠 __cardsTick 重绘，不是打开时读一次）', () => {
+    if (CA('#feedDD .dd-item').length !== 2) throw new Error('选项 ' + CA('#feedDD .dd-item').length);
+    if (!C('#feedDD .dd-group').classList.contains('is-collapsed')) throw new Error('组头未跟随');
+  });
+  C('#feedDD .dd-group').click();
+  await sleep(20);
+  CA('#feedDD .dd-item')[0].click();
+  await sleep(40);
+
   // 移动端（≤720px）：频道下拉改为底部弹窗（v1.1.10）
   const realMM = w.matchMedia;
   w.matchMedia = (q) => ({ matches: String(q).indexOf('max-width: 720px') >= 0, media: String(q),
@@ -2476,6 +2580,52 @@ const withEFP = (el, fn) => {
     if (C('#sortDD .dd-mask')) throw new Error('未收起');
     if (C('#sortSelect .dd-label').textContent.indexOf('最新发布') < 0) throw new Error('关闭不该改排序');
   });
+  // 移动端：整屏弹窗里组头同样是折叠开关，且收起态与文章页侧栏一致（偏好共用一份）
+  w.feedlore.readerToggleGroupCollapse('科技');
+  await sleep(20);
+  C('#feedSelect').click();
+  await sleep(20);
+  t('频道下拉（移动端）：整屏弹窗延续收起态，少一屏滚动', () => {
+    const g = C('#feedDD .dd-sheet-body .dd-group');
+    if (!g || g.tagName !== 'BUTTON') throw new Error('组头应是按钮');
+    if (!g.classList.contains('is-collapsed')) throw new Error('未延续 rdCollapsedGroups 的收起态');
+    if (CA('#feedDD .dd-sheet .dd-item').length !== 2) throw new Error('收起后弹窗选项 ' + CA('#feedDD .dd-sheet .dd-item').length);
+  });
+  // 点组头展开后弹窗不该顺手关闭（折叠不是选择）
+  C('#feedDD .dd-sheet-body .dd-group').click();
+  await sleep(20);
+  t('频道下拉（移动端）：点组头展开 —— 选项回 3 项且弹窗仍开着', () => {
+    if (CA('#feedDD .dd-sheet .dd-item').length !== 3) throw new Error('展开后弹窗选项 ' + CA('#feedDD .dd-sheet .dd-item').length);
+    if (!C('#feedDD .dd-mask')) throw new Error('折叠不该关闭弹窗');
+    if (w.feedlore.readerCollapsedGroups().size !== 0) throw new Error('偏好未清空');
+  });
+  C('#feedDD .dd-sheet-close').click();
+  await sleep(20);
+  // 手势起点落在组头上：拖到底只该关弹窗，不该顺手把分组展开
+  w.feedlore.readerToggleGroupCollapse('科技');
+  await sleep(20);
+  C('#feedSelect').click();
+  await sleep(20);
+  t('下拉手势：从组头起拖也能飞出', () => {
+    const g = C('#feedDD .dd-sheet-body .dd-group');
+    if (!g.classList.contains('is-collapsed')) throw new Error('前提：组应处于收起态');
+    swipe(g, 100, [180, 240]);
+    if (C('#feedDD .dd-sheet').style.transform !== 'translateY(100%)') throw new Error('应整块飞出: ' + C('#feedDD .dd-sheet').style.transform);
+  });
+  t('下拉手势：抬手补发的 click 落也在组头上同样被吞掉（没顺手展开）', () => {
+    const g = C('#feedDD .dd-sheet-body .dd-group');
+    g.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    if (!g.classList.contains('is-collapsed')) throw new Error('被吞的 click 把分组展开了');
+    if (!C('#feedDD .dd-mask')) throw new Error('飞出动画跑完前不该卸载');
+  });
+  await sleep(240);
+  t('下拉手势：从组头起拖松手后弹窗关闭，折叠态没被误改', () => {
+    if (C('#feedDD .dd-mask')) throw new Error('未收起');
+    if (!w.feedlore.readerCollapsedGroups().has('科技')) throw new Error('拖拽误改了折叠态');
+  });
+  // 还原：清空折叠，避免影响后续用例
+  w.feedlore.readerToggleGroupCollapse('科技');
+  await sleep(20);
   w.matchMedia = realMM;
   t('卡片内容：标题 / 来源短名 / 体积 / 标签 / 日期', () => {
     const c1 = C('#grid .card[data-id="e1"]');
