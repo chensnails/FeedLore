@@ -73,7 +73,13 @@ function OpenButton({ e }) {
 }
 
 /** 懒加载图片：首次失败带 ?r=1 重试一次，再失败走兜底 */
-function LazyImg({ src, alt, fallbackClass, fbIcon }) {
+/**
+ * 图片：默认懒加载；首屏前几张改成高优先级（v1.5.0）。
+ * 弱网下浏览器只有 6 条并发连接，若 30 张缩略图同权重排队，
+ * 首屏那几张真正看得见的图反而排在第 20 位 —— 首屏图不加载，卡片墙就是一片灰骨架。
+ * eager + fetchpriority=high 让浏览器先抢这几条连接。
+ */
+function LazyImg({ src, alt, fallbackClass, fbIcon, priority }) {
   const [state, setState] = useState('ok');   // ok | failed
   const triedRef = useRef(false);
   if (!src || state === 'failed') {
@@ -83,7 +89,9 @@ function LazyImg({ src, alt, fallbackClass, fbIcon }) {
   }
   return (
     <img
-      loading="lazy"
+      loading={priority ? 'eager' : 'lazy'}
+      decoding="async"
+      {...(priority ? { fetchPriority: 'high' } : {})}
       src={src}
       alt={alt}
       onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}
@@ -110,7 +118,7 @@ function TagList({ tags, onTag }) {
 
 /* 卡片与列表行都做成 memo：一次 __cardsTick 会把整列重新 map，
  * 而条目对象只在状态真的变化时换新（core/ui.js 的 cardSetFlag），没变的卡面不必重渲染。 */
-const Card = memo(function Card({ e, onTag, onOpen }) {
+const Card = memo(function Card({ e, onTag, onOpen, priority }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const hasImg = !!e.image;
@@ -122,7 +130,7 @@ const Card = memo(function Card({ e, onTag, onOpen }) {
 
   const media = hasImg ? (
     <div className="card-media">
-      <LazyImg src={e.image} alt={e.name} fallbackClass="media-fallback" fbIcon="image" />
+      <LazyImg src={e.image} alt={e.name} fallbackClass="media-fallback" fbIcon="image" priority={priority} />
       {srcName ? <span className="badge-source" title={e.feedName}>{srcName}</span> : null}
       {e.size ? <span className="badge-size">{e.size}</span> : null}
       {e.date ? <span className="badge-idx">{fmtDate(e.date)}</span> : null}
@@ -535,9 +543,11 @@ export function CardsView() {
 
         {showGrid ? (
           <div id="grid" className={'grid' + (view === 'list' ? ' list-mode' : '')}>
-            {list.map((e) => (view === 'list'
+            {/* 前 6 张给高优先级（v1.5.0）：弱网下浏览器并发只有 6 条，
+                同权重排队会让首屏可见的那几张图排在第 20 位，卡片墙只剩灰骨架。 */}
+            {list.map((e, i) => (view === 'list'
               ? <Row e={e} onTag={onTag} onOpen={onOpenCard} key={e.id} />
-              : <Card e={e} onTag={onTag} onOpen={onOpenCard} key={e.id} />))}
+              : <Card e={e} onTag={onTag} onOpen={onOpenCard} priority={i < 6} key={e.id} />))}
           </div>
         ) : <div id="grid" className="grid" hidden />}
 

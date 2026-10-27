@@ -78,7 +78,7 @@ for (const f of code) {
 if (!blocks) console.log('  （无）');
 
 console.log('\n=== CSS 里无任何引用的类名（数量前 40）===');
-const css = fs.readFileSync(path.join(ROOT, 'public/style.css'), 'utf8');
+const css = fs.readFileSync(path.join(ROOT, 'src/style.css'), 'utf8');
 const cls = new Set();
 for (const m of css.matchAll(/\.([a-zA-Z][\w-]*)/g)) cls.add(m[1]);
 const usage = new Map();

@@ -14,7 +14,9 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 # 构建输入：Vite 配置、两个入口 HTML、React 源码、public/ 静态资源
-# （style.css / sw.js / 图标经 publicDir 原样拷入 dist）
+# （sw.js / manifest / 图标经 publicDir 原样拷入 dist）
+# ⚠️ 样式表（style.css / login.css）已移入 src/（v1.5.0）：走 Vite 打包才有内容哈希，
+#    固定路径 /style.css 会被 CDN 缓存 1~4 小时，与最新 HTML 错配 → 移动端元素丢失。
 COPY vite.config.mjs index.html login.html ./
 COPY src ./src
 COPY public ./public

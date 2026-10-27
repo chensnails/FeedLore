@@ -49,7 +49,14 @@
   el.setAttribute('data-reader-width', pick(ap.readerWidth, ['s', 'm', 'l', 'full'], 'm'));
 })();
 </script>
-<link rel="stylesheet" href="/style.css">
+<!-- 样式表不再手写 <link>：style.css 已移入 src/，由 main.jsx 的 import 引入，
+     Vite 会打出带内容哈希的 /assets/style-<hash>.css 并自动注入 <link>。
+     此前是固定路径 /style.css，CDN 缓存 1~4 小时而 HTML 总是新的，
+     新旧错配会让新增元素完全没有样式（见 src/main.jsx 注释）。 -->
+<!-- 加载优先级（v1.5.0）：样式表是首屏渲染的硬阻塞资源。
+     Vite 注入的 <link rel=stylesheet> 本身已是最高优先级（渲染阻塞），
+     这里不再手写 preload —— 手写 /src/main.jsx 会被 Vite 当成入口直接内联整段代码，
+     反而把 HTML 撑大。 -->
 </head>
 <body>
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">

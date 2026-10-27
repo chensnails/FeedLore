@@ -659,9 +659,15 @@ textarea:disabled {
 
    ⚠️ 下面这串类名必须一起列上：有些图标用的是自己的类名（搜索框里的、折叠箭头、
    展开箭头…）而不是 .ico。漏掉任何一个，那个 <svg> 就没有宽高约束，会被撑成
-   一大块黑图形。它们的专属规则写在文件更后面，尺寸 / 定位会正常覆盖这里。 */
+   一大块黑图形；即便尺寸对了，缺 fill:none / stroke:currentColor 也会让路径被
+   填成实心黑块（.rd-ch-search-ico 就踩过这个坑：放大镜的圆变成一颗黑点）。
+   它们的专属规则写在文件更后面，尺寸 / 定位会正常覆盖这里。
+   ⚠️ 新增 sprite 图标类时必须同时加进这一组 —— 见 tests/ui/ui-regression.cjs
+      「图标：sprite 图标类必须在基础组内」的守门断言。 */
 .ico,
-.search-ico, .sec-arrow, .art-caret, .new-pill-ico {
+.search-ico, .sec-arrow, .art-caret, .new-pill-ico,
+.rd-ch-search-ico, .rd-ch-add-ico, .cmdk-ico,
+.dd-caret, .dd-check, .dd-icon, .dg-pin, .feed-group-caret, .toast-ico {
   width: 1em; height: 1em;
   flex: 0 0 auto;
   display: inline-block;
@@ -2257,6 +2263,17 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   object-fit: cover;
   background: var(--media-grad);
   border: 1px solid var(--border);
+}
+/* 头像懒加载占位：进视口前先占住同样的位置，避免图片到达时列表抖动 */
+.rd-ch-avatar-wrap {
+  width: 24px; height: 24px; flex: 0 0 24px;
+  border-radius: var(--radius-xs);
+  background: var(--media-grad);
+  border: 1px solid var(--border);
+  display: inline-flex; overflow: hidden;
+}
+.rd-ch-avatar-wrap .rd-ch-avatar {
+  width: 100%; height: 100%; flex: 0 0 auto; border: 0; border-radius: 0;
 }
 .rd-ch-avatar-txt {
   display: flex; align-items: center; justify-content: center;

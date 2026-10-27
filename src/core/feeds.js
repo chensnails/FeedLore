@@ -111,8 +111,13 @@ export async function loadPage(reset = false) {
   render();   // 立刻反映骨架 / 加载态（渲染归 React 卡片视图）
 
   try {
+    // 移动端首屏只取一小批（v1.5.0）：窄屏一屏只显示得下 6~8 张卡，
+    // 一次拉 50 条会白渲染 40+ 张卡片（DOM 节点翻倍）并多发 40 个图片请求。
+    // 滚动到底部会自动续拉（CardsView 的 scroll 监听），用户感知不到差别。
+    const narrow = typeof window !== 'undefined' && window.innerWidth <= 720;
+    const want = narrow ? Math.min(state.pageSize, 20) : state.pageSize;
     const qs = new URLSearchParams({
-      limit: String(state.pageSize),
+      limit: String(want),
       offset: String(state.offset),
     });
     if (state.q) qs.set('q', state.q);

@@ -884,7 +884,7 @@ const withEFP = (el, fn) => {
   // 阅读页网格必须落在挂载点 #readerRoot 自身：以前是外面套一层 + display:contents 抹盒子，
   // 而「display:contents 的祖先 + position:sticky」在部分引擎会静默失效（头部跟着内容滚走）。
   t('style.css：#readerRoot 自己承载阅读页网格（不靠 display:contents 抹盒子）', () => {
-    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
     const m = css.match(/\.reader\s*>\s*#readerRoot\s*\{([^}]*)\}/);
     if (!m) throw new Error('缺 .reader > #readerRoot 规则');
     if (m[1].indexOf('display: grid') < 0) throw new Error('应设 display:grid，实际：' + m[1].trim());
@@ -900,7 +900,7 @@ const withEFP = (el, fn) => {
   // 移动端弹层只有一种形态（v1.3.6）：.dd-sheet 自己就是整屏，别再长出 .dd-page 这类形态变体类
   t('style.css：移动端弹层单一整屏形态（.dd-sheet 自带 100dvh，无 .dd-page 变体）', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const m = css.match(/\.dd-sheet\s*\{([^}]*)\}/);
     if (!m) throw new Error('缺 .dd-sheet 规则');
     if (m[1].indexOf('100dvh') < 0) throw new Error('.dd-sheet 应自带整屏高度，实际：' + m[1].trim());
@@ -914,7 +914,7 @@ const withEFP = (el, fn) => {
   // 它作为 flex item 的自动最小尺寸就变成 0，会被 .modal-body 的长内容挤到 0 高，
   // 再被 overflow-y:hidden 整条裁掉 —— 症状就是「设置里子页全没了」。
   t('style.css：.tabs / .modal-head / .confirm-foot 不参与压缩', () => {
-    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
     for (const sel of ['.tabs', '.modal-head', '.confirm-foot']) {
       const m = css.match(new RegExp(sel.replace('.', '\\.') + '\\s*\\{([^}]*)\\}'));
       if (!m) throw new Error('缺 ' + sel + ' 规则');
@@ -925,7 +925,7 @@ const withEFP = (el, fn) => {
   // 卡片页与文章页共用一套抽屉（v1.3.10）：「和文章页一样」不能靠两份长得差不多的规则维持，
   // 必须是同一条规则；同时窄屏不该再留工具栏里的频道下拉（两个入口抢同一件事）。
   t('style.css：卡片页抽屉复用文章页那套规则 + 窄屏收起频道下拉', () => {
-    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
     const masks = [...css.matchAll(/\.reader-mask,\s*\.cards-mask\s*\{([^}]*)\}/g)].map((m) => m[1]);
     if (!masks.some((x) => x.includes('position: fixed'))) throw new Error('遮罩应由 .reader-mask, .cards-mask 共用同一条规则');
     const sides = [...css.matchAll(/\.reader-side,\s*\.cards-side\s*\{([^}]*)\}/g)].map((m) => m[1]);
@@ -942,7 +942,7 @@ const withEFP = (el, fn) => {
   // 两行顶栏在手机上白吃一张卡片的高度；「最新发布 ▾」这种带文字的方块在 360px 下把标题挤没。
   t('style.css + sprite：卡片页窄屏一行顶栏、排序图标模式', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     if (!/\.dd-icon\s*\{\s*display:\s*none/.test(css)) throw new Error('图标模式下 .dd-icon 应默认隐藏（宽屏仍用文字）');
     if (!/\.cards-head,\s*\.cards-head \.page-tools[^{]*\{\s*display:\s*contents/.test(css)) {
       throw new Error('窄屏应把 .cards-head / .page-tools 退化成 display:contents，子元素才能并进同一行');
@@ -965,7 +965,7 @@ const withEFP = (el, fn) => {
   // 把文章页的「频道」文字收掉或把放大镜挪到最左，都会在这里被拦下。
   t('style.css + 视图：文章页与卡片页共用同一套头部结构', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     if (/\.cards-search-toggle,\s*\.cards-head\s*\{\s*display:\s*none/.test(css)) {
       throw new Error('桌面卡片页也应有标题行，不能把 .cards-head 一起隐藏');
     }
@@ -1017,7 +1017,7 @@ const withEFP = (el, fn) => {
   // 这两个语义以后就是全站约定，谁再临时自造 640 / 900 之类的断点做布局降级，
   // 页面就会开始「一档一档地跳」，所以在这里钉住。
   t('style.css：断点体系（1080 导航降级 / 720 密度降级）+ 头部令牌', () => {
-    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
 
     // 令牌
     if (!/--head-h:\s*48px/.test(css)) throw new Error('缺 --head-h 桌面值');
@@ -1059,7 +1059,7 @@ const withEFP = (el, fn) => {
   // 三处搜索（卡片页 .search-box、文章页 .reader-search、共用 .page-search）必须
   // 共用一条输入框规则，否则又会退化成「两个页面两种搜索框」。
   t('style.css：两页搜索框统一胶囊、头部不画分隔线', () => {
-    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
     if (!/--search-h:\s*32px/.test(css)) throw new Error('缺 --search-h 令牌（胶囊定高，须与 --head-ctl 同高）');
     if (!/--head-ctl:\s*32px/.test(css)) throw new Error('缺 --head-ctl 桌面值');
     if (!/--search-w:\s*560px/.test(css)) throw new Error('缺 --search-w 令牌（桌面宽度上限）');
@@ -1095,7 +1095,7 @@ const withEFP = (el, fn) => {
   // 否则吸顶条的顶端会被顶栏压住一条缝。
   t('style.css + 顶栏：两栏图标同一尺寸，吸顶偏移量取自外层顶栏', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     if (!/--ico-ctl:\s*1rem/.test(css)) throw new Error('缺 --ico-ctl 令牌（两栏共用的图标尺寸）');
     const icoRule = css.match(/\.topbar-actions \.btn \.ico,[\s\S]{0,220}?\{([^}]*)\}/);
     if (!icoRule) throw new Error('缺「顶栏 + 页面头部」共用的图标尺寸规则');
@@ -1130,7 +1130,7 @@ const withEFP = (el, fn) => {
   // 窄屏视图切换（v1.3.10）：文字收掉后不能再让两个按钮平分整条宽度 ——
   // 那样就是「一条空胶囊里飘着两个小图标」，比右侧工具按钮显眼得多却什么都没写。
   t('style.css：窄屏视图切换改成图标方块组', () => {
-    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
     // v1.3.11：断点从 560 抬到 820 —— 文字在 820 就被 .btn-label 收掉，
     // 外壳却留到 560 才散，中间 260px 是一条空胶囊。断点必须与文字隐藏同步。
     const blocks = [...css.matchAll(/@media \(max-width: 820px\) \{([\s\S]*?)\n\}/g)].map((m) => m[1]);
@@ -1155,7 +1155,7 @@ const withEFP = (el, fn) => {
   // 卡片页频道筛选的组头折叠（v1.3.8）：整行可点 + 移动端命中区够大 + 能力默认关
   t('style.css + 视图：分组折叠开关（整行可点、触屏 44px、不传 collapsible 仍是纯标题）', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const fold = css.match(/\.dd-group-fold\s*\{([^}]*)\}/);
     if (!fold) throw new Error('缺 .dd-group-fold 规则');
     if (fold[1].indexOf('cursor: pointer') < 0) throw new Error('组头不该用默认光标，实际：' + fold[1].trim());
@@ -1173,7 +1173,7 @@ const withEFP = (el, fn) => {
   // 否则类先消失（看不到高亮）或动画先结束（高亮框一直亮着）
   t('style.css + reader.js：跳转高亮的时长与类名对齐', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const rule = css.match(/\.art-item\.is-flash\s*\{([^}]*)\}/);
     if (!rule) throw new Error('缺 .art-item.is-flash 规则');
     const anim = css.match(/@keyframes artFlash\s*\{([\s\S]*?)\n\}/);
@@ -3587,7 +3587,7 @@ const withEFP = (el, fn) => {
   });
   t('style.css：栏宽走 --reader-side-w，列表视图也跳过离屏渲染', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const m = css.match(/\.reader\s*>\s*#readerRoot\s*\{([^}]*)\}/);
     if (!m) throw new Error('缺 .reader > #readerRoot 规则');
     if (m[1].indexOf('var(--reader-side-w)') < 0) throw new Error('#readerRoot 未引用栏宽变量：' + m[1].trim());
@@ -3604,7 +3604,7 @@ const withEFP = (el, fn) => {
   // 且缩进只能落在 data-feed 上 —— 顶部三个固定入口不属于任何分组。
   t('style.css：频道栏目录树层级（组头贴左 + 频道缩进 22px）', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const feed = css.match(/\.rd-ch\[data-feed\]\s*\{([^}]*)\}/);
     if (!feed) throw new Error('缺 .rd-ch[data-feed] 缩进规则');
     if (!/padding-left:\s*22px/.test(feed[1])) throw new Error('频道未缩进 22px：' + feed[1].trim());
@@ -3620,7 +3620,7 @@ const withEFP = (el, fn) => {
   // 这三条都是「看不见就等于坏掉」的规则，写死在测试里防止后续改动悄悄退化。
   t('style.css：整行折叠 + 悬停浮现漏斗（触屏常显）', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     if (/\.rd-ch-fold\b/.test(css)) throw new Error('.rd-ch-fold 已被整行折叠取代，别再留死类');
     const row = css.match(/\.rd-ch-group-row\s*\{([^}]*)\}/);
     if (!row || row[1].indexOf('position: relative') < 0) throw new Error('组行要 relative，漏斗才有定位父');
@@ -3641,7 +3641,7 @@ const withEFP = (el, fn) => {
   // 动作行右对齐必须带一份窄屏回退（移动端复制键独占一行，右对齐反而更别扭）。
   t('style.css：阅读页头部整条吸顶写在基础规则里（桌面也生效）', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const head = css.match(/\.reader-head\s*\{([^}]*)\}/);
     if (!head) throw new Error('缺 .reader-head 基础规则');
     if (head[1].indexOf('position: sticky') < 0) throw new Error('头部基础规则没吸顶（桌面端标题会跟着文章滚走）');
@@ -3656,7 +3656,7 @@ const withEFP = (el, fn) => {
 
   t('style.css：正文动作行靠右下（桌面与窄屏同一套）', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const acts = css.match(/\.art-actions\s*\{([^}]*)\}/);
     if (!acts) throw new Error('缺 .art-actions 基础规则');
     if (acts[1].indexOf('justify-content: flex-end') < 0) throw new Error('动作键没靠右（读完正文视线落在末尾，按钮应在落点）');
@@ -4077,7 +4077,7 @@ const withEFP = (el, fn) => {
     }
     if (!/aria-current=\{active \? 'page' : undefined\}/.test(top)) throw new Error('当前视图应用 aria-current 表达，而不是只有 .active 类');
     if (nav.indexOf('aria-hidden="true">{v.label}') < 0) throw new Error('视觉文字重复朗读，应给 .btn-label 加 aria-hidden');
-    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
     if (!/@media \(max-width: 820px\)[\s\S]{0,900}?\.viewnav-btn \{/.test(css)) {
       throw new Error('视图切换的图标化断点必须与 .btn-label 隐藏同步（820），否则 561–820 是一条空胶囊');
     }
@@ -4102,7 +4102,7 @@ const withEFP = (el, fn) => {
     if (head.indexOf('wrapId="feedDD"') < 0) throw new Error('#feedDD 应在 .cards-head 里（标题位）');
     const tools = head.slice(head.indexOf('page-tools'));
     if (tools.indexOf('wrapId="feedDD"') >= 0) throw new Error('#feedDD 仍在工具组里 —— 标题与筛选会重复');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const mw = css.match(/@media \(min-width: 1081px\) \{([\s\S]*?)\n\}/);
     if (!mw) throw new Error('缺 ≥1081px 段');
     if (!/\.cards-head > \.cards-title \{ display: none/.test(mw[1])) {
@@ -4114,7 +4114,7 @@ const withEFP = (el, fn) => {
   // 吸顶条的滚动边界 + 卡片浮动按钮的悬停门控
   t('视觉：滚动边界与卡片动作的显隐策略', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     if (!/body\.is-scrolled \.page-head,[\s\S]{0,80}?box-shadow: 0 1px 0 0 var\(--border\)/.test(css)) {
       throw new Error('缺 body.is-scrolled 的吸顶边界（滚动后内容从条下穿过，需要一条 1px 说明）');
     }
@@ -4137,7 +4137,7 @@ const withEFP = (el, fn) => {
   // offset 主导浮起深度、blur 决定过渡带宽度；两者都不能再降回 4/12 那一档。
   t('视觉：拟态阴影保持浮起感（三主题 offset ≥ 5px / blur ≥ 14px）', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const decls = css.match(/--neu-shadow:\s*([^;]+);/g) || [];
     if (decls.length < 3) throw new Error('应有三套主题的 --neu-shadow，实际 ' + decls.length);
     for (const d of decls) {
@@ -4153,6 +4153,122 @@ const withEFP = (el, fn) => {
     if (ico) {
       const sw = ico[0].match(/stroke-width:\s*([\d.]+);/);
       if (sw && Number(sw[1]) < 2) throw new Error('图标描边回到 ' + sw[1] + '，15px 图标上会发虚（需 ≥ 2）');
+    }
+  });
+
+  // CDN 版本错配守门（v1.5.0）：
+  // 2026-10-27 线上事故 —— 移动端在 Cloudflare CDN 外网环境下抽屉顶部出现
+  // 一个 106×106 的黑色实心圆、搜索框被压成窄条。根因链条：
+  //   public/style.css 是固定文件名、无内容哈希 → CDN 边缘缓存 1~4 小时；
+  //   /index.html 是 no-cache，永远最新 → 新 HTML + 旧 CSS 错配；
+  //   v1.3.9 的 CSS 里没有 .rd-ch-search 规则（该功能是 1.4.0 新增）→
+  //   搜索框内的 <svg> 按 SVG 默认规则撑成 300×150，<use href="#i-search">
+  //   渲染成一个 106×106 的黑圆。
+  // 修复：样式表移入 src/ 由 Vite 打包 → 产物带内容哈希，HTML 引的永远是配套那一版。
+  // 以下断言钉住这个前提不被回退。
+  t('CDN：样式表已移入 src/，public/ 下不得再有 style.css / login.css', () => {
+    const root = path.join(__dirname, '..', '..');
+    if (!fs.existsSync(path.join(root, 'src', 'style.css'))) throw new Error('src/style.css 不存在 —— 样式表必须由 Vite 打包');
+    if (!fs.existsSync(path.join(root, 'src', 'login.css'))) throw new Error('src/login.css 不存在');
+    if (fs.existsSync(path.join(root, 'public', 'style.css'))) {
+      throw new Error('public/style.css 复活了 —— 固定路径会被 CDN 缓存，与 HTML 错配（移动端元素丢失的根因）');
+    }
+    if (fs.existsSync(path.join(root, 'public', 'login.css'))) {
+      throw new Error('public/login.css 复活了 —— 同上，登录页样式会与 HTML 错配');
+    }
+  });
+
+  t('CDN：入口 HTML 不得手写固定路径的样式表 <link>', () => {
+    const root = path.join(__dirname, '..', '..');
+    for (const f of ['index.html', 'login.html']) {
+      const html = fs.readFileSync(path.join(root, f), 'utf8');
+      if (/<link[^>]+rel=["']?stylesheet["']?[^>]+href=["']\/(style|login)\.css/.test(html)) {
+        throw new Error(f + ' 仍手写 <link href="/style.css"> —— 固定路径会被 CDN 缓存 1~4 小时');
+      }
+    }
+    // 样式表必须由入口 JS import 引入（Vite 由此打出带哈希的 CSS 并自动注入 link）
+    const main = fs.readFileSync(path.join(root, 'src', 'main.jsx'), 'utf8');
+    if (!/import\s+['"]\.\/style\.css['"]/.test(main)) throw new Error('src/main.jsx 未 import ./style.css');
+    const lmain = fs.readFileSync(path.join(root, 'src', 'login-main.js'), 'utf8');
+    if (!/import\s+['"]\.\/login\.css['"]/.test(lmain)) throw new Error('src/login-main.js 未 import ./login.css');
+  });
+
+  t('CDN：构建产物带内容哈希，且服务器按哈希分档设缓存', () => {
+    const root = path.join(__dirname, '..', '..');
+    const vite = fs.readFileSync(path.join(root, 'vite.config.mjs'), 'utf8');
+    if (!/assetFileNames:\s*'assets\/\[name\]-\[hash\]/.test(vite)) {
+      throw new Error('vite 的 assetFileNames 必须带 [hash]，否则 CSS 又是固定路径');
+    }
+    if (!/chunkFileNames:\s*'assets\/\[name\]-\[hash\]/.test(vite)) {
+      throw new Error('vite 的 chunkFileNames 必须带 [hash]');
+    }
+    const srv = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+    if (!/immutable/.test(srv)) throw new Error('服务器未对带哈希资源设 immutable 长缓存');
+    if (!/no-cache, must-revalidate/.test(srv)) throw new Error('服务器未对 HTML / 无哈希资源设 no-cache, must-revalidate');
+    // SW 的双策略：带哈希 → 缓存优先；其余 → 网络优先
+    const sw = fs.readFileSync(path.join(root, 'public', 'sw.js'), 'utf8');
+    if (!/HASHED/.test(sw)) throw new Error('sw.js 缺少按哈希判定的双策略');
+    if (!/VERSION = 'feedlore-v2'/.test(sw)) throw new Error('sw.js 版本未升到 feedlore-v2（旧 SW 会继续用旧缓存）');
+  });
+
+  t('CDN：Service Worker 预缓存清单不得含无哈希的样式表', () => {
+    const root = path.join(__dirname, '..', '..');
+    const sw = fs.readFileSync(path.join(root, 'public', 'sw.js'), 'utf8');
+    if (/'\/style\.css'/.test(sw) || /'\/login\.css'/.test(sw)) {
+      throw new Error('预缓存含无哈希样式表 —— 文件名带 hash 后预缓存具体路径没有意义，反而可能缓存到旧版');
+    }
+  });
+
+  t('性能：服务器对文本类响应启用 gzip，且不压图片', () => {
+    const root = path.join(__dirname, '..', '..');
+    const srv = fs.readFileSync(path.join(root, 'server.js'), 'utf8');
+    if (!/gzipSync/.test(srv)) throw new Error('server.js 未启用 gzip —— 108KB CSS 原样传输，弱网下 FCP 超过 3.5 秒');
+    if (!/GZIP_TYPES/.test(srv)) throw new Error('缺 GZIP_TYPES 白名单');
+    if (!/png|jpe?g|webp|gif|ico/.test(srv)) throw new Error('gzip 未排除图片（图片本身已压缩，再压是浪费 CPU）');
+  });
+
+  // 图标基类守门：所有 sprite 图标类（<svg> + <use href="#i-xxx">）都必须落在基础组内。
+  // 漏进去会有两种后果：
+  //  1) 缺 width/height 约束 → <svg> 按 SVG 默认规则撑成 300×150（本次事故的放大版）；
+  //  2) 缺 fill:none / stroke:currentColor → 路径被填成实心黑块
+  //     （.rd-ch-search-ico 实测：搜索框里的放大镜圆圈变成一颗黑点）。
+  t('图标：sprite 图标类必须在基础组内（含 fill:none / stroke:currentColor）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
+    // 取基础组（.ico 开头的那条选择器）；本仓库 style.css 是 CRLF，正则要兼容 \r\n
+    const base = css.match(/^\.ico,\r?\n([\s\S]{0,400}?)\{/m);
+    if (!base) throw new Error('找不到图标基础组（.ico, … {）');
+    const group = '.ico,\r\n' + base[1];
+    const gi = css.indexOf(group);
+    if (gi < 0) throw new Error('图标基础组定位失败');
+    // 基础组正文必须含 fill:none 与 stroke:currentColor
+    const ruleBody = css.slice(gi + group.length).slice(0, 600).split('}')[0];
+    if (!/fill:\s*none/.test(ruleBody)) throw new Error('图标基础组缺 fill:none —— 路径会被填成实心黑块');
+    if (!/stroke:\s*currentColor/.test(ruleBody)) throw new Error('图标基础组缺 stroke:currentColor —— 图标不会跟随文字颜色');
+    // 扫源码：<svg className="X"> 且含 <use href="#i-… 的类，必须在基础组里
+    const files = [];
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.(jsx|js)$/.test(e.name)) files.push(p);
+      }
+    };
+    walk(path.join(root, 'src'));
+    const svgCls = new Set();
+    for (const f of files) {
+      const src = fs.readFileSync(f, 'utf8');
+      const re = /<svg className="([^"]+)"[^>]*>\s*<use\s+href=['"]\{?['"]?#i-/g;
+      let m;
+      while ((m = re.exec(src))) {
+        // 只取图标主类（第一个不是 .ico 的 token）；后面的 token 多是状态修饰（err / spin）
+        const main = m[1].split(/\s+/).find((c) => c && c !== 'ico');
+        if (main) svgCls.add(main);
+      }
+    }
+    const missing = [...svgCls].filter((c) => !new RegExp('\\.' + c + '(?![a-z0-9_-])', 'i').test(group));
+    if (missing.length) {
+      throw new Error('这些 sprite 图标类不在图标基础组内（会缺尺寸/描边约束）：' + missing.join(', '));
     }
   });
 

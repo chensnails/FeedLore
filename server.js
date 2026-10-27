@@ -11,6 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 const createDb = require('./db');
 const rss = require('./rss');
@@ -580,10 +581,23 @@ function readBody(req, maxBytes = 1e6) {
  * OPML 解析（无依赖）：从订阅管理软件导出的 opml 里抽出订阅源与分组
  * ============================================================ */
 const json = (res, code, obj) => {
-  res.writeHead(code, {
-    'Content-Type': 'application/json; charset=utf-8',
-  });
-  res.end(JSON.stringify(obj));
+  const body = Buffer.from(JSON.stringify(obj));
+  const ct = 'application/json; charset=utf-8';
+  // 接口 JSON 也压：条目列表响应有 60KB+，弱网下这一条就占几百毫秒
+  const req = res.__req;
+  if (req && acceptsGzip(req) && body.length >= GZIP_MIN) {
+    const out = zlib.gzipSync(body, { level: 6 });
+    res.writeHead(code, {
+      'Content-Type': ct,
+      'Content-Encoding': 'gzip',
+      'Content-Length': String(out.length),
+      'Vary': 'Accept-Encoding',
+    });
+    res.end(out);
+    return;
+  }
+  res.writeHead(code, { 'Content-Type': ct, 'Content-Length': String(body.length) });
+  res.end(body);
 };
 
 const MIME = {
@@ -593,7 +607,27 @@ const MIME = {
   '.webmanifest': 'application/manifest+json',
 };
 
-function serveStatic(pathname, res, user) {
+/* ---------- gzip 压缩（v1.5.0）----------
+ * 之前服务器完全不压缩：108KB 的 CSS 原样传输，弱网（1.6Mbps）下光样式表就要 2 秒，
+ * 直接把首屏 FCP 拖到 3.5 秒。开启 gzip 后同一份 CSS 约 19KB（-82%）。
+ * 只压「文本类」响应 —— 图片（webp/jpeg/png）本身已是压缩格式，再压是浪费 CPU。
+ */
+const GZIP_TYPES = /^(text\/|application\/(javascript|json|manifest\+json|xml))/i;
+const GZIP_MIN = 1024;   // 小于 1KB 压了反而变大
+
+/** 客户端是否接受 gzip */
+function acceptsGzip(req) {
+  return /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
+}
+
+/** 该响应是否值得压缩（看 Content-Type 与 URL 后缀） */
+function gzipEligible(contentType, pathname) {
+  if (!GZIP_TYPES.test(String(contentType || ''))) return false;
+  if (/\.(png|jpe?g|webp|gif|ico|woff2?|zip|gz|br)$/i.test(String(pathname || ''))) return false;
+  return true;
+}
+
+function serveStatic(pathname, res, user, req) {
   const rel = pathname === '/' ? '/index.html' : pathname;
   const filePath = path.join(PUBLIC_DIR, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
   if (!filePath.startsWith(PUBLIC_DIR)) { res.writeHead(403).end('forbidden'); return; }
@@ -611,10 +645,37 @@ function serveStatic(pathname, res, user) {
         body = Buffer.from(s.slice(0, idx + anchor.length) + '\n' + inj + s.slice(idx + anchor.length));
       }
     }
-    res.writeHead(200, {
+    // 缓存策略分两档（v1.5.0）：
+    //  - 带内容哈希的构建产物（/assets/*-<hash>.css|js）：内容变则文件名变，
+    //    可以放心 immutable 长缓存 —— 这是「HTML 与 CSS 永不错配」的第二道保险。
+    //  - HTML 与无哈希资源（sw.js / manifest / 图标）：必须每次回源校验，
+    //    否则 CDN 会把旧 HTML 与新资源配在一起，或反过来。
+    // 之前一律 no-cache，Cloudflare 仍会把 CSS 缓存 1~4 小时（它按 URL 而非
+    // 源站头决定边缘缓存），造成新 HTML + 旧 CSS 错配 → 移动端元素丢失。
+    // 只认 /assets/ 下的构建产物：Vite 产物名形如 index-_gmeshLb.css（哈希 8 位 base64url）。
+    // 限定路径前缀是为了避免 icon-512.png / apple-touch-icon.png 这类「带短横线的普通资源」
+    // 被误判成长缓存资源。
+    const hashed = /^\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/i.test(pathname);
+    const headers = {
       'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream',
-      'Cache-Control': 'no-cache',
-    });
+      'Cache-Control': hashed
+        ? 'public, max-age=31536000, immutable'
+        : 'no-cache, must-revalidate',
+    };
+    // 文本类资源走 gzip（CSS 108KB → 约 19KB）
+    if (acceptsGzip(req) && body.length >= GZIP_MIN && gzipEligible(headers['Content-Type'], pathname)) {
+      const out = zlib.gzipSync(body, { level: 6 });
+      res.writeHead(200, {
+        'Content-Type': headers['Content-Type'],
+        'Cache-Control': headers['Cache-Control'],
+        'Content-Encoding': 'gzip',
+        'Content-Length': String(out.length),
+        'Vary': 'Accept-Encoding',
+      });
+      res.end(out);
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': headers['Content-Type'], 'Cache-Control': headers['Cache-Control'] });
     res.end(body);
   });
 }
@@ -679,6 +740,8 @@ async function fetchGithubLatest() {
 const server = http.createServer(async (req, res) => {
   const { pathname, searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const ip = req.socket.remoteAddress || 'unknown';
+  // 挂到 res 上：json() 写响应时据此判断是否 gzip（不必给几十个调用点加参数）
+  res.__req = req;
   const session = settings ? getSession(req) : null;
   const user = userOf(session);
 
@@ -797,11 +860,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     /* ---------- 静态资源 ---------- */
-    if (pathname === '/login.html') { serveStatic(pathname, res); return; }
+    if (pathname === '/login.html') { serveStatic(pathname, res, null, req); return; }
     if (pathname === '/favicon.ico' || pathname === '/favicon.svg'
       || pathname === '/manifest.json' || /^\/icon-/.test(pathname)
       || pathname === '/apple-touch-icon.png' || pathname === '/favicon-32.png') {
-      serveStatic(pathname, res);
+      serveStatic(pathname, res, null, req);
       return;
     }
 
@@ -1443,7 +1506,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    serveStatic(pathname, res, user);
+    serveStatic(pathname, res, user, req);
   } catch (err) {
     logErr('[http] ' + (err && err.stack || err));
     if (!res.headersSent) json(res, 502, { error: String((err && err.message) || err) });

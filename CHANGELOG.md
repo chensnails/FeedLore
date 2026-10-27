@@ -20,7 +20,27 @@
   - **边界**：加载途中再点不再被静默丢弃 —— `loadReader` 与 `loadPage` 各加一个 pending-reset 排队位，当前请求结束后补跑一次重置重载，用户点了必有反馈。
   - **守门**：UI 回归新增 2 项冒烟断言（真实 core 上验「再点同一频道确实重新拉取」与「再点不丢频道筛选」）。
 - **取消 UI 体验评审 #8**（手机端顶栏纯图标 → 首次引导提示 + 可选文字模式）：按决定不再排期。窄屏顶栏图标已带 `aria-label` / `title`，纯图标形态保留。
-- 测试：UI 回归 **349/349**、服务端 **113/113**。
+- **修复移动端 Cloudflare CDN 环境下元素丢失（黑圆 / 搜索框变形）**：
+  - **现象**：移动端外网（旧域名 read.9610000.xyz 经 Cloudflare）打开频道抽屉，出现一个约 106×106 的黑色实心圆，位于「频道 N 个」标题与搜索框之间；搜索框被挤成窄条；顶栏图标错位。
+  - **根因**：`public/style.css` 是固定文件名、无内容哈希，被 `<link href="/style.css">` 直接引用。Cloudflare 边缘按 URL 缓存该文件（实测旧域名 `max-age=3600`、新域名 `max-age=14400`），而 `/index.html` 是 `no-cache` / `DYNAMIC`（永远最新）—— 于是出现「新 HTML/JS + 旧 CSS」错配。v1.3.9 的 CSS **完全没有** 1.4.0 UI 评审 #7 新增的 `.rd-ch-search` 规则 → 搜索框内 `<svg>` 无尺寸约束，按 SVG 默认撑成 300×150，`<use href="#i-search">` 渲染成 106×106 黑色实心圆。
+  - **实证复现**：用 `git show v1.3.9:public/style.css` 注入新版页面，立刻复现黑圆（`elementFromPoint` 链：`<use>` → `<svg>` 300×150 → `div.rd-ch-search` → `nav.cards-channels`），与用户截图高度一致；HEAD / v1.4.0 CSS 均未检出黑圆。
+  - **修复 1（根除缓存错配）**：样式表从 `public/` 移入 `src/`，由 Vite 打包，产物带内容哈希（`assets/index-<hash>.css`），HTML 永远引用最新哈希；旧 `<link href="/style.css">` 删除。登录页 `login.css` 同样处理（新增 `src/login-main.js` 入口）。
+  - **修复 2（纵深防御：新增图标类漏样式）**：发现并修复同类隐患 —— `.rd-ch-search-ico` 未加入图标基础组，缺 `fill:none; stroke:currentColor`，放大镜的圆被填成黑色实心点。现把所有 sprite 图标类（`.search-ico .sec-arrow .art-caret .new-pill-ico .rd-ch-search-ico .rd-ch-add-ico .cmdk-ico .dd-caret .dd-check .dd-icon .dg-pin .feed-group-caret .toast-ico`）统一纳入 `.ico` 基础组，并加守门断言：新增 sprite 图标类必须进组（含 `fill:none` / `stroke:currentColor`），否则 UI 回归失败。即便未来再发生样式错配，也不会再出现「svg 撑爆 / 路径填黑」。
+  - **缓存策略**（server.js / sw.js）：带内容哈希的 `/assets/*-<hash>.*` 用 `public, max-age=31536000, immutable` 长期缓存（命中即返回，省往返）；HTML / 无哈希资源用 `no-cache, must-revalidate`。Service Worker 升 `feedlore-v2`，带哈希资源缓存优先、其余网络优先。
+- **面向低网速的性能优化**：
+  - **gzip**：server.js 对文本类响应（`text/*`、`application/javascript|json|manifest+json|xml`，阈值 1024 字节，图片不压）启用 `zlib.gzipSync`。CSS 108KB → 19.5KB（−90%）。
+  - **vendor 拆分**：React/ReactDOM 单独成 `vendor` chunk（哈希稳定），二次访问直接命中 CDN 缓存，业务改动不必重传 React（弱网下最大头）。
+  - **移动端首屏减量**：窄屏 `pageSize` 由 50 降到 20，减少首屏条目与图片请求。
+  - **图片优先级**：首屏前 6 张卡 `fetchpriority="high"` + `loading="eager"`，其余 `lazy`；频道头像改用 IntersectionObserver（`rootMargin: 200px`）延迟加载，避免抽屉未开时就发 24 个头像请求。
+  - **性能对比**（Edge 无头 + CDP，390×844@3x，CPU 4x 降速 + 1.6Mbps / 150ms RTT）：
+    | 指标 | 优化前 | 优化后 | 改善 |
+    |---|---|---|---|
+    | FCP | 3568ms | **1588ms** | −56% |
+    | DOMContentLoaded | 3482ms | 1500ms | −57% |
+    | 资源请求数 | 38 | **19** | −50% |
+    | CSS 传输（gzip） | 188KB | **19.5KB** | −90% |
+    （传输总字节含真实订阅图片，随订阅源浮动，不计入固定收益。）
+- 测试：UI 回归 **355/355**、服务端 **113/113**。
 
 ## [1.4.0] — 2026-10-27
 
