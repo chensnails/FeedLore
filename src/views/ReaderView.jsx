@@ -11,20 +11,9 @@
 
 import { core } from '@core';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { ChannelList } from './ChannelList.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
-
-/** 频道头像：图标加载失败（拉取 404 / 防盗链）时回退到首字母，避免破图标 */
-function ChannelAvatar({ icon, name }) {
-  const [failed, setFailed] = useState(false);
-  if (!icon || failed) {
-    return <span className="rd-ch-avatar rd-ch-avatar-txt">{String(name || '?').slice(0, 1)}</span>;
-  }
-  return (
-    <img className="rd-ch-avatar" src={icon} alt="" loading="lazy"
-      onError={() => setFailed(true)} />
-  );
-}
 
 const Icon = ({ n }) => (
   <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
@@ -274,89 +263,6 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, onTog
   );
 });
 
-/** 频道侧栏（对应旧 renderReaderChannels）。
- *  grouped / collapsed 由 ReaderView 一次算好传入：头部按钮的「是否全收起」要和列表同源。 */
-function ReaderChannels({ grouped, collapsed, hasGroups, flags, scope, feedId, group }) {
-  const s = S();
-  const atScope = feedId == null && group == null;
-  const scopeBtn = (key, ico, name, n, cls) => (
-    <button className={'rd-ch' + (atScope && scope === key ? ' active' : '')} type="button" data-scope={key}
-      onClick={() => s.readerSetScope(key)}>
-      <span className={'rd-ch-avatar ' + cls}><Icon n={ico} /></span>
-      <span className="rd-ch-name">{name}</span>
-      {n > 0 ? <span className="rd-ch-n">{n}</span> : null}
-    </button>
-  );
-
-  return (
-    <>
-      {scopeBtn('all', 'circle', '全部文章', flags.total, 'rd-ch-avatar-all')}
-      {scopeBtn('unread', 'dot', '未读', flags.unread, 'rd-ch-avatar-unread')}
-      {scopeBtn('favorite', 'star', '收藏', flags.favorite, 'rd-ch-avatar-fav')}
-      <div className="rd-ch-sep" aria-hidden="true" />
-      {grouped.map((g) => {
-        const gname = g.name || '';
-        const gUnread = g.feeds.reduce((sum, x) => sum + Number(x.unreadCount || 0), 0);
-        const isCollapsed = collapsed.has(gname);
-        // 收起的分组里若正看着其中一条，只留那一条 —— 别让「收起」把当前频道变没，
-        // 也不该把整组都放出来（那就等于没收起）
-        const shown = isCollapsed
-          ? (feedId == null ? [] : g.feeds.filter((f) => String(f.id) === String(feedId)))
-          : g.feeds;
-        return (
-          <div key={'g:' + gname}>
-            {hasGroups ? (
-              <div className={'rd-ch-group-row' + (isCollapsed ? ' is-collapsed' : '') + (group === gname ? ' is-filtered' : '')}>
-                {/* 整行就是折叠开关：收起/展开是高频动作，命中区不该只有左侧那 18px 箭头。
-                    箭头降成状态指示，「只看这组」让位给右侧的漏斗按钮。 */}
-                <button type="button" className={'rd-ch-group' + (gname ? '' : ' muted')}
-                  data-group={gname} data-group-fold={gname}
-                  aria-expanded={isCollapsed ? 'false' : 'true'}
-                  title={(isCollapsed ? '展开' : '收起') + `分组「${gname || '未分组'}」`}
-                  onClick={() => s.readerToggleGroupCollapse(gname)}>
-                  <svg className="ico rd-ch-caret" aria-hidden="true" focusable="false"><use href={isCollapsed ? '#i-chevron-right' : '#i-chevron-down'} /></svg>
-                  <span className="rd-ch-group-name">{gname || '未分组'}</span>
-                  {gUnread > 0
-                    ? <span className="rd-ch-n hot" title={`${gUnread} 条未读`}>{gUnread}</span>
-                    : isCollapsed
-                      ? <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道，全部已读`}>{g.feeds.length}</span>
-                      : <span className="rd-ch-group-empty" aria-hidden="true"><svg className="ico" focusable="false"><use href="#i-check" /></svg></span>}
-                </button>
-                {/* 低频动作平时隐身，悬停 / 键盘聚焦 / 正在筛选该组时才现身（触屏常显在 CSS 里） */}
-                <button type="button" className="rd-ch-filter" data-group-filter={gname}
-                  aria-pressed={group === gname ? 'true' : 'false'}
-                  title={`只看「${gname || '未分组'}」分组下的文章`}
-                  onClick={() => s.readerSetGroup(gname)}>
-                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-filter" /></svg>
-                </button>
-              </div>
-            ) : null}
-            {shown.map((f) => {
-              const name = s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(f) : f.title) : f.title;
-              const tip = f.enabled ? (s.feedTitle ? s.feedTitle(f) : f.title) : `${s.feedTitle ? s.feedTitle(f) : f.title}（已停止采集）`;
-              const unread = Number(f.unreadCount || 0);
-              const count = Number(f.entryCount || 0);
-              const active = feedId != null && String(feedId) === String(f.id);
-              return (
-                <button key={f.id} className={'rd-ch' + (f.enabled ? '' : ' off') + (active ? ' active' : '')}
-                  type="button" data-feed={f.id} onClick={() => s.readerSetFeed(f.id)}>
-                  <ChannelAvatar icon={f.icon} name={name} />
-                  <span className="rd-ch-name" title={tip || ''}>{name}</span>
-                  {unread > 0 ? <span className="rd-ch-n hot" title={`${unread} 条未读 / 共 ${count} 条`}>{unread}</span> : null}
-                </button>
-              );
-            })}
-          </div>
-        );
-      })}
-      <button type="button" className="rd-ch-add" data-action="open-source" onClick={() => s.readerOpenSource()}>
-        <svg className="rd-ch-add-ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
-        <span>添加频道</span>
-      </button>
-    </>
-  );
-}
-
 /* ---------- 频道栏宽度分隔条 ----------
  * 拖拽期间只写 :root 上的 --reader-side-w（一次拖拽几十帧，走 state 会把整棵阅读页重渲染），
  * 松手才落一次账号偏好；双击复位默认宽度；方向键微调（键盘也要能调，不能只有鼠标）。 */
@@ -423,6 +329,9 @@ export function ReaderView() {
   const [, bump] = useState(0);
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
+  // 窄屏（≤720px）搜索框默认收起，标题栏里只留一个放大镜按钮 —— 一整条搜索框占掉
+  // 手机上最金贵的一行，而它大部分时间是空的。桌面不受影响（CSS 里按钮隐藏、搜索框常驻）。
+  const [searchOpen, setSearchOpen] = useState(false);
 
   useEffect(() => {
     const onTick = () => bump((x) => x + 1);
@@ -431,12 +340,17 @@ export function ReaderView() {
   }, []);
 
   useEffect(() => {
-    window.__readerFocusSearch = () => {
-      const el = searchRef.current;
-      if (el) { el.focus(); if (typeof el.select === 'function') el.select(); }
-    };
+    // 命令面板 / 「/」快捷键要求聚焦搜索：窄屏下得先把搜索框展开，否则焦点落到 display:none 上
+    window.__readerFocusSearch = () => { setSearchOpen(true); };
     return () => { delete window.__readerFocusSearch; };
   }, []);
+
+  // 展开后把焦点送进输入框（展开这一步是 display 切换，同 tick 聚焦无效）
+  useEffect(() => {
+    if (!searchOpen) return;
+    const el = searchRef.current;
+    if (el) { el.focus(); if (typeof el.select === 'function') el.select(); }
+  }, [searchOpen]);
 
   const st = (s && s.state) || {};
   const feeds = st.feedList || [];
@@ -465,6 +379,10 @@ export function ReaderView() {
   const hasUnread = entries.some((e) => !e.isRead);
   const anyExpanded = expanded.size > 0;
   const q = st.rdQ || '';
+
+  // 别处带来的搜索词（命令面板 / 卡片页跳转）要让框是展开的，否则关键词在生效、框却收着
+  useEffect(() => { if (q) setSearchOpen(true); }, [q]);
+
 
   // 搜索框故意做成非受控（受控会在打字时抢光标），代价是外部改 rdQ 时框里不会跟着变 ——
   // 从卡片页跳过来会把关键词清空（否则目标文章被旧关键词筛掉），此时必须把手动的框刷回去。
@@ -500,6 +418,15 @@ export function ReaderView() {
   };
   const onSearchKey = (ev) => {
     if (ev.key === 'Enter') { clearTimeout(debounceRef.current); if (s.readerSearch) s.readerSearch(String(ev.target.value).trim()); }
+    // Esc 收起搜索（与 iOS 搜索框一致）；有词时先清词再收，避免「看不见却生效」的过滤
+    if (ev.key === 'Escape') { ev.stopPropagation(); if (q) onSearchClear(); setSearchOpen(false); }
+  };
+  // 标题栏放大镜：展开 / 收起。收起时若有关键词一并清掉 —— 留着一个看不见的过滤条件，
+  // 表现成「列表莫名少了一半」，比直接清空更难排查。
+  const toggleSearch = () => {
+    if (!searchOpen) { setSearchOpen(true); return; }
+    if (q) onSearchClear();
+    setSearchOpen(false);
   };
 
   // memo 的前提是回调稳定：写成行内箭头函数的话，每次 tick 每个条目都会拿到新函数 props，
@@ -527,20 +454,36 @@ export function ReaderView() {
           </button>
         </div>
         <nav className="reader-channels" id="readerChannels">
-          <ReaderChannels grouped={grouped} collapsed={collapsed} hasGroups={hasGroups}
-            flags={flags} scope={st.rdScope} feedId={st.rdFeedId} group={st.rdGroup} />
+          <ChannelList variant="reader" groups={grouped} collapsed={collapsed} hasGroups={hasGroups}
+            flags={flags} activeScope={st.rdScope} activeFeedId={st.rdFeedId} activeGroup={st.rdGroup}
+            onScope={(k) => s.readerSetScope(k)} onFeed={(id) => s.readerSetFeed(id)}
+            onGroup={(g) => s.readerSetGroup(g)} onFold={(g) => s.readerToggleGroupCollapse(g)}
+            onAdd={() => s.readerOpenSource()} />
         </nav>
       </aside>
       <ReaderSideResize />
 
       <section className="reader-main">
-        <div className="reader-head">
+        <div className="reader-head page-head">
           <button className="btn btn-ghost btn-sm reader-menu-btn" id="readerMenuBtn" type="button" aria-label="打开频道列表"
             onClick={() => s.readerToggleDrawer && s.readerToggleDrawer()}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg><span className="reader-menu-label">频道</span>
           </button>
-          <div className="reader-head-text"><h2 id="readerTitle">{title}</h2></div>
-          <div className="reader-head-tools">
+          <div className="reader-head-text"><h2 className="page-title" id="readerTitle">{title}</h2></div>
+          {/* 搜索就在头部这一行里：标题之后、工具组之前，吃掉中间的剩余宽度。
+              它不再单独占一行 —— 一整条只在打字时才有用的搜索行，等于把列表整体压下去 50px。
+              窄屏仍收进工具行最右端的放大镜，展开时换行独占第二行。 */}
+          <div className={'reader-search page-search' + (searchOpen ? ' is-open' : '')}>
+            <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+            <input id="readerSearch" name="rq" type="search" ref={searchRef} defaultValue={q}
+              placeholder="搜索标题、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索文章"
+              onInput={onSearchInput} onKeyDown={onSearchKey} />
+            <button className="reader-search-clear" id="readerSearchClear" type="button" hidden={!q}
+              aria-label="清除搜索" onClick={onSearchClear}>
+              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+            </button>
+          </div>
+          <div className="reader-head-tools page-tools">
             <button className="btn btn-ghost btn-sm" id="readerAccBtn" type="button" aria-pressed={accordionOn ? 'true' : 'false'}
               title={accordionOn
                 ? '单篇展开：展开一篇时自动收起上一篇（点这里改成多篇）'
@@ -559,18 +502,16 @@ export function ReaderView() {
               <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevrons-up" /></svg>
               <span className="btn-label">全部收起</span>
             </button>
+            {/* 放大镜放在工具行最右端：卡片页的搜索也在这条行的同一个位置，
+                两页「搜索在哪里」不该有两个答案。窄屏才出现，桌面搜索框常驻在下方 */}
+            <button className={'btn btn-ghost btn-sm reader-search-toggle' + (searchOpen ? ' is-on' : '')}
+              id="readerSearchToggle" type="button"
+              aria-expanded={searchOpen ? 'true' : 'false'} aria-controls="readerSearch"
+              title={searchOpen ? '收起搜索' : '搜索文章'}
+              onClick={toggleSearch}>
+              <svg className="ico" aria-hidden="true" focusable="false"><use href={searchOpen ? '#i-x' : '#i-search'} /></svg>
+            </button>
           </div>
-        </div>
-
-        <div className="reader-search">
-          <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-          <input id="readerSearch" name="rq" type="search" ref={searchRef} defaultValue={q}
-            placeholder="搜索标题、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索文章"
-            onInput={onSearchInput} onKeyDown={onSearchKey} />
-          <button className="reader-search-clear" id="readerSearchClear" type="button" hidden={!q}
-            aria-label="清除搜索" onClick={onSearchClear}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
-          </button>
         </div>
 
         <div className="reader-list" id="readerList">

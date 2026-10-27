@@ -11,6 +11,7 @@ import * as U from './util.js';
 import * as S from './state.js';
 import * as F from './feeds.js';
 import * as R from './reader.js';
+import './drawer.js';   // 侧滑抽屉手势（文章页 / 卡片页共用），依赖 reader 与 feeds 的 setter
 import * as AR from './autorefresh.js';
 import * as UI from './ui.js';
 import './bootstrap.js';
@@ -53,6 +54,8 @@ export const core = {
   cardsView: (m) => F.setViewMode(m),
   cardsTag: (t) => { S.state.tag = t || null; F.render(); window.scrollTo({ top: 0, behavior: U.prefersReducedMotion() ? 'auto' : 'smooth' }); },
   cardsLoadMore: () => F.loadPage(false),
+  // 窄屏频道抽屉（与文章页同一套交互，v1.3.10）
+  cardsToggleDrawer: F.cardsToggleDrawer, cardsCloseDrawer: F.cardsCloseDrawer,
   cardsSetFlag: (id, patch) => UI.cardSetFlag(id, patch),
   cardsDetailRead: (id) => UI.cardDetailRead(id),
   copyText: U.copyText, openLinkMenu: U.openLinkMenu, fmtDate: U.fmtDate,

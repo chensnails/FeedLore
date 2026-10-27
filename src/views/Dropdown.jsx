@@ -6,7 +6,9 @@
  *   往下拖就能收起（useSwipeDismiss），手势条是这枚提示。
  * - 传 collapsible 时分组标题变成整行折叠开关（卡片页频道筛选，与文章页侧栏共用同一份偏好）；
  *   不传就还是纯文本分组标题，排序那种下拉不受影响。
- * 触发按钮沿用 .select 外观；弹层均为静态覆盖层（absolute/fixed），符合「弹层才用模糊」铁律。 */
+ * 触发按钮沿用 .select 外观；传 icon 时按钮里多一枚图标，窄屏（≤720px）只留图标、文字与箭头隐藏，
+ * 变成一个方形的图标按钮（卡片页「排序」用这个形态）。弹层均为静态覆盖层（absolute/fixed），
+ * 符合「弹层才用模糊」铁律。 */
 
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
@@ -19,7 +21,7 @@ export function isMobileMq() {
   catch (_) { return false; }
 }
 
-export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChange, collapsible, collapsedGroups, onToggleGroup }) {
+export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, options, onChange, collapsible, collapsedGroups, onToggleGroup }) {
   // options: [{ value, label, group }]；group 为分组名（'' / undefined 表示无分组）
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);   // 打开瞬间定格，本次开合内不切换形态
@@ -157,9 +159,12 @@ export function Dropdown({ id, wrapId, title, ariaLabel, value, options, onChang
 
   return (
     <div className={'dd' + (open ? ' open' : '')} id={wrapId} ref={rootRef} onKeyDown={onKeyDown}>
-      <button type="button" id={id} ref={triggerRef} className="select dd-trigger"
+      <button type="button" id={id} ref={triggerRef} className={'select dd-trigger' + (icon ? ' has-icon' : '')}
         title={title} aria-label={ariaLabel || title} aria-haspopup="listbox" aria-expanded={open}
         onClick={() => { if (open) close(); else openPanel(); }}>
+        {icon ? (
+          <svg className="ico dd-icon" aria-hidden="true" focusable="false"><use href={'#' + icon} /></svg>
+        ) : null}
         <span className="dd-label">{cur ? cur.label : ''}</span>
         <svg className="ico dd-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-down" /></svg>
       </button>

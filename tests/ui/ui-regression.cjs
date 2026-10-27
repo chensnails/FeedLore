@@ -603,6 +603,16 @@ w.feedlore = {
   cardsView: (m) => { w.feedlore.state.view = m; cardsTick(); },
   cardsTag: (t) => { w.feedlore.state.tag = t || null; cardsTick(); },
   cardsLoadMore: () => cardsLoad(false),
+  // 窄屏频道抽屉（v1.3.10）：与真实 core 一样，状态落在 body 的类上
+  cardsToggleDrawer: () => {
+    const on = !w.document.body.classList.contains('cards-drawer-open');
+    w.document.body.classList.toggle('cards-drawer-open', on);
+    calls.push(['cardsToggleDrawer', on]);
+  },
+  cardsCloseDrawer: () => {
+    w.document.body.classList.remove('cards-drawer-open');
+    calls.push(['cardsCloseDrawer']);
+  },
   // 条目状态改动一律「换新对象」，与 core 同口径（列表项是 React.memo 的，引用不变不重绘）
   cardsSetFlag: async (id, patch) => {
     const st = w.feedlore.state;
@@ -871,13 +881,20 @@ const withEFP = (el, fn) => {
     if (modRefs !== 1) throw new Error('/src/main.jsx 引用 ' + modRefs + ' 次');
   });
 
-  // 阅读页外层 #readerRoot 必须 display:contents，否则 .reader 的两列网格会塌成 232px 单列
-  // （v1.9.0 曾因此导致「文章页侧栏 / 正文错位」线上问题）
-  t('style.css：.reader > #readerRoot 用 display:contents 还原网格', () => {
+  // 阅读页网格必须落在挂载点 #readerRoot 自身：以前是外面套一层 + display:contents 抹盒子，
+  // 而「display:contents 的祖先 + position:sticky」在部分引擎会静默失效（头部跟着内容滚走）。
+  t('style.css：#readerRoot 自己承载阅读页网格（不靠 display:contents 抹盒子）', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
     const m = css.match(/\.reader\s*>\s*#readerRoot\s*\{([^}]*)\}/);
     if (!m) throw new Error('缺 .reader > #readerRoot 规则');
-    if (m[1].indexOf('display: contents') < 0) throw new Error('应设 display:contents，实际：' + m[1].trim());
+    if (m[1].indexOf('display: grid') < 0) throw new Error('应设 display:grid，实际：' + m[1].trim());
+    if (m[1].indexOf('var(--reader-side-w)') < 0) throw new Error('网格列宽应引用 --reader-side-w');
+    const cards = css.match(/\.cards-sticky\s*\{([^}]*)\}/);
+    if (!cards) throw new Error('缺 .cards-sticky 规则');
+    if (/display:\s*contents/.test(cards[1])) {
+      throw new Error('.cards-sticky 不能再是 display:contents（吸顶元素挂在没有盒子的父级下面会失效）');
+    }
+    if (!/position:\s*sticky/.test(cards[1])) throw new Error('.cards-sticky 自己应承担吸顶');
   });
 
   // 移动端弹层只有一种形态（v1.3.6）：.dd-sheet 自己就是整屏，别再长出 .dd-page 这类形态变体类
@@ -903,6 +920,235 @@ const withEFP = (el, fn) => {
       if (!m) throw new Error('缺 ' + sel + ' 规则');
       if (!/flex:\s*0\s+0\s+auto/.test(m[1])) throw new Error(sel + ' 必须 flex:0 0 auto，否则长内容会把它挤扁：' + m[1].trim().slice(0, 120));
     }
+  });
+
+  // 卡片页与文章页共用一套抽屉（v1.3.10）：「和文章页一样」不能靠两份长得差不多的规则维持，
+  // 必须是同一条规则；同时窄屏不该再留工具栏里的频道下拉（两个入口抢同一件事）。
+  t('style.css：卡片页抽屉复用文章页那套规则 + 窄屏收起频道下拉', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    const masks = [...css.matchAll(/\.reader-mask,\s*\.cards-mask\s*\{([^}]*)\}/g)].map((m) => m[1]);
+    if (!masks.some((x) => x.includes('position: fixed'))) throw new Error('遮罩应由 .reader-mask, .cards-mask 共用同一条规则');
+    const sides = [...css.matchAll(/\.reader-side,\s*\.cards-side\s*\{([^}]*)\}/g)].map((m) => m[1]);
+    const drawer = sides.find((x) => x.includes('position: fixed'));
+    if (!drawer) throw new Error('抽屉应由 .reader-side, .cards-side 共用同一条规则');
+    if (drawer.indexOf('var(--z-drawer)') < 0) throw new Error('抽屉没走 --z-drawer 层级');
+    if (drawer.indexOf('min(272px, 84vw)') < 0) throw new Error('抽屉宽度应与文章页一致');
+    if (!/body\.cards-drawer-open\s+\.cards-side\s*\{\s*transform:\s*none/.test(css)) throw new Error('缺 body.cards-drawer-open 的展开态');
+    // ≤1080px 起抽屉就是唯一入口，头部下拉整体退场（不再只管窄屏工具栏那一处）
+    if (!/#feedDD\s*\{\s*display:\s*none/.test(css)) throw new Error('≤1080px 应把频道下拉收起（抽屉代替）');
+  });
+
+  // 窄屏卡片页顶栏压成一行 + 排序收成图标按钮（v1.3.11）：
+  // 两行顶栏在手机上白吃一张卡片的高度；「最新发布 ▾」这种带文字的方块在 360px 下把标题挤没。
+  t('style.css + sprite：卡片页窄屏一行顶栏、排序图标模式', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    if (!/\.dd-icon\s*\{\s*display:\s*none/.test(css)) throw new Error('图标模式下 .dd-icon 应默认隐藏（宽屏仍用文字）');
+    if (!/\.cards-head,\s*\.cards-head \.page-tools[^{]*\{\s*display:\s*contents/.test(css)) {
+      throw new Error('窄屏应把 .cards-head / .page-tools 退化成 display:contents，子元素才能并进同一行');
+    }
+    if (!/#sortDD \.dd-label,\s*#sortDD \.dd-caret\s*\{\s*display:\s*none/.test(css)) throw new Error('窄屏排序应只留图标');
+    if (!/#sortDD \.dd-trigger\.has-icon/.test(css)) throw new Error('缺排序图标按钮的方形尺寸规则');
+    if (!/#sortDD \.dd-trigger\.has-icon\s*\{[^}]*background-image:\s*none/.test(css)) {
+      throw new Error('图标模式要去掉 .select 自带的下拉箭头背景，否则 32px 方块里会挤出第二个箭头');
+    }
+    // 视图切换的尺寸已上移到基础规则（桌面与窄屏同高），窄屏只管排位
+    if (!/#viewMode\s*\{\s*order:\s*4/.test(css)) throw new Error('窄屏视图切换应排在第 4 位（标题右侧、搜索左侧）');
+    if (!/\.viewmode\s*\{[^}]*height:\s*var\(--head-ctl/.test(css)) throw new Error('视图切换外壳应跟 --head-ctl 走，与标题行其它按钮同高');
+    const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+    if (html.indexOf('id="i-sort"') < 0) throw new Error('缺 #i-sort 图标');
+  });
+
+  // 两页头部同构（v1.3.10 统一）：一条「标题 + 图标工具组」吸顶条 + 一行搜索/筛选。
+  // 此前卡片页桌面压根没有标题行（只有工具栏），文章页有 —— 同一个产品跑出两套头部。
+  // 这组断言守的是「结构同构」，不是像素：谁把 .cards-head 藏回去、把排序塞回工具栏、
+  // 把文章页的「频道」文字收掉或把放大镜挪到最左，都会在这里被拦下。
+  t('style.css + 视图：文章页与卡片页共用同一套头部结构', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    if (/\.cards-search-toggle,\s*\.cards-head\s*\{\s*display:\s*none/.test(css)) {
+      throw new Error('桌面卡片页也应有标题行，不能把 .cards-head 一起隐藏');
+    }
+    // 两页头部走同一组选择器（.page-head / .reader-head / .cards-head 共用一条规则）
+    const headRule = [...css.matchAll(/\.page-head,[\s\S]{0,120}?\{([^}]*)\}/g)].map((m) => m[1])[0] || '';
+    if (!/display:\s*flex/.test(headRule)) throw new Error('两页头部应由同一条 flex 规则定义');
+    if (!/position:\s*sticky/.test(headRule)) throw new Error('两页头部应同一条吸顶规则（top: --topbar-h）');
+    if (!/min-height:\s*var\(--head-h\)/.test(headRule)) throw new Error('头部高度应走 --head-h 令牌');
+    if (!/\.page-head \.dd-trigger\s*\{[^}]*height:\s*var\(--head-ctl\)/.test(css)) {
+      throw new Error('头部下拉应与其它图标按钮同高（--head-ctl）');
+    }
+    // 排序 / 视图切换 / 搜索都在标题行里，卡片页不再单独留一行工具栏
+    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
+    const head = cards.slice(cards.indexOf('wrap cards-head'), cards.indexOf('id="tagBar"'));
+    if (head.indexOf('sortDD') < 0 || head.indexOf('viewMode') < 0) {
+      throw new Error('排序与视图切换应放在标题行（与文章页的图标工具组同构）');
+    }
+    if (head.indexOf('search-box page-search') < 0) {
+      throw new Error('搜索框应住在标题行里，不该再单独占一行');
+    }
+    if (/className="wrap toolbar"/.test(cards)) {
+      throw new Error('搜索搬进标题行后，卡片页不该还留着一层 .toolbar（那是多余的一整行高度）');
+    }
+    // 文章页：搜索同样在头部行内，位置在标题之后、工具组之前
+    const reader = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
+    const rh = reader.slice(reader.indexOf('reader-head page-head'), reader.indexOf('className="reader-list"'));
+    if (rh.indexOf('reader-search page-search') < 0) throw new Error('文章页搜索应住在头部行里');
+    if (rh.indexOf('reader-search page-search') > rh.indexOf('reader-head-tools')) {
+      throw new Error('搜索应排在工具组之前（标题与图标组之间），不是工具组后面');
+    }
+    if (reader.slice(reader.indexOf('className="reader-list"')).indexOf('reader-search page-search') >= 0) {
+      throw new Error('文章页不应再有独立的搜索行');
+    }
+    const tools = reader.slice(reader.indexOf('reader-head-tools'), reader.indexOf('reader-search page-search'));
+    if (tools.indexOf('readerSearchToggle') < tools.lastIndexOf('<button')) {
+      throw new Error('放大镜应在工具行最右端（卡片页的搜索也在同一位置）');
+    }
+    // 搜索与工具组结成右侧集群：把剩余空白留在标题之后，而不是让搜索悬在中间
+    if (!/\.search-box\s*\{[^}]*margin:\s*0 0 0 auto/.test(css)) {
+      throw new Error('搜索应靠右（margin-left:auto），与工具组连成一排');
+    }
+    if (/\.reader-menu-label\s*\{\s*display:\s*none/.test(css)) {
+      throw new Error('窄屏频道开关要保留「频道」文字，一枚光秃秃的 ☰ 读不出是菜单还是收起');
+    }
+  });
+
+  // 断点体系（v1.3.10 头部重构）：1080 换导航形态、720 换密度。
+  // 这两个语义以后就是全站约定，谁再临时自造 640 / 900 之类的断点做布局降级，
+  // 页面就会开始「一档一档地跳」，所以在这里钉住。
+  t('style.css：断点体系（1080 导航降级 / 720 密度降级）+ 头部令牌', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+
+    // 令牌
+    if (!/--head-h:\s*48px/.test(css)) throw new Error('缺 --head-h 桌面值');
+    if (!/--head-ctl:\s*32px/.test(css)) throw new Error('缺 --head-ctl 桌面值');
+    const tablet = css.match(/--head-h:\s*44px;\s*--head-ctl:\s*36px/);
+    if (!tablet) throw new Error('移动档应把 --head-h / --head-ctl 覆盖成 44 / 36（控件变大、条更矮）');
+
+    // ≤1080：侧栏收进抽屉 + 频道按钮出场 + 筛选下拉退场
+    const i1080 = css.indexOf('@media (max-width: 1080px)');
+    const i720 = css.indexOf('@media (max-width: 720px)', i1080);
+    if (i1080 < 0 || i720 < 0) throw new Error('缺 ≤1080px / ≤720px 两档断点');
+    const block1080 = css.slice(i1080, i720);
+    if (!/\.reader\s*>\s*#readerRoot\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/.test(block1080)) {
+      throw new Error('≤1080px 应把阅读页分栏降成单列（网格在 #readerRoot 上）');
+    }
+    if (!/\.reader-side, \.cards-side\s*\{[^}]*position:\s*fixed/.test(block1080)) {
+      throw new Error('≤1080px 应把两页的频道栏变成抽屉（同一条规则）');
+    }
+    if (!/\.reader-menu-btn, \.cards-menu-btn\s*\{[^}]*display:\s*inline-flex/.test(block1080)) {
+      throw new Error('≤1080px 两页都该出现「频道」按钮');
+    }
+    if (!/#feedDD\s*\{\s*display:\s*none/.test(block1080)) {
+      throw new Error('≤1080px 抽屉是唯一入口，头部筛选下拉该退场');
+    }
+    // 720 那段不该再重复写抽屉规则（导航形态只在 1080 换一次）
+    const i720end = css.indexOf('@media (max-width: 560px)', i720);
+    const block720 = css.slice(i720, i720end);
+    if (/\.reader-side, \.cards-side\s*\{[^}]*position:\s*fixed/.test(block720)) {
+      throw new Error('抽屉规则只该写在 ≤1080px，别在 ≤720px 再抄一份');
+    }
+
+    // 触屏命中区：视觉 36px，纵向补到 44px（只扩上下，避免和邻键抢点击）
+    if (!/\.page-head \.btn::after[\s\S]{0,200}?- 44px\) \/ 2/.test(css)) {
+      throw new Error('移动端命中区应纵向补到 44px');
+    }
+  });
+
+  // 搜索框统一成胶囊 + 去掉头部那条分隔线（v1.3.10）
+  // 三处搜索（卡片页 .search-box、文章页 .reader-search、共用 .page-search）必须
+  // 共用一条输入框规则，否则又会退化成「两个页面两种搜索框」。
+  t('style.css：两页搜索框统一胶囊、头部不画分隔线', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    if (!/--search-h:\s*32px/.test(css)) throw new Error('缺 --search-h 令牌（胶囊定高，须与 --head-ctl 同高）');
+    if (!/--head-ctl:\s*32px/.test(css)) throw new Error('缺 --head-ctl 桌面值');
+    if (!/--search-w:\s*560px/.test(css)) throw new Error('缺 --search-w 令牌（桌面宽度上限）');
+    const input = css.match(/\.page-search input,\s*\.reader-search input,\s*\.search-box input \{([^}]*)\}/);
+    if (!input) throw new Error('三处搜索框必须共用一条规则');
+    if (!/height:\s*var\(--search-h\)/.test(input[1])) throw new Error('搜索框高度应引用 --search-h');
+    if (!/border-radius:\s*var\(--radius-pill\)/.test(input[1])) {
+      throw new Error('搜索框应统一成胶囊（999px），不再是方角矩形');
+    }
+    if (!/padding:\s*0 var\(--sp-8\) 0 36px/.test(input[1])) {
+      throw new Error('胶囊左右内边距要按端头重排（左 36px 给图标）');
+    }
+    // 头部条不画底边线
+    const head = css.match(/\.page-head,\s*\.reader-head,\s*\.cards-head \{([^}]*)\}/);
+    if (!head) throw new Error('缺两页共用的头部条规则');
+    if (!/border-bottom:\s*0/.test(head[1])) throw new Error('头部条不该再画底部分隔线');
+    // 窄屏卡片页那条线同理（它就是贴在搜索框上方的那条）
+    const i720 = css.lastIndexOf('@media (max-width: 720px)');
+    const sticky = css.slice(i720, css.indexOf('@media (max-width: 560px)', i720));
+    const stickyRule = sticky.match(/\.cards-sticky \{([^}]*)\}/);
+    if (!stickyRule) throw new Error('缺窄屏吸顶栏规则');
+    if (!/border-bottom:\s*0/.test(stickyRule[1])) throw new Error('窄屏吸顶栏也不该有分隔线');
+    // 移动端只留图标入口
+    if (!/--search-w:\s*100%/.test(sticky)) throw new Error('窄屏搜索胶囊应回落到整行');
+    if (!/\.page-search \{\s*display:\s*none/.test(sticky)) {
+      throw new Error('≤720px 搜索框应整块退场，只留放大镜入口');
+    }
+  });
+
+  // 两栏工具图标同尺寸 + 吸顶不依赖 display:contents（v1.3.10）
+  // 手机上顶栏（第一栏）与页面头部（第二栏）上下紧挨着；图标 15 / 16 混用、按钮 33 / 36
+  // 混用都会一眼看出来「一大一小」。同时把 --topbar-h 改为量外层 .topbar（含 1px 边线），
+  // 否则吸顶条的顶端会被顶栏压住一条缝。
+  t('style.css + 顶栏：两栏图标同一尺寸，吸顶偏移量取自外层顶栏', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    if (!/--ico-ctl:\s*1rem/.test(css)) throw new Error('缺 --ico-ctl 令牌（两栏共用的图标尺寸）');
+    const icoRule = css.match(/\.topbar-actions \.btn \.ico,[\s\S]{0,220}?\{([^}]*)\}/);
+    if (!icoRule) throw new Error('缺「顶栏 + 页面头部」共用的图标尺寸规则');
+    if (!/\.page-head \.btn \.ico/.test(icoRule[0])) throw new Error('图标规则必须同时覆盖页面头部（.page-head .btn .ico）');
+    if (!/width:\s*var\(--ico-ctl\)/.test(icoRule[1]) || !/font-size:\s*var\(--ico-ctl\)/.test(icoRule[1])) {
+      throw new Error('.ico 自带 font-size，只改按钮字号带不动图标，宽高与字号都要钉到 --ico-ctl');
+    }
+    // 移动档：顶栏按钮外框与头部控件同尺寸。
+    // v1.3.11 起这条规则挪到 ≤820px（= 文字收起的同一档）：放在 720 时，
+    // 721–820 这段视图切换已经是 32（--head-ctl）而工具按钮还是 34（内边距撑的），并排差 2px。
+    // 820 有两段（顶栏降级 / 视图切换），取含这条规则的那一段。
+    const seg = css.match(/@media \(max-width: 820px\) \{[\s\S]*?\.topbar-actions \.btn \{[\s\S]{0,700}?\n\}/);
+    if (!seg) throw new Error('≤820px 应把顶栏工具按钮拉到与头部控件同尺寸');
+    const block = seg[0];
+    const bar = block.match(/\.topbar-actions \.btn \{([^}]*)\}/);
+    if (!bar || !/width:\s*var\(--head-ctl\)/.test(bar[1]) || !/height:\s*var\(--head-ctl\)/.test(bar[1])) {
+      throw new Error('顶栏按钮应直接用 --head-ctl（两栏同一把尺子）');
+    }
+    if (!/#refreshBtn, #themeBtn, #settingsBtn \{ padding: 0/.test(block)) {
+      throw new Error('≤820px 的 padding 规则特异度更高，要同段点名压回 0');
+    }
+    // 吸顶偏移：外层 .topbar 的实测高度（含 1px 底边线）
+    const topbar = fs.readFileSync(path.join(root, 'src', 'shell', 'TopBar.jsx'), 'utf8');
+    if (topbar.indexOf("closest('.topbar')") < 0) throw new Error('--topbar-h 应量外层 .topbar，不是内层 .topbar-inner');
+    if (!/getBoundingClientRect\(\)\.height/.test(topbar) || !/Math\.ceil/.test(topbar)) {
+      throw new Error('--topbar-h 应取整（含小数像素时吸顶会露 1px 缝）');
+    }
+    const head = css.match(/\.page-head,\s*\.reader-head,\s*\.cards-head \{([^}]*)\}/);
+    if (!head || !/top:\s*var\(--topbar-h/.test(head[1])) throw new Error('头部吸顶的 top 应取 --topbar-h');
+  });
+
+  // 窄屏视图切换（v1.3.10）：文字收掉后不能再让两个按钮平分整条宽度 ——
+  // 那样就是「一条空胶囊里飘着两个小图标」，比右侧工具按钮显眼得多却什么都没写。
+  t('style.css：窄屏视图切换改成图标方块组', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    // v1.3.11：断点从 560 抬到 820 —— 文字在 820 就被 .btn-label 收掉，
+    // 外壳却留到 560 才散，中间 260px 是一条空胶囊。断点必须与文字隐藏同步。
+    const blocks = [...css.matchAll(/@media \(max-width: 820px\) \{([\s\S]*?)\n\}/g)].map((m) => m[1]);
+    const block = blocks.find((b) => /\.viewnav\s*\{/.test(b));
+    if (!block) throw new Error('缺 ≤820px 的 .viewnav 规则');
+    // 必须排在「组件统一 1)」之后：同特异度靠源顺序取胜，写在前面会被反盖
+    const unified = css.indexOf('.seg, .viewnav {');
+    const at = css.search(/@media \(max-width: 820px\) \{\s*\.viewnav \{/);
+    if (unified < 0 || at < unified) throw new Error('窄屏 .viewnav 必须排在 .seg, .viewnav 之后才生效');
+    const nav = block.match(/\.viewnav\s*\{([^}]*)\}/);
+    if (/flex:\s*1/.test(nav[1])) throw new Error('视图切换不该再吃满剩余宽度：' + nav[1].trim());
+    if (!/margin-right:\s*auto/.test(nav[1])) throw new Error('不再 flex:1 后要靠 margin-right:auto 把工具按钮推到右边');
+    if (!/background:\s*none/.test(nav[1]) || !/border:\s*0/.test(nav[1])) throw new Error('窄屏应去掉分段控件的外框');
+    if (!/box-shadow:\s*none/.test(nav[1])) throw new Error('外框去掉后拟态内阴影也要撤掉，否则留下一条凹槽');
+    const btn = block.match(/\.viewnav-btn\s*\{([^}]*)\}/);
+    if (!btn || !/width:\s*var\(--head-ctl\)/.test(btn[1])) {
+      throw new Error('视图按钮外框应走 --head-ctl，与右侧工具按钮同一把尺子（旧值 32 与 36 差 4px，并排一眼看得出）');
+    }
+    if (!/\.viewnav-btn\.active\s*\{[^}]*background:\s*var\(--accent-soft\)/.test(block)) throw new Error('选中项应改用 --accent-soft 打底');
   });
 
   // 卡片页频道筛选的组头折叠（v1.3.8）：整行可点 + 移动端命中区够大 + 能力默认关
@@ -2581,6 +2827,17 @@ const withEFP = (el, fn) => {
     if (C('#feedDD .dd-mask')) throw new Error('弹窗未收起');
   });
   // 排序（三四项）从 v1.3.6 起与频道筛选走同一形态：移动端一律整屏，不再留半屏变体
+  t('排序：窄屏收成图标按钮，名字与提示带当前档位', () => {
+    const btn = C('#sortSelect');
+    if (!btn.classList.contains('has-icon')) throw new Error('排序应走 Dropdown 的 icon 模式');
+    const ico = btn.querySelector('.dd-icon use');
+    if (!ico || ico.getAttribute('href') !== '#i-sort') throw new Error('缺排序图标');
+    // 图标按钮没有可见文字，无障碍名必须自带档位，否则屏幕阅读器只听到「排序」
+    if ((btn.getAttribute('aria-label') || '').indexOf('排序：') !== 0) throw new Error('aria-label 未带档位：' + btn.getAttribute('aria-label'));
+    if ((btn.getAttribute('title') || '').indexOf('排序：') !== 0) throw new Error('title 未带档位');
+    // 文字标签仍在 DOM 里（宽屏要用），只是窄屏被 CSS 隐藏
+    if (!btn.querySelector('.dd-label')) throw new Error('宽屏仍需要文字标签');
+  });
   C('#sortSelect').click();
   await sleep(20);
   t('排序下拉（移动端）：与频道筛选同一形态（整屏 + 手势条），弹层不再有第二种变体', () => {
@@ -2878,6 +3135,77 @@ const withEFP = (el, fn) => {
   t('空态：无订阅源提示', () => {
     if (!C('#empty')) throw new Error('无空态');
     if (C('#empty').textContent.indexOf('还没有订阅源') < 0) throw new Error('文案: ' + C('#empty').textContent);
+  });
+
+  // ---- 窄屏频道抽屉（v1.3.10）：卡片页改成与文章页同一套「标题栏 + 抽屉」----
+  w.feedlore.state.feedList = [
+    { id: '1', title: '例子星球', customTitle: null, cardEnabled: true, enabled: true, entryCount: 12, groupName: '科技' },
+    { id: '2', title: 'demo', customTitle: null, cardEnabled: true, enabled: true, entryCount: 4, groupName: '' },
+  ];
+  w.feedlore.state.feedMeta = { total: 2, enabled: 2, cardEnabled: 2 };
+  w.feedlore.state.feedFilter = null;
+  w.feedlore.state.entries = miniEntriesAll();
+  cardsTick();
+  await sleep(40);
+
+  t('标题栏：频道开关 / 标题 / 放大镜三件套齐全', () => {
+    if (!C('#cardsMenuBtn')) throw new Error('缺「频道」开关');
+    if (!C('#cardsSearchToggle')) throw new Error('缺放大镜');
+    if (!C('.cards-title')) throw new Error('缺标题');
+    if (!C('.cards-head').contains(C('#cardsMenuBtn'))) throw new Error('「频道」不在标题栏里');
+  });
+
+  t('频道抽屉：默认收起，点「频道」打开、再点收起', () => {
+    if (!C('#cardsSide')) throw new Error('缺抽屉容器');
+    if (w.document.body.classList.contains('cards-drawer-open')) throw new Error('默认就打开了');
+    C('#cardsMenuBtn').click();
+    if (!w.document.body.classList.contains('cards-drawer-open')) throw new Error('点了没打开');
+    C('#cardsMenuBtn').click();
+    if (w.document.body.classList.contains('cards-drawer-open')) throw new Error('再点没收起');
+  });
+
+  t('频道抽屉：「全部频道」+ 频道行（含分组与条数）', () => {
+    const rows = CA('#cardsChannels .rd-ch');
+    // 全部 + 2 个启用卡片的频道
+    if (rows.length !== 3) throw new Error('行数 ' + rows.length + '：' + rows.map((r) => r.getAttribute('data-feed')).join(','));
+    const all = rows.find((r) => r.getAttribute('data-feed') === '');
+    if (!all || all.textContent.indexOf('全部频道') < 0) throw new Error('缺「全部频道」入口');
+    if (!all.classList.contains('active')) throw new Error('未选中时「全部频道」应高亮');
+    if (all.textContent.indexOf('16') < 0) throw new Error('「全部频道」应显示总条数 16：' + all.textContent);
+    const f1 = rows.find((r) => r.getAttribute('data-feed') === '1');
+    if (!f1) throw new Error('缺频道 1');
+    if (f1.textContent.indexOf('12') < 0) throw new Error('频道行应带条数：' + f1.textContent);
+    if (!CA('#cardsChannels .rd-ch-group').length) throw new Error('有分组时应画组头');
+  });
+
+  t('频道抽屉：点频道 → 按该频道过滤并收起抽屉', () => {
+    C('#cardsMenuBtn').click();
+    CA('#cardsChannels .rd-ch').find((r) => r.getAttribute('data-feed') === '1').click();
+    const fed = w.feedlore.state.feedFilter;
+    if (String(fed) !== '1') throw new Error('未按频道过滤：' + fed);
+    if (w.document.body.classList.contains('cards-drawer-open')) throw new Error('选完应自动收起');
+  });
+  await sleep(40);
+  w.feedlore.state.feedFilter = null;
+  w.feedlore.state.entries = miniEntriesAll();
+  cardsTick();
+  await sleep(30);
+
+  t('频道抽屉：关闭按钮与遮罩都能收起', () => {
+    C('#cardsMenuBtn').click();
+    C('#cardsSideClose').click();
+    if (w.document.body.classList.contains('cards-drawer-open')) throw new Error('关闭按钮没生效');
+    C('#cardsMenuBtn').click();
+    C('#cardsMask').click();
+    if (w.document.body.classList.contains('cards-drawer-open')) throw new Error('点遮罩没生效');
+  });
+
+  t('频道抽屉：添加频道 → 收起并打开数据源设置', () => {
+    const before = callsOf('readerOpenSource').length;
+    C('#cardsMenuBtn').click();
+    C('#cardsChannels .rd-ch-add').click();
+    if (w.document.body.classList.contains('cards-drawer-open')) throw new Error('没收起');
+    if (callsOf('readerOpenSource').length === before) throw new Error('未打开数据源设置');
   });
 
   // ============ 阅读页（P3c React 化） ============
@@ -3259,9 +3587,9 @@ const withEFP = (el, fn) => {
   t('style.css：栏宽走 --reader-side-w，列表视图也跳过离屏渲染', () => {
     const root = path.join(__dirname, '..', '..');
     const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
-    const m = css.match(/\.reader\s*\{([^}]*)\}/);
-    if (!m) throw new Error('缺 .reader 规则');
-    if (m[1].indexOf('var(--reader-side-w)') < 0) throw new Error('.reader 未引用栏宽变量：' + m[1].trim());
+    const m = css.match(/\.reader\s*>\s*#readerRoot\s*\{([^}]*)\}/);
+    if (!m) throw new Error('缺 .reader > #readerRoot 规则');
+    if (m[1].indexOf('var(--reader-side-w)') < 0) throw new Error('#readerRoot 未引用栏宽变量：' + m[1].trim());
     if (/grid-template-columns:\s*232px/.test(css)) throw new Error('仍有写死的 232px 列宽');
     if (!/^\s*--reader-side-w:/m.test(css)) throw new Error(':root 缺 --reader-side-w 初值');
     const row = css.match(/\.row-item\s*\{([^}]*)\}/);
@@ -3577,6 +3905,7 @@ const withEFP = (el, fn) => {
         'getReaderSideWidth', 'setReaderSideWidth', 'applyReaderSideWidth', 'readerSideCap',
         'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsView', 'cardsTag',
         'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'promptInstall',
+        'cardsToggleDrawer', 'cardsCloseDrawer',
         'openSettings', 'toast', 'apiFetch', 'isAdmin', 'exportOpml', 'bindSections', 'groupFeeds',
         'getToastState', 'getNewPillState', 'getLightboxState', 'applyPendingFresh',
         'getConfirmState', 'confirm', 'settleConfirm', 'cancelConfirm',
@@ -3605,11 +3934,140 @@ const withEFP = (el, fn) => {
       c2.setDigestEnabled(true);
       if (c2.digestIsEnabled() !== true) throw new Error('未能重新开启');
     });
+    // 侧滑手势已抽到 drawer.js（v1.3.10）：文章页 / 卡片页共用一套。
+    // 这里在真实 core 上验「按 state.tab 选对抽屉」——选错的表现是右滑什么都拉不出来。
+    t('冒烟：卡片页右滑拉出频道抽屉（手势按当前页面选抽屉）', () => {
+      const c2 = sw.__coreForTest;
+      const doc = sw.document;
+      for (const id of ['cardsSide', 'cardsMask']) {
+        const el = doc.createElement('aside');
+        el.id = id;
+        doc.body.appendChild(el);
+      }
+      Object.defineProperty(sw, 'innerWidth', { value: 390, configurable: true });
+      c2.state.tab = 'cards';
+      doc.body.classList.remove('cards-drawer-open');
+      const touch = (type, x, y) => {
+        const ev = new sw.Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(ev, 'touches', { value: type === 'touchend' ? [] : [{ clientX: x, clientY: y }] });
+        if (type === 'touchend') Object.defineProperty(ev, 'changedTouches', { value: [{ clientX: x, clientY: y }] });
+        doc.dispatchEvent(ev);
+      };
+      touch('touchstart', 40, 400);
+      touch('touchmove', 110, 402);
+      touch('touchmove', 200, 404);
+      const side = doc.getElementById('cardsSide');
+      if (!side.style.transform || side.style.transform === 'translateX(-104%)') {
+        throw new Error('跟手阶段抽屉没位移：' + (side.style.transform || '(空)'));
+      }
+      touch('touchend', 260, 404);
+      if (!doc.body.classList.contains('cards-drawer-open')) throw new Error('右滑够距应打开抽屉');
+      c2.cardsCloseDrawer();
+      if (doc.body.classList.contains('cards-drawer-open')) throw new Error('卡片页抽屉关不上');
+      // 文章页没有被这次右滑误开（同一套手势，各归各的类）
+      if (doc.body.classList.contains('reader-drawer-open')) throw new Error('误开了文章页抽屉');
+
+      // 换到文章页，同一套手势应作用于它自己的抽屉（重构后不能只顾新页面）
+      for (const id of ['readerSide', 'readerMask']) {
+        const el = doc.createElement('aside');
+        el.id = id;
+        doc.body.appendChild(el);
+      }
+      doc.body.removeAttribute('style');
+      doc.body.classList.remove('reader-drawer-open');
+      c2.state.tab = 'reader';
+      touch('touchstart', 40, 400);
+      touch('touchmove', 110, 402);
+      touch('touchmove', 200, 404);
+      touch('touchend', 260, 404);
+      if (!doc.body.classList.contains('reader-drawer-open')) throw new Error('文章页抽屉没拉出来');
+      if (doc.body.classList.contains('cards-drawer-open')) throw new Error('文章页也开了卡片页抽屉');
+      c2.readerCloseDrawer();
+    });
     sw.close();
   }
 
-  let fail = 0;
-  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });
+  /* ---------- v1.3.11 全面重构守门 ---------- */
+
+  // 频道树只有一份实现：两页各写一遍是「改一处另一处不跟」的根源
+  t('组件复用：频道树只有 ChannelList 一份，两页都用它', () => {
+    const root = path.join(__dirname, '..', '..');
+    const list = path.join(root, 'src', 'views', 'ChannelList.jsx');
+    if (!fs.existsSync(list)) throw new Error('缺 src/views/ChannelList.jsx');
+    const src = fs.readFileSync(list, 'utf8');
+    if (src.indexOf("variant = 'reader'") < 0) throw new Error('ChannelList 应支持 reader / cards 两种形态');
+    for (const f of ['ReaderView.jsx', 'CardsView.jsx']) {
+      const v = fs.readFileSync(path.join(root, 'src', 'views', f), 'utf8');
+      if (v.indexOf("from './ChannelList.jsx'") < 0) throw new Error(f + ' 未使用共享频道树');
+      if (/function (ReaderChannels|CardsChannels)/.test(v)) throw new Error(f + ' 里还留着旧频道树实现');
+      if (/className=\{?'?rd-ch/.test(v.replace(/ChannelList[\s\S]*$/, ''))) throw new Error(f + ' 仍在手写 .rd-ch 行');
+    }
+  });
+
+  // 无文字按钮的可访问名：.btn-label 被 display:none 后，名字只能靠 aria-label
+  t('可访问性：视图切换在窄屏仍有可访问名与选中态', () => {
+    const top = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'shell', 'TopBar.jsx'), 'utf8');
+    const nav = top.slice(top.indexOf('viewnav'), top.indexOf('viewnav-actions') < 0 ? undefined : undefined);
+    if (!/aria-label=\{v\.label\}/.test(top)) {
+      throw new Error('视图切换按钮缺 aria-label —— 窄屏 .btn-label 被 display:none 后按钮就无名了');
+    }
+    if (!/aria-current=\{active \? 'page' : undefined\}/.test(top)) throw new Error('当前视图应用 aria-current 表达，而不是只有 .active 类');
+    if (nav.indexOf('aria-hidden="true">{v.label}') < 0) throw new Error('视觉文字重复朗读，应给 .btn-label 加 aria-hidden');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'style.css'), 'utf8');
+    if (!/@media \(max-width: 820px\)[\s\S]{0,900}?\.viewnav-btn \{/.test(css)) {
+      throw new Error('视图切换的图标化断点必须与 .btn-label 隐藏同步（820），否则 561–820 是一条空胶囊');
+    }
+  });
+
+  // 标签 chips：真按钮 + 漫游焦点，别让 16 个 chip 占 16 个 Tab
+  t('可访问性：标签 chips 是真按钮且只占一个 Tab 停靠点', () => {
+    const v = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'views', 'CardsView.jsx'), 'utf8');
+    if (/<span[^>]*role="button"[^>]*tag-chip/.test(v)) throw new Error('标签仍是 span[role=button]，应换成真 <button>');
+    const bar = v.slice(v.indexOf('id="tagBar"'), v.indexOf('<main className="wrap">'));
+    if (bar.indexOf('role="toolbar"') < 0) throw new Error('标签组应是 role=toolbar');
+    if (!/tabIndex=\{chipIdx === 0 \? 0 : -1\}/.test(bar)) throw new Error('缺漫游焦点（整组只留一个 tabIndex=0）');
+    if (!/ArrowRight/.test(v) || !/ArrowLeft/.test(v)) throw new Error('漫游焦点要支持左右方向键');
+    if (!/aria-pressed=\{st\.tag === tag \? 'true' : 'false'\}/.test(bar)) throw new Error('选中态应用 aria-pressed');
+  });
+
+  // 卡片页「下拉即标题」：同一信息只出现一次
+  t('卡片页头部：桌面由筛选下拉充当标题，窄屏才用文字标题', () => {
+    const root = path.join(__dirname, '..', '..');
+    const v = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
+    const head = v.slice(v.indexOf('wrap cards-head'), v.indexOf('id="tagBar"'));
+    if (head.indexOf('wrapId="feedDD"') < 0) throw new Error('#feedDD 应在 .cards-head 里（标题位）');
+    const tools = head.slice(head.indexOf('page-tools'));
+    if (tools.indexOf('wrapId="feedDD"') >= 0) throw new Error('#feedDD 仍在工具组里 —— 标题与筛选会重复');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const mw = css.match(/@media \(min-width: 1081px\) \{([\s\S]*?)\n\}/);
+    if (!mw) throw new Error('缺 ≥1081px 段');
+    if (!/\.cards-head > \.cards-title \{ display: none/.test(mw[1])) {
+      throw new Error('桌面应隐藏文字标题（下拉即标题）；这条必须写在 min-width 里，否则窄屏标题也被藏掉');
+    }
+    if (!/\.cards-head > #feedDD \{/.test(mw[1])) throw new Error('下拉的标题样式应只作用于 ≥1081px');
+  });
+
+  // 吸顶条的滚动边界 + 卡片浮动按钮的悬停门控
+  t('视觉：滚动边界与卡片动作的显隐策略', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    if (!/body\.is-scrolled \.page-head,[\s\S]{0,80}?box-shadow: 0 1px 0 0 var\(--border\)/.test(css)) {
+      throw new Error('缺 body.is-scrolled 的吸顶边界（滚动后内容从条下穿过，需要一条 1px 说明）');
+    }
+    const top = fs.readFileSync(path.join(root, 'src', 'shell', 'TopBar.jsx'), 'utf8');
+    if (top.indexOf("classList.toggle('is-scrolled'") < 0) throw new Error('TopBar 未维护 body.is-scrolled');
+    if (!/@media \(hover: hover\) and \(pointer: fine\)[\s\S]{0,240}?\.card-media-actions/.test(css)) {
+      throw new Error('卡片浮动按钮应有 hover 门控（触屏那档必须继续常显）');
+    }
+    if (!/\.card:focus-within \.card-media-actions \{ opacity: 1/.test(css)) {
+      throw new Error('悬停显形的同时要照顾键盘：:focus-within 也要显形');
+    }
+    // 禁止 transition: all（会把布局属性一起动画）
+    const chip = css.match(/^\.tag-chip \{([\s\S]*?)\n\}/m);
+    if (chip && /transition:\s*all/.test(chip[1])) throw new Error('.tag-chip 不该用 transition: all');
+  });
+
+  let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });
   console.log(`\n共 ${results.length} 项，通过 ${results.length - fail}，失败 ${fail}`);
   process.exit(fail ? 1 : 0);
 })().catch((e) => { console.error('FATAL', e); process.exit(2); });

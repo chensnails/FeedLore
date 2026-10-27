@@ -6,7 +6,7 @@
  * ============================================================ */
 
 import { $, apiFetch, toast, emitShell } from './util.js';
-import { state, layoutPref, setLayout } from './state.js';
+import { state, layoutPref, setLayout, lockPageScroll, unlockPageScroll } from './state.js';
 
 /** 按分组名把频道归类：未分组的排最前，其余按名称排序；组内保持原顺序 */
 export function groupFeeds(feeds) {
@@ -170,3 +170,24 @@ window.addEventListener('scroll', () => {
     loadPage(false).finally(() => setTimeout(() => (scrollLock = false), 400));
   }
 });
+
+/* ---------------- 移动端：卡片页的频道抽屉 ----------------
+ * 与文章页同一套交互（v1.3.10）：标题栏左侧「频道」按钮开合，右滑从左边推出，
+ * 点遮罩 / 关闭按钮 / 左滑收起。状态照旧落在 <body> 的类上 —— 类名由 CSS 接管动画，
+ * 手势（src/core/drawer.js）读同一个类判断开合，不需要再传一份状态。
+ * 宽屏没有抽屉（频道筛选走工具栏下拉），窗口变宽时自动收起。
+ */
+export let cardsDrawerLocked = false;   // 抽屉当前是否拿着页面滚动锁
+
+export function setCardsDrawer(open) {
+  const on = !!open;
+  if (on === document.body.classList.contains('cards-drawer-open')) return;
+  document.body.classList.toggle('cards-drawer-open', on);
+  // 与文章页抽屉一致：铺满整屏的浮层得把背景真的钉住，iOS 上只写 overflow:hidden 挡不住惯性滚动
+  if (on) { lockPageScroll(); cardsDrawerLocked = true; }
+  else if (cardsDrawerLocked) { cardsDrawerLocked = false; unlockPageScroll(); }
+}
+
+export function cardsToggleDrawer() { setCardsDrawer(!document.body.classList.contains('cards-drawer-open')); }
+export function cardsCloseDrawer() { setCardsDrawer(false); }
+window.addEventListener('resize', () => { if (window.innerWidth > 720) setCardsDrawer(false); });

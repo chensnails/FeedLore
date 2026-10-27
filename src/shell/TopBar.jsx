@@ -46,20 +46,48 @@ export function TopBar() {
     return () => window.removeEventListener('__shellTick', onTick);
   }, []);
 
-  // 顶栏高度 → CSS 变量 --topbar-h（阅读页头部在窄屏下吸在顶栏下面）
+  // 顶栏高度 → CSS 变量 --topbar-h（阅读页 / 卡片页头部吸顶时贴在它下面）
   useLayoutEffect(() => {
     const el = rootRef.current;
     if (!el) return undefined;
-    const apply = () => document.documentElement.style.setProperty('--topbar-h', el.offsetHeight + 'px');
+    const apply = () => {
+      // 量外层 <header class="topbar">，不是内部那行 .topbar-inner：
+      // 外层还带 1px 底边线，只量内层会让吸顶条少算 1px，头部顶端被顶栏压住一条缝。
+      const host = el.closest('.topbar') || el;
+      document.documentElement.style.setProperty('--topbar-h', Math.ceil(host.getBoundingClientRect().height) + 'px');
+    };
     apply();
+    // 首帧里字体 / 图标还没落位，高度可能是旧值；下一帧与字体加载完成各补一次
+    const raf = requestAnimationFrame(apply);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(apply).catch(() => {});
     window.addEventListener('resize', apply);
     window.addEventListener('orientationchange', apply);
     let ro = null;
-    if (window.ResizeObserver) { ro = new ResizeObserver(apply); ro.observe(el); }
+    if (window.ResizeObserver) { ro = new ResizeObserver(apply); ro.observe(el.closest('.topbar') || el); }
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener('resize', apply);
       window.removeEventListener('orientationchange', apply);
       if (ro) ro.disconnect();
+    };
+  }, []);
+
+  /* 滚动状态 → body.is-scrolled。
+   * 吸顶条静止时不必画边界线，一旦有内容从它下面穿过就需要一条 1px 的分隔
+   * （见 style.css 的 body.is-scrolled 规则）。只切一个类，rAF 合并高频 scroll。 */
+  useEffect(() => {
+    let raf = 0;
+    const apply = () => {
+      raf = 0;
+      const y = window.scrollY || window.pageYOffset || 0;
+      document.body.classList.toggle('is-scrolled', y > 2);
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(apply); };
+    apply();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
     };
   }, []);
 
@@ -67,7 +95,6 @@ export function TopBar() {
     setBusy(true);
     try { await core.refresh(); } finally { setBusy(false); }
   }, []);
-
   const s = core;
   // 日报被账号关掉时整个入口不渲染（不是 disabled 灰着）：留着只会让人以为点坏了
   const views = snap.digestVisible === false ? VIEWS.filter((v) => v.id !== 'ai') : VIEWS;
@@ -88,19 +115,27 @@ export function TopBar() {
         </div>
       </div>
       <div className="topbar-actions">
-        <nav className="viewnav" id="viewNav">
-          {views.map((v) => (
-            <button
-              type="button"
-              key={v.id}
-              className={'viewnav-btn' + (snap.view === v.id ? ' active' : '')}
-              data-view={v.id}
-              onClick={() => { if (s.switchView) s.switchView(v.id); }}
-            >
-              <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + v.ico} /></svg>
-              <span className="btn-label">{v.label}</span>
-            </button>
-          ))}
+        <nav className="viewnav" id="viewNav" role="navigation" aria-label="视图切换">
+          {views.map((v) => {
+            const active = snap.view === v.id;
+            return (
+              <button
+                type="button"
+                key={v.id}
+                className={'viewnav-btn' + (active ? ' active' : '')}
+                data-view={v.id}
+                /* 窄屏把 .btn-label 设为 display:none（移出无障碍树），按钮就只剩一枚无名图标。
+                   名字必须显式给到 aria-label，title 只作鼠标提示。 */
+                aria-label={v.label}
+                title={v.label}
+                aria-current={active ? 'page' : undefined}
+                onClick={() => { if (s.switchView) s.switchView(v.id); }}
+              >
+                <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + v.ico} /></svg>
+                <span className="btn-label" aria-hidden="true">{v.label}</span>
+              </button>
+            );
+          })}
         </nav>
         <div className="stat" id="stat" hidden={!snap.statVisible}>
           <span id="statCount">{snap.stat}</span>

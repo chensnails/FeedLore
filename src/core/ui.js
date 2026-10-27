@@ -7,7 +7,7 @@
 
 import { $, apiFetch, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle } from './util.js';
 import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, THEME_MODES, THEME_META, currentThemeMode, isAdmin } from './state.js';
-import { TABS, loadFeeds, loadPage, applyFilters, render, subtitleText, setViewMode } from './feeds.js';
+import { TABS, loadFeeds, loadPage, applyFilters, render, subtitleText, setViewMode, setCardsDrawer } from './feeds.js';
 import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, readerToggleArt, readerToggleFav, markEntryRead, focusReaderArt } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
 
@@ -112,6 +112,8 @@ export function switchView(name) {
     hideNewPill();   // 浮标里的新内容是上一个页面拉到的，切页就作废
     // 离开文章页时把频道抽屉收掉（否则它会盖在卡片/AI 页上，还占着页面滚动锁）
     if (name !== 'reader') setReaderDrawer(false);
+    // 卡片页的频道抽屉同理（v1.3.10）
+    if (name !== 'cards') setCardsDrawer(false);
 
     $('#readerView').hidden = name !== 'reader';
     $('#cardsView').hidden = name !== 'cards';
