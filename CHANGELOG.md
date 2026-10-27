@@ -4,6 +4,28 @@
 
 ## [未发布]
 
+## [1.4.0] — 2026-10-27
+
+- **视图级工具栏统一（`.view-toolbar`）**：卡片页与文章页的「第二行」头部合并成同一套实现，两页 DOM 顺序恒为 **频道 → 标题 → [右簇] 排序 → 视图切换 → 搜索**（搜索永远在最右，两页、两档断点同一答案）。
+  - 令牌只在工具栏子树覆盖（`--head-h` / `--head-ctl` / `--search-h` / `--head-gap`），不动 `:root` —— `:root` 的 48/32 被 UI 回归钉住，且顶栏尺寸不能连锁变。
+  - **两排同一把尺子**：`:root` 新增 `--ctl-h:36px` 与 `--ctl-gap`。顶栏 `.topbar-actions` / `.viewnav` 与工具栏 `.page-tools` / `.reader-head-tools` 全部改用这两枚 —— 此前顶栏按钮由内容撑到 35、第二行 36，1px 并排可见；右簇内「排序→视图」8px、「视图→搜索」12px 两段不等。
+  - ⚠️ `.search-ico` 必须 `position:absolute`：搜索框是 flex 容器，图标留在流里就是第一个 flex item，会占掉宽度把带边框的 input 挤到右边 —— 看上去就是「放大镜浮在框外」。三处父级（`.page-search` / `.reader-search` / `.search-box`）合并成一条规则，避免逐份覆写漂成 13/14/13。
+  - ⚠️ 删掉 ≤720 段里的 `.viewmode{margin-left:auto}`：那会把视图切换单独推走，在「排序」与「视图切换」之间拉开 153px 空隙，右簇被撕成两段。`margin-left:auto` 改挂 `.page-tools` / `.reader-head-tools` 上（挂在搜索框身上会让空白出现在工具组与搜索之间）。
+  - 窄屏放开标题 `max-width` 时必须连 `.cards-head > .page-title` 一起压（0,2,0 特异度），否则 680px 下标题仍被钉在屏宽 40%，右簇贴不到右。卡片页窄屏一行需 364px，≤360 让 `.cards-title` 退场。
+  - 文章页头部宽度 = 阅读列宽（`--reader-width`，默认 1000 居中），右缘比顶栏短 17px 是刻意的：页眉与正文列严格同宽。
+  - 实机（本地容器 3211，Edge 无头 + CDP）：320–1440 共 14 档实测单行、无横向溢出、控件高 36、两排右缘对齐。
+- **顶栏「50 条资源」统计移除**：按需求不再展示该数据，`TopBar.jsx` / `shellSnapshot` / `.stat` CSS 同步清理，回归断言改为断言该元素不存在。
+- **UI 体验评审落地（#6 / #7 / #9 / #10）**：
+  - [#6] 密度偏好：appearance 偏好新增 `density`（`cozy` 默认 / `compact`），`lib/prefs.js` 与 `src/core/state.js` 双端白名单同步，`AppearancePane` 加分段控件，`:root[data-density="compact"]` 收紧网格 `minmax` 与间距。
+  - [#7] 频道内搜索：`ChannelList` 增加本地搜索态，按频道名过滤（保留分组、命中即展开），顶部加搜索框 + 清空 + 无匹配空态，两页抽屉共用。
+  - [#9] 降阴影：三主题各降 `--neu-shadow*` 双向阴影约 40%，浅色主题降卡片静止阴影；保留 hover 交互阴影、浮层 `--shadow-lg` 与 toast 阴影。
+  - [#10] 站内确认层：「全部已读」复用站内 dialog（不再用原生 `confirm`），按 `readerFilterParams` 的 feeds 聚合 `unreadCount` 得出受影响篇数并写入确认框说明。
+- **移动端卡片页默认铺开 16 标签 → 折叠为「全部 + 6 个标签 + 展开 N 个」**，首屏不再被筛选区挤压。
+- **卡片缩略图加轻量渐变遮罩**：外部图明暗不可控会削弱来源 / 时间 / 操作的辨识，遮罩保证图上信息始终可读。
+- **标签筛选全部改原生 `button`**（补按下状态 + 读屏标签），Toast 补 `role="status"` + `aria-live="polite"`；搜索去抖计时器在视图卸载时清理，避免切换视图后冗余请求。
+- **代码审计与清理**：删除死导入，统一三处 `copyToClipboard` 到 `core.copyText`。
+- 测试：UI 回归 **346/346**、服务端 **113/113**。
+
 - **发布流程加闸门：tag 推上来不等于对外发布**：`release.yml` 原先只匹配 `on.push.tags: ['v*']`，于是 `v1.3.8-test1` / `v1.3.8-test2` 这种测试 tag 一样会触发构建并重建 `ghcr.io/chensnails/feedlore:latest` —— 所有 Watchtower 用户在 5 分钟内被动升级，而本意只是「打个 tag 试一下」。ghcr 上至今留着 `1.3.8-test1` / `1.3.8-test2` 两个标签，就是那两次的产物。
   - 新增 `gate` job，把 tag 分成三档：**正式版** `vX.Y.Z` → 构建镜像、推版本号标签 + `latest`、建 GitHub Release；**预发布** `vX.Y.Z-后缀`（`-test1` / `-rc.1`）→ 照常构建镜像，但**只推版本号标签**，`latest` 与 Release 都不动（预发布是给自己或少数人试的，而 `latest` 一被覆盖就等于全量发布）；**其它形态**（分支名、`v1.3`、`v1.3.9.1`）→ 完全不构建。
   - 三档都要过同一道版本一致性校验：tag 必须与 `VERSION`、`package.json` 的 `version` 完全一致，不一致直接失败并指出差在哪 —— 否则镜像里的 `pkg.version` 与 tag 对不上，「检查更新」会一直算错版本差。
