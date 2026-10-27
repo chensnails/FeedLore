@@ -118,7 +118,7 @@ export function switchView(name) {
     $('#readerView').hidden = name !== 'reader';
     $('#cardsView').hidden = name !== 'cards';
     $('#aiView').hidden = name !== 'ai';
-    // 顶栏（视图高亮 + 「条资源」仅卡片页可见）由 React 重绘
+    // 顶栏（视图高亮 / 副标题 / 主题态）由 React 重绘
     emitShell();
 
     if (name === 'reader') {
@@ -398,13 +398,11 @@ export function shellSnapshot() {
   const mode = THEME_MODES.indexOf(currentThemeMode()) >= 0 ? currentThemeMode() : 'auto';
   const meta = THEME_META[mode];
   return {
-    stat: state.entries.length,
     subtitle: subtitleText(),
     view: state.tab,
     themeLabel: meta.label,
     themeIco: meta.ico,
     installReady: !!deferredInstall,
-    statVisible: state.tab === 'cards',
     digestVisible: digestIsEnabled(),
   };
 }

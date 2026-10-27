@@ -578,13 +578,7 @@ body.modal-open {
 .brand-text h1 { margin:0; font-size: 1rem; font-weight: 650; letter-spacing: .2px; line-height: 1.2; }
 .brand-text p { margin:1px 0 0; font-size: var(--fs-xs); color: var(--text-faint); line-height: 1.25; }
 
-.topbar-actions { display: flex; align-items: center; gap:var(--sp-3); }
-
-.stat {
-  display: flex; align-items: baseline; gap:var(--sp-1);
-  font-size: 1.25rem; font-weight: 700; color: var(--accent-text);
-}
-.stat small { font-size: var(--fs-sm); font-weight: 500; color: var(--text-faint); }
+.topbar-actions { display: flex; align-items: center; gap:var(--ctl-gap); }
 
 /* ---------- 按钮 ---------- */
 .btn {
@@ -2525,10 +2519,6 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   max-width: var(--reader-width);
   margin:0 auto var(--sp-3);
 }
-.reader-search .search-ico {
-  position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
-  font-size: var(--fs-md); opacity: .55; pointer-events: none;
-}
 .reader-search input {
   width: 100%;
   padding:var(--sp-2) var(--sp-8);
@@ -2817,6 +2807,10 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
  * 所以统一降级点定在 820px：桌面端 图标+文字，平板 / 手机 只有图标。
  * ============================================================ */
 @media (max-width: 820px) {
+  /* 图标化的降级点同时也是控件尺寸的换挡点：顶栏按钮在这一档收成方形，
+     边长就该与第二行工具栏（恒 36）同值 —— 否则 721–820 这段是「上 32 / 下 36」，
+     两条栏紧挨着，4px 的错位一眼就看见。
+     ⚠️ 换挡本身写在文件末尾的「工具栏令牌层」之后（那里才盖得住基础 :root）。 */
   .btn-label { display: none; }
   #refreshBtn, #settingsBtn, #themeBtn { padding:var(--sp-2) var(--sp-2); }
   #refreshBtn .ico, #settingsBtn .ico, #themeBtn .ico { margin-right:0; }
@@ -2938,7 +2932,10 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .btn-copy { flex: 1 0 100%; white-space: nowrap; }
   .search-box { flex-basis: 100%; }
   .select { flex: 1; }
-  .viewmode { margin-left:auto; }
+  /* ⚠️ 这里曾有 `.viewmode { margin-left:auto }`：那是搜索框整行（flex-basis:100%）时代
+     用来把视图切换推到右边的。现在工具栏打平成一行、靠 order 排位，标题已经吃掉剩余宽度，
+     再留这条 auto 外边距就会在「排序」与「视图切换」之间拉开一道几十像素的空隙
+     （实测 680px 下 153px），右簇被撕成两段。 */
   .card-desc { -webkit-line-clamp: 2; }
 
   /* 列表视图：操作按钮换到第二行，标题/描述各留一行 */
@@ -2991,10 +2988,9 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .form-grid { grid-template-columns: 1fr; gap:var(--sp-3); }
   .dg-item-thumb, .dg-item-thumb-fb { width: 52px; height: 52px; }
 
-  /* 顶栏瘦身：把次要信息收起来，操作都变成紧凑图标，给视图切换让位
-     （「图标 + 文字 → 只有图标」的降级已上移到 820px 那段） */
-  .stat { display: none; }
-  .topbar-actions { gap:var(--sp-2); }
+  /* 顶栏瘦身：操作都变成紧凑图标，给视图切换让位
+     （「图标 + 文字 → 只有图标」的降级已上移到 820px 那段）。
+     间距不再就地覆写 —— 顶栏与第二行工具栏共用 --ctl-gap，两排的节奏由同一个令牌决定 */
   .brand-text p { max-width: 150px; }
 
   /* 抽屉 / 单列 / 频道开关的规则已上移到 ≤1080px 那段（导航降级），
@@ -3037,7 +3033,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   /* 程序名收掉后 logo 就是唯一的品牌标识，统一到 32px（否则 560→480 会从 40 跳到 30） */
   .brand-logo { width: 32px; height: 32px; }
 
-  .topbar-actions { flex: 1; min-width: 0; gap:var(--sp-2); }
+  .topbar-actions { flex: 1; min-width: 0; }
 }
 
 /* ============================================================
@@ -3048,7 +3044,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 @media (max-width: 480px) {
   .wrap { padding:0 var(--sp-3); }
   .topbar-inner { padding-top:var(--sp-2); padding-bottom:var(--sp-2); gap:var(--sp-2); }
-  .topbar-actions { gap:var(--sp-1); }
+  /* 「条资源」统计已移除，顶栏右侧少了一枚 65px 的块，4px 的挤法不再需要：
+     间距由 --ctl-gap 统一给 8，与第二行工具栏同档 */
   /* 380 上下时四个标签 + 「+N」会挤到第二行 —— 折叠就没意义了。这里只留三个 */
   .tag-list:not(.is-open) .tag-chip:nth-child(n+4) { display: none; }
 
@@ -3792,7 +3789,6 @@ textarea:focus-visible { outline: none; }
   border-color: var(--border);
 }
 .reader-search input:focus { box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-ring); }
-.search-box .search-ico, .reader-search .search-ico { left: 14px; font-size: var(--fs-base); }
 .reader-search-clear {
   width: 24px; height: 24px; right: 8px;
   border-radius: var(--radius-pill);
@@ -3918,6 +3914,14 @@ button.tag-chip { font-family: inherit; }
   --search-h: 32px;      /* 搜索胶囊高度：与 --head-ctl 同高，同一排控件才有一条基线 */
   --search-w: 560px;     /* 搜索胶囊宽度上限（桌面；窄屏展开时回落到整行） */
   --ico-ctl: 1rem;       /* 工具图标边长：顶栏与页面头部共用这一枚尺寸 */
+  /* 两排控件的水平间距（顶栏 .topbar-actions 与第二行 .view-toolbar 共用）：
+     一上一下紧挨着的两条栏，间距必须同档，否则右簇会「上紧下松」错开半个格。
+     窄屏在 ≤720px 收到 --sp-2。 */
+  --ctl-gap: var(--sp-3);
+  /* 两排控件的高度（顶栏按钮/视图导航组 与 第二行工具栏控件）：
+     之前顶栏按钮由内容撑到 35、第二行是 36 —— 上下两条栏紧挨着，1px 也看得出来。
+     一枚令牌同时喂给两排，改一次两排一起动。 */
+  --ctl-h: 36px;
 }
 
 /* 桌面：搜索框常驻，放大镜退场 */
@@ -3962,14 +3966,28 @@ button.tag-chip { font-family: inherit; }
 /* 两条栏是一组：第一行导航 56px（.topbar-inner），第二行工具栏 52px —— 差 4px 读作
    「主 / 次」，不是两块各写各的。控件统一 36px：比上一版的 32px 更接近导航按钮的
    视觉重量，一排看过去没有「小一号」的零件，搜索胶囊也随之同高，落在同一条中线上。
-   间距 8px 与顶栏 .topbar-actions 同档，不再是 12px（那会让右簇显得散）。
+   间距直接引用 --ctl-gap（顶栏 .topbar-actions 用的是同一个令牌）：
+   两排的间距节奏从此只有一个来源，不会再出现 12 vs 8 这种「上松下紧」的错位。
    ⚠️ 这些令牌只在工具栏子树内覆盖，绝不动 :root —— 顶栏的 --head-ctl 不受牵连，
       两栏的尺寸从此各自有据，改一处不会连锁改另一处。 */
 .view-toolbar {
   --head-h: 52px;
-  --head-ctl: 36px;
-  --search-h: 36px;
-  --head-gap: var(--sp-2);
+  --head-ctl: var(--ctl-h);
+  --search-h: var(--ctl-h);
+  --head-gap: var(--ctl-gap);
+}
+
+/* 顶栏控件改用同一把尺子（--ctl-h）：
+   顶栏按钮与视图导航组此前是「内容撑出来的 35px」，第二行工具栏是 36 ——
+   两条栏上下紧挨着，35 vs 36 这 1px 并排看得一清二楚。 */
+.topbar-actions .btn { height: var(--ctl-h); }
+.viewnav { height: var(--ctl-h); }
+
+/* 721–820px：图标已收起，顶栏控件换到 36px，与第二行工具栏同高。
+   ⚠️ 必须写在这份 :root 之后 —— 基础 :root（--head-ctl: 32px）就在上面几条之前，
+   同特异度（0,1,0）靠源顺序取胜，写在前面的媒体查询会被它整段盖掉（静默失效）。 */
+@media (max-width: 820px) {
+  :root { --head-ctl: 36px; }
 }
 /* 模块钩子（两页共用同一套词表，DOM 顺序即阅读顺序）：
    .vt-channel 频道入口 / .vt-title 当前频道标题 / .vt-tools 右簇 / .vt-search 搜索。
@@ -4007,8 +4025,10 @@ button.tag-chip { font-family: inherit; }
   .cards-head > #feedDD { flex: 0 1 auto; min-width: 0; max-width: 40%; }
   .cards-head > #feedDD .dd-trigger {
     max-width: 100%;
-    /* 去掉 .select 的框与底色，借标题的字重字号；悬停才显形，避免一排里有块永远亮着的方块 */
-    padding: 0 var(--sp-1) 0 var(--sp-2);
+    /* 去掉 .select 的框与底色，借标题的字重字号；悬停才显形，避免一排里有块永远亮着的方块。
+       左边距收成 0：文字左缘与顶栏品牌 logo 的左缘严格对齐（都是 .wrap 的 24px 内距），
+       否则这一行会比上面那行整体内缩 8px，两栏左缘错开。 */
+    padding: 0 var(--sp-1) 0 0;
     border: 1px solid transparent;
     background: none;
     font-size: var(--fs-lg); font-weight: 550; color: var(--text);
@@ -4035,7 +4055,10 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
 .reader-head-tools {
   flex: 0 0 auto;
   display: flex; align-items: center;
-  gap: var(--sp-2);
+  /* 间距跟着 --head-gap 走（桌面 12 / 窄屏 8）——与顶栏 .topbar-actions 同令牌。
+     之前这里写死 var(--sp-2)=8，而父级（.page-head）用 --head-gap=12：
+     同一簇里「排序→视图」8px、「视图→搜索」12px，两段不等，一眼看得出错位。 */
+  gap: var(--head-gap);
   margin-left: auto;
 }
 /* 头部控件统一 32px 高、8px 圆角；下拉同高同圆角，一排看过去是同一族 */
@@ -4116,19 +4139,27 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
   border-color: var(--accent-text);
   box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-ring);
 }
-/* 图标跟着胶囊的端头走（左 36px 内边距 → 图标中心 21px） */
+/* 图标跟着胶囊的端头走（左 36px 内边距 → 图标中心 21px）。
+   ⚠️ position:absolute 不能缺：搜索框是 flex 容器，图标若留在流里就是一个 flex item，
+   会先占掉 13px、把带边框的 input 挤到它右边 —— 看上去就是「放大镜浮在框外面」。
+   （卡片页曾经只有 left 没有 position，正是这个症状；文章页那条则一直是对的。）
+   三处父级写在一起，逐份覆盖只会漂成 13/14/13 三个值。 */
 .page-search .search-ico,
 .reader-search .search-ico,
-.search-box .search-ico { left: 13px; font-size: var(--fs-md); }
+.search-box .search-ico {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  font-size: var(--ico-ctl); opacity: .55; pointer-events: none;
+}
 /* 展开是同一次「从头部垂下来」的动作，别硬切显隐 */
 @keyframes headSearchIn { from { opacity: 0; transform: translateY(-6px); } }
 .reader-search.is-open,
 .search-box.is-open { animation: headSearchIn var(--dur-base) var(--ease); }
 
 @media (max-width: 720px) {
-  /* 密度降级：控件长到 36px（命中高度补到 44），头部一行只留 8px 间距 */
+  /* 密度降级：控件长到 36px（命中高度补到 44），头部一行只留 8px 间距。
+     --ctl-gap 同时压低顶栏与工具栏的间距 —— 一套令牌管两排。 */
   :root { --head-h: 44px; --head-ctl: 36px; --head-gap: var(--sp-2);
-          --search-h: 36px; --search-w: 100%; }
+          --search-h: 36px; --search-w: 100%; --ctl-gap: var(--sp-2); }
   /* 工具栏在窄屏跟着降到 44（36 控件 + 上下各 4 的 padding）：与顶栏贴成更紧的一组，
      但仍是「比导航矮一档」的关系，不会反过来压过第一行。 */
   .view-toolbar { --head-h: 44px; }
@@ -4138,8 +4169,12 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
      display:contents（这条对它无效，换行由 .cards-sticky 的 flex-wrap 负责） */
   .page-head { padding: 4px 0; flex-wrap: wrap; row-gap: var(--sp-2); }
   /* 窄屏标题回到「吃掉剩余宽度」：这样工具组才会被推到最右（桌面相反 ——
-     桌面剩余宽度要留给搜索，标题按内容宽） */
-  .page-title { flex: 1 1 auto; max-width: none; }
+     桌面剩余宽度要留给搜索，标题按内容宽）。
+     ⚠️ max-width 必须连桌面那条 `.cards-head > .page-title { max-width: 40% }` 一起压掉：
+     那条是 0,2,0 的两个类，光写 `.page-title`（0,1,0）特异度不够，标题仍被钉在屏宽 40%
+     （680px 下 = 259px），右簇就贴不到右 —— 实测会差出 145px 的一整段空白。 */
+  .page-title,
+  .cards-head > .page-title { flex: 1 1 auto; max-width: none; }
   .reader-head-text { flex: 1 1 auto; max-width: none; }
 
   /* 触屏命中区：视觉 36px，纵向补到 44px。只扩上下 —— 横向扩会与相邻按钮的
@@ -4203,6 +4238,13 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
   /* 视图切换的尺寸已在基础规则里压到 32px，这里只管排位 */
   #viewMode { order: 4; flex: 0 0 auto; }
   .cards-search-toggle { order: 5; }
+}
+
+/* 更窄一档（≤480）：.wrap 的左右内距在「手机」段收到 12px，吸顶外壳必须跟着收 ——
+ * 否则第二行工具栏比顶栏多凹 4px，右簇与顶栏「设置」差在半根手指的位置上，
+ * 上下两条栏的右边缘对不齐（实测 480px 下 468 vs 464）。 */
+@media (max-width: 480px) {
+  .cards-sticky { padding: 4px var(--sp-3); }
 }
 
 /* 超小屏（≤360，Android 常见的最小宽度档）：

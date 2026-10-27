@@ -156,7 +156,7 @@ export function subtitleText() {
 }
 
 export function render() {
-  // 顶栏（条资源计数 / 副标题）由 React 渲染
+  // 顶栏（副标题 / 视图高亮）由 React 渲染
   emitShell();
   // 卡片列表渲染交给 React 卡片视图（src/views/CardsView.jsx）：通知它读实时 state 重绘
   window.dispatchEvent(new Event('__cardsTick'));

@@ -1,4 +1,4 @@
-/* App Shell：顶栏（品牌 / 视图导航 / 条资源统计 / 刷新 / 添加到手机 / 主题 / 设置）
+/* App Shell：顶栏（品牌 / 视图导航 / 刷新 / 添加到手机 / 主题 / 设置）
  * 与顶部阅读进度条。
  *
  * P4a 起 React 化：这两块 DOM 由本模块渲染，核心逻辑不再直接操作它们。
@@ -24,9 +24,9 @@ const VIEWS = [
 
 /** shell 快照的兜底（核心尚未就绪时） */
 const EMPTY = {
-  stat: '—', subtitle: '正在加载频道…', view: 'reader',
+  subtitle: '正在加载频道…', view: 'reader',
   themeLabel: '跟随系统', themeIco: 'theme-auto',
-  installReady: false, statVisible: false, digestVisible: true,
+  installReady: false, digestVisible: true,
 };
 
 function readShell() {
@@ -137,10 +137,6 @@ export function TopBar() {
             );
           })}
         </nav>
-        <div className="stat" id="stat" hidden={!snap.statVisible}>
-          <span id="statCount">{snap.stat}</span>
-          <small>条资源</small>
-        </div>
         <button className="btn btn-ghost" id="refreshBtn" type="button" title="重新拉取" disabled={busy} onClick={onRefresh}>
           <svg className={'ico' + (busy ? ' spin' : '')} aria-hidden="true" focusable="false"><use href="#i-refresh" /></svg>
           <span className="btn-label">刷新</span>

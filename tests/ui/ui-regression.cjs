@@ -3675,11 +3675,10 @@ const withEFP = (el, fn) => {
   const S = (sel) => document.querySelector(sel);
   const navBtns = () => [...document.querySelectorAll('#viewNav .viewnav-btn')];
 
-  t('顶栏渲染：品牌 / 三个导航 / 统计 / 按钮', () => {
+  t('顶栏渲染：品牌 / 三个导航 / 按钮', () => {
     if (!S('#topbarRoot .topbar-inner')) throw new Error('无 .topbar-inner');
     if (!S('#topbarRoot .brand-logo')) throw new Error('无 logo');
     if (navBtns().length !== 3) throw new Error('导航按钮 ' + navBtns().length);
-    if (S('#statCount').textContent !== '12') throw new Error('statCount: ' + S('#statCount').textContent);
     if (S('#subtitle').textContent !== '拾取值得读的 · 采集 2/3 个频道') throw new Error('subtitle: ' + S('#subtitle').textContent);
     for (const id of ['refreshBtn', 'themeBtn', 'settingsBtn']) if (!S('#' + id)) throw new Error('缺 #' + id);
   });
@@ -3687,7 +3686,9 @@ const withEFP = (el, fn) => {
     const a = navBtns().filter((b) => b.classList.contains('active')).map((b) => b.getAttribute('data-view'));
     if (a.join() !== 'reader') throw new Error('active: ' + a.join());
   });
-  t('reader 视图下「条资源」隐藏', () => { if (S('#stat').hidden !== true) throw new Error('应隐藏'); });
+  t('顶栏不再渲染「条资源」统计', () => {
+    if (S('#stat') || S('#topbarRoot .stat')) throw new Error('条资源统计应已移除');
+  });
 
   // 日报开关（账号级）：入口整枚消失，不是灰着 —— 留着只会让人以为点坏了
   shellSnap.digestVisible = false;
@@ -3712,9 +3713,8 @@ const withEFP = (el, fn) => {
   t('点「卡片」→ switchView(cards)', () => {
     if (!callsOf('switchView').some((c) => c[1] === 'cards')) throw new Error('未触发');
   });
-  t('切卡片后：卡片高亮 + 条资源可见', () => {
+  t('切卡片后：卡片高亮', () => {
     if (!navBtns()[1].classList.contains('active')) throw new Error('卡片未高亮');
-    if (S('#stat').hidden) throw new Error('stat 应可见');
   });
 
   shellSnap.themeLabel = 'GitHub 暗黑';
