@@ -11,7 +11,8 @@
 #      WIN:    docker compose -f docker-compose.release.yml --env-file .env up -d
 #   3. 之后发版 = push 正式版 tag（vX.Y.Z）；Watchtower 每 5 分钟检查一次，
 #      或在「设置 → 关于」点「一键更新」立即触发。
-#      CI 只认三段式正式版 tag，`-test` / `-rc` 之类不会重建 latest；
+#      CI 按 tag 分档：正式版 vX.Y.Z 才会重建 latest（所有部署跟着更新）；
+#      预发布 vX.Y.Z-testN 只产出 ghcr 上的同名标签，latest 不动；
 #      只推 main 分支不推 tag，已部署的实例不会被更新。
 #
 # 项目名 / 容器 / 卷 / 网络沿用 feedlore 前缀，与源码模式完全一致：

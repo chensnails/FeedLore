@@ -109,7 +109,7 @@ docker compose up -d --build
 
 镜像模式下升级是全自动的：作者推送 git tag → CI 出双架构镜像 → 你这边的 Watchtower 每 5 分钟拉一次并重启容器。不想等的话，到「设置 → 关于 → 检查更新」点「一键更新」立即触发（约 1~2 分钟，期间页面短暂不可用，登录态不受影响）。
 
-**只有正式版 tag 才会发版**：CI 的 `gate` job 要求 tag 形如 `vX.Y.Z`（`v1.3.8-test1` 这类带后缀的不会构建镜像，也不会改动 `latest`），并且 tag 必须与仓库里的 `VERSION`、`package.json` 版本号三者一致，否则直接失败。所以「`main` 有新提交」不等于「有新版本」—— 关于页看的是最新 Release / tag，不是分支。
+**正式版才会推给所有人**：CI 的 `gate` job 按 tag 分三档——三段式 `vX.Y.Z` 构建镜像、推 `latest` 并建 Release；带后缀的预发布（如 `v1.4.0-test1`）照常构建镜像，但**只推版本号标签** `ghcr.io/chensnails/feedlore:1.4.0-test1`，`latest` 与 Release 都不动，Watchtower 用户收不到；其它形态（分支名等）完全不构建。三档都要求 tag 与仓库里的 `VERSION`、`package.json` 版本号三者一致。所以「`main` 有新提交」不等于「有新版本」—— 关于页看的是最新 Release，不是分支。
 
 源码模式升级：`git pull && docker compose up -d --build`。
 

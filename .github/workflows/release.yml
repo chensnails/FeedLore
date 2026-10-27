@@ -4,10 +4,13 @@ name: Release
 # 发版 = git tag -a vX.Y.Z && git push origin --tags；本站（Watchtower 模式）
 # 会在几分钟内自动拉到新镜像并重启容器，关于页也可一键触发。
 #
-# 发布闸门（v1.3.11 起）：tag 推上来不等于要发布。gate job 会先校验
-# ① tag 是三段式正式版 vX.Y.Z；② tag 与 VERSION、package.json 的 version 三者一致。
-# 任一不满足就不构建镜像、不建 Release —— 此前 v* 一律发布，
-# 「打个 v1.3.8-test1 试一下」实际是一次对全部 Watchtower 用户的全量发布。
+# 发布闸门（v1.3.11 起）：tag 推上来不等于对外发布。gate job 按 tag 分三档：
+#   ① 正式版 vX.Y.Z        → 构建镜像，推版本号标签 + latest，并建 GitHub Release
+#   ② 预发布 vX.Y.Z-xxx    → 构建镜像，**只推版本号标签**；latest 不动、不建 Release
+#   ③ 其它（分支名等）     → 不构建
+# 任何一档都要求 tag 与 VERSION、package.json 的 version 三者一致。
+# 分档的意义：预发布镜像是给自己或少数人试的，而 latest 一被覆盖，
+# 所有 Watchtower 用户几分钟内就会被动升级 —— 那才是真正的"发布"。
 #
 # 性能（v1.2.0 起）：amd64 与 arm64 各用一个「原生架构」runner 平行构建，不再用
 # QEMU 模拟。此前单 job + QEMU 的方式，arm64 冷构建（层缓存失效时）实测 40 分钟仍未结束；
@@ -34,7 +37,8 @@ jobs:
   gate:
     runs-on: ubuntu-24.04
     outputs:
-      release: ${{ steps.check.outputs.release }}
+      build: ${{ steps.check.outputs.build }}
+      publish: ${{ steps.check.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,13 +47,15 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
-          # 默认不放行：任何一步没走到最后，构建都不会开始
-          echo "release=false" >> "$GITHUB_OUTPUT"
+          # 默认两样都不给：任何一步没走到最后，既不构建也不发布
+          echo "build=false" >> "$GITHUB_OUTPUT"
+          echo "publish=false" >> "$GITHUB_OUTPUT"
 
-          # 1) 只认 vX.Y.Z。-test / -rc / -beta 等后缀一律跳过构建：
-          #    latest 一被覆盖，所有 Watchtower 用户几分钟内就会被动升级。
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::notice title=跳过发布::tag「$TAG」不是正式版（需 vX.Y.Z），本次不构建镜像、不建 Release"
+          # 1) 只认版本 tag：正式版 vX.Y.Z 或预发布 vX.Y.Z-后缀。
+          #    filter 通配符不支持正则，形态校验只能放在这里 —— 好处是被拦下的
+          #    tag 会留下一条 notice 说明原因，而不是让 workflow 静默不触发。
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+            echo "::notice title=跳过构建::tag「$TAG」不是版本 tag（需 vX.Y.Z 或 vX.Y.Z-后缀）"
             exit 0
           fi
 
@@ -63,12 +69,23 @@ jobs:
             exit 1
           fi
 
-          echo "release=true" >> "$GITHUB_OUTPUT"
-          echo "::notice title=放行发布::v$WANT（VERSION 与 package.json 一致）"
+          # 到这里就值得构建镜像了
+          echo "build=true" >> "$GITHUB_OUTPUT"
+
+          # 3) 带 -后缀 的是预发布：镜像照建，但只推版本号标签。
+          #    不碰 latest（Watchtower 盯的就是它）、不建 Release（关于页看的是它）。
+          if [[ "$WANT" == *-* ]]; then
+            echo "::notice title=预发布：只推版本号标签::ghcr:$WANT 将可用，latest 保持不变、不建 Release"
+            exit 0
+          fi
+
+          # 4) 正式版：latest 指向它，并建 Release
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "::notice title=正式发布::v$WANT —— latest 将指向该镜像，并创建 GitHub Release"
 
   build:
     needs: gate
-    if: needs.gate.outputs.release == 'true'
+    if: needs.gate.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -119,7 +136,7 @@ jobs:
 
   merge:
     needs: [gate, build]
-    if: needs.gate.outputs.release == 'true'
+    if: needs.gate.outputs.build == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: 下载各架构 digest
@@ -136,23 +153,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 合并 manifest（版本号 + latest）
+      - name: 合并 manifest（版本号标签 + 正式版才加 latest）
         id: merge
         working-directory: digests
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          PUBLISH="${{ needs.gate.outputs.publish }}"
           refs=""
           for f in digest-*.txt; do
             refs="$refs ${{ env.REGISTRY_IMAGE }}@$(tr -d '[:space:]' < "$f")"
           done
           echo "merging:$refs"
-          docker buildx imagetools create $refs \
-            --tag "${{ env.REGISTRY_IMAGE }}:$VERSION" \
-            --tag "${{ env.REGISTRY_IMAGE }}:latest"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: 创建 GitHub Release
+          # 版本号标签一律打。latest 只给正式版：它是 Watchtower 唯一的触发点，
+          # 预发布一旦把 latest 挪过去，所有已部署实例几分钟内就会被升级。
+          TAGS=(--tag "${{ env.REGISTRY_IMAGE }}:$VERSION")
+          if [[ "$PUBLISH" == "true" ]]; then
+            TAGS+=(--tag "${{ env.REGISTRY_IMAGE }}:latest")
+          fi
+          docker buildx imagetools create $refs "${TAGS[@]}"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$PUBLISH" != "true" ]]; then
+            echo "::notice title=预发布镜像已就绪::ghcr.io/chensnails/feedlore:$VERSION（latest 未改动、未建 Release）"
+          fi
+
+      - name: 创建 GitHub Release（仅正式版）
+        if: needs.gate.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # merge job 没有 checkout，gh 无法从 git remote 推断仓库，必须显式指定
