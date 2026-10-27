@@ -9,7 +9,7 @@ import { toast, emitShell } from './util.js';
 import { state, applyRoleUI, applyTheme, currentThemeMode, openSettings } from './state.js';
 import { currentViewMode, applyViewMode, currentTab, loadFeeds, loadPage } from './feeds.js';
 import { scheduleAutoRefresh } from './autorefresh.js';
-import { switchView, bindSections } from './ui.js';
+import { switchView } from './ui.js';
 
 // ⚠️ 执行顺序：applyTheme() 内部会读外观偏好（APPR_* 常量定义在更下面），
 // 而这个文件是 defer 脚本、模块顶层就往下跑。直接在这里同步调用会踩 const 的

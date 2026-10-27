@@ -11,7 +11,7 @@
  * 符合「弹层才用模糊」铁律。 */
 
 import { core } from '@core';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSwipeDismiss } from './useSwipeDismiss.js';
 
 /* 与 style.css 的 720px 断点一致；jsdom 无 matchMedia 或无布局时按桌面处理。

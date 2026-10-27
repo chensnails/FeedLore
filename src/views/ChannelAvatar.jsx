@@ -1,7 +1,7 @@
 /* 频道头像：图标加载失败（拉取 404 / 防盗链）时回退到首字母，避免破图标。
  * 文章页侧栏与卡片页频道抽屉共用（v1.3.10 从 ReaderView 抽出来）。
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 export function ChannelAvatar({ icon, name }) {
   const [failed, setFailed] = useState(false);

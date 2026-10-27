@@ -6,9 +6,9 @@
  * ============================================================ */
 
 import { $, apiFetch, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle } from './util.js';
-import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, THEME_MODES, THEME_META, currentThemeMode, isAdmin } from './state.js';
-import { TABS, loadFeeds, loadPage, applyFilters, render, subtitleText, setViewMode, setCardsDrawer } from './feeds.js';
-import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, readerToggleArt, readerToggleFav, markEntryRead, focusReaderArt } from './reader.js';
+import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
+import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
+import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, focusReaderArt } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
 
 /* ============================================================

@@ -114,19 +114,13 @@ function ArtImg({ src }) {
   );
 }
 
-async function copyToClipboard(text) {
-  const s = S();
-  if (s && s.copyText) return s.copyText(text);
-  try { await navigator.clipboard.writeText(text); return true; } catch (_) { return false; }
-}
-
 /** 复制链接（多条时弹选择菜单）。导出给卡片详情弹窗复用。 */
 export function CopyButton({ e }) {
   const [copied, setCopied] = useState(false);
   const urls = Array.isArray(e.links) ? e.links.filter(Boolean) : [];
   const list = urls.length ? urls : (e.link ? [e.link] : []);
   const doIt = async (url) => {
-    const ok = await copyToClipboard(url);
+    const ok = await S().copyText(url);
     if (!ok) { S().toast('复制失败，请手动选择链接', false); return; }
     setCopied(true);
     S().toast('已复制：' + (S().linkLabel ? S().linkLabel(url) : url));

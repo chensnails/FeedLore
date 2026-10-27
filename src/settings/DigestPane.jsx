@@ -9,7 +9,7 @@
  * 让顶栏立刻收到 shell tick；服务端会保留 lastAuto（调度器独占字段），这里不用回传。 */
 
 import { core } from '@core';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const S = () => core;
 

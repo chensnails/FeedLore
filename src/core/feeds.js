@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { $, apiFetch, toast, emitShell } from './util.js';
+import { apiFetch, toast, emitShell } from './util.js';
 import { state, layoutPref, setLayout, lockPageScroll, unlockPageScroll } from './state.js';
 
 /** 按分组名把频道归类：未分组的排最前，其余按名称排序；组内保持原顺序 */

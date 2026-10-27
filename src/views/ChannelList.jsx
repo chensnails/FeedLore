@@ -13,7 +13,6 @@
  */
 
 import { core } from '@core';
-import React from 'react';
 import { ChannelAvatar } from './ChannelAvatar.jsx';
 
 const S = () => core;

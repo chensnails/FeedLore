@@ -18,7 +18,7 @@
  */
 
 import { core } from '@core';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { isMobileMq } from './Dropdown.jsx';
 import { useSwipeDismiss } from './useSwipeDismiss.js';
 import { ArtBody, bodyShowsText, CopyButton, OpenButton } from './ReaderView.jsx';

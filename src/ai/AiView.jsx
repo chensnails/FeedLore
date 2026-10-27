@@ -11,7 +11,7 @@
  */
 
 import { core } from '@core';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -25,31 +25,11 @@ function shanghaiToday() {
   }).format(new Date());
 }
 
-async function copyToClipboard(text) {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch (_) { /* 降级 */ }
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-    return ok;
-  } catch (_) { return false; }
-}
-
 /** 复制链接：统一为图标按钮（i-link → 复制成功后 i-check） */
 function CopyLink({ url }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
-    const ok = await copyToClipboard(url);
+    const ok = await S().copyText(url);
     if (!ok) { S().toast('复制失败，请手动选择链接', false); return; }
     setCopied(true);
     S().toast('已复制：' + (S().linkLabel ? S().linkLabel(url) : url));

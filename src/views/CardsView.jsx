@@ -16,7 +16,7 @@
  */
 
 import { core } from '@core';
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { CardDetail } from './CardDetail.jsx';
 import { ChannelList } from './ChannelList.jsx';
 import { Dropdown } from './Dropdown.jsx';
@@ -27,12 +27,6 @@ const SKELETON_N = 8;
 const Icon = ({ n }) => (
   <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
 );
-
-async function copyToClipboard(text) {
-  const s = S();
-  if (s && s.copyText) return s.copyText(text);
-  try { await navigator.clipboard.writeText(text); return true; } catch (_) { return false; }
-}
 
 const copyableLinks = (e) => {
   const list = Array.isArray(e.links) ? e.links.filter(Boolean) : [];
@@ -45,7 +39,7 @@ function CopyButton({ e }) {
   const [copied, setCopied] = useState(false);
   const urls = copyableLinks(e);
   const doIt = async (url) => {
-    const ok = await copyToClipboard(url);
+    const ok = await S().copyText(url);
     if (!ok) { S().toast('复制失败，请手动选择链接', false); return; }
     setCopied(true);
     S().toast('已复制：' + (S().linkLabel ? S().linkLabel(url) : url));
