@@ -25,6 +25,11 @@ const SEG_ROWS = [
     options: [['s', '小'], ['m', '中'], ['l', '大']],
   },
   {
+    key: 'density', label: '卡片密度', attr: 'data-density',
+    small: '紧凑 = 同屏更多卡片；舒适 = 更大的卡片与留白（默认）',
+    options: [['cozy', '舒适'], ['compact', '紧凑']],
+  },
+  {
     key: 'readerFont', label: '正文字体', attr: 'data-reader-font',
     small: '只作用于文章正文，界面字体不变',
     options: [['sans', '无衬线'], ['serif', '衬线']],

@@ -69,7 +69,7 @@
   --on-accent: #ffffff;
   --logo-fg: #ffffff;   /* logo 图形里的白色部分：三主题恒白，不随主色反色 */
   --select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%2357616f' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
-  --shadow: 0 1px 2px rgba(20, 24, 30, .04), 0 4px 16px rgba(20, 24, 30, .05);
+  --shadow: 0 1px 2px rgba(20, 24, 30, .04), 0 3px 9px rgba(20, 24, 30, .05);
   --shadow-hover: 0 6px 24px rgba(20, 24, 30, .10);
   --shadow-lg: 0 20px 60px rgba(16, 18, 22, .28);
   --shadow-sm: 0 1px 3px rgba(20, 24, 30, .1);
@@ -147,9 +147,9 @@
   --glass-blur: 16px;
   --neu-hi: rgba(255, 255, 255, .9);
   --neu-lo: rgba(163, 177, 198, .55);
-  --neu-shadow: 7px 7px 18px var(--neu-lo), -7px -7px 18px var(--neu-hi);
-  --neu-shadow-sm: 4px 4px 10px var(--neu-lo), -4px -4px 10px var(--neu-hi);
-  --neu-shadow-hover: 10px 10px 26px var(--neu-lo), -10px -10px 26px var(--neu-hi);
+  --neu-shadow: 4px 4px 12px var(--neu-lo), -4px -4px 12px var(--neu-hi);
+  --neu-shadow-sm: 3px 3px 7px var(--neu-lo), -3px -3px 7px var(--neu-hi);
+  --neu-shadow-hover: 7px 7px 18px var(--neu-lo), -7px -7px 18px var(--neu-hi);
   --neu-shadow-inset: inset 3px 3px 7px var(--neu-lo), inset -3px -3px 7px var(--neu-hi);
   --surface-soft: linear-gradient(145deg, #ffffff, #eef1f6);
   --surface-soft-2: linear-gradient(145deg, #fbfcfe, #e9edf3);
@@ -293,7 +293,7 @@ html[data-theme="dark"] {
   --logo-shadow: rgba(122, 162, 255, 0.3);
   --on-accent: #111111;
   --select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%23999999' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
-  --shadow: 0 1px 2px rgba(0, 0, 0, .34), 0 4px 16px rgba(0, 0, 0, .3);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .34), 0 3px 9px rgba(0, 0, 0, .3);
   --shadow-hover: 0 8px 28px rgba(0, 0, 0, .46);
   --shadow-lg: 0 20px 60px rgba(0, 0, 0, .58);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, .48);
@@ -306,9 +306,9 @@ html[data-theme="dark"] {
   --glass-blur: 16px;
   --neu-hi: rgba(255, 255, 255, .05);
   --neu-lo: rgba(0, 0, 0, .55);
-  --neu-shadow: 7px 7px 18px var(--neu-lo), -7px -7px 18px var(--neu-hi);
-  --neu-shadow-sm: 4px 4px 10px var(--neu-lo), -4px -4px 10px var(--neu-hi);
-  --neu-shadow-hover: 10px 10px 26px var(--neu-lo), -10px -10px 26px var(--neu-hi);
+  --neu-shadow: 4px 4px 12px var(--neu-lo), -4px -4px 12px var(--neu-hi);
+  --neu-shadow-sm: 3px 3px 7px var(--neu-lo), -3px -3px 7px var(--neu-hi);
+  --neu-shadow-hover: 7px 7px 18px var(--neu-lo), -7px -7px 18px var(--neu-hi);
   --neu-shadow-inset: inset 3px 3px 7px var(--neu-lo), inset -3px -3px 7px var(--neu-hi);
   --surface-soft: linear-gradient(145deg, #343434, #262626);
   --surface-soft-2: linear-gradient(145deg, #323232, #232323);
@@ -439,7 +439,7 @@ html[data-theme="github"] {
   --logo-shadow: rgba(31, 111, 235, 0.3);
   --on-accent: #ffffff;
   --select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%238b949e' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
-  --shadow: 0 1px 2px rgba(1, 4, 9, .5), 0 4px 16px rgba(1, 4, 9, .4);
+  --shadow: 0 1px 2px rgba(1, 4, 9, .5), 0 3px 9px rgba(1, 4, 9, .4);
   --shadow-hover: 0 8px 28px rgba(1, 4, 9, .58);
   --shadow-lg: 0 20px 60px rgba(1, 4, 9, .7);
   --shadow-sm: 0 1px 3px rgba(1, 4, 9, .62);
@@ -452,9 +452,9 @@ html[data-theme="github"] {
   --glass-blur: 16px;
   --neu-hi: rgba(255, 255, 255, .045);
   --neu-lo: rgba(0, 0, 0, .6);
-  --neu-shadow: 7px 7px 18px var(--neu-lo), -7px -7px 18px var(--neu-hi);
-  --neu-shadow-sm: 4px 4px 10px var(--neu-lo), -4px -4px 10px var(--neu-hi);
-  --neu-shadow-hover: 10px 10px 26px var(--neu-lo), -10px -10px 26px var(--neu-hi);
+  --neu-shadow: 4px 4px 12px var(--neu-lo), -4px -4px 12px var(--neu-hi);
+  --neu-shadow-sm: 3px 3px 7px var(--neu-lo), -3px -3px 7px var(--neu-hi);
+  --neu-shadow-hover: 7px 7px 18px var(--neu-lo), -7px -7px 18px var(--neu-hi);
   --neu-shadow-inset: inset 3px 3px 7px var(--neu-lo), inset -3px -3px 7px var(--neu-hi);
   --surface-soft: linear-gradient(145deg, #1b2129, #0f141b);
   --surface-soft-2: linear-gradient(145deg, #19202a, #0d1219);
@@ -908,6 +908,12 @@ textarea:disabled {
   grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
   gap:var(--sp-5);
   padding:var(--sp-6) 0 var(--sp-2);
+}
+/* 密度偏好：紧凑档收小卡片最小宽度与间距，同屏容纳更多卡片（舒适档=上方默认） */
+:root[data-density="compact"] .grid {
+  grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
+  gap: var(--sp-4);
+  padding: var(--sp-5) 0 var(--sp-2);
 }
 
 .card {
@@ -2270,6 +2276,26 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 }
 /* 固定入口与下面的频道列表之间隔一道细线 */
 .rd-ch-sep { height: 1px; background: var(--border); margin:var(--sp-2) var(--sp-2) var(--sp-2); }
+/* 频道抽屉内搜索框：内凹风格与其它输入框一致，仅作用于抽屉内 */
+.rd-ch-search {
+  display: flex; align-items: center; gap: 6px;
+  margin: var(--sp-2) var(--sp-2) 0; padding: 6px 8px;
+  background: var(--surface-soft-2); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--neu-inset);
+}
+.rd-ch-search-ico { width: 1rem; height: 1rem; flex: 0 0 1rem; color: var(--text-muted); }
+.rd-ch-search-input {
+  flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
+  color: var(--text); font-size: 0.875rem; padding: 2px 0;
+}
+.rd-ch-search-clear {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent;
+  color: var(--text-muted); cursor: pointer;
+}
+.rd-ch-search-clear:hover { color: var(--accent-text); background: var(--hover); }
+.rd-ch-search-clear .ico { width: 0.875rem; height: 0.875rem; }
+.rd-ch-empty { padding: var(--sp-4) var(--sp-3); color: var(--text-muted); font-size: 0.875rem; text-align: center; }
 
 .rd-ch-name {
   flex: 1; min-width: 0;

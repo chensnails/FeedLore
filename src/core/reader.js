@@ -439,9 +439,28 @@ export async function readerReadAll() {
   // 破坏性操作（可能一口气把几百篇标成已读），先确认一次，与「删除订阅/用户」保持一致
   const label = state.rdScope === 'unread' ? '全部未读'
     : (state.rdScope === 'favorite' ? '全部收藏' : '当前列表');
+
+  // 受影响篇数：按当前筛选的频道聚合未读数（favorite 范围无法精确估算，退化为不显示数字）
+  let affected = 0;
+  let unknown = false;
+  if (state.rdScope === 'favorite') {
+    unknown = true;
+  } else {
+    const fp = readerFilterParams().get('feeds');
+    const ids = fp ? fp.split(',').map(Number) : null;
+    affected = (state.feedList || []).reduce((s, f) => {
+      const id = Number(f.id);
+      if (ids && ids.length && ids.indexOf(id) < 0) return s;
+      return s + (Number(f.unreadCount) || 0);
+    }, 0);
+  }
+  const desc = affected > 0
+    ? `将标记 ${affected} 篇未读文章为已读，此操作不可撤销。`
+    : (unknown ? '将把收藏中的未读文章标为已读，此操作不可撤销。' : '当前范围内没有未读文章。');
+
   const ok = await confirm({
     title: `把「${label}」全部标为已读？`,
-    desc: '此操作不可撤销。',
+    desc,
     confirmText: '全部标为已读',
   });
   if (!ok) return;

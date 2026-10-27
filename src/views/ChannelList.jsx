@@ -13,6 +13,7 @@
  */
 
 import { core } from '@core';
+import { useState } from 'react';
 import { ChannelAvatar } from './ChannelAvatar.jsx';
 
 const S = () => core;
@@ -40,6 +41,15 @@ export function ChannelList({
   const isReader = variant === 'reader';
   const atAll = activeFeedId == null;
 
+  // 频道内搜索（本地态，两页抽屉共用）：按频道名过滤，命中即展开分组
+  const [q, setQ] = useState('');
+  const ql = q.trim().toLowerCase();
+  const collapsedView = ql ? new Set() : collapsed;
+  const groupsView = ql
+    ? groups.map((g) => ({ ...g, feeds: g.feeds.filter((f) => (titleOf(f) || '').toLowerCase().includes(ql)) }))
+      .filter((g) => g.feeds.length > 0)
+    : groups;
+
   const nameOf = (f) => (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(f) : f.title) : f.title);
   const titleOf = (f) => (s.feedTitle ? s.feedTitle(f) : f.title);
 
@@ -57,6 +67,16 @@ export function ChannelList({
 
   return (
     <>
+      <div className="rd-ch-search" role="search">
+        <svg className="rd-ch-search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+        <input type="search" className="rd-ch-search-input" placeholder="搜索频道…" aria-label="搜索频道"
+          value={q} onChange={(e) => setQ(e.target.value)} />
+        {q ? (
+          <button type="button" className="rd-ch-search-clear" aria-label="清除搜索" onClick={() => setQ('')}>
+            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+          </button>
+        ) : null}
+      </div>
       {isReader ? (
         <>
           {scopeBtn('all', 'circle', '全部文章', flags ? flags.total : 0, 'rd-ch-avatar-all')}
@@ -73,9 +93,9 @@ export function ChannelList({
       )}
       <div className="rd-ch-sep" aria-hidden="true" />
 
-      {groups.map((g) => {
+      {groupsView.map((g) => {
         const gname = g.name || '';
-        const isCollapsed = collapsed.has(gname);
+        const isCollapsed = collapsedView.has(gname);
         const gUnread = g.feeds.reduce((sum, x) => sum + Number(x.unreadCount || 0), 0);
         // 收起的分组里若正看着其中一条，只留那一条 —— 别让「收起」把当前频道变没，
         // 也不该把整组都放出来（那就等于没收起）
@@ -143,6 +163,10 @@ export function ChannelList({
           </div>
         );
       })}
+
+      {groupsView.length === 0 && ql ? (
+        <div className="rd-ch-empty">没有匹配的频道</div>
+      ) : null}
 
       <button type="button" className="rd-ch-add" data-action="open-source" onClick={() => onAdd && onAdd()}>
         <svg className="rd-ch-add-ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>

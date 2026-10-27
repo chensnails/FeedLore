@@ -312,11 +312,12 @@ try {
  * （否则会先闪一下默认值），这里负责后续修改、持久化与界面回填。
  * ============================================================ */
 // 默认值与合法值表（与服务端 APPEARANCE_DEFAULTS / APPEARANCE_KEYS 对齐）
-export const APPR_DEFAULTS = { theme: 'auto', accent: 'blue', fontSize: 'm', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
+export const APPR_DEFAULTS = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
 // 键名 → html 属性名；同时这个属性名就是控件上用来标值的 data 属性名
 export const APPR_ATTR = {
   accent: 'data-accent',
   fontSize: 'data-font-size',
+  density: 'data-density',
   readerFont: 'data-reader-font',
   readerLh: 'data-reader-lh',
   readerFs: 'data-reader-fs',
@@ -326,6 +327,7 @@ export const APPR_VALUES = {
   theme: ['auto', 'light', 'dark', 'github'],
   accent: ['blue', 'violet', 'teal', 'green', 'amber', 'rose'],
   fontSize: ['s', 'm', 'l'],
+  density: ['cozy', 'compact'],
   readerFont: ['sans', 'serif'],
   readerLh: ['s', 'm', 'l'],
   readerFs: ['s', 'm', 'l'],

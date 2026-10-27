@@ -55,7 +55,7 @@ try { Object.defineProperty(w, 'isSecureContext', { value: true, configurable: t
 // ---- 与线上 window.feedlore 同构的桩 ----
 const calls = [];
 const noop = (name) => (...a) => calls.push([name, ...a]);
-const appearance = { theme: 'auto', accent: 'blue', fontSize: 'm', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
+const appearance = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
 const fireAppearanceChanged = () => w.dispatchEvent(new w.Event('__appearanceChanged'));
 
 let adminFlag = true;
@@ -2036,7 +2036,7 @@ const withEFP = (el, fn) => {
   clickTab('外观');
   await sleep(60);
   t('外观面板渲染', () => { if (!document.querySelector('.appr')) throw new Error('无 .appr'); });
-  t('分段控件总数 19', () => { if (document.querySelectorAll('.seg-btn').length !== 19) throw new Error('实际 ' + document.querySelectorAll('.seg-btn').length); });
+  t('分段控件总数 21', () => { if (document.querySelectorAll('.seg-btn').length !== 21) throw new Error('实际 ' + document.querySelectorAll('.seg-btn').length); });
   t('调板 6 色 + 预览 + 重置', () => {
     if (document.querySelectorAll('.swatch').length !== 6) throw new Error('swatch 数不符');
     if (!document.querySelector('.appr-preview-t')) throw new Error('无预览');
@@ -2047,7 +2047,7 @@ const withEFP = (el, fn) => {
     if (!on('[data-theme-mode="auto"]')) throw new Error('auto 未选中');
     if (!on('.swatch[data-accent="blue"]')) throw new Error('blue 未选中');
     if (!on('[data-font-size="m"]')) throw new Error('m 未选中');
-    if (document.querySelectorAll('.seg-btn.active').length !== 6) throw new Error('active seg-btn 应为 6，实际 ' + document.querySelectorAll('.seg-btn.active').length);
+    if (document.querySelectorAll('.seg-btn.active').length !== 7) throw new Error('active seg-btn 应为 7，实际 ' + document.querySelectorAll('.seg-btn.active').length);
   });
 
   document.querySelector('[data-reader-width="full"]').click();
