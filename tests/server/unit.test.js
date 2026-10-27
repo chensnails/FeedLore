@@ -668,40 +668,6 @@ test('toCard：外链图片全部走代理，布尔字段强制化', () => {
   assert.equal(c.date, '2026-01-02T03:04:05.000Z');
 });
 
-test('toCard：dropUrls 命中的图片从卡片图 / 图集 / 正文块里一起消失（模板徽标）', () => {
-  const logo = 'https://cdn.x.com/logo.png';
-  const row = {
-    id: 7, feed_id: 3, title: '标题',
-    image: logo,
-    images: [logo, 'https://cdn.x.com/real.png'],
-    body_json: JSON.stringify([
-      { t: 'img', src: logo },
-      { t: 'text', v: '正文' },
-      { t: 'img', src: 'https://cdn.x.com/real.png' },
-    ]),
-  };
-  const c = toCard(row, new Set([logo]));
-  // 卡片图退到图集里下一张真图，而不是整张卡片没图
-  assert.equal(c.image, '/api/img?u=' + encodeURIComponent('https://cdn.x.com/real.png'));
-  assert.deepEqual(c.images, ['/api/img?u=' + encodeURIComponent('https://cdn.x.com/real.png')]);
-  const blocks = JSON.parse(c.bodyJson);
-  assert.equal(blocks.length, 2);                 // 徽标那块整块删掉，不是留个空壳
-  assert.equal(blocks[0].v, '正文');
-  assert.equal(blocks[1].src, '/api/img?u=' + encodeURIComponent('https://cdn.x.com/real.png'));
-});
-
-test('toCard：不传 dropUrls 时与改动前完全一致（判据失败就是不过滤）', () => {
-  const row = { id: 1, feed_id: 2, title: 'x', image: 'https://cdn.x.com/a.png', images: ['https://cdn.x.com/a.png'] };
-  assert.equal(toCard(row).image, '/api/img?u=' + encodeURIComponent(row.image));
-  assert.equal(toCard(row, new Set()).image, toCard(row).image);
-});
-
-test('toCard：卡片图与图集全是模板图时，image 为 null 而不是 undefined', () => {
-  const logo = 'https://cdn.x.com/logo.png';
-  const c = toCard({ id: 1, feed_id: 2, title: 'x', image: logo, images: [logo] }, new Set([logo]));
-  assert.equal(c.image, null);
-  assert.deepEqual(c.images, []);
-});
 
 test('toCard：缺字段时的默认值不会崩', () => {
   const c = toCard({ id: 1, feed_id: 2, title: 'x' });

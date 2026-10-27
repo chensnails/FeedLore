@@ -26,7 +26,6 @@ const { sanitizeAppearance, userAppearance, sanitizeLayout, userLayout, sanitize
   sanitizeDigest, userDigest, DIGEST_DEFAULTS, DIGEST_MODES } = require('./lib/prefs');
 const { applyFilters } = require('./lib/filter');
 const { toCard, toFeedDto } = require('./lib/dto');
-const templateImg = require('./lib/templateImg');
 const { hashPassword, safeEqual } = require('./lib/crypto');
 const { userLlmForStore, userLlmForView, userLlm, llmComplete, thinkingBudget } = require('./lib/llm');
 
@@ -1127,11 +1126,8 @@ const server = http.createServer(async (req, res) => {
           db.countEntries({ ownerId: user.id, feedIds, q: kw, tag, unread, favorite }),
           db.tagCounts(user.id, feedIds),
         ]);
-        // 站点徽标那类「整频道同一张图」不在卡片上显示（判据见 lib/templateImg.js）
-        const drop = await templateImg.dropForRows(db, page.rows);
-
         json(res, 200, {
-          entries: page.rows.map((r) => toCard(r, drop.get(String(r.id)))),
+          entries: page.rows.map((r) => toCard(r)),
           hasMore: page.hasMore,
           total,
           offset,
@@ -1170,9 +1166,7 @@ const server = http.createServer(async (req, res) => {
       if (entryRoute && req.method === 'GET') {
         const row = await db.getEntry(Number(entryRoute[1]), user.id);
         if (!row) { json(res, 404, { error: '条目不存在' }); return; }
-        // 正文里的模板图同样要挡掉（判据只看这一条所在的频道）
-        const drop = await templateImg.dropForRows(db, [row]);
-        json(res, 200, { ...toCard(row, drop.get(String(row.id))), content: row.content || '' });
+        json(res, 200, { ...toCard(row), content: row.content || '' });
         return;
       }
 

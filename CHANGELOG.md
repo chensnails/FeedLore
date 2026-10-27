@@ -4,6 +4,17 @@
 
 ## [未发布]
 
+## [1.5.1-test2] — 2026-10-27（开发版）
+
+- **完整移除「图片去重 / 模板图识别」功能**：该功能在实际运行中误过滤了大量正常图片（卡片缩略图与文章配图被整批隐藏），严重影响可用性，且判据逻辑不清晰。本次将其整体下线：
+  - 删除模块 `lib/templateImg.js` 及其全部判据（扫描近期条目、内容哈希指纹、memo 缓存、`MIN_HITS` 阈值等）。
+  - 服务端 `server.js` 移除两处 `templateImg.dropForRows` 调用（卡片列表、单条阅读页），条目图片不再被任何读取端过滤。
+  - `lib/dto.js` 的 `toCard` / `proxyBodyJson` 移除 `dropUrls` 参数与「卡片图退到图集下一张真图」的降级逻辑，所有图片原样透传。
+  - `db.js` 删除模板图专属查询 `imagePrints` / `feedImageUrls`；迁移 v20 由「新增 `content_hash` 列」反转为「`DROP COLUMN IF EXISTS content_hash`」以清理遗留列（幂等，新库无副作用）；`setImageCache` 不再计算并写入 `content_hash`，相应移除 `crypto` 依赖。
+  - 删除测试 `tests/server/templateimg.test.js`，并移除 `tests/server/unit.test.js` 中 3 条依赖去重行为的 `toCard` 断言。
+  - **保留**：`image_cache` 表本体与 L1/L2 图片缓存（`getImageCache` / `setImageCache` / `pruneImageCache` / `clearImageCache` / `imageCacheStats`、`/api/image-cache` 接口），图片正常加载不受影响。
+  - 1.5.1-test1 的「修复」因改为整体移除而下线，本版本即最终形态。
+
 ## [1.5.1-test1] — 2026-10-27（开发版）
 
 - **修复「条目图片消失」（v1.5.0 引入的回归）**：模板图去重不再靠「尺寸 + 字节数」误判，改为**图片字节的内容哈希**。
