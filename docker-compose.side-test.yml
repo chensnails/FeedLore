@@ -5,12 +5,15 @@
 # - docker-compose.release.yml    ：生产，跟 ghcr 的 :latest
 # - 本文件                        ：跟 ghcr 的**预发布**镜像，与生产同时跑、互不影响
 #
-# 两种模式，默认镜像模式：
-#   镜像模式（默认）：跑 CI 产出的预发布镜像，换版本只改变量
-#     APP_IMAGE=ghcr.io/chensnails/feedlore:1.4.0-test2 \
-#       docker compose -f docker-compose.side-test.yml up -d
-#   源码模式（改一行 CSS 就想在 3211 上看效果）：把下面注释掉的 build 段解开、
-#   image 改回 feedlore:test-src，然后 up -d --build（十几秒）
+# 日常走【本地构建】（约 20 秒，不推 tag、不占 ghcr、对已部署实例零影响）：
+#   docker build -t feedlore:1.4.0-test1 -t feedlore:test-src .
+#   APP_IMAGE=feedlore:test-src docker compose -f docker-compose.side-test.yml up -d
+#   两个标签：带版本号的那枚留档可回滚，test-src 是"当前在测"的浮动别名（每次构建覆盖）。
+#   回滚到上一版：APP_IMAGE=feedlore:1.4.0-test0 docker compose ... up -d
+# 需要跨机复现（或想验 CI 产出的那份）时，才临时钉到预发布镜像：
+#   APP_IMAGE=ghcr.io/chensnails/feedlore:1.4.0-test1 \
+#     docker compose -f docker-compose.side-test.yml up -d
+# 两种模式共用同一数据卷，切换不丢数据；不带 APP_IMAGE 时用 image 那行的默认值。
 #
 # 用法：
 #   docker compose -f docker-compose.side-test.yml up -d           # 用当前镜像
