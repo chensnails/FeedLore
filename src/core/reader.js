@@ -48,8 +48,19 @@ export function readerFilterParams() {
   return params;
 }
 
+/**
+ * 「再来一次」的排队位：加载途中用户又点了「再次点击同一频道」，
+ * 请求不能直接丢掉 —— 丢掉的话用户看到的是旧列表，完全不知道点了生效。
+ * 这里记一个 pendingReset，等当前这次结束后补一次重置重载。
+ */
+let readerPendingReset = false;
+
 export async function loadReader({ reset = false } = {}) {
-  if (state.rdLoading) return;
+  if (state.rdLoading) {
+    // 已经在加载：把「重置重载」排队，别静默丢弃
+    if (reset) readerPendingReset = true;
+    return;
+  }
   if (!reset && !state.rdHasMore) return;
 
   state.rdLoading = true;
@@ -87,6 +98,11 @@ export async function loadReader({ reset = false } = {}) {
   } finally {
     state.rdLoading = false;
     renderReader();
+    // 加载途中排队的「重置重载」：补跑一次，让用户的第二次点击真正生效
+    if (readerPendingReset) {
+      readerPendingReset = false;
+      loadReader({ reset: true });
+    }
   }
 }
 
@@ -368,8 +384,15 @@ export function readerSetGroup(g) {
 }
 export function readerSetFeed(id) {
   const next = id != null ? Number(id) : null;
+  // 再次点击同一个频道 = 回到该频道最新信息（与卡片页一致）。
+  // 此前这里对同频道直接 return，点第二下毫无反应 —— 与卡片页「再点一次回到最新」的行为不一致。
+  // 现在改为：同频道再点 → 重新拉取该频道的最新列表 + 滚回顶部（重新加载 = 拿到最新信息）。
+  const sameFeed = next === state.rdFeedId && state.rdGroup == null;
   state.rdScope = 'all';
-  if (next === state.rdFeedId && state.rdGroup == null) return;
+  if (sameFeed) {
+    reloadReaderFeed();
+    return;
+  }
   const f = next == null ? null : (state.feedList || []).find((x) => String(x.id) === String(next));
   state.rdFeedId = next;
   state.rdGroup = null;
@@ -380,6 +403,27 @@ export function readerSetFeed(id) {
   setReaderDrawer(false);
   scrollReaderTop();
 }
+
+/**
+ * 「再次点击同一频道」：重新拉取该频道的最新条目并把视线带回顶部。
+ *
+ * 为什么不直接复用上面的切换分支：切换分支会把分组筛选清掉（state.rdGroup = null），
+ * 而「再点一次」应该是「原地刷新当前视图」—— 用户想看的是这个频道最新的内容，
+ * 不是换筛选条件。所以这里保持 rdFeedId / rdGroup 不变，只做「重置 + 重拉 + 回顶」。
+ *
+ * 边界：
+ *  - 正在加载时再点：loadReader 内部有 state.rdLoading 闸门，重复请求会被挡掉，
+ *    但我们仍要把列表重置到「加载中」态 —— 否则用户点完看到的是旧列表，毫无反馈。
+ *  - 搜索词 / 收藏 / 未读范围：都在 readerFilterParams 里，刷新时原样带上，不清空。
+ */
+function reloadReaderFeed() {
+  renderReader();
+  loadReader({ reset: true });
+  emitShell();
+  setReaderDrawer(false);
+  scrollReaderTop();
+}
+
 export function readerOpenSource() { openSettings('source'); setReaderDrawer(false); }
 
 /* ---------- 移动端：左侧频道抽屉 ---------- */

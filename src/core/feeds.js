@@ -90,8 +90,19 @@ export async function loadFeeds() {
   return data;
 }
 
+/**
+ * 「再来一次」的排队位：加载途中用户又点了同一频道（或换了筛选），
+ * 请求不能直接丢掉 —— 丢掉的话用户看到的是旧列表，完全不知道点了生效。
+ * 这里记一个 pendingReset，等当前这次结束后补一次重置重载。
+ * 与 reader.js 的同名机制对称（文章页 / 卡片页两套列表各有一份）。
+ */
+let pagePendingReset = false;
+
 export async function loadPage(reset = false) {
-  if (state.loading) return;
+  if (state.loading) {
+    if (reset) pagePendingReset = true;
+    return;
+  }
   state.loading = true;
 
   if (reset) { state.offset = 0; state.hasMore = true; state.entries = []; }
@@ -128,6 +139,11 @@ export async function loadPage(reset = false) {
   } finally {
     state.loading = false;
     render();
+    // 加载途中排队的「重置重载」：补跑一次，让用户的第二次点击真正生效
+    if (pagePendingReset) {
+      pagePendingReset = false;
+      loadPage(true);
+    }
   }
 }
 

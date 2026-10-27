@@ -3985,6 +3985,69 @@ const withEFP = (el, fn) => {
       if (doc.body.classList.contains('cards-drawer-open')) throw new Error('文章页也开了卡片页抽屉');
       c2.readerCloseDrawer();
     });
+
+    // ---- 「再次点击同一频道 → 回到该频道最新信息」 ----
+    // 背景：卡片页一直是这个行为（cardsFilterFeed 每次都 loadPage(true)），
+    // 文章页此前对同一频道直接 return，点第二下毫无反应 —— 两页行为不一致。
+    // 这里在真实 core 上验：再点同一频道必须重新拉列表 + 滚回顶部，且不能早退。
+    t('冒烟：文章页再次点击同一频道 → 重载该频道最新列表（不再早退）', async () => {
+      const c2 = sw.__coreForTest;
+      const doc = sw.document;
+      // 装一个可控的 fetch：记录 /api/entries 的调用次数与参数
+      const calls = [];
+      const origFetch = sw.fetch;
+      sw.fetch = (url, opts) => {
+        calls.push({ url: String(url), method: (opts && opts.method) || 'GET' });
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: () => Promise.resolve({ entries: [], hasMore: false, total: 0 }),
+        });
+      };
+      try {
+        c2.state.tab = 'reader';
+        c2.state.feedList = [{ id: 7, groupName: '科技' }];
+        c2.state.rdScope = 'all';
+        c2.state.rdGroup = null;
+        c2.state.rdFeedId = 7;
+        c2.state.rdEntries = [];
+        await sleep(0);
+
+        // 第一次点：重新拉取
+        c2.readerSetFeed(7);
+        await sleep(60);
+        const first = calls.filter((c) => c.url.indexOf('/api/entries?') === 0);
+        if (first.length !== 1) throw new Error('首次点击未触发列表拉取：' + first.length);
+
+        // 第二次点同一频道：必须再拉一次（此前是直接 return，点了没反应）
+        calls.length = 0;
+        c2.readerSetFeed(7);
+        await sleep(60);
+        const second = calls.filter((c) => c.url.indexOf('/api/entries?') === 0);
+        if (second.length !== 1) throw new Error('再次点击同一频道没有重新拉取（应与卡片页一致）');
+        // 再点一次必须仍然带着同一个频道的筛选条件
+        if (second[0].url.indexOf('feeds=7') < 0) throw new Error('重载丢了频道筛选：' + second[0].url);
+      } finally {
+        sw.fetch = origFetch;
+      }
+    });
+
+    t('冒烟：文章页再点同一频道时保持频道筛选（不清掉分组条件）', async () => {
+      const c2 = sw.__coreForTest;
+      // 处于分组筛选状态时，再点一个频道 —— 走的是「切换」分支，必须切到该频道
+      c2.state.rdGroup = '科技';
+      c2.state.rdFeedId = null;
+      c2.state.feedList = [{ id: 7, groupName: '科技' }];
+      c2.readerSetFeed(7);
+      await sleep(20);
+      if (c2.state.rdFeedId !== 7) throw new Error('未切到该频道');
+      if (c2.state.rdGroup !== null) throw new Error('切频道时应清掉分组筛选');
+      // 此时 rdFeedId===7 且 rdGroup===null —— 再点一次应走「重载」分支，
+      // 保持 rdFeedId 不变，而不是把它清成 null
+      c2.readerSetFeed(7);
+      await sleep(20);
+      if (c2.state.rdFeedId !== 7) throw new Error('再点同一频道后频道被清掉了：' + c2.state.rdFeedId);
+    });
+
     sw.close();
   }
 
@@ -4066,6 +4129,31 @@ const withEFP = (el, fn) => {
     // 禁止 transition: all（会把布局属性一起动画）
     const chip = css.match(/^\.tag-chip \{([\s\S]*?)\n\}/m);
     if (chip && /transition:\s*all/.test(chip[1])) throw new Error('.tag-chip 不该用 transition: all');
+  });
+
+  // 拟态浮起感守门：UI 评审 #9「降阴影」曾把 --neu-shadow 从 7/18 降到 4/12，
+  // 实测 Windows 150% 下拟态浮起深度从 12 掉到 6、阴影过渡带从 21 设备像素缩到 7，
+  // 卡片从「浮起来」退化成「贴在背景上」——用户感知为「界面发飘、层次感弱」。
+  // offset 主导浮起深度、blur 决定过渡带宽度；两者都不能再降回 4/12 那一档。
+  t('视觉：拟态阴影保持浮起感（三主题 offset ≥ 5px / blur ≥ 14px）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+    const decls = css.match(/--neu-shadow:\s*([^;]+);/g) || [];
+    if (decls.length < 3) throw new Error('应有三套主题的 --neu-shadow，实际 ' + decls.length);
+    for (const d of decls) {
+      const off = d.match(/(\d+)px\s+\d+px\s+\d+px\s+var\(--neu-lo\)/);
+      if (!off) throw new Error('拟态阴影写法变了，需同步更新本断言：' + d);
+      const o = Number(off[1]);
+      if (o < 5) throw new Error('拟态阴影 offset 降到 ' + o + 'px，浮起感会塌（需 ≥ 5px）：' + d);
+      const blur = Number(d.match(/\d+px\s+\d+px\s+(\d+)px\s+var\(--neu-lo\)/)[1]);
+      if (blur < 14) throw new Error('拟态阴影 blur 降到 ' + blur + 'px，阴影过渡带会过窄发硬（需 ≥ 14px）：' + d);
+    }
+    // 图标描边：15px 图标上 stroke-width 1.85 只有 1.156 设备像素，落在分数像素上会被摊开发虚
+    const ico = css.match(/^\.ico,\n[\s\S]{0,400}?\n\}/m);
+    if (ico) {
+      const sw = ico[0].match(/stroke-width:\s*([\d.]+);/);
+      if (sw && Number(sw[1]) < 2) throw new Error('图标描边回到 ' + sw[1] + '，15px 图标上会发虚（需 ≥ 2）');
+    }
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });
