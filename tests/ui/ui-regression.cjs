@@ -4234,11 +4234,14 @@ const withEFP = (el, fn) => {
   //     （.rd-ch-search-ico 实测：搜索框里的放大镜圆圈变成一颗黑点）。
   t('图标：sprite 图标类必须在基础组内（含 fill:none / stroke:currentColor）', () => {
     const root = path.join(__dirname, '..', '..');
-    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
-    // 取基础组（.ico 开头的那条选择器）；本仓库 style.css 是 CRLF，正则要兼容 \r\n
-    const base = css.match(/^\.ico,\r?\n([\s\S]{0,400}?)\{/m);
+    // 归一化换行：仓库 style.css 在 Windows 工作区是 CRLF，但 CI(Linux) 检出为 LF，
+    // 只用 \r\n 拼接 group 会在 Linux 上 indexOf 失败。统一转 LF 再比，跨平台稳定。
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8')
+      .replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    // 取基础组（.ico 开头的那条选择器）
+    const base = css.match(/^\.ico,\n([\s\S]{0,400}?)\{/m);
     if (!base) throw new Error('找不到图标基础组（.ico, … {）');
-    const group = '.ico,\r\n' + base[1];
+    const group = '.ico,\n' + base[1];
     const gi = css.indexOf(group);
     if (gi < 0) throw new Error('图标基础组定位失败');
     // 基础组正文必须含 fill:none 与 stroke:currentColor
