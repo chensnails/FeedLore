@@ -1,15 +1,19 @@
-# 笺川（FeedLore）· 本机常驻测试环境（源码模式，与生产并排，端口 3211）
+# 笺川（FeedLore）· 本机常驻测试环境（镜像模式，与生产并排，端口 3211）
 #
 # 与其它几份 compose 的分工：
 # - docker-compose.yml            ：源码模式，但用的是生产的容器名/卷/端口（3210）
 # - docker-compose.release.yml    ：生产，跟 ghcr 的 :latest
-# - 本文件                        ：跟【本地工作区源码】，与生产同时跑、互不影响
+# - 本文件                        ：跟 ghcr 的**预发布**镜像，与生产同时跑、互不影响
 #
-# 为什么是源码模式而不是镜像：test 分支不出镜像了，改一行 CSS 就想在 3211 上看效果，
-# 走 --build 要十几秒；更快的做法是 npm run build 后把 dist 与后端源码 docker cp 进去重启。
+# 两种模式，默认镜像模式：
+#   镜像模式（默认）：跑 CI 产出的预发布镜像，换版本只改变量
+#     APP_IMAGE=ghcr.io/chensnails/feedlore:1.4.0-test2 \
+#       docker compose -f docker-compose.side-test.yml up -d
+#   源码模式（改一行 CSS 就想在 3211 上看效果）：把下面注释掉的 build 段解开、
+#   image 改回 feedlore:test-src，然后 up -d --build（十几秒）
 #
 # 用法：
-#   docker compose -f docker-compose.side-test.yml up -d --build   # 改完代码重建
+#   docker compose -f docker-compose.side-test.yml up -d           # 用当前镜像
 #   docker compose -f docker-compose.side-test.yml logs -f app     # 看后端日志
 #   docker compose -f docker-compose.side-test.yml down            # 停掉，保留数据卷
 #   打开 http://127.0.0.1:3211 （初始账号 admin / admin；局域网内用本机 IP + 3211）
@@ -18,8 +22,8 @@
 #   1. 监听 0.0.0.0（不是 127.0.0.1）：要能从局域网里别的机器打开这个测试站。
 #      代价是 admin/admin 这套初始账号也一起暴露在网段里 —— 只在可信网络里这么用，
 #      用完记得把前缀改回 127.0.0.1（或换掉管理员密码）。
-#   2. 没有 watchtower：镜像是本机 build 出来的，没有远端 tag 可拉。
-#      「设置 → 关于」里的一键更新因此不可用，重建请用上面那条 --build。
+#   2. 没有 watchtower：钉的是预发布标签，不是 :latest，Watchtower 没有可比对的对象，
+#      也就不会把测试站拉回生产版本。「设置 → 关于」的一键更新同样不可用。
 name: feedlore-test
 
 services:
@@ -50,11 +54,12 @@ services:
         max-file: "3"
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    # 本地 tag，刻意不叫 :latest / :test，避免和 CI 产物混在一起看不清跑的是哪份
-    image: feedlore:test-src
+    # 镜像模式：默认钉在 CI 产出的预发布镜像上。换版本用 APP_IMAGE 覆盖，不必改本文件。
+    # 想改回「跟本地工作区源码」，把下面 build 段取消注释、image 换成 feedlore:test-src。
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    image: ${APP_IMAGE:-ghcr.io/chensnails/feedlore:1.4.0-test1}
     container_name: feedlore-test
     restart: unless-stopped
     depends_on:
