@@ -12,6 +12,7 @@
  */
 
 const pg = require('pg');
+const crypto = require('crypto');
 
 // id / count / 长度都在安全整数范围内，统一按 Number 取，省去满屏的 Number() 转换
 pg.types.setTypeParser(20, (v) => (v === null ? null : Number(v)));    // int8
@@ -167,6 +168,9 @@ const MIGRATIONS = [
    END $$`,
   // v19：抓取连续失败计数（达到上限自动停用采集；抓取成功清零，手动恢复也清零）
   `ALTER TABLE feeds ADD COLUMN IF NOT EXISTS fail_streak SMALLINT NOT NULL DEFAULT 0`,
+  // v20：图片内容哈希（sha256 字节）。模板图判据改用「内容哈希」做指纹，
+  // 只有字节完全相同的图才会被判为同一张，杜绝「不同图恰好同尺寸 + 同字节数」被误删。
+  `ALTER TABLE image_cache ADD COLUMN IF NOT EXISTS content_hash TEXT`,
 ];
 
 
@@ -654,8 +658,9 @@ module.exports = function createDb({ connectionString, log = console.log }) {
 
   /**
    * 模板图判据 · 第一步（判据本身在 lib/templateImg.js）：
-   * 批量按主键取图片指纹 (size, width, height) —— 三个数在建缓存时顺手写好了，
-   * 判「两张图是不是同一张」不必读任何图片字节。
+   * 批量按主键取图片指纹（size, width, height, content_hash）。前三个数是建缓存时
+   * 顺手写好的；content_hash 是图片字节的 sha256，模板图判据改用它当「是不是同一张图」
+   * 的精确指纹（只有字节完全相同的图才会被判重复），不必读任何图片字节。
    * key 由调用方用 lib/util 的 imageCacheKey(url) 算，与 getImageCache 同一口径：
    * SQL 里对原始 URL 直接 sha256 会漏掉约 40%（带 ?x-bce-process=image/format 这类
    * 需要百分号编码的 URL，new URL() 归一化后和原文不一样）。
@@ -664,7 +669,7 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     const list = Array.from(new Set((keys || []).filter((k) => typeof k === 'string' && k)));
     if (!list.length) return [];
     const { rows } = await q(
-      'SELECT key, size, width, height FROM image_cache WHERE key = ANY($1::text[])',
+      'SELECT key, size, width, height, content_hash FROM image_cache WHERE key = ANY($1::text[])',
       [list]
     );
     return rows;
@@ -895,16 +900,22 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     return { contentType: row.content_type, data: row.data, createdAt: row.created_at };
   }
 
-  /** 写入/覆盖缓存图片（key = sha256 归一化 URL） */
+  /** 写入/覆盖缓存图片（key = sha256 归一化 URL）。
+   *  content_hash = 图片字节的 sha256 —— 模板图判据用来做「是不是同一张图」的精确指纹，
+   *  只有字节完全相同的图才会判成重复，避免「不同图恰好同尺寸 + 同字节数」被误删。 */
   async function setImageCache({ key, contentType, data, width, height, origSize }) {
+    const contentHash = data && Buffer.isBuffer(data)
+      ? crypto.createHash('sha256').update(data).digest('hex')
+      : null;
     await q(
-      `INSERT INTO image_cache (key, content_type, data, width, height, orig_size, size, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+      `INSERT INTO image_cache (key, content_type, data, width, height, orig_size, size, content_hash, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
        ON CONFLICT (key) DO UPDATE SET
          content_type = EXCLUDED.content_type, data = EXCLUDED.data,
          width = EXCLUDED.width, height = EXCLUDED.height,
-         orig_size = EXCLUDED.orig_size, size = EXCLUDED.size, created_at = now()`,
-      [key, contentType, data, width || null, height || null, origSize || null, data.length]
+         orig_size = EXCLUDED.orig_size, size = EXCLUDED.size,
+         content_hash = EXCLUDED.content_hash, created_at = now()`,
+      [key, contentType, data, width || null, height || null, origSize || null, data ? data.length : 0, contentHash]
     );
   }
 
