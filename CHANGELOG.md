@@ -2,9 +2,7 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
-## [未发布]
-
-## [1.5.1-test2] — 2026-10-27（开发版）
+## [1.5.1] — 2026-10-27
 
 - **完整移除「图片去重 / 模板图识别」功能**：该功能在实际运行中误过滤了大量正常图片（卡片缩略图与文章配图被整批隐藏），严重影响可用性，且判据逻辑不清晰。本次将其整体下线：
   - 删除模块 `lib/templateImg.js` 及其全部判据（扫描近期条目、内容哈希指纹、memo 缓存、`MIN_HITS` 阈值等）。
@@ -13,15 +11,7 @@
   - `db.js` 删除模板图专属查询 `imagePrints` / `feedImageUrls`；迁移 v20 由「新增 `content_hash` 列」反转为「`DROP COLUMN IF EXISTS content_hash`」以清理遗留列（幂等，新库无副作用）；`setImageCache` 不再计算并写入 `content_hash`，相应移除 `crypto` 依赖。
   - 删除测试 `tests/server/templateimg.test.js`，并移除 `tests/server/unit.test.js` 中 3 条依赖去重行为的 `toCard` 断言。
   - **保留**：`image_cache` 表本体与 L1/L2 图片缓存（`getImageCache` / `setImageCache` / `pruneImageCache` / `clearImageCache` / `imageCacheStats`、`/api/image-cache` 接口），图片正常加载不受影响。
-  - 1.5.1-test1 的「修复」因改为整体移除而下线，本版本即最终形态。
-
-## [1.5.1-test1] — 2026-10-27（开发版）
-
-- **修复「条目图片消失」（v1.5.0 引入的回归）**：模板图去重不再靠「尺寸 + 字节数」误判，改为**图片字节的内容哈希**。
-  - **根因**：模板图识别（lib/templateImg.js）此前用 `size:宽x高` 当「是不是同一张图」的指纹。两张**内容完全不同**的图只要字节数、宽高恰好一致（CMS 批量生成的封面 / 站点 banner / 截图经常如此），就会被判为同一张；同频道最近 200 条里 ≥3 条命中即整批删除 → 卡片页缩略图与文章页配图成片消失。
-  - **修复**：指纹改用 `image_cache.content_hash`（图片字节的 sha256）。只有**字节完全相同**的图才会被判成重复——哪怕它们 URL 不同（签名徽标就是这种情况），也能正确识别；而「不同图恰好同尺寸 + 同字节数」绝不会再误并。
-  - **存量兼容**：`image_cache` 新增 `content_hash` 列（`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`，幂等安全）；`setImageCache` 写入时顺手算 `crypto.createHash('sha256')`。**升级前已缓存、尚未重新抓取的存量图**没有 `content_hash`，此时指纹**退回缓存主键（归一化 URL 的 sha256，每个 URL 唯一）**——主键天然不会把两张不同的图误并，代价只是对「同图异 URL」的存量图少做一次去重，这些图被重新抓取后会自动补上 `content_hash`。判据全程「有证据才隐藏」，任何一步失败都当「没有模板图」，不拖垮列表。
-  - **守门**：`tests/server/templateimg.test.js` 指纹全部改为内容哈希，并新增 3 条回归用例——① 三张尺寸 / 字节数一致但内容不同的图绝不被误并；② 存量图无 `content_hash` 时不同 URL 绝不误并；③ 存量图同一 URL 重复 3 次仍判为模板。
+  - 注：本版本采用「整体移除」方案，以彻底消除误过滤风险（早期曾尝试仅修订去重判据，后发现判据本身难以做到既不误删又真正去重，故下线）。
 
 ## [1.5.0] — 2026-10-27
 
