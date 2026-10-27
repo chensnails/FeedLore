@@ -989,12 +989,12 @@ const withEFP = (el, fn) => {
     if (/className="wrap toolbar"/.test(cards)) {
       throw new Error('搜索搬进标题行后，卡片页不该还留着一层 .toolbar（那是多余的一整行高度）');
     }
-    // 文章页：搜索同样在头部行内，位置在标题之后、工具组之前
+    // 文章页：搜索同样在头部行内，且与卡片页一致地排在右簇末端（工具组之后）
     const reader = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
     const rh = reader.slice(reader.indexOf('reader-head page-head'), reader.indexOf('className="reader-list"'));
     if (rh.indexOf('reader-search page-search') < 0) throw new Error('文章页搜索应住在头部行里');
-    if (rh.indexOf('reader-search page-search') > rh.indexOf('reader-head-tools')) {
-      throw new Error('搜索应排在工具组之前（标题与图标组之间），不是工具组后面');
+    if (rh.indexOf('reader-search page-search') < rh.indexOf('reader-head-tools')) {
+      throw new Error('搜索应排在工具组之后（右簇末端），两页顺序必须一致');
     }
     if (reader.slice(reader.indexOf('className="reader-list"')).indexOf('reader-search page-search') >= 0) {
       throw new Error('文章页不应再有独立的搜索行');
@@ -1003,9 +1003,10 @@ const withEFP = (el, fn) => {
     if (tools.indexOf('readerSearchToggle') < tools.lastIndexOf('<button')) {
       throw new Error('放大镜应在工具行最右端（卡片页的搜索也在同一位置）');
     }
-    // 搜索与工具组结成右侧集群：把剩余空白留在标题之后，而不是让搜索悬在中间
-    if (!/\.search-box\s*\{[^}]*margin:\s*0 0 0 auto/.test(css)) {
-      throw new Error('搜索应靠右（margin-left:auto），与工具组连成一排');
+    // 右簇整体靠右：auto 外边距挂在工具组上。挂在搜索框上会让右簇裂成两段 ——
+    // 搜索现在是右簇的末端，空白必须出现在它前面（标题之后），而不是工具组与搜索之间。
+    if (!/\.reader-head-tools\s*\{[^}]*margin-left:\s*auto/.test(css)) {
+      throw new Error('右簇应靠右（.page-tools / .reader-head-tools 的 margin-left:auto）');
     }
     if (/\.reader-menu-label\s*\{\s*display:\s*none/.test(css)) {
       throw new Error('窄屏频道开关要保留「频道」文字，一枚光秃秃的 ☰ 读不出是菜单还是收起');

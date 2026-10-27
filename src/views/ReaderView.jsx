@@ -458,27 +458,17 @@ export function ReaderView() {
       <ReaderSideResize />
 
       <section className="reader-main">
-        <div className="reader-head page-head">
-          <button className="btn btn-ghost btn-sm reader-menu-btn" id="readerMenuBtn" type="button" aria-label="打开频道列表"
+        <div className="reader-head page-head view-toolbar">
+          <button className="btn btn-ghost btn-sm reader-menu-btn vt-channel" id="readerMenuBtn" type="button" aria-label="打开频道列表"
             onClick={() => s.readerToggleDrawer && s.readerToggleDrawer()}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg><span className="reader-menu-label">频道</span>
           </button>
-          <div className="reader-head-text"><h2 className="page-title" id="readerTitle">{title}</h2></div>
-          {/* 搜索就在头部这一行里：标题之后、工具组之前，吃掉中间的剩余宽度。
-              它不再单独占一行 —— 一整条只在打字时才有用的搜索行，等于把列表整体压下去 50px。
-              窄屏仍收进工具行最右端的放大镜，展开时换行独占第二行。 */}
-          <div className={'reader-search page-search' + (searchOpen ? ' is-open' : '')}>
-            <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-            <input id="readerSearch" name="rq" type="search" ref={searchRef} defaultValue={q}
-              placeholder="搜索标题、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索文章"
-              onInput={onSearchInput} onKeyDown={onSearchKey} />
-            <button className="reader-search-clear" id="readerSearchClear" type="button" hidden={!q}
-              aria-label="清除搜索" onClick={onSearchClear}>
-              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
-            </button>
-          </div>
-          <div className="reader-head-tools page-tools">
-            <button className="btn btn-ghost btn-sm" id="readerAccBtn" type="button" aria-pressed={accordionOn ? 'true' : 'false'}
+          <div className="reader-head-text"><h2 className="page-title vt-title" id="readerTitle">{title}</h2></div>
+          {/* 右簇：列表动作（单篇/多篇、全部已读、全部收起）→ 搜索。
+              搜索与卡片页一样收在这条栏的最右端，两页「搜索在哪里」只有一个答案。
+              窄屏时动作组由 .btn-label 收成图标，整条压成一行。 */}
+          <div className="reader-head-tools page-tools vt-tools">
+            <button className="btn btn-ghost btn-sm vt-action" id="readerAccBtn" type="button" aria-pressed={accordionOn ? 'true' : 'false'}
               title={accordionOn
                 ? '单篇展开：展开一篇时自动收起上一篇（点这里改成多篇）'
                 : '多篇展开：可以同时展开多篇（点这里改成单篇）'}
@@ -486,24 +476,35 @@ export function ReaderView() {
               <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-accordion" /></svg>
               <span className="btn-label" id="readerAccLabel">{accordionOn ? '单篇' : '多篇'}</span>
             </button>
-            <button className="btn btn-ghost btn-sm" id="readerReadAllBtn" type="button" hidden={!hasUnread}
+            <button className="btn btn-ghost btn-sm vt-action" id="readerReadAllBtn" type="button" hidden={!hasUnread}
               title="把当前列表全部标为已读" onClick={() => s.readerReadAll && s.readerReadAll()}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-check-circle" /></svg>
               <span className="btn-label">全部已读</span>
             </button>
-            <button className="btn btn-ghost btn-sm" id="readerCollapseAll" type="button" hidden={!anyExpanded}
+            <button className="btn btn-ghost btn-sm vt-action" id="readerCollapseAll" type="button" hidden={!anyExpanded}
               title="收起所有展开的文章" onClick={() => s.readerCollapseAll && s.readerCollapseAll()}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevrons-up" /></svg>
               <span className="btn-label">全部收起</span>
             </button>
-            {/* 放大镜放在工具行最右端：卡片页的搜索也在这条行的同一个位置，
-                两页「搜索在哪里」不该有两个答案。窄屏才出现，桌面搜索框常驻在下方 */}
+            {/* 放大镜：窄屏唯一的搜索入口，跟在动作组后面，是工具簇里的最后一个按钮 */}
             <button className={'btn btn-ghost btn-sm reader-search-toggle' + (searchOpen ? ' is-on' : '')}
               id="readerSearchToggle" type="button"
               aria-expanded={searchOpen ? 'true' : 'false'} aria-controls="readerSearch"
               title={searchOpen ? '收起搜索' : '搜索文章'}
               onClick={toggleSearch}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href={searchOpen ? '#i-x' : '#i-search'} /></svg>
+            </button>
+          </div>
+          {/* 搜索：桌面常驻在右簇末端；窄屏收进放大镜，展开时换行独占第二行。
+              它不再单独占一行 —— 一整条只在打字时才有用的搜索行，等于把列表整体压下去 50px。 */}
+          <div className={'reader-search page-search vt-search' + (searchOpen ? ' is-open' : '')}>
+            <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+            <input id="readerSearch" name="rq" type="search" ref={searchRef} defaultValue={q}
+              placeholder="搜索标题、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索文章"
+              onInput={onSearchInput} onKeyDown={onSearchKey} />
+            <button className="reader-search-clear" id="readerSearchClear" type="button" hidden={!q}
+              aria-label="清除搜索" onClick={onSearchClear}>
+              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
             </button>
           </div>
         </div>

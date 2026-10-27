@@ -434,14 +434,14 @@ export function CardsView() {
           窄屏整条吸顶成一行（CSS 里 .cards-head / .page-tools 退化为 display:contents，
           靠 order 排位），搜索收进右侧放大镜。 */}
       <div className="cards-sticky">
-        <div className="wrap cards-head page-head">
-          <button className="btn btn-ghost btn-sm cards-menu-btn" id="cardsMenuBtn" type="button"
+        <div className="wrap cards-head page-head view-toolbar">
+          <button className="btn btn-ghost btn-sm cards-menu-btn vt-channel" id="cardsMenuBtn" type="button"
             aria-label="打开频道列表" aria-controls="cardsSide"
             onClick={() => { if (s.cardsToggleDrawer) s.cardsToggleDrawer(); }}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg>
             <span className="cards-menu-label">频道</span>
           </button>
-          <h2 className="cards-title page-title" title={headTitle}>{headTitle}</h2>
+          <h2 className="cards-title page-title vt-title" title={headTitle}>{headTitle}</h2>
           {/* 桌面（≥1081px）这里没有文字标题：同一句话标题与下拉各写一遍，等于同一信息出现两次，
               而其中只有下拉可点。改成「下拉即标题」—— 它本身就显示当前频道（含条数），
               既是标题也是筛选入口。窄屏（≤1080px）下拉退场、抽屉接管，文字标题回来。 */}
@@ -449,28 +449,15 @@ export function CardsView() {
             ariaLabel={'频道筛选，当前：' + headTitle} value={feedValue}
             options={feedOpts} onChange={(v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }}
             collapsible collapsedGroups={collapsedGroups} onToggleGroup={toggleGroupFold} />
-          {/* 搜索：桌面常驻在这一行，与文章页同一个位置、同一套胶囊（窄屏收在放大镜后面） */}
-          <div className={'search-box page-search' + (searchOpen ? ' is-open' : '')}>
-            <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-            <input id="searchInput" name="q" type="search" ref={searchRef}
-              placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索"
-              value={qDraft} onChange={onSearchInput}
-              onKeyDown={(ev) => {
-                if (ev.key === 'Escape') { ev.stopPropagation(); toggleSearch(); return; }
-                onSearchKey(ev);
-              }} />
-            <button className="search-clear" id="searchClear" type="button" hidden={!qDraft}
-              aria-label="清除搜索" onClick={onSearchClear}>
-              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
-            </button>
-          </div>
-          <div className="page-tools">
+          {/* 右簇：排序 → 视图切换 → 搜索。搜索是这一簇的末端，也是整条工具栏的右边缘 ——
+              两页、两档断点都只有这一个答案（窄屏收进放大镜，展开时独占第二行）。 */}
+          <div className="page-tools vt-tools">
             {/* 排序：桌面是带文字的下拉（当档位一目了然），窄屏收成图标按钮。
                 提示与无障碍名都带上当前值，否则屏幕阅读器只听到「排序」不知道排的是哪档 */}
             <Dropdown wrapId="sortDD" id="sortSelect" icon="i-sort"
               title={'排序：' + sortLabel} ariaLabel={'排序：' + sortLabel} value={st.sort || 'new'}
               options={sortOpts} onChange={(v) => { if (s.cardsSort) s.cardsSort(v); }} />
-            <div className="viewmode" id="viewMode" role="group" aria-label="视图模式">
+            <div className="viewmode vt-view" id="viewMode" role="group" aria-label="视图模式">
               <button className={'viewmode-btn' + (view === 'grid' ? ' active' : '')} type="button" data-mode="grid"
                 title="卡片视图" aria-label="卡片视图" onClick={() => { if (s.cardsView) s.cardsView('grid'); }}>
                 <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-grid" /></svg>
@@ -486,6 +473,21 @@ export function CardsView() {
               title={searchOpen ? '收起搜索' : '搜索'}
               onClick={toggleSearch}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href={searchOpen ? '#i-x' : '#i-search'} /></svg>
+            </button>
+          </div>
+          {/* 搜索：桌面常驻在右簇末端，与文章页同一个位置、同一套胶囊（窄屏收在放大镜后面） */}
+          <div className={'search-box page-search vt-search' + (searchOpen ? ' is-open' : '')}>
+            <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+            <input id="searchInput" name="q" type="search" ref={searchRef}
+              placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索"
+              value={qDraft} onChange={onSearchInput}
+              onKeyDown={(ev) => {
+                if (ev.key === 'Escape') { ev.stopPropagation(); toggleSearch(); return; }
+                onSearchKey(ev);
+              }} />
+            <button className="search-clear" id="searchClear" type="button" hidden={!qDraft}
+              aria-label="清除搜索" onClick={onSearchClear}>
+              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
             </button>
           </div>
         </div>

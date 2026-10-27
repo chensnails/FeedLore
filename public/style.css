@@ -3949,6 +3949,25 @@ button.tag-chip { font-family: inherit; }
   background: var(--bg);
   border-bottom: 0;
 }
+/* ---------- 视图级工具栏（第二行）的令牌层 ---------- */
+/* 两条栏是一组：第一行导航 56px（.topbar-inner），第二行工具栏 52px —— 差 4px 读作
+   「主 / 次」，不是两块各写各的。控件统一 36px：比上一版的 32px 更接近导航按钮的
+   视觉重量，一排看过去没有「小一号」的零件，搜索胶囊也随之同高，落在同一条中线上。
+   间距 8px 与顶栏 .topbar-actions 同档，不再是 12px（那会让右簇显得散）。
+   ⚠️ 这些令牌只在工具栏子树内覆盖，绝不动 :root —— 顶栏的 --head-ctl 不受牵连，
+      两栏的尺寸从此各自有据，改一处不会连锁改另一处。 */
+.view-toolbar {
+  --head-h: 52px;
+  --head-ctl: 36px;
+  --search-h: 36px;
+  --head-gap: var(--sp-2);
+}
+/* 模块钩子（两页共用同一套词表，DOM 顺序即阅读顺序）：
+   .vt-channel 频道入口 / .vt-title 当前频道标题 / .vt-tools 右簇 / .vt-search 搜索。
+   .vt-actions 是文章页专属动作组（单篇、全部已读、全部收起），卡片页没有这一组 ——
+   两边结构因此仍同构：左端「我在看什么」，右端「我能做什么」，搜索永远在最右。 */
+.view-toolbar .vt-channel,
+.view-toolbar .vt-tools { flex: 0 0 auto; }
 /* 标题：按内容宽度、单行省略 —— 剩余宽度留给搜索，标题不再「吃掉一切」。 */
 .page-title,
 .reader-head h2,
@@ -3966,7 +3985,8 @@ button.tag-chip { font-family: inherit; }
 .cards-head > .page-title { max-width: 40%; }
 .reader-head-text { flex: 0 1 auto; min-width: 0; max-width: 40%; }
 .reader-head-text .page-title { max-width: 100%; }
-.cards-head { padding-top: var(--sp-4); }
+/* 卡片页头部不再额外加 16px 顶部内距：工具栏高度由 --head-h(52) 统一给（36 控件 + 上下各 8）。
+   多出来的那 16px 会让卡片页的栏比文章页高出一截，两页同构就只剩选择器同构。 */
 
 @media (min-width: 1081px) {
   /* ---------- 卡片页：下拉即标题 ----------
@@ -3999,11 +4019,15 @@ body.is-scrolled .page-head,
 body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
 
 /* ---------- 工具组：两页同一套控件 ---------- */
+/* margin-left:auto 挂在**右簇的第一个**元素上，而不是搜索框上：搜索现在是右簇的末端
+   （排序 → 视图 → 搜索），把自动外边距留给搜索会让空白出现在工具组与搜索之间，
+   一条横栏被撑成两段。挂在这里，右簇整体贴右，空白只留在标题之后。 */
 .page-tools,
 .reader-head-tools {
   flex: 0 0 auto;
   display: flex; align-items: center;
   gap: var(--sp-2);
+  margin-left: auto;
 }
 /* 头部控件统一 32px 高、8px 圆角；下拉同高同圆角，一排看过去是同一族 */
 .page-head .btn,
@@ -4041,8 +4065,9 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
 
 /* ---------- 搜索（两页共用，住在头部行里） ---------- */
 /* 胶囊：999px 端头 + --search-h 定高 + 内凹拟态，与 chips、标签同一套圆角语言。
-   它吃的是「标题与工具组之间」的位置，靠 margin-left:auto 与工具组结成右侧集群：
-   多出来的空白留在标题之后，而不是把搜索悬在中间、两边各空一截。 */
+   它现在是右簇的**末端**（排序 → 视图 → 搜索），贴着工具栏右边缘收口 ——
+   两页、两档断点都只有这一个答案：搜索在最右。空白由 .page-tools 的 auto 外边距
+   制造，搜索自己不吃外边距，否则工具组与搜索之间会裂开一道缝。 */
 .page-search,
 .reader-search,
 .search-box {
@@ -4052,7 +4077,7 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
   flex: 0 1 var(--search-w);
   min-width: 220px;
   max-width: var(--search-w);
-  margin: 0 0 0 auto;
+  margin: 0;
 }
 .page-search input,
 .reader-search input,
@@ -4095,6 +4120,9 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
   /* 密度降级：控件长到 36px（命中高度补到 44），头部一行只留 8px 间距 */
   :root { --head-h: 44px; --head-ctl: 36px; --head-gap: var(--sp-2);
           --search-h: 36px; --search-w: 100%; }
+  /* 工具栏在窄屏跟着降到 44（36 控件 + 上下各 4 的 padding）：与顶栏贴成更紧的一组，
+     但仍是「比导航矮一档」的关系，不会反过来压过第一行。 */
+  .view-toolbar { --head-h: 44px; }
   /* 顶栏工具按钮的 36px 外框由 ≤820 那段负责（走 --head-ctl，这一档自然变 36），
      这里不再重复一份 —— 同一件事写两遍，改一处就会漏一处。 */
   /* 展开的搜索框要能换到第二行：文章页头部是真 flex 容器，卡片页头部是
