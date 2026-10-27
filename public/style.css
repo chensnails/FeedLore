@@ -2829,6 +2829,15 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   /* 上面三条 ID 规则特异度高于类选择器，必须点名压回 0，
      否则固定宽度的外框里塞着 8px 内边距，图标会被挤到一侧 */
   #refreshBtn, #themeBtn, #settingsBtn { padding: 0; }
+
+  /* 文字收起后，头部按钮实际只剩一枚图标 —— 但 span.btn-label 还在 DOM 里，
+     `:has(> .ico:only-child)` 匹配不到，宽度停在「8 + 16 + 8 = 34」，比同一排的
+     方形按钮（36）窄 2px。工具栏里的「单篇/多篇」「全部已读」正好是这种按钮，
+     三条并排时右边缘会参差 —— 这里按方形按钮收口，一排才真正齐平。 */
+  .page-head .btn:has(> .ico + .btn-label) {
+    width: var(--head-ctl); height: var(--head-ctl);
+    padding: 0; justify-content: center; gap: 0;
+  }
 }
 
 /* ============================================================
@@ -4194,5 +4203,18 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
   /* 视图切换的尺寸已在基础规则里压到 32px，这里只管排位 */
   #viewMode { order: 4; flex: 0 0 auto; }
   .cards-search-toggle { order: 5; }
+}
+
+/* 超小屏（≤360，Android 常见的最小宽度档）：
+ * 卡片页这一行需要 332px 内容宽（频道 64 + 标题 88 + 排序 36 + 视图 76 + 放大镜 36 + 4×8 间距），
+ * 加上左右各 16 的内距即 364px 才不换行。320 / 360 都放不下：放不下的那枚（放大镜）会被
+ * flex 换行甩到第二行，工具栏从 44 变成 88 —— 等于「一张卡片的高度换 4 个字」。
+ * 所以只在这一档让文字标题退场：当前频道仍能从抽屉（☰ 上写着「频道」）与下方标签栏认出来，
+ * 右簇再用 margin-left:auto 自己贴右，末尾不留半条空白。
+ * 375 及以上标题照常显示（实测富余 11px）—— 361–374 之间没有真实设备宽度，
+ * 阈值取 360 而不是 364，是为了让降级点落在真实机型上。 */
+@media (max-width: 360px) {
+  .cards-title { display: none; }
+  #sortDD { margin-left: auto; }
 }
 
