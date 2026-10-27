@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+- **发布流程加闸门：tag 推上来不等于发布**：`release.yml` 原先只匹配 `on.push.tags: ['v*']`，于是 `v1.3.8-test1` / `v1.3.8-test2` 这种测试 tag 一样会触发构建并重建 `ghcr.io/chensnails/feedlore:latest` —— 所有 Watchtower 用户在 5 分钟内被动升级，而本意只是「打个 tag 试一下」。任何 `v` 开头的 tag 都是一次全量发布，这个雷一直埋着。
+  - 新增 `gate` job，两道校验都过才放行：① tag 必须是三段式 `vX.Y.Z`（`-test` / `-rc` / `-beta` 一律跳过，workflow 记一条 notice 后正常结束）；② tag 必须与 `VERSION`、`package.json` 的 `version` 三者一致，不一致直接失败并指出差在哪 —— 否则镜像里的 `pkg.version` 与 tag 对不上，「检查更新」会一直算错版本差。`build` 与 `merge` 都挂 `needs.gate` + `if`，被拦下时不产镜像、不建 Release。
+  - 顺带把一条发布纪律写进了流程：**只推 `main`、不打 tag = 代码进仓库但不发布**。`latest` 的 digest 不动，Watchtower 拉不到新层；关于页「检查更新」看的是最新 Release（没有就退回 tags[0]，仍是 `v1.3.9`），与镜像内的 `1.3.9` 相等，`hasUpdate` 为 false —— 既不会自动升级，也不会出现更新提示。
+  - README「更新」章节与 `docker-compose.release.yml` 的用法注释同步说明这一点。
 - **全站 UI 审查与重构（一致性 / 复用 / 可访问性）**：审查覆盖桌面文章页、桌面卡片页、手机两页、设置面板、命令面板、AI 日报六类界面，共定位 14 项问题（P1 三项、P2 六项、P3 五项）。下面是本轮采取的动作。
   - **频道树合并成一份实现**（新增 `src/views/ChannelList.jsx`）：文章页左栏（81 行）与卡片页抽屉（59 行）原本各写一遍 `.rd-ch-*` 结构，且已经分叉 —— 前者有「全部文章 / 未读 / 收藏」三个范围行与分组漏斗，后者只有「全部频道 + 总数」。现在差异收敛成一个 `variant`，DOM / 类名 / `data-*` 与合并前逐字一致，两页自此不可能再各改各的。
   - **视图切换补可访问名**：`.btn-label` 在 ≤820px 被 `display:none`（移出无障碍树），「文章 / 卡片 / 日报」三个按钮此前对读屏是无名按钮。现改为 `aria-label` + `aria-current="page"`，视觉文字加 `aria-hidden` 避免重复朗读。

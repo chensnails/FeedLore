@@ -1,8 +1,13 @@
 name: Release
 
 # tag 发布：构建双架构镜像推 ghcr.io，并自动创建 GitHub Release。
-# 发版 = git tag -a v1.x.x && git push origin --tags；本站（Watchtower 模式）
+# 发版 = git tag -a vX.Y.Z && git push origin --tags；本站（Watchtower 模式）
 # 会在几分钟内自动拉到新镜像并重启容器，关于页也可一键触发。
+#
+# 发布闸门（v1.3.11 起）：tag 推上来不等于要发布。gate job 会先校验
+# ① tag 是三段式正式版 vX.Y.Z；② tag 与 VERSION、package.json 的 version 三者一致。
+# 任一不满足就不构建镜像、不建 Release —— 此前 v* 一律发布，
+# 「打个 v1.3.8-test1 试一下」实际是一次对全部 Watchtower 用户的全量发布。
 #
 # 性能（v1.2.0 起）：amd64 与 arm64 各用一个「原生架构」runner 平行构建，不再用
 # QEMU 模拟。此前单 job + QEMU 的方式，arm64 冷构建（层缓存失效时）实测 40 分钟仍未结束；
@@ -23,7 +28,47 @@ env:
   REGISTRY_IMAGE: ghcr.io/chensnails/feedlore
 
 jobs:
+  # 发布闸门：先判「该不该发布」，再决定要不要花两个 runner 去构建。
+  # 注意 on.push.tags 仍是 v*（filter 通配符不支持正则），形态校验放在这里做，
+  # 这样被拦下的 tag 会留下一条 notice 说明原因，而不是让 workflow 静默不触发。
+  gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 tag 形态与版本号一致性
+        id: check
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # 默认不放行：任何一步没走到最后，构建都不会开始
+          echo "release=false" >> "$GITHUB_OUTPUT"
+
+          # 1) 只认 vX.Y.Z。-test / -rc / -beta 等后缀一律跳过构建：
+          #    latest 一被覆盖，所有 Watchtower 用户几分钟内就会被动升级。
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::notice title=跳过发布::tag「$TAG」不是正式版（需 vX.Y.Z），本次不构建镜像、不建 Release"
+            exit 0
+          fi
+
+          # 2) tag 必须与仓库里的版本号一致。镜像内的 pkg.version 就是「关于 → 检查更新」
+          #    用来比大小的基准，对不上会让用户侧永远差一版（要么一直提示更新，要么永远看不到）。
+          WANT="${TAG#v}"
+          FILE_VERSION="$(tr -d '[:space:]' < VERSION)"
+          PKG_VERSION="$(node -p 'require("./package.json").version')"
+          if [[ "$WANT" != "$FILE_VERSION" || "$WANT" != "$PKG_VERSION" ]]; then
+            echo "::error title=版本号不一致::tag=v$WANT / VERSION=$FILE_VERSION / package.json=$PKG_VERSION —— 先改版本号并提交，再打 tag"
+            exit 1
+          fi
+
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "::notice title=放行发布::v$WANT（VERSION 与 package.json 一致）"
+
   build:
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -73,7 +118,8 @@ jobs:
           if-no-files-found: error
 
   merge:
-    needs: build
+    needs: [gate, build]
+    if: needs.gate.outputs.release == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: 下载各架构 digest
