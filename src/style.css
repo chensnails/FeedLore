@@ -2487,8 +2487,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .rd-ch-filter.is-active { color: var(--accent-text); }
 .rd-ch-filter:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 @media (hover: none) {
-  /* 触屏：漏斗没有悬停可依赖，就回到排版里占一格，未读徽标往左让位 */
-  .rd-ch-filter { position: static; transform: none; opacity: 1; pointer-events: auto; }
+  /* 触屏：漏斗没有悬停可依赖，就回到排版里占一格，未读徽标往左让位。
+     底色去掉（填充方块在每行挂一颗太抢眼），平时只用弱化色的裸图标，
+     命中筛选态才亮 accent + 底色，让「哪一组在筛选」一眼可见。 */
+  .rd-ch-filter { position: static; transform: none; opacity: 1; pointer-events: auto; background: transparent; }
+  .rd-ch-filter.is-active { background: var(--hover); }
   .rd-ch-group-row:is(:hover, :focus-within) :is(.rd-ch-n, .rd-ch-group-empty, .rd-ch-group-n) { opacity: 1; }
 }
 
