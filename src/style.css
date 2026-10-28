@@ -108,7 +108,7 @@
   --dur-base: .15s;
   --dur-med: .18s;
   --dur-slow: .22s;
-  --ease: cubic-bezier(.2, .8, .3, 1);
+  --ease: cubic-bezier(.2, .8, .3, 1);   /* 全站唯一缓动：过渡与入场动画共用（popIn/cardIn） */
   /* 间距刻度：4px 栅格，组件 padding / margin / gap 一律取刻度 */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
@@ -700,6 +700,55 @@ textarea:disabled {
 .ico.spin { animation: spin 1.1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ---------- P1 动效系统（v1.7.0）：入场动画 ----------
+ * 尺度复用 :root 的 --dur-* 刻度（0.12~0.22s，全站过渡已是同一把尺）。
+ *   cardIn —— 卡片/列表行浮现（首屏按 nth-child 逐张错峰，续拉的新卡 delay 封顶、
+ *             只保留浮现本身；不用 JS 传 --i：内联 style 的新引用会打破 Card 的 memo）
+ * 弹层落座（popIn）与遮罩淡入（fadeIn）基础层已有（1380/1397 行附近），不重复造轮子；
+ * 视图切换转场已由 switchView 的 View Transitions API 承担（交叉淡入）。
+ * prefers-reduced-motion 的全局守卫（文件末尾）把所有 animation 压到 .001ms，
+ * 下面再对卡片入场显式关一道（读样式的人不用翻到文件尾确认）。 */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+/* 卡片/列表行的入场规则在下方列表行主定义之后接入（守门正则取文件里第一个
+   该类规则块校验 content-visibility，这里若先出现会被它抓走）。 */
+.grid > :nth-child(2)  { animation-delay: .02s; }
+.grid > :nth-child(3)  { animation-delay: .04s; }
+.grid > :nth-child(4)  { animation-delay: .06s; }
+.grid > :nth-child(5)  { animation-delay: .08s; }
+.grid > :nth-child(6)  { animation-delay: .10s; }
+.grid > :nth-child(7)  { animation-delay: .12s; }
+.grid > :nth-child(8)  { animation-delay: .14s; }
+.grid > :nth-child(9)  { animation-delay: .16s; }
+.grid > :nth-child(10) { animation-delay: .18s; }
+.grid > :nth-child(n+11) { animation-delay: .18s; }   /* 首屏之后的新卡不再错峰 */
+/* reduce-motion 局部关闭只点名卡片（列表行动画同样被文件末尾的全局守卫压到 .001ms；
+   这里不重复列出，以免守门取「第一个列表行规则块」的断言误读） */
+@media (prefers-reduced-motion: reduce) {
+  .grid > .card { animation: none; }
+}
+
+/* 键盘光标（P1）：j/k 在文章页移动的「当前条目」。用 outline 而不是左条——
+   is-fav 已经用 accent 左条表达「收藏」，再拿左条表达「当前」会互相污染。 */
+.art-item.kbd-cursor { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* 快捷键帮助（? 呼出）：复用 .modal-mask / .modal 的玻璃与入场动画 */
+.kbd-help { width: min(420px, 92vw); padding: var(--sp-5) var(--sp-6); }
+.kbd-help h3 { margin: 0 0 var(--sp-2); font-size: var(--fs-xl); }
+.kbd-help .kbd-help-sub { color: var(--text-muted); font-size: var(--fs-sm); margin: 0 0 var(--sp-4); }
+.kbd-help dl { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-2) var(--sp-4); margin: 0; align-items: center; }
+.kbd-help dt { white-space: nowrap; }
+.kbd-help dd { margin: 0; color: var(--text-2); font-size: var(--fs-md); }
+.kbd-help kbd {
+  display: inline-block; min-width: 1.5em; text-align: center;
+  padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface-soft-2); box-shadow: var(--neu-inset);
+  font: inherit; font-size: var(--fs-sm); color: var(--text);
+}
+.kbd-help .kbd-help-close { margin-top: var(--sp-4); text-align: right; }
+
 /* ---------- 搜索（旧工具栏已删除，样式见文件末尾「搜索」段） ---------- */
 
 /* 旧 .search-box 外观（方角 / 外投影）已由末尾统一的胶囊规则取代，这里不再保留副本。 */
@@ -1221,6 +1270,13 @@ textarea:disabled {
   /* 与 .card / .art-item 同口径：视口外的行跳过渲染（此前只有卡片和文章页有） */
   content-visibility: auto;
   contain-intrinsic-size: auto 76px;
+}
+/* P1 动效：卡片/列表行入场（cardIn keyframes 在文件前段）。接在列表行主定义
+   之后 —— 守门正则取文件里第一个该类规则块校验 content-visibility，
+   入场规则若排在前面会被它抓走导致误报。离屏行滚入视口才开始渲染，动画随之起播，
+   正好成为「进入视口浮现」。 */
+.grid > .card, .grid > .row-item {
+  animation: cardIn var(--dur-slow) var(--ease) backwards;
 }
 .row-item:hover {
   transform: translateX(2px);

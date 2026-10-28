@@ -5,10 +5,11 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle } from './util.js';
+import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, toggleKbdHelp } from './util.js';
 import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
 import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
-import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, focusReaderArt } from './reader.js';
+import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, focusReaderArt,
+  readerCursorMove, readerCursorToggle, readerCursorFav, readerCursorToggleRead } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
 
 /* ============================================================
@@ -237,6 +238,30 @@ document.addEventListener('keydown', (ev) => {
   if (!window.__readerFocusSearch) return;
   ev.preventDefault();
   window.__readerFocusSearch();
+});
+
+/* 全局快捷键（P1 键盘优先）：? 帮助 / j k o s u（文章页）。
+ * 输入框内打字、带修饰键的组合、任何覆盖层（设置 / 命令面板 / 灯箱 / 确认框 /
+ * 整屏下拉 / 帮助自身）开着时都不拦截——与 Esc 层级同一套「最上层独占」思路。 */
+document.addEventListener('keydown', (ev) => {
+  const key = ev.key;
+  if (key !== '?' && key !== 'j' && key !== 'k' && key !== 'o' && key !== 's' && key !== 'u') return;
+  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+  // 覆盖层独占：任何一个开着都归它，不触发列表快捷键
+  if (window.__settingsOpen || window.__confirmOpen) return;
+  if (window.__kbdHelpOpen) { if (key === '?') { ev.preventDefault(); toggleKbdHelp(); } return; }
+  if (document.querySelector('.dd-mask')) return;
+  if (document.querySelector('.cmdk-mask:not([hidden])')) return;
+  if (document.querySelector('.lightbox')) return;
+  if (key === '?') { ev.preventDefault(); toggleKbdHelp(); return; }
+  if (state.tab !== 'reader') return;
+  if (key === 'j') { ev.preventDefault(); readerCursorMove(1); }
+  else if (key === 'k') { ev.preventDefault(); readerCursorMove(-1); }
+  else if (key === 'o') { ev.preventDefault(); readerCursorToggle(); }
+  else if (key === 's') { ev.preventDefault(); readerCursorFav(); }
+  else if (key === 'u') { ev.preventDefault(); readerCursorToggleRead(); }
 });
 
 /* ============================================================

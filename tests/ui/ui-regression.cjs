@@ -3275,6 +3275,13 @@ const withEFP = (el, fn) => {
     if (R('#readerReadAllBtn').hidden) throw new Error('有未读，应显示「全部已读」');
     if (!R('#readerCollapseAll').hidden) throw new Error('未展开时「全部收起」应隐藏');
   });
+  t('P1 键盘光标：rdCursor 指到的条目带 .kbd-cursor，置空即清除', async () => {
+    w.feedlore.state.rdCursor = 'r1'; readerTick(); await sleep(30);
+    const cur = R('.art-item.kbd-cursor');
+    if (!cur || cur.getAttribute('data-id') !== 'r1') throw new Error('光标类缺失或错位');
+    w.feedlore.state.rdCursor = null; readerTick(); await sleep(30);
+    if (R('.art-item.kbd-cursor')) throw new Error('光标应随 null 清除');
+  });
   t('列表项内容与状态类', () => {
     const it1 = R('#readerList .art-item[data-id="r1"]');
     if (!it1.classList.contains('is-unread')) throw new Error('r1 应未读');
@@ -3985,6 +3992,8 @@ const withEFP = (el, fn) => {
         'readerSetScope', 'readerSetFeed', 'readerSetGroup', 'readerSetWatch', 'readerOpenSource', 'readerSearch',
         'readerToggleArt', 'readerCollapseAll', 'readerReadAll', 'readerToggleFav', 'readerTagToCards',
         'readerToggleAccordion', 'readerAccordionOn', 'readerToggleDrawer', 'readerCloseDrawer', 'fmtFull',
+        'readerCursorMove', 'readerCursorToggle', 'readerCursorFav', 'readerCursorToggleRead',
+        'getKbdHelpState', 'toggleKbdHelp',
         'readerCollapsedGroups', 'readerToggleGroupCollapse', 'readerToggleAllGroups',
         'getReaderSideWidth', 'setReaderSideWidth', 'applyReaderSideWidth', 'readerSideCap',
         'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsView', 'cardsTag',
@@ -4000,6 +4009,30 @@ const withEFP = (el, fn) => {
     });
     // 关掉日报后，所有入口都靠 switchView 这一道守卫回落（#digest 深链、命令面板遗留项
     // 走的都是它）；假 core 桩测的是组件，这里验真实 core 的判定本身。
+    t('冒烟：P1 键盘 —— j/k 移动光标并展开、? 呼出/关闭帮助、输入框内不拦截', () => {
+      const c2 = sw.__coreForTest;
+      c2.state.rdEntries = [{ id: 'a1', isRead: false, isFavorite: false }, { id: 'a2', isRead: false, isFavorite: false }];
+      const press = (key) => sw.document.dispatchEvent(new sw.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      press('j');
+      if (String(c2.state.rdCursor) !== 'a1') throw new Error('j 未定位第一条: ' + c2.state.rdCursor);
+      if (!c2.state.rdExpanded.has('a1')) throw new Error('j 未展开当前条目');
+      press('j');
+      if (String(c2.state.rdCursor) !== 'a2') throw new Error('j 未前进: ' + c2.state.rdCursor);
+      press('k');
+      if (String(c2.state.rdCursor) !== 'a1') throw new Error('k 未后退: ' + c2.state.rdCursor);
+      press('?');
+      if (!c2.getKbdHelpState().show) throw new Error('? 未呼出帮助');
+      press('?');
+      if (c2.getKbdHelpState().show) throw new Error('? 未关闭帮助');
+      // 输入框内打字不拦截
+      const inp = sw.document.createElement('input');
+      sw.document.body.appendChild(inp);
+      inp.focus();
+      c2.state.rdCursor = null;
+      inp.dispatchEvent(new sw.KeyboardEvent('keydown', { key: 'j', bubbles: true, cancelable: true }));
+      if (c2.state.rdCursor != null) throw new Error('输入框内 j 不应触发导航');
+      inp.remove();
+    });
     t('冒烟：日报关掉时 switchView(ai) 回落文章页，重开后能进', () => {
       const c2 = sw.__coreForTest;
       c2.setLayout('digestEnabled', false);
@@ -4425,6 +4458,17 @@ const withEFP = (el, fn) => {
     if (v.indexOf('switchView') < 0) throw new Error('ViewNav 应调用 switchView 切换视图');
     if (v.indexOf('viewnav-btn') < 0) throw new Error('ViewNav 应使用 .viewnav-btn 结构');
     if (v.indexOf('__viewChanged') < 0) throw new Error('ViewNav 应订阅 __viewChanged 高亮当前视图');
+  });
+
+  t('P1 动效：cardIn keyframes + 卡片错峰 + 弹层/遮罩沿用基础层 popIn/fadeIn + reduce-motion 局部关闭', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/@keyframes cardIn\s*\{/.test(css)) throw new Error('缺 cardIn keyframes');
+    if (!/\.grid > \.card,\s*\.grid > \.row-item\s*\{[^}]*animation:\s*cardIn/.test(css)) throw new Error('卡片/列表行未接入 cardIn');
+    if (!/\.grid > :nth-child\(2\)\s*\{\s*animation-delay/.test(css)) throw new Error('缺首屏错峰 delay');
+    if (!/animation:\s*popIn/.test(css) || !/animation:\s*fadeIn/.test(css)) throw new Error('弹层 popIn / 遮罩 fadeIn 应存在（沿用基础层）');
+    if (/@keyframes (modalIn|maskIn)/.test(css)) throw new Error('modalIn/maskIn 与已有 popIn/fadeIn 重复，应删除');
+    if (!/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.grid > \.card[\s\S]{0,140}?animation:\s*none/.test(css)) throw new Error('reduce-motion 未局部关闭入场动画');
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });

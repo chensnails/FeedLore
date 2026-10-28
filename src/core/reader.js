@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { apiFetch, httpError, toast, emitShell, confirm } from './util.js';
+import { apiFetch, httpError, toast, emitShell, confirm, prefersReducedMotion } from './util.js';
 import { state, layoutPref, setLayout, openSettings, lockPageScroll, unlockPageScroll } from './state.js';
 import { loadFeeds, groupFeeds } from './feeds.js';
 
@@ -183,6 +183,46 @@ export function readerCollapseAll() {
   state.rdExpanded.clear();
   renderReader();
   toast('已全部收起');
+}
+
+/* ---------------- 键盘光标（P1）：j/k/o/s/u ----------------
+ * j/k 在当前列表里移动「当前条目」并展开（复用 expandReaderArt 的手风琴补偿 +
+ * 展开即已读 + 拉正文全链路）；o 开/收当前；s 收藏当前；u 切换当前已读/未读。
+ * 光标只存内存（state.rdCursor），翻页/重载/换频道时随列表自然失效——
+ * rdCursor 指向的 id 不在新列表里时，下一次 j/k 会从边界重新起步。 */
+function cursorIndex() {
+  if (state.rdCursor == null) return -1;
+  return state.rdEntries.findIndex((e) => String(e.id) === String(state.rdCursor));
+}
+
+export function readerCursorMove(dir) {
+  if (!state.rdEntries.length) return;
+  let i = cursorIndex();
+  i = i < 0 ? (dir > 0 ? 0 : state.rdEntries.length - 1) : Math.min(state.rdEntries.length - 1, Math.max(0, i + dir));
+  const e = state.rdEntries[i];
+  state.rdCursor = e.id;
+  expandReaderArt(e.id);   // 含 renderReader（光标类随 __readerTick 重绘）
+  requestAnimationFrame(() => {
+    const el = findArtItemEl(e.id);
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  });
+}
+
+export function readerCursorToggle() {
+  if (state.rdCursor == null) { readerCursorMove(1); return; }
+  readerToggleArt(state.rdCursor);
+}
+
+export function readerCursorFav() {
+  if (state.rdCursor == null) return;
+  readerToggleFav(state.rdCursor);
+}
+
+export function readerCursorToggleRead() {
+  if (state.rdCursor == null) return;
+  const e = state.rdEntries.find((x) => String(x.id) === String(state.rdCursor));
+  if (!e) return;
+  setEntryFlag(state.rdCursor, { isRead: !e.isRead }).then((ok) => { if (ok) toast(e.isRead ? '已标为未读' : '已标为已读'); });
 }
 
 const FLASH_MS = 1500;      // 高亮停留时长（与 style.css 的 artFlash 对齐）

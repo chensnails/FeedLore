@@ -201,6 +201,61 @@ function Lightbox({ box, close }) {
   );
 }
 
+/* 快捷键帮助（P1）：? 呼出。只读浮层，复用 .modal-mask/.modal 玻璃与入场动画；
+ * Esc 关闭（确认框打开时让位），打开期间锁背景滚动。 */
+function KbdHelp({ close }) {
+  const s = S();
+  useEffect(() => {
+    window.__kbdHelpOpen = true;
+    if (!s) return undefined;
+    s.lockPageScroll();
+    return () => { window.__kbdHelpOpen = false; s.unlockPageScroll(); };
+  }, [s]);
+
+  useEffect(() => {
+    const onKey = (ev) => {
+      if (ev.key === 'Escape') {
+        if (window.__confirmOpen) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        close();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [close]);
+
+  const rows = [
+    ['j / k', '下一条 / 上一条（自动展开并标记已读）'],
+    ['o', '展开或收起当前条目'],
+    ['s', '收藏或取消收藏当前条目'],
+    ['u', '当前条目标为已读 / 未读'],
+    ['/', '聚焦当前页搜索框'],
+    ['Ctrl/⌘ K', '命令面板（视图切换、主题、设置…）'],
+    ['Esc', '关闭最上层的浮层'],
+  ];
+  return (
+    <div className="modal-mask" role="presentation" onClick={close}>
+      <div className="modal kbd-help" role="dialog" aria-modal="true" aria-label="键盘快捷键"
+        onClick={(ev) => ev.stopPropagation()}>
+        <h3>键盘快捷键</h3>
+        <p className="kbd-help-sub">j / k / o / s / u 在文章页生效；列表里移动即读，不用碰鼠标。</p>
+        <dl>
+          {rows.map(([k, d]) => (
+            <React.Fragment key={k}>
+              <dt><kbd>{k}</kbd></dt>
+              <dd>{d}</dd>
+            </React.Fragment>
+          ))}
+        </dl>
+        <div className="kbd-help-close">
+          <button type="button" className="btn" onClick={close}>关闭</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Overlays() {
   const [, bump] = useState(0);
   useEffect(() => {
@@ -214,6 +269,7 @@ export function Overlays() {
   const pill = (s && s.getNewPillState) ? s.getNewPillState() : { show: false, text: '' };
   const box = (s && s.getLightboxState) ? s.getLightboxState() : { src: '', show: false };
   const cfm = (s && s.getConfirmState) ? s.getConfirmState() : { open: false };
+  const kbd = (s && s.getKbdHelpState) ? s.getKbdHelpState() : { show: false };
 
   // 确认框打开期间锁住背景滚动（与设置弹层用同一个计数器，关掉时只解自己那一层），
   // 同时把「确认框在最上层」告诉其他 Esc 处理器（见 core/ui.js）。
@@ -257,6 +313,9 @@ export function Overlays() {
 
       {/* 统一确认框（替代原生 confirm / prompt） */}
       <ConfirmDialog c={cfm} />
+
+      {/* 快捷键帮助（? 呼出） */}
+      {kbd.show && <KbdHelp close={() => s.toggleKbdHelp()} />}
     </>
   );
 }

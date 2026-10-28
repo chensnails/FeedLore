@@ -128,6 +128,15 @@ export function settleConfirm(ok, value) {
 /** 点遮罩 / 右键 / Esc 都走「取消」 */
 export function cancelConfirm() { settleConfirm(false); }
 
+/* ---------------- 快捷键帮助（P1）：? 呼出 / Esc 关闭 ----------------
+ * 只读浮层，无 Promise；复用 Overlays 的 tick 通道重绘，滚动锁与确认框同一套计数器。 */
+export let kbdHelpState = { show: false };
+
+export function toggleKbdHelp() {
+  kbdHelpState = { show: !kbdHelpState.show };
+  emitOverlays();
+}
+
 export async function copyText(text) {
   try {
     if (navigator.clipboard && window.isSecureContext) {

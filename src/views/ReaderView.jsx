@@ -221,14 +221,14 @@ export function ArtBody({ e, onTag, extraActions }) {
  *  做成 memo：每次 __readerTick 都会把整列 entries 重新 map 一遍，而条目对象只在
  *  状态真的变化时才换新（core/reader.js 的 applyEntryFlag / ui.js 的 cardSetFlag 同口径），
  *  所以没变的那几百条不必跟着重新渲染。 */
-const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, onToggle, onFav, onTag }) {
+const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, cursor, onToggle, onFav, onTag }) {
   const s = S();
   const src = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
   const fmtDate = s.fmtDate || ((d) => (d ? String(d) : ''));
   const fav = !!e.isFavorite;
   const cls = 'art-item' + (e.isRead ? ' is-read' : ' is-unread') + (fav ? ' is-fav' : '') + (expanded ? ' open' : '')
-    + (flash ? ' is-flash' : '');
+    + (flash ? ' is-flash' : '') + (cursor ? ' kbd-cursor' : '');
 
   let inner = null;
   if (expanded) {
@@ -533,6 +533,7 @@ export function ReaderView() {
             <ArtItem key={e.id} e={e} expanded={expanded.has(e.id)}
               full={bodyMap.get(e.id)} bodyErr={bodyErrSet.has(e.id)}
               flash={flashId != null && flashId === String(e.id)}
+              cursor={st.rdCursor != null && String(st.rdCursor) === String(e.id)}
               onToggle={onToggleArt} onFav={onFavArt} onTag={onTagArt} />
           ))}
         </div>
