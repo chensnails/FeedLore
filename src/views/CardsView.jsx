@@ -148,7 +148,9 @@ const Card = memo(function Card({ e, onTag, onOpen, priority }) {
 
   return (
     <article className={'card' + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
-      onClick={(ev) => openFromClick(ev, e, onOpen)}>
+      role="button" tabIndex={0} aria-label={(e.name || '卡片') + '，按 Enter 打开详情'}
+      onClick={(ev) => openFromClick(ev, e, onOpen)}
+      onKeyDown={(ev) => cardKeyOpen(ev, e, onOpen)}>
       {media}
       <div className="card-body">
         {metaRow}
@@ -170,7 +172,9 @@ const Row = memo(function Row({ e, onTag, onOpen }) {
   const metaHas = srcName || (e.tags || []).length;
   return (
     <article className={'row-item' + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
-      onClick={(ev) => openFromClick(ev, e, onOpen)}>
+      role="button" tabIndex={0} aria-label={(e.name || '卡片') + '，按 Enter 打开详情'}
+      onClick={(ev) => openFromClick(ev, e, onOpen)}
+      onKeyDown={(ev) => cardKeyOpen(ev, e, onOpen)}>
       <div className="row-thumb">
         {e.image
           ? <LazyImg src={e.image} alt={e.name} fallbackClass="row-thumb-fb" fbIcon="image" />
@@ -205,6 +209,14 @@ const Row = memo(function Row({ e, onTag, onOpen }) {
 /** 点卡片空白处打开详情；卡内的按钮 / 链接 / 标签有自己的动作，不劫持它们 */
 function openFromClick(ev, e, onOpen) {
   if (ev.target && ev.target.closest && ev.target.closest('button, a, [data-tag]')) return;
+  onOpen(e);
+}
+
+/** 键盘打开卡片：焦点在卡片本身（而非卡内按钮 / 链接）时，Enter / Space 打开详情 */
+function cardKeyOpen(ev, e, onOpen) {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  if (ev.target !== ev.currentTarget) return; // 焦点在内层按钮时不重复触发
+  ev.preventDefault();
   onOpen(e);
 }
 

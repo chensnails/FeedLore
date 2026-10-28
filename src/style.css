@@ -94,10 +94,12 @@
   --fs-lg: 0.9375rem;    /* 15px  小标题 / 卡片标题 */
   --fs-xl: 1.0625rem;    /* 17px  弹层标题 */
   --fs-2xl: 1.3125rem;   /* 21px  页面主标题 */
-  /* 动效刻度：统一的时长与缓动（--dur-base 取事实标准 150ms） */
-  --dur-fast: var(--dur-fast);
-  --dur-base: var(--dur-base);
-  --dur-med: var(--dur-med);
+  /* 动效刻度：统一的时长与缓动（--dur-base 取事实标准 150ms）。
+     注意：这三行必须给出具体值，禁止自引用 var(--dur-xxx)（会导致循环依赖、
+     解析为「保证无效值」，全站 transition/animation 回落 0s 硬切）。 */
+  --dur-fast: .12s;
+  --dur-base: .15s;
+  --dur-med: .18s;
   --dur-slow: .22s;
   --ease: cubic-bezier(.2, .8, .3, 1);
   /* 间距刻度：4px 栅格，组件 padding / margin / gap 一律取刻度 */
@@ -720,8 +722,8 @@ textarea:disabled {
   min-width: max(100%, 264px); width: max-content; max-width: calc(100vw - 24px);
   max-height: min(440px, 56vh); overflow: auto; overscroll-behavior: contain;
   padding:var(--sp-2);
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  /* 桌面下拉打开时页面不锁滚动，禁用模糊（玻璃仅用于滚动锁定层），改用实底 */
+  background: var(--panel);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--elevation-4);
@@ -2691,6 +2693,10 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-star:hover { background: var(--hover); color: var(--star); }
 .art-star:active { transform: scale(.9); }
 .art-item.is-fav .art-star { color: var(--star); }
+/* 跨页状态统一（v1.5.2）：收藏态与卡片页同语言——左侧主色竖条 + 星标变色。
+   竖条用 inset 阴影，不挤占布局；保留自身拟态表面（hover 升到 neu-3）。 */
+.art-item.is-fav { box-shadow: var(--neu-2), inset 3px 0 0 var(--accent); }
+.art-item.is-fav:hover { box-shadow: var(--neu-3), inset 3px 0 0 var(--accent); }
 
 .art-caret {
   flex: 0 0 auto;
@@ -2787,6 +2793,18 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   cursor: zoom-out;
 }
 .lightbox-hint { margin:0; font-size: var(--fs-sm); color: var(--lightbox-text); }
+/* 灯箱关闭按钮：键盘 / 读屏可达的显式关闭入口（鼠标仍可点任意处关闭）。
+   灯箱底色恒暗，故按钮用半透明白，不随主题走。 */
+.lightbox-close {
+  position: absolute; top: var(--sp-4); right: var(--sp-4);
+  width: 40px; height: 40px; display: grid; place-items: center;
+  border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, .14); color: var(--lightbox-text);
+  cursor: pointer; z-index: 1;
+  transition: background var(--dur-fast), transform var(--dur-fast);
+}
+.lightbox-close:hover { background: rgba(255, 255, 255, .24); transform: scale(1.06); }
+.lightbox-close .ico { width: 1.25rem; height: 1.25rem; }
 
 /* 正文按原文换行显示：存的是纯文本，pre-wrap 能保住帖子的行结构
    字体 / 字号 / 行高走外观偏好 token（--font-read / --reader-fs / --reader-lh），可被用户改 */
@@ -3719,18 +3737,17 @@ textarea:focus-visible { outline: none; }
 .mini-tag { box-shadow: var(--neu-inset); }
 .new-pill { box-shadow: 0 2px 10px var(--accent-glow), var(--neu-2); }
 
-/* 弹层 / 命令面板 / 灯箱 / 快捷键浮层：玻璃模糊（静态覆盖场景，页面已滚动锁定） */
+/* 弹层 / 命令面板 / 灯箱 / 快捷键浮层：玻璃模糊只在遮罩（mask）单层生效。
+   弹层自身用半透明实底盖在已模糊的遮罩上，不再二次模糊（页面已滚动锁定）。 */
 .modal-mask { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .modal {
   background: var(--glass-bg-strong);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .cmdk-mask { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .cmdk {
   background: var(--glass-bg-strong);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 .cmdk-item.active, .cmdk-item:hover { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent), var(--neu-inset); }
 .cmdk-foot kbd {
@@ -3836,10 +3853,9 @@ textarea:focus-visible { outline: none; }
 /* 8) 卡片内标签与筛选 chip 同属「标签」，字号并到同一档 */
 .mini-tag { font-size: var(--fs-2xs); border-radius: var(--radius-xs); }
 
-/* 9) 链接选择菜单：与下拉面板同一套玻璃语言（此前是唯一的纯色命令式菜单） */
+/* 9) 链接选择菜单：桌面未锁滚动，与下拉面板同一套「实底」语言（禁用模糊） */
 .link-menu {
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur));
+  background: var(--panel);
   border-radius: var(--radius-lg);
   min-width: 240px;
 }

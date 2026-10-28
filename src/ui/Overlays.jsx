@@ -110,6 +110,72 @@ function ConfirmDialog({ c }) {
   );
 }
 
+/* 图片灯箱：点文章里的图片看大图。作为模态对话框（aria-modal）须满足键盘可达：
+ * 打开即把焦点放进对话框、Esc 关闭、Tab 循环不跑出对话框、打开期间锁背景滚动。 */
+function Lightbox({ box, close }) {
+  const rootRef = useRef(null);
+  const closeRef = useRef(null);
+
+  // 打开时把焦点放进对话框（优先关闭按钮，回退到容器）
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (closeRef.current) closeRef.current.focus();
+      else if (rootRef.current) rootRef.current.focus();
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+
+  // 打开期间锁背景滚动（与确认框共用同一计数器）；关闭时解自己那一层
+  useEffect(() => {
+    const s = S();
+    if (!s) return undefined;
+    s.lockPageScroll();
+    return () => s.unlockPageScroll();
+  }, []);
+
+  // Esc 关闭 + Tab 焦点陷阱（确认框打开时让位于确认框的 Esc 处理）
+  useEffect(() => {
+    const onKey = (ev) => {
+      if (ev.key === 'Escape') {
+        if (window.__confirmOpen) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        close();
+      } else if (ev.key === 'Tab') {
+        ev.preventDefault();
+        if (closeRef.current) closeRef.current.focus();
+        else if (rootRef.current) rootRef.current.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [close]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label="图片预览"
+      tabIndex={-1}
+      onClick={() => close()}
+    >
+      <img className="lightbox-img" src={box.src} alt="" />
+      <button
+        ref={closeRef}
+        className="lightbox-close"
+        type="button"
+        aria-label="关闭预览"
+        onClick={close}
+      >
+        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+      </button>
+      <p className="lightbox-hint">点击任意处或按 Esc 关闭</p>
+    </div>
+  );
+}
+
 export function Overlays() {
   const [, bump] = useState(0);
   useEffect(() => {
@@ -161,19 +227,8 @@ export function Overlays() {
         <span>{pill.text}</span>
       </button>
 
-      {/* 图片灯箱：点文章里的图片看大图，自适应屏幕，再点一下关闭 */}
-      {box.show && (
-        <div
-          className="lightbox"
-          role="dialog"
-          aria-modal="true"
-          aria-label="图片预览"
-          onClick={() => s.closeLightbox()}
-        >
-          <img className="lightbox-img" src={box.src} alt="" />
-          <p className="lightbox-hint">点击任意处关闭 · Esc 退出</p>
-        </div>
-      )}
+      {/* 图片灯箱：点文章里的图片看大图，自适应屏幕，再点一下 / Esc 关闭 */}
+      {box.show && <Lightbox box={box} close={() => s.closeLightbox()} />}
 
       {/* 统一确认框（替代原生 confirm / prompt） */}
       <ConfirmDialog c={cfm} />

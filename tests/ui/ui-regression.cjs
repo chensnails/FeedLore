@@ -897,6 +897,27 @@ const withEFP = (el, fn) => {
     if (!/position:\s*sticky/.test(cards[1])) throw new Error('.cards-sticky 自己应承担吸顶');
   });
 
+  // 动效令牌（v1.5.2 修复 P1）：--dur-* 必须给出具体时长，严禁自引用 var(--dur-xxx)。
+  // 自引用会形成 CSS 循环依赖、解析为「保证无效值」，使全站 transition/animation 回落 0s 硬切。
+  t('style.css：动效令牌 --dur-* 不得自引用，且核心令牌须为具体时长', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const decls = [...css.matchAll(/--(dur-[a-z]+)\s*:\s*([^;]*);/g)];
+    if (!decls.length) throw new Error('未找到任何 --dur-* 令牌声明');
+    const coreDurs = ['dur-fast', 'dur-base', 'dur-med'];
+    const seen = new Set();
+    for (const [, name, rawVal] of decls) {
+      if (seen.has(name)) continue; // 只看 :root 首次定义
+      seen.add(name);
+      const val = rawVal.trim();
+      if (new RegExp('var\\(--' + name + '\\)').test(val)) {
+        throw new Error(name + ' 自引用 var(--' + name + ')，会形成循环依赖使全站动效失效');
+      }
+      if (coreDurs.includes(name) && !/^[0-9.]+s$/.test(val)) {
+        throw new Error(name + ' 必须是具体时长（如 .15s），实际：' + val);
+      }
+    }
+  });
+
   // 移动端弹层只有一种形态（v1.3.6）：.dd-sheet 自己就是整屏，别再长出 .dd-page 这类形态变体类
   t('style.css：移动端弹层单一整屏形态（.dd-sheet 自带 100dvh，无 .dd-page 变体）', () => {
     const root = path.join(__dirname, '..', '..');

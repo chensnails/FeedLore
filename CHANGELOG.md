@@ -2,6 +2,23 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.5.2-test1] — 2026-10-28（开发版，前端 UI 修复，未发布）
+
+> 来源：2026-10-28 全站 UI 审查报告（`docs/UI审查报告-2026-10-28.md`）。用户确认四项修复优先级，本版实施 P1 + 可访问性 + 跨页状态统一 + 玻璃模糊治理。
+
+- **P1 修复：动效令牌循环依赖（全站微交互恢复）**。
+  - `src/style.css:98-100` 的 `--dur-fast/--dur-base/--dur-med` 原为 `var(--dur-xxx)` 自引用 → CSS 循环依赖 → 全站 60+ 处 `transition`/`animation` 解析为「保证无效值」、时长回落 `0s`、所有微交互瞬时硬切。改为具体值 `--dur-fast:.12s` / `--dur-base:.15s` / `--dur-med:.18s`。
+  - **守门**：`tests/ui/ui-regression.cjs` 新增断言「`--dur-*` 不得自引用且核心令牌须为具体时长」，浏览器无关、零依赖（UI 回归 356/356）。
+- **可访问性补全**：
+  - 图片灯箱（`src/ui/Overlays.jsx`）抽成 `Lightbox` 组件：打开即把焦点放进对话框、`Esc` 关闭（确认框打开时让位）、`Tab` 焦点陷阱、打开期间锁背景滚动；补显式关闭按钮（仍是键盘/读屏可达入口，鼠标仍可点任意处关闭）。
+  - `Dropdown.jsx` 折叠态按组拆成独立 `role="listbox"`，折叠开关（按钮）作为 listbox 的兄弟节点，消除「listbox 内嵌 button」的 ARIA 非法；为 listbox 设 `aria-activedescendant` 让读屏播报高亮项。非折叠分支保持原 `<div className="dd-group">` 纯标题结构（测试要求）。
+  - 卡片墙整卡（`.card` / `.row-item`）加 `role="button"` + `tabIndex={0}` + `aria-label` + `Enter/Space` 打开（焦点在内层按钮时不重复触发），键盘可达。
+- **跨页状态统一**：收藏态与卡片页同语言——文章页 `.art-item.is-fav` 补左侧主色竖条（`box-shadow: inset 3px 0 0 var(--accent)`），与卡片页「竖条 + 星标变色」一致。
+- **玻璃模糊治理（性能铁律：模糊仅用于滚动锁定层）**：
+  - 桌面 `.dd-panel`（`style.css`）未锁滚动即改用实底 `var(--panel)`，去掉 `backdrop-filter`。
+  - `.link-menu` 去掉全局玻璃覆盖（恢复 `var(--panel)` 实底）。
+  - `.modal` / `.cmdk` 去掉面板自身的二次 `backdrop-filter`，只保留遮罩（mask）单层模糊，消除双重模糊。
+
 ## [1.5.1] — 2026-10-27
 
 - **完整移除「图片去重 / 模板图识别」功能**：该功能在实际运行中误过滤了大量正常图片（卡片缩略图与文章配图被整批隐藏），严重影响可用性，且判据逻辑不清晰。本次将其整体下线：

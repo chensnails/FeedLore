@@ -113,16 +113,44 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, options, o
     }
   };
 
-  // 按分组插入标题行（「全部频道」无分组，排最前）；折叠态下整组频道不再入列，标题行仍在，
-  // 否则收起后那组连「点开它」的入口都没有了。
-  const rows = [];
-  let lastGroup;
-  let vi = -1;
-  options.forEach((o) => {
+  // 选项按组归并（保持首次出现顺序），供折叠态渲染与键盘导航共用
+  const groupOrder = [];
+  const byGroup = new Map();
+  for (const o of options) {
     const g = o.group || '';
-    if (g && g !== lastGroup) {
-      if (foldSet) {
-        const folded = foldSet.has(g);
+    if (!byGroup.has(g)) { byGroup.set(g, []); groupOrder.push(g); }
+    byGroup.get(g).push(o);
+  }
+
+  const renderItem = (o, vi) => {
+    const active = isActive(o);
+    return (
+      <button type="button" role="option" key={String(o.value)}
+        id={'dd-opt-' + vi}
+        className={'dd-item' + (active ? ' active' : '') + (hi === vi ? ' hi' : '')}
+        aria-selected={active}
+        onMouseEnter={() => setHi(vi)}
+        onClick={() => pick(o.value)}>
+        <span className="dd-item-label">{o.label}</span>
+        {active ? <svg className="ico dd-check" aria-hidden="true" focusable="false"><use href="#i-check" /></svg> : null}
+      </button>
+    );
+  };
+
+  // 高亮项（hi）对应的 option / 所属分组：用于给 listbox 设 aria-activedescendant
+  const activeOpt = hi >= 0 ? visible[hi] : null;
+  const activeGroup = activeOpt ? (activeOpt.group || '') : null;
+
+  let rows;
+  if (collapsible) {
+    // 折叠态：每个分组独立成 listbox，折叠开关（按钮）作为 listbox 的兄弟节点，
+    // 不再嵌进 listbox —— 满足「listbox 子节点只放 option」的 ARIA 约束。
+    rows = [];
+    let vi = -1;
+    for (const g of groupOrder) {
+      const opts = byGroup.get(g);
+      const folded = foldSet.has(g);
+      if (g) {
         rows.push(
           <button type="button" key={'g:' + g} data-group-fold={g}
             className={'dd-group dd-group-fold' + (folded ? ' is-collapsed' : '')}
@@ -136,26 +164,31 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, options, o
             {folded ? <span className="dd-group-n" title={`该分组 ${groupTotal[g] || 0} 个频道`}>{groupTotal[g] || 0}</span> : null}
           </button>
         );
-      } else {
-        rows.push(<div className="dd-group" key={'g:' + g}>{g}</div>);
       }
+      const groupItems = opts.filter(isVisible);
+      rows.push(
+        <div className="dd-group-items" role="listbox" aria-label={g || (ariaLabel || title)}
+          hidden={groupItems.length === 0}
+          aria-activedescendant={g === activeGroup && activeOpt ? 'dd-opt-' + hi : undefined}
+          key={'gl:' + g}>
+          {groupItems.map((o) => { vi++; return renderItem(o, vi); })}
+        </div>
+      );
     }
-    lastGroup = g;
-    if (!isVisible(o)) return;
-    vi++;
-    const i = vi;
-    const active = isActive(o);
-    rows.push(
-      <button type="button" role="option" key={String(o.value)}
-        className={'dd-item' + (active ? ' active' : '') + (hi === i ? ' hi' : '')}
-        aria-selected={active}
-        onMouseEnter={() => setHi(i)}
-        onClick={() => pick(o.value)}>
-        <span className="dd-item-label">{o.label}</span>
-        {active ? <svg className="ico dd-check" aria-hidden="true" focusable="false"><use href="#i-check" /></svg> : null}
-      </button>
-    );
-  });
+  } else {
+    // 非折叠：保持原结构（纯文本分组标题 + 平铺选项），测试要求保留 <div className="dd-group">
+    rows = [];
+    let lastGroup;
+    let vi = -1;
+    options.forEach((o) => {
+      const g = o.group || '';
+      if (g && g !== lastGroup) rows.push(<div className="dd-group" key={'g:' + g}>{g}</div>);
+      lastGroup = g;
+      if (!isVisible(o)) return;
+      vi++;
+      rows.push(renderItem(o, vi));
+    });
+  }
 
   return (
     <div className={'dd' + (open ? ' open' : '')} id={wrapId} ref={rootRef} onKeyDown={onKeyDown}>
@@ -170,7 +203,10 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, options, o
       </button>
 
       {open && !mobile && (
-        <div className="dd-panel" role="listbox" aria-label={ariaLabel || title} ref={panelRef}>
+        <div className="dd-panel" role={collapsible ? undefined : 'listbox'}
+          aria-label={collapsible ? undefined : (ariaLabel || title)}
+          aria-activedescendant={collapsible ? undefined : (activeOpt ? 'dd-opt-' + hi : undefined)}
+          ref={panelRef}>
           {rows}
         </div>
       )}
@@ -187,7 +223,10 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, options, o
                 <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
               </button>
             </div>
-            <div className="dd-sheet-body" role="listbox" ref={panelRef}>{rows}</div>
+            <div className="dd-sheet-body" role={collapsible ? undefined : 'listbox'}
+              aria-label={collapsible ? undefined : (ariaLabel || title)}
+              aria-activedescendant={collapsible ? undefined : (activeOpt ? 'dd-opt-' + hi : undefined)}
+              ref={panelRef}>{rows}</div>
           </div>
         </div>
       )}
