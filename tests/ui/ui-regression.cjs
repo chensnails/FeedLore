@@ -3136,6 +3136,26 @@ const withEFP = (el, fn) => {
     if (!C('#grid').classList.contains('list-mode')) throw new Error('未 list-mode');
     if (CA('#grid .row-item').length !== 2) throw new Error('行数 ' + CA('#grid .row-item').length);
   });
+  // v1.7.0：列表行的宽度与按钮尺寸（列表视图溢出的两道防线）
+  t('列表视图：行不超出容器 + 复制/打开按钮是同尺寸方块', () => {
+    const row = C('#grid .row-item');
+    const grid = C('#grid');
+    const gridRect = grid.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    if (rowRect.right > gridRect.right + 1) {
+      throw new Error('列表行超出容器：row.right=' + Math.round(rowRect.right) + ' > grid.right=' + Math.round(gridRect.right));
+    }
+    const copy = row.querySelector('.row-actions .btn-copy');
+    const open = row.querySelector('.row-actions .btn-open');
+    if (!copy) throw new Error('列表行缺复制按钮');
+    const cw = copy.getBoundingClientRect().width;
+    const ch = copy.getBoundingClientRect().height;
+    if (cw > 40 || ch > 40) throw new Error('复制按钮不是紧凑方块：' + Math.round(cw) + '×' + Math.round(ch));
+    if (open) {
+      const ow = open.getBoundingClientRect().width;
+      if (Math.abs(ow - cw) > 1) throw new Error('复制与打开按钮尺寸不一致：' + Math.round(cw) + ' vs ' + Math.round(ow));
+    }
+  });
   C('.overflow-btn').click();
   await sleep(30);
   const gridItem = CA('.overflow-menu .overflow-item').find((b) => b.textContent.indexOf('网格视图') >= 0);
@@ -4502,6 +4522,42 @@ const withEFP = (el, fn) => {
     if (!/animation:\s*popIn/.test(css) || !/animation:\s*fadeIn/.test(css)) throw new Error('弹层 popIn / 遮罩 fadeIn 应存在（沿用基础层）');
     if (/@keyframes (modalIn|maskIn)/.test(css)) throw new Error('modalIn/maskIn 与已有 popIn/fadeIn 重复，应删除');
     if (!/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.grid > \.card[\s\S]{0,140}?animation:\s*none/.test(css)) throw new Error('reduce-motion 未局部关闭入场动画');
+  });
+
+  // ============ 卡片页列表视图：宽度自适应 + 复制按钮紧凑（v1.7.0） ============
+  // 背景：① 卡片页 .wrap 作为 #cardsRoot 的 flex 子项时不写 min-width:0，会被内容
+  // 最小宽度撑开（实测 1280 视口下 .wrap 宽 1600px、375 视口下 698px），超出部分
+  // 被 #cardsView{overflow:hidden} 裁掉 —— 列表元素溢出/错位、右侧内容看不见。
+  // ② 复制按钮基础层曾是整宽文字按钮（flex:1），窄屏段还有 flex:1 0 100%，
+  // 在列表行里被拉成 591px 宽的巨型蓝条。现在统一收成图标方块。
+  t('卡片页列表：容器宽度必须跟着视口走（.wrap min-width:0 + width:100%）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    const m = css.match(/#cardsRoot\s*>\s*main\.wrap\s*\{([^}]*)\}/);
+    if (!m) throw new Error('缺 #cardsRoot > main.wrap 规则');
+    if (!/min-width:\s*0/.test(m[1])) throw new Error('.wrap 未设 min-width:0（会被内容最小宽度撑开 → 溢出视口）');
+    if (!/width:\s*100%/.test(m[1])) throw new Error('.wrap 未设 width:100%（不占满可用宽度）');
+    const listMode = css.match(/\.grid\.list-mode\s*\{([^}]*)\}/);
+    if (!listMode || !/min-width:\s*0/.test(listMode[1])) throw new Error('.grid.list-mode 未设 min-width:0');
+    const rowItem = css.match(/\.row-item\s*\{([^}]*)\}/);
+    if (!rowItem || !/min-width:\s*0/.test(rowItem[1])) throw new Error('.row-item 未设 min-width:0');
+  });
+
+  t('复制按钮必须是紧凑图标方块，不得回退成整宽文字按钮', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css', ''), 'utf8').replace(/\r\n/g, '\n');
+    // 基础规则（行首 .btn-copy）——上下文覆写（.card-media-actions / .row-actions / .art-actions）
+    // 另有各条，这里只看基础层，避免匹配到上下文的窄选择器
+    const m = css.match(/^\.btn-copy\s*\{([^}]*)\}/m);
+    if (!m) throw new Error('缺 .btn-copy 基础规则');
+    if (!/width:\s*32px/.test(m[1]) || !/height:\s*32px/.test(m[1])) throw new Error('.btn-copy 未定死为 32×32 方块');
+    if (!/flex:\s*0 0 auto/.test(m[1])) throw new Error('.btn-copy 未固定尺寸（flex:0 0 auto），会被拉成巨型按钮');
+    // 窄屏段不得再有把复制按钮拉成整行的规则
+    // （先剥掉注释：注释里会引用旧写法，如「曾有 .btn-copy{flex:1 0 100%}」）
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    if (/\.btn-copy\s*\{[^}]*flex:\s*1 0 100%/.test(rules)) throw new Error('仍有 .btn-copy{flex:1 0 100%}（窄屏巨型按钮）');
+    if (/\.row-actions\s+\.btn-copy\s*\{[^}]*flex:\s*1\b/.test(rules)) throw new Error('仍有 .row-actions .btn-copy{flex:1}（窄屏巨型按钮）');
+    if (!/\.btn-copy\s+\.btn-label\s*\{[^}]*display:\s*none/.test(css)) throw new Error('.btn-copy 未隐藏「已复制」文字（会溢出方块）');
   });
 
   // ============ 文章页：进入即置顶 + 条目深链 + 窄屏收纳（v1.7.0） ============

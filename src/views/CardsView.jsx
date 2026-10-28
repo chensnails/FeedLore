@@ -61,7 +61,9 @@ function CopyButton({ e }) {
   return (
     <button type="button" className={'btn-copy' + (copied ? ' copied' : '')} onClick={onClick}
       title={many ? `复制链接（${urls.length} 条，可选择）` : '复制链接'} aria-label="复制链接">
-      {copied ? <><Icon n="check" /> 已复制</> : <Icon n="copy" />}
+      {/* 成功态的「已复制」用 .btn-label 包裹：图标方块按钮里这行字会被
+          CSS 隐藏（.btn-copy .btn-label{display:none}），文字由 toast 播报 */}
+      {copied ? <><Icon n="check" /><span className="btn-label">已复制</span></> : <Icon n="copy" />}
     </button>
   );
 }
