@@ -88,7 +88,7 @@ export function AccountPane() {
   async function loadUsers() {
     try {
       const res = await s.apiFetch('/api/users');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!res.ok) throw await s.httpError(res);
       const data = await res.json();
       setUsers(data.users || []);
       setUsersError('');

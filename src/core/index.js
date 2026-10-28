@@ -27,13 +27,14 @@ export const core = {
   cycleTheme: S.cycleTheme,
   scrollTop: () => window.scrollTo({ top: 0, behavior: U.prefersReducedMotion() ? 'auto' : 'smooth' }),
   // —— 设置弹层 / 外观 / 关于（v1.3.0 起 React 化） ——
-  apiFetch: U.apiFetch, isAdmin: S.isAdmin, toast: U.toast, confirm: U.confirm,
+  apiFetch: U.apiFetch, httpError: U.httpError, isAdmin: S.isAdmin, toast: U.toast, confirm: U.confirm,
   // —— 覆盖层（v2.1.0 起 React 化，组件 src/ui/Overlays.jsx） ——
   getToastState: () => U.toastState,
   getConfirmState: () => U.confirmState,
   settleConfirm: U.settleConfirm, cancelConfirm: U.cancelConfirm,
   getNewPillState: () => AR.newPillState,
   getLightboxState: () => UI.lightboxState,
+  stepLightbox: UI.stepLightbox,
   applyPendingFresh: AR.applyPendingFresh,
   closeLightbox: UI.closeLightbox,
   lockPageScroll: S.lockPageScroll, unlockPageScroll: S.unlockPageScroll,

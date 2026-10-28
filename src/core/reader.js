@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { apiFetch, toast, emitShell, confirm } from './util.js';
+import { apiFetch, httpError, toast, emitShell, confirm } from './util.js';
 import { state, layoutPref, setLayout, openSettings, lockPageScroll, unlockPageScroll } from './state.js';
 import { loadFeeds, groupFeeds } from './feeds.js';
 
@@ -80,7 +80,7 @@ export async function loadReader({ reset = false } = {}) {
     params.set('offset', String(state.rdOffset));
 
     const res = await apiFetch('/api/entries?' + params.toString());
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) throw await httpError(res);
     const data = await res.json();
 
     const list = data.entries || [];
@@ -160,7 +160,7 @@ export async function expandReaderArt(id) {
   if (state.rdBody.has(id) || state.rdBodyErr.has(id)) return;
   try {
     const res = await apiFetch('/api/entries/' + encodeURIComponent(id));
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) throw await httpError(res);
     state.rdBody.set(id, await res.json());
   } catch (_) {
     state.rdBodyErr.add(id);
@@ -293,7 +293,7 @@ export async function setEntryFlag(id, patch) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) throw await httpError(res);
     const d = await res.json();
     if (e) applyEntryFlag(id, { isRead: d.isRead, isFavorite: d.isFavorite });
     return true;
@@ -526,7 +526,7 @@ export async function readerReadAll() {
         q: p.get('q') || '',
       }),
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) throw await httpError(res);
     const d = await res.json();
     toast(d.updated ? `已标为已读 ${d.updated} 篇` : '这里没有未读文章');
     await loadFeeds();

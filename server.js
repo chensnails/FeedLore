@@ -561,6 +561,26 @@ async function proxyImage(rawUrl, res) {
 /* ============================================================
  * HTTP 基础设施
  * ============================================================ */
+/** 网络层错误 → 可读中文。
+ *  Node 的 fetch 抛的永远只有 "fetch failed"，真正原因在 e.cause.code 里；
+ *  直接透给用户等于没说。测试连接、webhook 这类发外部请求的地方都过它。 */
+function netErrMsg(e) {
+  const code = String((e && e.cause && e.cause.code) || '');
+  const raw = String((e && e.message) || e || '');
+  const map = {
+    ENOTFOUND: '域名解析失败，请检查地址拼写',
+    EAI_AGAIN: '域名解析暂时失败（DNS 超时），请稍后重试',
+    ECONNREFUSED: '连接被拒绝，端口没开或地址不对',
+    ETIMEDOUT: '连接超时，上游没有响应',
+    UND_ERR_CONNECT_TIMEOUT: '连接超时，上游没有响应',
+    CERT_HAS_EXPIRED: 'HTTPS 证书已过期',
+    DEPTH_ZERO_SELF_SIGNED_CERT: 'HTTPS 证书不被信任（自签名）',
+  };
+  if (map[code]) return map[code] + '（' + code + '）';
+  if (/fetch failed|Failed to fetch|NetworkError|socket hang up/i.test(raw)) return '网络不可达，请检查地址与网络';
+  return raw;
+}
+
 function readBody(req, maxBytes = 1e6) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -971,7 +991,15 @@ const server = http.createServer(async (req, res) => {
         let parsed;
         try { parsed = parseOpml(text); }
         catch (e) { json(res, 400, { error: 'OPML 解析失败：' + (e.message || e) }); return; }
-        if (!parsed.length) { json(res, 400, { error: '文件中没有找到任何订阅源（xmlUrl）' }); return; }
+        if (!parsed.length) {
+          // 空结果有两种：真 OPML 但没有 xmlUrl，和压根不是 OPML（用户贴了别的东西）。
+          // 分开说，否则「没有找到订阅源」会让人以为是导出工具的问题。
+          const looksOpml = /<\s*(opml|outline)\b/i.test(text);
+          json(res, 400, { error: looksOpml
+            ? '文件中没有找到任何订阅源（xmlUrl）'
+            : '这不像是 OPML 文件：没找到 <opml> / <outline> 结构，请确认选对了导出文件' });
+          return;
+        }
 
         const existing = await db.listFeeds(user.id);
         const existingUrls = new Set(existing.map((f) => normUrl(f.url)));
@@ -1455,7 +1483,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         try { json(res, 200, await digest.testLlm(llm)); }
-        catch (e) { json(res, 200, { ok: false, error: String((e && e.message) || e) }); }
+        catch (e) { json(res, 200, { ok: false, error: netErrMsg(e) }); }
         return;
       }
 

@@ -579,6 +579,7 @@ w.feedlore = {
   cancelConfirm: () => { calls.push(['cancelConfirm']); overlayState.confirm = Object.assign({}, overlayState.confirm, { open: false }); overlaysTick(); },
   applyPendingFresh: () => { calls.push(['applyPendingFresh']); },
   closeLightbox: () => { calls.push(['closeLightbox']); overlayState.box = { src: '', show: false }; overlaysTick(); },
+  stepLightbox: (d) => { calls.push(['stepLightbox', d]); },
   cycleTheme: () => calls.push(['cycleTheme']),
   openSettings: (t) => { calls.push(['openSettings', t]); },
   // v1.7.0：AI 视图桥（P3a；v1.4.0 起子页导航随「日报设置」一起删除）
@@ -1243,6 +1244,15 @@ const withEFP = (el, fn) => {
 
   // ============ 数据源面板（P2c React 化） ============
   await sleep(40);
+  t('数据源：分组头有按钮语义与展开态', () => {
+    const heads = [...document.querySelectorAll('#feedList .feed-group-head')];
+    if (!heads.length) return;   // 迷你数据没分组时跳过
+    const h = heads[0];
+    if (h.getAttribute('role') !== 'button') throw new Error('缺 role=button');
+    if (h.getAttribute('tabindex') !== '0') throw new Error('不可聚焦');
+    const exp = h.getAttribute('aria-expanded');
+    if (exp !== 'true' && exp !== 'false') throw new Error('aria-expanded=' + exp);
+  });
   t('进入面板即拉频道列表（loadFeeds 桥）', () => { if (!countApi('/api/feeds')) throw new Error('未 GET /api/feeds'); });
   t('挂载即重启自动刷新定时器', () => { if (!callsOf('scheduleAutoRefresh').length) throw new Error('scheduleAutoRefresh 未调用'); });
   t('pushSummary 同步副标题', () => { if (!callsOf('setSettingsSummary').length) throw new Error('setSettingsSummary 未调用'); });
@@ -3817,6 +3827,32 @@ const withEFP = (el, fn) => {
   t('点灯箱 → closeLightbox', () => {
     if (!callsOf('closeLightbox').length) throw new Error('未触发');
   });
+
+  // v1.6.0-test4：同一篇正文多图时给 ← → 与序号；点翻页不能把灯箱关掉（stopPropagation）
+  overlayState.box = { src: 'https://example.com/b.png', show: true,
+    list: ['https://example.com/a.png', 'https://example.com/b.png', 'https://example.com/c.png'], index: 1 };
+  overlaysTick();
+  await sleep(20);
+  t('灯箱：多图渲染翻页控件与序号', () => {
+    const prev = O('.lightbox-nav.is-prev'); const next = O('.lightbox-nav.is-next');
+    if (!prev || !next) throw new Error('缺翻页按钮');
+    if ((prev.getAttribute('aria-label') || '') !== '上一张') throw new Error('上一张 aria-label 不对');
+    const cnt = O('.lightbox-count');
+    if (!cnt || cnt.textContent.replace(/\s+/g, '') !== '2/3') throw new Error('序号不对：' + (cnt && cnt.textContent));
+    if (O('.lightbox').getAttribute('aria-label').indexOf('第 2 张') < 0) throw new Error('对话框名未带序号');
+  });
+  const closeBeforeStep = callsOf('closeLightbox').length;
+  O('.lightbox-nav.is-next').click();
+  await sleep(10);
+  t('灯箱：点翻页触发 stepLightbox(1) 且不关闭', () => {
+    const st = callsOf('stepLightbox');
+    if (!st.length || st[st.length - 1][1] !== 1) throw new Error('未触发 stepLightbox(1)');
+    if (callsOf('closeLightbox').length !== closeBeforeStep) throw new Error('翻页把灯箱关掉了（缺 stopPropagation）');
+  });
+  overlayState.box = { src: 'https://example.com/a.png', show: true, list: ['https://example.com/a.png'], index: 0 };
+  overlaysTick();
+  await sleep(20);
+  t('灯箱：单图不渲染翻页控件', () => { if (O('.lightbox-nav')) throw new Error('单图不该有翻页'); });
 
   // 统一确认框（v1.3.8-test2：替代原生 confirm / prompt）
   t('确认框：默认不渲染', () => { if (O('.confirm')) throw new Error('不应存在'); });

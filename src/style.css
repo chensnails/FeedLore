@@ -1880,6 +1880,9 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 /* 分组折叠箭头（点击分组头折叠/展开）：走 sprite chevron，与其他折叠箭头一致。
    字重靠 stroke-width 统一，不再用 border 拼三角形（那个还借用了 --divider-w-strong）。 */
 .feed-group-head { cursor: pointer; user-select: none; }
+/* 组头现在是 role=button（v1.6.0-test4），键盘聚焦要给可见环；
+   offset 取负值，避免在滚动容器里被裁掉。 */
+.feed-group-head[role="button"]:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; border-radius: var(--radius-xs); }
 .feed-group-caret {
   width: .875rem; height: .875rem; flex: 0 0 auto;
   color: var(--text-faint);
@@ -2867,6 +2870,29 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 }
 .lightbox-close:hover { background: rgba(255, 255, 255, .24); transform: scale(1.06); }
 .lightbox-close .ico { width: 1.25rem; height: 1.25rem; }
+
+/* 灯箱组内翻页（v1.6.0-test4）：同一篇正文有多张图时才出现。
+   .lightbox 本身是「点任意处关闭」，所以按钮必须 stopPropagation，否则点一下就关了。 */
+.lightbox-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, .14); color: var(--lightbox-text);
+  cursor: pointer; z-index: 1;
+  transition: background var(--dur-fast), transform var(--dur-fast);
+}
+.lightbox-nav:hover { background: rgba(255, 255, 255, .28); }
+.lightbox-nav .ico { width: 1.25rem; height: 1.25rem; }
+.lightbox-nav.is-prev { left: var(--sp-4); }
+.lightbox-nav.is-prev .ico { transform: rotate(180deg); }
+.lightbox-nav.is-next { right: var(--sp-4); }
+.lightbox-count {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--sp-6) + 1.9rem);
+  margin: 0; padding: 2px 10px; border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, .38); color: var(--lightbox-text);
+  font-size: var(--fs-sm); letter-spacing: .04em;
+}
 
 /* 正文按原文换行显示：存的是纯文本，pre-wrap 能保住帖子的行结构
    字体 / 字号 / 行高走外观偏好 token（--font-read / --reader-fs / --reader-lh），可被用户改 */

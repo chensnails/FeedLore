@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { apiFetch, toast, emitShell } from './util.js';
+import { apiFetch, httpError, toast, emitShell } from './util.js';
 import { state, layoutPref, setLayout, lockPageScroll, unlockPageScroll } from './state.js';
 
 /** 按分组名把频道归类：未分组的排最前，其余按名称排序；组内保持原顺序 */
@@ -73,7 +73,7 @@ export function currentTab() {
 /* ---------------- 数据加载 ---------------- */
 export async function loadFeeds() {
   const res = await apiFetch('/api/feeds');
-  if (!res.ok) throw new Error('HTTP ' + res.status);
+  if (!res.ok) throw await httpError(res);
   const data = await res.json();
   state.feedList = data.feeds || [];
   state.feedMeta = data;
@@ -126,7 +126,7 @@ export async function loadPage(reset = false) {
     else qs.set('scope', 'cards');
 
     const res = await apiFetch('/api/entries?' + qs.toString());
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) throw await httpError(res);
     const data = await res.json();
 
     if (reset) state.tags = data.tags || [];

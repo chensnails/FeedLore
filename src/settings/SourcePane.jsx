@@ -554,7 +554,9 @@ export function SourcePane({ admin }) {
     setBusy('add');
     setResult(null);
     try {
-      const res = await s.apiFetch('/api/feeds', jsonPost({ url: u }));
+      // 30 秒兜底：添加订阅要等服务端去抓一次，遇到慢站或死站会一直挂着，
+      // 按钮永远停在「添加中…」，用户既不知道还要等多久也不知道是不是卡了。
+      const res = await s.apiFetch('/api/feeds', Object.assign(jsonPost({ url: u }), { signal: AbortSignal.timeout(30000) }));
       const data = await res.json();
       if (!res.ok) { setResult({ ok: false, msg: data.error || '添加失败' }); return; }
       setUrl('');
@@ -564,7 +566,8 @@ export function SourcePane({ admin }) {
       s.state.tag = null;
       if (s.loadPage) await s.loadPage(true);
     } catch (err) {
-      setResult({ ok: false, msg: '添加失败：' + (err.message || err) });
+      const timedOut = !!(err && (err.name === 'TimeoutError' || err.name === 'AbortError'));
+      setResult({ ok: false, msg: timedOut ? '抓取超时（30 秒）：这个地址可能太慢或没有响应' : '添加失败：' + (err.message || err) });
     } finally {
       setBusy('');
     }
@@ -1295,7 +1298,20 @@ export function SourcePane({ admin }) {
                         <div
                           className={'feed-group-head' + (isCollapsed ? ' collapsed' : '') + headDropCls(g)}
                           data-group={g.name}
+                          /* 分组头是可点开关，得让键盘和读屏也能用：补按钮语义与展开态。
+                             重命名态下有 <input>，此时不能挂 role=button（button 套 input
+                             语义不合法），退化成普通容器，输入框自己处理按键。 */
+                          {...(renamingGroup === g.name ? {} : {
+                            role: 'button',
+                            tabIndex: 0,
+                            'aria-expanded': isCollapsed ? 'false' : 'true',
+                            'aria-label': (g.name || '未分组') + '，' + g.feeds.length + ' 个频道，' + (isCollapsed ? '已收起' : '已展开'),
+                          })}
                           onClick={(ev) => onHeadClick(ev, g)}
+                          onKeyDown={(ev) => {
+                            if (ev.target !== ev.currentTarget) return;   // 手柄 / 重命名按钮 / 输入框各自处理
+                            if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onHeadClick(ev, g); }
+                          }}
                         >
                           {g.name && renamingGroup === g.name ? (
                     <input

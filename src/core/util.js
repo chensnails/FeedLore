@@ -18,6 +18,28 @@ export async function apiFetch(url, opts) {
   return res;
 }
 
+/** 非 2xx 时构造带「服务端原因」的 Error，调用方一律 `throw await httpError(res)`。
+ *
+ *  以前各处写的是 `throw new Error('HTTP ' + res.status)`，用户只会看到
+ *  「操作失败：HTTP 500」—— 而服务端其实已经回了「服务器开小差了」这类可读原因，
+ *  白白丢掉，出问题时既没法自助也没法反馈。
+ *
+ *  ⚠️ 会消费 res 的 body，只能在失败分支调用；成功分支的 `res.json()` 各走各的，
+ *  互斥分支不受影响（各处本来就是这个结构）。 */
+export async function httpError(res) {
+  let msg = '';
+  try {
+    const d = await res.json();
+    if (d && typeof d.error === 'string' && d.error) msg = d.error;
+    else if (d && typeof d.message === 'string' && d.message) msg = d.message;
+  } catch (e) {
+    /* 非 JSON（网关 HTML、空 body、被截断）→ 退回状态码 */
+  }
+  const err = new Error(msg || 'HTTP ' + res.status);
+  err.status = res.status;
+  return err;
+}
+
 /** 完整时间戳，用于 title 提示与展开体的发布时间 */
 export function fmtFull(ts) {
   if (!ts) return '';

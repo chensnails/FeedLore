@@ -2,6 +2,16 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.6.0-test4] — 2026-10-28（开发版，错误提示与灯箱可用性，未发布）
+
+> 收掉「需人工验证」清单里暴露的 4 个实质问题：错误提示吞掉服务端原因、灯箱不归还焦点且多图无法翻看、设置分组头缺按钮语义，以及三处文案/超时。经 Edge headless + CDP 复测：全部已读失败时显示服务端的「服务器开小差了」而不是「HTTP 500」、灯箱多图出现 ← → 与「2 / 3」序号、关闭后焦点回到触发图、分组头可 Tab 聚焦并用回车折叠。UI 358 项、server 97 项、deploy 5/5 全绿。
+
+- **错误提示透出服务端原因**：新增 `core/util.js#httpError(res)`，优先读 `{error}`/`{message}`，读不到才回退 `HTTP <status>`，并挂 `err.status`。替换 core 里 8 处 + 设置面板 3 处共 11 处 `throw new Error('HTTP ' + res.status)` —— 此前「全部已读」失败只显示「操作失败：HTTP 500」，服务端写好的中文原因被丢掉。
+- **灯箱多图可翻看**：`openLightbox(src, { list, opener })` 收集同一正文容器（`.art-body / .cd-body / .cd-modal / .art-item`）内的全部 `.art-img`，新增 `stepLightbox(±1)`；灯箱渲染 `.lightbox-nav` 上一张/下一张与 `.lightbox-count` 序号，`←`/`→` 也可切换。按钮 `stopPropagation`，避免点翻页被「点任意处关闭」吃掉。单图时不渲染翻页控件。
+- **灯箱关闭归还焦点**：关闭时把焦点还给触发图（`<img>` 默认不可聚焦，临时补 `tabindex="-1"`，不进 Tab 序列但可程序聚焦），不再落到 body。
+- **设置分组头补按钮语义**：`.feed-group-head` 加 `role="button"` + `tabIndex=0` + `aria-expanded` + 可读 `aria-label`，Enter/Space 折叠；重命名态（内含 input）自动退化为普通容器，避免 button 套 input。补 `:focus-visible` 焦点环。
+- **三处文案与超时**：①服务端新增 `netErrMsg(e)`，把 Node fetch 的 `fetch failed` 按 `e.cause.code` 翻成「连接被拒绝 / 域名解析失败 / 连接超时」等，测试连接不再只显示英文；②OPML 导入区分「真 OPML 但没有 xmlUrl」与「压根不是 OPML」，后者提示「这不像是 OPML 文件：没找到 <opml> / <outline> 结构」；③添加订阅加 `AbortSignal.timeout(30000)`，超时显示「抓取超时（30 秒）」，不再无限停在「添加中…」。
+- **守门**：UI 354 → 358 项（新增「灯箱多图翻页控件与序号」「点翻页不关闭」「单图不渲染翻页」「分组头按钮语义」）。
 ## [1.6.0-test3] — 2026-10-28（开发版，UI 交互完整性修复，未发布）
 
 > 依据「UI 交互完整性检查」确认的 6 项问题逐条修复：移动端设置两级导航可达性、命令面板与设置导航的无障碍语义、触屏命中区、文案一致性、移动端 Esc 层级。经 Edge headless + CDP 复测（桌面 1440×900 / 移动 390×844）：移动端设置首开停在列表、cmdk `aria-activedescendant` 指向高亮项、tablist/tabpanel 关联生效、触屏控件实测 ≥40px、分区内 Esc 回列表后焦点落回原 tab。UI 354 项、server 97 项、deploy 5/5、Dockerfile 清单、Vite 生产构建全绿。

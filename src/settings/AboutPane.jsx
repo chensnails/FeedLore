@@ -27,7 +27,7 @@ export function AboutPane() {
     (async () => {
       try {
         const res = await S().apiFetch('/api/version');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
+        if (!res.ok) throw await S().httpError(res);
         const d = await res.json();
         if (!dead) setVersion('v' + (d.version || '—'));
         if (!dead && d.updateEnabled !== undefined) setUpdateEnabled(!!d.updateEnabled);

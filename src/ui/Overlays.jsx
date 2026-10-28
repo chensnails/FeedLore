@@ -151,17 +151,42 @@ function Lightbox({ box, close }) {
     return () => document.removeEventListener('keydown', onKey, true);
   }, [close]);
 
+  const list = Array.isArray(box.list) ? box.list : [];
+  const multi = list.length > 1;
+  const step = (d) => { const s = S(); if (s && s.stepLightbox) s.stepLightbox(d); };
+
   return (
     <div
       ref={rootRef}
       className="lightbox"
       role="dialog"
       aria-modal="true"
-      aria-label="图片预览"
+      aria-label={multi ? `图片预览，第 ${box.index + 1} 张，共 ${list.length} 张` : '图片预览'}
       tabIndex={-1}
       onClick={() => close()}
     >
       <img className="lightbox-img" src={box.src} alt="" />
+      {multi ? (
+        <React.Fragment>
+          <button
+            className="lightbox-nav is-prev"
+            type="button"
+            aria-label="上一张"
+            onClick={(ev) => { ev.stopPropagation(); step(-1); }}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+          </button>
+          <button
+            className="lightbox-nav is-next"
+            type="button"
+            aria-label="下一张"
+            onClick={(ev) => { ev.stopPropagation(); step(1); }}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+          </button>
+          <p className="lightbox-count" aria-live="polite">{box.index + 1} / {list.length}</p>
+        </React.Fragment>
+      ) : null}
       <button
         ref={closeRef}
         className="lightbox-close"
@@ -171,7 +196,7 @@ function Lightbox({ box, close }) {
       >
         <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
       </button>
-      <p className="lightbox-hint">点击任意处或按 Esc 关闭</p>
+      <p className="lightbox-hint">{multi ? '← → 切换 · 点击任意处或按 Esc 关闭' : '点击任意处或按 Esc 关闭'}</p>
     </div>
   );
 }

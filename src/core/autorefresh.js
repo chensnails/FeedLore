@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { apiFetch, toast, emitShell, emitOverlays } from './util.js';
+import { apiFetch, httpError, toast, emitShell, emitOverlays } from './util.js';
 import { state } from './state.js';
 import { render } from './feeds.js';
 import { renderReader, readerFilterParams } from './reader.js';
@@ -65,7 +65,7 @@ export async function fetchHead(view) {
   }
 
   const res = await apiFetch('/api/entries?' + params.toString());
-  if (!res.ok) throw new Error('HTTP ' + res.status);
+  if (!res.ok) throw await httpError(res);
   return res.json();
 }
 
