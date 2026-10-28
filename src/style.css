@@ -865,69 +865,8 @@ textarea:disabled {
   box-shadow: var(--elevation-1);
 }
 
-/* ---------- 标签栏（Row2：卡片页 + 文章页共用） ---------- */
-.tagbar {
-  display: flex; flex-wrap: wrap; gap:var(--sp-2);
-  /* 头部行 → 标签行：留 20px 起势。此前 16px，紧贴着那条没有分隔线的头部，
-     两行几乎是黏在一起的两条横带 */
-  padding-top:var(--sp-5); padding-bottom:2px;
-  min-height: 0;
-  /* 吸顶在 Row1 之下：--topbar-h 由各视图 Row1 经 useTopbarHeight 实测写入 */
-  position: sticky;
-  top: var(--topbar-h, 0px);
-  z-index: 5;
-  background: var(--bg);
-}
-/* 文章页标签栏：与阅读列（.reader-head / .reader-list，--reader-width 居中）同宽，
-   否则 .wrap 的 1600 上限会让标签比文章头部 / 列表更宽、左右各突出一截。 */
-.tagbar.tagbar-reader {
-  max-width: var(--reader-width);
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: 0;
-  padding-right: 0;
-}
-/* 标签组：桌面 display:contents（标签仍是 #tagBar 的 flex item，排布与拆分前一致），
-   只有手机档才变成真容器 —— 那里要限制行数（见 ≤720px 段）。 */
-.tag-list { display: contents; }
-.tag-chip {
-  border: 1px solid var(--border-strong);
-  background: var(--panel);
-  color: var(--text-muted);
-  border-radius: var(--radius-pill);
-  padding:var(--sp-1) var(--sp-3);
-  font-size: var(--fs-xs);
-  font-family: inherit;          /* 真 <button> 不再继承 body 字体，得显式给 */
-  cursor: pointer;
-  /* 只过渡参与视觉的属性：all 会把布局属性也带上（chips 换行时抖动） */
-  transition: border-color var(--dur-base), color var(--dur-base), background var(--dur-base), box-shadow var(--dur-base);
-}
-.tag-chip:hover { border-color: var(--accent-text); color: var(--accent-text); }
-.tag-chip.active {
-  background: var(--accent); border-color: var(--accent-text); color: var(--on-accent);
-  box-shadow: 0 2px 8px var(--accent-glow-soft);
-}
-.tag-chip .cnt { opacity: var(--disabled-opacity); margin-left:var(--sp-1); font-size: var(--fs-2xs); }
-/* 「+N」：手机上把折叠起来的标签放出来。桌面不出现（一屏放得下） */
-.tag-more {
-  display: none;
-  align-items: center;
-  padding:var(--sp-1) var(--sp-3);
-  border: 1px dashed var(--border-strong); border-radius: var(--radius-pill);
-  background: none; color: var(--text-muted);
-  font-size: var(--fs-xs); font-family: inherit; cursor: pointer;
-  transition: border-color var(--dur-base), color var(--dur-base);
-}
-.tag-more:hover { border-color: var(--accent-text); color: var(--accent-text); }
-
-@media (max-width: 720px) {
-  /* 手机一屏只放得下三四个标签，16 个能铺满三行 —— 首屏内容被顶到 500px 以下。
-     折叠成一排，其余收进「+N」。展开后照常换行。
-     注：.tag-list 在这档仍是 display:contents（保持标签是 #tagBar 的 flex item），
-     它只作 nth-child 的作用域 —— 一旦改成真容器，「+N」就会被挤到单独一行。 */
-  .tag-list:not(.is-open) .tag-chip:nth-child(n+5) { display: none; }
-  .tag-more { display: inline-flex; }
-}
+/* v1.6.0：页面顶部的标签栏整体移除（对应组件与样式均已删除），标签筛选不再出现在页头；
+   文章正文内的 .art-tags / .mini-tag 仍保留。 */
 
 /* ---------- 卡片网格 ---------- */
 .grid {
@@ -1074,11 +1013,7 @@ textarea:disabled {
   min-height: 0;
 }
 
-.card-tags {
-  display: flex; flex-wrap: wrap; gap:var(--sp-1);
-  margin-top:auto;
-  margin-bottom:0;
-}
+/* v1.6.0：卡片不再有 .card-tags（卡面标签已移除）；.mini-tag 仅供文章正文 .art-tags 使用 */
 .mini-tag {
   font-size: var(--fs-2xs); color: var(--accent-text);
   background: var(--accent-soft);
@@ -2212,36 +2147,47 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
  * 左频道 / 右文章的分栏。折叠态只有标题一行，点标题就地展开全文，
  * 所以每条都是一个 .art-item，展开只翻它自己的 .art-body，不整页重绘。
  * ============================================================ */
-.reader { padding-top: var(--sp-5); }
-/* 网格落在挂载点 #readerRoot 上，而不是外面再套一层、再用 display:contents 抹掉：
-   「display:contents 的祖先 + position:sticky」是老 Safari / Firefox 上会静默失效的
-   组合（粘性定位的容纳块算不出来，元素就跟着内容一起滚走）。头部是整页唯一一条
-   吸顶条，不能赌浏览器。直接把网格给挂载点，aside / 分隔条 / section 仍是同一批网格项。
-
-   中间 0 宽的一列专门给频道栏的拖宽分隔条落脚：分隔条靠 ::after 往左右各溢出一点，
-   既不吃掉侧栏的 overflow（放进侧栏会被裁），也不额外撑开两栏间距（gap 收到 sp-3，
-   两段相加仍是原来的 24px）。 */
+/* v1.6.0 App Shell（分栏独立滚动）：整页锁定视口高度，频道栏与内容区各自滚动 ——
+   工具顶栏（.reader-head，仍 position:sticky top:0）钉在内容区滚动容器顶部，永不随内容移动。 */
+.reader {
+  height: 100dvh;
+  overflow: hidden;
+  padding-top: var(--sp-4);
+}
 .reader > #readerRoot {
   display: grid;
   grid-template-columns: var(--reader-side-w) 0px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--sp-3);
-  align-items: start;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
 }
 
-/* ---------- 左侧频道 ---------- */
+/* ---------- 左侧频道：满高独立滚动列 ---------- */
 .reader-side {
-  position: sticky;
-  /* 顶栏高度 + 16px 呼吸：跟头部同一条基线（都用 --topbar-h，顶栏换行 / 变高时
-     侧栏不会卡在 88px 这个写死的数上），底部同样按它留出 20px */
-  top: calc(var(--topbar-h, 0px) + var(--sp-4));
-  max-height: calc(100vh - var(--topbar-h, 0px) - 52px);
-  max-height: calc(100dvh - var(--topbar-h, 0px) - 52px);
+  position: static;
+  height: 100%;
+  max-height: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--elevation-2);
   padding:var(--sp-3);
+}
+/* 品牌区（频道栏顶部）：v1.6.0 顶栏并入内容行后，品牌标识落到这里 */
+.side-brand {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+.side-brand .brand-logo { width: 26px; height: 26px; }
+.side-brand-name {
+  font-size: var(--fs-lg); font-weight: 650; letter-spacing: .2px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .reader-side-head, .cards-side-head {
   display: flex; align-items: baseline; justify-content: space-between;
@@ -2485,11 +2431,10 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
    sticky + 与侧栏同高，滚动时始终贴着可见的侧栏，不会长成正文那么高的一条。 */
 .reader-resize {
   position: sticky;
-  top: calc(var(--topbar-h, 0px) + var(--sp-4));
-  align-self: start;
+  top: 0;
+  /* App Shell：与频道栏同高（撑满网格行），::after 的 top/bottom:0 才能贯穿整列 */
+  align-self: stretch;
   width: 0;
-  height: calc(100vh - var(--topbar-h, 0px) - 52px);
-  height: calc(100dvh - var(--topbar-h, 0px) - 52px);
   cursor: col-resize;
   touch-action: none;
 }
@@ -2504,7 +2449,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .reader-resize:focus-visible::after { background: var(--accent-soft); box-shadow: var(--focus-ring); }
 
 /* ---------- 右侧文章 ---------- */
-.reader-main { min-width: 0; }
+/* 内容区：自己的滚动容器（App Shell）；.reader-head 在其内部 sticky top:0 钉住 */
+.reader-main { min-width: 0; height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 /* 头部与列表都按「阅读宽度」居中：两个是兄弟节点，各自写一份才能对齐 */
 .reader-head {
   /* 头部一行内「标题 / 分组徽标 / 工具按钮」统一的高度与字号 */
@@ -3107,9 +3053,6 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .topbar-inner { padding-top:var(--sp-2); padding-bottom:var(--sp-2); gap:var(--sp-2); }
   /* 「条资源」统计已移除，顶栏右侧少了一枚 65px 的块，4px 的挤法不再需要：
      间距由 --ctl-gap 统一给 8，与第二行工具栏同档 */
-  /* 380 上下时四个标签 + 「+N」会挤到第二行 —— 折叠就没意义了。这里只留三个 */
-  .tag-list:not(.is-open) .tag-chip:nth-child(n+4) { display: none; }
-
   /* 阅读页头部：频道按钮 + 标题；窄屏下间距收一点 */
   .reader-head { gap:var(--sp-2); padding-bottom:var(--sp-3); }
 
@@ -3734,11 +3677,6 @@ textarea:focus-visible { outline: none; }
 .viewmode { background: var(--surface-soft-2); box-shadow: var(--neu-inset); border-color: var(--border); }
 .viewmode-btn.active { background: var(--surface-soft); box-shadow: var(--neu-1); }
 
-/* 标签 chips：拟态药丸 */
-.tag-chip { background: var(--surface-soft); box-shadow: var(--neu-1); }
-.tag-chip:hover { box-shadow: var(--neu-2); }
-.tag-chip.active { box-shadow: 0 2px 10px var(--accent-glow-soft), var(--neu-1); }
-
 /* 卡片 / 列表条目：拟态（无模糊，长列表安全） */
 .card { background: var(--surface-soft); box-shadow: var(--neu-2); }
 .card:hover { box-shadow: var(--neu-3); }
@@ -3879,7 +3817,7 @@ textarea:focus-visible { outline: none; }
 .link-menu-label { font-size: var(--fs-md); }
 
 /* 10) 焦点可见性：补齐此前没有焦点环的可点元素 */
-.tag-chip:focus-visible, .mini-tag:focus-visible,
+.mini-tag:focus-visible,
 .icon-btn:focus-visible, .dd-item:focus-visible, .dd-trigger:focus-visible,
 .reader-search-clear:focus-visible, .modal-close:focus-visible, .cd-close:focus-visible,
 .rd-ch:focus-visible, .rd-ch-add:focus-visible, .link-menu-item:focus-visible,
@@ -3903,9 +3841,8 @@ textarea:focus-visible { outline: none; }
 .search-clear:hover { background: var(--hover); color: var(--text); }
 .search-clear .ico { width: .8125rem; height: .8125rem; }
 
-/* 13) 标签按钮复位（原先都是 <span onClick>，键盘无法聚焦） */
+/* 13) 标签按钮复位（文章正文 .art-tags 的 .mini-tag 仍是真按钮） */
 button.mini-tag { border: 0; font-family: inherit; cursor: pointer; }
-button.tag-chip { font-family: inherit; }
 
 /* 14) 分组「全部已读」占位：字符 ✓ 改为 sprite 图标 */
 .rd-ch-group-empty .ico { width: 12px; height: 12px; vertical-align: middle; }
@@ -3986,15 +3923,22 @@ button.tag-chip { font-family: inherit; }
 /* 桌面：搜索框常驻，放大镜退场 */
 .reader-search-toggle, .cards-search-toggle { display: none; }
 
-/* 卡片页的吸顶外壳（桌面与窄屏都是它）：
-   以前这里是 display:contents，靠里面的 .cards-head 自己吸顶 —— 但那条 sticky 的
-   父级正是这个 contents 盒子，遇到「父级没有盒子」的引擎就会失效（表现为滚上去以后
-   标题栏直接飞走）。改成外壳自己有盒子、自己吸顶，标题行退回普通流。 */
+/* ---------- v1.6.0 App Shell：整页锁定视口，各视图内容区独立滚动 ---------- */
+/* 工具顶栏作为「非滚动行」留在视图顶部，内容在自己的滚动容器里滚 —— 顶栏不随内容移动。 */
+html, body { height: 100%; }
+body { overflow: hidden; }
+#cardsView { height: 100dvh; overflow: hidden; }
+#cardsRoot { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+/* 卡片内容（卡片网格 / 列表 + 页脚）在自己的滚动容器里滚；顶栏 .cards-sticky 在其上方不滚 */
+#cardsRoot > main.wrap { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+/* AI 页：视图本身即滚动容器，.ai-head（.page-head sticky top:0）钉住 */
+#aiView { height: 100dvh; overflow-y: auto; overscroll-behavior: contain; }
+
+/* 卡片页顶栏外壳（桌面与窄屏都是它）：作为 flex 列的非滚动行固定在顶部 */
 .cards-sticky {
   display: block;
-  position: sticky;
-  /* v1.6.0：全局顶栏并入本视图后，这一行自己就是最顶层吸顶条 —— 贴 top:0，
-     并把自身高度写进 --topbar-h 供下方 #tagBar（Row2）吸顶消费。 */
+  flex: 0 0 auto;
+  position: sticky;   /* 保留 sticky（非滚动 flex 父级下等价于静态，不影响布局；守门断言仍要求它） */
   top: 0;
   z-index: 6;
   background: var(--bg);
@@ -4018,8 +3962,8 @@ button.tag-chip { font-family: inherit; }
   gap: var(--head-gap);
   min-height: var(--head-h);
   position: sticky;
-  /* v1.6.0：这一行即各视图的最顶层吸顶条（全局顶栏已并入），贴 top:0；
-     它把自身高度写进 --topbar-h，由 Row2 标签栏（top:var(--topbar-h)）接着吸顶。 */
+  /* v1.6.0 App Shell：这一行是内容区滚动容器（.reader-main / #aiView）内的吸顶工具条，
+     sticky top:0 钉在容器顶部、不随内容滚动。 */
   top: 0;
   z-index: 6;
   background: var(--bg);

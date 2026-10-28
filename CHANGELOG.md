@@ -2,6 +2,18 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.6.0-test2] — 2026-10-28（开发版，标签栏移除 + 品牌落位 + App Shell 分栏滚动，未发布）
+
+> 在 test1 合并头部的基础上：彻底移除页头标签栏与卡面标签（仅保留正文内标签），品牌 logo 迁到频道栏顶部，并把布局改成 App Shell（分栏独立滚动、工具顶栏钉住）。经 Edge headless + CDP 实测：三视图均无整页滚动（`bodyScroll == vh`）；卡面 / 文章 / 日报的工具顶栏在滚动内容时保持不动（文章页顶栏停在滚动区顶部 y=16、卡片页 y=0）；频道栏与内容区各自独立滚动。
+
+- **移除顶部标签栏**：删除 `src/ui/TagBar.jsx` 及两页对它的引用；移除 `.tagbar/.tag-list/.tag-chip/.tag-more` 样式与卡面 `card-tags` 标签；`TagList` 组件一并删除。
+- **卡面 / 列表项不再显示标签**：`Card` / `Row` 去掉标签渲染（`Row` 仍保留来源短名 pill）。
+- **保留文章正文标签**：`.art-tags / .mini-tag`（文章页与卡片详情弹窗正文内的「标签：#…」）原样保留。
+- **品牌 logo 迁到频道栏顶部**：新增 `src/ui/BrandLogo.jsx`，文章页侧栏与卡片页抽屉顶部渲染「logo + 笺川」（`.side-brand`）。
+- **App Shell 分栏独立滚动**：`body { overflow:hidden }`；`#cardsView` / `#aiView` = `100dvh`，`#cardsRoot` 为 flex 列（顶栏不滚、`main` 独立滚）；文章页 `#readerView` 满高、`#readerRoot` 网格 `height:100%`，`.reader-side` 与 `.reader-main` 各自 `overflow-y:auto`；`.reader-head` / `.cards-sticky` / `.ai-head` 各自 sticky 钉在滚动容器顶部。
+- **守门断言**：原「标签栏 / 标签 chips」断言改为「标签栏移除（无 TagBar 组件、无 .tagbar/.tag-chip 样式、正文 .art-tags 保留）」与「App Shell 独立滚动（.reader-main / 卡片 main / #aiView overflow-y:auto）」。UI 354 项、server 97 项全绿，Vite 生产构建通过。
+- **其他页面回归检查**：文章页 / 卡片页 / 日报页 / 设置弹层均正常（见对话中的检查结果）。
+
 ## [1.6.0-test1] — 2026-10-28（开发版，头部结构重构，未发布）
 
 > 头部结构重构：把「全局顶栏（品牌 + 三视图 + 刷新/主题/设置）」与「各视图工具栏（频道/标题/排序/视图/搜索）」合并为**单行第一行（Row1）**，标签独立成**第二行（Row2）**，第三行起为内容。经 Edge headless + CDP 实测：桌面 `--topbar-h=52px` / 移动 `44px`，Row1 满宽贴顶，Row2 紧贴其下（`y=--topbar-h`），无横向溢出，⋮ 菜单完整落在视口内。

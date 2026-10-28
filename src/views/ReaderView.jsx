@@ -13,7 +13,7 @@ import { core } from '@core';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ChannelList } from './ChannelList.jsx';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
-import { TagBar } from '../ui/TagBar.jsx';
+import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -441,6 +441,11 @@ export function ReaderView() {
     <>
       <div className="reader-mask" id="readerMask" onClick={() => s.readerCloseDrawer && s.readerCloseDrawer()} />
       <aside className="reader-side" id="readerSide">
+        {/* 品牌 logo 移到频道栏顶部（v1.6.0：顶栏并入内容行后，品牌标识落在这里） */}
+        <div className="side-brand">
+          <BrandLogo />
+          <span className="side-brand-name">笺川</span>
+        </div>
         <div className="reader-side-head">
           <span>频道</span>
           <span className="reader-side-n" id="readerSideN">{feeds.length ? `${feeds.length} 个` : ''}</span>
@@ -514,10 +519,6 @@ export function ReaderView() {
             <OverflowMenu view="reader" />
           </div>
         </div>
-
-        {/* Row2：标签栏（与卡片页共用组件）。点击标签跳转卡片页对应标签（readerTagToCards）。
-            tagbar-reader 让标签栏与阅读列同宽（--reader-width 居中），与头部 / 列表对齐。 */}
-        <TagBar tags={st.tags} activeTag={st.tag} onTag={onTagArt} className="tagbar-reader" />
 
         <div className="reader-list" id="readerList">
           {entries.map((e) => (

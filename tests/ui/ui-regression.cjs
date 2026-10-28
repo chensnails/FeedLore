@@ -1027,7 +1027,7 @@ const withEFP = (el, fn) => {
       throw new Error('文章页不应再有独立的搜索行');
     }
     // v1.6.0：文章页右簇（动作 + 搜索 + ⋮）统一收进 .reader-head-tools
-    const tools = reader.slice(reader.indexOf('reader-head-tools'), reader.indexOf('<TagBar'));
+    const tools = reader.slice(reader.indexOf('reader-head-tools'), reader.indexOf('id="readerList"'));
     if (tools.indexOf('readerSearchToggle') < 0) throw new Error('文章页右簇缺搜索放大镜');
     if (tools.indexOf('OverflowMenu') < 0) throw new Error('文章页右簇缺 ⋮ 菜单');
     // 右簇整体靠右：auto 外边距挂在工具组上。挂在搜索框上会让右簇裂成两段 ——
@@ -1150,12 +1150,11 @@ const withEFP = (el, fn) => {
     if (!/getBoundingClientRect\(\)\.height/.test(topbar) || !/Math\.ceil/.test(topbar)) {
       throw new Error('--topbar-h 应取整（含小数像素时吸顶会露 1px 缝）');
     }
-    // v1.6.0：全局顶栏并入各视图后，头部自己就是最顶层吸顶条 —— 贴 top:0，
-    // 并把自身高度写进 --topbar-h，供 Row2 标签栏（.tagbar）接着吸顶。
+    // v1.6.0 App Shell：头部在内容区独立滚动容器内 sticky top:0 钉住，不随内容移动
     const head = css.match(/\.page-head,\s*\.reader-head,\s*\.cards-head \{([^}]*)\}/);
     if (!head || !/top:\s*0/.test(head[1])) throw new Error('合并后头部应自己贴顶（top:0）');
-    const tag = css.match(/\.tagbar\s*\{([^}]*)\}/);
-    if (!tag || !/top:\s*var\(--topbar-h/.test(tag[1])) throw new Error('标签栏（Row2）吸顶应取 --topbar-h');
+    if (!/\.reader-main \{[^}]*overflow-y:\s*auto/.test(css)) throw new Error('.reader-main 应是独立滚动容器');
+    if (!/#cardsRoot > main\.wrap \{[^}]*overflow-y:\s*auto/.test(css)) throw new Error('卡片 main 应是独立滚动容器');
   });
 
   // 窄屏视图切换（v1.3.10）：文字收掉后不能再让两个按钮平分整条宽度 ——
@@ -2677,13 +2676,13 @@ const withEFP = (el, fn) => {
   const CA = (sel) => [...cardsEl.querySelectorAll(sel)];
   const cardIds = () => CA('#grid .card').map((el) => el.getAttribute('data-id'));
 
-  t('卡片视图渲染：工具栏 + 卡片 + 标签栏', () => {
+  t('卡片视图渲染：工具栏 + 卡片', () => {
     if (!C('#searchInput')) throw new Error('无搜索框');
     if (!C('#feedSelect')) throw new Error('无频道下拉');
     if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('频道触发器文案: ' + C('#feedSelect .dd-label').textContent);
     if (cardIds().join(',') !== 'e1,e2') throw new Error('卡片 ' + cardIds().join(','));
-    if (CA('#tagBar .tag-chip').length !== 3) throw new Error('标签数 ' + CA('#tagBar .tag-chip').length);
-    // v1.6.0：视图切换（网格/列表）已移入右侧 ⋮ 菜单，工具栏只保留 ⋮ 入口
+    // v1.6.0：页面顶部标签栏整体移除；视图切换（网格/列表）在右侧 ⋮ 菜单
+    if (C('#tagBar')) throw new Error('标签栏应已移除');
     if (!C('.overflow-btn')) throw new Error('缺 ⋮ 菜单入口');
   });
 
@@ -2908,12 +2907,13 @@ const withEFP = (el, fn) => {
   w.feedlore.readerToggleGroupCollapse('科技');
   await sleep(20);
   w.matchMedia = realMM;
-  t('卡片内容：标题 / 来源短名 / 体积 / 标签 / 日期', () => {
+  t('卡片内容：标题 / 来源短名 / 体积 / 日期（不再展示标签）', () => {
     const c1 = C('#grid .card[data-id="e1"]');
     if (c1.querySelector('.card-title').textContent !== '条目一') throw new Error('标题');
     if (c1.querySelector('.badge-source').textContent !== '例子星球') throw new Error('来源短名: ' + c1.querySelector('.badge-source').textContent);
     if (c1.querySelector('.badge-size').textContent !== '1.2G') throw new Error('体积');
-    if (c1.querySelectorAll('.mini-tag').length !== 2) throw new Error('标签数');
+    // v1.6.0：卡面标签移除 —— .mini-tag 只应出现在文章正文 .art-tags 内
+    if (c1.querySelector('.mini-tag') || c1.querySelector('.card-tags')) throw new Error('卡面不应再有标签');
     if (c1.querySelector('.badge-idx').textContent !== '2026-10-15') throw new Error('日期: ' + c1.querySelector('.badge-idx').textContent);
     if (!c1.querySelector('.card-media-actions a.btn-open[href]')) throw new Error('有原文地址应有打开按钮');
   });
@@ -3080,16 +3080,7 @@ const withEFP = (el, fn) => {
   setVal(C('#searchInput'), '');
   await sleep(520);
 
-  // 标签筛选
-  CA('#tagBar .tag-chip').find((c) => c.getAttribute('data-tag') === '标签B').click();
-  await sleep(40);
-  t('标签筛选：仅含该标签的条目 + chip 高亮', () => {
-    if (cardIds().join(',') !== 'e1') throw new Error('过滤后 ' + cardIds().join(','));
-    const chip = CA('#tagBar .tag-chip').find((c) => c.getAttribute('data-tag') === '标签B');
-    if (!chip.classList.contains('active')) throw new Error('chip 未高亮');
-  });
-  CA('#tagBar .tag-chip').find((c) => c.getAttribute('data-tag') === '').click();
-  await sleep(40);
+  // v1.6.0：顶部标签栏已移除，标签筛选入口下线（标签内容仅保留在文章正文）。
 
   // 视图切换（v1.6.0：从右侧 ⋮ 菜单切换，网格/列表不再是工具栏上的并排按钮）
   C('.overflow-btn').click();
@@ -4097,22 +4088,25 @@ const withEFP = (el, fn) => {
     }
   });
 
-  // 标签 chips：真按钮 + 漫游焦点，别让 16 个 chip 占 16 个 Tab
-  t('可访问性：标签 chips 是真按钮且只占一个 Tab 停靠点', () => {
-    // v1.6.0：标签栏抽成共用组件 src/ui/TagBar.jsx（卡片页 + 文章页），a11y 断言改盯组件本身
-    const v = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'ui', 'TagBar.jsx'), 'utf8');
-    if (/<span[^>]*role="button"[^>]*tag-chip/.test(v)) throw new Error('标签仍是 span[role=button]，应换成真 <button>');
-    if (v.indexOf('role="toolbar"') < 0) throw new Error('标签组应是 role=toolbar');
-    if (!/tabIndex=\{chipIdx === 0 \? 0 : -1\}/.test(v)) throw new Error('缺漫游焦点（整组只留一个 tabIndex=0）');
-    if (!/ArrowRight/.test(v) || !/ArrowLeft/.test(v)) throw new Error('漫游焦点要支持左右方向键');
-    if (!/aria-pressed=\{activeTag === tag \? 'true' : 'false'\}/.test(v)) throw new Error('选中态应用 aria-pressed');
+  // v1.6.0：顶部标签栏整体移除 —— 不再有 TagBar 组件 / .tag-chip 样式；标签仅保留在文章正文 .art-tags
+  t('标签栏移除：无 TagBar 组件与 .tagbar / .tag-chip 样式', () => {
+    const root = path.join(__dirname, '..', '..');
+    if (fs.existsSync(path.join(root, 'src', 'ui', 'TagBar.jsx'))) throw new Error('TagBar.jsx 应已删除');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
+    if (/\.tagbar\b/.test(css)) throw new Error('.tagbar 样式应已移除');
+    if (/\.tag-chip\b/.test(css)) throw new Error('.tag-chip 样式应已移除');
+    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
+    const reader = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
+    for (const [n, src] of [['CardsView', cards], ['ReaderView', reader]]) {
+      if (src.indexOf('<TagBar') >= 0) throw new Error(n + ' 不应再渲染 <TagBar>');
+    }
   });
 
   // 卡片页「下拉即标题」：同一信息只出现一次
   t('卡片页头部：桌面由筛选下拉充当标题，窄屏才用文字标题', () => {
     const root = path.join(__dirname, '..', '..');
     const v = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
-    const head = v.slice(v.indexOf('wrap cards-head'), v.indexOf('<TagBar'));
+    const head = v.slice(v.indexOf('wrap cards-head'), v.indexOf('<main className="wrap">'));
     if (head.indexOf('wrapId="feedDD"') < 0) throw new Error('#feedDD 应在 .cards-head 里（标题位）');
     const tools = head.slice(head.indexOf('head-right'));
     if (tools.indexOf('wrapId="feedDD"') >= 0) throw new Error('#feedDD 仍在工具组里 —— 标题与筛选会重复');
@@ -4289,10 +4283,10 @@ const withEFP = (el, fn) => {
     }
   });
 
-  // ============ v1.6.0 合并头部（导航 + 工具栏收成单行 Row1；标签独立成 Row2） ============
-  // 守门：三视图各自渲染合并后的 Row1（≡频道 / 标题 / 搜索 / ⋮），Row1 贴顶并写 --topbar-h，
-  // Row2 标签栏接着吸顶；排序 / 视图切换 / 三视图 / 主题 / 设置统一收进 ⋮ 菜单。
-  t('v1.6.0：各视图 Row1 合并（含 ⋮ 溢出菜单），Row2 标签栏吸顶', () => {
+  // ============ v1.6.0 合并头部 + App Shell；顶部标签栏移除 ============
+  // 守门：三视图各自渲染合并后的 Row1（≡频道 / 标题 / 搜索 / ⋮）；内容区独立滚动、顶栏钉住；
+  // 顶部标签栏（TagBar）整体移除（仅文章正文 .art-tags 保留）；品牌 logo 落在频道栏顶部。
+  t('v1.6.0：各视图 Row1 合并 + App Shell 独立滚动；标签栏移除', () => {
     const root = path.join(__dirname, '..', '..');
     const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
     const cards = read('src/views/CardsView.jsx');
@@ -4303,14 +4297,21 @@ const withEFP = (el, fn) => {
       if (!/useTopbarHeight\(headRef\)/.test(src)) throw new Error(name + ' 未调用 useTopbarHeight(headRef)');
     }
     if (cards.indexOf('cardControls') < 0) throw new Error('卡片页 ⋮ 应传 cardControls（排序 / 视图切换）');
-    if (reader.indexOf('<TagBar') < 0) throw new Error('文章页缺 Row2 标签栏 <TagBar>');
+    // 标签栏移除：不再有 <TagBar>；文章正文 .art-tags 必须保留
+    for (const [n, src] of [['CardsView', cards], ['ReaderView', reader]]) {
+      if (src.indexOf('<TagBar') >= 0) throw new Error(n + ' 不应再渲染 <TagBar>');
+    }
+    if (reader.indexOf('art-tags') < 0) throw new Error('文章正文标签 .art-tags 应保留');
+    // 品牌 logo 移到频道栏顶部
+    if (reader.indexOf('<BrandLogo') < 0 || cards.indexOf('<BrandLogo') < 0) throw new Error('频道栏顶部应有品牌 logo');
     const css = read('src/style.css');
     const head = css.match(/\.page-head,\s*\.reader-head,\s*\.cards-head \{([^}]*)\}/);
     if (!head || !/top:\s*0/.test(head[1])) throw new Error('Row1 应贴顶（top:0）');
-    const tag = css.match(/\.tagbar\s*\{([^}]*)\}/);
-    if (!tag || !/position:\s*sticky/.test(tag[1]) || !/top:\s*var\(--topbar-h/.test(tag[1])) {
-      throw new Error('Row2 标签栏应 sticky 在 --topbar-h 之下');
-    }
+    // App Shell：内容区独立滚动，顶栏在滚动容器内 sticky 钉住
+    if (!/\.reader-main \{[^}]*overflow-y:\s*auto/.test(css)) throw new Error('.reader-main 应独立滚动');
+    if (!/#cardsRoot > main\.wrap \{[^}]*overflow-y:\s*auto/.test(css)) throw new Error('卡片 main 应独立滚动');
+    if (!/#aiView \{[^}]*overflow-y:\s*auto/.test(css)) throw new Error('#aiView 应独立滚动');
+    if (/\.tagbar\b/.test(css) || /\.tag-chip\b/.test(css)) throw new Error('标签栏样式应已移除');
     const hr = css.match(/\.head-right\s*\{([^}]*)\}/);
     if (!hr || !/margin-left:\s*auto/.test(hr[1])) throw new Error('.head-right 应 margin-left:auto 靠右');
     const hook = read('src/shell/useTopbarHeight.js');

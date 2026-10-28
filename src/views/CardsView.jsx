@@ -21,7 +21,7 @@ import { CardDetail } from './CardDetail.jsx';
 import { ChannelList } from './ChannelList.jsx';
 import { Dropdown } from './Dropdown.jsx';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
-import { TagBar } from '../ui/TagBar.jsx';
+import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -113,15 +113,10 @@ function LazyImg({ src, alt, fallbackClass, fbIcon, priority }) {
   );
 }
 
-function TagList({ tags, onTag }) {
-  return (tags || []).slice(0, 4).map((t) => (
-    <button className="mini-tag" type="button" data-tag={t} key={t} onClick={() => onTag(t)}>#{t}</button>
-  ));
-}
-
 /* 卡片与列表行都做成 memo：一次 __cardsTick 会把整列重新 map，
- * 而条目对象只在状态真的变化时换新（core/ui.js 的 cardSetFlag），没变的卡面不必重渲染。 */
-const Card = memo(function Card({ e, onTag, onOpen, priority }) {
+ * 而条目对象只在状态真的变化时换新（core/ui.js 的 cardSetFlag），没变的卡面不必重渲染。
+ * v1.6.0：卡片 / 列表项不再展示标签（标签栏与卡面标签整体下线），仅文章正文保留标签。 */
+const Card = memo(function Card({ e, onOpen, priority }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const hasImg = !!e.image;
@@ -129,7 +124,6 @@ const Card = memo(function Card({ e, onTag, onOpen, priority }) {
 
   const copyBtn = <CopyButton e={e} />;
   const openBtn = <OpenButton e={e} />;
-  const tags = <TagList tags={e.tags} onTag={onTag} />;
 
   const media = hasImg ? (
     <div className="card-media">
@@ -161,18 +155,17 @@ const Card = memo(function Card({ e, onTag, onOpen, priority }) {
           <button type="button" className="title-btn" onClick={() => onOpen(e)}>{e.name}</button>
         </h3>
         {e.desc ? <p className="card-desc">{e.desc}</p> : null}
-        <div className="card-tags">{tags}</div>
         {hasImg ? null : <div className="card-foot">{copyBtn}{openBtn}</div>}
       </div>
     </article>
   );
 });
 
-const Row = memo(function Row({ e, onTag, onOpen }) {
+const Row = memo(function Row({ e, onOpen }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtDate = s.fmtDate || ((d) => d || '');
-  const metaHas = srcName || (e.tags || []).length;
+  const metaHas = !!srcName;
   return (
     <article className={'row-item' + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
       role="button" tabIndex={0} aria-label={(e.name || '卡片') + '，按 Enter 打开详情'}
@@ -196,8 +189,7 @@ const Row = memo(function Row({ e, onTag, onOpen }) {
         {e.desc ? <p className="row-desc">{e.desc}</p> : null}
         {metaHas ? (
           <div className="row-tags">
-            {srcName ? <span className="src-pill" title={e.feedName}>{srcName}</span> : null}
-            <TagList tags={e.tags} onTag={onTag} />
+            <span className="src-pill" title={e.feedName}>{srcName}</span>
           </div>
         ) : null}
       </div>
@@ -363,13 +355,13 @@ export function CardsView() {
     setSearchOpen(false);
   };
 
-  // memo 的前提是回调稳定：这两个必须与本次渲染无关（标签取调用时的 state.tag），
-  // 否则每张卡片每次 tick 都会拿到新函数 props 而一起重渲染。
+  // memo 的前提是回调稳定：回调与本次渲染无关，否则每张卡片每次 tick 都会拿到新函数 props 而重渲染。
+  const onOpenCard = useCallback((e) => setDetailId(e.id), []);
+  // 仅用于「卡片详情弹窗」里的正文标签（.art-tags）：卡面 / 列表项本身不再展示标签。
   const onTag = useCallback((t) => {
     const c = S();
     if (c.cardsTag) c.cardsTag(c.state.tag === t ? null : t);
   }, []);
-  const onOpenCard = useCallback((e) => setDetailId(e.id), []);
 
   // 频道筛选里的组头折叠：与文章页侧栏共用同一份偏好（layout.rdCollapsedGroups），
   // 核心改动后会同时派发 __readerTick 与 __cardsTick，本组件靠上面的监听重绘即可。
@@ -398,8 +390,6 @@ export function CardsView() {
     if (el && el.focus) el.focus();
   };
 
-  const tags = st.tags || [];
-
   const feedLabel = (f) => {
     const title = s.feedTitle ? s.feedTitle(f) : f.title;
     const name = s.shortFeedName ? s.shortFeedName(title) : title;
@@ -417,6 +407,11 @@ export function CardsView() {
           宽屏由 CSS 隐藏，频道筛选仍走工具栏下拉，桌面结构不变。 */}
       <div className="cards-mask" id="cardsMask" onClick={() => { if (s.cardsCloseDrawer) s.cardsCloseDrawer(); }} />
       <aside className="cards-side" id="cardsSide" aria-label="频道列表">
+        {/* 品牌 logo 在频道栏顶部（与文章页侧栏一致；窄屏抽屉里可见） */}
+        <div className="side-brand">
+          <BrandLogo />
+          <span className="side-brand-name">笺川</span>
+        </div>
         <div className="cards-side-head">
           <span>频道</span>
           <span className="reader-side-n" id="cardsSideN">{cardFeeds.length ? `${cardFeeds.length} 个` : ''}</span>
@@ -479,8 +474,6 @@ export function CardsView() {
         </div>
       </div>
 
-      <TagBar tags={tags} activeTag={st.tag} onTag={onTag} />
-
       <main className="wrap">
         {showSkeleton ? (
           <div id="skeleton" className={'grid' + (view === 'list' ? ' list-mode' : '')}><Skeletons view={view} /></div>
@@ -491,8 +484,8 @@ export function CardsView() {
             {/* 前 6 张给高优先级（v1.5.0）：弱网下浏览器并发只有 6 条，
                 同权重排队会让首屏可见的那几张图排在第 20 位，卡片墙只剩灰骨架。 */}
             {list.map((e, i) => (view === 'list'
-              ? <Row e={e} onTag={onTag} onOpen={onOpenCard} key={e.id} />
-              : <Card e={e} onTag={onTag} onOpen={onOpenCard} priority={i < 6} key={e.id} />))}
+              ? <Row e={e} onOpen={onOpenCard} key={e.id} />
+              : <Card e={e} onOpen={onOpenCard} priority={i < 6} key={e.id} />))}
           </div>
         ) : <div id="grid" className="grid" hidden />}
 
