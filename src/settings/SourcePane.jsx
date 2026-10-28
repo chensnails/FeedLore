@@ -172,6 +172,7 @@ export function SourcePane({ admin }) {
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [drop, setDrop] = useState(null);              // 拖拽落点指示 { type, id, group, before }
   const [dragging, setDragging] = useState(false);
+  const [feedQuery, setFeedQuery] = useState('');      // 频道搜索（本地过滤，应对大量频道）
 
   const paneRef = useRef(null);
   const urlRef = useRef(null);
@@ -189,6 +190,19 @@ export function SourcePane({ admin }) {
   const feeds = st.feedList || [];
   const meta = st.feedMeta || {};
   const groups = (S() && S().groupFeeds) ? S().groupFeeds(feeds) : [];
+
+  // 频道搜索过滤：默认空串时 displayGroups === groups（零行为变化，拖拽/分组测试不受影响）
+  const fq = feedQuery.trim().toLowerCase();
+  const displayGroups = fq
+    ? groups
+      .map((g) => ({
+        name: g.name,
+        feeds: (g.feeds || []).filter((f) => (
+          `${f.title || ''} ${f.customTitle || ''} ${f.url || ''} ${f.groupName || ''}`.toLowerCase().includes(fq)
+        )),
+      }))
+      .filter((g) => g.feeds.length)
+    : groups;
 
   const total = meta.total || 0;
   const onCount = meta.enabled || 0;
@@ -1258,13 +1272,20 @@ export function SourcePane({ admin }) {
             </span>
           </summary>
           <div className="sec-body">
+            <div className="feed-filter">
+              <svg className="feed-filter-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+              <input className="feed-filter-input" type="search" value={feedQuery}
+                placeholder="搜索频道（名称 / 地址 / 分组）" aria-label="搜索频道"
+                onChange={(ev) => setFeedQuery(ev.target.value)} />
+            </div>
             <div className="feed-list" id="feedList">
+              {fq && !displayGroups.length ? <div className="hint pane-msg">没有匹配的频道</div> : null}
               {loadError ? (
                 <div className="hint pane-msg lg">{`读取失败：${loadError}`}</div>
               ) : (!feeds.length ? (
                 <div className="hint pane-msg empty-tip">还没有订阅源，在上方粘贴一个 RSS 地址试试</div>
               ) : (
-                groups.map((g) => {
+                displayGroups.map((g) => {
                   const isCollapsed = !!(g.name && collapsed.has(g.name));
                   // 「未分组」标题只在确实存在命名分组时才渲染（否则一行标题挺突兀）
                   const showHead = !!g.name || feeds.some((f) => String(f.groupName || '').trim());
@@ -1324,7 +1345,7 @@ export function SourcePane({ admin }) {
                   )}
                         </div>
                       )}
-                      {!isCollapsed && g.feeds.map((f, i) => renderRow(f, i + 1))}
+                      {(!isCollapsed || fq) && g.feeds.map((f, i) => renderRow(f, i + 1))}
                     </React.Fragment>
                   );
                 })

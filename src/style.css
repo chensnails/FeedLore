@@ -670,7 +670,7 @@ textarea:disabled {
 .search-ico, .sec-arrow, .art-caret, .new-pill-ico,
 .rd-ch-search-ico, .rd-ch-add-ico, .cmdk-ico,
 .dd-caret, .dd-check, .dd-icon, .dg-pin, .feed-group-caret, .toast-ico,
-.overflow-check, .overflow-caret {
+.overflow-check, .overflow-caret, .feed-filter-ico {
   width: 1em; height: 1em;
   flex: 0 0 auto;
   display: inline-block;
@@ -1414,6 +1414,51 @@ textarea:disabled {
   height: 2px; background: var(--accent); border-radius: 2px;
 }
 
+/* ---------- 设置弹层：固定高度 + 左导航（v1.6.0 起） ----------
+ * 问题：旧 .modal 高度=内容，数据源 tab 很长、关于 tab 很短 → 切 tab 弹层高度上下跳。
+ * 解决：外壳高度固定，左导航 + 右内容两栏；每栏各自滚动，切分区不再改外壳尺寸。
+ * 窄屏（≤820）回退成「顶部横向分段 + 内容」，仍是固定高度。 */
+@media (min-width: 821px) {
+  .modal.settings-modal {
+    width: min(920px, 92vw);
+    max-width: 920px;
+    height: min(86dvh, 760px);
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "head head" "nav body";
+  }
+  .settings-modal .modal-head { grid-area: head; }
+  .settings-modal .tabs {
+    grid-area: nav;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 2px;
+    padding: var(--sp-3);
+    border-bottom: 0;
+    border-right: 1px solid var(--border);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .settings-modal .tab {
+    width: 100%;
+    margin-right: 0;
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--radius-sm);
+    text-align: left;
+    font-size: var(--fs-md);
+  }
+  .settings-modal .tab.active { background: var(--accent-soft); color: var(--accent-text); }
+  .settings-modal .tab.active::after { display: none; }
+  .settings-modal .modal-body { grid-area: body; }
+}
+
+/* 窄屏：保持横向分段，但同样固定高度，避免各 tab 高矮不一 */
+@media (max-width: 820px) {
+  .modal.settings-modal { height: 94dvh; }
+}
+
 .modal-body {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;
@@ -1470,6 +1515,29 @@ textarea:disabled {
 
 /* 频道列表不再自己滚，交给 .pane-scroll 统一滚 */
 .feed-list { padding:0; }
+
+/* 频道搜索（v1.6.0）：大量频道时的本地过滤入口 */
+.feed-filter {
+  position: relative; display: flex; align-items: center;
+  margin: 0 0 var(--sp-2);
+}
+.feed-filter-ico {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  width: 1em; height: 1em; font-size: var(--ico-ctl); opacity: .55; pointer-events: none;
+}
+.feed-filter-input {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3) var(--sp-2) 32px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft-2);
+  box-shadow: var(--neu-inset);
+  font-size: var(--fs-md); font-family: inherit; color: var(--text);
+  outline: none;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+}
+.feed-filter-input:focus { border-color: var(--accent-text); box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-ring); }
+.feed-filter-input::placeholder { color: var(--text-faint); }
 
 .pane-foot {
   display: flex; align-items: center; justify-content: space-between;

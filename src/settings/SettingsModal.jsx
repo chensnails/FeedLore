@@ -121,7 +121,7 @@ export function SettingsModal() {
 
   return (
     <div className="modal-mask" hidden={!open} onClick={onMaskClick}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" ref={modalRef} tabIndex={-1}>
+      <div className="modal settings-modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" ref={modalRef} tabIndex={-1}>
         <div className="modal-head">
           <div>
             <h2 id="settingsTitle">设置</h2>
