@@ -23,8 +23,10 @@ const { int, bool, clampInt, normUrl, compareVersion, isPrivateHost, groupsOf, i
 const { compressImage, MAX_BYTES: IMG_MAX_BYTES } = require('./lib/image');
 const { parseOpml } = require('./lib/opml');
 const { sanitizeAppearance, userAppearance, sanitizeLayout, userLayout, sanitizeFilters, userFilters,
-  sanitizeDigest, userDigest, DIGEST_DEFAULTS, DIGEST_MODES } = require('./lib/prefs');
+  sanitizeDigest, userDigest, DIGEST_DEFAULTS, DIGEST_MODES,
+  userWatchRules, userWebhook, sanitizeWatchRules, sanitizeWebhook } = require('./lib/prefs');
 const { applyFilters } = require('./lib/filter');
+const { classify, notifyRuleNames } = require('./lib/watch');
 const { toCard, toFeedDto } = require('./lib/dto');
 const { hashPassword, safeEqual } = require('./lib/crypto');
 const { userLlmForStore, userLlmForView, userLlm, llmComplete, thinkingBudget } = require('./lib/llm');
@@ -258,6 +260,55 @@ const inFlightUrl = new Map();     // url(归一化) -> 进行中的抓取 Promi
 const REFRESH_MIN_INTERVAL_MS = 5000;
 
 /** 抓一组「订阅了同一 URL」的频道：只回源一次，结果写回组内每个 feed 行 */
+/* ---------------- 关注规则通知（v21） ----------------
+ * 命中的条目先攒在内存里，等本轮抓取结束再按账号合并推送 —— 逐条推会在一次
+ * 「刷新全部」里刷出几十条消息。推送失败只记日志，绝不影响抓取本身。
+ */
+let watchHits = [];
+
+async function postWebhook(url, payload) {
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) logErr('[watch] webhook 返回 ' + res.status);
+    return res.ok;
+  } catch (e) {
+    logErr('[watch] webhook 失败：' + netErrMsg(e));
+    return false;
+  }
+}
+
+async function flushWatchNotify() {
+  if (!watchHits.length) return;
+  const batch = watchHits;
+  watchHits = [];
+  const byOwner = new Map();
+  for (const h of batch) {
+    if (!byOwner.has(h.ownerId)) byOwner.set(h.ownerId, []);
+    byOwner.get(h.ownerId).push(h);
+  }
+  for (const [ownerId, list] of byOwner) {
+    const owner = usersById.get(numId(ownerId));
+    const url = userWebhook(owner);
+    if (!url) continue;   // 没配地址就静默跳过（规则本身照常打标）
+    const rules = [];
+    for (const h of list) if (rules.indexOf(h.ruleName) < 0) rules.push(h.ruleName);
+    const payload = {
+      text: '【' + rules.join(' / ') + '】' + list.length + ' 条新内容',
+      rule: rules.join(' / '),
+      count: list.length,
+      entries: list.slice(0, 20).map((h) => ({
+        title: h.title, url: h.link, feed: h.feed, publishedAt: h.publishedAt,
+      })),
+    };
+    await postWebhook(url, payload);
+  }
+}
+
 async function refreshGroup(key, members) {
   const existing = inFlightUrl.get(key);
   if (existing) return existing;                       // 并发合并：复用正在进行的那次抓取
@@ -303,7 +354,27 @@ async function doRefreshGroup(key, members) {
       const rules = userFilters(usersById.get(numId(m.owner_id)));
       const items = applyFilters(r.items, rules);
       filtered += r.items.length - items.length;
-      added += await db.upsertEntries(m.id, items);
+      const up = await db.upsertEntries(m.id, items);
+      added += up.inserted;
+      // v21：新入库的条目立刻跑一遍关注 / 屏蔽规则（只判新条目，老条目上一轮已判过）
+      const owner = usersById.get(numId(m.owner_id));
+      const wRules = userWatchRules(owner);
+      if (wRules.length && up.fresh.length) {
+        const hits = classify(wRules, up.fresh);
+        if (hits.length) {
+          await db.setEntriesWatch(hits, numId(m.owner_id)).catch((e) => logErr('[watch] 打标失败：' + ((e && e.message) || e)));
+          const names = notifyRuleNames(wRules);
+          for (const h of hits) {
+            if (h.state !== 'watch' || !names[h.rule]) continue;
+            const row = up.fresh.find((f) => Number(f.id) === Number(h.id));
+            watchHits.push({
+              ownerId: m.owner_id, ruleName: names[h.rule],
+              title: row ? row.title : '', link: row ? row.link : '',
+              feed: r.title || '', publishedAt: row ? row.publishedAt : null,
+            });
+          }
+        }
+      }
       await db.saveFeedMeta(m.id, {
         title: r.title, siteUrl: r.siteUrl, description: r.description, iconUrl: r.iconUrl,
         etag: r.etag, lastModified: r.lastModified, status: 'ok', error: null, failStreak: 0,
@@ -373,6 +444,8 @@ async function refreshFeeds(feeds, { concurrency, total, startedAt = Date.now(),
   await Promise.all(Array.from({ length: Math.min(limit, entries.length || 1) }, worker));
 
   // 两个上限是「并且」关系：条数上限 + 时间上限（keepDays = 0 表示不限时间）
+  // 关注规则命中要通知的条目：本轮抓完统一合并推送（按账号分组，一次请求）
+  await flushWatchNotify();
   const prunedByCount = await db.pruneEntries(settings.source.keepPerFeed).catch(() => 0);
   const prunedByAge = await db.pruneEntriesByAge(settings.source.keepDays).catch(() => 0);
   // 图片缓存日常清理（默认保留 90 天，管理员可在「采集参数」调整），限频为每天至多一次
@@ -1129,6 +1202,9 @@ const server = http.createServer(async (req, res) => {
         // 未读 / 收藏是在频道范围之上再收窄一层，可叠加
         const unread = searchParams.get('unread') === '1';
         const favorite = searchParams.get('fav') === '1';
+        // 关注 / 屏蔽是虚拟视图：同一条目在原频道里照常出现，这里只是按标记筛一层
+        const watchRaw = searchParams.get('watch');
+        const watch = watchRaw === 'watch' || watchRaw === 'block' ? watchRaw : null;
         // 收藏列表默认按「收藏时刻」倒序（最近收藏的在前），其余按发布时间
         const sort = searchParams.get('sort') === 'old' ? 'old' : 'new';
         const order = favorite ? 'fav' : sort;
@@ -1150,8 +1226,8 @@ const server = http.createServer(async (req, res) => {
         }
 
         const [page, total, tags] = await Promise.all([
-          db.queryEntries({ ownerId: user.id, feedIds, q: kw, tag, unread, favorite, order, limit, offset }),
-          db.countEntries({ ownerId: user.id, feedIds, q: kw, tag, unread, favorite }),
+          db.queryEntries({ ownerId: user.id, feedIds, q: kw, tag, unread, favorite, watch, order, limit, offset }),
+          db.countEntries({ ownerId: user.id, feedIds, q: kw, tag, unread, favorite, watch }),
           db.tagCounts(user.id, feedIds),
         ]);
         json(res, 200, {
@@ -1178,14 +1254,43 @@ const server = http.createServer(async (req, res) => {
         const feedIds = Array.isArray(body.feeds)
           ? body.feeds.map(Number).filter(Number.isFinite)
           : null;
+        // 关注 / 屏蔽视图里的「全部已读」只作用于命中条目（v21）——
+        // 不透传的话用户在「屏蔽」视图里一键已读会把全库都标掉，属于破坏性意外
+        const watchRaw = body.watch === 'watch' || body.watch === 'block' ? body.watch : null;
         const updated = await db.markEntriesRead({
           ownerId: user.id,
           feedIds,
           q: String(body.q || '').trim().slice(0, 100),
           tag: String(body.tag || '').trim().slice(0, 60) || null,
           unread: true,
+          watch: watchRaw,
         });
         json(res, 200, { ok: true, updated });
+        return;
+      }
+
+      /* ---- 关注 / 屏蔽：把当前规则回溯应用到存量条目（v21） ----
+       * 规则变了就整库重算：先清掉旧标记，再按「从未标记」游标分批判定。
+       * 分批是为了不把几十 MB 正文一次读进内存。 */
+      if (pathname === '/api/watch/apply' && req.method === 'POST') {
+        const rules = userWatchRules(user);
+        const cleared = await db.clearEntriesWatch(user.id);
+        let tagged = 0, watching = 0, blocked = 0, afterId = 0;
+        if (rules.length) {
+          for (let guard = 0; guard < 400; guard++) {
+            const rows = await db.listUntaggedEntries(user.id, { limit: 500, afterId });
+            if (!rows.length) break;
+            afterId = Number(rows[rows.length - 1].id);
+            const hits = classify(rules, rows);
+            if (hits.length) {
+              await db.setEntriesWatch(hits, user.id);
+              tagged += hits.length;
+              watching += hits.filter((h) => h.state === 'watch').length;
+              blocked += hits.filter((h) => h.state === 'block').length;
+            }
+          }
+        }
+        json(res, 200, { ok: true, cleared, tagged, watching, blocked });
         return;
       }
 
@@ -1309,6 +1414,8 @@ const server = http.createServer(async (req, res) => {
           appearance: userAppearance(user),
           layout: userLayout(user),
           filters: userFilters(user),
+          watchRules: userWatchRules(user),
+          webhookUrl: userWebhook(user),
           digest: userDigest(user),
           llm: userLlmForView(user.prefs, settings.cryptoSecret),
         });
@@ -1336,6 +1443,14 @@ const server = http.createServer(async (req, res) => {
         if (Array.isArray(body.filters)) {
           prefs.filters = sanitizeFilters(body.filters);
         }
+        /* 关注 / 屏蔽规则（v21）：整组替换。规则是「打标记」而不是「丢弃条目」，
+         * 保存后由前端调 /api/watch/apply 回溯到已有条目 —— 这里只负责落库。 */
+        if (Array.isArray(body.watchRules)) {
+          prefs.watchRules = sanitizeWatchRules(body.watchRules);
+        }
+        if (typeof body.webhookUrl === 'string') {
+          prefs.webhookUrl = sanitizeWebhook(body.webhookUrl);
+        }
         /* 日报配置（自动生成 / 时间 / 范围 / 条数与保留 / 风格要求）按账号保存。
          * 与已有配置合并：lastAuto 是服务端调度器独占写入的字段，
          * 客户端提交的同名字段一律被忽略，否则用户每改一次别的选项就会把「今天已跑过」抹掉、
@@ -1360,6 +1475,8 @@ const server = http.createServer(async (req, res) => {
           appearance: sanitizeAppearance(prefs.appearance),
           layout: sanitizeLayout(prefs.layout),
           filters: sanitizeFilters(prefs.filters),
+          watchRules: sanitizeWatchRules(prefs.watchRules),
+          webhookUrl: sanitizeWebhook(prefs.webhookUrl),
           digest: sanitizeDigest(prefs.digest),
         });
         return;

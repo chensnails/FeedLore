@@ -125,6 +125,8 @@ CREATE INDEX IF NOT EXISTS entries_feed_pub_idx ON entries (feed_id, published_a
 CREATE INDEX IF NOT EXISTS entries_tags_idx     ON entries USING GIN (tags);
 -- 未读是高频筛选（侧栏徽标、未读列表），收藏量小但排序用得上，两个都走部分索引
 CREATE INDEX IF NOT EXISTS entries_unread_idx   ON entries (feed_id) WHERE is_read = FALSE;
+-- 关注 / 屏蔽视图（v21）：命中量远小于全表，走部分索引，未命中的 NULL 不进索引
+CREATE INDEX IF NOT EXISTS entries_watch_idx    ON entries (watch_state, published_at DESC NULLS LAST, id DESC) WHERE watch_state IS NOT NULL;
 CREATE INDEX IF NOT EXISTS entries_fav_idx      ON entries (favorited_at DESC NULLS LAST, id DESC) WHERE is_favorite = TRUE;
 `;
 
@@ -170,6 +172,10 @@ const MIGRATIONS = [
   // v20：移除图片去重（模板图识别）遗留的 content_hash 列 —— 该功能已整体下线，
   // 该列仅去重判据使用，删除后不影响图片缓存（image_cache 表本体保留作 L2 缓存）。
   `ALTER TABLE image_cache DROP COLUMN IF EXISTS content_hash`,
+  // v21：关注 / 屏蔽规则命中的标记。watch_state = null | 'watch' | 'block'，未命中为 null；
+  // watch_rule 记命中的规则 id，便于在条目上标「来自哪条规则」。
+  `ALTER TABLE entries ADD COLUMN IF NOT EXISTS watch_state TEXT`,
+  `ALTER TABLE entries ADD COLUMN IF NOT EXISTS watch_rule TEXT`,
 ];
 
 
@@ -544,9 +550,10 @@ module.exports = function createDb({ connectionString, log = console.log }) {
    * ============================================================ */
   /** 批量写入条目，返回新增条数（按 (feed_id, guid) 去重，已存在则更新） */
   async function upsertEntries(feedId, items) {
-    if (!items.length) return 0;
+    if (!items.length) return { inserted: 0, fresh: [] };
     const c = await pool.connect();
     let inserted = 0;
+    const fresh = [];
     try {
       await c.query('BEGIN');
       for (const it of items) {
@@ -564,11 +571,15 @@ module.exports = function createDb({ connectionString, log = console.log }) {
              body_json = COALESCE(EXCLUDED.body_json, entries.body_json),
              links = EXCLUDED.links,
              source_url = EXCLUDED.source_url, published_at = EXCLUDED.published_at
-           RETURNING (xmax = 0) AS is_new`,
+           RETURNING (xmax = 0) AS is_new, id, title, description, content, link, published_at`,
           [feedId, it.guid, it.title, it.link, it.pwd, it.description, it.content,
             it.size, it.tags, it.image, it.sourceUrl, it.images, it.bodyJson, it.links, it.publishedAt]
         );
-        if (r.rows[0] && r.rows[0].is_new) inserted += 1;
+        if (r.rows[0] && r.rows[0].is_new) {
+          inserted += 1;
+          // 只把「本轮新插入」的条目带回去跑规则：老条目上一轮已经判过了
+          fresh.push({ id: r.rows[0].id, title: r.rows[0].title, description: r.rows[0].description, content: r.rows[0].content, link: r.rows[0].link, publishedAt: r.rows[0].published_at });
+        }
       }
       await c.query('COMMIT');
     } catch (e) {
@@ -577,10 +588,10 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     } finally {
       c.release();
     }
-    return inserted;
+    return { inserted, fresh };
   }
 
-  function buildFilter({ ownerId, feedIds, q: kw, tag, unread, favorite }) {
+  function buildFilter({ ownerId, feedIds, q: kw, tag, unread, favorite, watch }) {
     const where = [];
     const vals = [];
     // 用户隔离：只碰「归属当前用户」的频道下的条目（用子查询，SELECT / UPDATE 都适用）
@@ -613,20 +624,22 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     // 未读 / 收藏是「额外收窄」，可以与频道、分组、关键词叠加
     if (unread) where.push('e.is_read = FALSE');
     if (favorite) where.push('e.is_favorite = TRUE');
+    // 关注 / 屏蔽是「规则命中的聚合视图」（v21）：与频道、关键词等条件可叠加
+    if (watch === 'watch' || watch === 'block') { vals.push(watch); where.push('e.watch_state = $' + vals.length); }
     return { where: where.length ? where : ['TRUE'], vals };
   }
 
   const ENTRY_SELECT = `
     SELECT e.id, e.feed_id, e.title, e.link, e.pwd, e.description, e.size, e.tags,
            e.image, e.images, e.links, e.source_url, e.published_at,
-           e.is_read, e.is_favorite, e.favorited_at, f.title AS feed_name
+           e.is_read, e.is_favorite, e.favorited_at, e.watch_state, f.title AS feed_name
     FROM entries e JOIN feeds f ON f.id = e.feed_id`;
 
   // 只比 ENTRY_SELECT 多一个 content（以及 body_json），供单条读取用
   const ENTRY_FULL_SELECT = `
     SELECT e.id, e.feed_id, e.title, e.link, e.pwd, e.description, e.content,
            e.size, e.tags, e.image, e.images, e.links, e.body_json, e.source_url, e.published_at,
-           e.is_read, e.is_favorite, e.favorited_at, f.title AS feed_name
+           e.is_read, e.is_favorite, e.favorited_at, e.watch_state, f.title AS feed_name
     FROM entries e JOIN feeds f ON f.id = e.feed_id`;
 
   /* 排序：new/old 按发布时间；fav 按「收藏时刻」，让最近收藏的排在前面 */
@@ -636,8 +649,8 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     fav: 'e.favorited_at DESC NULLS LAST, e.id DESC',
   };
 
-  async function queryEntries({ ownerId, feedIds, q: kw, tag, unread, favorite, order = 'new', limit = 50, offset = 0 }) {
-    const { where, vals } = buildFilter({ ownerId, feedIds, q: kw, tag, unread, favorite });
+  async function queryEntries({ ownerId, feedIds, q: kw, tag, unread, favorite, watch, order = 'new', limit = 50, offset = 0 }) {
+    const { where, vals } = buildFilter({ ownerId, feedIds, q: kw, tag, unread, favorite, watch });
     const pLimit = vals.length + 1;
     const pOffset = vals.length + 2;
     const { rows } = await q(
@@ -649,8 +662,8 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     return { rows: rows.slice(0, limit), hasMore: rows.length > limit };
   }
 
-  async function countEntries({ ownerId, feedIds, q: kw, tag, unread, favorite }) {
-    const { where, vals } = buildFilter({ ownerId, feedIds, q: kw, tag, unread, favorite });
+  async function countEntries({ ownerId, feedIds, q: kw, tag, unread, favorite, watch }) {
+    const { where, vals } = buildFilter({ ownerId, feedIds, q: kw, tag, unread, favorite, watch });
     const { rows } = await q(`SELECT count(*) AS n FROM entries e WHERE ${where.join(' AND ')}`, vals);
     return rows[0].n;
   }
@@ -687,8 +700,8 @@ module.exports = function createDb({ connectionString, log = console.log }) {
    * 按当前筛选条件批量标为已读（「全部标为已读」用）。
    * 条件与 queryEntries 完全一致，所以「屏幕上看到的」和「被标掉的」是同一批。
    */
-  async function markEntriesRead({ ownerId, feedIds, q: kw, tag, unread, favorite } = {}) {
-    const { where, vals } = buildFilter({ ownerId, feedIds, q: kw, tag, unread, favorite });
+  async function markEntriesRead({ ownerId, feedIds, q: kw, tag, unread, favorite, watch } = {}) {
+    const { where, vals } = buildFilter({ ownerId, feedIds, q: kw, tag, unread, favorite, watch });
     vals.push(true);
     const r = await q(
       `UPDATE entries e SET is_read = $${vals.length}, read_at = now()
@@ -702,9 +715,11 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     const where = ownerId == null ? '' : 'WHERE e.feed_id IN (SELECT id FROM feeds WHERE owner_id = $1)';
     const vals = ownerId == null ? [] : [ownerId];
     const { rows } = await q(
-      `SELECT count(*)                                  AS total,
-              count(*) FILTER (WHERE is_read = FALSE)    AS unread,
-              count(*) FILTER (WHERE is_favorite = TRUE) AS favorite
+      `SELECT count(*)                                     AS total,
+              count(*) FILTER (WHERE is_read = FALSE)       AS unread,
+              count(*) FILTER (WHERE is_favorite = TRUE)    AS favorite,
+              count(*) FILTER (WHERE watch_state = 'watch') AS watching,
+              count(*) FILTER (WHERE watch_state = 'block') AS blocked
          FROM entries e ${where}`, vals
     );
     const r = rows[0] || {};
@@ -712,7 +727,65 @@ module.exports = function createDb({ connectionString, log = console.log }) {
       total: Number(r.total || 0),
       unread: Number(r.unread || 0),
       favorite: Number(r.favorite || 0),
+      watching: Number(r.watching || 0),
+      blocked: Number(r.blocked || 0),
     };
+  }
+
+  /* ---------------- 关注 / 屏蔽标记（v21） ----------------
+   * 规则命中不复制条目，只在 entries 上打一个标记：关注 / 屏蔽视图就是
+   * `WHERE watch_state = ?` 的同一批条目，已读 / 收藏天然同步，也不占额外存储。
+   */
+
+  /** 批量写标记。state 传 null 表示清除（规则变更后重算用）。
+   *  命中屏蔽时顺手置已读 —— 屏蔽的意义就是「不用再看」，不该继续占未读。 */
+  async function setEntriesWatch(items, ownerId) {
+    if (!Array.isArray(items) || !items.length || ownerId == null) return 0;
+    const ids = [];
+    const states = [];
+    const rules = [];
+    for (const it of items) {
+      const id = Number(it && it.id);
+      if (!id) continue;
+      ids.push(id);
+      states.push(it.state === 'watch' || it.state === 'block' ? it.state : null);
+      rules.push(it.rule == null ? null : String(it.rule).slice(0, 40));
+    }
+    if (!ids.length) return 0;
+    const r = await q(
+      `UPDATE entries e SET watch_state = v.state, watch_rule = v.rule,
+              is_read  = CASE WHEN v.state = 'block' THEN TRUE ELSE e.is_read END,
+              read_at  = CASE WHEN v.state = 'block' THEN COALESCE(e.read_at, now()) ELSE e.read_at END
+         FROM (SELECT unnest($1::bigint[]) AS id, unnest($2::text[]) AS state, unnest($3::text[]) AS rule) v
+        WHERE e.id = v.id
+          AND e.feed_id IN (SELECT id FROM feeds WHERE owner_id = $4)`,
+      [ids, states, rules, ownerId]
+    );
+    return r.rowCount;
+  }
+
+  /** 规则变更后先把旧标记清掉，再按新规则重算（规则是唯一真相源）。
+   *  注意不清 is_read：被屏蔽时置的已读不还原，否则重算一次未读数就反弹，很吵。 */
+  async function clearEntriesWatch(ownerId) {
+    if (ownerId == null) return 0;
+    const r = await q(
+      `UPDATE entries SET watch_state = NULL, watch_rule = NULL
+        WHERE watch_state IS NOT NULL
+          AND feed_id IN (SELECT id FROM feeds WHERE owner_id = $1)`, [ownerId]
+    );
+    return r.rowCount;
+  }
+
+  /** 按 id 游标分批取「还没打过标记」的条目，用于把新规则回溯应用到存量内容。
+   *  带 content 是因为规则要匹配正文；分批避免一次把几十 MB 读进内存。 */
+  async function listUntaggedEntries(ownerId, { limit = 500, afterId = 0 } = {}) {
+    const { rows } = await q(
+      `SELECT e.id, e.title, e.description, e.content
+         FROM entries e JOIN feeds f ON f.id = e.feed_id
+        WHERE f.owner_id = $1 AND e.watch_state IS NULL AND e.id > $2
+        ORDER BY e.id LIMIT $3`, [ownerId, afterId, limit]
+    );
+    return rows;
   }
 
   /** 阅读页展开全文时按 id 单独取正文：列表查询不带 content，避免 50 条 × 几千字把响应撑大 */
@@ -914,6 +987,7 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     bumpFeedFailStreak, resetFeedFailStreak, setFeedEnabled,
     upsertEntries, queryEntries, getEntry, countEntries, tagCounts, pruneEntries, pruneEntriesByAge, entriesSince,
     setEntryFlags, markEntriesRead, entryFlagCounts,
+    setEntriesWatch, clearEntriesWatch, listUntaggedEntries,
     tableCounts, entryWindow, ping, pgDatabaseSize,
     saveDigest, readDigest, listDigestDates, hasDigest, digestStatsAll, pruneDigests,
     getImageCache, setImageCache, pruneImageCache, clearImageCache, imageCacheStats,
