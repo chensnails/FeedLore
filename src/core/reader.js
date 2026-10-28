@@ -190,6 +190,12 @@ const FOCUS_MAX_PAGES = 8;  // 为目标文章最多往后翻几页：再远就�
  *  任何一次重绘都会按自己算出的 className 覆盖掉手写上去的类。 */
 export async function focusReaderArt(id) {
   const want = String(id);
+  // 目标文章可能正赶上一次在途加载（switchView 的自动加载 / jumpToFeed 排队的重置）。
+  // 此刻列表还是旧的甚至空的，直接找会误判「找不到」。加载是串行的（rdLoading 一次性封锁），
+  // 轮询到它落地再找即可；最多等约 5s，避免极端情况下死等。
+  for (let guard = 0; state.rdLoading && guard < 200; guard++) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
   let el = findArtItemEl(want);
   for (let i = 0; !el && i < FOCUS_MAX_PAGES && state.rdHasMore; i++) {
     await loadReader();

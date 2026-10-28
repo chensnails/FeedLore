@@ -1467,13 +1467,6 @@ textarea:disabled {
 .settings-back:hover { background: var(--hover); color: var(--text); }
 .settings-back .ico { width: 1rem; height: 1rem; transform: rotate(180deg); }
 
-/* 导航分组标签（常规 / 账户 / 数据 / 系统） */
-.settings-nav-group {
-  font-size: 11px; color: var(--text-faint); font-weight: 600;
-  letter-spacing: .02em; text-align: left; user-select: none;
-  padding: var(--sp-2) var(--sp-3) var(--sp-1);
-}
-
 /* 窄屏：固定高度 + 三级下钻（首页列表 mobile-home ↔ 分区内容 mobile-pane） */
 @media (max-width: 820px) {
   .modal.settings-modal { height: 94dvh; }

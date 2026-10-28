@@ -313,16 +313,18 @@ export function selectScope(scope) {
 /** 跳到阅读页并锁定某个频道；传了 focusId 就把那篇文章指给用户看（滚过去 + 闪一下高亮）。
  *  focusId 只在这一次跳转里用，不写进任何持久化偏好。 */
 export function jumpToFeed(id, focusId) {
-  switchView('reader');
+  // 先落筛选条件再切页：switchView 在列表为空时会自动加载，用目标频道的筛选才不白拉一次
   state.rdScope = 'all';
   state.rdFeedId = Number(id);
   state.rdGroup = null;
   if (focusId != null) state.rdQ = '';   // 搜索框里的旧关键词会把目标文章筛掉
+  switchView('reader');
   renderReaderChannels();
   emitShell();
   setReaderDrawer(false);
   scrollReaderTop();
   const p = loadReader({ reset: true });
+  // 即便这里因为「加载中」被排队（返回的 promise 立刻 resolve），focusReaderArt 内部会等加载落地再找
   if (focusId != null) p.then(() => focusReaderArt(focusId));
 }
 export function focusSearchBox() {

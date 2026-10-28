@@ -18,15 +18,15 @@ import { SourcePane } from './SourcePane.jsx';
 import { AccountPane } from './AccountPane.jsx';
 import { StatusPane } from './StatusPane.jsx';
 
-// [键, 标签, 分组] —— 按「常规 / 账户 / 数据 / 系统」分组后连续排列（左导航分组标签用）
+// 扁平导航（不分组）：按使用频率排列，数据源在前
 const TABS = [
-  ['appearance', '外观', '常规'],
-  ['digest', '日报', '常规'],
-  ['model', '模型', '账户'],
-  ['account', '账号', '账户'],
-  ['source', '数据源', '数据'],
-  ['status', '状态', '系统'],
-  ['about', '关于', '系统'],
+  ['source', '数据源'],
+  ['model', '模型'],
+  ['digest', '日报'],
+  ['account', '账号'],
+  ['appearance', '外观'],
+  ['status', '状态'],
+  ['about', '关于'],
 ];
 // 管理员专属 tab（与管理端约定一致；模型配置每用户独立，普通用户也能配）
 const ADMIN_TABS = ['status'];
@@ -161,23 +161,18 @@ export function SettingsModal() {
         </div>
 
         <div className="tabs" id="tabs">
-          {tabs.map(([name, label, group], i) => {
-            const showGroup = group && (i === 0 || tabs[i - 1][2] !== group);
-            return (
-              <React.Fragment key={name}>
-                {showGroup ? <div className="settings-nav-group">{group}</div> : null}
-                <button
-                  type="button"
-                  className={'tab' + (tab === name ? ' active' : '')}
-                  data-tab={name}
-                  aria-pressed={tab === name ? 'true' : 'false'}
-                  onClick={() => { setTab(name); if (isMobile) setMobilePane(true); }}
-                >
-                  {label}
-                </button>
-              </React.Fragment>
-            );
-          })}
+          {tabs.map(([name, label]) => (
+            <button
+              key={name}
+              type="button"
+              className={'tab' + (tab === name ? ' active' : '')}
+              data-tab={name}
+              aria-pressed={tab === name ? 'true' : 'false'}
+              onClick={() => { setTab(name); if (isMobile) setMobilePane(true); }}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         <div className="modal-body">
