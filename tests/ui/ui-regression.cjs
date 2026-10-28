@@ -649,6 +649,21 @@ w.feedlore = {
   },
   readerOpenSource: () => calls.push(['readerOpenSource']),
   readerSearch: (q) => { calls.push(['readerSearch', q]); w.feedlore.state.rdQ = q; readerTick(); },
+  readerGotoArt: (id) => {
+    // 前后篇导航：跳到相邻条目（强制展开并置顶）
+    calls.push(['readerGotoArt', id]);
+    const st = w.feedlore.state;
+    st.rdCursor = id;
+    st.rdExpanded.add(id);
+    if (!st.rdBody.has(id)) {
+      st.rdBody.set(id, {
+        id, name: '条目一', tags: ['标签A'], content: '第一段正文。\n第二段正文。',
+        link: 'https://pan.quark.cn/s/abc', links: ['https://pan.quark.cn/s/abc'],
+        sourceUrl: 'https://example.com/a', date: '2026-10-15T10:00:00Z',
+      });
+    }
+    readerTick();
+  },
   readerToggleArt: (id) => {
     calls.push(['readerToggleArt', id]);
     const st = w.feedlore.state;
@@ -3343,6 +3358,25 @@ const withEFP = (el, fn) => {
   });
   t('展开后「全部收起」出现', () => { if (R('#readerCollapseAll').hidden) throw new Error('应显示'); });
 
+  // 前后篇导航（v1.7.0）：正文底部接续，r1 是第一条 → 只有「下一篇」
+  t('前后篇导航：正文底部出现 .art-nav，第一篇只有「下一篇」', () => {
+    const nav = R('#readerList .art-item[data-id="r1"] .art-nav');
+    if (!nav) throw new Error('缺 .art-nav');
+    if (nav.querySelector('.art-nav-btn.is-prev')) throw new Error('第一篇不该有「上一篇」');
+    const next = nav.querySelector('.art-nav-btn.is-next');
+    if (!next) throw new Error('缺「下一篇」');
+    if (next.textContent.indexOf('下一篇') < 0) throw new Error('文案: ' + next.textContent);
+  });
+  t('点「下一篇」→ readerGotoArt(下一条) + 目标篇展开', async () => {
+    const btn = R('#readerList .art-item[data-id="r1"] .art-nav-btn.is-next');
+    btn.click();
+    await sleep(40);
+    if (!callsOf('readerGotoArt').some((c) => c[1] === 'r2')) throw new Error('未跳到 r2');
+    if (!R('#readerList .art-item[data-id="r2"]').classList.contains('open')) throw new Error('r2 未展开');
+    const nav2 = R('#readerList .art-item[data-id="r2"] .art-nav');
+    if (!nav2 || !nav2.querySelector('.art-nav-btn.is-prev')) throw new Error('第二篇应有「上一篇」');
+  });
+
   // 正文标签 → 卡片筛选
   R('#readerList .art-item[data-id="r1"] .art-tags .mini-tag').click();
   await sleep(30);
@@ -4460,8 +4494,7 @@ const withEFP = (el, fn) => {
     if (v.indexOf('__viewChanged') < 0) throw new Error('ViewNav 应订阅 __viewChanged 高亮当前视图');
   });
 
-  t('P1 动效：cardIn keyframes + 卡片错峰 + 弹层/遮罩沿用基础层 popIn/fadeIn + reduce-motion 局部关闭', () => {
-    const root = path.join(__dirname, '..', '..');
+  t('P1 动效：cardIn keyframes + 卡片错峰 + 弹层/遮罩沿用基础层 popIn/fadeIn + reduce-motion 局部关闭', () => {    const root = path.join(__dirname, '..', '..');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
     if (!/@keyframes cardIn\s*\{/.test(css)) throw new Error('缺 cardIn keyframes');
     if (!/\.grid > \.card,\s*\.grid > \.row-item\s*\{[^}]*animation:\s*cardIn/.test(css)) throw new Error('卡片/列表行未接入 cardIn');
@@ -4469,6 +4502,39 @@ const withEFP = (el, fn) => {
     if (!/animation:\s*popIn/.test(css) || !/animation:\s*fadeIn/.test(css)) throw new Error('弹层 popIn / 遮罩 fadeIn 应存在（沿用基础层）');
     if (/@keyframes (modalIn|maskIn)/.test(css)) throw new Error('modalIn/maskIn 与已有 popIn/fadeIn 重复，应删除');
     if (!/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.grid > \.card[\s\S]{0,140}?animation:\s*none/.test(css)) throw new Error('reduce-motion 未局部关闭入场动画');
+  });
+
+  // ============ 文章页：进入即置顶 + 条目深链 + 窄屏收纳（v1.7.0） ============
+  t('滚动策略：进入一篇文章置顶（block:start），不再保留「点哪停哪」的锚点补偿', () => {
+    const root = path.join(__dirname, '..', '..');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8');
+    if (!/scrollIntoView\(\{\s*block:\s*'start'/.test(r)) throw new Error('展开文章未置顶（block:start）');
+    if (/anchorTop/.test(r)) throw new Error('旧的锚点补偿仍在（与「进入即置顶」互斥）');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/\.art-item\s*\{[^}]*scroll-margin-top/.test(css)) throw new Error('.art-item 缺 scroll-margin-top（置顶会被吸顶条盖住）');
+  });
+  t('深链：条目级 hash 只 replaceState 不进历史，刷新/返回据此恢复并置顶', () => {
+    const root = path.join(__dirname, '..', '..');
+    const u = fs.readFileSync(path.join(root, 'src', 'core', 'util.js'), 'utf8');
+    if (!/export function writeHash/.test(u) || !/export function parseHash/.test(u)) throw new Error('util 缺 writeHash / parseHash');
+    if (!/history\.replaceState/.test(u)) throw new Error('应只用 replaceState（不把文章写进浏览器历史）');
+    if (/history\.pushState/.test(u)) throw new Error('不得 pushState（后退会在文章之间逐条回退）');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8');
+    if (!/writeHash\('#reader\/art\/'/.test(r)) throw new Error('展开文章未写条目级 hash');
+    if (!/export async function restoreReaderArt/.test(r)) throw new Error('缺 restoreReaderArt（深链恢复）');
+    const b = fs.readFileSync(path.join(root, 'src', 'core', 'bootstrap.js'), 'utf8');
+    if (!/#reader\/art\//.test(b)) throw new Error('bootstrap 未解析条目级深链');
+  });
+  t('窄屏收纳：≤720 段把文章页三枚动作按钮收进 ⋮（.is-narrow-only）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/\.reader-head-tools \.vt-action\s*\{\s*display:\s*none/.test(css)) throw new Error('≤720 未隐藏动作按钮');
+    if (!/\.overflow-item\.is-narrow-only[^{]*\{\s*display:\s*none/.test(css)) throw new Error('窄屏专属菜单项应在基础层默认隐藏');
+    if (!/\.overflow-item\.is-narrow-only\s*\{\s*display:\s*flex/.test(css)) throw new Error('窄屏未放出 .is-narrow-only 菜单项');
+    const o = fs.readFileSync(path.join(root, 'src', 'ui', 'OverflowMenu.jsx'), 'utf8');
+    if (!/readerControls/.test(o)) throw new Error('OverflowMenu 未接 readerControls');
+    const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
+    if (!/readerControls/.test(rv)) throw new Error('ReaderView 未传 readerControls');
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });

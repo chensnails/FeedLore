@@ -5,10 +5,10 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, toggleKbdHelp } from './util.js';
+import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, toggleKbdHelp, writeHash, parseHash } from './util.js';
 import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
 import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
-import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, focusReaderArt,
+import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, focusReaderArt, restoreReaderArt,
   readerCursorMove, readerCursorToggle, readerCursorFav, readerCursorToggleRead } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
 
@@ -123,6 +123,9 @@ export function switchView(name) {
     $('#readerView').hidden = name !== 'reader';
     $('#cardsView').hidden = name !== 'cards';
     $('#aiView').hidden = name !== 'ai';
+    // 地址栏记下当前视图（只 replaceState，不进浏览器历史：
+    // 见 util.writeHash 的说明——「后退」不该在文章之间逐条回退）。
+    if (name !== 'reader') writeHash('#' + name);
     // 顶栏（视图高亮 / 副标题 / 主题态）由 React 重绘
     emitShell();
 
@@ -145,9 +148,18 @@ export function switchView(name) {
   }
 }
 
+/* 浏览器前进 / 后退：按地址栏 hash 恢复视图与文章。
+ * 策略与「进入一篇文章」完全一致——回到哪篇，就从那篇的开头看起（不保留离开时的滚动位置：
+ * 列表是服务端分页的，位置未必还能落在同一篇上，保留它反而会停在半截正文）。
+ * 正常情况下本应用只用 replaceState（不产生同文档历史），这里兜住手动改 hash / 站内返回等场景。 */
+window.addEventListener('popstate', () => {
+  const { tab, artId } = parseHash(location.hash);
+  if (tab && tab !== state.tab) switchView(tab);
+  if (tab === 'reader' && artId) restoreReaderArt(artId);
+});
+
 /** 正文里的标签：跳到卡片页按这个标签筛选 */
-export function readerTagToCards(tag) {
-  state.tag = tag;
+export function readerTagToCards(tag) {  state.tag = tag;
   switchView('cards');
   render();   // 卡片视图重绘
   toast('已按标签筛选：#' + tag);

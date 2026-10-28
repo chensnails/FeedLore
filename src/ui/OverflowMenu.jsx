@@ -19,7 +19,7 @@ function readShell() {
   try { return core.getShell(); } catch (_) { return {}; }
 }
 
-export function OverflowMenu({ view, cardControls = false, sortValue, viewMode }) {
+export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, readerControls = false, readerState }) {
   const [open, setOpen] = useState(false);
   const [subOpen, setSubOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -27,6 +27,7 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode }
   const btnRef = useRef(null);
   const menuRef = useRef(null);
   const subRef = useRef(null);
+  const rs = readerState || {};
 
   const refreshSnap = useCallback(() => setSnap(readShell()), []);
   useEffect(() => {
@@ -134,6 +135,33 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode }
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-settings" /></svg>
             <span>设置</span>
           </button>
+          {readerControls && (
+            <>
+              {/* 文章页的动作（单篇/多篇、全部已读、全部收起）在窄屏收进这里：
+                  顶栏那一行要放频道、标题、搜索、视图切换与 ⋮，再加三枚按钮就换行了。
+                  .is-narrow-only：桌面不显示（桌面有常驻按钮），≤720 才露出来。 */}
+              <div className="overflow-sep is-narrow-only" role="separator" />
+              <button type="button" role="menuitem" className="overflow-item is-narrow-only"
+                onClick={() => { if (S().readerToggleAccordion) S().readerToggleAccordion(); close(); }}>
+                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-accordion" /></svg>
+                <span>{rs.accordionOn ? '多篇展开' : '单篇展开'}</span>
+              </button>
+              {rs.hasUnread ? (
+                <button type="button" role="menuitem" className="overflow-item is-narrow-only"
+                  onClick={() => { if (S().readerReadAll) S().readerReadAll(); close(); }}>
+                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-check-circle" /></svg>
+                  <span>全部已读</span>
+                </button>
+              ) : null}
+              {rs.anyExpanded ? (
+                <button type="button" role="menuitem" className="overflow-item is-narrow-only"
+                  onClick={() => { if (S().readerCollapseAll) S().readerCollapseAll(); close(); }}>
+                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevrons-up" /></svg>
+                  <span>全部收起</span>
+                </button>
+              ) : null}
+            </>
+          )}
           {cardControls && (
             <>
               <div className="overflow-sep" role="separator" />

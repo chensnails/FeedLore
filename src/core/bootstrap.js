@@ -10,6 +10,7 @@ import { state, applyRoleUI, applyTheme, currentThemeMode, openSettings } from '
 import { currentViewMode, applyViewMode, currentTab, loadFeeds, loadPage } from './feeds.js';
 import { scheduleAutoRefresh } from './autorefresh.js';
 import { switchView } from './ui.js';
+import { restoreReaderArt } from './reader.js';
 
 // ⚠️ 执行顺序：applyTheme() 内部会读外观偏好（APPR_* 常量定义在更下面），
 // 而这个文件是 defer 脚本、模块顶层就往下跑。直接在这里同步调用会踩 const 的
@@ -58,8 +59,11 @@ requestAnimationFrame(() => requestAnimationFrame(bootThemeAndView));
   await loadPage(true);
 
   // 打开哪个页面：hash 优先（可分享深链），其次上次记住的，默认「文章」
+  // hash 形如 #cards / #reader / #ai，条目级深链是 #reader/art/<id>（进入某篇）
   let tab = currentTab();
-  if (location.hash.startsWith('#cards')) tab = 'cards';
+  let deepArtId = null;
+  if (location.hash.startsWith('#reader/art/')) { tab = 'reader'; deepArtId = location.hash.slice('#reader/art/'.length); }
+  else if (location.hash.startsWith('#cards')) tab = 'cards';
   else if (location.hash.startsWith('#favorite')) { tab = 'reader'; state.rdScope = 'favorite'; }
   else if (location.hash.startsWith('#unread')) { tab = 'reader'; state.rdScope = 'unread'; }
   else if (location.hash.startsWith('#reader')) tab = 'reader';
@@ -69,4 +73,7 @@ requestAnimationFrame(() => requestAnimationFrame(bootThemeAndView));
   switchView(tab);
 
   if (location.hash.startsWith('#settings')) openSettings();
+
+  // 条目级深链：列表落地后展开那一篇并置顶（与「点下一篇进入」同一策略）
+  if (deepArtId) restoreReaderArt(deepArtId);
 })();

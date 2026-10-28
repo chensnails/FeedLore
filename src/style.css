@@ -2632,7 +2632,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
 /* ---------- 右侧文章 ---------- */
 /* 内容区：自己的滚动容器（App Shell）；.reader-head 在其内部 sticky top:0 钉住 */
-.reader-main { min-width: 0; height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.reader-main {
+  min-width: 0; height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  /* --head-h 不在这里另立一份：吸顶工具条的高度由 :root 给（桌面 52 / 窄屏 44，
+     见文件末尾的 ≤720 令牌段），.art-item 的 scroll-margin-top 直接继承它。 */
+}
 /* 头部与列表都按「阅读宽度」居中：两个是兄弟节点，各自写一份才能对齐 */
 .reader-head {
   /* 头部一行内「标题 / 分组徽标 / 工具按钮」统一的高度与字号 */
@@ -2776,8 +2780,41 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   /* 视口外的文章项跳过渲染：阅读页几百条条目也不卡 */
   content-visibility: auto;
   contain-intrinsic-size: auto 84px;
+  /* 进入一篇文章时用 scrollIntoView 的 block:start 置顶：
+     scroll-margin 把目标顶边让出下方那根吸顶工具条的高度，
+     否则新文章的第一行正好被工具条盖住。--head-h 由 :root 给
+     （桌面 52 / 窄屏 44），这里直接继承。 */
+  scroll-margin-top: calc(var(--head-h, 52px) + 8px);
 }
 .art-item:hover { border-color: var(--border-strong); }
+
+/* ---------- 前后篇导航（正文底部） ----------
+ * 读完正文视线落在末尾，「上一篇 / 下一篇」就该在这里接续；
+ * 放在正文底部而不是顶栏：窄屏顶栏已排满，而这里在任何屏宽都稳。 */
+.art-nav {
+  display: flex; align-items: stretch; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+  background: var(--panel-2);
+}
+.art-nav-gap { flex: 1 1 0; min-width: 0; }
+.art-nav-btn {
+  flex: 1 1 0; min-width: 0;
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--panel); color: var(--text-2);
+  font: inherit; text-align: left; cursor: pointer;
+  transition: border-color var(--dur-base), background var(--dur-base), color var(--dur-base);
+}
+.art-nav-btn.is-next { justify-content: flex-end; text-align: right; }
+.art-nav-btn:hover { border-color: var(--border-strong); background: var(--hover); color: var(--text); }
+.art-nav-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+.art-nav-btn .ico { width: 1rem; height: 1rem; flex: 0 0 auto; color: var(--text-faint); }
+.art-nav-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.art-nav-dir { font-size: var(--fs-2xs); color: var(--text-faint); letter-spacing: .04em; }
+.art-nav-title { font-size: var(--fs-md); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.art-nav-btn:hover .art-nav-title { color: var(--text); }
 /* 展开态不再做主色描边 + 抬高阴影（整块发亮太抢眼），只留极弱的边框区分，
    靠 caret 旋转 + 展开的正文本身表达"当前展开的是哪条"。 */
 .art-item.open { border-color: var(--border-strong); }
@@ -4310,6 +4347,8 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
 .overflow-item.is-active .ico { opacity: 1; }
 .overflow-check, .overflow-caret { margin-left: auto; opacity: .7; }
 .overflow-sep { height: 1px; margin: var(--sp-1) 0; background: var(--border); }
+/* 窄屏专属菜单项（文章页的动作按钮在窄屏收进 ⋮）：桌面不显示，≤720 才露出 */
+.overflow-item.is-narrow-only, .overflow-sep.is-narrow-only { display: none; }
 /* 子菜单（排序）：绝对定位到父项右侧；窄屏空间不足时翻到左侧 */
 .overflow-submenu {
   position: absolute; top: 0; right: calc(100% + 4px);
@@ -4455,6 +4494,16 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
   }
   .reader-search-toggle.is-on,
   .cards-search-toggle.is-on { color: var(--accent-text); background: var(--accent-soft); }
+
+  /* 文章页顶栏收纳（v1.7.0）：这一行要放 频道 / 标题 / 搜索 / 视图切换 / ⋮，
+     再加三枚动作按钮（单篇·全部已读·全部收起）就换行（实测 375px 下 headH 44→88，
+     右簇整体掉到第二行）。动作收进 ⋮ 菜单（.is-narrow-only），顶栏窄屏保持单行。
+     这两条必须排在基础层「窄屏专属项默认隐藏」之后（源顺序更靠后才盖得住）。 */
+  .reader-head-tools .vt-action { display: none; }
+  .overflow-item.is-narrow-only { display: flex; }
+  .overflow-sep.is-narrow-only { display: block; }
+  /* 元信息瘦身：窄屏一行放不下「来源·体积·日期」，体积先走（大小在手机端最不关心） */
+  .art-size { display: none; }
   /* 窄屏只有一个图标入口：搜索框整块退场，点放大镜才展开成一行 */
   .page-search { display: none; }
   .page-search.is-open {
@@ -4522,6 +4571,15 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
 @media (max-width: 360px) {
   .cards-title { display: none; }
   #sortDD { margin-left: auto; }
+}
+
+/* ≤480：频道按钮收成一枚 ☰（v1.7.0 文章页窄屏收纳的第二刀）。
+ * 375px 下文章页那一行是 [☰ 频道][标题][🔍][视图×3][⋮]：频道按钮的文字占掉约 54px，
+ * 标题被挤到换行（实测 headH 44→88，右簇掉到第二行）。
+ * 文字先走：抽屉的语义由 aria-label（打开频道列表）与 title 兜住，视觉上 ☰ 与
+ * 右上角的搜索/视图一样是图标按钮，读法一致。 */
+@media (max-width: 480px) {
+  .reader-menu-label, .cards-menu-label { display: none; }
 }
 
 

@@ -74,6 +74,7 @@ export const core = {
   readerSearch: R.readerSearch, readerToggleArt: R.readerToggleArt, readerCollapseAll: R.readerCollapseAll,
   readerReadAll: R.readerReadAll,
   readerToggleFav: R.readerToggleFav, readerTagToCards: UI.readerTagToCards,
+  readerGotoArt: R.readerGotoArt, restoreReaderArt: R.restoreReaderArt,
   readerCursorMove: R.readerCursorMove, readerCursorToggle: R.readerCursorToggle,
   readerCursorFav: R.readerCursorFav, readerCursorToggleRead: R.readerCursorToggleRead,
   readerToggleAccordion: R.readerToggleAccordion, readerAccordionOn: R.readerAccordionOn,
