@@ -357,6 +357,7 @@ export function jumpToFeed(id, focusId) {
   state.rdScope = 'all';
   state.rdFeedId = Number(id);
   state.rdGroup = null;
+  state.rdWatch = null;   // 从关注/屏蔽视图点进具体频道，得退出聚合视图
   if (focusId != null) state.rdQ = '';   // 搜索框里的旧关键词会把目标文章筛掉
   switchView('reader');
   renderReaderChannels();

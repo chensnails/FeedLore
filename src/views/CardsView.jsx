@@ -277,18 +277,27 @@ export function CardsView() {
   // 外部（命令面板 / 深链）改了搜索词时同步草稿，并把搜索框展开
   useEffect(() => { setQDraft(st.q || ''); if (st.q) setSearchOpen(true); }, [st.q]);
 
-  // 滚动到底部自动加载：与文章页一致（此前只有卡片页要手动点「加载更多」）。
-  // 按钮保留，作为键盘用户与自动加载失灵时的降级入口。
+  // 滚动到底部自动加载（v1.6.0-test5 统一版，与文章页同一套判据）：
+  // App Shell 后卡片列表在 main.wrap 里滚动，window 的 scroll 事件收不到 ——
+  // 之前只有手动「加载更多」能用就是这里失效。scroll 不冒泡但能被捕获，
+  // document 捕获监听一处收齐所有容器；命中与否交给 #cardsSentinel 的
+  // getBoundingClientRect（视口相对坐标，与谁在滚无关）。timer 兜住
+  // 「首屏内容不满一屏、用户没有可滚的距离」的场合。
   useEffect(() => {
     if (!st.hasMore) return undefined;
-    const onScroll = () => {
+    const check = () => {
       if (st.loading || !st.hasMore) return;
-      const doc = document.documentElement;
-      const gap = doc.scrollHeight - window.scrollY - window.innerHeight;
-      if (gap < 480) { if (s.cardsLoadMore) s.cardsLoadMore(); }
+      const el = document.getElementById('cardsSentinel');
+      if (el && el.getBoundingClientRect().top < window.innerHeight + 480) {
+        if (s.cardsLoadMore) s.cardsLoadMore();
+      }
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    document.addEventListener('scroll', check, { capture: true, passive: true });
+    const t = setTimeout(check, 350);
+    return () => {
+      document.removeEventListener('scroll', check, { capture: true });
+      clearTimeout(t);
+    };
   }, [st.hasMore, st.loading]);
 
   // 合并头部：本视图第一行即吸顶条，实测高度写入 --topbar-h（隐藏视图测得 0 高不写，避免覆盖）
@@ -497,9 +506,10 @@ export function CardsView() {
         ) : <div id="empty" className="empty" hidden><div className="empty-ico"><svg className="ico" aria-hidden="true" focusable="false"><use href="#i-inbox" /></svg></div><p /></div>}
 
         <div className="loadmore-wrap">
-          <button className="btn btn-primary" id="loadMoreBtn" hidden={!(st.hasMore && !firstLoad)}
-            onClick={() => { if (s.cardsLoadMore) s.cardsLoadMore(); }}>加载更多</button>
+          {/* 「加载更多」按钮已移除（v1.6.0-test5）：滚动到底自动加载是唯一入口，
+              这里只剩加载态圆点与滚动哨兵（几何判定用的隐形 1px 锚点）。 */}
           <div className="loading-dots" id="loadingMore" hidden={!showLoadingMore}><i /><i /><i /></div>
+          <div className="cards-sentinel" id="cardsSentinel" aria-hidden="true" />
         </div>
 
         <footer className="foot">

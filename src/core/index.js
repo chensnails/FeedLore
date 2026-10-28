@@ -67,6 +67,7 @@ export const core = {
   fmtFull: U.fmtFull,
   // —— 文章视图（P3c） ——
   readerSetScope: R.readerSetScope, readerSetFeed: R.readerSetFeed, readerSetGroup: R.readerSetGroup,
+  readerSetWatch: R.readerSetWatch,
   readerOpenSource: R.readerOpenSource,
   readerSearch: R.readerSearch, readerToggleArt: R.readerToggleArt, readerCollapseAll: R.readerCollapseAll,
   readerReadAll: R.readerReadAll,

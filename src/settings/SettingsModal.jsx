@@ -15,12 +15,14 @@ import { AppearancePane } from './AppearancePane.jsx';
 import { ModelPane } from './ModelPane.jsx';
 import { DigestPane } from './DigestPane.jsx';
 import { SourcePane } from './SourcePane.jsx';
+import { WatchPane } from './WatchPane.jsx';
 import { AccountPane } from './AccountPane.jsx';
 import { StatusPane } from './StatusPane.jsx';
 
 // 扁平导航（不分组）：按使用频率排列，数据源在前
 const TABS = [
   ['source', '数据源'],
+  ['watch', '规则'],
   ['model', '模型'],
   ['digest', '日报'],
   ['account', '账号'],
@@ -242,6 +244,7 @@ export function SettingsModal() {
 
         <div className="modal-body" id="settingsPanel" role="tabpanel" aria-labelledby={'settingsTab-' + tab}>
           {tab === 'source' && open && <SourcePane admin={admin} />}
+          {tab === 'watch' && open && <WatchPane />}
           {tab === 'appearance' && open && <AppearancePane />}
           {tab === 'model' && open && <ModelPane />}
           {tab === 'digest' && open && <DigestPane />}

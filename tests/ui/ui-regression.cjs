@@ -636,8 +636,9 @@ w.feedlore = {
   // v1.9.0：阅读页桥（P3c，对齐 app.js 语义）
   fmtFull: (d) => (d ? String(d).slice(0, 16).replace('T', ' ') : ''),
   readerAccordionOn: () => true,
-  readerSetScope: (scope) => { calls.push(['readerSetScope', scope]); w.feedlore.state.rdScope = scope; w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null; readerTick(); },
-  readerSetFeed: (id) => { calls.push(['readerSetFeed', id]); w.feedlore.state.rdFeedId = Number(id); w.feedlore.state.rdGroup = null; w.feedlore.state.rdScope = 'all'; readerTick(); },
+  readerSetScope: (scope) => { calls.push(['readerSetScope', scope]); w.feedlore.state.rdScope = scope; w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null; w.feedlore.state.rdWatch = null; readerTick(); },
+  readerSetWatch: (key) => { calls.push(['readerSetWatch', key]); const v = (key === 'watch' || key === 'block') ? key : null; w.feedlore.state.rdWatch = (v && w.feedlore.state.rdWatch === v) ? null : v; w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null; readerTick(); },
+  readerSetFeed: (id) => { calls.push(['readerSetFeed', id]); w.feedlore.state.rdFeedId = Number(id); w.feedlore.state.rdGroup = null; w.feedlore.state.rdScope = 'all'; w.feedlore.state.rdWatch = null; readerTick(); },
   readerSetGroup: (g) => {
     calls.push(['readerSetGroup', g]);
     const st = w.feedlore.state;
@@ -1229,7 +1230,11 @@ const withEFP = (el, fn) => {
   t('host.open 打开（hidden=false）', () => { if (mask().hidden !== false) throw new Error('未打开'); });
   t('__settingsOpen 同步=true', () => { if (w.__settingsOpen !== true) throw new Error('window.__settingsOpen=' + w.__settingsOpen); });
   t('打开时锁屏', () => { if (!callsOf('lockPageScroll').length) throw new Error('lockPageScroll 未调用'); });
-  t('7 个 tab（管理员）', () => { if (document.querySelectorAll('.tabs .tab').length !== 7) throw new Error('实际 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('8 个 tab（管理员）', () => { if (document.querySelectorAll('.tabs .tab').length !== 8) throw new Error('实际 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('设置导航含「规则」tab', () => {
+    const w = [...document.querySelectorAll('.tabs .tab')].find((x) => x.textContent.trim() === '规则');
+    if (!w || w.dataset.tab !== 'watch') throw new Error('规则 tab 缺失或 data-tab 不对');
+  });
   t('source tab 默认高亮', () => { if (!tabBtn('数据源').classList.contains('active')) throw new Error('source 未高亮'); });
   t('副标题取 getSettingsSummary', () => { const s = document.querySelector('.modal-sub').textContent; if (s !== '共 12 个订阅源 · 采集开启 10 个 · 卡片展示 8 个') throw new Error('实际: ' + s); });
 
@@ -2532,7 +2537,7 @@ const withEFP = (el, fn) => {
   w.__settingsHost.open('status');
   await sleep(80);
   t('普通用户 open(status) 回落 source', () => { if (!tabBtn('数据源').classList.contains('active')) throw new Error('未回落 source'); });
-  t('普通用户无状态 tab', () => { if (tabBtn('状态')) throw new Error('状态 tab 仍渲染'); if (document.querySelectorAll('.tabs .tab').length !== 6) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('普通用户无状态 tab', () => { if (tabBtn('状态')) throw new Error('状态 tab 仍渲染'); if (document.querySelectorAll('.tabs .tab').length !== 7) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
   t('普通用户：无采集参数区 + 保存按钮隐藏', () => {
     if (document.querySelector('[data-sec="src-params"]')) throw new Error('采集参数区不应渲染');
     if (document.querySelector('#saveSourceBtn').hidden !== true) throw new Error('保存按钮应隐藏');
@@ -2554,7 +2559,7 @@ const withEFP = (el, fn) => {
 
   w.__settingsHost.setAdminFlag(true);
   await sleep(80);
-  t('setAdminFlag(true) 恢复 7 tab', () => { if (document.querySelectorAll('.tabs .tab').length !== 7) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('setAdminFlag(true) 恢复 8 tab', () => { if (document.querySelectorAll('.tabs .tab').length !== 8) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
   t('恢复管理员：采集参数区出现并拉配置', () => {
     if (!document.querySelector('[data-sec="src-params"]')) throw new Error('采集参数区未出现');
     if (document.querySelector('#saveSourceBtn').hidden !== false) throw new Error('保存按钮应可见');
@@ -3129,10 +3134,14 @@ const withEFP = (el, fn) => {
     if (C('#grid .card[data-id="e2"]').classList.contains('is-fav')) throw new Error('仍标记收藏');
   });
 
-  // 加载更多
+  // 自动加载（v1.6.0-test5）：「加载更多」按钮已整体移除，只剩滚动哨兵与加载圆点
   w.feedlore.state.hasMore = true; cardsTick();
   await sleep(30);
-  t('加载更多按钮：hasMore 时显示', () => { if (C('#loadMoreBtn').hidden) throw new Error('应显示'); });
+  t('自动加载：无手动按钮、哨兵存在', () => {
+    if (C('#loadMoreBtn')) throw new Error('「加载更多」按钮残留');
+    if (!C('#cardsSentinel')) throw new Error('缺滚动哨兵 #cardsSentinel');
+    if (!C('.loadmore-wrap #loadingMore')) throw new Error('缺加载圆点');
+  });
 
   // 骨架态
   w.feedlore.state.loading = true; w.feedlore.state.entries = []; cardsTick();
@@ -3242,7 +3251,7 @@ const withEFP = (el, fn) => {
 
   t('阅读页渲染：侧栏 + 头部 + 列表 + 条目', () => {
     if (!R('#readerChannels')) throw new Error('无频道侧栏');
-    if (RA('#readerChannels .rd-ch').length !== 5) throw new Error('频道项 ' + RA('#readerChannels .rd-ch').length);
+    if (RA('#readerChannels .rd-ch').length !== 7) throw new Error('频道项 ' + RA('#readerChannels .rd-ch').length);   // 3 范围 + 关注 + 屏蔽 + 2 频道
     if (RA('#readerChannels .rd-ch-group').length !== 2) throw new Error('分组行 ' + RA('#readerChannels .rd-ch-group').length);  // 科技 + 未分组
     if (!R('#readerChannels .rd-ch-sep')) throw new Error('无分隔');
     if (!R('#readerChannels .rd-ch-add')) throw new Error('无添加频道');
@@ -3348,8 +3357,30 @@ const withEFP = (el, fn) => {
     if (!RA('#readerChannels .rd-ch')[1].classList.contains('active')) throw new Error('未高亮');
   });
 
-  // 频道切换
-  RA('#readerChannels .rd-ch')[3].click();
+  // v1.6.0-test5：关注 / 屏蔽虚拟视图行 —— 关注与范围行同排，屏蔽置底（最后一个 .rd-ch）
+  t('频道栏：关注 / 屏蔽虚拟视图行', () => {
+    const watchRow = R('#readerChannels .rd-ch[data-watch="watch"]');
+    const blockRow = R('#readerChannels .rd-ch[data-watch="block"]');
+    if (!watchRow || !blockRow) throw new Error('缺关注/屏蔽行');
+    const all = RA('#readerChannels .rd-ch');
+    if (all[all.length - 1] !== blockRow) throw new Error('屏蔽行不在底部');
+    if (all.indexOf(watchRow) !== 3) throw new Error('关注行应紧跟三个范围行');
+  });
+  R('#readerChannels .rd-ch[data-watch="watch"]').click();
+  await sleep(30);
+  t('关注行 → readerSetWatch(watch) + 高亮', () => {
+    if (!callsOf('readerSetWatch').some((c) => c[1] === 'watch')) throw new Error('未触发');
+    if (!R('#readerChannels .rd-ch[data-watch="watch"]').classList.contains('active')) throw new Error('未高亮');
+    if (R('#readerTitle').textContent !== '关注') throw new Error('标题: ' + R('#readerTitle').textContent);
+  });
+  R('#readerChannels .rd-ch[data-watch="watch"]').click();
+  await sleep(30);
+  t('再点关注行 → 退出聚合视图', () => {
+    if (R('#readerChannels .rd-ch[data-watch="watch"]').classList.contains('active')) throw new Error('仍高亮');
+  });
+
+  // 频道切换（按 data-feed 选真频道：前面插了「关注」虚拟行，索引会漂）
+  R('#readerChannels .rd-ch[data-feed]').click();
   await sleep(30);
   t('频道切换 → readerSetFeed + 标题更新', () => {
     if (!callsOf('readerSetFeed').length) throw new Error('未触发');
@@ -3368,7 +3399,7 @@ const withEFP = (el, fn) => {
   t('清除 → readerSearch("")', () => { if (!callsOf('readerSearch').some((c) => c[1] === '')) throw new Error('未触发'); });
 
   // 空态（未读）
-  w.feedlore.state.rdScope = 'unread'; w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null;
+  w.feedlore.state.rdScope = 'unread'; w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null; w.feedlore.state.rdWatch = null;
   w.feedlore.state.rdQ = '';
   readerSetEntries([]);
   await sleep(30);
@@ -3940,7 +3971,7 @@ const withEFP = (el, fn) => {
       const c2 = sw.__coreForTest;
       const need = [
         'state', 'switchView', 'loadFeeds', 'loadPage', 'refresh', 'cycleTheme', 'getShell',
-        'readerSetScope', 'readerSetFeed', 'readerSetGroup', 'readerOpenSource', 'readerSearch',
+        'readerSetScope', 'readerSetFeed', 'readerSetGroup', 'readerSetWatch', 'readerOpenSource', 'readerSearch',
         'readerToggleArt', 'readerCollapseAll', 'readerReadAll', 'readerToggleFav', 'readerTagToCards',
         'readerToggleAccordion', 'readerAccordionOn', 'readerToggleDrawer', 'readerCloseDrawer', 'fmtFull',
         'readerCollapsedGroups', 'readerToggleGroupCollapse', 'readerToggleAllGroups',

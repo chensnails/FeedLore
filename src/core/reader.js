@@ -42,6 +42,8 @@ export function readerFilterParams() {
   if (ids) params.set('feeds', ids.join(','));
   // 阅读页的「全部」看的是全部内容，不受「卡片」开关影响
   else params.set('scope', 'all');
+  // 关注 / 屏蔽视图（v21）：服务端按 watch_state 过滤，可与未读 / 收藏范围叠加
+  if (state.rdWatch === 'watch' || state.rdWatch === 'block') params.set('watch', state.rdWatch);
   if (state.rdScope === 'unread') params.set('unread', '1');
   if (state.rdScope === 'favorite') params.set('fav', '1');
   if (state.rdQ) params.set('q', state.rdQ);
@@ -98,6 +100,8 @@ export async function loadReader({ reset = false } = {}) {
   } finally {
     state.rdLoading = false;
     renderReader();
+    // 一屏没装满时哨兵本就贴着视口底 —— 不靠用户滚动也要接着拉，直到装满或没有更多
+    if (state.rdHasMore && readerSentinelNear()) readerAutoLoad();
     // 加载途中排队的「重置重载」：补跑一次，让用户的第二次点击真正生效
     if (readerPendingReset) {
       readerPendingReset = false;
@@ -372,6 +376,7 @@ export function readerSetScope(scope) {
   setLayout('rdScope', scope);   // 默认范围按账号持久化
   state.rdFeedId = null;
   state.rdGroup = null;
+  state.rdWatch = null;
   renderReader();
   loadReader({ reset: true });
   emitShell();
@@ -380,6 +385,7 @@ export function readerSetScope(scope) {
 }
 export function readerSetGroup(g) {
   state.rdScope = 'all';   // 看某个分组 = 回到「全部」范围
+  state.rdWatch = null;
   if (g === state.rdGroup) state.rdGroup = null;
   else { state.rdGroup = g; state.rdFeedId = null; expandRdGroup(g); }
   renderReader();
@@ -395,6 +401,7 @@ export function readerSetFeed(id) {
   // 现在改为：同频道再点 → 重新拉取该频道的最新列表 + 滚回顶部（重新加载 = 拿到最新信息）。
   const sameFeed = next === state.rdFeedId && state.rdGroup == null;
   state.rdScope = 'all';
+  state.rdWatch = null;
   if (sameFeed) {
     reloadReaderFeed();
     return;
@@ -403,6 +410,24 @@ export function readerSetFeed(id) {
   state.rdFeedId = next;
   state.rdGroup = null;
   if (f) expandRdGroup(String(f.groupName || '').trim());   // 折叠着就选不到它，选了必须看得见
+  renderReader();
+  loadReader({ reset: true });
+  emitShell();
+  setReaderDrawer(false);
+  scrollReaderTop();
+}
+/**
+ * 关注 / 屏蔽虚拟视图（v21）：「再次点击同一行 = 退出该视图」，
+ * 与分组漏斗的手感一致。视图是全局聚合，进入时清掉频道与分组选中；
+ * 未读 / 收藏范围保留不动（服务端 WHERE 可叠加）。
+ */
+export function readerSetWatch(w) {
+  let v = w === 'watch' || w === 'block' ? w : null;
+  if (v && v === state.rdWatch) v = null;   // 再点一次退出
+  if (!v && !state.rdWatch) return;
+  state.rdWatch = v;
+  state.rdFeedId = null;
+  state.rdGroup = null;
   renderReader();
   loadReader({ reset: true });
   emitShell();
@@ -445,8 +470,12 @@ export function setReaderDrawer(open) {
   else if (readerDrawerLocked) { readerDrawerLocked = false; unlockPageScroll(); }
 }
 
-/** 换了频道 / 范围 / 分组 = 换了一整个列表，把视线带回顶部，别停在新列表中间 */
+/** 换了频道 / 范围 / 分组 = 换了一整个列表，把视线带回顶部，别停在新列表中间。
+ *  App Shell（v1.6.0-test2）后阅读列表的滚动容器是 .reader-main，window 根本不动 ——
+ *  所以先滚真正的容器，窗口本身（窄屏抽屉态等没有独立容器的场合）兜底。 */
 export function scrollReaderTop() {
+  const main = document.querySelector('#readerView .reader-main');
+  if (main) main.scrollTo({ top: 0, behavior: 'auto' });
   window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
@@ -478,22 +507,32 @@ export async function readerAutoLoad() {
   }
 }
 
-window.addEventListener('scroll', () => {
+/* 滚动到底自动加载（v1.6.0-test5 修复）：
+ * App Shell 之后阅读列表在 .reader-main 里滚动，window 的 scroll 事件永远不触发 ——
+ * 这就是自动加载失灵的根因。scroll 事件不冒泡但**能被捕获**，document 上挂捕获监听
+ * 一处收齐所有滚动容器的滚动（侧栏 / 列表 / 窗口），命中与否交给哨兵几何判定，
+ * 判定本身用 getBoundingClientRect，天然与「谁在滚」无关。 */
+document.addEventListener('scroll', () => {
   if (state.tab !== 'reader') return;
   if (state.rdLoading || !state.rdHasMore || !state.rdEntries.length) return;
   if (readerSentinelNear()) readerAutoLoad();
-});
+}, { capture: true, passive: true });
 
 /* 「全部标为已读」：条件与当前列表完全一致，标完刷新徽标（ReaderView 经桥 readerReadAll 调用） */
 export async function readerReadAll() {
   // 破坏性操作（可能一口气把几百篇标成已读），先确认一次，与「删除订阅/用户」保持一致
+  const watch = state.rdWatch === 'watch' || state.rdWatch === 'block' ? state.rdWatch : null;
   const label = state.rdScope === 'unread' ? '全部未读'
-    : (state.rdScope === 'favorite' ? '全部收藏' : '当前列表');
+    : (state.rdScope === 'favorite' ? '全部收藏'
+      : (watch === 'watch' ? '关注列表' : (watch === 'block' ? '屏蔽列表' : '当前列表')));
 
   // 受影响篇数：按当前筛选的频道聚合未读数（favorite 范围无法精确估算，退化为不显示数字）
   let affected = 0;
   let unknown = false;
   if (state.rdScope === 'favorite') {
+    unknown = true;
+  } else if (watch) {
+    // 关注 / 屏蔽视图的命中集只有服务端知道，篇数在确认框里给不出准数 —— 走通用文案
     unknown = true;
   } else {
     const fp = readerFilterParams().get('feeds');
@@ -506,7 +545,7 @@ export async function readerReadAll() {
   }
   const desc = affected > 0
     ? `将标记 ${affected} 篇未读文章为已读，此操作不可撤销。`
-    : (unknown ? '将把收藏中的未读文章标为已读，此操作不可撤销。' : '当前范围内没有未读文章。');
+    : (unknown ? '将把当前列表中的未读文章标为已读，此操作不可撤销。' : '当前范围内没有未读文章。');
 
   const ok = await confirm({
     title: `把「${label}」全部标为已读？`,
@@ -524,6 +563,7 @@ export async function readerReadAll() {
         // 没传 feeds = 不限频道；传空串 = 分组里没有频道，那就什么都不标
         feeds: p.has('feeds') ? (feedsRaw ? feedsRaw.split(',').map(Number) : []) : null,
         q: p.get('q') || '',
+        watch: watch || '',
       }),
     });
     if (!res.ok) throw await httpError(res);

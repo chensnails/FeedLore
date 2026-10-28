@@ -31,10 +31,12 @@ export function ChannelList({
   activeScope = null,
   activeFeedId = null,
   activeGroup = null,
-  flags = null,            // reader：{ total, unread, favorite }
+  activeWatch = null,      // 关注 / 屏蔽虚拟视图（v21）：null | 'watch' | 'block'
+  flags = null,            // reader：{ total, unread, favorite, watching, blocked }
   onScope,
   onFeed,
   onGroup,
+  onWatch,
   onAdd,
 }) {
   const s = S();
@@ -65,6 +67,19 @@ export function ChannelList({
     </button>
   );
 
+  // 关注 / 屏蔽虚拟视图（v21）：与范围行同款视觉，但语义是「规则命中的聚合视图」，
+  // 激活条件看 activeWatch 而不是 activeScope —— 两套状态，互不覆盖。
+  const watchBtn = (key, ico, name, n, cls) => (
+    <button className={'rd-ch' + (atAll && activeGroup == null && activeWatch === key ? ' active' : '')}
+      type="button" data-watch={key} aria-pressed={activeWatch === key && atAll ? 'true' : 'false'}
+      title={key === 'watch' ? '规则命中的文章（在设置 → 规则里配置）' : '被规则屏蔽的文章（已自动标为已读）'}
+      onClick={() => onWatch && onWatch(key)}>
+      <span className={'rd-ch-avatar ' + cls}><Icon n={ico} /></span>
+      <span className="rd-ch-name">{name}</span>
+      {n > 0 ? <span className="rd-ch-n">{n}</span> : null}
+    </button>
+  );
+
   return (
     <>
       <div className="rd-ch-search" role="search">
@@ -82,6 +97,7 @@ export function ChannelList({
           {scopeBtn('all', 'circle', '全部文章', flags ? flags.total : 0, 'rd-ch-avatar-all')}
           {scopeBtn('unread', 'dot', '未读', flags ? flags.unread : 0, 'rd-ch-avatar-unread')}
           {scopeBtn('favorite', 'star', '收藏', flags ? flags.favorite : 0, 'rd-ch-avatar-fav')}
+          {watchBtn('watch', 'eye', '关注', flags ? flags.watching : 0, 'rd-ch-avatar-watch')}
         </>
       ) : (
         <button className={'rd-ch' + (atAll ? ' active' : '')} type="button" data-feed=""
@@ -166,6 +182,16 @@ export function ChannelList({
 
       {groupsView.length === 0 && ql ? (
         <div className="rd-ch-empty">没有匹配的频道</div>
+      ) : null}
+
+      {/* 屏蔽（v21）：置底收纳 —— 隔一条分隔线放在频道栏最末尾，
+          与「关注」分开是刻意的：屏蔽是被规则挡住的内容，不该和正常入口混排。
+          命中即已自动标为已读，这里只做「想看看挡了什么」的入口。 */}
+      {isReader ? (
+        <>
+          <div className="rd-ch-sep" aria-hidden="true" />
+          {watchBtn('block', 'block', '屏蔽', flags ? flags.blocked : 0, 'rd-ch-avatar-block')}
+        </>
       ) : null}
 
       <button type="button" className="rd-ch-add" data-action="open-source" onClick={() => onAdd && onAdd()}>

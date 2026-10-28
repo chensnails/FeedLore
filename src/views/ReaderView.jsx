@@ -374,6 +374,8 @@ export function ReaderView() {
   const cur = st.rdFeedId == null ? null : feeds.find((f) => String(f.id) === String(st.rdFeedId));
   let title = '全部文章';
   if (cur) title = (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(cur) : cur.title) : cur.title);
+  else if (st.rdWatch === 'watch') title = '关注';
+  else if (st.rdWatch === 'block') title = '屏蔽';
   else if (st.rdGroup != null) title = `分组 · ${st.rdGroup || '未分组'}`;
   else if (st.rdScope === 'unread') title = '未读';
   else if (st.rdScope === 'favorite') title = '收藏';
@@ -400,9 +402,11 @@ export function ReaderView() {
   if (!entries.length) {
     if (st.rdReadError) emptyMsg = st.rdReadErrorMsg || '加载失败';
     else emptyMsg = q ? `没有找到匹配「${q}」的文章`
-      : (st.rdScope === 'unread' ? '没有未读文章了'
-        : st.rdScope === 'favorite' ? '还没有收藏，点文章右侧的星标收藏'
-          : (feeds.length ? '这个频道还没有内容' : '还没有订阅源，去「设置 → 数据源」添加 RSS 地址'));
+      : (st.rdWatch === 'watch' ? '还没有命中的文章；在「设置 → 规则」里配置关键字，保存后点「应用到已有文章」'
+        : st.rdWatch === 'block' ? '没有被屏蔽的文章'
+          : st.rdScope === 'unread' ? '没有未读文章了'
+            : st.rdScope === 'favorite' ? '还没有收藏，点文章右侧的星标收藏'
+              : (feeds.length ? '这个频道还没有内容' : '还没有订阅源，去「设置 → 数据源」添加 RSS 地址'));
   }
 
   const onSearchInput = (ev) => {
@@ -463,8 +467,10 @@ export function ReaderView() {
         <nav className="reader-channels" id="readerChannels">
           <ChannelList variant="reader" groups={grouped} collapsed={collapsed} hasGroups={hasGroups}
             flags={flags} activeScope={st.rdScope} activeFeedId={st.rdFeedId} activeGroup={st.rdGroup}
+            activeWatch={st.rdWatch}
             onScope={(k) => s.readerSetScope(k)} onFeed={(id) => s.readerSetFeed(id)}
             onGroup={(g) => s.readerSetGroup(g)} onFold={(g) => s.readerToggleGroupCollapse(g)}
+            onWatch={(k) => s.readerSetWatch(k)}
             onAdd={() => s.readerOpenSource()} />
         </nav>
       </aside>

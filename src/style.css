@@ -1172,7 +1172,7 @@ textarea:disabled {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .meta-size {
-  color: var(--text-2);
+  color: var(--text-muted);
   background: var(--accent-soft);
   border-radius: var(--radius-pill);
   padding:2px var(--sp-2);
@@ -1749,7 +1749,7 @@ textarea:user-invalid {
   padding:1px var(--sp-1);
   border-radius: var(--radius-xs);
   background: var(--chip-solid);
-  color: var(--text-2);
+  color: var(--text-muted);
   word-break: break-all;
 }
 /* 保存结果放在分组外面，收起分组也看得到 */
@@ -1868,7 +1868,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   width: 44px; height: 26px; flex: 0 0 auto;
   padding:2px var(--sp-1); margin:0 2px 0 0;
   font-size: var(--fs-xs); text-align: center; font-variant-numeric: tabular-nums;
-  font-family: inherit; color: var(--text-2);
+  font-family: inherit; color: var(--text-muted);
   background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
   outline: none; transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
 }
@@ -1901,7 +1901,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 }
 .feed-group-head:hover .feed-group-rename,
 .feed-group-rename:focus-visible { opacity: 1; }
-.feed-group-rename:hover { border-color: var(--border); background: var(--hover); color: var(--text-2); }
+.feed-group-rename:hover { border-color: var(--border); background: var(--hover); color: var(--text-muted); }
 @media (hover: none) { .feed-group-rename { opacity: .65; } }
 .feed-group-edit {
   flex: 1 1 auto; min-width: 0;
@@ -1909,7 +1909,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   padding:2px var(--sp-2);
   border: 1px solid var(--accent-text);
   border-radius: var(--radius-sm);
-  font-size: var(--fs-md); font-weight: 600; font-family: inherit; color: var(--text-2);
+  font-size: var(--fs-md); font-weight: 600; font-family: inherit; color: var(--text-muted);
   background: var(--panel);
   outline: none; cursor: text;
   box-shadow: 0 0 0 3px var(--focus-ring);
@@ -1926,7 +1926,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   padding:var(--sp-1) var(--sp-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  font-size: var(--fs-xs); font-family: inherit; color: var(--text-2);
+  font-size: var(--fs-xs); font-family: inherit; color: var(--text-muted);
   background: var(--panel-2);
   outline: none;
   transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
@@ -2314,7 +2314,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   padding:var(--sp-2) var(--sp-2);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  color: var(--text-2);
+  color: var(--text-muted);
   transition: background var(--dur-base), color var(--dur-base);
 }
 .rd-ch:hover { background: var(--hover); color: var(--text); }
@@ -2360,6 +2360,19 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   display: flex; align-items: center; justify-content: center;
   font-size: var(--fs-md);
   color: var(--star); background: var(--star-soft);
+  border-color: transparent;
+}
+/* 关注 / 屏蔽虚拟视图（v1.6.0-test5）：与上面三个固定入口同一套排版，只换语义色。 */
+.rd-ch-avatar-watch {
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-md);
+  color: var(--accent-text); background: var(--accent-soft);
+  border-color: transparent;
+}
+.rd-ch-avatar-block {
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-md);
+  color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent);
   border-color: transparent;
 }
 /* 固定入口与下面的频道列表之间隔一道细线 */
@@ -2489,7 +2502,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   margin-top:var(--sp-2);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  color: var(--text-2);
+  color: var(--text-muted);
   font-size: var(--fs-md);
   transition: background var(--dur-base), color var(--dur-base), border-color var(--dur-base);
 }
@@ -2638,7 +2651,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
 /* 「添加到手机」的说明文案（原来是独立卡片，现在住在「账号 → 添加到手机」分组里） */
 .install-card-tip { margin:var(--sp-2) 0 var(--sp-3); font-size: var(--fs-sm); line-height: 1.7; color: var(--text-muted); }
-.install-card-tip code { font-size: var(--fs-sm); padding:1px var(--sp-1); border-radius: var(--radius-xs); background: var(--chip-solid); color: var(--text-2); }
+.install-card-tip code { font-size: var(--fs-sm); padding:1px var(--sp-1); border-radius: var(--radius-xs); background: var(--chip-solid); color: var(--text-muted); }
 
 /* 用户管理（账号 → 用户管理，仅管理员）：一行一个用户 + 底部新建表单 */
 .user-list { display: flex; flex-direction: column; gap:var(--sp-2); margin-bottom:var(--sp-3); }
@@ -2778,7 +2791,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 /* 已读 / 未读：未读标题更重，已读降一档。
    展开态不再给标题上主色，所以这里不需要再排除 .open。 */
 .art-item.is-unread .art-title { font-weight: 650; }
-.art-item.is-read .art-title { font-weight: 450; color: var(--text-2); }
+.art-item.is-read .art-title { font-weight: 450; color: var(--text-muted); }
 .art-item.is-read .art-meta { opacity: .72; }
 
 .art-meta {
@@ -2787,7 +2800,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   font-size: var(--fs-2xs);
 }
 .art-meta .src-pill { max-width: 180px; }
-.art-size { color: var(--text-2); background: var(--accent-soft); border-radius: var(--radius-pill); padding:2px var(--sp-2); font-weight: 600; }
+.art-size { color: var(--text-muted); background: var(--accent-soft); border-radius: var(--radius-pill); padding:2px var(--sp-2); font-weight: 600; }
 .art-date { color: var(--text-faint); font-variant-numeric: tabular-nums; }
 
 /* ---------- 展开体 ---------- */
@@ -3465,7 +3478,7 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
   padding:var(--sp-1) var(--sp-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  font-size: var(--fs-xs); font-family: inherit; color: var(--text-2);
+  font-size: var(--fs-xs); font-family: inherit; color: var(--text-muted);
   background: var(--panel-2);
   outline: none;
   cursor: pointer;
@@ -3548,7 +3561,9 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 .link-menu-url { font-size: var(--fs-xs); color: var(--text-muted); word-break: break-all; }
 
 /* 文章页自动加载的触发哨兵：不可见，仅供 IntersectionObserver 观察 */
-.reader-sentinel { height: 1px; }
+/* 滚动哨兵：隐形 1px 锚点，自动加载靠它的 getBoundingClientRect 判定「到底没」。
+   文章页(.reader-sentinel)与卡片页(.cards-sentinel，v1.6.0-test5 替代「加载更多」按钮)同一套。 */
+.reader-sentinel, .cards-sentinel { height: 1px; }
 
 /* 图片加载占位：到位前显示骨架流光，加载完成后由 .img-ready 关闭动画，避免一直空转 */
 .card-media img,
@@ -3686,7 +3701,7 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 .cd-body { padding: var(--sp-8) 0 0; }
 .cd-desc {
   margin: var(--sp-3) var(--sp-6) 0;
-  font-size: var(--fs-md); line-height: 1.6; color: var(--text-2);
+  font-size: var(--fs-md); line-height: 1.6; color: var(--text-muted);
 }
 /* 无正文时正文区整个不渲染，这里只兜摘要 + 复制/打开 */
 .cd-none {
@@ -4456,3 +4471,38 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
   .rd-ch-filter { width: 30px; height: 30px; }
   .overflow-item { min-height: 44px; }
 }
+
+/* ---------------- 规则面板（v1.6.0-test5）：关注 / 屏蔽 + webhook ----------------
+   复用 .form / .form-row / .input-with-btn / .test-result，这里只补规则卡片自己的排版。
+   规则卡片是「名称 + 动作切换 + 关键字多行框 + 底部开关」的一小块，用 border 而不是
+   阴影分隔（#9 降阴影纪律），收起态 is-off 整块降不透明度表示停用。 */
+.watch-rule {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+.watch-rule.is-off { opacity: .55; }
+.watch-rule-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.watch-rule-name { flex: 1 1 140px; min-width: 0; }
+.watch-rule-act { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-pill); background: var(--surface-soft-2); }
+.watch-act-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border: 0; border-radius: var(--radius-pill);
+  background: transparent; color: var(--text-muted);
+  font-size: var(--fs-sm); cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.watch-act-btn .ico { width: .9rem; height: .9rem; }
+.watch-act-btn:hover { color: var(--text); }
+.watch-act-btn.active { background: var(--accent-soft); color: var(--accent-text); }
+.watch-act-btn.is-block.active { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.watch-rule-kw { width: 100%; resize: vertical; min-height: 3.4em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.watch-rule-foot { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.watch-check { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--text-muted); cursor: pointer; }
+.watch-check input { width: auto; margin: 0; }
+.watch-check.muted { color: var(--text-faint); }
+.watch-rule-del { margin-left: auto; color: var(--danger); }
+.watch-empty { padding: var(--sp-4) 0; text-align: center; color: var(--text-faint); font-size: var(--fs-sm); }
+.watch-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-2); }
