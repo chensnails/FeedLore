@@ -12,6 +12,9 @@
 import { core } from '@core';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ChannelList } from './ChannelList.jsx';
+import { OverflowMenu } from '../ui/OverflowMenu.jsx';
+import { TagBar } from '../ui/TagBar.jsx';
+import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -323,6 +326,8 @@ export function ReaderView() {
   const [, bump] = useState(0);
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
+  // 合并后第一行（≡频道 / 标题 / 文章动作 / 搜索 / ⋮）即吸顶条，由其写入 --topbar-h
+  const headRef = useRef(null);
   // 窄屏（≤720px）搜索框默认收起，标题栏里只留一个放大镜按钮 —— 一整条搜索框占掉
   // 手机上最金贵的一行，而它大部分时间是空的。桌面不受影响（CSS 里按钮隐藏、搜索框常驻）。
   const [searchOpen, setSearchOpen] = useState(false);
@@ -345,6 +350,9 @@ export function ReaderView() {
     const el = searchRef.current;
     if (el) { el.focus(); if (typeof el.select === 'function') el.select(); }
   }, [searchOpen]);
+
+  // 合并头部：本视图第一行即吸顶条，实测高度写入 --topbar-h（隐藏视图测得 0 高不写，避免覆盖）
+  useTopbarHeight(headRef);
 
   const st = (s && s.state) || {};
   const feeds = st.feedList || [];
@@ -458,15 +466,14 @@ export function ReaderView() {
       <ReaderSideResize />
 
       <section className="reader-main">
-        <div className="reader-head page-head view-toolbar">
+        <div className="reader-head page-head view-toolbar" ref={headRef}>
           <button className="btn btn-ghost btn-sm reader-menu-btn vt-channel" id="readerMenuBtn" type="button" aria-label="打开频道列表"
             onClick={() => s.readerToggleDrawer && s.readerToggleDrawer()}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg><span className="reader-menu-label">频道</span>
           </button>
           <div className="reader-head-text"><h2 className="page-title vt-title" id="readerTitle">{title}</h2></div>
-          {/* 右簇：列表动作（单篇/多篇、全部已读、全部收起）→ 搜索。
-              搜索与卡片页一样收在这条栏的最右端，两页「搜索在哪里」只有一个答案。
-              窄屏时动作组由 .btn-label 收成图标，整条压成一行。 */}
+          {/* 右侧簇：文章动作（单篇/多篇、全部已读、全部收起）+ 搜索 + ⋮ 菜单。
+              桌面：动作 + 常驻搜索胶囊 + ⋮；窄屏：动作收成图标、搜索收进放大镜，整条压成一行。 */}
           <div className="reader-head-tools page-tools vt-tools">
             <button className="btn btn-ghost btn-sm vt-action" id="readerAccBtn" type="button" aria-pressed={accordionOn ? 'true' : 'false'}
               title={accordionOn
@@ -486,7 +493,17 @@ export function ReaderView() {
               <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevrons-up" /></svg>
               <span className="btn-label">全部收起</span>
             </button>
-            {/* 放大镜：窄屏唯一的搜索入口，跟在动作组后面，是工具簇里的最后一个按钮 */}
+            {/* 搜索：桌面常驻胶囊、窄屏收进放大镜，展开时独占第二行 */}
+            <div className={'reader-search page-search vt-search' + (searchOpen ? ' is-open' : '')}>
+              <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+              <input id="readerSearch" name="rq" type="search" ref={searchRef} defaultValue={q}
+                placeholder="搜索标题、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索文章"
+                onInput={onSearchInput} onKeyDown={onSearchKey} />
+              <button className="reader-search-clear" id="readerSearchClear" type="button" hidden={!q}
+                aria-label="清除搜索" onClick={onSearchClear}>
+                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+              </button>
+            </div>
             <button className={'btn btn-ghost btn-sm reader-search-toggle' + (searchOpen ? ' is-on' : '')}
               id="readerSearchToggle" type="button"
               aria-expanded={searchOpen ? 'true' : 'false'} aria-controls="readerSearch"
@@ -494,20 +511,13 @@ export function ReaderView() {
               onClick={toggleSearch}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href={searchOpen ? '#i-x' : '#i-search'} /></svg>
             </button>
-          </div>
-          {/* 搜索：桌面常驻在右簇末端；窄屏收进放大镜，展开时换行独占第二行。
-              它不再单独占一行 —— 一整条只在打字时才有用的搜索行，等于把列表整体压下去 50px。 */}
-          <div className={'reader-search page-search vt-search' + (searchOpen ? ' is-open' : '')}>
-            <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-            <input id="readerSearch" name="rq" type="search" ref={searchRef} defaultValue={q}
-              placeholder="搜索标题、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索文章"
-              onInput={onSearchInput} onKeyDown={onSearchKey} />
-            <button className="reader-search-clear" id="readerSearchClear" type="button" hidden={!q}
-              aria-label="清除搜索" onClick={onSearchClear}>
-              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
-            </button>
+            <OverflowMenu view="reader" />
           </div>
         </div>
+
+        {/* Row2：标签栏（与卡片页共用组件）。点击标签跳转卡片页对应标签（readerTagToCards）。
+            tagbar-reader 让标签栏与阅读列同宽（--reader-width 居中），与头部 / 列表对齐。 */}
+        <TagBar tags={st.tags} activeTag={st.tag} onTag={onTagArt} className="tagbar-reader" />
 
         <div className="reader-list" id="readerList">
           {entries.map((e) => (

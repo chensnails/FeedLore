@@ -2,6 +2,18 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.6.0-test1] — 2026-10-28（开发版，头部结构重构，未发布）
+
+> 头部结构重构：把「全局顶栏（品牌 + 三视图 + 刷新/主题/设置）」与「各视图工具栏（频道/标题/排序/视图/搜索）」合并为**单行第一行（Row1）**，标签独立成**第二行（Row2）**，第三行起为内容。经 Edge headless + CDP 实测：桌面 `--topbar-h=52px` / 移动 `44px`，Row1 满宽贴顶，Row2 紧贴其下（`y=--topbar-h`），无横向溢出，⋮ 菜单完整落在视口内。
+
+- **Row1 合并（三视图各自渲染）**：卡片页 `[≡频道][频道下拉▾][搜索][⋮]`、文章页 `[≡频道][标题][动作…][搜索][⋮]`、日报页 `[AI][⋮]`。
+  - 删除全局 `<header class="topbar" id="topbarRoot">` 与 `main.jsx` 的 TopBar 挂载；`--topbar-h` 改由各视图 Row1 经新增钩子 `src/shell/useTopbarHeight.js` 实测写入（隐藏视图测得 0 高不写、`Math.ceil` 取整防 1px 缝）。
+  - Row1 贴 `top:0`；Row2 `.tagbar` 吸顶于 `top:var(--topbar-h)`。
+- **⋮ 溢出菜单（新增 `src/ui/OverflowMenu.jsx`）**：承载三视图切换 / 刷新 / 夜间模式 / 设置；卡片页额外含**排序子菜单**（new/old/name，右侧 flyout）与**网格/列表视图切换**。键盘可达：`menuitemradio` 语义、↑↓ 漫游、→ 进子菜单、← / Esc 出子菜单、外点关闭。新增 `#i-more` sprite 图标。
+- **Row2 标签栏（新增 `src/ui/TagBar.jsx`，卡片页 + 文章页共用）**：抽离原卡片页内联标签逻辑（漫游焦点 `role=toolbar` + 「+N」折叠），文章页新增同款标签栏，与阅读列（`--reader-width`）同宽对齐；点击标签跳卡片页对应标签。
+- **CSS**：新增 `.head-right` 右簇、`.tagbar` 吸顶、`.overflow-*` 面板样式；`.ico` 基础组补入 `.overflow-check` / `.overflow-caret`（sprite 守门）。窄屏把右簇 `.head-right` 用 `order:5` 压到最右、搜索放大镜与 ⋮ 保持 `[🔍][⋮]` 顺序。
+- **守门断言**：`tests/ui/ui-regression.cjs` 更新原 `#sortDD` / `#viewMode` 相关断言（排序/视图已进 ⋮，交互改走菜单）、两页头部同构与吸顶 `top` 断言改为 `top:0` + `.tagbar` 取 `--topbar-h`；新增「各视图 Row1 合并」「⋮ 菜单承载项」两组断言（353 → 355 项，全绿）。服务端测试 97 项 + deploy 护栏 + Dockerfile 清单均通过，Vite 生产构建通过。
+
 ## [1.5.2-test1] — 2026-10-28（开发版，前端 UI 修复，未发布）
 
 > 来源：2026-10-28 全站 UI 审查报告（`docs/UI审查报告-2026-10-28.md`）。用户确认四项修复优先级，本版实施 P1 + 可访问性 + 跨页状态统一 + 玻璃模糊治理。

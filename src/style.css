@@ -669,7 +669,8 @@ textarea:disabled {
 .ico,
 .search-ico, .sec-arrow, .art-caret, .new-pill-ico,
 .rd-ch-search-ico, .rd-ch-add-ico, .cmdk-ico,
-.dd-caret, .dd-check, .dd-icon, .dg-pin, .feed-group-caret, .toast-ico {
+.dd-caret, .dd-check, .dd-icon, .dg-pin, .feed-group-caret, .toast-ico,
+.overflow-check, .overflow-caret {
   width: 1em; height: 1em;
   flex: 0 0 auto;
   display: inline-block;
@@ -864,13 +865,27 @@ textarea:disabled {
   box-shadow: var(--elevation-1);
 }
 
-/* ---------- 标签栏 ---------- */
-#tagBar {
+/* ---------- 标签栏（Row2：卡片页 + 文章页共用） ---------- */
+.tagbar {
   display: flex; flex-wrap: wrap; gap:var(--sp-2);
   /* 头部行 → 标签行：留 20px 起势。此前 16px，紧贴着那条没有分隔线的头部，
      两行几乎是黏在一起的两条横带 */
   padding-top:var(--sp-5); padding-bottom:2px;
   min-height: 0;
+  /* 吸顶在 Row1 之下：--topbar-h 由各视图 Row1 经 useTopbarHeight 实测写入 */
+  position: sticky;
+  top: var(--topbar-h, 0px);
+  z-index: 5;
+  background: var(--bg);
+}
+/* 文章页标签栏：与阅读列（.reader-head / .reader-list，--reader-width 居中）同宽，
+   否则 .wrap 的 1600 上限会让标签比文章头部 / 列表更宽、左右各突出一截。 */
+.tagbar.tagbar-reader {
+  max-width: var(--reader-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 0;
+  padding-right: 0;
 }
 /* 标签组：桌面 display:contents（标签仍是 #tagBar 的 flex item，排布与拆分前一致），
    只有手机档才变成真容器 —— 那里要限制行数（见 ≤720px 段）。 */
@@ -1998,12 +2013,13 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
  * 「日报设置」改到「设置 → 日报」，因为它现在是每个账号自己的配置，不再是站点级。
  * ============================================================ */
 .ai-head {
-  display: flex; align-items: flex-end; justify-content: space-between;
-  gap:var(--sp-4); flex-wrap: wrap;
-  padding:var(--sp-6) 0 var(--sp-4);
+  /* v1.6.0：与卡片/文章页同一套合并头部（.page-head 提供 flex/sticky/背景），
+     这里只补页面级留白与底部边线。 */
+  padding:var(--sp-3) 0;
+  border-bottom: 1px solid var(--border);
 }
 .ai-head h2 {
-  margin:0; font-size: var(--fs-2xl); font-weight: 650; letter-spacing: -.2px;
+  margin:0; font-size: var(--fs-xl); font-weight: 650; letter-spacing: -.2px;
 }
 
 .ai-pane { min-width: 0; }
@@ -2505,11 +2521,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   /* 分组徽标 + 「全部已读 / 全部收起」一起出现时给窄屏留条退路 */
   flex-wrap: wrap;
   /* 整条吸顶（v1.3.7-test4，桌面与移动同一套）：滚到列表中段也认得出「现在在看哪个频道」，
-     三个工具按钮不用再翻回列表顶部。top 取 --topbar-h —— 由 TopBar.jsx 实测顶栏高度写进
-     :root，刘海屏安全区、顶栏换行等变化都不用写死数值。背景必须不透明，否则文章会从底下透出来。 */
+     三个工具按钮不用再翻回列表顶部。v1.6.0 起全局顶栏并入本行 —— 它就是最顶层吸顶条，
+     贴 top:0，并把自身高度写进 --topbar-h 供下方 Row2 标签栏吸顶。背景必须不透明。 */
   position: sticky;
-  top: var(--topbar-h, 0px);
-  z-index: 5;
+  top: 0;
+  z-index: 6;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
@@ -3977,8 +3993,10 @@ button.tag-chip { font-family: inherit; }
 .cards-sticky {
   display: block;
   position: sticky;
-  top: var(--topbar-h, 0px);
-  z-index: 5;
+  /* v1.6.0：全局顶栏并入本视图后，这一行自己就是最顶层吸顶条 —— 贴 top:0，
+     并把自身高度写进 --topbar-h 供下方 #tagBar（Row2）吸顶消费。 */
+  top: 0;
+  z-index: 6;
   background: var(--bg);
 }
 .cards-sticky > .cards-head { position: static; }
@@ -4000,8 +4018,10 @@ button.tag-chip { font-family: inherit; }
   gap: var(--head-gap);
   min-height: var(--head-h);
   position: sticky;
-  top: var(--topbar-h, 0px);
-  z-index: 5;
+  /* v1.6.0：这一行即各视图的最顶层吸顶条（全局顶栏已并入），贴 top:0；
+     它把自身高度写进 --topbar-h，由 Row2 标签栏（top:var(--topbar-h)）接着吸顶。 */
+  top: 0;
+  z-index: 6;
   background: var(--bg);
   border-bottom: 0;
 }
@@ -4104,6 +4124,50 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
   gap: var(--head-gap);
   margin-left: auto;
 }
+/* v1.6.0：右簇末端（搜索 + ⋮ 菜单）。margin-left:auto 把整簇推到最右。
+   卡片页 / AI 页它是 .page-head 的直接子元素；文章页它嵌在 .reader-head-tools 里，
+   auto 同样把「搜索 + ⋮」推到动作组右侧。 */
+.head-right {
+  display: flex; align-items: center;
+  gap: var(--head-gap);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* ---------- 溢出菜单（⋮）：承载三视图 / 刷新 / 主题 / 设置 / 排序 / 视图切换 ---------- */
+.overflow-wrap { position: relative; display: inline-flex; align-items: center; }
+.overflow-btn { display: inline-flex; align-items: center; justify-content: center; }
+.overflow-menu {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 184px; padding: var(--sp-1);
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-hover);
+  z-index: 40;
+}
+.overflow-item {
+  display: flex; align-items: center; gap: var(--sp-2);
+  width: 100%; padding: var(--sp-2) var(--sp-3);
+  border: 0; background: none; color: var(--text);
+  font-family: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.overflow-item:hover,
+.overflow-item:focus-visible { background: var(--hover); outline: none; }
+.overflow-item.is-active { color: var(--accent-text); }
+.overflow-item > span { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.overflow-item .ico { width: var(--ico-ctl); height: var(--ico-ctl); font-size: var(--ico-ctl); opacity: .8; flex: 0 0 auto; }
+.overflow-item.is-active .ico { opacity: 1; }
+.overflow-check, .overflow-caret { margin-left: auto; opacity: .7; }
+.overflow-sep { height: 1px; margin: var(--sp-1) 0; background: var(--border); }
+/* 子菜单（排序）：绝对定位到父项右侧；窄屏空间不足时翻到左侧 */
+.overflow-submenu {
+  position: absolute; top: 0; right: calc(100% + 4px);
+  min-width: 128px; padding: var(--sp-1);
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-hover);
+  z-index: 41;
+}
+.overflow-submenu .overflow-item { padding: var(--sp-2) var(--sp-3); }
 /* 头部控件统一 32px 高、8px 圆角；下拉同高同圆角，一排看过去是同一族 */
 .page-head .btn,
 .page-head .dd-trigger {
@@ -4116,7 +4180,9 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
 /* 纯图标按钮统一成正方形：一排里宽度一致，视觉才齐。
    带文字的（桌面「多篇」「全部已读」）不参与 —— 钉死 32px 宽会把文字挤扁。 */
 .page-head .page-tools .btn:has(> .ico:only-child),
-.page-head .reader-head-tools .btn:has(> .ico:only-child) {
+.page-head .reader-head-tools .btn:has(> .ico:only-child),
+.page-head .head-right .btn:has(> .ico:only-child),
+.head-right .overflow-btn {
   width: var(--head-ctl); padding: 0; justify-content: center;
 }
 /* 带文字的头部按钮：图标与文字之间留 4px，别贴在一起 */
@@ -4255,8 +4321,8 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
     gap: var(--head-gap);
     padding: 4px var(--sp-4);
     position: sticky;
-    top: var(--topbar-h, 0px);
-    z-index: 5;
+    top: 0;
+    z-index: 6;
     background: var(--bg);
     /* 与桌面同理：不画分隔线（这里曾是"紧贴搜索结果下方的那条长横线"） */
     border-bottom: 0;
@@ -4268,6 +4334,9 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
      给了会把「频道」推到最右，跟标题、工具组错位。 */
   .cards-menu-btn { order: 1; }
   .cards-title { order: 2; }
+  /* v1.6.0：右簇（搜索 + ⋮）在窄屏是 .cards-head 的最后一个 flex item（.cards-head 打平成
+     contents 后成为 .cards-sticky 的 item），靠 order 压在最右，并 margin-left:auto 自行贴右 */
+  .head-right { order: 5; margin-left: auto; }
   /* 排序从下拉收成图标按钮（Dropdown 的 icon 模式，名字与提示带当前档位） */
   #sortDD { order: 3; flex: 0 0 auto; }
   #sortDD .dd-trigger.has-icon {
@@ -4280,7 +4349,8 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
   /* 频道下拉在 ≤1080px 已由抽屉取代（那边 display:none），没有排位可管 */
   /* 视图切换的尺寸已在基础规则里压到 32px，这里只管排位 */
   #viewMode { order: 4; flex: 0 0 auto; }
-  .cards-search-toggle { order: 5; }
+  /* v1.6.0：搜索放大镜与 ⋮ 都在 .head-right 内，保持 DOM 顺序（[🔍][⋮]），
+     不再给单独 order —— 否则放大镜会被甩到 ⋮ 右侧，溢出菜单不在最右。 */
 }
 
 /* 更窄一档（≤480）：.wrap 的左右内距在「手机」段收到 12px，吸顶外壳必须跟着收 ——

@@ -18,17 +18,10 @@ import { SettingsModal } from './settings/SettingsModal.jsx';
 import { AiView } from './ai/AiView.jsx';
 import { CardsView } from './views/CardsView.jsx';
 import { ReaderView } from './views/ReaderView.jsx';
-import { TopBar } from './shell/TopBar.jsx';
 import { Overlays } from './ui/Overlays.jsx';
 
-const topbarRoot = document.getElementById('topbarRoot');
-if (topbarRoot) {
-  createRoot(topbarRoot).render(
-    <React.StrictMode>
-      <TopBar />
-    </React.StrictMode>
-  );
-}
+/* v1.6.0：全局顶栏（TopBar）并入各视图自带的第一行（≡频道 / 标题 / 搜索 / ⋮），
+   不再单独挂载 #topbarRoot —— 三视图各自渲染合并后的 Row1 并写入 --topbar-h。 */
 
 const el = document.getElementById('cmdkRoot');
 if (el) {

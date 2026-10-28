@@ -20,6 +20,9 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { CardDetail } from './CardDetail.jsx';
 import { ChannelList } from './ChannelList.jsx';
 import { Dropdown } from './Dropdown.jsx';
+import { OverflowMenu } from '../ui/OverflowMenu.jsx';
+import { TagBar } from '../ui/TagBar.jsx';
+import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 const SKELETON_N = 8;
@@ -255,10 +258,8 @@ export function CardsView() {
   const [detailId, setDetailId] = useState(null);
   // 窄屏搜索框默认收起（标题栏只留放大镜），桌面不受影响 —— 与文章页同一套行为
   const [searchOpen, setSearchOpen] = useState(false);
-  // 标签栏：roving tabindex（整组一个 Tab 停靠点）+ 手机端折叠
-  const [chipIdx, setChipIdx] = useState(0);
-  const [tagsExpanded, setTagsExpanded] = useState(false);
-  const chipRefs = useRef([]);
+  // 合并后第一行（≡频道 / 频道下拉 / 搜索 / ⋮）即为实际吸顶条，由其写入 --topbar-h
+  const headRef = useRef(null);
 
   // 卡片 UI 重绘信号（app.js 在状态变化时派发）
   useEffect(() => {
@@ -297,6 +298,9 @@ export function CardsView() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, [st.hasMore, st.loading]);
+
+  // 合并头部：本视图第一行即吸顶条，实测高度写入 --topbar-h（隐藏视图测得 0 高不写，避免覆盖）
+  useTopbarHeight(headRef);
 
   const feeds = st.feedList || [];
   const list = (s && s.filterEntries) ? s.filterEntries() : (st.entries || []);
@@ -395,22 +399,6 @@ export function CardsView() {
   };
 
   const tags = st.tags || [];
-  const chipList = tags.slice(0, 16);          // 「全部」另算，最多再列 16 个
-  /* 漫游焦点：整组只留一个 tabIndex=0，方向键在组内移动。
-     只处理方向键 / Home / End —— Enter 与空格交给真按钮，不需要再手写一遍。 */
-  const onChipKey = (ev) => {
-    const n = chipList.length + 1;
-    let next = null;
-    if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') next = (chipIdx + 1) % n;
-    else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') next = (chipIdx - 1 + n) % n;
-    else if (ev.key === 'Home') next = 0;
-    else if (ev.key === 'End') next = n - 1;
-    if (next == null) return;
-    ev.preventDefault();
-    setChipIdx(next);
-    const el = chipRefs.current[next];
-    if (el) el.focus();
-  };
 
   const feedLabel = (f) => {
     const title = s.feedTitle ? s.feedTitle(f) : f.title;
@@ -422,12 +410,6 @@ export function CardsView() {
   for (const g of groups) {
     for (const f of g.feeds) feedOpts.push({ value: String(f.id), label: feedLabel(f), group: g.name || '' });
   }
-  const sortOpts = [
-    { value: 'new', label: '最新发布' },
-    { value: 'old', label: '最早上架' },
-    { value: 'name', label: '名称排序' },
-  ];
-  const sortLabel = (sortOpts.find((o) => o.value === String(st.sort || 'new')) || sortOpts[0]).label;
 
   return (
     <>
@@ -449,11 +431,12 @@ export function CardsView() {
         </nav>
       </aside>
 
-      {/* 标题行（与文章页共用一套头部规范）：[频道][标题][搜索] …… [筛选][排序][视图][放大镜]。
-          搜索就在这一行里吃掉剩余宽度，不再单独占一行（那是整整 50px 只在打字时才有用的空白）。
-          窄屏整条吸顶成一行（CSS 里 .cards-head / .page-tools 退化为 display:contents，
-          靠 order 排位），搜索收进右侧放大镜。 */}
-      <div className="cards-sticky">
+      {/* 合并后的第一行（顶级导航 + 搜索）：[≡频道][频道下拉▾] …… [🔍搜索][⋮]。
+          频道下拉本身即标题（显示当前频道+条数），窄屏退场、抽屉接管。
+          排序 / 视图切换已移入右侧 ⋮ 菜单（OverflowMenu）。搜索在桌面与窄屏统一收成放大镜，
+          点击展开为下拉（绝对定位，不撑高吸顶条）。该行经 useTopbarHeight 写入 --topbar-h，
+          下方 #tagBar（Row2）消费此变量实现吸顶。 */}
+      <div className="cards-sticky" ref={headRef}>
         <div className="wrap cards-head page-head view-toolbar">
           <button className="btn btn-ghost btn-sm cards-menu-btn vt-channel" id="cardsMenuBtn" type="button"
             aria-label="打开频道列表" aria-controls="cardsSide"
@@ -461,30 +444,27 @@ export function CardsView() {
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg>
             <span className="cards-menu-label">频道</span>
           </button>
+          {/* 桌面 ≥1081px 下拉即标题（见 CSS），标题文字藏起；≤1080px 下拉退场、抽屉接管，文字标题回来。 */}
           <h2 className="cards-title page-title vt-title" title={headTitle}>{headTitle}</h2>
-          {/* 桌面（≥1081px）这里没有文字标题：同一句话标题与下拉各写一遍，等于同一信息出现两次，
-              而其中只有下拉可点。改成「下拉即标题」—— 它本身就显示当前频道（含条数），
-              既是标题也是筛选入口。窄屏（≤1080px）下拉退场、抽屉接管，文字标题回来。 */}
+          {/* 中部：频道下拉选择器（同时承担标题职责，显示当前频道+条数）。窄屏退场。 */}
           <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选"
             ariaLabel={'频道筛选，当前：' + headTitle} value={feedValue}
             options={feedOpts} onChange={(v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }}
             collapsible collapsedGroups={collapsedGroups} onToggleGroup={toggleGroupFold} />
-          {/* 右簇：排序 → 视图切换 → 搜索。搜索是这一簇的末端，也是整条工具栏的右边缘 ——
-              两页、两档断点都只有这一个答案（窄屏收进放大镜，展开时独占第二行）。 */}
-          <div className="page-tools vt-tools">
-            {/* 排序：桌面是带文字的下拉（当档位一目了然），窄屏收成图标按钮。
-                提示与无障碍名都带上当前值，否则屏幕阅读器只听到「排序」不知道排的是哪档 */}
-            <Dropdown wrapId="sortDD" id="sortSelect" icon="i-sort"
-              title={'排序：' + sortLabel} ariaLabel={'排序：' + sortLabel} value={st.sort || 'new'}
-              options={sortOpts} onChange={(v) => { if (s.cardsSort) s.cardsSort(v); }} />
-            <div className="viewmode vt-view" id="viewMode" role="group" aria-label="视图模式">
-              <button className={'viewmode-btn' + (view === 'grid' ? ' active' : '')} type="button" data-mode="grid"
-                title="卡片视图" aria-label="卡片视图" onClick={() => { if (s.cardsView) s.cardsView('grid'); }}>
-                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-grid" /></svg>
-              </button>
-              <button className={'viewmode-btn' + (view === 'list' ? ' active' : '')} type="button" data-mode="list"
-                title="列表视图" aria-label="列表视图" onClick={() => { if (s.cardsView) s.cardsView('list'); }}>
-                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-list" /></svg>
+          {/* 右簇：搜索（桌面常驻胶囊 / 窄屏收进放大镜）+ ⋮ 菜单（排序 / 视图 / 三视图 / 主题 / 设置）。 */}
+          <div className="head-right vt-tools">
+            <div className={'search-box page-search vt-search' + (searchOpen ? ' is-open' : '')}>
+              <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+              <input id="searchInput" name="q" type="search" ref={searchRef}
+                placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索"
+                value={qDraft} onChange={onSearchInput}
+                onKeyDown={(ev) => {
+                  if (ev.key === 'Escape') { ev.stopPropagation(); toggleSearch(); return; }
+                  onSearchKey(ev);
+                }} />
+              <button className="search-clear" id="searchClear" type="button" hidden={!qDraft}
+                aria-label="清除搜索" onClick={onSearchClear}>
+                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
               </button>
             </div>
             <button className={'btn btn-ghost btn-sm cards-search-toggle' + (searchOpen ? ' is-on' : '')}
@@ -494,59 +474,12 @@ export function CardsView() {
               onClick={toggleSearch}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href={searchOpen ? '#i-x' : '#i-search'} /></svg>
             </button>
-          </div>
-          {/* 搜索：桌面常驻在右簇末端，与文章页同一个位置、同一套胶囊（窄屏收在放大镜后面） */}
-          <div className={'search-box page-search vt-search' + (searchOpen ? ' is-open' : '')}>
-            <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-            <input id="searchInput" name="q" type="search" ref={searchRef}
-              placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索"
-              value={qDraft} onChange={onSearchInput}
-              onKeyDown={(ev) => {
-                if (ev.key === 'Escape') { ev.stopPropagation(); toggleSearch(); return; }
-                onSearchKey(ev);
-              }} />
-            <button className="search-clear" id="searchClear" type="button" hidden={!qDraft}
-              aria-label="清除搜索" onClick={onSearchClear}>
-              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
-            </button>
+            <OverflowMenu view="cards" cardControls sortValue={st.sort} viewMode={view} />
           </div>
         </div>
       </div>
 
-      <div className="wrap" id="tagBar">
-        {tags.length ? (
-          <>
-            {/* 标签原本是 16 个 span[role=button]，每个都 tabIndex=0 —— 键盘用户要按 16 次 Tab
-                才到正文。改成真按钮 + 漫游焦点（roving tabindex）：整组只占 1 个 Tab 停靠点，
-                组内用 ← → / Home / End 移动，与标签栏这类「一组同质选项」的惯例一致。 */}
-            <div className={'tag-list' + (tagsExpanded ? ' is-open' : '')} role="toolbar" aria-label="标签筛选"
-              onKeyDown={onChipKey}>
-              <button type="button" className={'tag-chip' + (st.tag ? '' : ' active')} data-tag=""
-                ref={(el) => { chipRefs.current[0] = el; }}
-                tabIndex={chipIdx === 0 ? 0 : -1} aria-pressed={st.tag ? 'false' : 'true'}
-                onClick={() => { setChipIdx(0); onTag(null); }}>全部</button>
-              {chipList.map(({ tag, n }, i) => (
-                <button type="button" className={'tag-chip' + (st.tag === tag ? ' active' : '')} data-tag={tag} key={tag}
-                  ref={(el) => { chipRefs.current[i + 1] = el; }}
-                  tabIndex={chipIdx === i + 1 ? 0 : -1}
-                  aria-pressed={st.tag === tag ? 'true' : 'false'}
-                  onClick={() => { setChipIdx(i + 1); onTag(tag); }}>
-                  {tag}<span className="cnt">{n}</span>
-                </button>
-              ))}
-            </div>
-            {/* 手机上标签能铺满三四行，把首屏内容挤到下面。折叠成一排，其余收进这枚「+N」 */}
-            {chipList.length > 3 ? (
-              <button type="button" className={'tag-more' + (tagsExpanded ? ' is-open' : '')}
-                aria-expanded={tagsExpanded ? 'true' : 'false'} aria-controls="tagBar"
-                title={tagsExpanded ? '收起标签' : '展开全部标签'}
-                onClick={() => setTagsExpanded((v) => !v)}>
-                {tagsExpanded ? '收起' : `+${chipList.length - 2}`}
-              </button>
-            ) : null}
-          </>
-        ) : null}
-      </div>
+      <TagBar tags={tags} activeTag={st.tag} onTag={onTag} />
 
       <main className="wrap">
         {showSkeleton ? (

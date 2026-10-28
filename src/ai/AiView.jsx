@@ -11,7 +11,9 @@
  */
 
 import { core } from '@core';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { OverflowMenu } from '../ui/OverflowMenu.jsx';
+import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -137,6 +139,8 @@ function DigestView({ digest }) {
 export function AiView() {
   const s = S();
   const [active, setActive] = useState(() => !!(s && s.state && s.state.tab === 'ai'));
+  // 合并后第一行（标题 + ⋮）即吸顶条，由其写入 --topbar-h
+  const headRef = useRef(null);
 
   // 日报
   const [dates, setDates] = useState([]);
@@ -153,6 +157,9 @@ export function AiView() {
     window.addEventListener('__viewChanged', onView);
     return () => window.removeEventListener('__viewChanged', onView);
   }, []);
+
+  // 合并头部：本视图第一行即吸顶条，实测高度写入 --topbar-h（隐藏视图测得 0 高不写，避免覆盖）
+  useTopbarHeight(headRef);
 
   useEffect(() => {
     if (active) loadDigest();
@@ -269,9 +276,12 @@ export function AiView() {
   return (
     <>
       {/* 二级导航随「日报设置」一起撤了：只剩一项的导航不传达信息。
-          .ai-head 留着——它提供页面顶部留白，h2 也和卡片/设置页的标题同构。 */}
-      <div className="ai-head">
-        <h2>AI</h2>
+          合并头部：标题 + 右侧 ⋮（视图切换 / 刷新 / 主题 / 设置）。AI 页无频道抽屉与搜索。 */}
+      <div className="ai-head page-head view-toolbar" ref={headRef}>
+        <div className="ai-head-text"><h2 className="page-title vt-title">AI</h2></div>
+        <div className="head-right vt-tools">
+          <OverflowMenu view="ai" />
+        </div>
       </div>
       <section className="ai-pane" data-ai-pane="digest">
         <div className="digest-head">

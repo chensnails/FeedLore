@@ -870,9 +870,11 @@ const withEFP = (el, fn) => {
   // 设置按钮失效（直到 v1.8.2 才发现）。这里把四个挂载点钉死。
   const indexHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
   t('index.html：React 挂载点齐全', () => {
-    for (const id of ['settingsRoot', 'cmdkRoot', 'aiRoot', 'cardsRoot', 'readerRoot', 'topbarRoot', 'overlaysRoot']) {
+    // v1.6.0：全局顶栏并入各视图后不再有独立的 <header class="topbar"> 顶栏元素
+    for (const id of ['settingsRoot', 'cmdkRoot', 'aiRoot', 'cardsRoot', 'readerRoot', 'overlaysRoot']) {
       if (indexHtml.indexOf('id="' + id + '"') < 0) throw new Error('缺 #' + id);
     }
+    if (indexHtml.indexOf('<header class="topbar"') >= 0) throw new Error('顶栏已并入各视图，不应再有独立 <header class="topbar">');
   });
   t('index.html：仅剩 Vite 模块入口（/app.js 已退役）', () => {
     const appRefs = (indexHtml.match(/src="\/app\.js"/g) || []).length;
@@ -1001,8 +1003,12 @@ const withEFP = (el, fn) => {
     // 排序 / 视图切换 / 搜索都在标题行里，卡片页不再单独留一行工具栏
     const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
     const head = cards.slice(cards.indexOf('wrap cards-head'), cards.indexOf('id="tagBar"'));
-    if (head.indexOf('sortDD') < 0 || head.indexOf('viewMode') < 0) {
-      throw new Error('排序与视图切换应放在标题行（与文章页的图标工具组同构）');
+    // v1.6.0：排序 / 视图切换移入右侧 ⋮ 菜单（OverflowMenu），不再是工具栏上的并排控件
+    if (head.indexOf('OverflowMenu') < 0 || head.indexOf('head-right') < 0) {
+      throw new Error('右簇应含 ⋮ 溢出菜单（排序 / 视图切换 / 三视图 / 主题 / 设置）');
+    }
+    if (head.indexOf('cardControls') < 0 || head.indexOf('sortValue') < 0) {
+      throw new Error('卡片页 ⋮ 菜单应传入排序与视图切换（cardControls / sortValue）');
     }
     if (head.indexOf('search-box page-search') < 0) {
       throw new Error('搜索框应住在标题行里，不该再单独占一行');
@@ -1020,10 +1026,10 @@ const withEFP = (el, fn) => {
     if (reader.slice(reader.indexOf('className="reader-list"')).indexOf('reader-search page-search') >= 0) {
       throw new Error('文章页不应再有独立的搜索行');
     }
-    const tools = reader.slice(reader.indexOf('reader-head-tools'), reader.indexOf('reader-search page-search'));
-    if (tools.indexOf('readerSearchToggle') < tools.lastIndexOf('<button')) {
-      throw new Error('放大镜应在工具行最右端（卡片页的搜索也在同一位置）');
-    }
+    // v1.6.0：文章页右簇（动作 + 搜索 + ⋮）统一收进 .reader-head-tools
+    const tools = reader.slice(reader.indexOf('reader-head-tools'), reader.indexOf('<TagBar'));
+    if (tools.indexOf('readerSearchToggle') < 0) throw new Error('文章页右簇缺搜索放大镜');
+    if (tools.indexOf('OverflowMenu') < 0) throw new Error('文章页右簇缺 ⋮ 菜单');
     // 右簇整体靠右：auto 外边距挂在工具组上。挂在搜索框上会让右簇裂成两段 ——
     // 搜索现在是右簇的末端，空白必须出现在它前面（标题之后），而不是工具组与搜索之间。
     if (!/\.reader-head-tools\s*\{[^}]*margin-left:\s*auto/.test(css)) {
@@ -1144,8 +1150,12 @@ const withEFP = (el, fn) => {
     if (!/getBoundingClientRect\(\)\.height/.test(topbar) || !/Math\.ceil/.test(topbar)) {
       throw new Error('--topbar-h 应取整（含小数像素时吸顶会露 1px 缝）');
     }
+    // v1.6.0：全局顶栏并入各视图后，头部自己就是最顶层吸顶条 —— 贴 top:0，
+    // 并把自身高度写进 --topbar-h，供 Row2 标签栏（.tagbar）接着吸顶。
     const head = css.match(/\.page-head,\s*\.reader-head,\s*\.cards-head \{([^}]*)\}/);
-    if (!head || !/top:\s*var\(--topbar-h/.test(head[1])) throw new Error('头部吸顶的 top 应取 --topbar-h');
+    if (!head || !/top:\s*0/.test(head[1])) throw new Error('合并后头部应自己贴顶（top:0）');
+    const tag = css.match(/\.tagbar\s*\{([^}]*)\}/);
+    if (!tag || !/top:\s*var\(--topbar-h/.test(tag[1])) throw new Error('标签栏（Row2）吸顶应取 --topbar-h');
   });
 
   // 窄屏视图切换（v1.3.10）：文字收掉后不能再让两个按钮平分整条宽度 ——
@@ -2673,7 +2683,8 @@ const withEFP = (el, fn) => {
     if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('频道触发器文案: ' + C('#feedSelect .dd-label').textContent);
     if (cardIds().join(',') !== 'e1,e2') throw new Error('卡片 ' + cardIds().join(','));
     if (CA('#tagBar .tag-chip').length !== 3) throw new Error('标签数 ' + CA('#tagBar .tag-chip').length);
-    if (!C('#viewMode .viewmode-btn.active[data-mode="grid"]')) throw new Error('grid 未高亮');
+    // v1.6.0：视图切换（网格/列表）已移入右侧 ⋮ 菜单，工具栏只保留 ⋮ 入口
+    if (!C('.overflow-btn')) throw new Error('缺 ⋮ 菜单入口');
   });
 
   // 频道下拉（v1.1.9 自定义弹层替代原生 select 的系统弹窗）
@@ -2848,35 +2859,8 @@ const withEFP = (el, fn) => {
   t('频道下拉（移动端）：点关闭收起弹窗', () => {
     if (C('#feedDD .dd-mask')) throw new Error('弹窗未收起');
   });
-  // 排序（三四项）从 v1.3.6 起与频道筛选走同一形态：移动端一律整屏，不再留半屏变体
-  t('排序：窄屏收成图标按钮，名字与提示带当前档位', () => {
-    const btn = C('#sortSelect');
-    if (!btn.classList.contains('has-icon')) throw new Error('排序应走 Dropdown 的 icon 模式');
-    const ico = btn.querySelector('.dd-icon use');
-    if (!ico || ico.getAttribute('href') !== '#i-sort') throw new Error('缺排序图标');
-    // 图标按钮没有可见文字，无障碍名必须自带档位，否则屏幕阅读器只听到「排序」
-    if ((btn.getAttribute('aria-label') || '').indexOf('排序：') !== 0) throw new Error('aria-label 未带档位：' + btn.getAttribute('aria-label'));
-    if ((btn.getAttribute('title') || '').indexOf('排序：') !== 0) throw new Error('title 未带档位');
-    // 文字标签仍在 DOM 里（宽屏要用），只是窄屏被 CSS 隐藏
-    if (!btn.querySelector('.dd-label')) throw new Error('宽屏仍需要文字标签');
-  });
-  C('#sortSelect').click();
-  await sleep(20);
-  t('排序下拉（移动端）：与频道筛选同一形态（整屏 + 手势条），弹层不再有第二种变体', () => {
-    const sheet = C('#sortDD .dd-sheet');
-    if (!sheet) throw new Error('未弹出');
-    if (sheet.className !== 'dd-sheet') throw new Error('不该再有形态变体类：' + sheet.className);
-    if (!C('#sortDD .dd-sheet-grip')) throw new Error('应有手势条');
-    if (CA('#sortDD .dd-sheet .dd-item').length !== 3) throw new Error('选项数');
-  });
-  t('下拉手势：排序往下拖同样能收起', () => {
-    swipe(C('#sortDD .dd-sheet'), 200, [260, 320]);
-  });
-  await sleep(240);
-  t('下拉手势：排序松手后关闭（排序未变）', () => {
-    if (C('#sortDD .dd-mask')) throw new Error('未收起');
-    if (C('#sortSelect .dd-label').textContent.indexOf('最新发布') < 0) throw new Error('关闭不该改排序');
-  });
+  // v1.6.0：排序与视图切换已移入右侧 ⋮ 菜单（OverflowMenu），不再走独立下拉 ——
+  // 这里删掉原「排序下拉（移动端）」整段；排序/视图切换改由下方 OverflowMenu 断言覆盖。
   // 移动端：整屏弹窗里组头同样是折叠开关，且收起态与文章页侧栏一致（偏好共用一份）
   w.feedlore.readerToggleGroupCollapse('科技');
   await sleep(20);
@@ -3107,15 +3091,23 @@ const withEFP = (el, fn) => {
   CA('#tagBar .tag-chip').find((c) => c.getAttribute('data-tag') === '').click();
   await sleep(40);
 
-  // 视图切换
-  C('#viewMode .viewmode-btn[data-mode="list"]').click();
+  // 视图切换（v1.6.0：从右侧 ⋮ 菜单切换，网格/列表不再是工具栏上的并排按钮）
+  C('.overflow-btn').click();
+  await sleep(30);
+  t('⋯ 菜单：含视图切换项（网格态下显示「列表视图」）', () => {
+    const items = CA('.overflow-menu .overflow-item');
+    if (!items.some((b) => b.textContent.indexOf('列表视图') >= 0)) throw new Error('⋮ 菜单缺「列表视图」项');
+  });
+  CA('.overflow-menu .overflow-item').find((b) => b.textContent.indexOf('列表视图') >= 0).click();
   await sleep(40);
-  t('列表视图切换：行渲染 + 按钮高亮', () => {
+  t('列表视图切换：行渲染', () => {
     if (!C('#grid').classList.contains('list-mode')) throw new Error('未 list-mode');
     if (CA('#grid .row-item').length !== 2) throw new Error('行数 ' + CA('#grid .row-item').length);
-    if (!C('#viewMode .viewmode-btn.active[data-mode="list"]')) throw new Error('list 未高亮');
   });
-  C('#viewMode .viewmode-btn[data-mode="grid"]').click();
+  C('.overflow-btn').click();
+  await sleep(30);
+  const gridItem = CA('.overflow-menu .overflow-item').find((b) => b.textContent.indexOf('网格视图') >= 0);
+  if (gridItem) gridItem.click();
   await sleep(40);
 
   // 复制（多条走菜单）
@@ -3666,7 +3658,8 @@ const withEFP = (el, fn) => {
     const head = css.match(/\.reader-head\s*\{([^}]*)\}/);
     if (!head) throw new Error('缺 .reader-head 基础规则');
     if (head[1].indexOf('position: sticky') < 0) throw new Error('头部基础规则没吸顶（桌面端标题会跟着文章滚走）');
-    if (head[1].indexOf('top: var(--topbar-h') < 0) throw new Error('吸顶位置没跟顶栏实测高度，刘海屏 / 顶栏换行会重叠');
+    // v1.6.0：合并后这一行就是最顶层吸顶条，贴 top:0（自身高度写进 --topbar-h 供 Row2 用）
+    if (!/top:\s*0/.test(head[1])) throw new Error('合并后头部应自己贴顶（top:0）');
     if (head[1].indexOf('background: var(--bg)') < 0) throw new Error('吸顶底色必须不透明，否则文章从头部底下透出来');
     const dup = [...css.matchAll(/\.reader-head\s*\{([^}]*)\}/g)];
     if (dup.length > 1 && dup.slice(1).some((m) => /position:\s*sticky/.test(m[1]))) {
@@ -4106,22 +4099,22 @@ const withEFP = (el, fn) => {
 
   // 标签 chips：真按钮 + 漫游焦点，别让 16 个 chip 占 16 个 Tab
   t('可访问性：标签 chips 是真按钮且只占一个 Tab 停靠点', () => {
-    const v = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'views', 'CardsView.jsx'), 'utf8');
+    // v1.6.0：标签栏抽成共用组件 src/ui/TagBar.jsx（卡片页 + 文章页），a11y 断言改盯组件本身
+    const v = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'ui', 'TagBar.jsx'), 'utf8');
     if (/<span[^>]*role="button"[^>]*tag-chip/.test(v)) throw new Error('标签仍是 span[role=button]，应换成真 <button>');
-    const bar = v.slice(v.indexOf('id="tagBar"'), v.indexOf('<main className="wrap">'));
-    if (bar.indexOf('role="toolbar"') < 0) throw new Error('标签组应是 role=toolbar');
-    if (!/tabIndex=\{chipIdx === 0 \? 0 : -1\}/.test(bar)) throw new Error('缺漫游焦点（整组只留一个 tabIndex=0）');
+    if (v.indexOf('role="toolbar"') < 0) throw new Error('标签组应是 role=toolbar');
+    if (!/tabIndex=\{chipIdx === 0 \? 0 : -1\}/.test(v)) throw new Error('缺漫游焦点（整组只留一个 tabIndex=0）');
     if (!/ArrowRight/.test(v) || !/ArrowLeft/.test(v)) throw new Error('漫游焦点要支持左右方向键');
-    if (!/aria-pressed=\{st\.tag === tag \? 'true' : 'false'\}/.test(bar)) throw new Error('选中态应用 aria-pressed');
+    if (!/aria-pressed=\{activeTag === tag \? 'true' : 'false'\}/.test(v)) throw new Error('选中态应用 aria-pressed');
   });
 
   // 卡片页「下拉即标题」：同一信息只出现一次
   t('卡片页头部：桌面由筛选下拉充当标题，窄屏才用文字标题', () => {
     const root = path.join(__dirname, '..', '..');
     const v = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
-    const head = v.slice(v.indexOf('wrap cards-head'), v.indexOf('id="tagBar"'));
+    const head = v.slice(v.indexOf('wrap cards-head'), v.indexOf('<TagBar'));
     if (head.indexOf('wrapId="feedDD"') < 0) throw new Error('#feedDD 应在 .cards-head 里（标题位）');
-    const tools = head.slice(head.indexOf('page-tools'));
+    const tools = head.slice(head.indexOf('head-right'));
     if (tools.indexOf('wrapId="feedDD"') >= 0) throw new Error('#feedDD 仍在工具组里 —— 标题与筛选会重复');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const mw = css.match(/@media \(min-width: 1081px\) \{([\s\S]*?)\n\}/);
@@ -4294,6 +4287,56 @@ const withEFP = (el, fn) => {
     if (missing.length) {
       throw new Error('这些 sprite 图标类不在图标基础组内（会缺尺寸/描边约束）：' + missing.join(', '));
     }
+  });
+
+  // ============ v1.6.0 合并头部（导航 + 工具栏收成单行 Row1；标签独立成 Row2） ============
+  // 守门：三视图各自渲染合并后的 Row1（≡频道 / 标题 / 搜索 / ⋮），Row1 贴顶并写 --topbar-h，
+  // Row2 标签栏接着吸顶；排序 / 视图切换 / 三视图 / 主题 / 设置统一收进 ⋮ 菜单。
+  t('v1.6.0：各视图 Row1 合并（含 ⋮ 溢出菜单），Row2 标签栏吸顶', () => {
+    const root = path.join(__dirname, '..', '..');
+    const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
+    const cards = read('src/views/CardsView.jsx');
+    const reader = read('src/views/ReaderView.jsx');
+    const ai = read('src/ai/AiView.jsx');
+    for (const [name, src] of [['CardsView', cards], ['ReaderView', reader], ['AiView', ai]]) {
+      if (src.indexOf('<OverflowMenu') < 0) throw new Error(name + ' 未渲染 ⋮ 溢出菜单');
+      if (!/useTopbarHeight\(headRef\)/.test(src)) throw new Error(name + ' 未调用 useTopbarHeight(headRef)');
+    }
+    if (cards.indexOf('cardControls') < 0) throw new Error('卡片页 ⋮ 应传 cardControls（排序 / 视图切换）');
+    if (reader.indexOf('<TagBar') < 0) throw new Error('文章页缺 Row2 标签栏 <TagBar>');
+    const css = read('src/style.css');
+    const head = css.match(/\.page-head,\s*\.reader-head,\s*\.cards-head \{([^}]*)\}/);
+    if (!head || !/top:\s*0/.test(head[1])) throw new Error('Row1 应贴顶（top:0）');
+    const tag = css.match(/\.tagbar\s*\{([^}]*)\}/);
+    if (!tag || !/position:\s*sticky/.test(tag[1]) || !/top:\s*var\(--topbar-h/.test(tag[1])) {
+      throw new Error('Row2 标签栏应 sticky 在 --topbar-h 之下');
+    }
+    const hr = css.match(/\.head-right\s*\{([^}]*)\}/);
+    if (!hr || !/margin-left:\s*auto/.test(hr[1])) throw new Error('.head-right 应 margin-left:auto 靠右');
+    const hook = read('src/shell/useTopbarHeight.js');
+    if (hook.indexOf('--topbar-h') < 0) throw new Error('useTopbarHeight 未写 --topbar-h');
+    if (!/getBoundingClientRect\(\)\.height/.test(hook) || !/Math\.ceil/.test(hook)) {
+      throw new Error('--topbar-h 应取整（小数像素会露 1px 缝）');
+    }
+    if (!/getClientRects\(\)\.length === 0/.test(hook)) throw new Error('隐藏视图（display:none）测得 0 高时不应覆盖 --topbar-h');
+  });
+
+  t('v1.6.0：⋮ 菜单承载三视图 / 刷新 / 主题 / 设置 / 排序 / 视图切换', () => {
+    const root = path.join(__dirname, '..', '..');
+    const m = fs.readFileSync(path.join(root, 'src', 'ui', 'OverflowMenu.jsx'), 'utf8');
+    for (const id of ["'reader'", "'cards'", "'ai'"]) {
+      if (m.indexOf(id) < 0) throw new Error('⋮ 菜单缺视图项 ' + id);
+    }
+    if (m.indexOf('switchView') < 0) throw new Error('⋮ 菜单应能切换三视图（switchView）');
+    for (const fn of ['refresh', 'cycleTheme', 'openSettings']) {
+      if (m.indexOf(fn) < 0) throw new Error('⋮ 菜单缺 ' + fn);
+    }
+    for (const s of ["'new'", "'old'", "'name'"]) {
+      if (m.indexOf(s) < 0) throw new Error('排序档位缺 ' + s);
+    }
+    if (m.indexOf("'hot'") >= 0 || m.indexOf("'unread'") >= 0) throw new Error('排序档位含卡片页不支持的 hot/unread');
+    if (m.indexOf('cardsSort') < 0 || m.indexOf('cardsView') < 0) throw new Error('排序 / 视图切换应经 cardsSort / cardsView');
+    if (m.indexOf('role="menu"') < 0 || m.indexOf('role="menuitemradio"') < 0) throw new Error('⋮ 菜单缺 menu 语义');
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });

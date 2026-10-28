@@ -100,12 +100,11 @@
   <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17"/><path d="M8 3.2v3.6M16 3.2v3.6"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4.5h5.5V10"/><path d="M19.5 4.5 11 13"/><path d="M18 14.5v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-10a2 2 0 0 1 2-2h4"/></symbol>
   <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19.5 8.5a2 2 0 0 0-2.83-2.83L5 17v3Z"/><path d="M14.5 7.5l2 2"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.7" fill="currentColor" stroke="none"/></symbol>
 </svg>
 
-<!-- 顶栏（App Shell）：品牌 / 视图导航 / 条资源 / 刷新 / 添加到手机 / 主题 / 设置。
-     P4a 起 React 化，组件见 src/shell/TopBar.jsx，挂载到下面的 #topbarRoot。
-     注意 #topbarRoot 就是 <header class="topbar"> 本身（sticky），组件只渲染其内部内容。 -->
-<header class="topbar" id="topbarRoot"></header>
+<!-- v1.6.0：全局顶栏已并入各视图自带的第一行（≡频道 / 标题 / 搜索 / ⋮），
+     不再有独立的顶栏 <header> 元素 —— 三视图各自渲染合并后的 Row1 并写入 --topbar-h。 -->
 
 <!-- 卡片：默认隐藏，由 switchView 决定显示哪个页面（默认是「文章」）。内容已 React 化，组件见 src/views/CardsView.jsx，挂载到下面的 #cardsRoot -->
 <div id="cardsView" hidden><div id="cardsRoot"></div></div>
