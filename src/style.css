@@ -730,25 +730,6 @@ textarea:disabled {
   .grid > .card { animation: none; }
 }
 
-/* 键盘光标（P1）：j/k 在文章页移动的「当前条目」。用 outline 而不是左条——
-   is-fav 已经用 accent 左条表达「收藏」，再拿左条表达「当前」会互相污染。 */
-.art-item.kbd-cursor { outline: 2px solid var(--accent); outline-offset: -2px; }
-
-/* 快捷键帮助（? 呼出）：复用 .modal-mask / .modal 的玻璃与入场动画 */
-.kbd-help { width: min(420px, 92vw); padding: var(--sp-5) var(--sp-6); }
-.kbd-help h3 { margin: 0 0 var(--sp-2); font-size: var(--fs-xl); }
-.kbd-help .kbd-help-sub { color: var(--text-muted); font-size: var(--fs-sm); margin: 0 0 var(--sp-4); }
-.kbd-help dl { display: grid; grid-template-columns: auto 1fr; gap: var(--sp-2) var(--sp-4); margin: 0; align-items: center; }
-.kbd-help dt { white-space: nowrap; }
-.kbd-help dd { margin: 0; color: var(--text-2); font-size: var(--fs-md); }
-.kbd-help kbd {
-  display: inline-block; min-width: 1.5em; text-align: center;
-  padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--surface-soft-2); box-shadow: var(--neu-inset);
-  font: inherit; font-size: var(--fs-sm); color: var(--text);
-}
-.kbd-help .kbd-help-close { margin-top: var(--sp-4); text-align: right; }
-
 /* ---------- 搜索（旧工具栏已删除，样式见文件末尾「搜索」段） ---------- */
 
 /* 旧 .search-box 外观（方角 / 外投影）已由末尾统一的胶囊规则取代，这里不再保留副本。 */
@@ -2798,41 +2779,14 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   /* 视口外的文章项跳过渲染：阅读页几百条条目也不卡 */
   content-visibility: auto;
   contain-intrinsic-size: auto 84px;
-  /* 进入一篇文章时用 scrollIntoView 的 block:start 置顶：
-     scroll-margin 把目标顶边让出下方那根吸顶工具条的高度，
-     否则新文章的第一行正好被工具条盖住。--head-h 由 :root 给
-     （桌面 52 / 窄屏 44），这里直接继承。 */
+  /* 让出下方那根吸顶工具条的高度，否则新文章的第一行正好被工具条盖住。
+     进入文章的置顶由 core/reader.js#scrollReaderToArt 直接设 scrollTop 完成
+     （用 scrollIntoView 会在手风琴收起的旧布局里测量，导致新文章被甩到视口上方）；
+     这条 scroll-margin 留给 focusReaderArt 的 block:'center' 等原生滚动场景。 */
   scroll-margin-top: calc(var(--head-h, 52px) + 8px);
 }
 .art-item:hover { border-color: var(--border-strong); }
 
-/* ---------- 前后篇导航（正文底部） ----------
- * 读完正文视线落在末尾，「上一篇 / 下一篇」就该在这里接续；
- * 放在正文底部而不是顶栏：窄屏顶栏已排满，而这里在任何屏宽都稳。 */
-.art-nav {
-  display: flex; align-items: stretch; gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-4);
-  border-top: 1px solid var(--border);
-  background: var(--panel-2);
-}
-.art-nav-gap { flex: 1 1 0; min-width: 0; }
-.art-nav-btn {
-  flex: 1 1 0; min-width: 0;
-  display: flex; align-items: center; gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
-  background: var(--panel); color: var(--text-2);
-  font: inherit; text-align: left; cursor: pointer;
-  transition: border-color var(--dur-base), background var(--dur-base), color var(--dur-base);
-}
-.art-nav-btn.is-next { justify-content: flex-end; text-align: right; }
-.art-nav-btn:hover { border-color: var(--border-strong); background: var(--hover); color: var(--text); }
-.art-nav-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
-.art-nav-btn .ico { width: 1rem; height: 1rem; flex: 0 0 auto; color: var(--text-faint); }
-.art-nav-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.art-nav-dir { font-size: var(--fs-2xs); color: var(--text-faint); letter-spacing: .04em; }
-.art-nav-title { font-size: var(--fs-md); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.art-nav-btn:hover .art-nav-title { color: var(--text); }
 /* 展开态不再做主色描边 + 抬高阴影（整块发亮太抢眼），只留极弱的边框区分，
    靠 caret 旋转 + 展开的正文本身表达"当前展开的是哪条"。 */
 .art-item.open { border-color: var(--border-strong); }
@@ -3906,7 +3860,7 @@ textarea:focus-visible { outline: none; }
 /* ============================================================
  * 拟态玻璃统一风格（v1.1.7）
  * 卡片 / 按钮 / 标签 / 侧栏等可滚动元素用拟态柔光阴影（无模糊）；
- * 弹层 / 命令面板 / 灯箱 / 快捷键浮层等静态覆盖场景用玻璃模糊。
+ * 弹层 / 命令面板 / 灯箱等静态覆盖场景用玻璃模糊。
  * 遵守性能铁律：sticky / fixed 的长列表元素禁用 backdrop-filter。
  * ============================================================ */
 
@@ -3952,7 +3906,7 @@ textarea:focus-visible { outline: none; }
 .mini-tag { box-shadow: var(--neu-inset); }
 .new-pill { box-shadow: 0 2px 10px var(--accent-glow), var(--neu-2); }
 
-/* 弹层 / 命令面板 / 灯箱 / 快捷键浮层：玻璃模糊只在遮罩（mask）单层生效。
+/* 弹层 / 命令面板 / 灯箱：玻璃模糊只在遮罩（mask）单层生效。
    弹层自身用半透明实底盖在已模糊的遮罩上，不再二次模糊（页面已滚动锁定）。 */
 .modal-mask { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .modal {

@@ -118,7 +118,7 @@ export function CommandPalette() {
             ref={inputRef}
             className="cmdk-input"
             type="text"
-            placeholder="输入命令或搜索…（⌘K / Ctrl+K 开关，↑↓ 选择，↵ 执行，Esc 关闭）"
+            placeholder="输入命令或搜索…"
             autoComplete="off"
             spellCheck="false"
             role="combobox"

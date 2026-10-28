@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { apiFetch, httpError, toast, emitShell, confirm, prefersReducedMotion, writeHash } from './util.js';
+import { apiFetch, httpError, toast, emitShell, confirm, writeHash } from './util.js';
 import { state, layoutPref, setLayout, openSettings, lockPageScroll, unlockPageScroll } from './state.js';
 import { loadFeeds, groupFeeds } from './feeds.js';
 
@@ -19,7 +19,15 @@ import { loadFeeds, groupFeeds } from './feeds.js';
  * 这里只保留数据 / 加载 / 交互逻辑，需要刷新 UI 时派发 __readerTick（组件监听后读实时 state 重绘）。
  * ============================================================ */
 
-/** 通知 ReaderView 重绘 */
+/** 当前「置顶目标」：文章列表内容变化后（翻页追加、正文异步到达）要重新对准它。
+ *  列表一变动，之前算好的位置就失效了——翻页时列表总高会剧烈变化
+ *  （实测 scrollHeight 21411 → 14797），不重校就会停在偏移处。 */
+let readerPinnedId = null;
+
+/** 通知 ReaderView 重绘。
+ *  ⚠️ 这里不要挂任何滚动副作用：renderReader() 在近 20 处被调用（含与置顶无关的
+ *  重绘），往里塞 rAF 会在每次重绘都排一次滚动修正，既拖慢又容易踩到时序。
+ *  置顶的重新对准只在真正改变布局的两处做：正文异步到达、翻页追加（见下）。 */
 export function renderReader() { window.dispatchEvent(new Event('__readerTick')); }
 /** 兼容旧调用名：频道侧栏同样由 ReaderView 渲染，故与 renderReader 同为一次重绘 */
 export function renderReaderChannels() { renderReader(); }
@@ -73,6 +81,7 @@ export async function loadReader({ reset = false } = {}) {
     state.rdExpanded.clear();
     state.rdBody.clear();
     state.rdBodyErr.clear();
+    readerPinnedId = null;   // 列表重置 → 旧的置顶目标已不在列表里
   }
   renderReader();
 
@@ -100,6 +109,10 @@ export async function loadReader({ reset = false } = {}) {
   } finally {
     state.rdLoading = false;
     renderReader();
+    // 翻页追加会让列表总高剧变（实测 scrollHeight 21411 → 14797），此前算好的
+    // 置顶位置随之失效 —— 这里是唯一需要重校的另一处（另一处是正文异步到达）。
+    // 只在确实偏了的时候才动滚动，不打扰正常阅读。
+    if (readerPinnedId != null) scrollReaderToArt(readerPinnedId);
     // 一屏没装满时哨兵本就贴着视口底 —— 不靠用户滚动也要接着拉，直到装满或没有更多
     if (state.rdHasMore && readerSentinelNear()) readerAutoLoad();
     // 加载途中排队的「重置重载」：补跑一次，让用户的第二次点击真正生效
@@ -128,15 +141,85 @@ function findArtItemEl(id) {
   return null;
 }
 
+/** 内容区的滚动容器（App Shell 后文章列表在它里面滚，window 不动） */
+function readerScroller() {
+  return document.querySelector('#readerView .reader-main');
+}
+
+/** 吸顶工具条的高度：置顶时要让出它，否则新文章的第一行正好被盖住。
+ *  与 style.css 的 .art-item { scroll-margin-top } 同口径（--head-h + 8）。 */
+function readerHeadOffset() {
+  const main = readerScroller();
+  let h = 0;
+  if (main) {
+    const v = getComputedStyle(main).getPropertyValue('--head-h');
+    h = parseFloat(v) || 0;
+  }
+  if (!h) {
+    const root = getComputedStyle(document.documentElement).getPropertyValue('--head-h');
+    h = parseFloat(root) || 48;
+  }
+  return h + 8;
+}
+
+/** 把文章列表滚到「某篇的标题行对齐内容区顶部」，并把页面级滚动一并归零。
+ *
+ *  踩过的坑（v1.7.0 修复「切换文章后新文章不从顶部开始」的老问题）：
+ *  单纯用 el.scrollIntoView({ block:'start' }) 不够——手风琴模式下展开新的一篇
+ *  会**收起上一篇**，那一下让列表上方少了一大截高度（上一篇正文越长，差得越多）。
+ *  scrollIntoView 在**收起前**的布局里算好目标位置，等 DOM 提交后列表整体上移，
+ *  新的一篇就被甩到了视口上方（实测 openTop = -465，恰好是上一篇释放的高度）。
+ *  禁用 scroll anchoring、直接写 scrollTop 都绕不开——因为错的是**测量时机**，
+ *  不是滚动 API。
+ *
+ *  正确做法：不猜 React 什么时候提交 DOM，而是**每帧按当前实际布局修正一次**，
+ *  直到对齐（或达到帧数上限）。这样无论 DOM 提交落在哪一帧，最终都会归位：
+ *    · 提交前量 → 位置偏高，下一帧 DOM 提交后自然被修正；
+ *    · 提交后量 → 一次到位。
+ *  向上翻（点上方一篇）与向下翻（点下方一篇）走的是同一条路径，行为完全一致。
+ *  这里不用 scrollIntoView 而是直接设 scrollTop：scrollIntoView 会连带滚动
+ *  所有祖先容器（含 window），而我们只想动 .reader-main 一个。 */
+function scrollReaderToArt(id) {
+  const main = readerScroller();
+  if (!main) return;
+  const want = String(id);
+  const headOff = readerHeadOffset();
+
+  const place = () => {
+    // 页面级滚动一并归零：窄屏抽屉态等没有独立滚动容器的场合，
+    // 窗口残留的偏移会让「置顶」看起来没生效。
+    if (window.scrollY > 0 || document.documentElement.scrollTop > 0) window.scrollTo(0, 0);
+    const el = findArtItemEl(want);
+    if (!el) return true;              // 目标不在列表里（已被换页），交给别的逻辑
+    // 目标条目顶边相对内容区视口顶的偏移（正数 = 在视口下方）
+    const top = el.getBoundingClientRect().top - main.getBoundingClientRect().top;
+    const delta = top - headOff;       // >0 说明目标在下方，需要往下滚 delta
+    if (Math.abs(delta) <= 1) return true;
+    main.scrollTop += delta;
+    return false;
+  };
+
+  // 收敛循环：最多 12 帧（约 200ms）。每帧都按**当时**的真实布局修正，
+  // 覆盖「React 提交 DOM」「正文异步到达」两种时序抖动。
+  let frames = 0;
+  const step = () => {
+    if (place()) return;               // 已对齐（或目标不在了）→ 收工
+    if (++frames >= 12) return;
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 export async function expandReaderArt(id) {
   /* 手风琴（默认开启）：展开这一条之前会把其它展开的收掉。
-   * 滚动策略（v1.7.0 修正「点了下一篇，新文章不从顶部开始」的老问题）：
+   * 滚动策略（修正「切换文章后新文章不从顶部开始」的老问题）：
    * 进入一篇文章 = 它的标题行对齐滚动容器顶部（sticky 工具条下方）——
-   * 读完当前篇、点下一篇，就从新文章的开头接着读。
+   * 读完当前篇、切到另一篇，就从新文章的开头接着读。
    * 旧实现是「点哪停哪」的锚点补偿：展开后把目标补滚回点击时的位置。
    * 那条策略与「进入即置顶」互斥 —— 点了列表中段的一篇，视口停在那儿，
    * 新文章的开头反而落在视口下半屏，读起来像「跳进文章中间」。
-   * 现在统一为：进入即置顶（收起其它篇造成的位移由这次主动滚动一并抵消）。 */
+   * 现在统一为：进入即置顶（收起其它篇造成的位移由这次主动滚动一并抵消），
+   * 点上方一篇与点下方一篇走同一条路径，行为一致。 */
   if (accordionOn) {
     for (const openId of Array.from(state.rdExpanded)) {
       if (String(openId) !== String(id)) state.rdExpanded.delete(openId);
@@ -148,12 +231,9 @@ export async function expandReaderArt(id) {
   markEntryRead(id);   // 展开了就算读过了
   writeHash('#reader/art/' + id);   // 地址栏留当前篇（刷新/回来据此恢复）
 
-  // 滚动放到下一帧：renderReader() 只是派发 __readerTick，React 在微任务里提交 DOM（早于 rAF），
-  // 所以这一帧量到的已经是更新后的位置。
-  requestAnimationFrame(() => {
-    const el = findArtItemEl(id);
-    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-  });
+  // 置顶：等 DOM 提交后按实际布局把这一篇顶到内容区顶部（详见 scrollReaderToArt）
+  readerPinnedId = id;
+  scrollReaderToArt(id);
 
   if (state.rdBody.has(id) || state.rdBodyErr.has(id)) return;
   try {
@@ -164,10 +244,15 @@ export async function expandReaderArt(id) {
     state.rdBodyErr.add(id);
   }
   renderReader();
+  // 正文是异步到达的，插入后列表布局会变 —— 再对准一次，避免停在偏移处。
+  // 只在真正改变布局的这里做（而不是挂进 renderReader 全局）。
+  scrollReaderToArt(id);
 }
 
 export function collapseReaderArt(id) {
   state.rdExpanded.delete(id);
+  // 收起后不再有「置顶目标」：否则列表变动时的重校会一直把这一条往回顶
+  if (String(readerPinnedId) === String(id)) readerPinnedId = null;
   renderReader();
   writeHash('#reader');   // 收起后地址栏回到「文章」页，不再指着一篇
 }
@@ -179,53 +264,9 @@ export function readerToggleArt(id) {
 
 export function readerCollapseAll() {
   state.rdExpanded.clear();
+  readerPinnedId = null;   // 全部收起 → 没有置顶目标
   renderReader();
   toast('已全部收起');
-}
-
-/* ---------------- 键盘光标（P1）：j/k/o/s/u ----------------
- * j/k 在当前列表里移动「当前条目」并展开（复用 expandReaderArt 的手风琴补偿 +
- * 展开即已读 + 拉正文全链路）；o 开/收当前；s 收藏当前；u 切换当前已读/未读。
- * 光标只存内存（state.rdCursor），翻页/重载/换频道时随列表自然失效——
- * rdCursor 指向的 id 不在新列表里时，下一次 j/k 会从边界重新起步。 */
-function cursorIndex() {
-  if (state.rdCursor == null) return -1;
-  return state.rdEntries.findIndex((e) => String(e.id) === String(state.rdCursor));
-}
-
-export function readerCursorMove(dir) {
-  if (!state.rdEntries.length) return;
-  let i = cursorIndex();
-  i = i < 0 ? (dir > 0 ? 0 : state.rdEntries.length - 1) : Math.min(state.rdEntries.length - 1, Math.max(0, i + dir));
-  const e = state.rdEntries[i];
-  state.rdCursor = e.id;
-  // 置顶由 expandReaderArt 统一负责（进入一篇文章 = 标题行对齐容器顶部），
-  // 这里不再另做一次滚动，避免两次滚动互相打架。
-  expandReaderArt(e.id);
-}
-
-/** 跳到指定条目（正文底部的「上一篇 / 下一篇」用）：强制展开并置顶，不做开/收切换 */
-export function readerGotoArt(id) {
-  if (id == null) return;
-  state.rdCursor = id;
-  expandReaderArt(id);
-}
-
-export function readerCursorToggle() {
-  if (state.rdCursor == null) { readerCursorMove(1); return; }
-  readerToggleArt(state.rdCursor);
-}
-
-export function readerCursorFav() {
-  if (state.rdCursor == null) return;
-  readerToggleFav(state.rdCursor);
-}
-
-export function readerCursorToggleRead() {
-  if (state.rdCursor == null) return;
-  const e = state.rdEntries.find((x) => String(x.id) === String(state.rdCursor));
-  if (!e) return;
-  setEntryFlag(state.rdCursor, { isRead: !e.isRead }).then((ok) => { if (ok) toast(e.isRead ? '已标为未读' : '已标为已读'); });
 }
 
 const FLASH_MS = 1500;      // 高亮停留时长（与 style.css 的 artFlash 对齐）

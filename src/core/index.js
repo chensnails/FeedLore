@@ -26,8 +26,6 @@ export const core = {
   refresh: UI.refreshFeeds,
   cycleTheme: S.cycleTheme,
   scrollTop: () => window.scrollTo({ top: 0, behavior: U.prefersReducedMotion() ? 'auto' : 'smooth' }),
-  // —— 快捷键帮助（P1）：? 呼出 / Esc 关闭 ——
-  getKbdHelpState: () => U.kbdHelpState, toggleKbdHelp: U.toggleKbdHelp,
   // —— 设置弹层 / 外观 / 关于（v1.3.0 起 React 化） ——
   apiFetch: U.apiFetch, httpError: U.httpError, isAdmin: S.isAdmin, toast: U.toast, confirm: U.confirm,
   // —— 覆盖层（v2.1.0 起 React 化，组件 src/ui/Overlays.jsx） ——
@@ -74,9 +72,7 @@ export const core = {
   readerSearch: R.readerSearch, readerToggleArt: R.readerToggleArt, readerCollapseAll: R.readerCollapseAll,
   readerReadAll: R.readerReadAll,
   readerToggleFav: R.readerToggleFav, readerTagToCards: UI.readerTagToCards,
-  readerGotoArt: R.readerGotoArt, restoreReaderArt: R.restoreReaderArt,
-  readerCursorMove: R.readerCursorMove, readerCursorToggle: R.readerCursorToggle,
-  readerCursorFav: R.readerCursorFav, readerCursorToggleRead: R.readerCursorToggleRead,
+  restoreReaderArt: R.restoreReaderArt,
   readerToggleAccordion: R.readerToggleAccordion, readerAccordionOn: R.readerAccordionOn,
   readerToggleDrawer: R.readerToggleDrawer, readerCloseDrawer: R.readerCloseDrawer,
   // —— 频道栏分组折叠 + 栏宽（v1.4.0-test） ——

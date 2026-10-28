@@ -221,52 +221,20 @@ export function ArtBody({ e, onTag, extraActions }) {
  *  做成 memo：每次 __readerTick 都会把整列 entries 重新 map 一遍，而条目对象只在
  *  状态真的变化时才换新（core/reader.js 的 applyEntryFlag / ui.js 的 cardSetFlag 同口径），
  *  所以没变的那几百条不必跟着重新渲染。 */
-const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, cursor, prev, next, onToggle, onFav, onTag, onGoto }) {
+const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, onToggle, onFav, onTag }) {
   const s = S();
   const src = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
   const fmtDate = s.fmtDate || ((d) => (d ? String(d) : ''));
   const fav = !!e.isFavorite;
   const cls = 'art-item' + (e.isRead ? ' is-read' : ' is-unread') + (fav ? ' is-fav' : '') + (expanded ? ' open' : '')
-    + (flash ? ' is-flash' : '') + (cursor ? ' kbd-cursor' : '');
+    + (flash ? ' is-flash' : '');
 
   let inner = null;
   if (expanded) {
     if (full) inner = <ArtBody e={full} onTag={onTag} />;
     else if (bodyErr) inner = <div className="art-inner"><div className="hint">正文加载失败，刷新页面重试</div></div>;
     else inner = <div className="art-inner"><div className="art-loading"><i /><i /><i /></div></div>;
-    // 前后篇导航：读完正文，视线正好落在末尾——「上一篇 / 下一篇」就该在这里接续。
-    // 放在正文底部而不是顶栏：窄屏顶栏已经排满（见 .reader-head-tools 的收纳），
-    // 而正文底部的位置在任何屏宽都稳定，标题超长时单行截断。
-    if (prev || next) {
-      inner = (
-        <React.Fragment>
-          {inner}
-          <nav className="art-nav" aria-label="前后篇">
-            {prev ? (
-              <button type="button" className="art-nav-btn is-prev" onClick={() => onGoto(prev.id)}
-                title={'上一篇：' + (prev.name || '')}>
-                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-left" /></svg>
-                <span className="art-nav-text">
-                  <span className="art-nav-dir">上一篇</span>
-                  <span className="art-nav-title">{prev.name || ''}</span>
-                </span>
-              </button>
-            ) : <span className="art-nav-gap" />}
-            {next ? (
-              <button type="button" className="art-nav-btn is-next" onClick={() => onGoto(next.id)}
-                title={'下一篇：' + (next.name || '')}>
-                <span className="art-nav-text">
-                  <span className="art-nav-dir">下一篇</span>
-                  <span className="art-nav-title">{next.name || ''}</span>
-                </span>
-                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-              </button>
-            ) : <span className="art-nav-gap" />}
-          </nav>
-        </React.Fragment>
-      );
-    }
   }
 
   return (
@@ -562,15 +530,11 @@ export function ReaderView() {
         </div>
 
         <div className="reader-list" id="readerList">
-          {entries.map((e, i) => (
+          {entries.map((e) => (
             <ArtItem key={e.id} e={e} expanded={expanded.has(e.id)}
               full={bodyMap.get(e.id)} bodyErr={bodyErrSet.has(e.id)}
               flash={flashId != null && flashId === String(e.id)}
-              cursor={st.rdCursor != null && String(st.rdCursor) === String(e.id)}
-              prev={i > 0 ? entries[i - 1] : null}
-              next={i < entries.length - 1 ? entries[i + 1] : null}
-              onToggle={onToggleArt} onFav={onFavArt} onTag={onTagArt}
-              onGoto={(id) => s.readerGotoArt && s.readerGotoArt(id)} />
+              onToggle={onToggleArt} onFav={onFavArt} onTag={onTagArt} />
           ))}
         </div>
 

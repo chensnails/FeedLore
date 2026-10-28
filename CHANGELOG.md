@@ -2,6 +2,30 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [未发布]
+
+### 移除键盘快捷键（不新增功能）
+
+按产品决策移除全部阅读器式快捷键（`j / k / o / s / u / ?` 与 `/` 聚焦搜索），界面不再依赖键盘操作：
+
+- **删除的键盘逻辑**：`src/core/ui.js` 里两组全局 `keydown` 监听（`/` 聚焦搜索、`?` 帮助与 `j/k/o/s/u`）；`src/core/reader.js` 的 `cursorIndex` 与 `readerCursorMove / readerCursorToggle / readerCursorFav / readerCursorToggleRead`；`src/core/state.js` 的 `rdCursor` 字段；`src/core/util.js` 的 `kbdHelpState` / `toggleKbdHelp`；`src/core/index.js` 上对应的桥导出。
+- **删除的界面与样式**：`src/ui/Overlays.jsx` 的 `KbdHelp` 帮助浮层组件（含它自己的 Esc 监听与滚动锁）；`src/views/ReaderView.jsx` 条目的 `cursor` prop 与 `.kbd-cursor` 高亮；`src/style.css` 的 `.art-item.kbd-cursor` 与 `.kbd-help` 一整段。
+- **清理的提示文案**：命令面板输入框 placeholder 里的「⌘K / Ctrl+K 开关，↑↓ 选择，↵ 执行，Esc 关闭」。
+
+> **⌘K / Ctrl+K 按要求保留**：命令面板没有其它入口（无按钮可点），它是面板唯一的开关；移除会让整个命令面板变成死功能，与「不新增功能、不破坏其他交互」的约束冲突。
+
+### 文章切换的滚动重置（统一修正）
+
+切换文章时把新文章顶到内容区顶部，向上（点上方一篇）与向下（点下方一篇）走同一条路径、行为完全一致：
+
+- **根因（老问题）**：手风琴模式下展开新的一篇会**收起上一篇**，列表上方少一大截高度；而滚动是在**收起前**的布局里算好目标位置的，DOM 提交后列表整体上移，新文章被甩到视口上方（实测 `openTop = -465`，恰好是上一篇释放的高度）。禁用 scroll anchoring、改用直接写 `scrollTop` 都绕不开——错的是**测量时机**，不是滚动 API。
+- **修法**：`src/core/reader.js` 新增 `scrollReaderToArt()`，不猜 React 何时提交 DOM，改为**每帧按当前实际布局修正**直到对齐（上限 12 帧）；直接设 `.reader-main` 的 `scrollTop`（`scrollIntoView` 会连带滚动 `window` 等祖先容器），并把页面级滚动一并归零。
+- **两处定向重校**：正文异步到达、翻页追加（列表总高剧变，实测 `scrollHeight` 21411 → 14797）后各重校一次。**不挂在 `renderReader()` 里**——它在近 20 处被调用，往里塞副作用会波及与置顶无关的重绘。
+
+### 移除「上一篇 / 下一篇」视觉组件
+
+- 删除 `ReaderView.jsx` 正文底部的 `art-nav`（含 `prev` / `next` / `onGoto` props 与传参）、`reader.js` 的 `readerGotoArt`、`core/index.js` 的桥、`style.css` 的 `.art-nav*` 样式、`index.html` 里随之失去使用者的 `i-chevron-left` sprite，以及测试里对应的断言与桩桥。
+
 ## [1.7.0] — 2026-10-29
 
 > 本正式版汇总开发线 `1.5.2-test1` → `1.6.0-test1…test6` → `1.7.0-test1` 的全部内容：界面结构重构、关注 / 屏蔽规则引擎、UI 一致性速赢、键盘优先与动效，以及移动端与列表布局的一系列修复。UI 375 项、server 118 项、deploy 5/5 全绿。

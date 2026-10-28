@@ -649,21 +649,6 @@ w.feedlore = {
   },
   readerOpenSource: () => calls.push(['readerOpenSource']),
   readerSearch: (q) => { calls.push(['readerSearch', q]); w.feedlore.state.rdQ = q; readerTick(); },
-  readerGotoArt: (id) => {
-    // 前后篇导航：跳到相邻条目（强制展开并置顶）
-    calls.push(['readerGotoArt', id]);
-    const st = w.feedlore.state;
-    st.rdCursor = id;
-    st.rdExpanded.add(id);
-    if (!st.rdBody.has(id)) {
-      st.rdBody.set(id, {
-        id, name: '条目一', tags: ['标签A'], content: '第一段正文。\n第二段正文。',
-        link: 'https://pan.quark.cn/s/abc', links: ['https://pan.quark.cn/s/abc'],
-        sourceUrl: 'https://example.com/a', date: '2026-10-15T10:00:00Z',
-      });
-    }
-    readerTick();
-  },
   readerToggleArt: (id) => {
     calls.push(['readerToggleArt', id]);
     const st = w.feedlore.state;
@@ -3310,12 +3295,10 @@ const withEFP = (el, fn) => {
     if (R('#readerReadAllBtn').hidden) throw new Error('有未读，应显示「全部已读」');
     if (!R('#readerCollapseAll').hidden) throw new Error('未展开时「全部收起」应隐藏');
   });
-  t('P1 键盘光标：rdCursor 指到的条目带 .kbd-cursor，置空即清除', async () => {
-    w.feedlore.state.rdCursor = 'r1'; readerTick(); await sleep(30);
-    const cur = R('.art-item.kbd-cursor');
-    if (!cur || cur.getAttribute('data-id') !== 'r1') throw new Error('光标类缺失或错位');
-    w.feedlore.state.rdCursor = null; readerTick(); await sleep(30);
-    if (R('.art-item.kbd-cursor')) throw new Error('光标应随 null 清除');
+  t('键盘光标已移除：条目不再渲染 .kbd-cursor 高亮，state 无 rdCursor', () => {
+    readerTick();
+    if (R('.art-item.kbd-cursor')) throw new Error('不应再有 .kbd-cursor 高亮');
+    if (w.feedlore.state.rdCursor !== undefined) throw new Error('state 不应再有 rdCursor');
   });
   t('列表项内容与状态类', () => {
     const it1 = R('#readerList .art-item[data-id="r1"]');
@@ -3378,23 +3361,10 @@ const withEFP = (el, fn) => {
   });
   t('展开后「全部收起」出现', () => { if (R('#readerCollapseAll').hidden) throw new Error('应显示'); });
 
-  // 前后篇导航（v1.7.0）：正文底部接续，r1 是第一条 → 只有「下一篇」
-  t('前后篇导航：正文底部出现 .art-nav，第一篇只有「下一篇」', () => {
-    const nav = R('#readerList .art-item[data-id="r1"] .art-nav');
-    if (!nav) throw new Error('缺 .art-nav');
-    if (nav.querySelector('.art-nav-btn.is-prev')) throw new Error('第一篇不该有「上一篇」');
-    const next = nav.querySelector('.art-nav-btn.is-next');
-    if (!next) throw new Error('缺「下一篇」');
-    if (next.textContent.indexOf('下一篇') < 0) throw new Error('文案: ' + next.textContent);
-  });
-  t('点「下一篇」→ readerGotoArt(下一条) + 目标篇展开', async () => {
-    const btn = R('#readerList .art-item[data-id="r1"] .art-nav-btn.is-next');
-    btn.click();
-    await sleep(40);
-    if (!callsOf('readerGotoArt').some((c) => c[1] === 'r2')) throw new Error('未跳到 r2');
-    if (!R('#readerList .art-item[data-id="r2"]').classList.contains('open')) throw new Error('r2 未展开');
-    const nav2 = R('#readerList .art-item[data-id="r2"] .art-nav');
-    if (!nav2 || !nav2.querySelector('.art-nav-btn.is-prev')) throw new Error('第二篇应有「上一篇」');
+  // 前后篇导航已移除（v1.7.1）：键盘 j/k 是唯一的「上一篇 / 下一篇」通道
+  t('前后篇导航已移除：正文底部不再有 .art-nav', () => {
+    if (R('#readerList .art-item .art-nav')) throw new Error('不应再有 .art-nav');
+    if (CA('#readerList .art-nav-btn').length) throw new Error('不应再有 .art-nav-btn');
   });
 
   // 正文标签 → 卡片筛选
@@ -4046,8 +4016,6 @@ const withEFP = (el, fn) => {
         'readerSetScope', 'readerSetFeed', 'readerSetGroup', 'readerSetWatch', 'readerOpenSource', 'readerSearch',
         'readerToggleArt', 'readerCollapseAll', 'readerReadAll', 'readerToggleFav', 'readerTagToCards',
         'readerToggleAccordion', 'readerAccordionOn', 'readerToggleDrawer', 'readerCloseDrawer', 'fmtFull',
-        'readerCursorMove', 'readerCursorToggle', 'readerCursorFav', 'readerCursorToggleRead',
-        'getKbdHelpState', 'toggleKbdHelp',
         'readerCollapsedGroups', 'readerToggleGroupCollapse', 'readerToggleAllGroups',
         'getReaderSideWidth', 'setReaderSideWidth', 'applyReaderSideWidth', 'readerSideCap',
         'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsView', 'cardsTag',
@@ -4063,29 +4031,31 @@ const withEFP = (el, fn) => {
     });
     // 关掉日报后，所有入口都靠 switchView 这一道守卫回落（#digest 深链、命令面板遗留项
     // 走的都是它）；假 core 桩测的是组件，这里验真实 core 的判定本身。
-    t('冒烟：P1 键盘 —— j/k 移动光标并展开、? 呼出/关闭帮助、输入框内不拦截', () => {
+    // 快捷键已彻底移除：j/k/o/s/u/? 与 / 都不再触发任何行为（文章切换 / 帮助浮层 / 聚焦搜索）
+    t('冒烟：快捷键已移除 —— j/k/o/s/u/? 不触发任何行为', () => {
       const c2 = sw.__coreForTest;
       c2.state.rdEntries = [{ id: 'a1', isRead: false, isFavorite: false }, { id: 'a2', isRead: false, isFavorite: false }];
-      const press = (key) => sw.document.dispatchEvent(new sw.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-      press('j');
-      if (String(c2.state.rdCursor) !== 'a1') throw new Error('j 未定位第一条: ' + c2.state.rdCursor);
-      if (!c2.state.rdExpanded.has('a1')) throw new Error('j 未展开当前条目');
-      press('j');
-      if (String(c2.state.rdCursor) !== 'a2') throw new Error('j 未前进: ' + c2.state.rdCursor);
-      press('k');
-      if (String(c2.state.rdCursor) !== 'a1') throw new Error('k 未后退: ' + c2.state.rdCursor);
-      press('?');
-      if (!c2.getKbdHelpState().show) throw new Error('? 未呼出帮助');
-      press('?');
-      if (c2.getKbdHelpState().show) throw new Error('? 未关闭帮助');
-      // 输入框内打字不拦截
-      const inp = sw.document.createElement('input');
-      sw.document.body.appendChild(inp);
-      inp.focus();
-      c2.state.rdCursor = null;
-      inp.dispatchEvent(new sw.KeyboardEvent('keydown', { key: 'j', bubbles: true, cancelable: true }));
-      if (c2.state.rdCursor != null) throw new Error('输入框内 j 不应触发导航');
-      inp.remove();
+      c2.state.rdExpanded = new Set();
+      const press = (key) => {
+        const ev = new sw.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+        sw.document.dispatchEvent(ev);
+        return ev.defaultPrevented;   // 被拦截 = 仍被当成快捷键
+      };
+      for (const k of ['j', 'k', 'o', 's', 'u', '?', '/']) {
+        if (press(k)) throw new Error(`按键 "${k}" 仍被当作快捷键拦截（preventDefault）`);
+      }
+      if (c2.state.rdExpanded.size !== 0) throw new Error('按键不应展开任何条目：' + c2.state.rdExpanded.size);
+      if ('rdCursor' in c2.state) throw new Error('state 不应再有 rdCursor 字段');
+      if (c2.getKbdHelpState !== undefined) throw new Error('core 不应再导出 getKbdHelpState');
+      if (c2.toggleKbdHelp !== undefined) throw new Error('core 不应再导出 toggleKbdHelp');
+    });
+    t('冒烟：⌘K 保留 —— 命令面板仍监听 ⌘K / Ctrl+K（源码级）', () => {
+      // 命令面板没有其它入口（无按钮可点），⌘K / Ctrl+K 是它唯一的开关，按用户要求保留。
+      // 冒烟场景没挂载 CommandPalette 组件，所以验源码而不是派发事件。
+      const root = path.join(__dirname, '..', '..');
+      const p = fs.readFileSync(path.join(root, 'src', 'cmdk', 'CommandPalette.jsx'), 'utf8');
+      if (!/ev\.key === 'k' \|\| ev\.key === 'K'/.test(p)) throw new Error('CommandPalette 不再监听 ⌘K / Ctrl+K');
+      if (!/ev\.metaKey \|\| ev\.ctrlKey/.test(p)) throw new Error('⌘K 应同时接受 metaKey(mac) 与 ctrlKey(win)');
     });
     t('冒烟：日报关掉时 switchView(ai) 回落文章页，重开后能进', () => {
       const c2 = sw.__coreForTest;
@@ -4592,13 +4562,38 @@ const withEFP = (el, fn) => {
   });
 
   // ============ 文章页：进入即置顶 + 条目深链 + 窄屏收纳（v1.7.0） ============
-  t('滚动策略：进入一篇文章置顶（block:start），不再保留「点哪停哪」的锚点补偿', () => {
+  t('滚动策略：进入一篇文章置顶，等 DOM 提交后按实际布局设 scrollTop', () => {
     const root = path.join(__dirname, '..', '..');
     const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8');
-    if (!/scrollIntoView\(\{\s*block:\s*'start'/.test(r)) throw new Error('展开文章未置顶（block:start）');
+    // 置顶必须走 scrollReaderToArt（双 rAF + 直接设 scrollTop）。
+    // 旧的 scrollIntoView({block:'start'}) 会在手风琴收起的**旧布局**里算目标位置，
+    // 等 DOM 提交后列表整体上移，新文章被甩到视口上方（实测 openTop=-461）。
+    if (!/function scrollReaderToArt/.test(r)) throw new Error('缺 scrollReaderToArt（置顶实现）');
+    // 置顶必须「每帧按当前实际布局修正」直到对齐：手风琴收起上一篇会让列表上方
+    // 少一大截高度，单次测量（无论 scrollIntoView 还是双 rAF 后再量）都可能用到
+    // 收起前的旧布局，实测会把新文章甩到视口上方 465px。
+    if (!/const step = \(\) => \{[\s\S]{0,200}requestAnimationFrame\(step\)/.test(r)) throw new Error('置顶必须用收敛循环逐帧修正');
+    if (!/main\.scrollTop \+= delta/.test(r)) throw new Error('置顶应直接设内容区 scrollTop');
+    if (!/frames >= \d+/.test(r)) throw new Error('收敛循环必须有帧数上限，不能无限滚');
+    // 注释里会提到 scrollIntoView 的旧写法，断言只看真实调用（排除注释行）
+    const rCode = r.split('\n').filter((l) => !/^\s*(\*|\/\/)/.test(l)).join('\n');
+    if (/scrollIntoView\(\{\s*block:\s*'start'/.test(rCode)) throw new Error('不应再用 scrollIntoView block:start 置顶（旧布局测量）');
     if (/anchorTop/.test(r)) throw new Error('旧的锚点补偿仍在（与「进入即置顶」互斥）');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
     if (!/\.art-item\s*\{[^}]*scroll-margin-top/.test(css)) throw new Error('.art-item 缺 scroll-margin-top（置顶会被吸顶条盖住）');
+  });
+  t('前后篇导航已彻底移除：组件、桥、样式、sprite 均无残留', () => {
+    const root = path.join(__dirname, '..', '..');
+    const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
+    if (/art-nav/.test(rv)) throw new Error('ReaderView 仍渲染 .art-nav');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8');
+    if (/readerGotoArt/.test(r)) throw new Error('reader.js 仍有 readerGotoArt');
+    const ix = fs.readFileSync(path.join(root, 'src', 'core', 'index.js'), 'utf8');
+    if (/readerGotoArt/.test(ix)) throw new Error('core 桥仍导出 readerGotoArt');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
+    if (/\.art-nav/.test(css)) throw new Error('style.css 仍有 .art-nav 样式');
+    const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+    if (/i-chevron-left/.test(html)) throw new Error('i-chevron-left sprite 已无使用者，应删除');
   });
   t('深链：条目级 hash 只 replaceState 不进历史，刷新/返回据此恢复并置顶', () => {
     const root = path.join(__dirname, '..', '..');

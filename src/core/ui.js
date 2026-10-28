@@ -5,11 +5,10 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, toggleKbdHelp, writeHash, parseHash } from './util.js';
+import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, writeHash, parseHash } from './util.js';
 import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
 import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
-import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, focusReaderArt, restoreReaderArt,
-  readerCursorMove, readerCursorToggle, readerCursorFav, readerCursorToggleRead } from './reader.js';
+import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, focusReaderArt, restoreReaderArt } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
 
 /* ============================================================
@@ -230,50 +229,6 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') closeLightbox();
   else if (ev.key === 'ArrowRight') { ev.preventDefault(); stepLightbox(1); }
   else if (ev.key === 'ArrowLeft') { ev.preventDefault(); stepLightbox(-1); }
-});
-
-// 全局快捷键：按 "/" 聚焦当前视图的搜索框（阅读页 / 卡片页）。输入框内正在打字时不拦截，
-// 也不拦截带修饰键的组合（如 Ctrl+/），避免和浏览器/系统快捷键打架
-document.addEventListener('keydown', (ev) => {
-  if (ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
-  const ae = document.activeElement;
-  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
-  if (state.tab === 'cards') {
-    // 卡片视图的搜索框已 React 化，聚焦经 window.__cardsFocusSearch 委托
-    if (!window.__cardsFocusSearch) return;
-    ev.preventDefault();
-    window.__cardsFocusSearch();
-    return;
-  }
-  if (state.tab !== 'reader') return;
-  // 阅读页搜索框已 React 化，聚焦经 window.__readerFocusSearch 委托
-  if (!window.__readerFocusSearch) return;
-  ev.preventDefault();
-  window.__readerFocusSearch();
-});
-
-/* 全局快捷键（P1 键盘优先）：? 帮助 / j k o s u（文章页）。
- * 输入框内打字、带修饰键的组合、任何覆盖层（设置 / 命令面板 / 灯箱 / 确认框 /
- * 整屏下拉 / 帮助自身）开着时都不拦截——与 Esc 层级同一套「最上层独占」思路。 */
-document.addEventListener('keydown', (ev) => {
-  const key = ev.key;
-  if (key !== '?' && key !== 'j' && key !== 'k' && key !== 'o' && key !== 's' && key !== 'u') return;
-  if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
-  const ae = document.activeElement;
-  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
-  // 覆盖层独占：任何一个开着都归它，不触发列表快捷键
-  if (window.__settingsOpen || window.__confirmOpen) return;
-  if (window.__kbdHelpOpen) { if (key === '?') { ev.preventDefault(); toggleKbdHelp(); } return; }
-  if (document.querySelector('.dd-mask')) return;
-  if (document.querySelector('.cmdk-mask:not([hidden])')) return;
-  if (document.querySelector('.lightbox')) return;
-  if (key === '?') { ev.preventDefault(); toggleKbdHelp(); return; }
-  if (state.tab !== 'reader') return;
-  if (key === 'j') { ev.preventDefault(); readerCursorMove(1); }
-  else if (key === 'k') { ev.preventDefault(); readerCursorMove(-1); }
-  else if (key === 'o') { ev.preventDefault(); readerCursorToggle(); }
-  else if (key === 's') { ev.preventDefault(); readerCursorFav(); }
-  else if (key === 'u') { ev.preventDefault(); readerCursorToggleRead(); }
 });
 
 /* ============================================================
