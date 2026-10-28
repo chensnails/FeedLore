@@ -93,6 +93,7 @@ export function CommandPalette() {
             className={'cmdk-item' + (idx === active ? ' active' : '')}
             type="button"
             role="option"
+            id={'cmdkOpt' + idx}
             aria-selected={idx === active ? 'true' : 'false'}
             onMouseMove={() => setActive(idx)}
             onClick={() => runCmdk(idx)}
@@ -111,6 +112,8 @@ export function CommandPalette() {
       <div className="cmdk" role="dialog" aria-modal="true" aria-label="命令面板">
         <div className="cmdk-input-wrap">
           <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+          {/* ↑↓ 只改 active 状态、焦点始终留在输入框，必须靠 aria-activedescendant
+              把「当前高亮项」报给读屏，否则读屏听不出选中了哪条。 */}
           <input
             ref={inputRef}
             className="cmdk-input"
@@ -118,13 +121,19 @@ export function CommandPalette() {
             placeholder="输入命令或搜索…（⌘K / Ctrl+K 开关，↑↓ 选择，↵ 执行，Esc 关闭）"
             autoComplete="off"
             spellCheck="false"
+            role="combobox"
+            aria-label="搜索命令"
+            aria-autocomplete="list"
+            aria-expanded="true"
+            aria-controls="cmdkList"
+            aria-activedescendant={items.length ? 'cmdkOpt' + active : undefined}
             value={q}
             onChange={(ev) => { setQ(ev.target.value); setActive(0); }}
             onKeyDown={onInputKeyDown}
           />
           <kbd className="cmdk-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
         </div>
-        <div className="cmdk-list" ref={listRef} role="listbox">{rows}</div>
+        <div className="cmdk-list" ref={listRef} role="listbox" id="cmdkList" aria-label="命令列表">{rows}</div>
         <div className="cmdk-foot">
           <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
           <span><kbd>↵</kbd> 执行</span>

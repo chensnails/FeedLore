@@ -95,6 +95,10 @@ document.addEventListener('keydown', (ev) => {
   if (cmdk) return;                                                  // 命令面板
   if (document.querySelector('.lightbox')) return;                   // 图片灯箱
   if (window.__confirmOpen) return;                                  // 统一确认框
+  // 最后交给宿主：移动端停在「分区内容」这一层时，Esc 应先退回设置列表，
+  // 只有已经在列表上才整层关闭（与「返回」按钮一致）。返回 true = 已消化。
+  const host = window.__settingsHost;
+  if (host && typeof host.escape === 'function' && host.escape()) return;
   closeSettings();
 });
 

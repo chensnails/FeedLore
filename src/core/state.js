@@ -188,10 +188,13 @@ export function unlockPageScroll() {
 }
 
 /** 打开设置弹层（外壳 React 化后仅作为委托入口：锁屏 / tab 副作用 / 面板加载
- *  都由 SettingsModal 挂载后自行完成） */
+ *  都由 SettingsModal 挂载后自行完成）。
+ *  注意：tab 要原样透传、不要在这里兜底成 'source' —— 移动端用「有没有指定分区」
+ *  区分「进设置列表」和「直达某分区」（见 SettingsModal 的 mobilePane 判定）；
+ *  桌面端的默认分区由 SettingsModal 自己兜底，语义不变。 */
 export function openSettings(tab) {
   const host = window.__settingsHost;
-  if (host && host.open) host.open(tab || 'source');
+  if (host && host.open) host.open(tab);
 }
 
 export function closeSettings() {

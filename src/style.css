@@ -4417,3 +4417,16 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
   #sortDD { margin-left: auto; }
 }
 
+
+/* 触屏命中区（v1.6.0-test3）：WCAG 2.2 SC 2.5.8 要求 ≥24×24，iOS HIG 建议 44×44。
+   390px 实测 .reader-side-fold 仅 22×22、.reader-side-close 31×19、.rd-ch-filter 22×22、
+   ⋮ 菜单项高 33px，手指都够不着。这里给的是真实盒子尺寸、不用伪元素虚扩命中区 ——
+   折叠键与关闭键只隔 4px，虚扩会互相抢点击。命中条件同时收 coarse 指针与 ≤720px：
+   前者是真手指，后者是窄窗口（headless 模拟不出 coarse，靠宽度这一条才验得到）。 */
+@media (pointer: coarse), (max-width: 720px) {
+  .reader-side-fold { width: 40px; height: 40px; }
+  .reader-side-fold .ico { width: 1rem; height: 1rem; }
+  .reader-side-close { min-width: 40px; min-height: 40px; padding: 0 var(--sp-2); }
+  .rd-ch-filter { width: 30px; height: 30px; }
+  .overflow-item { min-height: 44px; }
+}

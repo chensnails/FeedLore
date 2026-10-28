@@ -44,6 +44,38 @@ export function SettingsModal() {
   const [mobilePane, setMobilePane] = useState(false);
   const modalRef = useRef(null);
   const openerRef = useRef(null);
+  // 宿主回调是 [] 依赖的闭包，读 state 会读到首次渲染的旧值；Esc / 返回要判断
+  // 「现在是不是窄屏、是不是停在分区内容里」，所以镜像一份最新值到 ref。
+  const isMobileRef = useRef(false);
+  const paneOpenRef = useRef(false);
+  const tabRef = useRef(tab);
+
+  useEffect(() => { isMobileRef.current = isMobile; }, [isMobile]);
+  useEffect(() => { paneOpenRef.current = mobilePane; }, [mobilePane]);
+  useEffect(() => { tabRef.current = tab; }, [tab]);
+
+  // 切分区：移动端同时进入「分区内容」这一层（桌面端忽略 mobilePane）
+  function selectTab(name) {
+    setTab(name);
+    if (!isMobile) return;
+    setMobilePane(true);
+    // 进分区后原来的 tab 列表已经被隐藏，焦点必须搬进内容层（返回键），
+    // 否则焦点会掉回 body，键盘用户直接丢失位置。
+    setTimeout(() => {
+      const el = modalRef.current && modalRef.current.querySelector('.settings-back');
+      if (el) el.focus();
+    }, 0);
+  }
+
+  // 退回设置列表（移动端）。返回按钮与 Esc 共用：焦点落到刚才所在分区的 tab 上，
+  // 键盘用户不至于丢了位置。
+  function goHome() {
+    setMobilePane(false);
+    setTimeout(() => {
+      const el = modalRef.current && modalRef.current.querySelector('.tab[data-tab="' + tabRef.current + '"]');
+      if (el) el.focus();
+    }, 0);
+  }
 
   // 窄屏感知（jsdom 里 matchMedia 恒 false → 走桌面路径，测试不受影响）
   useEffect(() => {
@@ -74,6 +106,13 @@ export function SettingsModal() {
         setOpen(true);
       },
       close() { setOpen(false); },
+      /** Esc 的第一处理权交回宿主：移动端停在分区内容里时，Esc 应该退回设置列表
+       *  （和「返回」按钮一致），只有已经在列表上时 Esc 才整层关闭。
+       *  返回 true 表示这一击已被消化，core/ui.js 那边就不再 closeSettings。 */
+      escape() {
+        if (isMobileRef.current && paneOpenRef.current) { goHome(); return true; }
+        return false;
+      },
       setSummary,
       setAdminFlag(a) { setAdmin(!!a); },
     };
@@ -139,6 +178,28 @@ export function SettingsModal() {
 
   const tabs = TABS.filter(([name]) => !(ADMIN_TABS.indexOf(name) >= 0 && !admin));
 
+  // tablist 的键盘约定：↑↓（竖排）或 ←→ 移动并选中，Home/End 跳首尾；
+  // 焦点跟着走，避免「按了方向键但焦点还在原处」。
+  const onTabsKey = (ev) => {
+    const k = ev.key;
+    if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'ArrowLeft' && k !== 'ArrowRight' && k !== 'Home' && k !== 'End') return;
+    const names = tabs.map(([n]) => n);
+    const i = names.indexOf(tab);
+    if (i < 0) return;
+    let next = i;
+    if (k === 'ArrowDown' || k === 'ArrowRight') next = (i + 1) % names.length;
+    else if (k === 'ArrowUp' || k === 'ArrowLeft') next = (i - 1 + names.length) % names.length;
+    else if (k === 'Home') next = 0;
+    else next = names.length - 1;
+    ev.preventDefault();
+    // 桌面端方向键直接切分区（自动激活，符合 tablist 习惯）；移动端只用方向键
+    // 移动焦点、回车才进分区 —— 否则第一次按方向键就把列表换成了内容层，
+    // 列表消失、焦点无处可落。
+    if (!isMobile) selectTab(names[next]);
+    const el = modalRef.current && modalRef.current.querySelector('.tab[data-tab="' + names[next] + '"]');
+    if (el) el.focus();
+  };
+
   return (
     <div className="modal-mask" hidden={!open} onClick={onMaskClick}>
       <div className={'modal settings-modal' + (isMobile ? (mobilePane ? ' mobile-pane' : ' mobile-home') : '')}
@@ -146,7 +207,7 @@ export function SettingsModal() {
         <div className="modal-head">
           <div className="modal-head-lead">
             {isMobile && mobilePane ? (
-              <button className="settings-back" type="button" aria-label="返回设置列表" onClick={() => setMobilePane(false)}>
+              <button className="settings-back" type="button" aria-label="返回设置列表" onClick={goHome}>
                 <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
               </button>
             ) : null}
@@ -160,22 +221,26 @@ export function SettingsModal() {
           </button>
         </div>
 
-        <div className="tabs" id="tabs">
+        <div className="tabs" id="tabs" role="tablist" aria-label="设置分区" aria-orientation="vertical" onKeyDown={onTabsKey}>
           {tabs.map(([name, label]) => (
             <button
               key={name}
               type="button"
+              role="tab"
+              id={'settingsTab-' + name}
               className={'tab' + (tab === name ? ' active' : '')}
               data-tab={name}
-              aria-pressed={tab === name ? 'true' : 'false'}
-              onClick={() => { setTab(name); if (isMobile) setMobilePane(true); }}
+              aria-selected={tab === name ? 'true' : 'false'}
+              aria-controls="settingsPanel"
+              tabIndex={tab === name ? 0 : -1}
+              onClick={() => selectTab(name)}
             >
               {label}
             </button>
           ))}
         </div>
 
-        <div className="modal-body">
+        <div className="modal-body" id="settingsPanel" role="tabpanel" aria-labelledby={'settingsTab-' + tab}>
           {tab === 'source' && open && <SourcePane admin={admin} />}
           {tab === 'appearance' && open && <AppearancePane />}
           {tab === 'model' && open && <ModelPane />}

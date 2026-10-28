@@ -2,6 +2,17 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.6.0-test3] — 2026-10-28（开发版，UI 交互完整性修复，未发布）
+
+> 依据「UI 交互完整性检查」确认的 6 项问题逐条修复：移动端设置两级导航可达性、命令面板与设置导航的无障碍语义、触屏命中区、文案一致性、移动端 Esc 层级。经 Edge headless + CDP 复测（桌面 1440×900 / 移动 390×844）：移动端设置首开停在列表、cmdk `aria-activedescendant` 指向高亮项、tablist/tabpanel 关联生效、触屏控件实测 ≥40px、分区内 Esc 回列表后焦点落回原 tab。UI 354 项、server 97 项、deploy 5/5、Dockerfile 清单、Vite 生产构建全绿。
+
+- **移动端设置首开停在列表**：`core/state.js` 的 `openSettings(tab)` 不再兜底 `tab || 'source'`，改为原样透传。`SettingsModal` 靠「有没有指定分区」区分「进列表」与「直达分区」，兜底会让 `setMobilePane(!!t)` 恒为 true，第一级列表只能在按「返回」后才见得到。桌面默认分区仍由 `SettingsModal` 自己兜底，行为不变；`readerOpenSource()` 显式传 `'source'` 不受影响。
+- **命令面板 combobox 语义**：输入框补 `role="combobox"` / `aria-controls` / `aria-expanded` / `aria-autocomplete`，选项补稳定 id，`aria-activedescendant` 指向当前高亮项。此前 ↑↓ 只改 `active` 状态、焦点留在输入框，读屏听不出选中了哪条。
+- **设置导航 tab 语义**：`.tabs` 改 `role="tablist"`（`aria-orientation="vertical"`），每个 tab 改 `role="tab"` + `aria-selected` + `aria-controls` + 漫游 `tabIndex`，分区容器补 `role="tabpanel"` + `aria-labelledby`；新增 ↑↓/←→/Home/End 切分区并同步焦点，替换原来的 `aria-pressed`。
+- **触屏命中区**：新增 `@media (pointer: coarse), (max-width: 720px)` 段 —— 折叠键 22×22 → 40×40、抽屉关闭键 31×19 → ≥40×40、频道漏斗 22×22 → 30×30、⋮ 菜单项高 33 → ≥44。用真实盒子尺寸而非伪元素虚扩：折叠键与关闭键只隔 4px，虚扩会互相抢点击；命中条件同时收 `pointer: coarse` 与 `≤720px`：真手指与窄窗口都覆盖到。
+- **文案一致**：添加订阅进行中文案「抓取中…」→「添加中…」，与「导入中…」「保存中…」对齐。
+- **移动端 Esc 层级**：`core/ui.js` 的 Esc 处理在关闭前先问宿主 `host.escape()`，移动端停在分区内容里时先退回设置列表（与「返回」按钮一致），焦点落回原分区 tab；桌面或已在列表时仍整层关闭。
+
 ## [1.6.0-test2] — 2026-10-28（开发版，标签栏移除 + 品牌落位 + App Shell 分栏滚动，未发布）
 
 > 在 test1 合并头部的基础上：彻底移除页头标签栏与卡面标签（仅保留正文内标签），品牌 logo 迁到频道栏顶部，并把布局改成 App Shell（分栏独立滚动、工具顶栏钉住）。经 Edge headless + CDP 实测：三视图均无整页滚动（`bodyScroll == vh`）；卡面 / 文章 / 日报的工具顶栏在滚动内容时保持不动（文章页顶栏停在滚动区顶部 y=16、卡片页 y=0）；频道栏与内容区各自独立滚动。

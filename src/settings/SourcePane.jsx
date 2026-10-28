@@ -1078,7 +1078,7 @@ export function SourcePane({ admin }) {
               disabled={busy === 'add'}
               onClick={onAdd}
             >
-              {busy === 'add' ? '抓取中…' : '添加'}
+              {busy === 'add' ? '添加中…' : '添加'}
             </button>
           </div>
           <div className="source-add-foot">
