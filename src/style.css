@@ -4497,10 +4497,18 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
      桌面剩余宽度要留给搜索，标题按内容宽）。
      ⚠️ max-width 必须连桌面那条 `.cards-head > .page-title { max-width: 40% }` 一起压掉：
      那条是 0,2,0 的两个类，光写 `.page-title`（0,1,0）特异度不够，标题仍被钉在屏宽 40%
-     （680px 下 = 259px），右簇就贴不到右 —— 实测会差出 145px 的一整段空白。 */
+     （680px 下 = 259px），右簇就贴不到右 —— 实测会差出 145px 的一整段空白。
+     ⚠️ flex 基准必须是 0（`1 1 0`）而不是 auto：flex 换行是按「假设主尺寸」
+     （= flex-basis，被 min/max 夹住）分行的，基准取 auto 就等于取**内容宽度** ——
+     长频道名（如「奥斯卡4K蓝光(精品)影视磁力站🍟 - Telegram Channel」）的假设尺寸
+     直接撑爆整行，标题独占第一行、右簇工具被挤到第二行，导航栏变成两行（实测 375px
+     下 .reader-head 高度 44 → 88）。基准取 0 后假设尺寸只剩 min-width 的 60px，
+     整行不再被撑破；标题在剩余空间里伸展，长名字按 nowrap + 省略号单行截断。
+     min-width 保留 60px（约 4 个汉字）：既不让标题缩成「全…」，也保证它不会
+     完全消失。 */
   .page-title,
-  .cards-head > .page-title { flex: 1 1 auto; max-width: none; }
-  .reader-head-text { flex: 1 1 auto; max-width: none; }
+  .cards-head > .page-title { flex: 1 1 0; max-width: none; }
+  .reader-head-text { flex: 1 1 0; max-width: none; }
 
   /* 触屏命中区：视觉 36px，纵向补到 44px。只扩上下 —— 横向扩会与相邻按钮的
      命中区重叠，点错隔壁比点不中更烦。 */

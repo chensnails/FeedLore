@@ -4524,8 +4524,39 @@ const withEFP = (el, fn) => {
     if (!/@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.grid > \.card[\s\S]{0,140}?animation:\s*none/.test(css)) throw new Error('reduce-motion 未局部关闭入场动画');
   });
 
-  // ============ 卡片页列表视图：宽度自适应 + 复制按钮紧凑（v1.7.0） ============
-  // 背景：① 卡片页 .wrap 作为 #cardsRoot 的 flex 子项时不写 min-width:0，会被内容
+  // ============ 窄屏导航栏：频道名单行 + 省略号（v1.7.0） ============
+  // 背景：≤720 段标题写的是 `flex: 1 1 auto` —— flex 基准取 auto 等于取**内容宽度**，
+  // 而 flex 换行是按「假设主尺寸」（= flex-basis，被 min/max 夹住）分行的，
+  // 于是长频道名（如「奥斯卡4K蓝光(精品)影视磁力站🍟」）的假设尺寸直接撑爆整行：
+  // 标题独占第一行、右簇工具被挤到第二行，导航栏变成两行（实测 375px 下
+  // .reader-head 高度 44 → 88）。基准取 0 后假设尺寸只剩 min-width 的 60px，
+  // 整行不再被撑破，标题在剩余空间里伸展、长名按 nowrap + 省略号单行截断。
+  t('窄屏标题的 flex 基准必须是 0，不能退回 auto（长频道名会把导航栏撑成两行）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    // 定位 ≤720 媒体段里的标题规则
+    // （style.css 里有多个 ≤720 段，标题规则在末尾那个「工具栏令牌层」里，
+    //   所以要把所有 ≤720 段拼起来一起搜，不能只取第一个）
+    const segs = css.match(/@media \(max-width: 720px\)[\s\S]*?\n\}\n/g) || [];
+    if (!segs.length) throw new Error('缺 ≤720 媒体段');
+    const block = segs.join('\n');
+    const m = block.match(/\.page-title,\s*\.cards-head > \.page-title\s*\{([^}]*)\}/);
+    if (!m) throw new Error('≤720 段缺标题 flex 规则');
+    if (!/flex:\s*1 1 0\b/.test(m[1])) throw new Error('≤720 标题 flex 基准应为 0（现为 ' + (m[1].match(/flex:[^;]*/) || ['?'])[0] + '）');
+    if (!/max-width:\s*none/.test(m[1])) throw new Error('≤720 标题应解除 40% 上限');
+    const rt = block.match(/\.reader-head-text\s*\{([^}]*)\}/);
+    if (!rt) throw new Error('≤720 段缺 .reader-head-text 规则');
+    if (!/flex:\s*1 1 0\b/.test(rt[1])) throw new Error('≤720 .reader-head-text flex 基准应为 0');
+    // 标题自身必须单行 + 省略号（基础层已有，别被改掉）
+    const base = css.match(/^\.page-title,[\s\S]{0,200}?\{([^}]*)\}/m);
+    if (!base) throw new Error('缺 .page-title 基础规则');
+    if (!/white-space:\s*nowrap/.test(base[1])) throw new Error('.page-title 缺 white-space:nowrap（会换行成两行）');
+    if (!/text-overflow:\s*ellipsis/.test(base[1])) throw new Error('.page-title 缺 text-overflow:ellipsis（长名不截断）');
+    if (!/overflow:\s*hidden/.test(base[1])) throw new Error('.page-title 缺 overflow:hidden');
+    if (!/min-width:\s*60px/.test(base[1])) throw new Error('.page-title 应保留 min-width:60px（不缩成「全…」）');
+  });
+
+  // ============ 卡片页列表视图：宽度自适应 + 复制按钮紧凑（v1.7.0） ============  // 背景：① 卡片页 .wrap 作为 #cardsRoot 的 flex 子项时不写 min-width:0，会被内容
   // 最小宽度撑开（实测 1280 视口下 .wrap 宽 1600px、375 视口下 698px），超出部分
   // 被 #cardsView{overflow:hidden} 裁掉 —— 列表元素溢出/错位、右侧内容看不见。
   // ② 复制按钮基础层曾是整宽文字按钮（flex:1），窄屏段还有 flex:1 0 100%，
