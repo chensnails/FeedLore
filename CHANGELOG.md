@@ -2,108 +2,82 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
-## [1.7.0-test1] — 2026-10-28（开发版，P0 一致性速赢 + 常驻视图导航，未发布）
+## [1.7.0] — 2026-10-29
 
-> 依据《UI 全面优化方案》（docs/UI优化方案-2026-10-28.html）的 P0 速赢清单。UI 365 项、server 118 项、deploy 5/5 全绿。
+> 本正式版汇总开发线 `1.5.2-test1` → `1.6.0-test1…test6` → `1.7.0-test1` 的全部内容：界面结构重构、关注 / 屏蔽规则引擎、UI 一致性速赢、键盘优先与动效，以及移动端与列表布局的一系列修复。UI 375 项、server 118 项、deploy 5/5 全绿。
 
-- **常驻视图导航（P0 #1）**：新增 `src/ui/ViewNav.jsx`，把「文章 / 卡片 / 日报」三视图切换从 ⋮ 溢出菜单提升为各视图顶栏右簇的常驻分段导航（复用 App Shell 时代的 `.viewnav`/`.viewnav-btn` 结构与窄屏规则）；溢出菜单不再内联视图项，只承载刷新 / 主题 / 设置 / 排序 / 网格-列表。日报关闭时入口整枚消失（不是灰着），与原顶栏口径一致。~~卡片范围分段~~：曾随 P0 #5 在卡片工具条加过「全部 / 收藏」分段，按用户决定移除——卡片页不需要收藏（守门含反向断言防回归）。
-- **设置「关注 / 屏蔽」切换复用 `.seg`**：移除自造的 `.watch-act-btn`（胶囊形 / 缺 neu-inset / 选中语言不一致），改为全站共用的分段控件。
-- **MD3 状态层令牌**：新增 `--state-hover/focus/press/drag`（on-color 低透明度叠加，跨主题 / 主色自适应），溢出菜单与下拉项的扁平 hover 升级为状态层叠加。
-- **文章页：进入一篇即置顶（老问题修复）**：滚动容器是 `.reader-main`（App Shell 后 body 不再滚动），而此前两条进入路径都不置顶——点击标题走「点哪停哪」的锚点补偿，`j/k` 走 `scrollIntoView({block:'nearest'})`（目标在视口内就不滚）。两者都让新文章的开头落在视口下半屏，读起来像「跳进文章中间」。现统一为：**进入一篇文章 = 标题行对齐滚动容器顶部**（`.art-item` 加 `scroll-margin-top` 让出吸顶工具条高度），点击、`j/k`、前后篇导航三条路径一致。
+### 界面结构
+
+- **头部合并为单行 Row1（三视图各自渲染）**：卡片页 `[≡频道][频道下拉▾][搜索][⋮]`、文章页 `[≡频道][标题][动作…][搜索][⋮]`、日报页 `[AI][⋮]`。删除全局 `<header class="topbar" id="topbarRoot">` 与 `main.jsx` 的 TopBar 挂载；`--topbar-h` 改由各视图 Row1 经新增钩子 `src/shell/useTopbarHeight.js` 实测写入（隐藏视图测得 0 高不写、`Math.ceil` 取整防 1px 缝）。Row1 贴 `top:0`。
+- **移除顶部标签栏与卡面标签**：删除 `src/ui/TagBar.jsx` 及两页引用，移除 `.tagbar/.tag-list/.tag-chip/.tag-more` 样式与卡面 `card-tags`；`Card` / `Row` 去掉标签渲染（`Row` 保留来源短名 pill）。**正文内标签原样保留**（`.art-tags / .mini-tag`）。
+- **App Shell 分栏独立滚动**：`body { overflow:hidden }`；`#cardsView` / `#aiView` = `100dvh`，`#cardsRoot` 为 flex 列（顶栏不滚、`main` 独立滚）；文章页 `#readerView` 满高、`#readerRoot` 网格 `height:100%`，`.reader-side` 与 `.reader-main` 各自 `overflow-y:auto`；`.reader-head` / `.cards-sticky` / `.ai-head` 各自 sticky 钉在滚动容器顶部。
+- **品牌 logo 迁到频道栏顶部**：新增 `src/ui/BrandLogo.jsx`，文章页侧栏与卡片页抽屉顶部渲染「logo + 笺川」（`.side-brand`）。
+- **⋮ 溢出菜单（新增 `src/ui/OverflowMenu.jsx`）**：承载刷新 / 夜间模式 / 设置；卡片页额外含**排序子菜单**（new/old/name，右侧 flyout）与**网格 / 列表视图切换**。键盘可达：`menuitemradio` 语义、↑↓ 漫游、→ 进子菜单、← / Esc 出子菜单、外点关闭。新增 `#i-more` sprite 图标。
+- **常驻视图导航（P0 #1）**：新增 `src/ui/ViewNav.jsx`，把「文章 / 卡片 / 日报」三视图切换从 ⋮ 溢出菜单提升为各视图顶栏右簇的常驻分段导航（复用 `.viewnav` / `.viewnav-btn` 结构与窄屏规则）；溢出菜单不再内联视图项。日报关闭时入口整枚消失（不是灰着），与原顶栏口径一致。
+  - 注：卡片页曾随 P0 #5 加过「全部 / 收藏」范围分段，按用户决定移除——卡片页不需要收藏（守门含反向断言防回归）。
+
+### 阅读体验
+
+- **进入一篇即置顶（老问题修复）**：滚动容器是 `.reader-main`（App Shell 后 body 不再滚动），而此前两条进入路径都不置顶——点击标题走「点哪停哪」的锚点补偿，`j/k` 走 `scrollIntoView({block:'nearest'})`（目标在视口内就不滚）。两者都让新文章的开头落在视口下半屏，读起来像「跳进文章中间」。现统一为：**进入一篇文章 = 标题行对齐滚动容器顶部**（`.art-item` 加 `scroll-margin-top` 让出吸顶工具条高度），点击、`j/k`、前后篇导航三条路径一致。
 - **前后篇导航（新增）**：展开的正文底部一行「‹ 上一篇 / 下一篇 ›」，显示相邻条目标题（单行截断），点击即跳转并置顶。放在正文底部而非顶栏——窄屏顶栏已排满，而正文底部在任何屏宽都稳。
-- **条目级深链 + 前进/后退策略**：地址栏用 `replaceState` 记录当前状态（`#reader/art/<id>` / `#cards` / `#ai`），**不进浏览器历史**——否则点 20 次「下一篇」后按一次后退要按 20 次。刷新或从别处回来时按 hash 恢复该篇并置顶；`popstate` 兜住手动改 hash / 站内返回。策略统一为：谁进来都从文章开头看起（不保留离开时的滚动位置——列表是服务端分页的，位置未必还落在同一篇上）。
-- **文章页窄屏重排（推翻原设计）**：≤720 时三枚动作按钮（单篇/多篇·全部已读·全部收起）从顶栏收进 ⋮ 菜单（新增 `.is-narrow-only` 窄屏专属项），顶栏只留 频道 / 标题 / 搜索 / 视图切换 / ⋮；≤480 再把频道按钮收成一枚 ☰（aria-label 保留）。实测 375px 下顶栏由两行（headH 88）回到单行（44）。元信息窄屏瘦身：隐藏体积（`.art-size`），保留来源与日期。
-- **键盘优先（P1）**：文章页新增 `j / k`（下/上一条，自动展开并标记已读，复用手风琴位置补偿全链路）、`o`（开/收当前）、`s`（收藏当前）、`u`（当前条目已读/未读切换）；`?` 全局呼出快捷键帮助浮层（复用 .modal 玻璃体系，Esc / 再按 ? / 点遮罩关闭）。输入框内打字与任何覆盖层（设置 / 命令面板 / 灯箱 / 确认框 / 帮助自身）打开时均不拦截。光标条目以 accent 描边高亮（刻意不用左条——那已被 is-fav 占用）。
-- **卡片入场错峰（P1 动效）**：`.grid` 首屏卡片/列表行 `cardIn` 浮现（nth-child 2~10 逐张 20ms 错峰，第 11 张起封顶——续拉的新卡只保留浮现不再排队）；纯 CSS 实现，不碰 Card 的 memo。弹层落座（popIn）与遮罩淡入（fadeIn）经核实基础层已有，不重复造轮子；视图切换转场已有 View Transitions API。reduce-motion 下入场动画显式关闭（另有全局守卫兜底）。
-- **全局 `prefers-reduced-motion` 守卫**：核实早已存在（style.css），确认覆盖全部动效（本轮新增入场动画也在其内）。
-- **卡片页列表视图：宽度自适应 + 复制按钮紧凑（修复）**：
-  - **溢出的根因在容器层**：卡片页 `.wrap` 是 `#cardsRoot`（column flex）的 flex 子项，未设 `min-width:0` 时会被「内容最小宽度」撑开——实测 1280px 视口下 `.wrap` 宽 **1600px**、375px 视口下 **698px**，超出部分被 `#cardsView{overflow:hidden}` 直接裁掉，表现为列表元素溢出、错位、右侧内容看不见（网格模式同样中招）。现给 `#cardsRoot > main.wrap` 补 `min-width:0 + width:100%`（`max-width:1600px` 对超宽屏仍生效），并给 `.grid.list-mode` / `.row-item` 补 `min-width:0`，让宽度由视口决定而非由行内容反推。
-  - **复制按钮尺寸异常**：`.btn-copy` 基础层原是「`flex:1` + 文字内边距」的整宽文字按钮，≤720 媒体段还有 `flex:1 0 100%` 与 `.row-actions .btn-copy{flex:1}`——在列表行里被拉成 **591px 宽**的巨型蓝色条，把整行布局冲垮。现基础层统一收成 32×32 图标方块（`flex:0 0 auto`，宽度定死不参与伸缩），列表行 / 正文动作行为 34×34，与「打开」按钮同尺寸；成功态的「已复制」文字用 `.btn-label` 包裹并在方块内隐藏（文字由 toast 播报）。
-  - **窄屏列表排版**：≤720 时操作按钮独占一行并右对齐；标题换行、摘要两行截断，来源标签 `max-width` 改为 `min(220px,100%)` 不再撑破行宽。
-  - **守门**：UI 371 → 374（新增三条：容器宽度链 CSS 断言、复制按钮紧凑且无 `flex:1` 回退、列表行 DOM 实测不超容器且两按钮等宽）。CDP 实机：1280/1000/820/700/560/430/375 七档下列表行与容器宽度均贴合视口、无横向溢出、复制按钮恒 34×34；网格模式 1280 四列 / 375 双列正常。
-- **窄屏导航栏：长频道名不再把导航栏撑成两行**：≤720 段标题写的是 `flex: 1 1 auto`——**flex 基准取 auto 等于取内容宽度**，而 flex 换行是按「假设主尺寸」（= flex-basis，被 min/max 夹住）分行的，于是长频道名（如「奥斯卡4K蓝光(精品)影视磁力站🍟」）的假设尺寸直接撑爆整行：标题独占第一行、右簇工具被挤到第二行，导航栏变成两行（实测 375px 下 `.reader-head` 高度 44 → 88）。现把基准改为 `0`（`flex: 1 1 0`），假设尺寸只剩 `min-width` 的 60px，整行不再被撑破；标题在剩余空间里伸展，长名按 `nowrap` + `text-overflow: ellipsis` 单行截断。两页（卡片页 `.cards-title` / 文章页 `.reader-head-text`）同步处理，桌面端不受影响（≥721px 保持原规则）。守门 +1（375 项）：≤720 段标题 flex 基准必须是 0，且 `.page-title` 基础规则须保留 `nowrap` / `ellipsis` / `overflow:hidden` / `min-width:60px`。CDP 实机（真实长名频道）：两页 1280→360 共 20 档，导航栏恒为单行（44/52px）、标题恒 1 行、必要时省略号截断、无重叠、无横向溢出。
+- **条目级深链 + 前进 / 后退策略**：地址栏用 `replaceState` 记录当前状态（`#reader/art/<id>` / `#cards` / `#ai`），**不进浏览器历史**——否则点 20 次「下一篇」后按一次后退要按 20 次。刷新或从别处回来时按 hash 恢复该篇并置顶；`popstate` 兜住手动改 hash / 站内返回。策略统一为：谁进来都从文章开头看起（不保留离开时的滚动位置——列表是服务端分页的，位置未必还落在同一篇上）。
+- **键盘优先**：`j / k`（下 / 上一条，自动展开并标记已读，复用手风琴位置补偿全链路）、`o`（开 / 收当前）、`s`（收藏当前）、`u`（当前条目已读 / 未读切换）；`?` 全局呼出快捷键帮助浮层（复用 `.modal` 玻璃体系，Esc / 再按 ? / 点遮罩关闭）。输入框内打字与任何覆盖层（设置 / 命令面板 / 灯箱 / 确认框 / 帮助自身）打开时均不拦截。光标条目以 accent 描边高亮（刻意不用左条——那已被 is-fav 占用）。
+- **灯箱多图可翻看**：收集同一正文容器内的全部 `.art-img`，新增 `stepLightbox(±1)`；渲染上一张 / 下一张与「2 / 3」序号，`←` / `→` 也可切换；按钮 `stopPropagation` 避免点翻页被「点任意处关闭」吃掉；单图时不渲染翻页控件。
+- **灯箱关闭归还焦点**：关闭时把焦点还给触发图（`<img>` 临时补 `tabindex="-1"`，不进 Tab 序列但可程序聚焦），不再落到 body。
+- **文章页窄屏重排（推翻原设计）**：≤720 时三枚动作按钮（单篇 / 多篇 · 全部已读 · 全部收起）从顶栏收进 ⋮ 菜单（新增 `.is-narrow-only` 窄屏专属项），顶栏只留 频道 / 标题 / 搜索 / 视图切换 / ⋮；≤480 再把频道按钮收成一枚 ☰（aria-label 保留）。实测 375px 下顶栏由两行（headH 88）回到单行（44）。元信息窄屏瘦身：隐藏体积（`.art-size`），保留来源与日期。
 
-## [1.6.0-test6] — 2026-10-28（开发版，触屏频道栏降噪，未发布）
+### 关注 / 屏蔽规则（新增功能）
 
-> 叠加 test5 全部内容（关注 / 屏蔽规则 + Webhook 通知 + 两页自动加载修复），本版增量：移动端频道栏漏斗按钮去填充底色，改为弱化色裸图标、仅筛选态高亮 —— 修掉「每个分组行右侧挂一颗实心方块」的突兀感。UI 362 项全绿。
-
-- **触屏漏斗降噪**：`.rd-ch-filter` 在 `(hover: none)` 下去掉 `background: var(--hover)` 填充底色，保持 30×30 命中区不变；仅 `.is-active`（正在筛选该组）亮 accent + 底色。桌面端悬停浮现逻辑不变。
-
-## [1.6.0-test5] — 2026-10-28（开发版，关注 / 屏蔽规则 + Webhook 通知，未发布）
-
-> 新增按关键字的「关注 / 屏蔽」规则引擎：命中的文章聚合进频道栏的「关注」视图，被屏蔽的收进置底的「屏蔽」视图并自动已读；关注规则可选 Webhook 推送。数据上打标记不复制条目（entries.watch_state），原频道与聚合视图看到的是同一条，已读 / 收藏天然一致。UI 362 项、server 118 项、deploy 5/5 全绿。
-
-- **规则引擎**（lib/watch.js）：关键字一行一个、子串匹配不分大小写；同时命中关注与屏蔽时按屏蔽处理；规则可停用（on=false）。存 users.prefs.watchRules，服务端 sanitizeWatchRules 清洗（≤30 条 / 关键字 ≤50 个、每个 ≤60 字）。
-- **抓取即打标**：每轮抓取入库后对新条目跑 classify，命中写 entries.watch_state / watch_rule（迁移 v21，部分索引 entries_watch_idx）；屏蔽命中顺手置为已读。
-- **Webhook 通知**：users.prefs.webhookUrl 一条全局地址，每条关注规则单独决定是否推送；同一轮抓取的多条命中合并成一条消息（标题+来源+链接），发送失败只记日志不影响抓取。
-- **回溯存量**：设置 → 规则 → 「应用到已有文章」走 POST /api/watch/apply，清旧标记后按游标分批判定。
+- **规则引擎**（`lib/watch.js`）：关键字一行一个、子串匹配不分大小写；同时命中关注与屏蔽时按屏蔽处理；规则可停用。存 `users.prefs.watchRules`，服务端 `sanitizeWatchRules` 清洗（≤30 条 / 关键字 ≤50 个、每个 ≤60 字）。
+- **抓取即打标**：每轮抓取入库后对新条目跑 `classify`，命中写 `entries.watch_state` / `watch_rule`（迁移 v21，索引 `entries_watch_idx`）；屏蔽命中顺手置为已读。数据上打标记不复制条目，原频道与聚合视图看到的是同一条，已读 / 收藏天然一致。
+- **Webhook 通知**：`users.prefs.webhookUrl` 一条全局地址，每条关注规则单独决定是否推送；同一轮抓取的多条命中合并成一条消息（标题 + 来源 + 链接），发送失败只记日志不影响抓取。
+- **回溯存量**：设置 → 规则 → 「应用到已有文章」走 `POST /api/watch/apply`，清旧标记后按游标分批判定。
 - **频道栏虚拟视图**：「关注」与三个范围行同排（eye 图标），「屏蔽」隔分隔线置底（block 图标）；点击进入聚合视图（可再点一次退出），标题与空态文案跟随；与未读 / 收藏范围可叠加；「全部已读」在关注 / 屏蔽视图里只作用于命中条目（服务端 read-all 透传 watch）。
 - **设置 → 规则面板**：规则卡片（名称 / 关注-屏蔽切换 / 多行关键字 / 推送开关 / 启用开关 / 删除）+ 保存 + 应用回溯；webhook 地址独立保存；保存回包用服务端清洗结果重建表单。
-- **修复自动加载失灵（文章页 + 卡片页）**：App Shell（test2）之后列表在各自滚动容器里滚，两页的自动加载却都还监听 window 的 scroll —— 事件永远不来，卡片页只能靠「加载更多」按钮手动续。统一改为 document 捕获监听（scroll 不冒泡但能被捕获，一处收齐所有滚动容器）+ 滚动哨兵 getBoundingClientRect 判定；**移除卡片页「加载更多」按钮及其点击链路**（.loadmore-wrap 只留加载圆点与 #cardsSentinel 哨兵）；一屏没装满时加载完成即自动续拉，不依赖用户滚动；顺手修掉 scrollReaderTop 仍滚 window 的同类残留，并删除 feeds.js 里同样失效的 window 滚动监听（scrollLock 死代码）。
-- **图标**：sprite 新增 i-eye / i-block。
-- **守门**：UI 358 → 362（新增关注/屏蔽行位置、readerSetWatch 触发与退出、规则 tab 存在）；server 97 → 118（watch.test.js 21 项：匹配 / 判定优先级 / 清洗 / webhook 归并）。
+- **图标**：sprite 新增 `i-eye` / `i-block`。
 
-## [1.6.0-test4] — 2026-10-28（开发版，错误提示与灯箱可用性，未发布）
+### 一致性与动效
 
-> 收掉「需人工验证」清单里暴露的 4 个实质问题：错误提示吞掉服务端原因、灯箱不归还焦点且多图无法翻看、设置分组头缺按钮语义，以及三处文案/超时。经 Edge headless + CDP 复测：全部已读失败时显示服务端的「服务器开小差了」而不是「HTTP 500」、灯箱多图出现 ← → 与「2 / 3」序号、关闭后焦点回到触发图、分组头可 Tab 聚焦并用回车折叠。UI 358 项、server 97 项、deploy 5/5 全绿。
+- **动效令牌循环依赖修复（全站微交互恢复）**：`--dur-fast/base/med` 原为 `var(--dur-xxx)` 自引用 → CSS 循环依赖 → 全站 60+ 处 `transition` / `animation` 解析为「保证无效值」、时长回落 `0s`、所有微交互瞬时硬切。改为具体值 `.12s / .15s / .18s`。
+- **MD3 状态层令牌**：新增 `--state-hover/focus/press/drag`（on-color 低透明度叠加，跨主题 / 主色自适应），溢出菜单与下拉项的扁平 hover 升级为状态层叠加。
+- **设置「关注 / 屏蔽」切换复用 `.seg`**：移除自造的 `.watch-act-btn`（胶囊形 / 缺 neu-inset / 选中语言不一致），改为全站共用的分段控件。
+- **卡片入场错峰**：`.grid` 首屏卡片 / 列表行 `cardIn` 浮现（nth-child 2~10 逐张 20ms 错峰，第 11 张起封顶——续拉的新卡只保留浮现不再排队）；纯 CSS 实现，不碰 Card 的 memo。弹层落座（`popIn`）与遮罩淡入（`fadeIn`）经核实基础层已有，不重复造轮子；视图切换转场已有 View Transitions API。`prefers-reduced-motion` 全局守卫覆盖全部动效。
+- **跨页状态统一**：收藏态与卡片页同语言——文章页 `.art-item.is-fav` 补左侧主色竖条（`inset 3px 0 0 var(--accent)`），与卡片页「竖条 + 星标变色」一致。
 
-- **错误提示透出服务端原因**：新增 `core/util.js#httpError(res)`，优先读 `{error}`/`{message}`，读不到才回退 `HTTP <status>`，并挂 `err.status`。替换 core 里 8 处 + 设置面板 3 处共 11 处 `throw new Error('HTTP ' + res.status)` —— 此前「全部已读」失败只显示「操作失败：HTTP 500」，服务端写好的中文原因被丢掉。
-- **灯箱多图可翻看**：`openLightbox(src, { list, opener })` 收集同一正文容器（`.art-body / .cd-body / .cd-modal / .art-item`）内的全部 `.art-img`，新增 `stepLightbox(±1)`；灯箱渲染 `.lightbox-nav` 上一张/下一张与 `.lightbox-count` 序号，`←`/`→` 也可切换。按钮 `stopPropagation`，避免点翻页被「点任意处关闭」吃掉。单图时不渲染翻页控件。
-- **灯箱关闭归还焦点**：关闭时把焦点还给触发图（`<img>` 默认不可聚焦，临时补 `tabindex="-1"`，不进 Tab 序列但可程序聚焦），不再落到 body。
-- **设置分组头补按钮语义**：`.feed-group-head` 加 `role="button"` + `tabIndex=0` + `aria-expanded` + 可读 `aria-label`，Enter/Space 折叠；重命名态（内含 input）自动退化为普通容器，避免 button 套 input。补 `:focus-visible` 焦点环。
-- **三处文案与超时**：①服务端新增 `netErrMsg(e)`，把 Node fetch 的 `fetch failed` 按 `e.cause.code` 翻成「连接被拒绝 / 域名解析失败 / 连接超时」等，测试连接不再只显示英文；②OPML 导入区分「真 OPML 但没有 xmlUrl」与「压根不是 OPML」，后者提示「这不像是 OPML 文件：没找到 <opml> / <outline> 结构」；③添加订阅加 `AbortSignal.timeout(30000)`，超时显示「抓取超时（30 秒）」，不再无限停在「添加中…」。
-- **守门**：UI 354 → 358 项（新增「灯箱多图翻页控件与序号」「点翻页不关闭」「单图不渲染翻页」「分组头按钮语义」）。
-## [1.6.0-test3] — 2026-10-28（开发版，UI 交互完整性修复，未发布）
+### 移动端与响应式
 
-> 依据「UI 交互完整性检查」确认的 6 项问题逐条修复：移动端设置两级导航可达性、命令面板与设置导航的无障碍语义、触屏命中区、文案一致性、移动端 Esc 层级。经 Edge headless + CDP 复测（桌面 1440×900 / 移动 390×844）：移动端设置首开停在列表、cmdk `aria-activedescendant` 指向高亮项、tablist/tabpanel 关联生效、触屏控件实测 ≥40px、分区内 Esc 回列表后焦点落回原 tab。UI 354 项、server 97 项、deploy 5/5、Dockerfile 清单、Vite 生产构建全绿。
+- **窄屏导航栏：长频道名不再把导航栏撑成两行**：≤720 段标题写的是 `flex: 1 1 auto`——**flex 基准取 auto 等于取内容宽度**，而 flex 换行是按「假设主尺寸」（= flex-basis，被 min/max 夹住）分行的，于是长频道名（如「奥斯卡4K蓝光(精品)影视磁力站🍟」）的假设尺寸直接撑爆整行：标题独占第一行、右簇工具被挤到第二行，导航栏变成两行（实测 375px 下 `.reader-head` 高度 44 → 88）。现把基准改为 `0`（`flex: 1 1 0`），假设尺寸只剩 `min-width` 的 60px；标题在剩余空间里伸展，长名按 `nowrap` + `text-overflow: ellipsis` 单行截断。两页（卡片页 `.cards-title` / 文章页 `.reader-head-text`）同步处理，桌面端不受影响。
+- **卡片页列表视图：宽度自适应**：溢出的根因在**容器层**而非列表样式——卡片页 `.wrap` 是 `#cardsRoot`（column flex）的 flex 子项，未设 `min-width:0` 时会被「内容最小宽度」撑开（实测 1280px 视口下 `.wrap` 宽 **1600px**、375px 下 **698px**），超出部分被 `#cardsView{overflow:hidden}` 直接裁掉（网格模式同样中招）。现给 `#cardsRoot > main.wrap` 补 `min-width:0 + width:100%`（`max-width:1600px` 对超宽屏仍生效），并给 `.grid.list-mode` / `.row-item` 补 `min-width:0`，让宽度由视口决定而非由行内容反推。≤720 时操作按钮独占一行并右对齐；标题换行、摘要两行截断，来源标签 `max-width` 改为 `min(220px,100%)` 不再撑破行宽。
+- **复制按钮尺寸异常**：`.btn-copy` 基础层原是「`flex:1` + 文字内边距」的整宽文字按钮，≤720 媒体段还有 `flex:1 0 100%` 与 `.row-actions .btn-copy{flex:1}`——在列表行里被拉成 **591px 宽**的巨型蓝色条，把整行布局冲垮。现基础层统一收成 32×32 图标方块（`flex:0 0 auto`，宽度定死不参与伸缩），列表行 / 正文动作行为 34×34，与「打开」按钮同尺寸；成功态的「已复制」文字用 `.btn-label` 包裹并在方块内隐藏（文字由 toast 播报）。
+- **修复自动加载失灵（文章页 + 卡片页）**：App Shell 之后列表在各自滚动容器里滚，两页的自动加载却都还监听 window 的 scroll —— 事件永远不来，卡片页只能靠「加载更多」按钮手动续。统一改为 document 捕获监听（scroll 不冒泡但能被捕获，一处收齐所有滚动容器）+ 滚动哨兵 `getBoundingClientRect` 判定；**移除卡片页「加载更多」按钮及其点击链路**；一屏没装满时加载完成即自动续拉，不依赖用户滚动。
+- **触屏命中区**：新增 `@media (pointer: coarse), (max-width: 720px)` 段 —— 折叠键 22×22 → 40×40、抽屉关闭键 31×19 → ≥40×40、频道漏斗 22×22 → 30×30、⋮ 菜单项高 33 → ≥44。用真实盒子尺寸而非伪元素虚扩（折叠键与关闭键只隔 4px，虚扩会互相抢点击）。
+- **触屏漏斗降噪**：`.rd-ch-filter` 在 `(hover: none)` 下去掉 `background: var(--hover)` 填充底色，保持 30×30 命中区不变；仅 `.is-active`（正在筛选该组）亮 accent + 底色。桌面端悬停浮现逻辑不变。
+- **移动端设置首开停在列表**：`openSettings(tab)` 不再兜底 `tab || 'source'`，改为原样透传——兜底会让「进列表」与「直达分区」的区分失效，第一级列表只能在按「返回」后才见得到。桌面默认分区行为不变。
+- **移动端 Esc 层级**：Esc 处理在关闭前先问宿主 `host.escape()`，移动端停在分区内容里时先退回设置列表，焦点落回原分区 tab；桌面或已在列表时仍整层关闭。
 
-- **移动端设置首开停在列表**：`core/state.js` 的 `openSettings(tab)` 不再兜底 `tab || 'source'`，改为原样透传。`SettingsModal` 靠「有没有指定分区」区分「进列表」与「直达分区」，兜底会让 `setMobilePane(!!t)` 恒为 true，第一级列表只能在按「返回」后才见得到。桌面默认分区仍由 `SettingsModal` 自己兜底，行为不变；`readerOpenSource()` 显式传 `'source'` 不受影响。
+### 可访问性与错误提示
+
 - **命令面板 combobox 语义**：输入框补 `role="combobox"` / `aria-controls` / `aria-expanded` / `aria-autocomplete`，选项补稳定 id，`aria-activedescendant` 指向当前高亮项。此前 ↑↓ 只改 `active` 状态、焦点留在输入框，读屏听不出选中了哪条。
-- **设置导航 tab 语义**：`.tabs` 改 `role="tablist"`（`aria-orientation="vertical"`），每个 tab 改 `role="tab"` + `aria-selected` + `aria-controls` + 漫游 `tabIndex`，分区容器补 `role="tabpanel"` + `aria-labelledby`；新增 ↑↓/←→/Home/End 切分区并同步焦点，替换原来的 `aria-pressed`。
-- **触屏命中区**：新增 `@media (pointer: coarse), (max-width: 720px)` 段 —— 折叠键 22×22 → 40×40、抽屉关闭键 31×19 → ≥40×40、频道漏斗 22×22 → 30×30、⋮ 菜单项高 33 → ≥44。用真实盒子尺寸而非伪元素虚扩：折叠键与关闭键只隔 4px，虚扩会互相抢点击；命中条件同时收 `pointer: coarse` 与 `≤720px`：真手指与窄窗口都覆盖到。
-- **文案一致**：添加订阅进行中文案「抓取中…」→「添加中…」，与「导入中…」「保存中…」对齐。
-- **移动端 Esc 层级**：`core/ui.js` 的 Esc 处理在关闭前先问宿主 `host.escape()`，移动端停在分区内容里时先退回设置列表（与「返回」按钮一致），焦点落回原分区 tab；桌面或已在列表时仍整层关闭。
+- **设置导航 tab 语义**：`.tabs` 改 `role="tablist"`（`aria-orientation="vertical"`），每个 tab 改 `role="tab"` + `aria-selected` + `aria-controls` + 漫游 `tabIndex`，分区容器补 `role="tabpanel"` + `aria-labelledby`；新增 ↑↓/←→/Home/End 切分区并同步焦点。
+- **Dropdown ARIA 修正**：折叠态按组拆成独立 `role="listbox"`，折叠开关作为 listbox 的兄弟节点，消除「listbox 内嵌 button」的 ARIA 非法；为 listbox 设 `aria-activedescendant`。
+- **卡片墙键盘可达**：整卡（`.card` / `.row-item`）加 `role="button"` + `tabIndex={0}` + `aria-label` + `Enter/Space` 打开（焦点在内层按钮时不重复触发）。
+- **灯箱对话框语义**：打开即把焦点放进对话框、`Esc` 关闭（确认框打开时让位）、`Tab` 焦点陷阱、打开期间锁背景滚动；补显式关闭按钮（键盘 / 读屏可达入口，鼠标仍可点任意处关闭）。
+- **设置分组头补按钮语义**：`.feed-group-head` 加 `role="button"` + `tabIndex=0` + `aria-expanded` + 可读 `aria-label`，Enter/Space 折叠；重命名态自动退化为普通容器，避免 button 套 input。补 `:focus-visible` 焦点环。
+- **错误提示透出服务端原因**：新增 `core/util.js#httpError(res)`，优先读 `{error}` / `{message}`，读不到才回退 `HTTP <status>`，并挂 `err.status`。替换 core 里 8 处 + 设置面板 3 处共 11 处 `throw new Error('HTTP ' + res.status)` —— 此前「全部已读」失败只显示「操作失败：HTTP 500」，服务端写好的中文原因被丢掉。
+- **服务端错误文案**：新增 `netErrMsg(e)`，把 Node fetch 的 `fetch failed` 按 `e.cause.code` 翻成「连接被拒绝 / 域名解析失败 / 连接超时」等，测试连接不再只显示英文。
+- **文案一致**：①OPML 导入区分「真 OPML 但没有 xmlUrl」与「压根不是 OPML」，后者提示「这不像是 OPML 文件：没找到 <opml> / <outline> 结构」；②添加订阅加 `AbortSignal.timeout(30000)`，超时显示「抓取超时（30 秒）」，不再无限停在「添加中…」；③添加订阅进行中文案「抓取中…」→「添加中…」，与「导入中…」「保存中…」对齐。
 
-## [1.6.0-test2] — 2026-10-28（开发版，标签栏移除 + 品牌落位 + App Shell 分栏滚动，未发布）
+### 玻璃模糊治理（性能铁律：模糊仅用于滚动锁定层）
 
-> 在 test1 合并头部的基础上：彻底移除页头标签栏与卡面标签（仅保留正文内标签），品牌 logo 迁到频道栏顶部，并把布局改成 App Shell（分栏独立滚动、工具顶栏钉住）。经 Edge headless + CDP 实测：三视图均无整页滚动（`bodyScroll == vh`）；卡面 / 文章 / 日报的工具顶栏在滚动内容时保持不动（文章页顶栏停在滚动区顶部 y=16、卡片页 y=0）；频道栏与内容区各自独立滚动。
+- 桌面 `.dd-panel` 未锁滚动即改用实底 `var(--panel)`，去掉 `backdrop-filter`。
+- `.link-menu` 去掉全局玻璃覆盖（恢复 `var(--panel)` 实底）。
+- `.modal` / `.cmdk` 去掉面板自身的二次 `backdrop-filter`，只保留遮罩（mask）单层模糊，消除双重模糊。
 
-- **移除顶部标签栏**：删除 `src/ui/TagBar.jsx` 及两页对它的引用；移除 `.tagbar/.tag-list/.tag-chip/.tag-more` 样式与卡面 `card-tags` 标签；`TagList` 组件一并删除。
-- **卡面 / 列表项不再显示标签**：`Card` / `Row` 去掉标签渲染（`Row` 仍保留来源短名 pill）。
-- **保留文章正文标签**：`.art-tags / .mini-tag`（文章页与卡片详情弹窗正文内的「标签：#…」）原样保留。
-- **品牌 logo 迁到频道栏顶部**：新增 `src/ui/BrandLogo.jsx`，文章页侧栏与卡片页抽屉顶部渲染「logo + 笺川」（`.side-brand`）。
-- **App Shell 分栏独立滚动**：`body { overflow:hidden }`；`#cardsView` / `#aiView` = `100dvh`，`#cardsRoot` 为 flex 列（顶栏不滚、`main` 独立滚）；文章页 `#readerView` 满高、`#readerRoot` 网格 `height:100%`，`.reader-side` 与 `.reader-main` 各自 `overflow-y:auto`；`.reader-head` / `.cards-sticky` / `.ai-head` 各自 sticky 钉在滚动容器顶部。
-- **守门断言**：原「标签栏 / 标签 chips」断言改为「标签栏移除（无 TagBar 组件、无 .tagbar/.tag-chip 样式、正文 .art-tags 保留）」与「App Shell 独立滚动（.reader-main / 卡片 main / #aiView overflow-y:auto）」。UI 354 项、server 97 项全绿，Vite 生产构建通过。
-- **其他页面回归检查**：文章页 / 卡片页 / 日报页 / 设置弹层均正常（见对话中的检查结果）。
+### 守门
 
-## [1.6.0-test1] — 2026-10-28（开发版，头部结构重构，未发布）
+- UI 375 项、server 118 项、deploy 5/5 全绿；Vite 生产构建通过。
+- 新增断言覆盖：常驻视图导航（`.viewnav` 三入口 + 高亮 + ⋮ 菜单不含视图项）、MD3 状态层令牌、`.seg` 复用（`.watch-act-btn` 应为 0）、键盘地图冒烟（真实核心）、光标高亮、动效 CSS（含反向断言防 modalIn/maskIn 回潮）、置顶策略源码断言、条目深链 / hash 策略、窄屏收纳 CSS、前后篇导航渲染与点击、容器宽度链 CSS、复制按钮紧凑且无 `flex:1` 回退、列表行 DOM 实测不超容器且两按钮等宽、窄屏标题 flex 基准必须是 0。
 
-> 头部结构重构：把「全局顶栏（品牌 + 三视图 + 刷新/主题/设置）」与「各视图工具栏（频道/标题/排序/视图/搜索）」合并为**单行第一行（Row1）**，标签独立成**第二行（Row2）**，第三行起为内容。经 Edge headless + CDP 实测：桌面 `--topbar-h=52px` / 移动 `44px`，Row1 满宽贴顶，Row2 紧贴其下（`y=--topbar-h`），无横向溢出，⋮ 菜单完整落在视口内。
-
-- **Row1 合并（三视图各自渲染）**：卡片页 `[≡频道][频道下拉▾][搜索][⋮]`、文章页 `[≡频道][标题][动作…][搜索][⋮]`、日报页 `[AI][⋮]`。
-  - 删除全局 `<header class="topbar" id="topbarRoot">` 与 `main.jsx` 的 TopBar 挂载；`--topbar-h` 改由各视图 Row1 经新增钩子 `src/shell/useTopbarHeight.js` 实测写入（隐藏视图测得 0 高不写、`Math.ceil` 取整防 1px 缝）。
-  - Row1 贴 `top:0`；Row2 `.tagbar` 吸顶于 `top:var(--topbar-h)`。
-- **⋮ 溢出菜单（新增 `src/ui/OverflowMenu.jsx`）**：承载三视图切换 / 刷新 / 夜间模式 / 设置；卡片页额外含**排序子菜单**（new/old/name，右侧 flyout）与**网格/列表视图切换**。键盘可达：`menuitemradio` 语义、↑↓ 漫游、→ 进子菜单、← / Esc 出子菜单、外点关闭。新增 `#i-more` sprite 图标。
-- **Row2 标签栏（新增 `src/ui/TagBar.jsx`，卡片页 + 文章页共用）**：抽离原卡片页内联标签逻辑（漫游焦点 `role=toolbar` + 「+N」折叠），文章页新增同款标签栏，与阅读列（`--reader-width`）同宽对齐；点击标签跳卡片页对应标签。
-- **CSS**：新增 `.head-right` 右簇、`.tagbar` 吸顶、`.overflow-*` 面板样式；`.ico` 基础组补入 `.overflow-check` / `.overflow-caret`（sprite 守门）。窄屏把右簇 `.head-right` 用 `order:5` 压到最右、搜索放大镜与 ⋮ 保持 `[🔍][⋮]` 顺序。
-- **守门断言**：`tests/ui/ui-regression.cjs` 更新原 `#sortDD` / `#viewMode` 相关断言（排序/视图已进 ⋮，交互改走菜单）、两页头部同构与吸顶 `top` 断言改为 `top:0` + `.tagbar` 取 `--topbar-h`；新增「各视图 Row1 合并」「⋮ 菜单承载项」两组断言（353 → 355 项，全绿）。服务端测试 97 项 + deploy 护栏 + Dockerfile 清单均通过，Vite 生产构建通过。
-
-## [1.5.2-test1] — 2026-10-28（开发版，前端 UI 修复，未发布）
-
-> 来源：2026-10-28 全站 UI 审查报告（`docs/UI审查报告-2026-10-28.md`）。用户确认四项修复优先级，本版实施 P1 + 可访问性 + 跨页状态统一 + 玻璃模糊治理。
-
-- **P1 修复：动效令牌循环依赖（全站微交互恢复）**。
-  - `src/style.css:98-100` 的 `--dur-fast/--dur-base/--dur-med` 原为 `var(--dur-xxx)` 自引用 → CSS 循环依赖 → 全站 60+ 处 `transition`/`animation` 解析为「保证无效值」、时长回落 `0s`、所有微交互瞬时硬切。改为具体值 `--dur-fast:.12s` / `--dur-base:.15s` / `--dur-med:.18s`。
-  - **守门**：`tests/ui/ui-regression.cjs` 新增断言「`--dur-*` 不得自引用且核心令牌须为具体时长」，浏览器无关、零依赖（UI 回归 356/356）。
-- **可访问性补全**：
-  - 图片灯箱（`src/ui/Overlays.jsx`）抽成 `Lightbox` 组件：打开即把焦点放进对话框、`Esc` 关闭（确认框打开时让位）、`Tab` 焦点陷阱、打开期间锁背景滚动；补显式关闭按钮（仍是键盘/读屏可达入口，鼠标仍可点任意处关闭）。
-  - `Dropdown.jsx` 折叠态按组拆成独立 `role="listbox"`，折叠开关（按钮）作为 listbox 的兄弟节点，消除「listbox 内嵌 button」的 ARIA 非法；为 listbox 设 `aria-activedescendant` 让读屏播报高亮项。非折叠分支保持原 `<div className="dd-group">` 纯标题结构（测试要求）。
-  - 卡片墙整卡（`.card` / `.row-item`）加 `role="button"` + `tabIndex={0}` + `aria-label` + `Enter/Space` 打开（焦点在内层按钮时不重复触发），键盘可达。
-- **跨页状态统一**：收藏态与卡片页同语言——文章页 `.art-item.is-fav` 补左侧主色竖条（`box-shadow: inset 3px 0 0 var(--accent)`），与卡片页「竖条 + 星标变色」一致。
-- **玻璃模糊治理（性能铁律：模糊仅用于滚动锁定层）**：
-  - 桌面 `.dd-panel`（`style.css`）未锁滚动即改用实底 `var(--panel)`，去掉 `backdrop-filter`。
-  - `.link-menu` 去掉全局玻璃覆盖（恢复 `var(--panel)` 实底）。
-  - `.modal` / `.cmdk` 去掉面板自身的二次 `backdrop-filter`，只保留遮罩（mask）单层模糊，消除双重模糊。
 
 ## [1.5.1] — 2026-10-27
 
