@@ -13,6 +13,7 @@ import { core } from '@core';
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { ChannelList } from './ChannelList.jsx';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
+import { ViewNav } from '../ui/ViewNav.jsx';
 import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 
@@ -522,6 +523,7 @@ export function ReaderView() {
               onClick={toggleSearch}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href={searchOpen ? '#i-x' : '#i-search'} /></svg>
             </button>
+            <ViewNav />
             <OverflowMenu view="reader" />
           </div>
         </div>

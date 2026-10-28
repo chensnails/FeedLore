@@ -514,7 +514,7 @@ w.feedlore = {
   /* ---- 数据源面板桥（P2c，对齐 app.js 语义） ---- */
   state: {
     feedList: [], feedMeta: {}, groupOrder: [], collapsedGroups: new Set(), tag: null, username: 'tester', role: 'admin',
-    entries: [], tags: [], q: '', feedFilter: null, sort: 'new', size: 'all', view: 'grid',
+    entries: [], tags: [], q: '', feedFilter: null, sort: 'new', size: 'all', view: 'grid', cardsScope: 'all', tab: 'reader',
     hasMore: false, loading: false, loadError: false, offset: 0, pageSize: 24,
     rdEntries: [], rdExpanded: new Set(), rdBody: new Map(), rdBodyErr: new Set(),
     rdScope: 'all', rdFeedId: null, rdGroup: null, rdQ: '',
@@ -600,6 +600,7 @@ w.feedlore = {
   },
   cardsSearch: (v) => { w.feedlore.state.q = v; w.feedlore.state.tag = null; return cardsLoad(true); },
   cardsFilterFeed: (v) => { w.feedlore.state.feedFilter = v ? v : null; w.feedlore.state.tag = null; return cardsLoad(true); },
+  cardsFilterFav: (scope) => { w.feedlore.state.cardsScope = scope === 'favorite' ? 'favorite' : 'all'; return cardsLoad(true); },
   cardsSort: (v) => { w.feedlore.state.sort = v; cardsTick(); },
   cardsView: (m) => { w.feedlore.state.view = m; cardsTick(); },
   cardsTag: (t) => { w.feedlore.state.tag = t || null; cardsTick(); },
@@ -759,6 +760,7 @@ async function cardsLoad(reset) {
     const qs = new URLSearchParams({ limit: String(s.state.pageSize || 24), offset: String(s.state.offset || 0) });
     if (s.state.q) qs.set('q', s.state.q);
     if (s.state.feedFilter) qs.set('feeds', String(s.state.feedFilter)); else qs.set('scope', 'cards');
+    if (s.state.cardsScope === 'favorite') qs.set('fav', '1');   // v1.7.0：与真实 core/feeds.js 同构
     const res = await s.apiFetch('/api/entries?' + qs.toString());
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -2701,6 +2703,33 @@ const withEFP = (el, fn) => {
     if (!C('.overflow-btn')) throw new Error('缺 ⋮ 菜单入口');
   });
 
+  // v1.7.0（P0 #1/#5）：常驻视图导航 + 卡片范围分段
+  t('常驻视图导航：卡片工具条内 .viewnav 三视图入口，当前卡片页高亮', () => {
+    const nav = C('.view-toolbar .viewnav');
+    if (!nav) throw new Error('卡片工具条缺常驻 .viewnav');
+    if (CA('.viewnav .viewnav-btn').length !== 3) throw new Error('视图入口应为 3 个');
+    const on = CA('.viewnav .viewnav-btn').find((b) => b.classList.contains('active'));
+    if (!on || on.getAttribute('data-view') !== 'cards') throw new Error('当前视图未高亮 cards');
+    if (CA('.overflow-menu .overflow-item').some((b) => ['文章', '卡片', '日报'].indexOf(b.textContent.trim()) >= 0)) throw new Error('⋮ 菜单不应再含视图项');
+  });
+  t('卡片范围分段（v1.7.0）：.cards-scope 两档常驻，默认「全部」', () => {
+    if (!C('.cards-scope')) throw new Error('缺 .cards-scope 分段');
+    if (CA('.cards-scope .seg-btn').length !== 2) throw new Error('范围档位应为 2');
+    const on = C('.cards-scope .seg-btn.active');
+    if (!on || on.textContent !== '全部') throw new Error('默认应选中「全部」');
+  });
+  t('点「收藏」→ 带 fav=1 重拉 + 选中态切换；切回「全部」恢复', async () => {
+    CA('.cards-scope .seg-btn').find((b) => b.textContent === '收藏').click();
+    await sleep(50);
+    if (!callsOf('apiFetch').some((c) => c[1].indexOf('/api/entries?') === 0 && c[1].indexOf('fav=1') >= 0)) throw new Error('未带 fav=1 重拉');
+    const on = C('.cards-scope .seg-btn.active');
+    if (!on || on.textContent !== '收藏') throw new Error('选中态未切到「收藏」');
+    CA('.cards-scope .seg-btn').find((b) => b.textContent === '全部').click();
+    await sleep(50);
+    const back = C('.cards-scope .seg-btn.active');
+    if (!back || back.textContent !== '全部') throw new Error('未切回「全部」');
+  });
+
   // 频道下拉（v1.1.9 自定义弹层替代原生 select 的系统弹窗）
   C('#feedSelect').click();
   await sleep(20);
@@ -3976,7 +4005,7 @@ const withEFP = (el, fn) => {
         'readerToggleAccordion', 'readerAccordionOn', 'readerToggleDrawer', 'readerCloseDrawer', 'fmtFull',
         'readerCollapsedGroups', 'readerToggleGroupCollapse', 'readerToggleAllGroups',
         'getReaderSideWidth', 'setReaderSideWidth', 'applyReaderSideWidth', 'readerSideCap',
-        'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsView', 'cardsTag',
+        'cardsSearch', 'cardsFilterFeed', 'cardsFilterFav', 'cardsSort', 'cardsView', 'cardsTag',
         'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'promptInstall',
         'cardsToggleDrawer', 'cardsCloseDrawer',
         'openSettings', 'toast', 'apiFetch', 'isAdmin', 'exportOpml', 'bindSections', 'groupFeeds',
@@ -4389,13 +4418,13 @@ const withEFP = (el, fn) => {
     if (!/getClientRects\(\)\.length === 0/.test(hook)) throw new Error('隐藏视图（display:none）测得 0 高时不应覆盖 --topbar-h');
   });
 
-  t('v1.6.0：⋮ 菜单承载三视图 / 刷新 / 主题 / 设置 / 排序 / 视图切换', () => {
+  t('v1.7.0：⋮ 菜单不再承载三视图（已提升为常驻 ViewNav），仍承载 刷新 / 主题 / 设置 / 排序 / 视图切换', () => {
     const root = path.join(__dirname, '..', '..');
     const m = fs.readFileSync(path.join(root, 'src', 'ui', 'OverflowMenu.jsx'), 'utf8');
+    // 三视图切换已常驻到 ViewNav，溢出菜单不应再内联视图项
     for (const id of ["'reader'", "'cards'", "'ai'"]) {
-      if (m.indexOf(id) < 0) throw new Error('⋮ 菜单缺视图项 ' + id);
+      if (m.indexOf(id) >= 0) throw new Error('⋮ 菜单不应再含视图项 ' + id + '（应常驻到 ViewNav）');
     }
-    if (m.indexOf('switchView') < 0) throw new Error('⋮ 菜单应能切换三视图（switchView）');
     for (const fn of ['refresh', 'cycleTheme', 'openSettings']) {
       if (m.indexOf(fn) < 0) throw new Error('⋮ 菜单缺 ' + fn);
     }
@@ -4405,6 +4434,15 @@ const withEFP = (el, fn) => {
     if (m.indexOf("'hot'") >= 0 || m.indexOf("'unread'") >= 0) throw new Error('排序档位含卡片页不支持的 hot/unread');
     if (m.indexOf('cardsSort') < 0 || m.indexOf('cardsView') < 0) throw new Error('排序 / 视图切换应经 cardsSort / cardsView');
     if (m.indexOf('role="menu"') < 0 || m.indexOf('role="menuitemradio"') < 0) throw new Error('⋮ 菜单缺 menu 语义');
+
+    // 常驻视图导航应在独立组件里承载三视图切换
+    const v = fs.readFileSync(path.join(root, 'src', 'ui', 'ViewNav.jsx'), 'utf8');
+    for (const id of ["'reader'", "'cards'", "'ai'"]) {
+      if (v.indexOf(id) < 0) throw new Error('ViewNav 缺视图项 ' + id);
+    }
+    if (v.indexOf('switchView') < 0) throw new Error('ViewNav 应调用 switchView 切换视图');
+    if (v.indexOf('viewnav-btn') < 0) throw new Error('ViewNav 应使用 .viewnav-btn 结构');
+    if (v.indexOf('__viewChanged') < 0) throw new Error('ViewNav 应订阅 __viewChanged 高亮当前视图');
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });

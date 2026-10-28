@@ -4141,6 +4141,10 @@ body { overflow: hidden; }
 .topbar-actions .btn { height: var(--ctl-h); }
 .viewnav { height: var(--ctl-h); }
 
+/* 卡片页常驻范围分段（v1.7.0，P0 #5）：与工具条控件同高、垂直居中，沿用 .seg 外观保持统一 */
+.cards-scope.seg { height: var(--ctl-h); align-self: center; }
+.cards-scope .seg-btn { display: inline-flex; align-items: center; }
+
 /* 721–820px：图标已收起，顶栏控件换到 36px，与第二行工具栏同高。
    ⚠️ 必须写在这份 :root 之后 —— 基础 :root（--head-ctl: 32px）就在上面几条之前，
    同特异度（0,1,0）靠源顺序取胜，写在前面的媒体查询会被它整段盖掉（静默失效）。 */

@@ -9,12 +9,6 @@ import { core } from '@core';
 
 const S = () => core;
 
-const VIEWS = [
-  { id: 'reader', label: '文章', ico: 'inbox' },
-  { id: 'cards', label: '卡片', ico: 'grid' },
-  { id: 'ai', label: '日报', ico: 'sparkle' },
-];
-
 const SORTS = [
   { v: 'new', label: '最新' },
   { v: 'old', label: '最早' },
@@ -111,8 +105,6 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode }
     }
   };
 
-  const views = (snap.digestVisible === false ? VIEWS.filter((v) => v.id !== 'ai') : VIEWS);
-
   return (
     <div className="overflow-wrap">
       <button
@@ -129,20 +121,6 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode }
       </button>
       {open && (
         <div className="overflow-menu" role="menu" ref={menuRef} onKeyDown={onMenuKey}>
-          {views.map((v) => (
-            <button
-              type="button"
-              key={v.id}
-              role="menuitemradio"
-              aria-checked={view === v.id}
-              className={'overflow-item' + (view === v.id ? ' is-active' : '')}
-              onClick={() => { S().switchView(v.id); close(); }}
-            >
-              <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + v.ico} /></svg>
-              <span>{v.label}</span>
-              {view === v.id && <svg className="ico overflow-check" aria-hidden="true" focusable="false"><use href="#i-check" /></svg>}
-            </button>
-          ))}
           <div className="overflow-sep" role="separator" />
           <button type="button" role="menuitem" className="overflow-item" onClick={onRefresh} disabled={busy}>
             <svg className={'ico' + (busy ? ' spin' : '')} aria-hidden="true" focusable="false"><use href="#i-refresh" /></svg>

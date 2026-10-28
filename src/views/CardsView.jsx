@@ -21,6 +21,7 @@ import { CardDetail } from './CardDetail.jsx';
 import { ChannelList } from './ChannelList.jsx';
 import { Dropdown } from './Dropdown.jsx';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
+import { ViewNav } from '../ui/ViewNav.jsx';
 import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 
@@ -454,8 +455,17 @@ export function CardsView() {
           <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选"
             ariaLabel={'频道筛选，当前：' + headTitle} value={feedValue}
             options={feedOpts} onChange={(v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }}
-            collapsible collapsedGroups={collapsedGroups} onToggleGroup={toggleGroupFold} />
-          {/* 右簇：搜索（桌面常驻胶囊 / 窄屏收进放大镜）+ ⋮ 菜单（排序 / 视图 / 三视图 / 主题 / 设置）。 */}
+            collapsible collapsedGroups={collapsedGroups}             onToggleGroup={toggleGroupFold} />
+          {/* 卡片页常驻范围分段（v1.7.0，P0 #5）：全部 / 收藏。
+              尊重 v1.2.x 决策——卡片页不显示未读态，故无「未读」档；
+              复用 .seg 与全站分段控件统一。切换经 cardsFilterFav → loadPage 重载。 */}
+          <div className="cards-scope seg" role="group" aria-label="卡片范围">
+            <button type="button" className={'seg-btn' + (st.cardsScope !== 'favorite' ? ' active' : '')}
+              aria-pressed={st.cardsScope !== 'favorite'} title="显示全部卡片" onClick={() => S().cardsFilterFav('all')}>全部</button>
+            <button type="button" className={'seg-btn' + (st.cardsScope === 'favorite' ? ' active' : '')}
+              aria-pressed={st.cardsScope === 'favorite'} title="只显示收藏的卡片" onClick={() => S().cardsFilterFav('favorite')}>收藏</button>
+          </div>
+          {/* 右簇：搜索（桌面常驻胶囊 / 窄屏收进放大镜）+ 常驻视图导航 + ⋮ 菜单（排序 / 视图 / 主题 / 设置）。 */}
           <div className="head-right vt-tools">
             <div className={'search-box page-search vt-search' + (searchOpen ? ' is-open' : '')}>
               <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
@@ -478,6 +488,7 @@ export function CardsView() {
               onClick={toggleSearch}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href={searchOpen ? '#i-x' : '#i-search'} /></svg>
             </button>
+            <ViewNav />
             <OverflowMenu view="cards" cardControls sortValue={st.sort} viewMode={view} />
           </div>
         </div>

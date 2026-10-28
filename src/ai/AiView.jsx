@@ -13,6 +13,7 @@
 import { core } from '@core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
+import { ViewNav } from '../ui/ViewNav.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -280,6 +281,7 @@ export function AiView() {
       <div className="ai-head page-head view-toolbar" ref={headRef}>
         <div className="ai-head-text"><h2 className="page-title vt-title">AI</h2></div>
         <div className="head-right vt-tools">
+          <ViewNav />
           <OverflowMenu view="ai" />
         </div>
       </div>
