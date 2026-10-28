@@ -28,7 +28,6 @@ export const state = {
   readerPageSize: DEFAULT_READER_PAGE,
   tagline: '拾取值得读的',
   feedFilter: null,   // 列表页的频道筛选：null = 全部已开启卡片开关的频道
-  cardsScope: 'all',  // 卡片页范围：all 全部 / favorite 收藏（v1.7.0，工具条常驻分段控件）
   feedList: null,     // /api/feeds 的 feeds 数组
   feedMeta: null,     // /api/feeds 的整体信息（total / enabled / cardEnabled / groups）
   groupOrder: [],     // 分组顺序（显式保存的串名数组，未分组不计入）

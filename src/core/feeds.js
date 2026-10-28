@@ -124,8 +124,6 @@ export async function loadPage(reset = false) {
     // 没指定具体频道时，卡片页只取「卡片开关」打开的频道
     if (state.feedFilter) qs.set('feeds', String(state.feedFilter));
     else qs.set('scope', 'cards');
-    // 收藏范围：后端 /api/entries?fav=1 已支持（server.js + db.buildFilter）
-    if (state.cardsScope === 'favorite') qs.set('fav', '1');
 
     const res = await apiFetch('/api/entries?' + qs.toString());
     if (!res.ok) throw await httpError(res);

@@ -4141,10 +4141,6 @@ body { overflow: hidden; }
 .topbar-actions .btn { height: var(--ctl-h); }
 .viewnav { height: var(--ctl-h); }
 
-/* 卡片页常驻范围分段（v1.7.0，P0 #5）：与工具条控件同高、垂直居中，沿用 .seg 外观保持统一 */
-.cards-scope.seg { height: var(--ctl-h); align-self: center; }
-.cards-scope .seg-btn { display: inline-flex; align-items: center; }
-
 /* 721–820px：图标已收起，顶栏控件换到 36px，与第二行工具栏同高。
    ⚠️ 必须写在这份 :root 之后 —— 基础 :root（--head-ctl: 32px）就在上面几条之前，
    同特异度（0,1,0）靠源顺序取胜，写在前面的媒体查询会被它整段盖掉（静默失效）。 */
@@ -4433,9 +4429,6 @@ body.is-scrolled .cards-sticky { box-shadow: 0 1px 0 0 var(--border); }
      给了会把「频道」推到最右，跟标题、工具组错位。 */
   .cards-menu-btn { order: 1; }
   .cards-title { order: 2; }
-  /* v1.7.0：卡片范围分段（全部/收藏）跟在标题后 —— 不给 order 会以默认 0 插队到
-     「频道」按钮前面（实测 643px 下整行变成 [全部|收藏][频道][标题]），右簇被挤下第二行 */
-  .cards-scope { order: 3; flex: 0 0 auto; }
   /* v1.6.0：右簇（搜索 + ⋮）在窄屏是 .cards-head 的最后一个 flex item（.cards-head 打平成
      contents 后成为 .cards-sticky 的 item），靠 order 压在最右，并 margin-left:auto 自行贴右 */
   .head-right { order: 5; margin-left: auto; }

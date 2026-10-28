@@ -514,7 +514,7 @@ w.feedlore = {
   /* ---- 数据源面板桥（P2c，对齐 app.js 语义） ---- */
   state: {
     feedList: [], feedMeta: {}, groupOrder: [], collapsedGroups: new Set(), tag: null, username: 'tester', role: 'admin',
-    entries: [], tags: [], q: '', feedFilter: null, sort: 'new', size: 'all', view: 'grid', cardsScope: 'all', tab: 'reader',
+    entries: [], tags: [], q: '', feedFilter: null, sort: 'new', size: 'all', view: 'grid', tab: 'reader',
     hasMore: false, loading: false, loadError: false, offset: 0, pageSize: 24,
     rdEntries: [], rdExpanded: new Set(), rdBody: new Map(), rdBodyErr: new Set(),
     rdScope: 'all', rdFeedId: null, rdGroup: null, rdQ: '',
@@ -600,7 +600,6 @@ w.feedlore = {
   },
   cardsSearch: (v) => { w.feedlore.state.q = v; w.feedlore.state.tag = null; return cardsLoad(true); },
   cardsFilterFeed: (v) => { w.feedlore.state.feedFilter = v ? v : null; w.feedlore.state.tag = null; return cardsLoad(true); },
-  cardsFilterFav: (scope) => { w.feedlore.state.cardsScope = scope === 'favorite' ? 'favorite' : 'all'; return cardsLoad(true); },
   cardsSort: (v) => { w.feedlore.state.sort = v; cardsTick(); },
   cardsView: (m) => { w.feedlore.state.view = m; cardsTick(); },
   cardsTag: (t) => { w.feedlore.state.tag = t || null; cardsTick(); },
@@ -760,7 +759,6 @@ async function cardsLoad(reset) {
     const qs = new URLSearchParams({ limit: String(s.state.pageSize || 24), offset: String(s.state.offset || 0) });
     if (s.state.q) qs.set('q', s.state.q);
     if (s.state.feedFilter) qs.set('feeds', String(s.state.feedFilter)); else qs.set('scope', 'cards');
-    if (s.state.cardsScope === 'favorite') qs.set('fav', '1');   // v1.7.0：与真实 core/feeds.js 同构
     const res = await s.apiFetch('/api/entries?' + qs.toString());
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -2703,7 +2701,7 @@ const withEFP = (el, fn) => {
     if (!C('.overflow-btn')) throw new Error('缺 ⋮ 菜单入口');
   });
 
-  // v1.7.0（P0 #1/#5）：常驻视图导航 + 卡片范围分段
+  // v1.7.0（P0 #1）：常驻视图导航。卡片范围分段（全部/收藏）已按用户决定移除——卡片页不需要收藏。
   t('常驻视图导航：卡片工具条内 .viewnav 三视图入口，当前卡片页高亮', () => {
     const nav = C('.view-toolbar .viewnav');
     if (!nav) throw new Error('卡片工具条缺常驻 .viewnav');
@@ -2711,27 +2709,7 @@ const withEFP = (el, fn) => {
     const on = CA('.viewnav .viewnav-btn').find((b) => b.classList.contains('active'));
     if (!on || on.getAttribute('data-view') !== 'cards') throw new Error('当前视图未高亮 cards');
     if (CA('.overflow-menu .overflow-item').some((b) => ['文章', '卡片', '日报'].indexOf(b.textContent.trim()) >= 0)) throw new Error('⋮ 菜单不应再含视图项');
-  });
-  t('卡片范围分段（v1.7.0）：.cards-scope 两档常驻，默认「全部」', () => {
-    if (!C('.cards-scope')) throw new Error('缺 .cards-scope 分段');
-    if (CA('.cards-scope .seg-btn').length !== 2) throw new Error('范围档位应为 2');
-    const on = C('.cards-scope .seg-btn.active');
-    if (!on || on.textContent !== '全部') throw new Error('默认应选中「全部」');
-  });
-  t('style.css：≤720 段 .cards-scope 必须显式 order（默认 0 会插队到频道按钮前面，实测 643px 翻车）', () => {
-    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
-    if (!/\.cards-scope \{\s*order:\s*\d/.test(css)) throw new Error('≤720 段的 .cards-scope 规则缺 order');
-  });
-  t('点「收藏」→ 带 fav=1 重拉 + 选中态切换；切回「全部」恢复', async () => {
-    CA('.cards-scope .seg-btn').find((b) => b.textContent === '收藏').click();
-    await sleep(50);
-    if (!callsOf('apiFetch').some((c) => c[1].indexOf('/api/entries?') === 0 && c[1].indexOf('fav=1') >= 0)) throw new Error('未带 fav=1 重拉');
-    const on = C('.cards-scope .seg-btn.active');
-    if (!on || on.textContent !== '收藏') throw new Error('选中态未切到「收藏」');
-    CA('.cards-scope .seg-btn').find((b) => b.textContent === '全部').click();
-    await sleep(50);
-    const back = C('.cards-scope .seg-btn.active');
-    if (!back || back.textContent !== '全部') throw new Error('未切回「全部」');
+    if (document.querySelector('.cards-scope')) throw new Error('.cards-scope 应已移除（卡片页不需要收藏）');
   });
 
   // 频道下拉（v1.1.9 自定义弹层替代原生 select 的系统弹窗）
@@ -4009,7 +3987,7 @@ const withEFP = (el, fn) => {
         'readerToggleAccordion', 'readerAccordionOn', 'readerToggleDrawer', 'readerCloseDrawer', 'fmtFull',
         'readerCollapsedGroups', 'readerToggleGroupCollapse', 'readerToggleAllGroups',
         'getReaderSideWidth', 'setReaderSideWidth', 'applyReaderSideWidth', 'readerSideCap',
-        'cardsSearch', 'cardsFilterFeed', 'cardsFilterFav', 'cardsSort', 'cardsView', 'cardsTag',
+        'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsView', 'cardsTag',
         'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'promptInstall',
         'cardsToggleDrawer', 'cardsCloseDrawer',
         'openSettings', 'toast', 'apiFetch', 'isAdmin', 'exportOpml', 'bindSections', 'groupFeeds',

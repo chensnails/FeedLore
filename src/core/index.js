@@ -52,7 +52,6 @@ export const core = {
   cardsSearch: (v) => { S.state.q = v; S.state.tag = null; return F.loadPage(true); },
   cardsFilterFeed: (v) => { S.state.feedFilter = v ? v : null; S.state.tag = null; return F.loadPage(true); },
   cardsSort: (v) => { S.state.sort = v; S.setLayout('sort', v); F.render(); },
-  cardsFilterFav: (scope) => { S.state.cardsScope = scope === 'favorite' ? 'favorite' : 'all'; return F.loadPage(true); },
   cardsView: (m) => F.setViewMode(m),
   cardsTag: (t) => { S.state.tag = t || null; F.render(); window.scrollTo({ top: 0, behavior: U.prefersReducedMotion() ? 'auto' : 'smooth' }); },
   cardsLoadMore: () => F.loadPage(false),
