@@ -194,14 +194,14 @@ export function WatchPane() {
                 value={r.name}
                 onChange={(ev) => patchRule(r.id, { name: ev.target.value })}
               />
-              <div className="watch-rule-act" role="radiogroup" aria-label="规则动作">
-                <button type="button" className={'watch-act-btn' + (r.act === 'watch' ? ' active' : '')}
+              <div className="seg" role="radiogroup" aria-label="规则动作">
+                <button type="button" className={'seg-btn' + (r.act === 'watch' ? ' active' : '')}
                   aria-pressed={r.act === 'watch' ? 'true' : 'false'}
                   title="命中后收进「关注」视图"
                   onClick={() => patchRule(r.id, { act: 'watch' })}>
                   <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-eye" /></svg>关注
                 </button>
-                <button type="button" className={'watch-act-btn is-block' + (r.act === 'block' ? ' active' : '')}
+                <button type="button" className={'seg-btn is-block' + (r.act === 'block' ? ' active' : '')}
                   aria-pressed={r.act === 'block' ? 'true' : 'false'}
                   title="命中后收进「屏蔽」视图并自动标为已读"
                   onClick={() => patchRule(r.id, { act: 'block', notify: false })}>
