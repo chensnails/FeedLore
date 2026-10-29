@@ -1,3 +1,14 @@
+## [1.7.3] — 2026-10-29
+
+### 修复：频道栏点击分组行无反应（1.7.2 回归）
+
+1.7.2 的渲染隔离把频道栏折叠集合改成了带缓存的 `useMemo`，但缓存的 key 取的是 `state.rdCollapsedGroups` —— 这个字段在 `state` 上**从来没有过**，折叠集合一直只存在 `layoutPref` 里。于是 key 恒为 `"[]"`，折叠集合算一次就冻结：点分组行时偏好确实写进了账号（`layout.rdCollapsedGroups` 已变），界面却纹丝不动，`aria-expanded` 也不翻转。
+
+- **`src/core/state.js`**：`state` 增加 `rdCollapsedGroups` 字段（启动时从 `layoutPref` 取初值）；新增 `LAYOUT_MIRROR = ['sort', 'rdScope', 'rdCollapsedGroups']`，`setLayout()` 写偏好后把这几项回填到 `state`；本地偏好迁移那次整体替换 `layoutPref` 的路径同样回填，堵住第二个漏点。
+- **测试**：新增一条**静态**用例，断言 `state` 声明了该字段、`LAYOUT_MIRROR` 登记了它、初值来自 `layoutPref`、`ReaderView` 仍读它。此前的 377 项跑不出来，是因为测试桩自己会造 `state.rdCollapsedGroups`（桩比生产多一个字段），组件级用例因此看不出差异。
+
+验证：干净态下点分组行，收起数 0 → 1、可见频道 46 → 37（该组正好 9 个频道）、`aria-expanded` 由 `true` 翻为 `false`，反向点击可展开；分组漏斗筛选（只看这组）同时复验正常。
+
 ## [1.7.2] — 2026-10-29
 
 本版为**修复版，无新增功能**，两块内容：一是修掉窄桌面 / 半屏窗口下频道栏「关注 / 屏蔽」等虚拟视图点不动的响应式缺陷，并把频道栏从阅读页的高频重渲染里隔离出来；二是按《质量与安全测试报告-2026-10-29》修掉 S-01 ~ S-07 七个安全与健壮性问题（其中 S-01 是未授权即可打挂进程的远程 DoS）。
