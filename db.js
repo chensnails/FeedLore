@@ -545,6 +545,30 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     return Date.now() - t;
   }
 
+  /** 真实探活（v1.7.2-test2 / S-04）：顺带纠正内存里的 ready 标志。
+   *  `ready` 原来只在启动成功时置 true、断开永不复位，于是停库后 /api/health
+   *  仍然 200 {ready:true}，而 /api/feeds 已经 502 —— watchtower / 编排层全靠
+   *  这个接口判断可用性，谎报等于不自愈也不告警。
+   *  不抛异常，把结论放进返回值；带超时，避免检测请求自己堆积。 */
+  async function probe(timeoutMs = 1500) {
+    const t = Date.now();
+    let timer = null;
+    try {
+      await Promise.race([
+        q('SELECT 1'),
+        new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('probe timeout')), timeoutMs); }),
+      ]);
+      ready = true;
+      lastError = null;
+    } catch (e) {
+      ready = false;
+      lastError = (e && e.message) || String(e);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    return { ready, latencyMs: Date.now() - t };
+  }
+
   /* ============================================================
    * entries
    * ============================================================ */
@@ -988,7 +1012,7 @@ module.exports = function createDb({ connectionString, log = console.log }) {
     upsertEntries, queryEntries, getEntry, countEntries, tagCounts, pruneEntries, pruneEntriesByAge, entriesSince,
     setEntryFlags, markEntriesRead, entryFlagCounts,
     setEntriesWatch, clearEntriesWatch, listUntaggedEntries,
-    tableCounts, entryWindow, ping, pgDatabaseSize,
+    tableCounts, entryWindow, ping, probe, pgDatabaseSize,
     saveDigest, readDigest, listDigestDates, hasDigest, digestStatsAll, pruneDigests,
     getImageCache, setImageCache, pruneImageCache, clearImageCache, imageCacheStats,
   };

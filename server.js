@@ -30,6 +30,8 @@ const { classify, notifyRuleNames } = require('./lib/watch');
 const { toCard, toFeedDto } = require('./lib/dto');
 const { hashPassword, safeEqual } = require('./lib/crypto');
 const { userLlmForStore, userLlmForView, userLlm, llmComplete, thinkingBudget } = require('./lib/llm');
+const { HttpError, parseCookies, classifyError, applySecurityHeaders } = require('./lib/http');
+const { assertPublicHost, safeFetch } = require('./lib/net');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
@@ -45,8 +47,7 @@ const DATABASE_URL = process.env.DATABASE_URL
 
 const SESSION_TTL = 7 * 24 * 3600 * 1000;
 const COOKIE_NAME = 'feedlore_sid';
-const LOGIN_MAX_FAILS = 6;
-const LOGIN_LOCK_MS = 60 * 1000;
+// 登录限流参数见下方 loginFails 那一段（v1.7.2-test2 改为 IP+用户名 双维度）
 
 const log = (...a) => console.log(...a);
 const logErr = (...a) => console.error(...a);
@@ -188,14 +189,8 @@ function verifySession(token) {
     return data;
   } catch (_) { return null; }
 }
-function parseCookies(req) {
-  const out = {};
-  for (const part of String(req.headers.cookie || '').split(';')) {
-    const i = part.indexOf('=');
-    if (i > -1) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
-  }
-  return out;
-}
+/* Cookie 解析已移到 lib/http.js（容错：非法百分号转义不再抛 URIError，
+ * 那曾是一个未授权单请求就能打挂进程的口子，见 S-01 与测试用例）。 */
 const getSession = (req) => verifySession(parseCookies(req)[COOKIE_NAME]);
 
 /* 账号内存注册表：id -> { id, username, role, prefs }。
@@ -221,19 +216,70 @@ function clearSession(res) {
   res.setHeader('Set-Cookie', `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
 }
 
-const loginFails = new Map();
-function loginLocked(ip) {
-  const rec = loginFails.get(ip);
+/* ---------------- 登录限流（v1.7.2-test2 / S-03）----------------
+ * 之前：计数键是 req.socket.remoteAddress，且不区分用户名。
+ * 反代（1Panel / OpenResty）后所有请求源 IP 都是 127.0.0.1 → 全站共用一个桶，
+ * 任何人故意输错 6 次密码，60 秒内全站（含管理员）都登不进来。
+ *
+ * 现在：
+ *  - 计数键 = 真实客户端 IP + 用户名（小写）。锁定只作用于「谁在试哪个账号」，
+ *    别人（含同一个人换账号）不受影响。
+ *  - 真实 IP：直连来自本机 / 内网（说明前面有反代）时才信 X-Forwarded-For，
+ *    取**最后一段** —— 那是本站反代追加的对端地址；攻击者自己塞的前缀不作数。
+ *    直连来自公网则一律用 socket 地址，避免直接暴露时被伪造绕过。
+ *  - 失败改用指数退避：60s → 2min → 4min … 上限 15min（连续累犯才升级）。
+ *  - Map 有上限清扫，防止「海量不同 IP 的失败请求」把内存撑爆。
+ */
+const LOGIN_MAX_FAILS = 6;
+const LOGIN_LOCK_MS = 60 * 1000;
+const LOGIN_LOCK_MAX_MS = 15 * 60 * 1000;
+const LOGIN_FAILS_MAX = 2000;
+
+const loginFails = new Map();   // key: `${ip}|${username}` → { n, locks, lockedUntil }
+
+/** 真实客户端 IP（反代场景下取 XFF 最后一段） */
+function clientIp(req) {
+  const direct = (req.socket && req.socket.remoteAddress) || 'unknown';
+  const env = process.env.TRUST_PROXY;
+  const trust = env === undefined || env === ''
+    ? isPrivateHost(direct)                                  // 直连方是内网/回环 → 前面有反代
+    : env === '1';
+  if (!trust) return direct;
+  const hops = String(req.headers['x-forwarded-for'] || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  return hops.length ? hops[hops.length - 1] : direct;
+}
+
+const loginKey = (ip, username) => ip + '|' + String(username || '').trim().toLowerCase();
+
+function loginLocked(key) {
+  const rec = loginFails.get(key);
   if (!rec) return 0;
   if (rec.lockedUntil && rec.lockedUntil > Date.now()) return rec.lockedUntil - Date.now();
-  if (rec.lockedUntil && rec.lockedUntil <= Date.now()) loginFails.delete(ip);
+  if (rec.lockedUntil && rec.lockedUntil <= Date.now()) loginFails.delete(key);
   return 0;
 }
-function noteLoginFail(ip) {
-  const rec = loginFails.get(ip) || { n: 0, lockedUntil: 0 };
+
+/** 只清理「已解锁且早已无意义」的条目；表太大时整体清空，宁可放宽也不 OOM */
+function sweepLoginFails() {
+  if (loginFails.size <= LOGIN_FAILS_MAX) return;
+  const now = Date.now();
+  for (const [k, r] of loginFails) if (!r.lockedUntil || r.lockedUntil < now) loginFails.delete(k);
+  if (loginFails.size > LOGIN_FAILS_MAX * 2) loginFails.clear();
+}
+
+function noteLoginFail(key) {
+  const rec = loginFails.get(key) || { n: 0, locks: 0, lockedUntil: 0 };
   rec.n += 1;
-  if (rec.n >= LOGIN_MAX_FAILS) { rec.lockedUntil = Date.now() + LOGIN_LOCK_MS; rec.n = 0; }
-  loginFails.set(ip, rec);
+  if (rec.n >= LOGIN_MAX_FAILS) {
+    rec.locks += 1;
+    const wait = Math.min(LOGIN_LOCK_MS * Math.pow(2, rec.locks - 1), LOGIN_LOCK_MAX_MS);
+    rec.lockedUntil = Date.now() + wait;
+    rec.n = 0;
+  }
+  loginFails.set(key, rec);
+  sweepLoginFails();
+  return rec;
 }
 
 /* ============================================================
@@ -268,7 +314,8 @@ let watchHits = [];
 
 async function postWebhook(url, payload) {
   try {
-    const res = await fetch(url, {
+    // 发送前再校验一次：地址是保存后落库的，DNS 可能变化，也可能是升级前存下的内网地址
+    const res = await safeFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -657,15 +704,22 @@ function netErrMsg(e) {
 function readBody(req, maxBytes = 1e6) {
   return new Promise((resolve, reject) => {
     let data = '';
+    let done = false;
+    // 客户端错误用 HttpError 带上语义状态码（413/400），别再统一算成 502
+    const fail = (err) => { if (!done) { done = true; reject(err); } };
     req.on('data', (c) => {
+      if (done) return;
       data += c;
-      if (data.length > maxBytes) { reject(new Error('body too large')); req.destroy(); }
+      if (data.length > maxBytes) { fail(new HttpError(413, '请求体过大', 'BODY_TOO_LARGE')); req.destroy(); }
     });
     req.on('end', () => {
+      if (done) return;
+      done = true;
       if (!data) return resolve({});
-      try { resolve(JSON.parse(data)); } catch (_) { reject(new Error('invalid json')); }
+      try { resolve(JSON.parse(data)); }
+      catch (_) { reject(new HttpError(400, '请求体不是合法 JSON', 'BAD_JSON')); }
     });
-    req.on('error', reject);
+    req.on('error', () => fail(new HttpError(400, '请求体读取失败', 'BODY_READ_FAIL')));
   });
 }
 
@@ -778,7 +832,8 @@ function serveStatic(pathname, res, user, req) {
 const dbRequired = (res) => {
   const st = db.status();
   if (st.ready) return false;
-  json(res, 503, { error: '数据库未就绪，请稍后重试', detail: st.error || null });
+  // 不再回吐 st.error：那是 PG 原文（含内部主机名），诊断信息去管理员的状态页看
+  json(res, 503, { error: '数据库暂时不可用，请稍后重试', code: 'DB_UNAVAILABLE' });
   return true;
 };
 
@@ -830,18 +885,27 @@ async function fetchGithubLatest() {
 }
 
 const server = http.createServer(async (req, res) => {
-  const { pathname, searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const ip = req.socket.remoteAddress || 'unknown';
   // 挂到 res 上：json() 写响应时据此判断是否 gzip（不必给几十个调用点加参数）
   res.__req = req;
-  const session = settings ? getSession(req) : null;
-  const user = userOf(session);
+  // 安全响应头：一次挂全站（json / 静态 / 404 / 403 都覆盖；writeHead 会与 setHeader 合并）
+  applySecurityHeaders(res, {
+    https: !!req.socket.encrypted || String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https',
+  });
 
   try {
+    /* 解析 URL 与会话都放进 try（v1.7.2-test2 / S-01）：
+     * 这两步原来在护栏之外，畸形 Cookie 里的非法百分号转义会抛 URIError，
+     * 未捕获 → Node 终止进程。现在任何异常都落进下面的统一错误映射。 */
+    const { pathname, searchParams } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const session = settings ? getSession(req) : null;
+    const user = userOf(session);
+    const ip = clientIp(req);
+
     /* ---------- 公开接口 ---------- */
     if (pathname === '/api/health') {
-      const st = db.status();
-      json(res, st.ready ? 200 : 503, { ok: st.ready, authed: !!user, db: st });
+      // 真实探活（S-04）：只读内存里的 ready 会谎报 —— 之前停库后仍 200 ready:true
+      const st = await db.probe();
+      json(res, st.ready ? 200 : 503, { ok: st.ready, authed: !!user, db: { ready: st.ready, latencyMs: st.latencyMs } });
       return;
     }
 
@@ -858,15 +922,16 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/login' && req.method === 'POST') {
       if (dbRequired(res)) return;
-      const lock = loginLocked(ip);
-      if (lock > 0) { json(res, 429, { error: `尝试次数过多，请 ${Math.ceil(lock / 1000)} 秒后再试` }); return; }
       const body = await readBody(req);
+      const key = loginKey(ip, body && body.username);
+      const lock = loginLocked(key);
+      if (lock > 0) { json(res, 429, { error: `尝试次数过多，请 ${Math.ceil(lock / 1000)} 秒后再试` }); return; }
       const row = await db.getUserByName(body.username);
       // 用户名不存在时也走一次哈希，避免「响应快慢」暴露某个用户名是否存在
       const salt = row ? row.salt : 'feedlore.dummy.salt';
       const okPass = row ? safeEqual(hashPassword(body.password || '', salt), row.password_hash) : false;
-      if (!row || !okPass) { noteLoginFail(ip); json(res, 401, { error: '用户名或密码错误' }); return; }
-      loginFails.delete(ip);
+      if (!row || !okPass) { noteLoginFail(key); json(res, 401, { error: '用户名或密码错误' }); return; }
+      loginFails.delete(key);
       const acct = usersById.get(numId(row.id)) || { id: numId(row.id), username: row.username, role: row.role };
       setSession(res, acct);
       json(res, 200, { ok: true, username: row.username, role: row.role });
@@ -1019,8 +1084,11 @@ const server = http.createServer(async (req, res) => {
       if (pathname === '/api/feeds' && req.method === 'POST') {
         const body = await readBody(req);
         let url;
-        try { url = rss.assertFeedUrl(body.url); }
-        catch (e) { json(res, 400, { error: String(e.message || e) }); return; }
+        try {
+          url = rss.assertFeedUrl(body.url);
+          // 出网校验（S-02）：新增频道是「让服务器去访问一个用户给的地址」的入口
+          await assertPublicHost(url);
+        } catch (e) { json(res, 400, { error: String(e.message || e) }); return; }
 
         const existed = (await db.listFeeds(user.id)).find((f) => f.url === url);
         const feed = await db.addFeed(user.id, url, {
@@ -1077,7 +1145,7 @@ const server = http.createServer(async (req, res) => {
         const existing = await db.listFeeds(user.id);
         const existingUrls = new Set(existing.map((f) => normUrl(f.url)));
         const seen = new Set();
-        const toAdd = [];
+        const candidates = [];
         const groupSet = new Set();
         for (const it of parsed) {
           const nu = normUrl(it.url);
@@ -1085,9 +1153,17 @@ const server = http.createServer(async (req, res) => {
           if (seen.has(nu)) continue;          // 文件内去重
           seen.add(nu);
           if (existingUrls.has(nu)) continue;   // 与现有库去重
-          toAdd.push(it);
+          candidates.push(it);
           if (it.group) groupSet.add(it.group);
         }
+
+        /* 导入同样是「服务器替用户出网」（S-02）：先并发过一遍出网校验，
+         * 内网 / 回环地址直接跳过并记日志，不要等后台刷新时才失败。 */
+        const checked = await Promise.all(candidates.map(async (it) => {
+          try { await assertPublicHost(it.url); return it; }
+          catch (e) { log('[opml] 跳过不允许的地址：' + it.url + '（' + (e && e.message) + '）'); return null; }
+        }));
+        const toAdd = checked.filter(Boolean);
 
         const added = [];
         for (const it of toAdd) {
@@ -1107,7 +1183,8 @@ const server = http.createServer(async (req, res) => {
         json(res, 200, {
           ok: true,
           added: added.length,
-          duplicated: parsed.length - added.length,
+          duplicated: parsed.length - candidates.length,
+          skipped: candidates.length - toAdd.length,
           groups: [...groupSet],
           feeds: added.map((r) => toFeedDto(r, settings.source.refreshMinutes)),
         });
@@ -1390,7 +1467,8 @@ const server = http.createServer(async (req, res) => {
           const s = await db.imageCacheStats();
           json(res, 200, { ok: true, count: s.count, bytes: s.bytes });
         } catch (e) {
-          json(res, 500, { error: String((e && e.message) || e) });
+          logErr('[img] 统计失败：' + ((e && e.stack) || e));
+          json(res, 500, { error: '读取图片缓存统计失败', code: 'IMAGE_CACHE_FAIL' });
         }
         return;
       }
@@ -1402,7 +1480,8 @@ const server = http.createServer(async (req, res) => {
           log(`[img] 图片缓存已手动清空：${removed} 条`);
           json(res, 200, { ok: true, removed });
         } catch (e) {
-          json(res, 500, { error: String((e && e.message) || e) });
+          logErr('[img] 清空失败：' + ((e && e.stack) || e));
+          json(res, 500, { error: '清空图片缓存失败', code: 'IMAGE_CACHE_FAIL' });
         }
         return;
       }
@@ -1449,7 +1528,14 @@ const server = http.createServer(async (req, res) => {
           prefs.watchRules = sanitizeWatchRules(body.watchRules);
         }
         if (typeof body.webhookUrl === 'string') {
-          prefs.webhookUrl = sanitizeWebhook(body.webhookUrl);
+          const hook = sanitizeWebhook(body.webhookUrl);
+          /* 保存即校验（S-06）：地址一旦落库，之后每次命中关注规则都会向它 POST。
+           * 空串表示「清空」，放行。 */
+          if (hook) {
+            try { await assertPublicHost(hook); }
+            catch (e) { json(res, 400, { error: 'Webhook 地址不可用：' + String(e.message || e) }); return; }
+          }
+          prefs.webhookUrl = hook;
         }
         /* 日报配置（自动生成 / 时间 / 范围 / 条数与保留 / 风格要求）按账号保存。
          * 与已有配置合并：lastAuto 是服务端调度器独占写入的字段，
@@ -1465,6 +1551,13 @@ const server = http.createServer(async (req, res) => {
         // apiKey 仅在填写时加密成文，clearApiKey 则清空
         if (body.llm && typeof body.llm === 'object') {
           const prev = (user.prefs && user.prefs.llm) || {};
+          /* 模型地址同样是出网口（S-02）：服务端会带着 API Key 向它 POST。
+           * 只在真的改了地址时校验，避免「只换 Key」被已存地址卡住。 */
+          const incoming = typeof body.llm.baseUrl === 'string' ? body.llm.baseUrl.trim() : '';
+          if (incoming && incoming !== String(prev.baseUrl || '')) {
+            try { await assertPublicHost(incoming); }
+            catch (e) { json(res, 400, { error: '模型地址不可用：' + String(e.message || e) }); return; }
+          }
           prefs.llm = userLlmForStore(Object.assign({}, prev, body.llm), settings.cryptoSecret);
         }
         await db.setUserPrefs(user.id, prefs);
@@ -1599,6 +1692,10 @@ const server = http.createServer(async (req, res) => {
           json(res, 200, { ok: false, error: '模型未配置完整：地址、API Key、模型名都要在本账号填写后才能测试' });
           return;
         }
+        /* 「测试连接」曾经是本项目最直接的 SSRF 证据：把地址填成本站的 /api/session，
+         * 服务器就会自己 POST 过去并把响应带回来（S-02）。这里先过出网校验。 */
+        try { await assertPublicHost(llm.baseUrl); }
+        catch (e) { json(res, 200, { ok: false, error: '模型地址不可用：' + String(e.message || e) }); return; }
         try { json(res, 200, await digest.testLlm(llm)); }
         catch (e) { json(res, 200, { ok: false, error: netErrMsg(e) }); }
         return;
@@ -1623,14 +1720,18 @@ const server = http.createServer(async (req, res) => {
         }
         const body = await readBody(req);
         const date = String(body.date || '').trim() || shanghaiDateStr();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { json(res, 400, { error: '日期格式应为 YYYY-MM-DD' }); return; }
+        // 只匹配格式不够：2026-13-99 会一路走到 PG 才报 "date/time field value out of range"（S-05）
+        if (!isDateStr(date)) { json(res, 400, { error: '日期不合法，应为 YYYY-MM-DD 的真实日期' }); return; }
         const cfg = userDigest(user);
+        const llm = userLlm(user, settings.cryptoSecret);
+        try { await assertPublicHost(llm.baseUrl); }
+        catch (e) { json(res, 400, { error: '模型地址不可用：' + String(e.message || e) }); return; }
         // 未显式指定频道时，按本账号的「摘要范围」决定采集哪些频道
         const feeds = await digestFeedsFor(user.id, Array.isArray(body.feeds) ? body.feeds : null, cfg);
         try {
           const r = await digest.generate({
             ownerId: user.id, feeds, date, force: !!body.force,
-            llm: userLlm(user, settings.cryptoSecret),
+            llm,
             style: cfg.style,
             limits: { maxPerFeed: cfg.maxPerFeed, maxTotal: cfg.maxTotal, keepDays: cfg.keepDays },
           });
@@ -1647,9 +1748,12 @@ const server = http.createServer(async (req, res) => {
 
     serveStatic(pathname, res, user, req);
   } catch (err) {
-    logErr('[http] ' + (err && err.stack || err));
-    if (!res.headersSent) json(res, 502, { error: String((err && err.message) || err) });
-    else res.end();
+    /* 统一错误映射（S-05）：客户端错误给 4xx、依赖故障给 503、其余 500；
+     * 5xx 一律只回通用文案，PG 原文 / 内部主机名只进日志。 */
+    const info = classifyError(err);
+    logErr('[http] ' + info.status + ' ' + ((err && err.stack) || err));
+    if (!res.headersSent) json(res, info.status, { error: info.message, code: info.code });
+    else { try { res.end(); } catch (_) { /* 连接可能已断，忽略 */ } }
   }
 });
 
@@ -1660,6 +1764,17 @@ function shanghaiDateStr(d) {
   return new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(d || new Date());
+}
+
+/** 真实存在的日历日期：正则只挡格式，2026-13-99 会被 PG 拒掉并回吐 SQL 原文 */
+function isDateStr(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+  if (!m) return false;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
 }
 
 function msUntilNext(timeStr) {
@@ -2014,6 +2129,12 @@ db.onReady(async () => {
   // 启动后稍等再抓一轮，避免和容器健康检查抢资源
   setTimeout(() => refreshAll().catch((e) => logErr('[rss] 首次抓取失败：' + ((e && e.message) || e))), 3000);
 });
+
+/* 最后一道护栏（S-01）：漏网的异步异常不该让整个进程退出。
+ * Node 默认对未捕获异常直接终止进程 —— 一个畸形请求就能把服务反复打重启。
+ * 这里只记录堆栈并继续服务（真实 bug 仍然留在日志里可查）。 */
+process.on('uncaughtException', (e) => logErr('[fatal] 未捕获异常：' + ((e && e.stack) || e)));
+process.on('unhandledRejection', (e) => logErr('[fatal] 未处理拒绝：' + ((e && e.stack) || e)));
 
 db.start();
 

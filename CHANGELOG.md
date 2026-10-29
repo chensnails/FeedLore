@@ -2,7 +2,29 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
-## [1.7.2-test1] — 2026-10-29
+## [1.7.2-test2] — 2026-10-29
+
+### 安全加固：修掉《质量与安全测试报告》里的 S-01 ~ S-07（无新增功能）
+
+针对 2026-10-29 全量质量与安全测试发现的 7 个问题做修复。S-01 是未授权远程 DoS，属发版阻断项；其余为 SSRF、限流误伤、健康检查谎报、错误信息外泄与安全响应头缺失。
+
+- **S-01 · 畸形 Cookie 导致进程崩溃（P0）**：`parseCookies` 对 cookie 值调 `decodeURIComponent` 时遇到非法百分号转义抛 `URIError`，而该调用在请求 handler 的 `try` 之外 → 未捕获异常 → Node 终止进程（`Cookie: feedlore_sid=%E0%A4%A` 即可复现，容器 `RestartCount` 0→1）。修法三层：解析改到 `lib/http.js` 并 try/catch（解不开保留原文，交给验签判为无效会话）；`new URL(req.url)` 与会话解析一起移进 `try`；进程级 `uncaughtException` / `unhandledRejection` 兜底，记录堆栈而不退出。
+- **S-02 · SSRF：订阅地址 / Webhook / 模型 BaseURL（P1）**：新增 `lib/net.js`，提供 `assertPublicHost()`（字面量内网 + 域名解析后的 A/AAAA 双重校验）与 `safeFetch()`（把已校验 IP 通过 undici `connect.lookup` 钉定连接、`redirect: 'manual'` 逐跳重新校验，最多 3 跳）。接入四处出网口：`rss.js` 抓取（覆盖新增、OPML 导入、定时刷新）、`postWebhook` 发送前复核、`POST /api/prefs` 保存 webhook / 模型地址、`POST /api/digest/test-llm` 与日报生成。自建内网源（FreshRSS、本机 Ollama / vLLM）设 `ALLOW_PRIVATE_HOSTS=1` 整体放行。
+- **S-06 · Webhook 允许内网地址（P2）**：即 S-02 的 webhook 分支 —— 保存即校验，发送前再校验一次（DNS 可能已变，或地址是升级前存下的）。
+- **S-03 · 登录限流按 socket IP 全站共享（P2）**：计数键从「socket IP」改为「真实客户端 IP + 用户名」，反代后取 `X-Forwarded-For` 最后一段（仅当直连方是内网/回环时才信任，可用 `TRUST_PROXY=1/0` 覆盖）。锁定只作用于该组合，同 IP 换账号、同账号换 IP 都不受影响；锁定时长改指数退避 60s → 2min → … 上限 15min；计数表带上限清扫，避免海量 IP 撑爆内存。
+- **S-04 · 健康检查谎报（P2）**：`db.js` 新增 `probe()`（`SELECT 1` + 1.5s 超时，并顺带纠正内存里的 `ready` / `lastError`）。`GET /api/health` 改为真实探活，库不可用时返回 **503**（此前恒为 `200 {ready:true}`），且不再回吐原始错误。
+- **S-05 · 错误响应泄露内部信息 / 状态码错位（P2）**：新增 `HttpError` 与 `classifyError()`。非法 JSON、超大 body、非法参数一律 4xx（400 / 413）；PG 数据类错误（SQLSTATE 22xxx / 23xxx，含 `q=%00` 的非法字节、脏 `reorder` 的 `invalid input syntax`）归 400「请求参数不合法」；库连接类故障归 **503**；其余 500 只回「服务器内部错误」，原文只进日志。日报日期改为真实日历校验（`2026-13-99` 直接 400，不再落到 PG）。
+- **S-07 · 安全响应头（P2）**：全站统一挂 `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: strict-origin-when-cross-origin`、`Permissions-Policy`、`Cross-Origin-Opener-Policy` 与 CSP（`default-src 'self'`、`frame-ancestors 'none'`、`object-src 'none'`、`form-action 'self'`，图片放行 https 外链）；检测到 https 时追加 HSTS。
+
+### 测试
+
+- 新增 7 组服务端单测（`tests/server/unit.test.js`）：Cookie 解析容错、错误映射、内网地址判定、`assertPublicHost` 拦截与放行、`ALLOW_PRIVATE_HOSTS` 逃生口、安全响应头。
+- 守门全绿：UI 回归 376/376、服务端 125/125、部署守门 5/5。
+- 黑盒复验（容器 3211）：畸形 Cookie 返回 200 且进程不重启；内网订阅 / webhook / 模型地址均 400；同 IP 连错 6 次后用另一账号仍可登录；停库 health 503、启库自动恢复 200；`q=%00` / 非法日期 / 脏 reorder 均 400 且响应体不含 PG 原文。
+
+> S-08 ~ S-12（413 断连、参数数量与脏值校验、密码策略、烧钱接口频控、`/api/users` N+1）按要求留到下个版本。
+
+
 
 ### 频道栏「关注 / 未读 / 收藏 / 分组」点击无响应 — 响应式与渲染性能修复
 

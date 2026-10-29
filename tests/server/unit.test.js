@@ -896,3 +896,117 @@ test('generate：走 map-reduce 时长清单的每一批都带上风格要求', 
   assert.equal(miss.length, 0, miss.length + ' 次调用漏了风格要求');
 });
 
+
+/* ============================================================
+ * 安全加固（v1.7.2-test2）
+ * 对应《质量与安全测试报告-2026-10-29》S-01 / S-02 / S-05 / S-07。
+ * 这几条都是「改错一行就重返漏洞」的地方，所以钉成用例。
+ * ============================================================ */
+const { HttpError, parseCookies, classifyError, applySecurityHeaders } = require('../../lib/http');
+const { assertPublicHost, isBlockedIp } = require('../../lib/net');
+
+test('parseCookies：非法百分号转义不抛异常（S-01 崩溃根因）', () => {
+  // 修复前：decodeURIComponent('%E0%A4%A') 抛 URIError，而它跑在请求 handler 的
+  // try 之外 → 未捕获异常 → Node 终止进程，一个未授权请求即可打挂服务。
+  const req = { headers: { cookie: 'feedlore_sid=%E0%A4%A' } };
+  let out;
+  assert.doesNotThrow(() => { out = parseCookies(req); });
+  assert.equal(out.feedlore_sid, '%E0%A4%A', '解不开时应保留原文，交给验签判成无效会话');
+});
+
+test('parseCookies：正常值解码、空段/无等号段/空键都跳过', () => {
+  const req = { headers: { cookie: ' a=1 ; b=%E4%B8%AD ; ;;  =bad; c' } };
+  const out = parseCookies(req);
+  assert.equal(out.a, '1');
+  assert.equal(out.b, '中');
+  assert.equal(out[''], undefined, '空键不该进结果');
+  assert.equal(out.c, undefined, '没有等号的段不是 cookie');
+  assert.deepEqual(parseCookies({ headers: {} }), {});
+  assert.deepEqual(parseCookies({}), {});
+});
+
+test('classifyError：客户端错误给 4xx，依赖故障给 503，其余 500 且不外泄原文', () => {
+  assert.deepEqual(classifyError(new HttpError(400, '请求体不是合法 JSON', 'BAD_JSON')),
+    { status: 400, message: '请求体不是合法 JSON', code: 'BAD_JSON' });
+  // PG 数据类错误（非法输入语法 / 非法日期 / NUL 字节）→ 400，且不透出 SQL 原文
+  const pg = Object.assign(new Error('invalid byte sequence for encoding "UTF8": 0x00'), { code: '22021' });
+  assert.deepEqual(classifyError(pg), { status: 400, message: '请求参数不合法', code: 'BAD_INPUT' });
+  // 库连不上 → 503（而不是 502 / 500），监控能区分「依赖挂了」和「代码炸了」
+  const dnsErr = Object.assign(new Error('getaddrinfo ENOTFOUND db'), { code: 'ENOTFOUND' });
+  assert.equal(classifyError(dnsErr).status, 503);
+  // 未知异常：5xx 只回通用文案，绝不把 message 带出去
+  const boom = classifyError(new Error('column entries.owner_id does not exist'));
+  assert.equal(boom.status, 500);
+  assert.equal(boom.message, '服务器内部错误');
+  assert.ok(!boom.message.includes('owner_id'));
+  // HttpError(500) 也不外泄
+  assert.equal(classifyError(new HttpError(500, 'stack detail')).message, '服务器内部错误');
+});
+
+test('isBlockedIp：内网 / 回环 / 链路本地 / CGNAT / IPv6 全拦', () => {
+  for (const ip of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1',
+    '169.254.169.254', '100.64.0.1', '0.0.0.0', '224.0.0.1', 'localhost',
+    '::1', 'fe80::1', 'fd00::1']) {
+    assert.equal(isBlockedIp(ip), true, ip + ' 应判为不可出网');
+  }
+  for (const ip of ['1.1.1.1', '8.8.8.8', '104.16.0.1', '100.63.0.1',
+    // 公网 IPv6 必须放行：早期版本「凡 IPv6 一律拒绝」，
+    // 结果 example.com（有 AAAA 记录）被判成内网，46 个订阅集体抓取失败
+    '2606:2800:220:1:248:1893:25c8:1946', '2001:db8::1'.replace('db8', '4860')]) {
+    assert.equal(isBlockedIp(ip), false, ip + ' 应放行');
+  }
+});
+
+test('assertPublicHost：内网字面量 / 非法协议直接拒，公网域名放行（S-02）', async () => {
+  for (const u of ['http://127.0.0.1:3000/api/health', 'http://localhost/',
+    'http://10.0.0.5/', 'http://169.254.169.254/latest/meta-data/', 'http://[::1]:8080/']) {
+    await assert.rejects(() => assertPublicHost(u), (e) => e instanceof HttpError && e.status === 400, u + ' 应被拒');
+  }
+  await assert.rejects(() => assertPublicHost('file:///etc/passwd'), (e) => e.status === 400);
+  await assert.rejects(() => assertPublicHost('not a url'), (e) => e.status === 400);
+
+  // 域名指向内网 IP 也要拒（防「用域名绕过字面量检查」）
+  const pub = await assertPublicHost('https://example.com/feed', {
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+  });
+  assert.equal(pub.host, 'example.com');
+  assert.deepEqual(pub.ips, ['93.184.216.34']);
+
+  await assert.rejects(
+    () => assertPublicHost('https://evil.example.com/feed', { lookup: async () => [{ address: '127.0.0.1', family: 4 }] }),
+    (e) => e.code === 'PRIVATE_HOST',
+  );
+  // 解析失败（不存在的域名）也是 400，而且文案里不要带底层报错
+  await assert.rejects(
+    () => assertPublicHost('https://nope.invalid/', { lookup: async () => { throw new Error('ENOTFOUND'); } }),
+    (e) => e.status === 400 && e.code === 'DNS_FAIL',
+  );
+});
+
+test('assertPublicHost：ALLOW_PRIVATE_HOSTS=1 时放行内网（自建 FreshRSS / 本机模型）', async () => {
+  const prev = process.env.ALLOW_PRIVATE_HOSTS;
+  process.env.ALLOW_PRIVATE_HOSTS = '1';
+  try {
+    const r = await assertPublicHost('http://127.0.0.1:3000/feed');
+    assert.equal(r.host, '127.0.0.1');
+  } finally {
+    if (prev === undefined) delete process.env.ALLOW_PRIVATE_HOSTS;
+    else process.env.ALLOW_PRIVATE_HOSTS = prev;
+  }
+});
+
+test('applySecurityHeaders：nosniff / 反嵌套 / CSP / Referrer 齐备，https 才加 HSTS（S-07）', () => {
+  const mk = () => { const h = {}; return { setHeader: (k, v) => { h[k] = v; }, h }; };
+  const plain = mk();
+  applySecurityHeaders(plain);
+  assert.equal(plain.h['X-Content-Type-Options'], 'nosniff');
+  assert.equal(plain.h['X-Frame-Options'], 'DENY');
+  assert.equal(plain.h['Referrer-Policy'], 'strict-origin-when-cross-origin');
+  assert.match(plain.h['Content-Security-Policy'], /frame-ancestors 'none'/);
+  assert.match(plain.h['Content-Security-Policy'], /default-src 'self'/);
+  assert.equal(plain.h['Strict-Transport-Security'], undefined, 'http 上不该发 HSTS');
+
+  const tls = mk();
+  applySecurityHeaders(tls, { https: true });
+  assert.match(tls.h['Strict-Transport-Security'], /max-age=\d+/);
+});

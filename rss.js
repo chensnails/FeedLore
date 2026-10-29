@@ -461,6 +461,8 @@ const UA = 'Mozilla/5.0 (compatible; FeedLore/2.8; +RSS reader)';
 const FEED_TIMEOUT = Number(process.env.RSS_TIMEOUT_MS || 25000);
 const MAX_BYTES = 12 * 1024 * 1024;
 const { getDispatcher: getProxyDispatcher } = require('./proxy.js');
+// 出网校验：内网地址拒绝 + 已解析 IP 钉定 + 重定向逐跳校验（v1.7.2-test2 / S-02）
+const { safeFetch } = require('./lib/net.js');
 
 // 抓取重试：5xx / 网络 / 超时 都按指数退避重试；4xx（除 408/425/429）直接判为永久错误不重试。
 // 这样 503/524/连接被重置/超时 之类的瞬时故障就不会直接判失败，而是过几秒再试。
@@ -522,7 +524,8 @@ async function fetchFeed(url, { etag, lastModified, timeoutMs, proxyUrl } = {}) 
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), budget);
     try {
-      const resp = await fetch(target, { headers, signal: ctl.signal, redirect: 'follow', dispatcher: dispatcher || undefined });
+      // redirect 由 safeFetch 自己跟：每一跳都要重新判主机，不能交给 fetch 自动跟随
+      const resp = await safeFetch(target, { headers, signal: ctl.signal, dispatcher: dispatcher || undefined });
       if (resp.status === 304) {
         return { notModified: true, status: 304, finalUrl: target };
       }
@@ -574,6 +577,8 @@ async function fetchFeed(url, { etag, lastModified, timeoutMs, proxyUrl } = {}) 
         lastErr = new Error('抓取超时');
         lastErr.permanent = false;
       }
+      // 出网校验拒绝（内网地址 / 地址非法）属于配置错误，重试多少次都一样
+      if (e && Number(e.status) >= 400 && Number(e.status) < 500) e.permanent = true;
       // 永久错误 / 已达最大重试次数 → 抛出
       const permanent = !!(e && e.permanent);
       if (permanent || attempt >= RETRY_MAX) throw lastErr;
