@@ -903,7 +903,7 @@ test('generate：走 map-reduce 时长清单的每一批都带上风格要求', 
  * 这几条都是「改错一行就重返漏洞」的地方，所以钉成用例。
  * ============================================================ */
 const { HttpError, parseCookies, classifyError, applySecurityHeaders } = require('../../lib/http');
-const { assertPublicHost, isBlockedIp } = require('../../lib/net');
+const { assertPublicHost, isBlockedIp, pinnedLookup, undiciVersionMismatch } = require('../../lib/net');
 
 test('parseCookies：非法百分号转义不抛异常（S-01 崩溃根因）', () => {
   // 修复前：decodeURIComponent('%E0%A4%A') 抛 URIError，而它跑在请求 handler 的
@@ -955,6 +955,42 @@ test('isBlockedIp：内网 / 回环 / 链路本地 / CGNAT / IPv6 全拦', () =>
     '2606:2800:220:1:248:1893:25c8:1946', '2001:db8::1'.replace('db8', '4860')]) {
     assert.equal(isBlockedIp(ip), false, ip + ' 应放行');
   }
+});
+
+test('pinnedLookup：三种回调形态都要对，尤其 { all: true } 必须回数组（1.7.3 全站抓取失败根因）', () => {
+  // 1.7.3 上线后 48 个 URL 组、94 个订阅全挂，日志只有一句 fetch failed。
+  // 真因：undici 解析时带 { all: true }，Node 要求回调给数组，而这里只给了
+  // (null, ip, family) → ERR_INVALID_IP_ADDRESS。用桩测不出来（桩不走连接层），
+  // 所以把 lookup 本身抽出来钉死。
+  const fn = pinnedLookup('93.184.216.34');
+  let rows;
+  fn('example.com', { all: true }, (err, r) => { assert.equal(err, null); rows = r; });
+  assert.deepEqual(rows, [{ address: '93.184.216.34', family: 4 }], '{ all: true } 必须回数组');
+
+  let flat;
+  fn('example.com', { family: 4 }, (err, addr, family) => { flat = [err, addr, family]; });
+  assert.deepEqual(flat, [null, '93.184.216.34', 4], '普通形态回 (err, address, family)');
+
+  let two;
+  fn('example.com', (err, addr, family) => { two = [err, addr, family]; });
+  assert.deepEqual(two, [null, '93.184.216.34', 4], '两参调用也要活');
+
+  // IPv6 钉定 family 必须是 6，否则 tls 连接会拿 v4 socket 配 v6 地址
+  const v6ip = '2606:2800:220:1:248:1893:25c8:1946';
+  let rows6;
+  pinnedLookup(v6ip)('example.com', { all: true }, (e, r) => { rows6 = r; });
+  assert.deepEqual(rows6, [{ address: v6ip, family: 6 }]);
+});
+
+test('undici 依赖必须与 Node 内置同大版本（跨大版本 dispatcher 直接不可用）', () => {
+  // dispatcher 是内置 fetch 的扩展点，内置 fetch 用的是 Node 自带那份 undici。
+  // 装成 8.x（Node 22 内置 6.x）时每次请求都抛 invalid onRequestStart method，
+  // 表现同样是 fetch failed —— 和上面那条一起构成 1.7.3 的故障。
+  assert.equal(
+    undiciVersionMismatch(),
+    false,
+    `package.json 的 undici 需锁到与内置 ${process.versions.undici} 相同的大版本`,
+  );
 });
 
 test('assertPublicHost：内网字面量 / 非法协议直接拒，公网域名放行（S-02）', async () => {
