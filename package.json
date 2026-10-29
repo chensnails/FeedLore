@@ -1,6 +1,6 @@
 {
   "name": "feedlore",
-  "version": "1.7.3",
+  "version": "1.7.4",
   "private": true,
   "description": "笺川（FeedLore）—— 自托管 RSS 阅读器与资源卡片墙，数据存 PostgreSQL",
   "main": "server.js",
@@ -16,7 +16,7 @@
   "dependencies": {
     "pg": "^8.23.1",
     "sharp": "^0.35.5",
-    "undici": "^8.12.1"
+    "undici": "6.29.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",

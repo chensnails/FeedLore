@@ -1,3 +1,22 @@
+## [1.7.4] — 2026-10-29
+
+### 修复：所有频道抓取失败 —— IP 钉定的 lookup 回调形态写错（1.7.2 回归）
+
+线上 96 个频道里 95 个 `fail_streak > 0`，日志只有一句「48 个 URL 组 / 94 个订阅，新增 0 条，失败 48 个」，6 个频道已被连续失败自动停用。受影响的**不只是订阅抓取**：图片缓存、Webhook 通知、AI 日报的所有出网请求都走 `safeFetch`，因此一并静默失效。
+
+定位：容器内直连正常（`fetch('https://sspai.com/feed')` 返回 200），经 `safeFetch` 必失败。逐层剥开是两个叠在一起的问题，都出在 1.7.2 新增的 `lib/net.js`：
+
+- **① `pinnedLookup` 漏了 `{ all: true }` 形态（直接原因）**：undici 连接时用 `lookup(host, { all: true }, cb)` 解析，此时 Node 要求回调给**数组** `cb(null, [{ address, family }])`；原实现一律 `cb(null, ip, family)`，数组里第一个元素不是对象 → `ERR_INVALID_IP_ADDRESS` → 外层只能看到 `fetch failed`。**IP 钉定从上线起就没有一次生效过**。
+- **② `undici` 与 Node 内置版本跨了大版本（掩盖问题的第二个坑）**：`dispatcher` 是内置 fetch 的扩展点，内置 fetch 用的是 Node 自带那份 undici（22.23 为 6.29.1），而依赖里装的是 8.12.1。跨大版本时 dispatch 阶段直接抛 `invalid onRequestStart method`，连连接都不会建立，于是错误信息永远停在最外层的 `fetch failed`。
+
+修复：
+
+- **`lib/net.js`**：lookup 抽成 `pinnedLookup(ip)` 并兼容三种调用形态（`{all:true}` 回数组、`(host, opts, cb)` 回 `(err, address, family)`、两参 `(host, cb)`）；IPv6 钉定 `family` 给 6。新增 `undiciVersionMismatch()`，启动时若依赖与内置 undici 大版本不一致直接打印告警，避免下一次又是「上线后全站静默失败」。
+- **`package.json` / `package-lock.json`**：`undici` 由 `^8.12.1` 改为精确锁 **`6.29.1`**（与 Node 22.23 内置版本一致）。
+- **测试**：新增两条用例 —— `pinnedLookup` 三种回调形态（含 `{all:true}` 必须回数组、IPv6 family=6）、`undici` 依赖与内置同大版本。此前 125 项跑不出来，是因为 `assertPublicHost` 的用例给的是 `lookup` 桩，**桩根本不走连接层**，钉定逻辑体没被碰过。
+
+验证：本地 `safeFetch('https://sspai.com/feed')` → 200 / 4422 字节 / 391ms，`ithome` → 200 / 214277 字节 / 59ms；线上容器内同一脚本由 `fetch failed` 转为 200。守门全绿：UI 377、服务端 127、部署 5、Dockerfile 17。
+
 ## [1.7.3] — 2026-10-29
 
 ### 修复：频道栏点击分组行无反应（1.7.2 回归）
