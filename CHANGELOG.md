@@ -1,8 +1,16 @@
-# 更新日志 / Changelog
+## [1.7.2] — 2026-10-29
 
-本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
+本版为**修复版，无新增功能**，两块内容：一是修掉窄桌面 / 半屏窗口下频道栏「关注 / 屏蔽」等虚拟视图点不动的响应式缺陷，并把频道栏从阅读页的高频重渲染里隔离出来；二是按《质量与安全测试报告-2026-10-29》修掉 S-01 ~ S-07 七个安全与健壮性问题（其中 S-01 是未授权即可打挂进程的远程 DoS）。
 
-## [1.7.2-test2] — 2026-10-29
+### 频道栏「关注 / 未读 / 收藏 / 分组」点击无响应 — 响应式与渲染性能修复
+
+针对窄桌面 / 半屏窗口（721–1080px）下左侧频道栏被整体移出屏幕、导致「关注」等虚拟视图点不动的问题，做了一轮响应式与渲染性能修复（无新增功能）：
+
+- **A · 统一响应式断点**：把抽屉（频道栏 → 抽屉）的触发断点从 `max-width: 1080px` 降到 `max-width: 720px`，与 `reader.js` 中 `resize` 监听的 720 阈值对齐。721px 及以上始终常驻频道栏，避免窄窗口里入口被移出屏幕；配套同步 `min-width: 1081px` 卡片下拉段改为 `721px`，并更新「断点体系」注释与断点索引。
+- **B · 抽屉选中不强制收起**：`readerSetScope / Group / Feed / Watch` 等选中处理器不再无条件 `setReaderDrawer(false)`；仅在 `innerWidth <= 720`（真移动断点）才选中即收起，窄桌面常驻侧栏保持打开。
+- **C · 频道内搜索防抖**：`ChannelList` 的频道名过滤改用 React 19 `useDeferredValue`，输入框即时响应、过滤重算延迟到绘制后，避免每敲一字同步重算整条侧栏。
+- **D · 侧栏与列表渲染隔离**：`ReaderView` 用 `useMemo` 缓存 `grouped / collapsed / flags`（仅订阅源、折叠集合、计数变化时重算），侧栏回调包成 `useCallback`；`ChannelList` 用 `memo` 包裹——阅读页每次 `__readerTick` 不再无谓重渲染整条频道栏。
+- **E · resize 监听防抖**：`reader.js` 的窗口 `resize` 监听加 150ms 防抖，避免连续 resize 反复触发收抽屉与重排。
 
 ### 安全加固：修掉《质量与安全测试报告》里的 S-01 ~ S-07（无新增功能）
 
@@ -16,25 +24,13 @@
 - **S-05 · 错误响应泄露内部信息 / 状态码错位（P2）**：新增 `HttpError` 与 `classifyError()`。非法 JSON、超大 body、非法参数一律 4xx（400 / 413）；PG 数据类错误（SQLSTATE 22xxx / 23xxx，含 `q=%00` 的非法字节、脏 `reorder` 的 `invalid input syntax`）归 400「请求参数不合法」；库连接类故障归 **503**；其余 500 只回「服务器内部错误」，原文只进日志。日报日期改为真实日历校验（`2026-13-99` 直接 400，不再落到 PG）。
 - **S-07 · 安全响应头（P2）**：全站统一挂 `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY`、`Referrer-Policy: strict-origin-when-cross-origin`、`Permissions-Policy`、`Cross-Origin-Opener-Policy` 与 CSP（`default-src 'self'`、`frame-ancestors 'none'`、`object-src 'none'`、`form-action 'self'`，图片放行 https 外链）；检测到 https 时追加 HSTS。
 
-### 测试
+#### 测试与复验
 
 - 新增 7 组服务端单测（`tests/server/unit.test.js`）：Cookie 解析容错、错误映射、内网地址判定、`assertPublicHost` 拦截与放行、`ALLOW_PRIVATE_HOSTS` 逃生口、安全响应头。
 - 守门全绿：UI 回归 376/376、服务端 125/125、部署守门 5/5。
 - 黑盒复验（容器 3211）：畸形 Cookie 返回 200 且进程不重启；内网订阅 / webhook / 模型地址均 400；同 IP 连错 6 次后用另一账号仍可登录；停库 health 503、启库自动恢复 200；`q=%00` / 非法日期 / 脏 reorder 均 400 且响应体不含 PG 原文。
 
 > S-08 ~ S-12（413 断连、参数数量与脏值校验、密码策略、烧钱接口频控、`/api/users` N+1）按要求留到下个版本。
-
-
-
-### 频道栏「关注 / 未读 / 收藏 / 分组」点击无响应 — 响应式与渲染性能修复
-
-针对窄桌面 / 半屏窗口（721–1080px）下左侧频道栏被整体移出屏幕、导致「关注」等虚拟视图点不动的问题，做了一轮响应式与渲染性能修复（无新增功能）：
-
-- **A · 统一响应式断点**：把抽屉（频道栏 → 抽屉）的触发断点从 `max-width: 1080px` 降到 `max-width: 720px`，与 `reader.js` 中 `resize` 监听的 720 阈值对齐。721px 及以上始终常驻频道栏，避免窄窗口里入口被移出屏幕；配套同步 `min-width: 1081px` 卡片下拉段改为 `721px`，并更新「断点体系」注释与断点索引。
-- **B · 抽屉选中不强制收起**：`readerSetScope / Group / Feed / Watch` 等选中处理器不再无条件 `setReaderDrawer(false)`；仅在 `innerWidth <= 720`（真移动断点）才选中即收起，窄桌面常驻侧栏保持打开。
-- **C · 频道内搜索防抖**：`ChannelList` 的频道名过滤改用 React 19 `useDeferredValue`，输入框即时响应、过滤重算延迟到绘制后，避免每敲一字同步重算整条侧栏。
-- **D · 侧栏与列表渲染隔离**：`ReaderView` 用 `useMemo` 缓存 `grouped / collapsed / flags`（仅订阅源、折叠集合、计数变化时重算），侧栏回调包成 `useCallback`；`ChannelList` 用 `memo` 包裹——阅读页每次 `__readerTick` 不再无谓重渲染整条频道栏。
-- **E · resize 监听防抖**：`reader.js` 的窗口 `resize` 监听加 150ms 防抖，避免连续 resize 反复触发收抽屉与重排。
 
 ## [1.7.1] — 2026-10-29
 
