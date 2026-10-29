@@ -1,0 +1,24 @@
+{
+  "name": "@feedlore/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@feedlore/contract": "workspace:*",
+    "@feedlore/db": "workspace:*",
+    "@hono/node-server": "^1.13.7",
+    "drizzle-orm": "0.44.7",
+    "hono": "^4.6.14",
+    "tsx": "^4.19.2",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.0"
+  }
+}

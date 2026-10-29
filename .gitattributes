@@ -1,0 +1,7 @@
+# 容器构建相关文件必须保持 LF：Windows 下的 CRLF 会破坏 Dockerfile 的反斜杠续行
+# 与 shell 脚本的 shebang/换行，导致镜像构建或启动失败且极难排查。
+Dockerfile text eol=lf
+*.sh text eol=lf
+docker-compose*.yml text eol=lf
+docker-compose*.yaml text eol=lf
+*.sql text eol=lf
