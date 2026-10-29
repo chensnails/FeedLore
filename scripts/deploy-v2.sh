@@ -40,8 +40,18 @@ docker compose -f docker-compose.v2.yml run --rm v2-migrate
 echo "==> [4/5] 重启服务"
 docker compose -f docker-compose.v2.yml up -d
 
-echo "==> [5/5] 自检"
+echo "==> [5/5] 等待服务健康（健康检查 start_period=25s，需先等一轮）"
+healthy=0
+for _ in $(seq 1 30); do
+  if curl -sf -m 5 "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
+    healthy=1
+    break
+  fi
+  sleep 2
+done
 docker ps --filter name=feedlore-v2 --format '{{.Names}} | {{.Status}}'
+echo
+[ "$healthy" = "1" ] || { echo "⚠️ 服务在 60s 内未通过健康检查，请查看：docker logs feedlore-v2-v2-server-1"; exit 1; }
 echo
 echo "--- GET /api/health ---"
 curl -s -m 10 "http://127.0.0.1:${PORT}/api/health" || echo "(无响应)"
