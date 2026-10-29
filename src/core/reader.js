@@ -482,7 +482,7 @@ export function readerSetScope(scope) {
   renderReader();
   loadReader({ reset: true });
   emitShell();
-  setReaderDrawer(false);
+  if (window.innerWidth <= 720) setReaderDrawer(false);
   scrollReaderTop();
 }
 export function readerSetGroup(g) {
@@ -493,7 +493,7 @@ export function readerSetGroup(g) {
   renderReader();
   loadReader({ reset: true });
   emitShell();
-  setReaderDrawer(false);
+  if (window.innerWidth <= 720) setReaderDrawer(false);
   scrollReaderTop();
 }
 export function readerSetFeed(id) {
@@ -515,7 +515,7 @@ export function readerSetFeed(id) {
   renderReader();
   loadReader({ reset: true });
   emitShell();
-  setReaderDrawer(false);
+  if (window.innerWidth <= 720) setReaderDrawer(false);
   scrollReaderTop();
 }
 /**
@@ -533,7 +533,7 @@ export function readerSetWatch(w) {
   renderReader();
   loadReader({ reset: true });
   emitShell();
-  setReaderDrawer(false);
+  if (window.innerWidth <= 720) setReaderDrawer(false);
   scrollReaderTop();
 }
 
@@ -553,7 +553,7 @@ function reloadReaderFeed() {
   renderReader();
   loadReader({ reset: true });
   emitShell();
-  setReaderDrawer(false);
+  if (window.innerWidth <= 720) setReaderDrawer(false);
   scrollReaderTop();
 }
 
@@ -586,7 +586,12 @@ export function scrollReaderTop() {
 // 抽屉开合按钮（菜单 / 关闭 / 遮罩）已随阅读页 React 化，改由 ReaderView 经桥触发
 export function readerToggleDrawer() { setReaderDrawer(!document.body.classList.contains('reader-drawer-open')); }
 export function readerCloseDrawer() { setReaderDrawer(false); }
-window.addEventListener('resize', () => { if (window.innerWidth > 720) setReaderDrawer(false); });
+let resizeDrawerTimer = null;
+window.addEventListener('resize', () => {
+  if (resizeDrawerTimer) clearTimeout(resizeDrawerTimer);
+  // 防抖：连续 resize 事件只落地一次，避免每次都触发收抽屉的 class 切换与重排
+  resizeDrawerTimer = setTimeout(() => { if (window.innerWidth > 720) setReaderDrawer(false); }, 150);
+});
 
 /* 侧滑出手势已抽到 src/core/drawer.js（v1.3.10 起文章页与卡片页共用同一套）。 */
 

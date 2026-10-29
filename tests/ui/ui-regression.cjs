@@ -1042,7 +1042,7 @@ const withEFP = (el, fn) => {
     }
   });
 
-  // 断点体系（v1.3.10 头部重构）：1080 换导航形态、720 换密度。
+  // 断点体系（v1.3.10 头部重构）：720 换导航形态、820 / 720 换密度。
   // 这两个语义以后就是全站约定，谁再临时自造 640 / 900 之类的断点做布局降级，
   // 页面就会开始「一档一档地跳」，所以在这里钉住。
   t('style.css：断点体系（1080 导航降级 / 720 密度降级）+ 头部令牌', () => {
@@ -1054,29 +1054,26 @@ const withEFP = (el, fn) => {
     const tablet = css.match(/--head-h:\s*44px;\s*--head-ctl:\s*36px/);
     if (!tablet) throw new Error('移动档应把 --head-h / --head-ctl 覆盖成 44 / 36（控件变大、条更矮）');
 
-    // ≤1080：侧栏收进抽屉 + 频道按钮出场 + 筛选下拉退场
-    const i1080 = css.indexOf('@media (max-width: 1080px)');
-    const i720 = css.indexOf('@media (max-width: 720px)', i1080);
-    if (i1080 < 0 || i720 < 0) throw new Error('缺 ≤1080px / ≤720px 两档断点');
-    const block1080 = css.slice(i1080, i720);
-    if (!/\.reader\s*>\s*#readerRoot\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/.test(block1080)) {
-      throw new Error('≤1080px 应把阅读页分栏降成单列（网格在 #readerRoot 上）');
+    // ≤720：侧栏收进抽屉 + 频道按钮出场 + 筛选下拉退场（导航降级统一到 720，与 JS resize 阈值一致）
+    const iReaderRoot = css.indexOf('.reader > #readerRoot');
+    const iMedia = iReaderRoot >= 0 ? css.lastIndexOf('@media (max-width: 720px)', iReaderRoot) : -1;
+    const iMediaEnd = iReaderRoot >= 0 ? css.indexOf('@media (max-width: 560px)', iReaderRoot) : -1;
+    const navBlock = iMedia >= 0 ? css.slice(iMedia, iMediaEnd >= 0 ? iMediaEnd : css.length) : '';
+    if (iMedia < 0) throw new Error('缺 ≤720px 导航降级段（阅读页分栏降单列）');
+    if (!/\.reader\s*>\s*#readerRoot\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/.test(navBlock)) {
+      throw new Error('≤720px 应把阅读页分栏降成单列（网格在 #readerRoot 上）');
     }
-    if (!/\.reader-side, \.cards-side\s*\{[^}]*position:\s*fixed/.test(block1080)) {
-      throw new Error('≤1080px 应把两页的频道栏变成抽屉（同一条规则）');
+    if (!/\.reader-side, \.cards-side\s*\{[^}]*position:\s*fixed/.test(navBlock)) {
+      throw new Error('≤720px 应把两页的频道栏变成抽屉（同一条规则）');
     }
-    if (!/\.reader-menu-btn, \.cards-menu-btn\s*\{[^}]*display:\s*inline-flex/.test(block1080)) {
-      throw new Error('≤1080px 两页都该出现「频道」按钮');
+    if (!/\.reader-menu-btn, \.cards-menu-btn\s*\{[^}]*display:\s*inline-flex/.test(navBlock)) {
+      throw new Error('≤720px 两页都该出现「频道」按钮');
     }
-    if (!/#feedDD\s*\{\s*display:\s*none/.test(block1080)) {
-      throw new Error('≤1080px 抽屉是唯一入口，头部筛选下拉该退场');
+    if (!/#feedDD\s*\{\s*display:\s*none/.test(navBlock)) {
+      throw new Error('≤720px 抽屉是唯一入口，头部筛选下拉该退场');
     }
-    // 720 那段不该再重复写抽屉规则（导航形态只在 1080 换一次）
-    const i720end = css.indexOf('@media (max-width: 560px)', i720);
-    const block720 = css.slice(i720, i720end);
-    if (/\.reader-side, \.cards-side\s*\{[^}]*position:\s*fixed/.test(block720)) {
-      throw new Error('抽屉规则只该写在 ≤1080px，别在 ≤720px 再抄一份');
-    }
+    // 导航降级只写 720 这一档，不得再保留 1080 段
+    if (css.indexOf('@media (max-width: 1080px)') >= 0) throw new Error('不应再保留 @media (max-width: 1080px) 导航降级段');
 
     // 触屏命中区：视觉 36px，纵向补到 44px（只扩上下，避免和邻键抢点击）
     if (!/\.page-head \.btn::after[\s\S]{0,200}?- 44px\) \/ 2/.test(css)) {
@@ -4246,12 +4243,13 @@ const withEFP = (el, fn) => {
     const tools = head.slice(head.indexOf('head-right'));
     if (tools.indexOf('wrapId="feedDD"') >= 0) throw new Error('#feedDD 仍在工具组里 —— 标题与筛选会重复');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
-    const mw = css.match(/@media \(min-width: 1081px\) \{([\s\S]*?)\n\}/);
-    if (!mw) throw new Error('缺 ≥1081px 段');
+    // 导航降级已统一到 720，桌面下拉标题段改为 ≥721px；可能有多个 721 段，挑含 .cards-head > #feedDD 的那个
+    const mw = [...css.matchAll(/@media \(min-width: 721px\) \{([\s\S]*?)\n\}/g)].find((m) => /\.cards-head\s*>\s*#feedDD/.test(m[1]));
+    if (!mw) throw new Error('缺 ≥721px 卡片下拉标题段');
     if (!/\.cards-head > \.cards-title \{ display: none/.test(mw[1])) {
       throw new Error('桌面应隐藏文字标题（下拉即标题）；这条必须写在 min-width 里，否则窄屏标题也被藏掉');
     }
-    if (!/\.cards-head > #feedDD \{/.test(mw[1])) throw new Error('下拉的标题样式应只作用于 ≥1081px');
+    if (!/\.cards-head > #feedDD \{/.test(mw[1])) throw new Error('下拉的标题样式应只作用于 ≥721px');
   });
 
   // 吸顶条的滚动边界 + 卡片浮动按钮的悬停门控

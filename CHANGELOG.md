@@ -2,6 +2,18 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)（SemVer）：`主版本.次版本.修订号`。
 
+## [1.7.2-test1] — 2026-10-29
+
+### 频道栏「关注 / 未读 / 收藏 / 分组」点击无响应 — 响应式与渲染性能修复
+
+针对窄桌面 / 半屏窗口（721–1080px）下左侧频道栏被整体移出屏幕、导致「关注」等虚拟视图点不动的问题，做了一轮响应式与渲染性能修复（无新增功能）：
+
+- **A · 统一响应式断点**：把抽屉（频道栏 → 抽屉）的触发断点从 `max-width: 1080px` 降到 `max-width: 720px`，与 `reader.js` 中 `resize` 监听的 720 阈值对齐。721px 及以上始终常驻频道栏，避免窄窗口里入口被移出屏幕；配套同步 `min-width: 1081px` 卡片下拉段改为 `721px`，并更新「断点体系」注释与断点索引。
+- **B · 抽屉选中不强制收起**：`readerSetScope / Group / Feed / Watch` 等选中处理器不再无条件 `setReaderDrawer(false)`；仅在 `innerWidth <= 720`（真移动断点）才选中即收起，窄桌面常驻侧栏保持打开。
+- **C · 频道内搜索防抖**：`ChannelList` 的频道名过滤改用 React 19 `useDeferredValue`，输入框即时响应、过滤重算延迟到绘制后，避免每敲一字同步重算整条侧栏。
+- **D · 侧栏与列表渲染隔离**：`ReaderView` 用 `useMemo` 缓存 `grouped / collapsed / flags`（仅订阅源、折叠集合、计数变化时重算），侧栏回调包成 `useCallback`；`ChannelList` 用 `memo` 包裹——阅读页每次 `__readerTick` 不再无谓重渲染整条频道栏。
+- **E · resize 监听防抖**：`reader.js` 的窗口 `resize` 监听加 150ms 防抖，避免连续 resize 反复触发收抽屉与重排。
+
 ## [1.7.1] — 2026-10-29
 
 ### 移除键盘快捷键（不新增功能）

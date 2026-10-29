@@ -10,7 +10,7 @@
  */
 
 import { core } from '@core';
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChannelList } from './ChannelList.jsx';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
@@ -358,7 +358,10 @@ export function ReaderView() {
   const st = (s && s.state) || {};
   const feeds = st.feedList || [];
   const entries = st.rdEntries || [];
-  const flags = st.rdFlags || { total: 0, unread: 0, favorite: 0 };
+  const rawFlags = st.rdFlags || { total: 0, unread: 0, favorite: 0 };
+  const flagsKey = `${rawFlags.total}|${rawFlags.unread}|${rawFlags.favorite}|${rawFlags.watching ?? ''}|${rawFlags.blocked ?? ''}`;
+  // D：标记仅在计数变化时重算，避免每次 tick 重建对象导致侧栏无谓重渲染
+  const flags = useMemo(() => rawFlags, [flagsKey]);
   const expanded = st.rdExpanded || new Set();
   const bodyMap = st.rdBody || new Map();
   const bodyErrSet = st.rdBodyErr || new Set();
@@ -366,8 +369,10 @@ export function ReaderView() {
   const flashId = st.rdFlashId == null ? null : String(st.rdFlashId);
 
   // 频道栏：分组与折叠状态一次算好，头部「全部折叠」按钮与列表必须同源
-  const grouped = (s.groupFeeds) ? s.groupFeeds(feeds) : [{ name: '', feeds }];
-  const collapsed = (s.readerCollapsedGroups) ? s.readerCollapsedGroups() : new Set();
+  // D：分组 / 折叠只在订阅源或折叠集合变化时重算，避免每次阅读页 tick 都重建整条侧栏
+  const grouped = useMemo(() => (s.groupFeeds ? s.groupFeeds(feeds) : [{ name: '', feeds }]), [st.feedList]);
+  const collapseKey = JSON.stringify(st.rdCollapsedGroups || []);
+  const collapsed = useMemo(() => (s.readerCollapsedGroups ? s.readerCollapsedGroups() : new Set()), [collapseKey]);
   const hasGroups = grouped.some((g) => g.name);
   const allCollapsed = hasGroups && grouped.every((g) => collapsed.has(g.name || ''));
 
@@ -441,6 +446,13 @@ export function ReaderView() {
   const onToggleArt = useCallback((id) => { const c = S(); if (c.readerToggleArt) c.readerToggleArt(id); }, []);
   const onFavArt = useCallback((id) => { const c = S(); if (c.readerToggleFav) c.readerToggleFav(id); }, []);
   const onTagArt = useCallback((t) => { const c = S(); if (c.readerTagToCards) c.readerTagToCards(t); }, []);
+  // D：侧栏回调稳定化（memo 的前提是 props 引用稳定），否则每次 tick 都拿到新函数、memo 失效
+  const cbScope = useCallback((k) => S().readerSetScope(k), []);
+  const cbFeed = useCallback((id) => S().readerSetFeed(id), []);
+  const cbGroup = useCallback((g) => S().readerSetGroup(g), []);
+  const cbFold = useCallback((g) => S().readerToggleGroupCollapse(g), []);
+  const cbWatch = useCallback((k) => S().readerSetWatch(k), []);
+  const cbAdd = useCallback(() => S().readerOpenSource(), []);
 
   return (
     <>
@@ -469,10 +481,10 @@ export function ReaderView() {
           <ChannelList variant="reader" groups={grouped} collapsed={collapsed} hasGroups={hasGroups}
             flags={flags} activeScope={st.rdScope} activeFeedId={st.rdFeedId} activeGroup={st.rdGroup}
             activeWatch={st.rdWatch}
-            onScope={(k) => s.readerSetScope(k)} onFeed={(id) => s.readerSetFeed(id)}
-            onGroup={(g) => s.readerSetGroup(g)} onFold={(g) => s.readerToggleGroupCollapse(g)}
-            onWatch={(k) => s.readerSetWatch(k)}
-            onAdd={() => s.readerOpenSource()} />
+            onScope={cbScope} onFeed={cbFeed}
+            onGroup={cbGroup} onFold={cbFold}
+            onWatch={cbWatch}
+            onAdd={cbAdd} />
         </nav>
       </aside>
       <ReaderSideResize />

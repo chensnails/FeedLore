@@ -451,7 +451,7 @@ export function CardsView() {
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg>
             <span className="cards-menu-label">频道</span>
           </button>
-          {/* 桌面 ≥1081px 下拉即标题（见 CSS），标题文字藏起；≤1080px 下拉退场、抽屉接管，文字标题回来。 */}
+          {/* 桌面 ≥721px 下拉即标题（见 CSS），标题文字藏起；≤720px 下拉退场、抽屉接管，文字标题回来。 */}
           <h2 className="cards-title page-title vt-title" title={headTitle}>{headTitle}</h2>
           {/* 中部：频道下拉选择器（同时承担标题职责，显示当前频道+条数）。窄屏退场。 */}
           <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选"

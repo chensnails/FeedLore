@@ -13,7 +13,7 @@
  */
 
 import { core } from '@core';
-import { useState } from 'react';
+import { memo, useDeferredValue, useState } from 'react';
 import { ChannelAvatar } from './ChannelAvatar.jsx';
 
 const S = () => core;
@@ -22,7 +22,7 @@ const Icon = ({ n }) => (
   <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
 );
 
-export function ChannelList({
+export const ChannelList = memo(function ChannelList({
   variant = 'reader',
   groups = [],
   hasGroups = false,
@@ -45,7 +45,10 @@ export function ChannelList({
 
   // 频道内搜索（本地态，两页抽屉共用）：按频道名过滤，命中即展开分组
   const [q, setQ] = useState('');
-  const ql = q.trim().toLowerCase();
+  // C：频道内搜索防抖（React 19 useDeferredValue）—— 输入框即时响应，过滤重算延迟到绘制后，
+  // 避免每敲一字就同步重算整条侧栏（频道 × 分组）造成卡顿
+  const qDeferred = useDeferredValue(q);
+  const ql = qDeferred.trim().toLowerCase();
   const collapsedView = ql ? new Set() : collapsed;
   const groupsView = ql
     ? groups.map((g) => ({ ...g, feeds: g.feeds.filter((f) => (titleOf(f) || '').toLowerCase().includes(ql)) }))
@@ -200,4 +203,4 @@ export function ChannelList({
       </button>
     </>
   );
-}
+});
