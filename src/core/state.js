@@ -52,6 +52,11 @@ export const state = {
   rdOffset: 0,
   rdHasMore: true,
   rdLoading: false,
+  /* 频道栏里收起的分组名（数组，与 layout.rdCollapsedGroups 同源）。
+   * ⚠️ 必须挂到 state 上：React 侧（ReaderView）用它当 useMemo 的 key，
+   * 只读 layoutPref 的话外部拿不到变化信号，折叠点击会「写进去了但界面不动」。
+   * 写入统一走 setLayout('rdCollapsedGroups', …)，由 setLayout 负责回填这里。 */
+  rdCollapsedGroups: [],
   rdExpanded: new Set(),   // 已展开的条目 id
   rdBody: new Map(),       // id -> 正文（展开时才拉，拉过就缓存）
   rdBodyErr: new Set(),    // 拉正文失败的 id，避免反复重试
@@ -141,6 +146,8 @@ window.addEventListener('resize', () => applyReaderSideWidth(layoutPref.readerSi
 // 排序方式与默认阅读范围：从账号偏好取初值（服务端未注入时回落默认）
 state.sort = layoutPref.sort;
 state.rdScope = layoutPref.rdScope;
+// 频道栏折叠集合同理（React 侧把它当 memo key，必须能在 state 上读到）
+state.rdCollapsedGroups = layoutPref.rdCollapsedGroups;
 
 /* ============================================================
  * 设置面板
@@ -371,8 +378,15 @@ export function saveUserPrefs() {
 }
 
 // 布局单键修改：替换对应键后写账号（sections / collapsedGroups 由调用方传完整对象）
+/* 偏好与 state 的镜像关系：这几项既在 layoutPref 里持久化，也挂在 state 上给
+ * 渲染层做即时判断（排序、默认范围、频道栏折叠集合）。只写 layoutPref 不回填
+ * state 的话，读 state 的一方永远看不到变化 —— 折叠点击「写进去了但界面不动」
+ * 就是这么来的（1.7.2 回归）。新增同类项请一并登记在这里。 */
+const LAYOUT_MIRROR = ['sort', 'rdScope', 'rdCollapsedGroups'];
+
 export function setLayout(key, value) {
   layoutPref = sanitizeLayoutLocal(Object.assign({}, layoutPref, { [key]: value }));
+  if (LAYOUT_MIRROR.indexOf(key) >= 0) state[key] = layoutPref[key];
   saveUserPrefs();
 }
 
@@ -446,7 +460,11 @@ applyAppearance(readAppearance());
     if (sec && typeof sec === 'object') { lpref.sections = sec; lChanged = true; }
   } catch (_) { return; }
   if (aChanged) appearancePref = sanitizeAppearanceLocal(apref);
-  if (lChanged) layoutPref = sanitizeLayoutLocal(lpref);
+  if (lChanged) {
+    layoutPref = sanitizeLayoutLocal(lpref);
+    // 迁移是整体替换 layoutPref 的另一条写入路径，镜像字段要一并回填
+    LAYOUT_MIRROR.forEach((k) => { state[k] = layoutPref[k]; });
+  }
   if (aChanged || lChanged) saveUserPrefs();   // 一次合并写账号
   try {
     ['feedlore.appearance.v1', 'feedlore.theme.v1', 'feedlore.appearance.accent.v1',

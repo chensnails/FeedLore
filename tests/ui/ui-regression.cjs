@@ -4617,6 +4617,30 @@ const withEFP = (el, fn) => {
     if (!/readerControls/.test(rv)) throw new Error('ReaderView 未传 readerControls');
   });
 
+  /* 折叠状态必须能从 state 读到（1.7.2 回归，症状：点分组行毫无反应）。
+   *
+   * 这条是**静态**用例，刻意不跑组件：折叠集合的真身在 core 的 layoutPref 里，
+   * 而 ReaderView 用 `state.rdCollapsedGroups` 当 useMemo 的 key。state 上没有这个
+   * 字段时 key 恒为 "[]" → 折叠集合算一次就冻结 → 点击写了偏好但界面不动。
+   * 而测试桩自己会造 `state.rdCollapsedGroups`，跑组件反而看不出来 —— 只有查源码
+   * 才能拦住这种「桩比生产多一个字段」的漂移。 */
+  t('折叠状态：state 声明 rdCollapsedGroups 且 setLayout 会回填（否则点分组无反应）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const st = fs.readFileSync(path.join(root, 'src', 'core', 'state.js'), 'utf8');
+    // ① state 对象字面量里必须有这个字段
+    const body = st.slice(st.indexOf('export const state = {'), st.indexOf('};', st.indexOf('export const state = {')));
+    if (!/rdCollapsedGroups\s*:/.test(body)) throw new Error('state 缺 rdCollapsedGroups 字段（React 侧 memo 会永远读到 undefined）');
+    // ② setLayout 的镜像表要登记它，否则写入不会回填到 state
+    const mirror = st.match(/const LAYOUT_MIRROR\s*=\s*\[([^\]]*)\]/);
+    if (!mirror) throw new Error('缺 LAYOUT_MIRROR 镜像表');
+    if (mirror[1].indexOf('rdCollapsedGroups') < 0) throw new Error('LAYOUT_MIRROR 未登记 rdCollapsedGroups');
+    // ③ 初始值要从 layoutPref 取，不能留空数组
+    if (!/state\.rdCollapsedGroups\s*=\s*layoutPref\.rdCollapsedGroups/.test(st)) throw new Error('启动时未从 layoutPref 取初值');
+    // ④ 消费方别改成别的字段名（改了这条就得同步改）
+    const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
+    if (!/rdCollapsedGroups/.test(rv)) throw new Error('ReaderView 未读 rdCollapsedGroups');
+  });
+
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });
   console.log(`\n共 ${results.length} 项，通过 ${results.length - fail}，失败 ${fail}`);
   process.exit(fail ? 1 : 0);
