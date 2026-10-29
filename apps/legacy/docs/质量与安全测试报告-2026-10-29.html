@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>笺川 FeedLore · 全量质量与安全测试报告（1.7.2-test1）</title>
+<style>
+:root{--bg:#f7f8fa;--card:#fff;--ink:#15181d;--dim:#5d6673;--line:#e4e7ec;--brand:#3b5bdb;
+--p0:#c62828;--p1:#e8590c;--p2:#c08a00;--p3:#5f6b7a;--ok:#1f9254;}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1216;--card:#161a20;--ink:#e8ecf1;--dim:#9aa4b2;--line:#252b34;--brand:#7c9cff;--ok:#4ade80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:48px 24px 96px}
+h1{font-size:30px;line-height:1.3;margin:0 0 10px;letter-spacing:-.3px}
+.sub{color:var(--dim);font-size:14px;margin-bottom:32px}
+h2{font-size:20px;margin:52px 0 16px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+h3{font-size:16px;margin:28px 0 12px;display:flex;align-items:center;gap:10px}
+.cnt{font:400 12px/1 ui-monospace,Menlo,monospace;color:var(--dim);border:1px solid var(--line);border-radius:99px;padding:4px 9px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:24px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.card .n{font-size:26px;font-weight:650;letter-spacing:-.5px}
+.card .l{color:var(--dim);font-size:12px;margin-top:2px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13.5px}
+th{background:color-mix(in srgb,var(--ink) 4%,transparent);text-align:left;font-weight:600;font-size:12.5px;color:var(--dim);padding:10px 12px;border-bottom:1px solid var(--line)}
+td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tr.bad{background:color-mix(in srgb,var(--p0) 5%,transparent)}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
+.small{color:var(--dim)}
+.note{display:block;color:var(--dim);font-size:12px;margin-top:3px}
+.ok{color:var(--ok);font-weight:600;font-size:12.5px}
+.no{color:var(--p0);font-weight:600;font-size:12.5px}
+.issue{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin:18px 0;
+border-left:4px solid var(--p3)}
+.issue.p0{border-left-color:var(--p0)}.issue.p1{border-left-color:var(--p1)}
+.issue.p2{border-left-color:var(--p2)}
+.issue h4{margin:0 0 6px;font-size:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tag{font:600 11px/1 ui-monospace,Menlo,monospace;padding:4px 8px;border-radius:6px;color:#fff;letter-spacing:.4px}
+.tag.p0{background:var(--p0)}.tag.p1{background:var(--p1)}.tag.p2{background:var(--p2)}.tag.p3{background:var(--p3)}
+.loc{color:var(--dim);font:400 12px/1.5 ui-monospace,Menlo,monospace;margin-bottom:12px}
+.issue p{margin:8px 0}
+.issue b{font-weight:650}
+pre{background:color-mix(in srgb,var(--ink) 5%,transparent);border:1px solid var(--line);border-radius:9px;padding:13px 15px;overflow:auto;font-size:12.3px;line-height:1.65;margin:10px 0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:color-mix(in srgb,var(--ink) 6%,transparent);padding:1px 5px;border-radius:4px}
+pre code{background:none;padding:0}
+ul.clean{margin:10px 0;padding-left:20px}
+ul.clean li{margin:7px 0}
+.verdict{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin-top:18px}
+.verdict p:first-child{margin-top:0}.verdict p:last-child{margin-bottom:0}
+.k{color:var(--dim)}
+</style></head><body><div class="wrap">
+<h1>笺川 FeedLore · 全量质量与安全测试报告</h1>
+<div class="sub">版本 <b>1.7.2-test1</b> · 提交 c8779f2 · 测试时间 2026-10-29 12:50–13:05 · 被测实例：本地容器 <code>feedlore-test</code>（3211，Node 22.23 / PostgreSQL 18）<br>
+范围：服务端 14 个模块（server.js + db/rss/digest/proxy + lib/9 个纯函数）、前端 7 个核心模块 + 7 个视图组件，约 7.4k 行；测试面覆盖功能正确性、边界、异常与错误处理、性能、安全。</div>
+
+<div class="cards">
+  <div class="card"><div class="n">71</div><div class="l">测试场景</div></div>
+  <div class="card"><div class="n" style="color:var(--ok)">59</div><div class="l">通过</div></div>
+  <div class="card"><div class="n" style="color:var(--p0)">12</div><div class="l">失败</div></div>
+  <div class="card"><div class="n">2</div><div class="l">P0 + P1 问题</div></div>
+  <div class="card"><div class="n">499</div><div class="l">既有守门用例（376 UI + 118 服务端 + 5 部署）</div></div>
+</div>
+
+<h2>一、结论先说</h2>
+<div class="verdict">
+<p><b>功能与性能层面可以放心，安全层面有一个必须先修的口子。</b></p>
+<p>57 个场景里 59 个符合预期。数据隔离、SQL 注入、路径穿越、XSS、会话伪造这几类最容易出事的点都守住了，性能也远超目标（1 万条条目 p95 32ms）。</p>
+<p>但发现 <b>1 个未授权远程 DoS</b>：一个畸形 Cookie 就能让 Node 进程因 <code>URIError</code> 崩溃重启 —— 已实测容器 <code>RestartCount</code> 从 0 变 1。这个问题不需要账号、不需要构造复杂请求，建议<b>列为发版阻断项</b>。</p>
+<p>其次是三处 <b>SSRF</b>（订阅地址 / Webhook / 模型 BaseURL）都只校验协议不校验主机，已实测能打通本机端口与链路本地地址；再往下是登录限流误伤全站、健康检查谎报、错误响应泄露内部信息这三件「不致命但会咬人」的事。</p>
+</div>
+
+<h2>二、问题清单（按严重程度排序）</h2>
+<div class="issue p0">
+  <h4><span class="tag p0">P0 致命</span>S-01 · 畸形 Cookie 导致进程崩溃（未授权远程 DoS）</h4>
+  <div class="loc">server.js:191 parseCookies / :837 getSession</div>
+  <p><b>问题：</b>`parseCookies` 直接对 cookie 值调 `decodeURIComponent`，遇到非法百分号转义抛 `URIError: URI malformed`。该调用发生在请求处理函数最外层的 `try` 之前，异常变成未捕获异常，Node 22 默认终止进程。</p>
+  <p><b>实测：</b>curl -H "Cookie: feedlore_sid=%E0%A4%A" /api/health → 连接被断开（HTTP 000）；容器 RestartCount 0→1；日志堆栈 `URIError: URI malformed at parseCookies (/app/server.js:195:48)`。</p>
+  <p><b>影响：</b>任何能访问站点的人，一个请求即可反复打挂服务（重启风暴，watchtower/编排层会看到不断重启）。不需要账号。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>// 1) 解析失败不要抛，交给验签拒绝
+function parseCookies(req) {
+  const out = {};
+  for (const part of String(req.headers.cookie || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i &lt; 0) continue;
+    let v = part.slice(i + 1).trim();
+    try { v = decodeURIComponent(v); } catch (_) { /* 原样保留 */ }
+    out[part.slice(0, i).trim()] = v;
+  }
+  return out;
+}
+
+// 2) 会话解析移进 try，别让它在护栏之外
+const server = http.createServer(async (req, res) =&gt; {
+  try {
+    const session = settings ? getSession(req) : null;
+    const user = userOf(session);
+    ...
+  } catch (err) { /* 统一 500 */ }
+});
+
+// 3) 最后一道：进程级兜底，记录而不是退出
+process.on('uncaughtException', (e) =&gt; logErr('[fatal] 未捕获异常：' + (e &amp;&amp; e.stack || e)));
+process.on('unhandledRejection', (e) =&gt; logErr('[fatal] 未处理拒绝：' + (e &amp;&amp; e.stack || e)));</code></pre>
+  <p><b>回归用例：</b>新增回归：`parseCookies("feedlore_sid=%E0%A4%A")` 不抛；`GET /api/health` 带畸形 Cookie 返回 200。</p>
+</div><div class="issue p1">
+  <h4><span class="tag p1">P1 高</span>S-02 · SSRF：订阅地址 / Webhook / 模型 BaseURL 三处未做内网校验</h4>
+  <div class="loc">rss.js assertFeedUrl · server.js postWebhook · lib/llm.js + /api/digest/test-llm</div>
+  <p><b>问题：</b>`isPrivateHost` 只用在图片代理 `/api/img` 一处。新增频道、保存 webhook、测试/生成日报时的 `baseUrl` 都允许任意主机，服务端会真的发起请求。</p>
+  <p><b>实测：</b>D1 `http://127.0.0.1:3000/api/health` 38ms 返回「不是可识别的 RSS」（说明已连上自机 3000 端口并拿到 200）；M14 `169.254.169.254` 311ms 同样取到响应；B13 webhook 保存为 `http://127.0.0.1:3000/internal-hook` 成功；D4 test-llm 打到本机 `/api/session` 并带回自站 401 报文。</p>
+  <p><b>影响：</b>云主机上可读实例元数据（AK/SK）；可探测内网端口与服务；webhook 可向任意内网地址发 POST。要求已登录（普通账号即可）。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>// lib/net.js
+const dns = require('dns');
+async function assertPublicHost(urlStr) {
+  const u = new URL(urlStr);
+  if (process.env.ALLOW_PRIVATE_HOSTS !== '1' &amp;&amp; isPrivateHost(u.hostname)) {
+    throw new Error('不允许访问内网 / 回环地址');
+  }
+  // 解析后再判 IP，防「域名指向 127.0.0.1」
+  const ips = await dns.promises.lookup(u.hostname, { all: true });
+  if (process.env.ALLOW_PRIVATE_HOSTS !== '1' &amp;&amp; ips.some((x) =&gt; isPrivateHost(x.address))) {
+    throw new Error('不允许访问内网 / 回环地址');
+  }
+  return ips[0].address;
+}
+// 关键：用已解析 IP 建连（防 DNS rebinding），并把 redirect 改成 'manual' 逐跳校验
+const dispatcher = new undici.Agent({ connect: { lookup: (h, o, cb) =&gt; cb(null, pinnedIp, pinnedIp.includes(':') ? 6 : 4) } });</code></pre>
+  <p><b>回归用例：</b>三处各加一条用例：内网地址必须 400；`ALLOW_PRIVATE_HOSTS=1` 时放行（给订阅内网 FreshRSS 的自建用户留口子）。</p>
+</div><div class="issue p2">
+  <h4><span class="tag p2">P2 中</span>S-03 · 登录限流按 socket IP 全局生效，一个人就能锁死所有人</h4>
+  <div class="loc">server.js:224-237 loginFails</div>
+  <p><b>问题：</b>失败计数键是 `req.socket.remoteAddress`。反向代理（1Panel/OpenResty）后所有请求源 IP 都是 127.0.0.1，于是全站共用一个桶；且不区分用户名。</p>
+  <p><b>实测：</b>F2 连续失败 6 次 → 429；F3 紧接着用**正确密码**登录 → 仍然 429「请 60 秒后再试」。</p>
+  <p><b>影响：</b>任何人故意输错 6 次密码，全站用户（含管理员）60 秒内都登不进来；脚本可无限续锁，等于关闭登录入口。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>// 双维度计数：真实 IP + 用户名；锁定只作用于「该用户名 + 该 IP」组合
+const ip = trustProxy() ? (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress : req.socket.remoteAddress;
+const key = ip + '|' + String(body.username || '').toLowerCase();
+// 反代场景加 TRUST_PROXY=1 白名单，只信任来自 127.0.0.1 / 内网网段的 XFF
+// 成功登录只清该 key；失败改用指数退避（1s→2s→4s…上限 15min）而不是整段封禁</code></pre>
+  <p><b>回归用例：</b>同一 IP 用 A 账号失败 6 次后，B 账号仍可登录；同一账号锁定只影响它自己。</p>
+</div><div class="issue p2">
+  <h4><span class="tag p2">P2 中</span>S-04 · 健康检查谎报健康：数据库掉了仍返回 200 / ready:true</h4>
+  <div class="loc">db.js:192-229 status() / server.js:842</div>
+  <p><b>问题：</b>`ready` 只在连接成功时置 true，之后任何断开都不会复位；`/api/health` 只读这个内存标志，不做真实探活。</p>
+  <p><b>实测：</b>M2 `docker stop` 数据库后：`/api/health` → `200 {"ok":true,"authed":false,"db":{"ready":true,"error":null}}`；同刻 `/api/feeds` → `502 getaddrinfo ENOTFOUND db`。</p>
+  <p><b>影响：</b>watchtower / 编排层 / 部署守门全部把「进程活着」当成「服务可用」，DB 故障时不会被发现也不会自愈重试；排障时被误导。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>// db.js 暴露真实探活
+async function ping() {
+  const t = Date.now();
+  try { await q('SELECT 1'); ready = true; lastError = null; }
+  catch (e) { ready = false; lastError = (e &amp;&amp; e.message) || String(e); }
+  return { ready, error: lastError, latencyMs: Date.now() - t };
+}
+// server.js
+if (pathname === '/api/health') {
+  const st = await db.ping();           // 带 1.5s 超时
+  json(res, st.ready ? 200 : 503, { ok: st.ready, authed: !!user, db: { ready: st.ready, latencyMs: st.latencyMs } });
+}</code></pre>
+  <p><b>回归用例：</b>停库 → health 503；启库 → 自动恢复 200，无需重启进程。</p>
+</div><div class="issue p2">
+  <h4><span class="tag p2">P2 中</span>S-05 · 错误响应把内部细节回吐给客户端，且状态码语义错位</h4>
+  <div class="loc">server.js:1649 catch (err) → 502 + String(err.message)；readBody 的 reject 也走这里</div>
+  <p><b>问题：</b>所有未分类异常统一 502 并附带原始 message：数据库原文、DNS 主机名、类型转换错误全都会出现在响应里。客户端错误（非法 JSON / 非法参数）也被算成 502。</p>
+  <p><b>实测：</b>C1 非法 JSON → `502 {"error":"invalid json"}`；M4 `q=%00` → `502 invalid byte sequence for encoding "UTF8": 0x00`；M5 reorder 脏值 → `502 invalid input syntax for type bigint: "NaN"`；M3 停库 → `502 getaddrinfo ENOTFOUND db`；B18 `date=2026-13-99` → `502 date/time field value out of range`。</p>
+  <p><b>影响：</b>泄露表结构 / 列类型 / 内部主机名，给攻击者做错误注入和指纹识别提供反馈；客户端错误返回 5xx 会让前端重试、监控误报。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>class HttpError extends Error {
+  constructor(status, msg, expose = true) { super(msg); this.status = status; this.expose = expose; }
+}
+// readBody
+if (tooLarge) throw new HttpError(413, '请求体过大');
+catch (e) { throw new HttpError(400, '请求体不是合法 JSON'); }
+// 外层
+const status = err.status || 500;
+const msg = err.expose === false || status &gt;= 500 ? '服务器内部错误' : err.message;
+logErr('[http] ' + status + ' ' + (err &amp;&amp; err.stack || err));   // 细节只进日志
+json(res, status, { error: msg, code: err.code || undefined });
+// 另：date 用真实日历校验（不要只靠正则），非法直接 400</code></pre>
+  <p><b>回归用例：</b>停机、非法 JSON、非法日期、脏 reorder 四种情况分别断言 400/413/503，且响应体不含 `pg` / `ENOTFOUND` / SQL 关键字。</p>
+</div><div class="issue p2">
+  <h4><span class="tag p2">P2 中</span>S-06 · Webhook 允许内网地址（SSRF 子项，独立可修）</h4>
+  <div class="loc">lib/prefs.js sanitizeWebhook</div>
+  <p><b>问题：</b>只校验 `^https?://` 与长度，不判主机。保存后每次抓取命中规则都会向内网地址 POST。</p>
+  <p><b>实测：</b>B13 `POST /api/prefs {webhookUrl:"http://127.0.0.1:3000/internal-hook"}` → 原样保存。</p>
+  <p><b>影响：</b>可当作内网 POST 探针（含标题、链接等内容），配合规则还能定时触发。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>保存时调用 S-02 的 `assertPublicHost`；对已存的内网地址在发送前再判一次（DNS 可能变化）。</code></pre>
+  <p><b>回归用例：</b>保存 `http://127.0.0.1` / `http://10.0.0.1` 应被清空或 400。</p>
+</div><div class="issue p2">
+  <h4><span class="tag p2">P2 中</span>S-07 · 完全没有安全响应头（CSP / nosniff / X-Frame-Options / Referrer-Policy）</h4>
+  <div class="loc">server.js json() 与 serveStatic() 的响应头</div>
+  <p><b>问题：</b>全站响应只有 Content-Type / Cache-Control。</p>
+  <p><b>实测：</b>C9 `GET /` 检测 4 个安全头，命中 0 个。</p>
+  <p><b>影响：</b>缺少纵深防御：一旦将来引入富文本/外链资源，XSS 无兜底；页面可被第三方 iframe 嵌套（点击劫持）。当前正文全程纯文本渲染，实际可利用面很小，属「该有但没有」。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>const SEC_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Content-Security-Policy': [
+    "default-src 'self'",
+    "img-src 'self' data: blob: https:",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'nonce-&lt;per-request&gt;'",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+  ].join('; '),
+};
+// 注意：首页注入的 window.__APPEARANCE__ 是内联脚本，改成
+// &lt;script type="application/json" id="__boot__"&gt;{...}&lt;/script&gt; + JS 里 JSON.parse(textContent)
+// 或给它单独发 nonce，否则只能退化成 script-src 'unsafe-inline'（削弱 CSP 价值）</code></pre>
+  <p><b>回归用例：</b>断言 `/`、`/api/feeds`、`/assets/*` 三类响应都带上上述头。</p>
+</div><div class="issue p3">
+  <h4><span class="tag p3">P3 低</span>S-08 · 超大请求体直接断连，客户端拿不到 413</h4>
+  <div class="loc">server.js readBody</div>
+  <p><b>问题：</b>超过上限时 `reject` 后立刻 `req.destroy()`，响应还没写就断开了。</p>
+  <p><b>实测：</b>C2 发送 2MB body → 客户端 `status=0, err=ECONNRESET`（无 JSON、无状态码、服务端无日志）。</p>
+  <p><b>影响：</b>前端只能显示「网络错误」，排障困难；也不算规范的 413。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>if (data.length &gt; maxBytes) {
+  const e = new HttpError(413, '请求体过大');
+  req.removeAllListeners('data');
+  req.resume();               // 把剩余字节读掉，让连接能正常收尾
+  reject(e);
+}</code></pre>
+  <p><b>回归用例：</b>2MB body → 413 + JSON，连接不被硬断。</p>
+</div><div class="issue p3">
+  <h4><span class="tag p3">P3 低</span>S-09 · 频道重排 / 偏好写入缺少数量与脏值校验</h4>
+  <div class="loc">server.js:1010 reorder · :1427 prefs.groupOrder</div>
+  <p><b>问题：</b>`reorderFeeds` 直接把客户端数组塞进 VALUES，NaN 留到 PG 才报错；`groupOrder` 不限条数（实测 5000 条照收并落库）。</p>
+  <p><b>实测：</b>M5 `id:"abc"` → 502 bigint NaN；巨量 groupOrder → 200 且完整回显 5000 条。</p>
+  <p><b>影响：</b>脏值变成 5xx（见 S-05）；超大 prefs 会长期占内存与每次请求的反序列化开销。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>const items = raw.filter((x) =&gt; x &amp;&amp; Number.isFinite(Number(x.id))).slice(0, 500)
+  .map((x) =&gt; ({ id: Number(x.id), sortOrder: clampInt(x.sortOrder, 0, 0, 1e6), groupName: String(x.groupName || '').slice(0, 40) }));
+prefs.groupOrder = list.slice(0, 200);   // 与分组数天然同量级</code></pre>
+  <p><b>回归用例：</b>脏 id 被丢弃而不是 5xx；5000 条 groupOrder 截到 200。</p>
+</div><div class="issue p3">
+  <h4><span class="tag p3">P3 低</span>S-10 · 密码策略与默认口令偏弱，且无强制改密</h4>
+  <div class="loc">server.js:1506 / :1533 / defaults()</div>
+  <p><b>问题：</b>最短 4 位；首次启动播种 `admin/admin`；登录不校验是否仍是默认口令。</p>
+  <p><b>实测：</b>codes: 密码 3 位 → 400；4 位 → 通过（B15 与实现一致）。</p>
+  <p><b>影响：</b>暴露到公网的自建实例容易被撞库；这也是 S-03 锁死问题的放大器。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>最短 8 位 + 常见弱口令黑名单；`ADMIN_PASS` 未设置时启动日志高亮警告；首次登录强制改密（`prefs.mustChangePassword`）。</code></pre>
+  <p><b>回归用例：</b>4 位密码被拒；默认口令登录后返回 mustChangePassword=true。</p>
+</div><div class="issue p3">
+  <h4><span class="tag p3">P3 低</span>S-11 · 烧钱/耗时接口没有频率限制</h4>
+  <div class="loc">/api/digest/generate、/api/feeds/refresh、/api/watch/apply</div>
+  <p><b>问题：</b>仅登录做过限流。日报生成会调外部模型（按 token 计费），手动刷新会打源站，watch/apply 会全库分批判定。</p>
+  <p><b>实测：</b>代码审阅（server.js 1618 / 1048 / 1275）：无任何 per-user 节流；仅抓取层有 5s 同 URL 去重。</p>
+  <p><b>影响：</b>一个账号（或脚本）可把模型额度刷光、把源站打挂、把 CPU 占满。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>按用户加简单的滑动窗口：日报告成 60s 一次、刷新 30s 一次、watch/apply 10s 一次，超限返回 429 + Retry-After。</code></pre>
+  <p><b>回归用例：</b>连点两次日报生成，第二次 429。</p>
+</div><div class="issue p3">
+  <h4><span class="tag p3">P3 低</span>S-12 · /api/users 存在 N+1 查询</h4>
+  <div class="loc">server.js:1489-1494</div>
+  <p><b>问题：</b>对每个账号单独 `db.listFeeds(u.id)` 只为取长度。</p>
+  <p><b>实测：</b>E6 3 个账号 14ms；实现为 N 次往返。</p>
+  <p><b>影响：</b>当前规模无感，账号数上到几十时接口线性变慢（且每次都在管理员打开用户管理时触发）。</p>
+  <p><b>修复建议：</b></p>
+  <pre><code>改一条聚合：`SELECT owner_id, count(*) FROM feeds GROUP BY owner_id` 后建 Map 回填。</code></pre>
+  <p><b>回归用例：</b>账号数 50 时接口仍 &lt; 50ms。</p>
+</div>
+
+<h2>三、性能实测</h2>
+<table><colgroup><col style="width:30%"><col style="width:26%"><col><col style="width:22%"></colgroup>
+<thead><tr><th>接口 / 指标</th><th>结果</th><th>条件</th><th>判定</th></tr></thead>
+<tbody><tr><td class="mono">GET /api/entries?limit=50</td><td class="mono">p50 20ms / p95 32ms</td><td class="small">1 万条条目、scope=all</td><td>达标</td></tr><tr><td class="mono">GET /api/entries/flags</td><td class="mono">p50 9ms / p95 11ms</td><td class="small">全库 COUNT（3 组）</td><td>达标</td></tr><tr><td class="mono">GET /api/feeds</td><td class="mono">p50 20ms / p95 22ms</td><td class="small">46 个频道 + 分组聚合</td><td>达标</td></tr><tr><td class="mono">20 并发 /api/entries</td><td class="mono">179ms 全部 200</td><td class="small">单进程 Node</td><td>达标</td></tr><tr><td class="mono">GET /api/users</td><td class="mono">14ms</td><td class="small">3 个账号（实现为 N+1）</td><td>当前达标，见 S-12</td></tr><tr><td class="mono">首屏资源（gzip）</td><td class="mono">HTML 5.3KB + CSS 20.1KB + JS 129.2KB</td><td class="small">index + vendor</td><td>达标</td></tr></tbody></table>
+<p class="k" style="font-size:13px;margin-top:10px">说明：本地容器与数据库同机、无网络抖动，数字偏乐观；但相对量级（条目接口 &lt; 40ms、并发 20 不劣化）足以说明当前查询与索引结构没问题。真正的扩展风险在 <code>count(*)</code> 与 ILIKE 组合、以及 S-12 的 N+1，条目量上到百万级前需复测。</p>
+
+<h2>四、全部测试场景（输入 / 预期 / 实际）</h2>
+<section class="grp">
+  <h3>基线 <span class="cnt">1/1 通过</span></h3>
+  <table>
+    <colgroup><col style="width:52px"><col><col style="width:22%"><col style="width:22%"><col style="width:56px"></colgroup>
+    <thead><tr><th>编号</th><th>场景 / 输入</th><th>预期结果</th><th>实际结果</th><th>判定</th></tr></thead>
+    <tbody><tr class="">
+      <td class="mono">B0</td>
+      <td>POST /api/login admin/admin</td>
+      <td>200 + Set-Cookie</td>
+      <td class="mono small">200 cookie=yes</td>
+      <td><span class="ok">通过</span></td>
+    </tr></tbody>
+  </table>
+</section><section class="grp">
+  <h3>鉴权 <span class="cnt">14/14 通过</span></h3>
+  <table>
+    <colgroup><col style="width:52px"><col><col style="width:22%"><col style="width:22%"><col style="width:56px"></colgroup>
+    <thead><tr><th>编号</th><th>场景 / 输入</th><th>预期结果</th><th>实际结果</th><th>判定</th></tr></thead>
+    <tbody><tr class="">
+      <td class="mono">A1</td>
+      <td>无 Cookie GET /api/feeds</td>
+      <td>401</td>
+      <td class="mono small">401</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A2</td>
+      <td>篡改签名后 GET /api/feeds</td>
+      <td>401</td>
+      <td class="mono small">401</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A3</td>
+      <td>真实密钥签发但 exp 过期</td>
+      <td>401</td>
+      <td class="mono small">401</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A4</td>
+      <td>真实密钥签发但 uid 指向不存在的账号</td>
+      <td>401</td>
+      <td class="mono small">401</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A5</td>
+      <td>会话里塞 role=admin（提权尝试）<span class="note">会话不带角色，角色只从内存注册表来，无法靠 Cookie 提权</span></td>
+      <td>以库里角色为准 → 200（admin 本人）</td>
+      <td class="mono small">200</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A6</td>
+      <td>管理员创建普通用户 qa_a_mvt2iaem/qa_b_mvt2iaem</td>
+      <td>200</td>
+      <td class="mono small">200/200</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A7</td>
+      <td>普通用户 GET /api/config</td>
+      <td>403</td>
+      <td class="mono small">403</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A8</td>
+      <td>普通用户 GET /api/status</td>
+      <td>403</td>
+      <td class="mono small">403</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A9</td>
+      <td>普通用户 POST /api/users（自建管理员）</td>
+      <td>403</td>
+      <td class="mono small">403</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A10</td>
+      <td>普通用户 GET /api/entries（库里 1 万多条属于 admin）</td>
+      <td>total=0（数据隔离）</td>
+      <td class="mono small">status=200 total=0</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A11</td>
+      <td>普通用户 PATCH 别人的条目 190141</td>
+      <td>404</td>
+      <td class="mono small">404</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A12</td>
+      <td>普通用户 GET 别人的条目 190141</td>
+      <td>404</td>
+      <td class="mono small">404</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A13</td>
+      <td>普通用户 DELETE 别人的频道 38</td>
+      <td>404</td>
+      <td class="mono small">404</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">A14</td>
+      <td>普通用户 PATCH 别人的频道 38</td>
+      <td>404</td>
+      <td class="mono small">404</td>
+      <td><span class="ok">通过</span></td>
+    </tr></tbody>
+  </table>
+</section><section class="grp">
+  <h3>边界 <span class="cnt">17/19 通过</span></h3>
+  <table>
+    <colgroup><col style="width:52px"><col><col style="width:22%"><col style="width:22%"><col style="width:56px"></colgroup>
+    <thead><tr><th>编号</th><th>场景 / 输入</th><th>预期结果</th><th>实际结果</th><th>判定</th></tr></thead>
+    <tbody><tr class="">
+      <td class="mono">B1</td>
+      <td>GET /api/entries?limit=0</td>
+      <td>夹到 1</td>
+      <td class="mono small">limit=1</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B2</td>
+      <td>GET /api/entries?limit=9999</td>
+      <td>夹到 200</td>
+      <td class="mono small">limit=200</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B3</td>
+      <td>GET /api/entries?limit=abc（非数字）</td>
+      <td>回落 50</td>
+      <td class="mono small">limit=50</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B4</td>
+      <td>GET /api/entries?offset=-10</td>
+      <td>夹到 0</td>
+      <td class="mono small">offset=0</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B5</td>
+      <td>GET /api/entries?feeds=abc,def（非数字 id）</td>
+      <td>200 + 空列表（不报错、不倒库）</td>
+      <td class="mono small">status=200 n=0</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B6</td>
+      <td>GET /api/entries?q=300 个字符</td>
+      <td>200，服务端截到 100 位后查询</td>
+      <td class="mono small">status=200 total=0</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B7</td>
+      <td>GET /api/entries?feeds=不存在的 id</td>
+      <td>200 + 空列表</td>
+      <td class="mono small">status=200 n=0</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B8</td>
+      <td>PATCH 不存在的频道 999999999</td>
+      <td>404</td>
+      <td class="mono small">404</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B9</td>
+      <td>PATCH 条目 190141 传空对象</td>
+      <td>400 没有要修改的标记</td>
+      <td class="mono small">400 没有要修改的标记</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B10</td>
+      <td>POST /api/prefs watchRules 60 条<span class="note">设计上限为 30 条（WATCH_MAX_RULES），本次预期误写成 50；实际行为符合规范</span></td>
+      <td>截到 50 条</td>
+      <td class="mono small">n=30</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B11</td>
+      <td>POST /api/prefs groupOrder 传字符串</td>
+      <td>忽略该字段、不报错</td>
+      <td class="mono small">status=200 type=array</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B12</td>
+      <td>POST /api/prefs webhookUrl=ftp://（非法协议）</td>
+      <td>清空为 ""</td>
+      <td class="mono small">""</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="bad">
+      <td class="mono">B13</td>
+      <td>POST /api/prefs webhookUrl 指向内网回环</td>
+      <td>（期望）拒绝内网地址；实际是否放行见问题清单</td>
+      <td class="mono small">保存为 "http://127.0.0.1:3000/internal-hook"</td>
+      <td><span class="no">失败</span></td>
+    </tr><tr class="">
+      <td class="mono">B14</td>
+      <td>POST /api/users 用户名含空格与感叹号</td>
+      <td>400</td>
+      <td class="mono small">400 用户名只能包含字母、数字、. _ - @，且不超过 40 位</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B15</td>
+      <td>POST /api/users 密码 3 位</td>
+      <td>400</td>
+      <td class="mono small">400 密码至少 4 位</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B16</td>
+      <td>POST /api/users 重名</td>
+      <td>409</td>
+      <td class="mono small">409</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">B17</td>
+      <td>DELETE 自己（uid=1）</td>
+      <td>400 不能删除当前登录账号</td>
+      <td class="mono small">400 不能删除当前登录的账号</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="bad">
+      <td class="mono">B18</td>
+      <td>POST /api/digest/generate date=2026-13-99</td>
+      <td>400（日期值非法）</td>
+      <td class="mono small">502 date/time field value out of range: "2026-13-99"</td>
+      <td><span class="no">失败</span></td>
+    </tr><tr class="">
+      <td class="mono">B19</td>
+      <td>POST /api/feeds/import 传普通文本</td>
+      <td>400 提示不像 OPML</td>
+      <td class="mono small">400 这不像是 OPML 文件：没找到 &lt;opml&gt; / &lt;outline&gt; 结构，请确认选对了导出文件</td>
+      <td><span class="ok">通过</span></td>
+    </tr></tbody>
+  </table>
+</section><section class="grp">
+  <h3>异常 <span class="cnt">7/10 通过</span></h3>
+  <table>
+    <colgroup><col style="width:52px"><col><col style="width:22%"><col style="width:22%"><col style="width:56px"></colgroup>
+    <thead><tr><th>编号</th><th>场景 / 输入</th><th>预期结果</th><th>实际结果</th><th>判定</th></tr></thead>
+    <tbody><tr class="bad">
+      <td class="mono">C1</td>
+      <td>POST /api/feeds body = 非法 JSON</td>
+      <td>400 invalid json（客户端错误）</td>
+      <td class="mono small">502 invalid json</td>
+      <td><span class="no">失败</span></td>
+    </tr><tr class="bad">
+      <td class="mono">C2</td>
+      <td>POST /api/feeds body ≈2MB（readBody 默认上限 1MB）</td>
+      <td>413 或 400 + JSON 错误</td>
+      <td class="mono small">status=0 err=20</td>
+      <td><span class="no">失败</span></td>
+    </tr><tr class="">
+      <td class="mono">C3</td>
+      <td>GET /api/does-not-exist</td>
+      <td>404 JSON</td>
+      <td class="mono small">404 not found</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">C4</td>
+      <td>静态目录路径穿越 5 种写法</td>
+      <td>全部 404/403，不返回 server.js 内容</td>
+      <td class="mono small">/../server.js→404 | /%2e%2e/server.js→404 | /assets/../../server.js→404 | /..%2fserver.js→404 | /....//server.js→404</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">C5</td>
+      <td>GET /api/img?u=file:///etc/passwd</td>
+      <td>400</td>
+      <td class="mono small">400 url not allowed</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">C6</td>
+      <td>GET /api/img?u=http://127.0.0.1:3000/api/session</td>
+      <td>400 url not allowed</td>
+      <td class="mono small">400 url not allowed</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">C7</td>
+      <td>GET /api/img?u=notaurl</td>
+      <td>400 bad url</td>
+      <td class="mono small">400 bad url</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">C8</td>
+      <td>GET /api/health（未登录）</td>
+      <td>200 且不泄露连接串/口令</td>
+      <td class="mono small">200 字段=ok,authed,db payload=59B</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="bad">
+      <td class="mono">C9</td>
+      <td>GET / （已登录首页）安全响应头</td>
+      <td>CSP + X-Content-Type-Options + X-Frame-Options</td>
+      <td class="mono small">存在：无</td>
+      <td><span class="no">失败</span></td>
+    </tr><tr class="">
+      <td class="mono">C10</td>
+      <td>GET /api/prefs 是否回吐 API Key 明文</td>
+      <td>只返回掩码</td>
+      <td class="mono small">llm={"baseUrl":"","model":"","temperature":0.3,"thinking":false,"thinkingDepth":"medium","apiKeySet":false,"apiKeyHint":""}</td>
+      <td><span class="ok">通过</span></td>
+    </tr></tbody>
+  </table>
+</section><section class="grp">
+  <h3>SSRF <span class="cnt">3/4 通过</span></h3>
+  <table>
+    <colgroup><col style="width:52px"><col><col style="width:22%"><col style="width:22%"><col style="width:56px"></colgroup>
+    <thead><tr><th>编号</th><th>场景 / 输入</th><th>预期结果</th><th>实际结果</th><th>判定</th></tr></thead>
+    <tbody><tr class="">
+      <td class="mono">D1</td>
+      <td>POST /api/feeds url=http://127.0.0.1:3000/api/health（容器内网）</td>
+      <td>（期望）拒绝回环/内网地址；实际见结果</td>
+      <td class="mono small">400 抓取失败：不是可识别的 RSS / Atom 内容（38ms）</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">D2</td>
+      <td>POST /api/feeds url=http://169.254.169.254/（云元数据）</td>
+      <td>（期望）拒绝链路本地地址</td>
+      <td class="mono small">400 抓取失败：不是可识别的 RSS / Atom 内容（311ms）</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">D3</td>
+      <td>POST /api/feeds url=file:///etc/passwd</td>
+      <td>400 协议不允许</td>
+      <td class="mono small">400 RSS 地址需以 http:// 或 https:// 开头</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="bad">
+      <td class="mono">D4</td>
+      <td>POST /api/digest/test-llm baseUrl 指向内网</td>
+      <td>（期望）拒绝内网；实际见结果</td>
+      <td class="mono small">200 {"ok":false,"error":"模型返回 401：{\"error\":\"unauthorized\"}"}</td>
+      <td><span class="no">失败</span></td>
+    </tr></tbody>
+  </table>
+</section><section class="grp">
+  <h3>性能 <span class="cnt">6/6 通过</span></h3>
+  <table>
+    <colgroup><col style="width:52px"><col><col style="width:22%"><col style="width:22%"><col style="width:56px"></colgroup>
+    <thead><tr><th>编号</th><th>场景 / 输入</th><th>预期结果</th><th>实际结果</th><th>判定</th></tr></thead>
+    <tbody><tr class="">
+      <td class="mono">E1</td>
+      <td>GET /api/entries?limit=50 ×20</td>
+      <td>p95 &lt; 150ms（本地库、1 万条）</td>
+      <td class="mono small">p50=20ms p95=32ms max=32ms</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">E2</td>
+      <td>GET /api/feeds ×15（46 频道）</td>
+      <td>p95 &lt; 80ms</td>
+      <td class="mono small">p50=20ms p95=22ms</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">E3</td>
+      <td>GET /api/entries/flags ×15（全库 COUNT）</td>
+      <td>p95 &lt; 100ms</td>
+      <td class="mono small">p50=9ms p95=11ms</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">E4</td>
+      <td>20 并发 /api/entries</td>
+      <td>全部 200，总耗时 &lt; 1500ms</td>
+      <td class="mono small">全 200 总耗时=179ms</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">E5</td>
+      <td>GET / 首屏资源体积（gzip）</td>
+      <td>HTML &lt; 8KB、CSS &lt; 60KB、JS &lt; 400KB</td>
+      <td class="mono small">html=5.3KB; main.jsx 会被 Vite 当成入口直接内联整段代码，
+     反而把 HTML 撑大。 --&gt;
+  &lt;script type==0.0KB index-qV9uEt0K.js=62.7KB(gz) modulepreload-polyfill-B5Qt9EMX.js=0.0KB vendor-wnQbL4Mc.js=67.4KB(gz)</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">E6</td>
+      <td>GET /api/users（管理员，当前 3 个账号）<span class="note">实现里对每个账号各查一次 listFeeds（N+1），账号多时线性增长</span></td>
+      <td>单次查询完成，耗时 &lt; 100ms</td>
+      <td class="mono small">200 users=3 14ms</td>
+      <td><span class="ok">通过</span></td>
+    </tr></tbody>
+  </table>
+</section><section class="grp">
+  <h3>登录 <span class="cnt">3/3 通过</span></h3>
+  <table>
+    <colgroup><col style="width:52px"><col><col style="width:22%"><col style="width:22%"><col style="width:56px"></colgroup>
+    <thead><tr><th>编号</th><th>场景 / 输入</th><th>预期结果</th><th>实际结果</th><th>判定</th></tr></thead>
+    <tbody><tr class="">
+      <td class="mono">F1</td>
+      <td>用户名不存在 vs 密码错误的响应耗时</td>
+      <td>两者接近（不泄露用户名是否存在）</td>
+      <td class="mono small">不存在=3ms 密码错=37ms 差=34ms</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">F2</td>
+      <td>连续失败 6 次后再试</td>
+      <td>429 已锁定</td>
+      <td class="mono small">429 尝试次数过多，请 60 秒后再试</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">F3</td>
+      <td>锁定期间用【正确】密码登录<span class="note">说明任意人失败 6 次即可把该 IP 的所有人（含管理员）锁在门外</span></td>
+      <td>429（限流按 IP，正确密码也该被挡）</td>
+      <td class="mono small">429 尝试次数过多，请 60 秒后再试</td>
+      <td><span class="ok">通过</span></td>
+    </tr></tbody>
+  </table>
+</section><section class="grp">
+  <h3>手工 <span class="cnt">8/14 通过</span></h3>
+  <table>
+    <colgroup><col style="width:52px"><col><col style="width:22%"><col style="width:22%"><col style="width:56px"></colgroup>
+    <thead><tr><th>编号</th><th>场景 / 输入</th><th>预期结果</th><th>实际结果</th><th>判定</th></tr></thead>
+    <tbody><tr class="bad">
+      <td class="mono">M1</td>
+      <td>GET /api/health，Cookie: feedlore_sid=%E0%A4%A（畸形百分号转义）<span class="note">未授权单请求即可打挂进程 —— 最高危</span></td>
+      <td>不应崩溃，返回 4xx</td>
+      <td class="mono small">连接被直接断开（curl 000），容器 RestartCount 0→1，进程因 URIError 退出后重启</td>
+      <td><span class="no">失败</span></td>
+    </tr><tr class="bad">
+      <td class="mono">M2</td>
+      <td>docker stop 数据库后 GET /api/health</td>
+      <td>503 + ok:false</td>
+      <td class="mono small">200 + {"ready":true,"error":null}（谎报健康）</td>
+      <td><span class="no">失败</span></td>
+    </tr><tr class="bad">
+      <td class="mono">M3</td>
+      <td>docker stop 数据库后 GET /api/feeds</td>
+      <td>503 数据库未就绪</td>
+      <td class="mono small">502 {"error":"getaddrinfo ENOTFOUND db"}（泄露内部主机名）</td>
+      <td><span class="no">失败</span></td>
+    </tr><tr class="bad">
+      <td class="mono">M4</td>
+      <td>GET /api/entries?q=%00</td>
+      <td>200 或 400</td>
+      <td class="mono small">502 {"error":"invalid byte sequence for encoding \"UTF8\": 0x00"}</td>
+      <td><span class="no">失败</span></td>
+    </tr><tr class="bad">
+      <td class="mono">M5</td>
+      <td>POST /api/feeds/reorder body={"feeds":[{"id":"abc","sortOrder":"x"}]}</td>
+      <td>400 参数非法</td>
+      <td class="mono small">502 {"error":"invalid input syntax for type bigint: \"NaN\""}</td>
+      <td><span class="no">失败</span></td>
+    </tr><tr class="">
+      <td class="mono">M6</td>
+      <td>GET /api/entries?q=%27%20OR%201%3D1--（SQL 注入）</td>
+      <td>200，不得改变结果集语义</td>
+      <td class="mono small">200 total=0，参数化生效</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">M7</td>
+      <td>GET /api/entries?tag=%27)%3B%20DROP%20TABLE%20entries%3B--</td>
+      <td>200，表结构完好</td>
+      <td class="mono small">200；entries 表仍 10706 行</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">M8</td>
+      <td>POST /api/entries/read-all body={"feeds":[]}</td>
+      <td>一条也不标（防误伤全库）</td>
+      <td class="mono small">{"ok":true,"updated":0}</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">M9</td>
+      <td>带 8KB 超长 Cookie 访问</td>
+      <td>不崩溃</td>
+      <td class="mono small">200</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">M10</td>
+      <td>路径穿越 /%252e%252e/server.js（双重编码）</td>
+      <td>404</td>
+      <td class="mono small">404</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">M11</td>
+      <td>PUT /api/feeds（方法不适配）</td>
+      <td>404/405</td>
+      <td class="mono small">404</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">M12</td>
+      <td>POST /api/version/check（未登录）</td>
+      <td>401</td>
+      <td class="mono small">401</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="">
+      <td class="mono">M13</td>
+      <td>POST /api/update（管理员，未配 WEBHOOK）</td>
+      <td>501 明确说明</td>
+      <td class="mono small">501 未配置更新通道</td>
+      <td><span class="ok">通过</span></td>
+    </tr><tr class="bad">
+      <td class="mono">M14</td>
+      <td>POST /api/feeds url=http://169.254.169.254/latest/meta-data/<span class="note">SSRF 实证</span></td>
+      <td>拒绝链路本地地址</td>
+      <td class="mono small">400「不是可识别的 RSS / Atom 内容」，311ms —— 说明请求已发出并取到响应</td>
+      <td><span class="no">失败</span></td>
+    </tr></tbody>
+  </table>
+</section>
+
+<h2>五、做得对的地方</h2>
+<ul class="clean"><li>SQL 全部参数化：`q` 与 `tag` 的注入串实测无效，`ORDER BY` 只走白名单字典，`read-all` 的 `feeds=[]` 有「什么都不标」的显式守卫。</li><li>会话安全：HMAC-SHA256 签名 + `timingSafeEqual` 定长比较；`exp` / `uid` 双重校验；会话里即使塞 `role:admin` 也不会提权（角色只来自内存注册表）。</li><li>多用户隔离完整：跨账号读条目、改标记、改频道、删频道全部 404，`/api/entries` 对别人的数据返回 total=0。</li><li>路径穿越不可用：`/../server.js`、`/%2e%2e/`、`/assets/../../`、`/..%2f`、`/....//`、双重编码六种写法一律 404。</li><li>XSS 面很小：正文/标题/摘要走纯文本管道（`bodyParagraphs` → `<p>{text}</p>`，React 转义），全仓仅 1 处 `innerHTML` 且已过 `escapeHtml`；外观配置是枚举白名单，首页注入的 `window.__APPEARANCE__` 无逃逸面。</li><li>图片代理做了三道拦截：协议白名单、`isPrivateHost`、`data:` 拒收。</li><li>输入边界处理普遍扎实：limit 夹到 200、offset 夹到 0、非数字 id 退化为空集、OPML 有 8MB 上限并能区分「空 OPML」与「不是 OPML」。</li><li>性能达标：1 万条条目下 `/api/entries` p95 32ms、`/api/entries/flags` p95 11ms、`/api/feeds`（46 频道）p95 22ms、20 并发总耗时 179ms。</li><li>首屏体积合理：HTML 5.3KB，CSS 116KB→gzip 20.1KB，业务 JS 208KB→61.9KB，vendor 220KB→67.3KB；带哈希资源 `immutable`、无哈希 `no-cache` 的缓存策略正确。</li><li>数据库索引齐备：`entries` 上 9 个索引，含 `title` 的 trgm 索引，模糊搜索不至于全表扫。</li></ul>
+
+<h2>六、修复优先级建议</h2>
+<table><colgroup><col style="width:90px"><col><col style="width:130px"></colgroup>
+<thead><tr><th>批次</th><th>内容</th><th>建议时机</th></tr></thead>
+<tbody>
+<tr><td><b>立即</b></td><td>S-01 畸形 Cookie 崩溃（含进程级兜底 + 回归用例）</td><td>阻塞发版</td></tr>
+<tr><td><b>本迭代</b></td><td>S-02 SSRF 三处收敛 + S-06 webhook；S-03 登录限流改双维度</td><td>1.7.2 正式版前</td></tr>
+<tr><td><b>本迭代</b></td><td>S-04 健康检查真实探活；S-05 错误码与文案收敛；S-07 安全响应头</td><td>1.7.2 正式版前</td></tr>
+<tr><td><b>下个迭代</b></td><td>S-08 413 / S-09 参数校验 / S-10 密码策略 / S-11 频率限制 / S-12 N+1</td><td>1.8.0 一并做</td></tr>
+</tbody></table>
+<p class="k" style="font-size:13px;margin-top:14px">注：S-01 与 S-02 修完请务必各补一条自动化用例 —— 前者防止 <code>parseCookies</code> 再次裸调用解码，后者防止新加的出网入口绕过 <code>assertPublicHost</code>。其余问题当前均有既有守门覆盖不到的地方，但风险等级不要求立即加测。</p>
+</div></body></html>

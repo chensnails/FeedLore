@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>笺川 FeedLore · 移动端导航栏设计方案</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --surface:#ffffff; --surface-2:#f0f1f4; --surface-3:#e9ebf0;
+    --text:#1c2330; --text-2:#6b7280; --text-3:#9aa1ad;
+    --border:#e5e7eb; --border-2:#eef0f4;
+    --accent:#3b82f6; --accent-soft:#e8f0fe; --accent-ink:#1d4ed8;
+    --shadow-sm:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+    --shadow-lg:0 10px 30px rgba(16,24,40,.12),0 4px 10px rgba(16,24,40,.08);
+    --safe-b:env(safe-area-inset-bottom,0px);
+  }
+  body.dark{
+    --bg:#0e1014; --surface:#171a21; --surface-2:#1f232c; --surface-3:#262b35;
+    --text:#e7e9ee; --text-2:#9aa3b2; --text-3:#6b7280;
+    --border:#2a2f3a; --border-2:#22262f;
+    --accent:#5b9dff; --accent-soft:#16223a; --accent-ink:#9cc2ff;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow-lg:0 14px 34px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.4);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.55;-webkit-font-smoothing:antialiased;padding:28px 18px 60px}
+  .wrap{max-width:1180px;margin:0 auto}
+  header.page{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:6px}
+  h1{font-size:22px;font-weight:700;letter-spacing:.2px}
+  .sub{color:var(--text-2);font-size:13.5px;margin-top:4px;max-width:760px}
+  .ctl{display:flex;gap:8px;align-items:center}
+  .toggle{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px}
+  .toggle button{border:0;background:transparent;color:var(--text-2);font-size:13px;padding:6px 14px;border-radius:999px;cursor:pointer;font-weight:600}
+  .toggle button.on{background:var(--accent);color:#fff}
+  .hint{font-size:12px;color:var(--text-3);margin:14px 0 20px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:22px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:var(--shadow-sm);display:flex;flex-direction:column}
+  .card>.head{padding:14px 16px 10px;border-bottom:1px solid var(--border-2)}
+  .card>.head .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--accent);background:var(--accent-soft);padding:2px 8px;border-radius:6px}
+  .card>.head h3{font-size:15px;margin-top:7px}
+  .card>.head p{font-size:12px;color:var(--text-2);margin-top:3px}
+
+  /* ===== phone ===== */
+  .phone{position:relative;width:100%;aspect-ratio:300/620;background:var(--bg);border-bottom:1px solid var(--border-2);overflow:hidden}
+  .phone .statusbar{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-size:12px;font-weight:600;color:var(--text)}
+  .phone .statusbar .dots{display:flex;gap:4px;align-items:center}
+  .phone .statusbar .dots i{width:6px;height:6px;border-radius:50%;background:var(--text-2);display:inline-block}
+  .phone .statusbar .dots i:first-child{width:14px;border-radius:3px}
+  .phone .content{padding:12px 14px;display:flex;flex-direction:column;gap:10px;height:calc(100% - 30px)}
+  .phone .content.topnav-adjust{padding-top:64px}
+  .blk{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 12px}
+  .blk .t{height:8px;width:55%;background:var(--surface-3);border-radius:4px;margin-bottom:8px}
+  .blk .l{height:6px;width:100%;background:var(--surface-2);border-radius:4px;margin-bottom:6px}
+  .blk .l.s{width:80%}
+  .blk .meta{display:flex;gap:6px;margin-top:8px}
+  .blk .meta span{font-size:9px;color:var(--text-3);background:var(--surface-2);padding:2px 6px;border-radius:5px}
+
+  svg{display:block}
+  .ico{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  /* top nav (option B) */
+  .topnav{position:absolute;top:30px;left:0;right:0;height:52px;background:var(--surface);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:8px;padding:0 10px;z-index:5}
+  .topnav .logo{width:26px;height:26px;border-radius:7px;background:var(--accent);flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+  .topnav .logo svg{width:15px;height:15px;stroke:#fff}
+  .topnav .name{font-weight:700;font-size:14px;margin-right:2px}
+  .seg{display:flex;background:var(--surface-2);border-radius:9px;padding:3px;flex:1}
+  .seg button{flex:1;border:0;background:transparent;font-size:12px;font-weight:600;color:var(--text-2);padding:5px 0;border-radius:7px;cursor:pointer}
+  .seg button.on{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-sm)}
+  .acts{display:flex;gap:2px}
+  .acts .a{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-2)}
+  .acts .a svg{width:18px;height:18px}
+
+  /* bottom tab (option A) */
+  .botbar{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--border);
+    display:flex;padding:8px 6px calc(8px + var(--safe-b));box-shadow:0 -2px 10px rgba(16,24,40,.05);z-index:6}
+  .botbar .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--text-2);font-size:10.5px;font-weight:600;padding-top:4px}
+  .botbar .tab svg{width:23px;height:23px}
+  .botbar .tab.on{color:var(--accent)}
+  .botbar .tab.on svg{stroke-width:2.2}
+
+  /* floating pill (option C) */
+  .pill{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(14px + var(--safe-b));
+    background:var(--surface);border:1px solid var(--border);border-radius:999px;display:flex;gap:4px;padding:7px 10px;box-shadow:var(--shadow-lg);z-index:6}
+  .pill .tab{display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--text-2);font-size:10px;font-weight:600;padding:4px 10px;border-radius:999px}
+  .pill .tab svg{width:21px;height:21px}
+  .pill .tab.on{background:var(--accent-soft);color:var(--accent)}
+
+  /* hamburger top (option D) */
+  .htop{position:absolute;top:30px;left:0;right:0;height:50px;background:var(--surface);border-bottom:1px solid var(--border);
+    display:flex;align-items:center;gap:10px;padding:0 12px;z-index:7}
+  .htop .menu{width:32px;height:32px;border-radius:8px;display:flex;flex-direction:column;justify-content:center;gap:4px;align-items:center;background:var(--surface-2)}
+  .htop .menu i{width:15px;height:2px;background:var(--text);border-radius:2px;display:block}
+  .htop .name{font-weight:700;font-size:14px}
+  .htop .sp{flex:1}
+  .htop .a{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-2)}
+  .htop .a svg{width:18px;height:18px}
+  .scrim{position:absolute;inset:30px 0 0 0;background:rgba(10,12,18,.42);z-index:8}
+  .drawer{position:absolute;top:30px;left:0;bottom:0;width:74%;background:var(--surface);z-index:9;box-shadow:var(--shadow-lg);
+    display:flex;flex-direction:column;padding:16px 12px}
+  .drawer .dhead{display:flex;align-items:center;gap:10px;padding:4px 6px 14px;border-bottom:1px solid var(--border-2);margin-bottom:8px}
+  .drawer .dhead .logo{width:30px;height:30px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center}
+  .drawer .dhead .logo svg{width:17px;height:17px;stroke:#fff}
+  .drawer .dhead b{font-size:15px}
+  .drawer .dhead small{display:block;color:var(--text-3);font-size:11px;font-weight:400}
+  .ditem{display:flex;align-items:center;gap:12px;padding:11px 10px;border-radius:10px;color:var(--text);font-size:14px;font-weight:600}
+  .ditem svg{width:21px;height:21px;color:var(--text-2)}
+  .ditem.on{background:var(--accent-soft);color:var(--accent)}
+  .ditem.on svg{color:var(--accent)}
+  .ddiv{height:1px;background:var(--border-2);margin:8px 6px}
+
+  /* spec block */
+  .spec{padding:13px 16px 16px;font-size:12.5px;color:var(--text-2);display:flex;flex-direction:column;gap:9px}
+  .spec .row{display:grid;grid-template-columns:78px 1fr;gap:8px}
+  .spec .row b{color:var(--text);font-weight:600;font-size:12px}
+  .spec .row span{color:var(--text-2)}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:5px;margin-right:5px}
+  .chip.low{background:#e7f7ec;color:#1f8a4c}.chip.mid{background:#fff3e0;color:#b9740a}.chip.high{background:#fdeaea;color:#c0392b}
+  body.dark .chip.low{background:#11331f;color:#5fd38c}body.dark .chip.mid{background:#3a2a10;color:#f0b860}body.dark .chip.high{background:#3a1717;color:#f08a8a}
+
+  /* comparison */
+  .cmp{margin-top:34px;background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:var(--shadow-sm)}
+  .cmp h2{font-size:17px;padding:16px 18px;border-bottom:1px solid var(--border-2)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{padding:11px 13px;text-align:left;border-bottom:1px solid var(--border-2);vertical-align:top}
+  th{background:var(--surface-2);color:var(--text);font-weight:700;font-size:12px}
+  td b{color:var(--text)}
+  tr:last-child td{border-bottom:0}
+  .rec{margin-top:26px;background:linear-gradient(180deg,var(--accent-soft),transparent);border:1px solid var(--border);border-radius:18px;padding:20px 22px}
+  .rec h2{font-size:17px;margin-bottom:8px}
+  .rec p{font-size:13.5px;color:var(--text-2);margin-bottom:8px}
+  .rec ul{margin:8px 0 0 18px;font-size:13px;color:var(--text-2)}
+  .rec ul li{margin-bottom:5px}
+  .rec .pick{font-weight:700;color:var(--accent-ink)}
+  body.dark .rec .pick{color:var(--accent)}
+  footer{margin-top:30px;font-size:11.5px;color:var(--text-3);text-align:center}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="page">
+    <div>
+      <h1>笺川 FeedLore · 移动端导航栏设计方案</h1>
+      <div class="sub">现状：全局导航只有 3 个目的地（文章 / 卡片 / 日报）+ 3 个操作（刷新 / 主题 / 设置），且全部堆叠在顶部两行，移动端首屏被挤压。以下提供 4 种改造方案，点击右上角切换明暗预览。</div>
+    </div>
+    <div class="ctl">
+      <div class="toggle" id="themeToggle">
+        <button class="on" data-t="light">浅色</button>
+        <button data-t="dark">深色</button>
+      </div>
+    </div>
+  </header>
+  <div class="hint">示意基于 375×812 逻辑像素（iPhone 基准），因 CSS 变量驱动，浅色/深色共用一套令牌，随应用主题自动适配。</div>
+
+  <div class="grid">
+
+    <!-- ============ A ============ -->
+    <div class="card">
+      <div class="head"><span class="tag">方案 A</span><h3>底部标签栏（经典三 Tab）</h3><p>全局 3 视图下沉到底部固定栏，顶部收为极简标题条。</p></div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+        <div class="content">
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>科技</span><span>10 分钟前</span></div></div>
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>财经</span><span>22 分钟前</span></div></div>
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>数码</span><span>1 小时前</span></div></div>
+        </div>
+        <div class="topnav" style="top:30px;box-shadow:none;border-bottom:1px solid var(--border)">
+          <div class="logo"><svg class="ico" style="stroke:#fff" viewBox="0 0 24 24"><path d="M5 7h9M5 12h6M5 17h8"/></svg></div>
+          <div class="name">笺川</div>
+          <div class="sp" style="flex:1"></div>
+          <div class="acts">
+            <div class="a"><svg class="ico" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2 5"/><path d="M20 5v6h-6"/></svg></div>
+            <div class="a"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg></div>
+            <div class="a"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><path d="M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></div>
+          </div>
+        </div>
+        <div class="botbar">
+          <div class="tab on"><svg class="ico" viewBox="0 0 24 24"><path d="M4 13h4l2 3h4l2-3h4"/><path d="M5 5h14v14H5z"/></svg>文章</div>
+          <div class="tab"><svg class="ico" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>卡片</div>
+          <div class="tab"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3l2 7 7 2-7 2-2 7-2-7-7-2 7-2z"/></svg>日报</div>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="row"><b>结构形式</b><span>底部固定三 Tab 栏，顶部仅留品牌 + 操作图标。</span></div>
+        <div class="row"><b>图标风格</b><span>线性图标（1.8px 描边），统一 22–23px。</span></div>
+        <div class="row"><b>选中 / 未选</b><span>选中=主色 + 加粗描边(2.2px)；未选=灰(#6b7280)。仅颜色+粗细区分，无底色块。</span></div>
+        <div class="row"><b>安全区</b><span>✅ `padding-bottom: env(safe-area-inset-bottom)`，适配刘海/底部白条。</span></div>
+        <div class="row"><b>圆角/阴影</b><span>扁平条 + 顶部 1px 边线 + 极淡上投影；无单 Tab 圆角。</span></div>
+        <div class="row"><b>改动成本</b><span><span class="chip mid">中</span>需新增 BottomNav 组件、把 viewnav 下移、顶部条瘦身，并补充 `--bottomnav-h` 供吸底参考。</span></div>
+      </div>
+    </div>
+
+    <!-- ============ B ============ -->
+    <div class="card">
+      <div class="head"><span class="tag">方案 B</span><h3>顶部单行 + 分段切换</h3><p>保留顶部，把两行压成一行：品牌 + 分段控件 + 操作。</p></div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+        <div class="content topnav-adjust">
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>科技</span><span>10 分钟前</span></div></div>
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>财经</span><span>22 分钟前</span></div></div>
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>数码</span><span>1 小时前</span></div></div>
+        </div>
+        <div class="topnav">
+          <div class="logo"><svg class="ico" style="stroke:#fff" viewBox="0 0 24 24"><path d="M5 7h9M5 12h6M5 17h8"/></svg></div>
+          <div class="name">笺川</div>
+          <div class="seg">
+            <button class="on">文章</button><button>卡片</button><button>日报</button>
+          </div>
+          <div class="acts">
+            <div class="a"><svg class="ico" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2 5"/><path d="M20 5v6h-6"/></svg></div>
+            <div class="a"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg></div>
+            <div class="a"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><path d="M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></div>
+          </div>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="row"><b>结构形式</b><span>顶部 sticky 单行；视图切换用「分段控件」(Segmented)，操作图标靠右。</span></div>
+        <div class="row"><b>图标风格</b><span>同现状 ghost 线性图标；分段内仅文字。</span></div>
+        <div class="row"><b>选中 / 未选</b><span>分段选中=白底浮起 + 主色字 + 微投影；未选=透明底灰字。与现状「图标高亮」不同，改为「控件浮起」。</span></div>
+        <div class="row"><b>安全区</b><span>✅ 顶部 `env(safe-area-inset-top)`（通过现有 `--topbar-h` 已处理）；无底部需求。</span></div>
+        <div class="row"><b>圆角/阴影</b><span>分段控件 9px 圆角；整条 1px 底边线；静止无投影，滚动后加 1px 分隔。</span></div>
+        <div class="row"><b>改动成本</b><span><span class="chip low">低</span>几乎纯 CSS 收敛：把 `viewnav` 改成分段控件 + 行内压缩，复用现有 `--topbar-h` 机制。</span></div>
+      </div>
+    </div>
+
+    <!-- ============ C ============ -->
+    <div class="card">
+      <div class="head"><span class="tag">方案 C</span><h3>底部悬浮胶囊标签栏</h3><p>三 Tab 收进悬浮圆角胶囊，带 elevation，现代感更强。</p></div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+        <div class="content">
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>科技</span><span>10 分钟前</span></div></div>
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>财经</span><span>22 分钟前</span></div></div>
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>数码</span><span>1 小时前</span></div></div>
+        </div>
+        <div class="topnav" style="top:30px;box-shadow:none;border-bottom:1px solid var(--border)">
+          <div class="logo"><svg class="ico" style="stroke:#fff" viewBox="0 0 24 24"><path d="M5 7h9M5 12h6M5 17h8"/></svg></div>
+          <div class="name">笺川</div>
+          <div class="sp" style="flex:1"></div>
+          <div class="acts">
+            <div class="a"><svg class="ico" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2 5"/><path d="M20 5v6h-6"/></svg></div>
+            <div class="a"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg></div>
+            <div class="a"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><path d="M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></div>
+          </div>
+        </div>
+        <div class="pill">
+          <div class="tab on"><svg class="ico" viewBox="0 0 24 24"><path d="M4 13h4l2 3h4l2-3h4"/><path d="M5 5h14v14H5z"/></svg>文章</div>
+          <div class="tab"><svg class="ico" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>卡片</div>
+          <div class="tab"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3l2 7 7 2-7 2-2 7-2-7-7-2 7-2z"/></svg>日报</div>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="row"><b>结构形式</b><span>底部居中悬浮胶囊（非满宽），左右留白，视觉更轻盈。</span></div>
+        <div class="row"><b>图标风格</b><span>线性图标；选中项带主色软底(`--accent-soft`)。</span></div>
+        <div class="row"><b>选中 / 未选</b><span>选中=主色软底胶囊 + 主色图标；未选=纯灰。色块 + 颜色双区分。</span></div>
+        <div class="row"><b>安全区</b><span>✅ `bottom: calc(14px + env(safe-area-inset-bottom))`。</span></div>
+        <div class="row"><b>圆角/阴影</b><span>999px 全圆角 + 明显 elevation 投影（浮于内容之上）。建议滚动时自动隐藏。</span></div>
+        <div class="row"><b>改动成本</b><span><span class="chip high">中高</span>在 A 基础上加悬浮定位 + 滚动自动隐藏逻辑 + 更强阴影令牌；需处理遮挡内容的取舍。</span></div>
+      </div>
+    </div>
+
+    <!-- ============ D ============ -->
+    <div class="card">
+      <div class="head"><span class="tag">方案 D</span><h3>汉堡菜单 + 侧滑抽屉</h3><p>视图与操作收进左侧抽屉，顶栏极简，内容全宽。</p></div>
+      <div class="phone">
+        <div class="statusbar"><span>9:41</span><span class="dots"><i></i><i></i><i></i></span></div>
+        <div class="content">
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>科技</span><span>10 分钟前</span></div></div>
+          <div class="blk"><div class="t"></div><div class="l"></div><div class="l s"></div><div class="meta"><span>财经</span><span>22 分钟前</span></div></div>
+        </div>
+        <div class="htop">
+          <div class="menu"><i></i><i></i><i></i></div>
+          <div class="name">笺川</div>
+          <div class="sp"></div>
+          <div class="a"><svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></div>
+        </div>
+        <div class="scrim"></div>
+        <div class="drawer">
+          <div class="dhead"><div class="logo"><svg class="ico" style="stroke:#fff" viewBox="0 0 24 24"><path d="M5 7h9M5 12h6M5 17h8"/></svg></div><div><b>笺川</b><small>自托管 RSS 阅读器</small></div></div>
+          <div class="ditem on"><svg class="ico" viewBox="0 0 24 24"><path d="M4 13h4l2 3h4l2-3h4"/><path d="M5 5h14v14H5z"/></svg>文章</div>
+          <div class="ditem"><svg class="ico" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>卡片</div>
+          <div class="ditem"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3l2 7 7 2-7 2-2 7-2-7-7-2 7-2z"/></svg>日报</div>
+          <div class="ddiv"></div>
+          <div class="ditem"><svg class="ico" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2 5"/><path d="M20 5v6h-6"/></svg>刷新</div>
+          <div class="ditem"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></svg>主题</div>
+          <div class="ditem"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><path d="M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>设置</div>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="row"><b>结构形式</b><span>顶栏仅汉堡 + 品牌 + 搜索；左侧抽屉承载全部导航与操作。</span></div>
+        <div class="row"><b>图标风格</b><span>线性图标 + 文字行；选中行带主色软底。</span></div>
+        <div class="row"><b>选中 / 未选</b><span>抽屉内选中=主色软底 + 主色图标；未选=灰。遮罩(scrim)半透明压暗内容。</span></div>
+        <div class="row"><b>安全区</b><span>✅ 抽屉左右均避让 `env(safe-area-inset-*)`；顶栏避让顶部。</span></div>
+        <div class="row"><b>圆角/阴影</b><span>抽屉右缘大投影浮起；scrim 42% 黑；行 10px 圆角。</span></div>
+        <div class="row"><b>改动成本</b><span><span class="chip mid">中</span>需新建/复用抽屉组件（cards/reader 已有抽屉手势可借鉴）+ 菜单状态管理。</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ comparison ============ -->
+  <div class="cmp">
+    <h2>四方案横向对比</h2>
+    <table>
+      <thead><tr><th>维度</th><th>方案 A · 底部三 Tab</th><th>方案 B · 顶部分段</th><th>方案 C · 悬浮胶囊</th><th>方案 D · 汉堡抽屉</th></tr></thead>
+      <tbody>
+        <tr><td><b>拇指可达性</b></td><td>优（底部单手可达）</td><td>中（顶部需够）</td><td>优（底部居中）</td><td>差（需先开抽屉）</td></tr>
+        <tr><td><b>首屏内容空间</b></td><td>优（顶部仅一行）</td><td>中（仍占顶部一行）</td><td>优（顶部仅一行）</td><td>优（顶栏极简）</td></tr>
+        <tr><td><b>品牌曝光</b></td><td>中（顶部小 logo）</td><td>强（顶部常驻品牌）</td><td>中（顶部小 logo）</td><td>强（抽屉头部品牌）</td></tr>
+        <tr><td><b>操作（刷新/主题/设置）</b></td><td>顶部 3 图标</td><td>顶部 3 图标（同行）</td><td>顶部 3 图标</td><td>收进抽屉</td></tr>
+        <tr><td><b>扩展至多目的地</b></td><td>弱（>5 Tab 拥挤）</td><td>弱（分段仅适合 3–4）</td><td>弱（同 A）</td><td><b>强（列表可无限扩展）</b></td></tr>
+        <tr><td><b>实现复杂度</b></td><td><span class="chip mid">中</span></td><td><span class="chip low">低</span></td><td><span class="chip high">中高</span></td><td><span class="chip mid">中</span></td></tr>
+        <tr><td><b>适用场景</b></td><td>内容/阅读型主 App（推荐）</td><td>想最小改动、保品牌</td><td>工具/现代感、内容留白多</td><td>多级导航/功能密集</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rec">
+    <h2>推荐方案：A（底部三 Tab）为基线，叠加 C 的悬浮质感作为视觉升级选项</h2>
+    <p><span class="pick">首选落地方案 A</span>：FeedLore 是典型「内容消费型」应用，全局只有 3 个平级目的地，底部标签栏是行业验证最稳的范式——拇指可达、首屏释放最彻底、选定态清晰，且与现有「视图级频道栏」互不冲突（频道栏继续作为视图内次级工具栏存在）。</p>
+    <p>若你希望视觉更「高级」一点，可在 A 的骨架上采用 <span class="pick">C 的悬浮胶囊外观</span>（圆角 + elevation + 选中软底），但保留「满宽/贴底」而非真正悬浮，避免遮挡内容、省去滚动隐藏逻辑——即「A 的结构 + C 的皮」。</p>
+    <ul>
+      <li><b>不推荐 B 作为最终态</b>：它改动最小、风险最低，适合做「过渡期快速验证」，但顶部栏仍占用首屏，未根治原问题。</li>
+      <li><b>D 暂不必要</b>：当前仅 3 个目的地，抽屉属于过度设计；可预留扩展位（若日后加入收藏/标签/关于/账户，再演进为 D）。</li>
+      <li><b>深色模式</b>：四方案均用 CSS 变量令牌，随应用 `auto/light/dark/github` 自动适配，无需额外工作。</li>
+      <li><b>安全区</b>：A/C 底部、D 抽屉均接入 `env(safe-area-inset-*)`，与现有移动端下拉组件一致。</li>
+    </ul>
+  </div>
+
+  <footer>示意图为设计稿，非最终像素；实际开发复用 FeedLore 既有 --accent / 图标雪碧图(#i-*) / 主题变量，保证与全站一致。</footer>
+</div>
+
+<script>
+  const tg = document.getElementById('themeToggle');
+  tg.addEventListener('click', (e)=>{
+    const b = e.target.closest('button'); if(!b) return;
+    document.body.classList.toggle('dark', b.dataset.t === 'dark');
+    [...tg.children].forEach(x=>x.classList.toggle('on', x===b));
+  });
+</script>
+</body>
+</html>
