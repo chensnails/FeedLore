@@ -18,6 +18,8 @@ import { WEB_ROOT } from './env';
 import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
 import { feedsRoutes } from './routes/feeds';
+import { entriesRoutes } from './routes/entries';
+import { prefsRoutes } from './routes/prefs';
 
 export interface AppDeps {
   db: Db | null;
@@ -73,7 +75,9 @@ export function createApp({ db, auth }: AppDeps) {
     .notFound((c) => c.json({ error: '接口不存在' }, 404))
     .route('/', healthRoutes(db))
     .route('/', authRoutes(db, auth))
-    .route('/', feedsRoutes(db, auth));
+    .route('/', feedsRoutes(db, auth))
+    .route('/', entriesRoutes(db, auth))
+    .route('/', prefsRoutes(db, auth));
 
   // 静态资源挂在同一个实例上；`route()` 返回的是 this，所以这里注册的路由同样生效。
   if (WEB_ROOT) mountWeb(app, WEB_ROOT);

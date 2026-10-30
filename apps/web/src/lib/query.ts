@@ -19,7 +19,11 @@ export const queryClient = new QueryClient({
   },
 });
 
+/** 查询键集中登记：散在组件里的字符串键迟早写错一个字母，然后那块缓存就再也不失效。 */
 export const qk = {
   session: ['session'] as const,
   feeds: ['feeds'] as const,
+  entries: ['entries'] as const,
+  entry: ['entry'] as const,
+  prefs: ['prefs'] as const,
 };

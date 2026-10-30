@@ -1,42 +1,49 @@
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useUi } from '../store/ui';
 import type { Feed, FeedsList } from '../lib/types';
 
 /**
- * 频道列表。
+ * 左侧频道栏。
  *
- * 注意「派生数据不要另存一份」：分组过滤、只看未读全部在渲染时从
- * `feedsQuery.data` + UI store 算出来。v1.x 把过滤结果写回全局 state，
- * 于是每加一个筛选条件都要手动重算，漏一处就出现「切换后列表不动」。
+ * 分组筛选是**纯显示**的局部状态，放组件里（不需要跨视图共享）；
+ * 选中的频道要跨视图（列表/阅读）共享，才进 zustand。
+ * 这条边界划清楚，就不会再出现「同一个筛选条件两处各存一份、改一处不生效」。
  */
 export function FeedsPanel() {
-  const group = useUi((s) => s.group);
-  const setGroup = useUi((s) => s.setGroup);
-  const onlyUnread = useUi((s) => s.onlyUnread);
+  const feedId = useUi((s) => s.feedId);
+  const setFeedId = useUi((s) => s.setFeedId);
+  const [group, setGroup] = useState<string | null>(null);
 
-  const { data, isPending, isError, error, refetch, isFetching } = useQuery({
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: qk.feeds,
     queryFn: () => api.feeds.list(),
   });
 
-  if (isPending) return <p className="hint">加载频道…</p>;
+  if (isPending) {
+    return (
+      <aside className="sidebar">
+        <p className="hint">加载频道…</p>
+      </aside>
+    );
+  }
   if (isError) {
     return (
-      <div className="panel error">
-        <p>频道加载失败：{error instanceof Error ? error.message : '未知错误'}</p>
+      <aside className="sidebar">
+        <p className="hint">频道加载失败：{error instanceof Error ? error.message : '未知错误'}</p>
         <button className="btn" onClick={() => void refetch()}>
           重试
         </button>
-      </div>
+      </aside>
     );
   }
 
-  const feeds = visibleFeeds(data, group, onlyUnread);
+  const feeds = visibleFeeds(data, group);
 
   return (
-    <section className="panel">
+    <aside className="sidebar">
       <div className="chips">
         <button className={`chip${group === null ? ' on' : ''}`} onClick={() => setGroup(null)}>
           全部 <b>{data.total}</b>
@@ -46,49 +53,45 @@ export function FeedsPanel() {
             {g}
           </button>
         ))}
-        {isFetching && <span className="hint inline">刷新中…</span>}
       </div>
 
       <ul className="feeds">
+        <li>
+          <button className={`feed${feedId === null ? ' on' : ''}`} onClick={() => setFeedId(null)}>
+            <span className="dot" aria-hidden />
+            <div className="feed-main">
+              <p className="feed-title">全部频道</p>
+              <p className="feed-meta">所有频道的最新条目</p>
+            </div>
+            <span className="count">{data.flags.unread}</span>
+          </button>
+        </li>
         {feeds.map((f) => (
-          <FeedRow key={f.id} feed={f} />
+          <li key={f.id}>
+            <button
+              className={`feed${feedId === f.id ? ' on' : ''}${f.enabled ? '' : ' off'}`}
+              onClick={() => setFeedId(f.id)}
+              title={f.error ?? f.url}
+            >
+              <span className="dot" data-error={f.error ? '1' : '0'} aria-hidden />
+              <div className="feed-main">
+                <p className="feed-title">{f.customTitle ?? f.title}</p>
+                <p className="feed-meta">
+                  {f.groupName || '未分组'}
+                  {f.error ? ' · 抓取失败' : ''}
+                </p>
+              </div>
+              <span className="count">{f.unreadCount}</span>
+            </button>
+          </li>
         ))}
       </ul>
 
-      {feeds.length === 0 && <p className="hint">这个筛选下没有频道。</p>}
-
-      <footer className="panel-foot">
-        <span>
-          共 {data.total} 个频道 · 启用 {data.enabled} · 卡片 {data.cardEnabled}
-        </span>
-        <span>
-          未读 {data.flags.unread} / 收藏 {data.flags.favorite}
-        </span>
-      </footer>
-    </section>
+      {feeds.length === 0 && <p className="hint">这个分组下没有频道。</p>}
+    </aside>
   );
 }
 
-function visibleFeeds(data: FeedsList, group: string | null, onlyUnread: boolean): Feed[] {
-  return data.feeds.filter((f) => {
-    if (group !== null && f.groupName !== group) return false;
-    if (onlyUnread && f.unreadCount === 0) return false;
-    return true;
-  });
-}
-
-function FeedRow({ feed }: { feed: Feed }) {
-  return (
-    <li className={`feed${feed.enabled ? '' : ' off'}`}>
-      <span className="dot" data-error={feed.error ? '1' : '0'} aria-hidden />
-      <div className="feed-main">
-        <p className="feed-title">{feed.customTitle ?? feed.title}</p>
-        <p className="feed-meta">
-          {feed.groupName || '未分组'}
-          {feed.error ? ` · ${feed.error}` : ''}
-        </p>
-      </div>
-      <span className="count">{feed.unreadCount}</span>
-    </li>
-  );
+function visibleFeeds(data: FeedsList, group: string | null): Feed[] {
+  return group === null ? data.feeds : data.feeds.filter((f) => f.groupName === group);
 }

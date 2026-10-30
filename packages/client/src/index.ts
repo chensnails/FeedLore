@@ -26,12 +26,29 @@ import {
   HealthSchema,
   SessionSchema,
   auth as authEndpoints,
+  entriesListResponse,
+  EntryDetailSchema,
+  EntryFlagsSchema,
   feedsListResponse,
+  prefsResponse,
+  type EntryDetail,
+  type EntryFlags,
+  type EntriesListResponse,
   type Health,
   type LoginBody,
+  type PrefsResponse,
   type Session,
   type FeedsListResponse,
 } from '@feedlore/contract';
+
+/**
+ * 列表查询参数的类型**直接取自 hc**，而不是手抄：
+ * 服务端 `zValidator('query', entriesQuery)` 的输入形态经 Hono 的 ValidationTargets
+ * 与 HTTP 查询串（只有字符串）交叉后才是客户端真正该传的类型。
+ * 手写一份必然漂移（`z.coerce.number()` 的 z.input 是 unknown，抄过来对不上）。
+ */
+type HcClient = ReturnType<typeof hc<AppType>>;
+export type EntriesListQuery = NonNullable<Parameters<HcClient['api']['entries']['$get']>[0]>['query'];
 
 /* ============================ 错误类型 ============================ */
 
@@ -152,6 +169,38 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
       async list(): Promise<FeedsListResponse> {
         const res = await raw.api.feeds.$get();
         return unwrap(res, feedsListResponse, 'GET /api/feeds');
+      },
+    },
+
+    /* ---------------- 条目 ---------------- */
+
+    entries: {
+      /**
+       * 列表。查询参数类型来自服务端的 zValidator（z.input，所以数字字段也接受字符串，
+       * 与 URL 查询串的实际形态一致），不用在前端再抄一份。
+       */
+      async list(query: EntriesListQuery = {}): Promise<EntriesListResponse> {
+        const res = await raw.api.entries.$get({ query });
+        return unwrap(res, entriesListResponse, 'GET /api/entries');
+      },
+
+      async detail(id: string | number): Promise<EntryDetail> {
+        const res = await raw.api.entries[':id'].$get({ param: { id: String(id) } });
+        return unwrap(res, EntryDetailSchema, 'GET /api/entries/:id');
+      },
+
+      async flags(): Promise<EntryFlags> {
+        const res = await raw.api.entries.flags.$get();
+        return unwrap(res, EntryFlagsSchema, 'GET /api/entries/flags');
+      },
+    },
+
+    /* ---------------- 偏好 ---------------- */
+
+    prefs: {
+      async get(): Promise<PrefsResponse> {
+        const res = await raw.api.prefs.$get();
+        return unwrap(res, prefsResponse, 'GET /api/prefs');
       },
     },
   };

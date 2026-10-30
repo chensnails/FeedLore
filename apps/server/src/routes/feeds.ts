@@ -6,7 +6,7 @@
  */
 
 import { Hono } from 'hono';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { schema, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import { feeds as feedsSpec, feedsListResponse } from '@feedlore/contract';
@@ -30,30 +30,37 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
   return new Hono<AppEnv>().get(feedsSpec.list.path, requireAuth(auth, 'user'), async (c) => {
     if (!db) return c.json({ error: '数据库未就绪' }, 503);
 
+    // ⚠️ 必须按 owner 过滤：feeds 是多用户表，漏了 owner 就是把所有人的订阅一起返回
+    const uid = c.get('user').id;
+
     const rows = await db
       .select()
       .from(schema.feeds)
+      .where(eq(schema.feeds.ownerId, uid))
       .orderBy(schema.feeds.sortOrder, schema.feeds.id);
 
     const aggRes = await db.execute(sql`
       select count(*)::int as total,
-             count(*) filter (where is_read = false)::int as unread,
-             count(*) filter (where is_favorite = true)::int as favorite
-      from entries
+             count(*) filter (where e.is_read = false)::int as unread,
+             count(*) filter (where e.is_favorite = true)::int as favorite
+      from entries e join feeds f on f.id = e.feed_id
+      where f.owner_id = ${uid}
     `);
     const agg = (aggRes.rows as unknown as AggRow[])[0] ?? { total: 0, unread: 0, favorite: 0 };
 
     const perRes = await db.execute(sql`
-      select feed_id,
+      select e.feed_id,
              count(*)::int as total,
-             count(*) filter (where is_read = false)::int as unread
-      from entries group by feed_id
+             count(*) filter (where e.is_read = false)::int as unread
+      from entries e join feeds f on f.id = e.feed_id
+      where f.owner_id = ${uid}
+      group by e.feed_id
     `);
     const per = new Map((perRes.rows as unknown as PerFeedRow[]).map((r) => [r.feed_id, r]));
 
     const gRes = await db.execute(sql`
       select distinct group_name from feeds
-      where group_name is not null and group_name <> ''
+      where owner_id = ${uid} and group_name is not null and group_name <> ''
       order by group_name
     `);
     const groups = (gRes.rows as unknown as { group_name: string }[]).map((r) => r.group_name);

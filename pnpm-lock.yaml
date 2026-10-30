@@ -218,6 +218,9 @@ importers:
       '@feedlore/client':
         specifier: workspace:*
         version: link:../../packages/client
+      '@feedlore/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
       '@tanstack/react-query':
         specifier: ^5.62.7
         version: 5.105.0(@types/react@19.3.0)(react@19.3.1)

@@ -86,7 +86,54 @@ async function main(): Promise<void> {
     bad('GET /api/feeds', e);
   }
 
-  // 6) 登出
+  // 6) 条目列表（契约类型直接可用：下面这些字段访问本身就是编译期证明）
+  try {
+    const { entries, total, hasMore, tags } = await api.entries.list({ limit: '10' });
+    const first = entries[0];
+    ok(
+      'GET /api/entries',
+      `total=${total} 本页=${entries.length} hasMore=${hasMore} tags=${tags.length}` +
+        (first ? ` first=${first.name}(${first.id}, ${first.feedName})` : ''),
+    );
+
+    if (first) {
+      const detail = await api.entries.detail(first.id);
+      ok('GET /api/entries/:id', `content=${detail.content.length} 字, name=${detail.name}`);
+    }
+  } catch (e) {
+    bad('GET /api/entries', e);
+  }
+
+  // 7) 条目徽标
+  try {
+    const flags = await api.entries.flags();
+    ok('GET /api/entries/flags', `total=${flags.total} unread=${flags.unread} fav=${flags.favorite}`);
+  } catch (e) {
+    bad('GET /api/entries/flags', e);
+  }
+
+  // 8) 越权读：不存在的 id 必须 404（不是 500，也不是空对象）
+  try {
+    await api.entries.detail('999999999');
+    bad('GET /api/entries/999999999 应 404', new Error('居然成功了'));
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) ok('GET /api/entries/999999999 → 404');
+    else bad('GET /api/entries/999999999 → 404', e);
+  }
+
+  // 9) 偏好
+  try {
+    const p = await api.prefs.get();
+    ok(
+      'GET /api/prefs',
+      `theme=${p.appearance.theme} view=${p.layout.view} 分组顺序=${p.groupOrder.length} ` +
+        `过滤=${p.filters.length} 关注=${p.watchRules.length} llm.key=${p.llm.apiKeySet}`,
+    );
+  } catch (e) {
+    bad('GET /api/prefs', e);
+  }
+
+  // 10) 登出
   try {
     const r = await api.logout();
     if (!r.ok) throw new Error('登出返回 ok=false');
@@ -95,7 +142,7 @@ async function main(): Promise<void> {
     bad('POST /api/logout', e);
   }
 
-  // 7) 登出后必须失效
+  // 11) 登出后必须失效
   try {
     const s = await api.session();
     if (s.authenticated) throw new Error('登出后会话仍有效');

@@ -427,13 +427,14 @@ export type PrefsResponse = z.infer<typeof prefsResponse>;
 
 export const prefsPatchBody = z.object({
   groupOrder: z.array(z.string()).optional(),
-  appearance: M.AppearanceSchema.optional(),
-  layout: M.LayoutSchema.optional(),
+  // 各组都是「部分更新」：前端只提交改动的键，服务端按 legacy 的 sanitize 逐键回落默认
+  appearance: M.AppearanceSchema.partial().optional(),
+  layout: M.LayoutSchema.partial().optional(),
   filters: z.array(M.FilterRuleSchema).optional(),
   watchRules: z.array(M.WatchRuleSchema).optional(),
   webhookUrl: z.string().optional(),
-  digest: M.DigestConfigSchema.optional(),
-  llm: M.LlmConfigSchema.optional(),
+  digest: M.DigestConfigSchema.partial().optional(),
+  llm: M.LlmConfigSchema.partial().optional(),
 });
 export type PrefsPatchBody = z.infer<typeof prefsPatchBody>;
 
