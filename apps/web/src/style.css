@@ -114,8 +114,11 @@ body {
 /* 全宽：只放开上限，阅读层本身仍受视口约束（否则桌面上会贴边） */
 :root[data-reader-width='full'] { --reader-width: 100%; }
 
-/* 抽屉开关与遮罩：桌面端默认不显示，窄屏媒体查询里放开 */
-.nav-toggle,
+/* 抽屉开关与遮罩：桌面端默认不显示，窄屏媒体查询里放开。
+ * ⚠️ 必须写成 `.topbar .btn.nav-toggle`（0,3,0）而不是 `.nav-toggle`（0,1,0）：
+ * `.btn.icon`（0,2,0）后面还带 display，单类选择器无论写多早都压不住它 ——
+ * 第一版就是这么把 ☰ 漏到桌面顶栏上的。 */
+.topbar .btn.nav-toggle,
 .nav-scrim,
 .sidebar-head {
   display: none;
@@ -764,7 +767,7 @@ body {
     grid-template-rows: minmax(0, 1fr);
   }
 
-  .nav-toggle {
+  .topbar .btn.nav-toggle {
     display: inline-flex;
   }
 
