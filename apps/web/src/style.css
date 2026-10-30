@@ -1051,3 +1051,109 @@ body {
     max-height: 72vh;
   }
 }
+
+/* ---------------- 日报 ---------------- */
+
+.digest-sheet {
+  width: min(820px, 100%);
+}
+
+.digest-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.digest-date {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+/* select / textarea 与 input 共用同一套外观：只给 input 写样式时，
+   表单里混着两代控件，视觉上像是拼接出来的 */
+.digest-date select,
+.admin-field select,
+.admin-field textarea {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.admin-field textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+
+.digest-body {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.digest-overview {
+  margin: 0 0 16px;
+  white-space: pre-wrap;
+}
+
+.digest-highlights,
+.digest-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.digest-highlights li,
+.digest-list li {
+  margin-bottom: 10px;
+}
+
+.digest-comment {
+  display: block;
+}
+
+.digest-item {
+  display: block;
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.digest-item-name {
+  color: var(--text);
+}
+
+.digest-item-meta {
+  margin-left: 6px;
+}
+
+.digest-link {
+  margin-left: 8px;
+  color: var(--accent);
+}
+
+.digest-section {
+  margin-top: 18px;
+}
+
+.digest-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 「清除密钥」这类行内动作：长得像链接但仍是按钮（键盘可聚焦） */
+.linkish {
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}

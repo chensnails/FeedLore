@@ -10,6 +10,7 @@ import { FeedsPanel } from './FeedsPanel';
 import { EntriesPanel } from './EntriesPanel';
 import { EntryReader } from './EntryReader';
 import { AdminPanel } from './AdminPanel';
+import { DigestPanel } from './DigestPanel';
 
 /**
  * 登录后的主壳：顶部工具条 + 左频道栏 + 条目列表 + 阅读层覆盖。
@@ -22,6 +23,7 @@ export function Shell({ session }: { session: Session }) {
   const toast = useUi((s) => s.toast);
   const dismissToast = useUi((s) => s.dismissToast);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [digestOpen, setDigestOpen] = useState(false);
 
   const feedsQuery = useQuery({ queryKey: qk.feeds, queryFn: () => api.feeds.list() });
 
@@ -89,6 +91,18 @@ export function Shell({ session }: { session: Session }) {
         </div>
 
         <div className="topbar-right">
+          {/* 账号自己关掉了日报入口时不显示。
+              藏入口只是顺手，真正的开关在服务端（generate 会 400）—— 两处都在才算真关掉。 */}
+          {prefsQuery.data?.layout.digestEnabled !== false && (
+            <button
+              className="btn ghost icon"
+              onClick={() => setDigestOpen(true)}
+              title="AI 日报：把过去 24 小时的条目汇总成一份简报"
+              aria-label="打开日报"
+            >
+              ▤
+            </button>
+          )}
           <button
             className="btn ghost icon"
             onClick={() => saveAppearance.mutate({ theme: nextTheme.value })}
@@ -125,6 +139,7 @@ export function Shell({ session }: { session: Session }) {
 
       <EntryReader />
       <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
+      <DigestPanel open={digestOpen} onClose={() => setDigestOpen(false)} />
 
       {toast && (
         <div className={`toast ${toast.tone}`} role="status" onClick={dismissToast}>

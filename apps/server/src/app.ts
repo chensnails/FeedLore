@@ -22,6 +22,7 @@ import { feedsRoutes } from './routes/feeds';
 import { entriesRoutes } from './routes/entries';
 import { prefsRoutes } from './routes/prefs';
 import { imgRoutes } from './routes/img';
+import { aiRoutes } from './routes/ai';
 import {
   adminAccountRoutes,
   adminConfigRoutes,
@@ -89,6 +90,7 @@ export function createApp({ db, auth }: AppDeps) {
     .route('/', entriesRoutes(db, auth))
     .route('/', prefsRoutes(db, auth))
     .route('/', imgRoutes(db, auth))
+    .route('/', aiRoutes(db, auth))
     .route('/', adminStatusRoutes(db, auth))
     .route('/', adminConfigRoutes(db, auth))
     .route('/', adminImageCacheRoutes(db, auth))

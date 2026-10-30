@@ -42,4 +42,4 @@ export const KEEP_PER_FEED = Math.max(0, num(process.env.KEEP_PER_FEED, 300));
 /** 定时抓取开关：本地调试/迁移期可置 0 只用手动刷新。 */
 export const SCHEDULER_ENABLED = process.env.REFRESH_DISABLED !== '1';
 
-export const APP_VERSION = process.env.APP_VERSION ?? '2.0.0-p7';
+export const APP_VERSION = process.env.APP_VERSION ?? '2.0.0-p8';

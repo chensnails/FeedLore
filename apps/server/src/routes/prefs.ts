@@ -27,10 +27,14 @@ import {
   prefs as prefsSpec,
   prefsResponse,
   prefsPatchBody,
-  type LlmView,
   type PrefsPatchBody,
 } from '@feedlore/contract';
 import { assertResponse, BadRequest } from '../lib/validate';
+import {
+  getCryptoSecret,
+  userLlmForStore,
+  userLlmForView,
+} from '@feedlore/ai';
 import {
   sanitizeAppearance,
   sanitizeDigest,
@@ -49,30 +53,13 @@ import {
 import { assertPublicHost } from '../lib/net';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
-/** legacy 的思维深度是 'low'|'medium'|'high'；v2 侧表用 0~3 的整数（P7 迁移时映射）。 */
-const THINKING_DEPTH_DEFAULT = 2;
-
-interface LlmRow {
-  encryptedKey: string | null;
-  baseUrl: string | null;
-  model: string | null;
-  thinking: boolean;
-  thinkingDepth: number;
-}
-
-function llmView(row: LlmRow | undefined): LlmView {
-  return {
-    baseUrl: row?.baseUrl ?? '',
-    model: row?.model ?? '',
-    temperature: 0.3,
-    thinking: row?.thinking === true,
-    thinkingDepth: Number.isInteger(row?.thinkingDepth) ? (row?.thinkingDepth as number) : THINKING_DEPTH_DEFAULT,
-    apiKeySet: Boolean(row?.encryptedKey),
-    // 掩码提示需要解密（packages/ai 的 cryptoSecret），P5 落地后补上；现在只回是否已设置
-    apiKeyHint: '',
-  };
-}
-
+/**
+ * 模型配置行 → 契约视图（`lib/ai` 的 `userLlmForView`）。
+ *
+ * 掩码需要解密，而解密需要 cryptoSecret —— 所以视图不能脱离 db 生成。
+ * 与 legacy 的差别只在「谁负责解密」：那边 `userLlmForView(prefs, cryptoSecret)`，
+ * 这里密文落的是 `user_llm` 侧表，形状换了但语义一致。
+ */
 type PrefsBag = Record<string, unknown>;
 
 /** 把任意对象安全地当成 prefs 分组读（库里可能是 null / 字符串 / 数组）。 */
@@ -101,6 +88,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           encryptedKey: userLlm.encryptedKey,
           baseUrl: userLlm.baseUrl,
           model: userLlm.model,
+          temperature: userLlm.temperature,
           thinking: userLlm.thinking,
           thinkingDepth: userLlm.thinkingDepth,
         })
@@ -108,6 +96,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         .where(eq(userLlm.userId, uid))
         .limit(1);
 
+      const secret = await getCryptoSecret(db);
       const prefs = userRow.prefs;
 
       const payload = assertResponse(
@@ -120,7 +109,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           watchRules: userWatchRules(prefs),
           webhookUrl: userWebhook(prefs),
           digest: userDigest(prefs),
-          llm: llmView(llmRow),
+          llm: userLlmForView(llmRow, secret),
         },
         'GET /api/prefs',
       );
@@ -201,40 +190,33 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           .where(eq(users.id, uid));
 
         /* ---- 模型配置：写 user_llm 侧表 ----
-         * apiKey 需要 AEAD 加密（legacy lib/crypto.js），随 packages/ai 一起在 P5 落地。
-         * 在那之前**明确拒绝**非空 apiKey，而不是存明文或假装存了。 */
+         * apiKey 走 packages/ai 的 AEAD 加密（与 legacy 密文格式兼容，迁移不用重填）。
+         * 三态语义：字符串非空 → 换新密文；空串 → 清除；未提交 → 不动。
+         * 不区分的话，前端「只改模型名」会把已存的 Key 一起冲掉。 */
         if (body.llm) {
-          if (typeof body.llm.apiKey === 'string' && body.llm.apiKey.trim()) {
-            throw new HTTPException(400, {
-              message: '密钥保存尚未开放：加密模块随 AI 能力（P5）一起接入，当前仅支持填写模型地址与名称',
-            });
-          }
-
-          const llmSet: {
-            baseUrl?: string | null;
-            model?: string | null;
-            thinking?: boolean;
-            thinkingDepth?: number;
-          } = {};
-
-          if (body.llm.baseUrl !== undefined) {
-            const v = body.llm.baseUrl.trim();
-            // 模型地址也是出网口（服务端会带着 Key 向它 POST）——只在真的改了时才校验
-            if (v) {
-              try {
-                await assertPublicHost(v);
-              } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                throw new HTTPException(400, { message: `模型地址不可用：${msg}` });
-              }
+          // 模型地址也是出网口（服务端会带着 Key 向它 POST）——只在真的改了时才校验
+          const nextBase = typeof body.llm.baseUrl === 'string' ? body.llm.baseUrl.trim() : '';
+          if (nextBase) {
+            try {
+              await assertPublicHost(nextBase);
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              throw new HTTPException(400, { message: `模型地址不可用：${msg}` });
             }
-            llmSet.baseUrl = v || null;
           }
-          if (body.llm.model !== undefined) llmSet.model = body.llm.model.trim() || null;
-          if (body.llm.thinking !== undefined) llmSet.thinking = body.llm.thinking === true;
-          if (body.llm.thinkingDepth !== undefined) {
-            llmSet.thinkingDepth = Math.min(3, Math.max(0, Math.trunc(body.llm.thinkingDepth)));
-          }
+
+          const secret = await getCryptoSecret(db);
+          const llmSet = userLlmForStore(
+            {
+              ...(body.llm.apiKey !== undefined ? { apiKey: body.llm.apiKey.trim() } : {}),
+              ...(body.llm.baseUrl !== undefined ? { baseUrl: body.llm.baseUrl } : {}),
+              ...(body.llm.model !== undefined ? { model: body.llm.model } : {}),
+              ...(body.llm.temperature !== undefined ? { temperature: body.llm.temperature } : {}),
+              ...(body.llm.thinking !== undefined ? { thinking: body.llm.thinking } : {}),
+              ...(body.llm.thinkingDepth !== undefined ? { thinkingDepth: body.llm.thinkingDepth } : {}),
+            },
+            secret,
+          );
 
           if (Object.keys(llmSet).length) {
             await db

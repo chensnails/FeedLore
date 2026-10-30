@@ -16,6 +16,7 @@ import { APP_VERSION, DATABASE_URL, HOST, PORT } from './env';
 import { getAuth } from './auth';
 import { createApp } from './app';
 import { startScheduler } from './lib/fetcher';
+import { startDigestScheduler } from './lib/digest';
 import { undiciVersionMismatch, undiciVersions } from './lib/net';
 import { reloadSource } from './lib/settings';
 import { pruneImageCache } from './routes/img';
@@ -56,6 +57,11 @@ if (db) {
 /* 抓取器：进程内调度（每分钟检查一次到期频道）。
  * 不用外部队列是刻意的 P5 决策——单进程足够、少一个故障点；多实例时才需要 BullMQ。 */
 if (db) startScheduler(db);
+
+/* 日报调度：每分钟检查一次「谁的 08:00 到了」。与抓取器同款进程内调度，
+ * 理由相同（单进程够用、少一个故障点）。账号没配模型时会先落「今天已处理」再跳过，
+ * 所以不会每分钟重复烧额度。 */
+if (db) startDigestScheduler(db);
 
 /* 图片缓存清理：`image_cache` 随阅读量线性增长，不清会悄悄吃掉磁盘。
  * 首次延迟 10 分钟（别在冷启动和第一轮抓取抢数据库），之后每 6 小时一次。 */

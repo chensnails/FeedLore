@@ -24,12 +24,29 @@ import {
   inFlightCount,
   type FeedRow,
 } from './fetcher';
-import { userDigest } from './prefs';
+import { userDigest, userLayout } from './prefs';
 import { APP_VERSION } from '../env';
 
 /* ============================================================================
  * 小工具
  * ==========================================================================*/
+
+/**
+ * 「下一个 HH:MM 时刻」的绝对毫秒值（按上海时区）。
+ *
+ * 上海自 1991 年后无夏令时，UTC 偏移恒为 +8，所以这里直接按偏移换算，
+ * 不用 Intl 去解析「明天几点」——那条路在跨日边界上很容易算错一天。
+ */
+function nextRunAt(hhmm: string, now: Date): number {
+  const [h, m] = hhmm.split(':').map(Number) as [number, number];
+  const H = Number.isFinite(h) ? h : 8;
+  const M = Number.isFinite(m) ? m : 0;
+  const offset = 8 * 3600_000;
+  const sh = new Date(now.getTime() + offset);
+  const target = Date.UTC(sh.getUTCFullYear(), sh.getUTCMonth(), sh.getUTCDate(), H, M) - offset;
+  // 今天的这个点已过 → 顺延到明天（<= 意味着「正好现在」，调度器这一分钟内会跑，算明天更准）
+  return target > now.getTime() ? target : target + 86_400_000;
+}
 
 export const GITHUB_REPO = process.env.GITHUB_REPO ?? 'chensnails/FeedLore';
 export const VERSION_TTL_MS = 10 * 60_000;
@@ -251,8 +268,9 @@ export async function buildStatus(
   }
 
   /* ---------------- 日报 ---------------- */
-  // ⚠️ AI 还没落地（P7）：这里只报**事实**（有多少账号开了自动、库里现存几份），
-  //    nextRunAt 一律 null —— 没有调度器却编一个「下次生成时间」是在骗人。
+  // 只报**事实**：多少账号开了自动、库里现存几份、以及「下一个会跑的时刻」。
+  // nextRunAt 按账号各自的时间算（每人一份配置），取最早的那个；
+  // 没有任何账号开自动时保持 null —— 没有调度目标却报一个时间是在骗人。
   const digestInfo = {
     autoUsers: 0,
     totalUsers: 0,
@@ -274,10 +292,17 @@ export async function buildStatus(
     try {
       const list = await db.select({ id: users.id, prefs: users.prefs }).from(users);
       digestInfo.totalUsers = list.length;
+      let earliest: number | null = null;
       for (const u of list) {
         const d = userDigest(u.prefs as Record<string, unknown>);
-        if (d.auto) digestInfo.autoUsers += 1;
+        if (!d.auto) continue;
+        // 关掉日报入口的账号不参与调度，也不该出现在「下次何时跑」里
+        if (userLayout(u.prefs as Record<string, unknown>).digestEnabled === false) continue;
+        digestInfo.autoUsers += 1;
+        const t = nextRunAt(d.time, new Date(now));
+        if (earliest === null || t < earliest) earliest = t;
       }
+      if (earliest !== null) digestInfo.nextRunAt = new Date(earliest).toISOString();
     } catch { /* 静默：日报不是关键路径 */ }
 
     try {

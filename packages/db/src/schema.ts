@@ -25,6 +25,7 @@ import {
   bigint,
   integer,
   smallint,
+  real,
   date,
   customType,
   uniqueIndex,
@@ -220,6 +221,8 @@ export const userLlm = pgTable('user_llm', {
   encryptedKey: text('encrypted_key'), // 加密后的 apiKey（AEAD）
   baseUrl: text('base_url'),
   model: text('model'),
+  /** NULL = 用默认温度（0.3）。契约里 temperature 是可写字段，没有列会变成「改了存不上」。 */
+  temperature: real('temperature'),
   thinking: boolean('thinking').notNull().default(false),
   thinkingDepth: integer('thinking_depth').notNull().default(0),
   updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),

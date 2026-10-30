@@ -1,0 +1,21 @@
+{
+  "name": "@feedlore/ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@feedlore/contract": "workspace:*",
+    "@feedlore/db": "workspace:*",
+    "drizzle-orm": "^0.44.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

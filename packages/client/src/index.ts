@@ -54,6 +54,9 @@ import {
   type ReadAllBody,
   type Session,
   type FeedsListResponse,
+  type DigestGenerateBody,
+  type LlmConfig,
+  ai as aiEndpoints,
   type UserCreateBody,
   type UserPatchBody,
   type VersionCheck,
@@ -367,6 +370,36 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
           const res = await raw.api.users[':id'].$delete({ param: { id } });
           return unwrap(res, OkSchema, 'DELETE /api/users/:id');
         },
+      },
+    },
+
+    ai: {
+      /** 连通性测试：**失败也返回 200**（ok:false + error），别当前端异常处理。 */
+      async testLlm(llm?: LlmConfig): Promise<{ ok: boolean; error?: string; reply?: string }> {
+        const res = await raw.api.digest['test-llm'].$post({ json: { llm } });
+        return unwrap(res, aiEndpoints.testLlm.response, 'POST /api/digest/test-llm');
+      },
+
+      /** 有日报的日期（倒序）。 */
+      async dates(): Promise<string[]> {
+        const res = await raw.api.digests.$get();
+        const data = await unwrap(res, aiEndpoints.dates.response, 'GET /api/digests');
+        return data.dates;
+      },
+
+      /** 某天的日报；不传 date 取今天（上海时区）。 */
+      async get(date?: string) {
+        const res = await raw.api.digest.$get({ query: date ? { date } : {} });
+        return unwrap(res, aiEndpoints.get.response, 'GET /api/digest');
+      },
+
+      /**
+       * 生成日报。force 才会绕过缓存重跑（比如换了模型想重新生成一次）。
+       * 模型不可用时不报错，返回 fallback=true 的规则摘要。
+       */
+      async generate(body: DigestGenerateBody = {}) {
+        const res = await raw.api.digest.generate.$post({ json: body });
+        return unwrap(res, aiEndpoints.generate.response, 'POST /api/digest/generate');
       },
     },
   };

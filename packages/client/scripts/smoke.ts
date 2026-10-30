@@ -566,7 +566,89 @@ async function main(): Promise<void> {
     bad('GET /api/version', e);
   }
 
-  // 24) 登出
+  /* ============================ AI 日报 ============================ */
+
+  // 24) 未配置模型时测试连接：HTTP 200 + ok:false（不是异常）
+  try {
+    const r = await api.ai.testLlm();
+    if (r.ok) throw new Error('没配模型却测试成功');
+    if (!r.error) throw new Error('ok:false 但没给原因');
+    ok('POST /api/digest/test-llm 未配置 → ok:false', r.error.slice(0, 48));
+  } catch (e) {
+    bad('POST /api/digest/test-llm 未配置 → ok:false', e);
+  }
+
+  // 25) 保存模型 Key：回显只能是掩码，明文与密文都不许出现在响应里
+  const FAKE_KEY = `sk-smoke-${Date.now().toString().slice(-10)}`;
+  try {
+    await api.prefs.update({
+      llm: { baseUrl: 'https://www.ithome.com/rss', model: 'smoke-model', apiKey: FAKE_KEY },
+    });
+    const p = await api.prefs.get();
+    if (!p.llm.apiKeySet) throw new Error('apiKeySet 仍为 false：Key 没存进去');
+    if (!p.llm.apiKeyHint.includes('•')) throw new Error(`掩码格式不对：${p.llm.apiKeyHint}`);
+    const body = JSON.stringify(p);
+    if (body.includes(FAKE_KEY)) throw new Error('响应里出现了明文 Key');
+    if (body.includes('enc.v1.')) throw new Error('响应里出现了密文');
+    ok('POST /api/prefs 保存模型 Key', `掩码 ${p.llm.apiKeyHint}`);
+  } catch (e) {
+    bad('POST /api/prefs 保存模型 Key', e);
+  }
+
+  // 26) 模型地址指向内网 → 出网校验拦住（这是 SSRF 最容易走的一条路）
+  try {
+    const r = await api.ai.testLlm({ baseUrl: 'http://127.0.0.1:3211/api/session', model: 'x', apiKey: 'k' });
+    if (r.ok) throw new Error('内网地址居然测试通过');
+    if (!/不可用/.test(r.error ?? '')) throw new Error(`错误信息没说明地址不可用：${r.error}`);
+    ok('test-llm 内网地址 → 拒绝', String(r.error ?? '').slice(0, 48));
+  } catch (e) {
+    bad('test-llm 内网地址 → 拒绝', e);
+  }
+
+  // 27) 生成日报：模型地址是能过校验但不会返回 chat 的站点 → 必须降级而不是报错
+  try {
+    const g = await api.ai.generate({ force: true });
+    if (!g.ok) throw new Error('ok 不为 true');
+    const d = g.digest;
+    if (!d.fallback) throw new Error('模型不可用却没降级（fallback=false）');
+    if (!d.error) throw new Error('降级但没写原因');
+    if (d.stats.collected < 0) throw new Error('统计异常');
+    ok('POST /api/digest/generate 降级', `${d.stats.kept}/${d.stats.collected} 条 · ${d.stats.feeds} 频道 · ${String(d.error).slice(0, 36)}`);
+  } catch (e) {
+    bad('POST /api/digest/generate 降级', e);
+  }
+
+  // 28) 读回今天 + 日期列表
+  try {
+    const one = await api.ai.get();
+    if (!one.digest) throw new Error('刚生成的日报读不到');
+    const dates = await api.ai.dates();
+    if (!dates.includes(one.date)) throw new Error(`日期列表里没有 ${one.date}`);
+    ok('GET /api/digest + /api/digests', `${one.date} · ${dates.length} 天有日报`);
+  } catch (e) {
+    bad('GET /api/digest + /api/digests', e);
+  }
+
+  // 29) 非法日期（格式对但日期不存在）必须 400，不能一路走到 PG 才报错
+  try {
+    await api.ai.get('2026-13-99');
+    throw new Error('非法日期居然通过了');
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 400) ok('GET /api/digest 非法日期 → 400');
+    else bad('GET /api/digest 非法日期 → 400', e);
+  }
+
+  // 30) 清掉测试用的模型配置（假 Key 不能留在库里，否则下次自动生成会去请求它）
+  try {
+    await api.prefs.update({ llm: { apiKey: '', baseUrl: '', model: '' } });
+    const p = await api.prefs.get();
+    if (p.llm.apiKeySet) throw new Error('Key 没清掉');
+    ok('清理测试模型配置');
+  } catch (e) {
+    bad('清理测试模型配置', e);
+  }
+
+  // 31) 登出
   try {
     const r = await api.logout();
     if (!r.ok) throw new Error('登出返回 ok=false');
@@ -575,7 +657,7 @@ async function main(): Promise<void> {
     bad('POST /api/logout', e);
   }
 
-  // 25) 登出后必须失效
+  // 32) 登出后必须失效
   try {
     const s = await api.session();
     if (s.authenticated) throw new Error('登出后会话仍有效');

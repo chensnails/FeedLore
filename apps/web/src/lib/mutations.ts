@@ -7,6 +7,7 @@ import type {
   EntryDetail,
   FeedCreateBody,
   FeedPatchBody,
+  LlmConfig,
   PrefsPatchBody,
   ReadAllBody,
   UserCreateBody,
@@ -330,5 +331,50 @@ export function useSaveAccount() {
       useUi.getState().notify(`已更新账号：${r.username}`);
     },
     onError: (e) => useUi.getState().notify(`更新失败：${errText(e)}`, 'error'),
+  });
+}
+
+/* ============================ 日报 ============================ */
+
+/**
+ * 生成日报。
+ *
+ * ⚠️ 这是个**慢**操作（模型单轮可能几十秒，走 map-reduce 时按批数累加），
+ * 所以界面必须在 pending 期间明确显示「正在生成」，并禁用重复点击 ——
+ * 否则用户会以为没反应，连点三次就是把额度烧三遍。
+ */
+export function useGenerateDigest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { date?: string; force?: boolean } = {}) => api.ai.generate(body),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: qk.digestDates });
+      void qc.invalidateQueries({ queryKey: qk.digest });
+      const d = r.digest;
+      if (d.fallback) {
+        // 降级不是成功：用户需要知道「这份是规则摘要，不是模型写的」
+        useUi.getState().notify(`已生成规则摘要（${d.stats.kept}/${d.stats.collected} 条）：${d.error ?? '模型不可用'}`, 'error');
+      } else {
+        useUi.getState().notify(`日报已生成：${d.stats.kept}/${d.stats.collected} 条，${d.stats.feeds} 个频道`);
+      }
+    },
+    onError: (e) => useUi.getState().notify(`生成失败：${errText(e)}`, 'error'),
+  });
+}
+
+/**
+ * 测试模型连通性。
+ *
+ * 注意接口**失败也返回 200**（`ok:false`），所以这里不能靠 onError 报错，
+ * 要在 onSuccess 里看 `ok` —— 否则「Key 错了」会被静默当成成功。
+ */
+export function useTestLlm() {
+  return useMutation({
+    mutationFn: (llm: LlmConfig) => api.ai.testLlm(llm),
+    onSuccess: (r) => {
+      if (r.ok) useUi.getState().notify(`模型连接正常：${r.reply ?? 'OK'}`);
+      else useUi.getState().notify(`模型不可用：${r.error ?? '未知原因'}`, 'error');
+    },
+    onError: (e) => useUi.getState().notify(`测试失败：${errText(e)}`, 'error'),
   });
 }

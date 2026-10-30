@@ -1,0 +1,1 @@
+ALTER TABLE "user_llm" ADD COLUMN "temperature" real;
