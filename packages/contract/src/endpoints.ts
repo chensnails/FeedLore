@@ -187,7 +187,7 @@ export const auth = {
     auth: 'admin',
     response: C.OkSchema,
   },
-} satisfies Record<string, EndpointSpec>;
+} as const satisfies Record<string, EndpointSpec>;
 
 /* ============================ 频道（Feeds） ============================ */
 
@@ -315,7 +315,7 @@ export const feeds = {
     auth: 'user',
     response: C.OkSchema,
   },
-} satisfies Record<string, EndpointSpec>;
+} as const satisfies Record<string, EndpointSpec>;
 
 /* ============================ 条目（Entries） ============================ */
 
@@ -409,7 +409,7 @@ export const entries = {
       favoritedAt: C.IsoDateTime.nullable(),
     }),
   },
-} satisfies Record<string, EndpointSpec>;
+} as const satisfies Record<string, EndpointSpec>;
 
 /* ============================ 偏好（Prefs） ============================ */
 
@@ -463,7 +463,7 @@ export const prefs = {
     body: prefsPatchBody,
     response: prefsUpdateResponse,
   },
-} satisfies Record<string, EndpointSpec>;
+} as const satisfies Record<string, EndpointSpec>;
 
 /* ============================ 管理员 ============================ */
 
@@ -558,7 +558,7 @@ export const admin = {
     body: accountBody,
     response: z.object({ ok: z.boolean(), username: z.string(), role: C.RoleSchema }),
   },
-} satisfies Record<string, EndpointSpec>;
+} as const satisfies Record<string, EndpointSpec>;
 
 /* ============================ AI 日报 ============================ */
 
@@ -601,7 +601,7 @@ export const ai = {
     body: digestGenerateBody,
     response: z.object({ ok: z.boolean(), cached: z.boolean(), digest: M.DigestSchema }),
   },
-} satisfies Record<string, EndpointSpec>;
+} as const satisfies Record<string, EndpointSpec>;
 
 /* ============================ 图片代理 ============================ */
 
@@ -614,7 +614,7 @@ export const img = {
     response: z.unknown(),
     binary: true,
   },
-} satisfies Record<string, EndpointSpec>;
+} as const satisfies Record<string, EndpointSpec>;
 
 /* ============================ 全集 ============================ */
 

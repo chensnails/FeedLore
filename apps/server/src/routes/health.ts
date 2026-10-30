@@ -1,5 +1,10 @@
 /**
  * GET /api/health —— 契约：contract.auth.health（public）
+ *
+ * ⚠️ 必须 `return new Hono().get(...)` **链式返回**：Hono 的路由类型挂在返回值上，
+ * 若像普通写法那样 `const app = new Hono(); app.get(...); return app;`，
+ * 类型层面等于「没有注册任何路由」，hc<AppType> 取不到这个端点（运行期却正常），
+ * 是本项目 v2 里最容易踩一次的坑。
  */
 
 import { Hono } from 'hono';
@@ -9,10 +14,8 @@ import { HealthSchema } from '@feedlore/contract';
 import { assertResponse } from '../lib/validate';
 import type { AppEnv } from '../middleware/auth';
 
-export function healthRoutes(db: Db | null): Hono<AppEnv> {
-  const app = new Hono<AppEnv>();
-
-  app.get('/api/health', async (c) => {
+export function healthRoutes(db: Db | null) {
+  return new Hono<AppEnv>().get('/api/health', async (c) => {
     const t0 = Date.now();
     let ready = false;
     let latencyMs: number | null = null;
@@ -35,6 +38,4 @@ export function healthRoutes(db: Db | null): Hono<AppEnv> {
     );
     return c.json(payload, ready ? 200 : 503);
   });
-
-  return app;
 }

@@ -25,10 +25,9 @@ interface PerFeedRow {
   unread: number;
 }
 
-export function feedsRoutes(db: Db | null, auth: AuthInstance | null): Hono<AppEnv> {
-  const app = new Hono<AppEnv>();
-
-  app.get(feedsSpec.list.path, requireAuth(auth, 'user'), async (c) => {
+export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
+  // ⚠️ 链式返回，见 health.ts 注释：非链式会让 hc<AppType> 看不到本路由。
+  return new Hono<AppEnv>().get(feedsSpec.list.path, requireAuth(auth, 'user'), async (c) => {
     if (!db) return c.json({ error: '数据库未就绪' }, 503);
 
     const rows = await db
@@ -106,6 +105,4 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null): Hono<AppE
 
     return c.json(payload);
   });
-
-  return app;
 }

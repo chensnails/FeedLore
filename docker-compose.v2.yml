@@ -10,7 +10,6 @@
 # - 本机 watchtower 开了 WATCHTOWER_LABEL_ENABLE=true，只更新带
 #   com.centurylinklabs.watchtower.enable=true 标签的容器；本栈**不打该标签**，不会被接管。
 # - v2 使用独立的库与卷（feedlore_v2），与 1.7.4 的数据物理隔离。
-# - V2_AUTH_DISABLED=1 是 P3 临时开关（better-auth 尚未接入），正式接入后必须去掉。
 
 x-server-build: &server-build
   context: .
