@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { flattenEntries, qk, type EntriesPages } from '../lib/query';
 import { useSaveAppearance, useSetFavorite, useSetRead } from '../lib/mutations';
 import { useSwipeDismiss } from '../lib/useSwipeDismiss';
+import { useOverlayFocus } from '../lib/useOverlayFocus';
 import { useUi } from '../store/ui';
 import type { EntriesList } from '../lib/types';
 import { ArticleBody } from './ArticleBody';
@@ -53,6 +54,7 @@ export function EntryReader() {
   const fs = prefsQuery.data?.appearance.readerFs ?? 'm';
 
   const { panelRef, handlers } = useSwipeDismiss(close);
+  useOverlayFocus(!!readingId, panelRef);
 
   /* 上一条 / 下一条：按**当前列表的顺序**走（不是按时间重新排）。
    *

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SourceConfig } from '@feedlore/contract';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
@@ -12,6 +12,7 @@ import {
   useSaveSourceConfig,
   useUpdateApp,
 } from '../lib/mutations';
+import { useOverlayFocus } from '../lib/useOverlayFocus';
 import { AccountForm } from './AccountForm';
 import { useUi } from '../store/ui';
 
@@ -76,6 +77,8 @@ const fmtTime = (iso: string | null | undefined): string =>
 
 export function AdminPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('status');
+  const sheetRef = useRef<HTMLElement>(null);
+  useOverlayFocus(open, sheetRef);
 
   // Esc 关闭：与阅读层一致，键盘用户不该只能去找那个叉
   useEffect(() => {
@@ -91,7 +94,7 @@ export function AdminPanel({ open, onClose }: { open: boolean; onClose: () => vo
 
   return (
     <div className="reader-backdrop" onClick={onClose} role="presentation">
-      <section className="admin-sheet" onClick={(e) => e.stopPropagation()}>
+      <section className="admin-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
         <button className="reader-close btn ghost" onClick={onClose} aria-label="关闭">
           ✕
         </button>

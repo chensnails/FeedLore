@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Digest, DigestConfig, PrefsResponse } from '@feedlore/contract';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useGenerateDigest, useSavePrefs, useTestLlm } from '../lib/mutations';
+import { useOverlayFocus } from '../lib/useOverlayFocus';
 
 /**
  * 日报面板（每个账号自己的，不是管理端）。
@@ -39,6 +40,8 @@ function shanghaiToday(): string {
 
 export function DigestPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('read');
+  const sheetRef = useRef<HTMLElement>(null);
+  useOverlayFocus(open, sheetRef);
   /** '' = 今天。用空串而不是硬编码日期，跨零点后「今天」仍然是对的。 */
   const [date, setDate] = useState('');
 
@@ -55,7 +58,7 @@ export function DigestPanel({ open, onClose }: { open: boolean; onClose: () => v
 
   return (
     <div className="reader-backdrop" onClick={onClose} role="presentation">
-      <section className="admin-sheet digest-sheet" onClick={(e) => e.stopPropagation()}>
+      <section className="admin-sheet digest-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
         <button className="reader-close btn ghost" onClick={onClose} aria-label="关闭">
           ✕
         </button>

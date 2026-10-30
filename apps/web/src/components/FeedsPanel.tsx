@@ -13,21 +13,32 @@ import {
   useSaveLayout,
   useSavePrefs,
 } from '../lib/mutations';
-import { useUi } from '../store/ui';
+import { useUi, type ListFilter } from '../store/ui';
 import type { Feed } from '../lib/types';
 import { Thumb } from './Thumb';
 
 /**
  * 左侧频道栏。
  *
- * 三件事都对齐 v1 的 ChannelList：
- * 1. **分组是折叠的，不是筛选的**。v2 早期用一行分组 chip 做筛选，等于每看一个分组要先点两下
- *    （点分组 → 再点频道），而且看不到别的分组还有多少未读。折叠列表一次能扫完全部。
- * 2. 折叠状态存服务端 `layout.collapsedGroups`（换设备还是收着的）。
- * 3. 频道多了要能搜：这是频道栏唯一随规模退化的能力，超过二三十个源就必须有。
+ * 结构（对齐 v1 的 ChannelList「全局视图」思路）：
+ *   搜索框
+ *   全局视图：全部频道 / 未读 / 收藏 / 关注   ← 系统级范围，跨所有订阅
+ *   分隔线
+ *   分组折叠列表（订阅源）
+ *   分隔线
+ *   屏蔽（置底，v1 也是这样与「关注」分开收纳）
+ *   添加频道
  *
- * 选中的频道要跨视图（列表/阅读）共享，才进 zustand；折叠与搜索是纯显示状态，留组件里 /
- * 服务端偏好里，不进 store。
+ * 三个纪律（与 v1 一致）：
+ * 1. **分组是折叠的，不是筛选的**——折叠列表一次能扫完全部分组与未读。
+ * 2. 折叠状态存服务端 `layout.collapsedGroups`（换设备还是收着的）。
+ * 3. 频道多了要能搜：超过二三十个源就必须有，这是频道栏唯一随规模退化的能力。
+ *
+ * 「全局视图」四档（未读/收藏/关注/屏蔽）是从 v2 早期「列表工具条的筛选档」挪回来的：
+ * 它们本质是**全局范围**，放在频道栏顶部（参照 v1 的 scope 行）比塞在列表里更说得通——
+ * 用户点「未读」时想看的是「全站未读」，而不是「当前频道里的未读」的子集。
+ * 选中的频道 / 分组要跨视图（列表/阅读）共享，才进 zustand；折叠、搜索、分组内筛选是
+ * 纯显示状态，留组件里 / 服务端偏好里，不进 store。
  */
 export function FeedsPanel() {
   const feedId = useUi((s) => s.feedId);
@@ -39,6 +50,10 @@ export function FeedsPanel() {
    * 在本地叫 focusGroup，避免「同一个名字两个东西」这种最容易看错的写法。 */
   const focusGroup = useUi((s) => s.groupName);
   const setFocusGroup = useUi((s) => s.setGroupName);
+  /* 全局视图的激活态也来自 store：点「未读」清掉频道/分组/标签并设 filter，
+   * 与列表工具条里的筛选档共用同一份状态（route 同步、深链都不变）。 */
+  const filter = useUi((s) => s.filter);
+  const setFilter = useUi((s) => s.setFilter);
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState('');
   const [groupName, setGroupName] = useState('');
@@ -300,7 +315,22 @@ export function FeedsPanel() {
     setRenaming(null);
   }
 
-  const allMatch = !ql.trim() || '全部频道'.includes(ql.trim());
+  /* 全局视图：系统级范围，跨所有订阅。激活态 = 没选具体频道/分组 且 filter 命中。
+   * 点一下清掉 feedId/group/tag（setFeedId(null) 顺手清了这两个），再设 filter——
+   * 与 v1 的 onScope 语义一致：选「未读」看的是全站未读，不是当前频道的子集。 */
+  const isGlobal = feedId === null && focusGroup === null;
+  const scopeActive = (k: ListFilter): boolean => isGlobal && filter === k;
+  function pickScope(k: ListFilter): void {
+    setFeedId(null);
+    setFilter(k);
+  }
+
+  const gviews: Array<{ key: ListFilter; name: string; n: number; icon: GIconName }> = [
+    { key: 'all', name: '全部频道', n: data.flags.total, icon: 'all' },
+    { key: 'unread', name: '未读', n: data.flags.unread, icon: 'unread' },
+    { key: 'favorite', name: '收藏', n: data.flags.favorite, icon: 'favorite' },
+    { key: 'watch', name: '关注', n: data.flags.watching, icon: 'watch' },
+  ];
 
   return (
     <aside className={sidebarClass}>
@@ -328,22 +358,28 @@ export function FeedsPanel() {
         )}
       </div>
 
-      <ul className="feeds">
-        {allMatch && (
-          <li>
-            <button className={`feed${feedId === null ? ' on' : ''}`} onClick={() => setFeedId(null)}>
-              <span className="dot" aria-hidden />
-              <div className="feed-main">
-                <p className="feed-title">全部频道</p>
-                <p className="feed-meta">
-                  {data.feeds.length} 个频道 · {data.flags.total} 条
-                </p>
-              </div>
-              <span className="count">{data.flags.unread}</span>
-            </button>
-          </li>
-        )}
+      {/* 全局视图：系统级范围（未读/收藏/关注/全部）。参照 v1 ChannelList 的 scope 行，
+          但用图标 chip + 计数徽标呈现，和下面的订阅源分组在视觉上明确分层。 */}
+      <nav className="gviews" aria-label="全局视图">
+        {gviews.map((g) => (
+          <button
+            key={g.key}
+            className={`gview${scopeActive(g.key) ? ' on' : ''}`}
+            aria-pressed={scopeActive(g.key)}
+            onClick={() => pickScope(g.key)}
+          >
+            <span className="gview-ico">
+              <GIcon name={g.icon} />
+            </span>
+            <span className="gview-name">{g.name}</span>
+            {g.n > 0 && <span className="gview-n">{g.n}</span>}
+          </button>
+        ))}
+      </nav>
 
+      <div className="nav-sep" aria-hidden="true" />
+
+      <ul className="feeds">
         {grouped.map((g) => {
           /* 未分组那一组不折叠：它没有名字，折叠起来就是一堆「▸ 未分组」，
            * 点开才知道里面有什么，还不如直接列出来。 */
@@ -452,7 +488,7 @@ export function FeedsPanel() {
                     <button
                       className={`feed${feedId === f.id ? ' on' : ''}${f.enabled ? '' : ' off'}`}
                       onClick={() => setFeedId(f.id)}
-                      title={`${f.error ?? f.url}${canSort ? '\\nAlt+↑/↓ 可调整顺序' : ''}`}
+                      title={`${f.error ?? f.url}${canSort ? '\nAlt+↑/↓ 可调整顺序' : ''}`}
                       /* 键盘也能排：拖拽对只用键盘的人是死路，而这是纯视觉顺序的调整 */
                       onKeyDown={(e) => {
                         if (!e.altKey) return;
@@ -531,6 +567,24 @@ export function FeedsPanel() {
       {grouped.length === 0 && (
         <p className="hint">{ql.trim() ? `没有匹配「${ql.trim()}」的频道。` : '还没有频道。'}</p>
       )}
+
+      <div className="nav-sep" aria-hidden="true" />
+
+      {/* 屏蔽：置底收纳，与「关注」分开是刻意的（v1 同款）—— 屏蔽是被规则挡住的内容，
+          不该和正常入口混排。命中即已自动标为已读，这里只做「想看看挡了什么」的入口。 */}
+      <nav className="gviews bottom" aria-label="系统视图">
+        <button
+          className={`gview${scopeActive('block') ? ' on' : ''}`}
+          aria-pressed={scopeActive('block')}
+          onClick={() => pickScope('block')}
+        >
+          <span className="gview-ico">
+            <GIcon name="block" />
+          </span>
+          <span className="gview-name">屏蔽</span>
+          {data.flags.blocked > 0 && <span className="gview-n">{data.flags.blocked}</span>}
+        </button>
+      </nav>
 
       <div className="add-feed">
         {adding ? (
@@ -633,4 +687,65 @@ function LetterAvatar({ title }: { title: string }) {
       {ch.toUpperCase()}
     </span>
   );
+}
+
+type GIconName = 'all' | 'unread' | 'favorite' | 'watch' | 'block';
+
+/**
+ * 全局视图的线性图标。统一描边 currentColor，随主题/激活态变色；
+ * 比 emoji 更克制，也不会在深浅主题下出现色差。
+ */
+function GIcon({ name }: { name: GIconName }) {
+  const c = {
+    width: 16,
+    height: 16,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+  switch (name) {
+    case 'all':
+      return (
+        <svg {...c}>
+          <rect x="3" y="3" width="7" height="7" rx="1.6" />
+          <rect x="14" y="3" width="7" height="7" rx="1.6" />
+          <rect x="3" y="14" width="7" height="7" rx="1.6" />
+          <rect x="14" y="14" width="7" height="7" rx="1.6" />
+        </svg>
+      );
+    case 'unread':
+      return (
+        <svg {...c}>
+          <circle cx="12" cy="12" r="5.5" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case 'favorite':
+      return (
+        <svg {...c}>
+          <path
+            d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9 6.8 19.6l1-5.8L3.6 9.7l5.8-.8z"
+            fill="currentColor"
+            stroke="none"
+          />
+        </svg>
+      );
+    case 'watch':
+      return (
+        <svg {...c}>
+          <path d="M2 12s3.6-6.6 10-6.6S22 12 22 12s-3.6 6.6-10 6.6S2 12 2 12z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      );
+    case 'block':
+      return (
+        <svg {...c}>
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M5.5 5.5l13 13" />
+        </svg>
+      );
+  }
 }

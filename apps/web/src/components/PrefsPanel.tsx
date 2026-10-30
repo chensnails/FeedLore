@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Appearance, FilterRule, WatchRule } from '@feedlore/contract';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useApplyWatch, useSaveAppearance, useSavePrefs } from '../lib/mutations';
+import { useOverlayFocus } from '../lib/useOverlayFocus';
 import { AccountForm } from './AccountForm';
 
 /**
@@ -25,6 +26,8 @@ type Tab = 'appearance' | 'reading' | 'watch' | 'filter' | 'account';
 
 export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('appearance');
+  const sheetRef = useRef<HTMLElement>(null);
+  useOverlayFocus(open, sheetRef);
 
   useEffect(() => {
     if (!open) return;
@@ -39,7 +42,7 @@ export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => vo
 
   return (
     <div className="reader-backdrop" onClick={onClose} role="presentation">
-      <section className="admin-sheet prefs-sheet" onClick={(e) => e.stopPropagation()}>
+      <section className="admin-sheet prefs-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
         <button className="reader-close btn ghost" onClick={onClose} aria-label="关闭">
           ✕
         </button>

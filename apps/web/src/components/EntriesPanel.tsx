@@ -363,23 +363,9 @@ export function EntriesPanel() {
         </div>
       </div>
 
-      {/* 筛选档 + 全部已读。放在标题下面单独一行：它们是「决定看什么」的开关，
-          和「决定怎么显示」（排序/视图）不是一类东西，混在一行会在窄屏挤成一团。 */}
+      {/* 「全部已读」：作用范围 = 当前可见列表（频道/分组/筛选/标签/搜索），
+          和排序/视图不是一类，单独一行右对齐。筛选档已挪到左侧频道栏的「全局视图」。 */}
       <div className="filter-row">
-        <div className="seg" role="tablist" aria-label="筛选">
-          {FILTERS.map(([v, label]) => (
-            <button
-              key={v}
-              role="tab"
-              aria-selected={filter === v}
-              className={`seg-btn${filter === v ? ' on' : ''}`}
-              onClick={() => setFilter(v)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <span className="filter-spacer" />
         <button
           className="btn ghost sm"
           disabled={readAll.isPending || (head?.total ?? 0) === 0}

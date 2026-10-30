@@ -271,6 +271,11 @@ export function CommandPalette({
           value={q}
           placeholder="输入命令或频道名（可打拼音，如 gl / sz / qh）"
           aria-label="搜索命令"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="cmdk-list"
+          aria-autocomplete="list"
+          aria-activedescendant={filtered.length ? `cmdk-opt-${idx}` : undefined}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') {
@@ -285,10 +290,13 @@ export function CommandPalette({
             }
           }}
         />
-        <ul className="cmdk-list" ref={listRef}>
+        <ul className="cmdk-list" id="cmdk-list" role="listbox" aria-label="命令列表" ref={listRef}>
           {filtered.map((c, i) => (
             <li key={c.id}>
               <button
+                id={`cmdk-opt-${i}`}
+                role="option"
+                aria-selected={i === idx}
                 className={`cmdk-item${i === idx ? ' on' : ''}`}
                 onMouseEnter={() => setIdx(i)}
                 onClick={() => c.run()}

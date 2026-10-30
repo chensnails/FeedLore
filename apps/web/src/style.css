@@ -5,7 +5,9 @@
  * - 深色为默认（阅读器场景），浅色靠 `prefers-color-scheme` 与 `[data-theme]` 覆盖：
  *   后者是**按账号**的主题偏好（v1.x 数据里有 auto/light/dark/github 四值），
  *   媒体查询表达不了「用户显式选浅色、但系统是深色」；
- * - ⚠️ `sticky`/`fixed` 元素禁用 backdrop-filter（掉帧主因），阅读层用实色遮罩；
+ * - 玻璃拟态（glassmorphism）：顶栏 / 侧栏 / 浮层用半透明表面 + backdrop-filter 模糊，
+ *   实色遮罩改为 frosted glass；`prefers-reduced-motion` 下关闭模糊以保流畅。
+ *   （早期 v1 教训里「禁用 backdrop-filter」那条已被本版玻璃风推翻。）
  * - 断点只两档：820（双栏 → 单栏）、560（工具条降级）。
  */
 
@@ -19,8 +21,19 @@
   --line-strong: rgba(255, 255, 255, 0.16);
   --text: #e9ebef;
   --muted: #99a0aa;
-  --accent: #d8a86e;
-  --accent-ink: #241a0f;
+  --accent: #3a8dcc;
+  --accent-ink: #ffffff;
+  /* 主色的淡底：分组「只看」按下态、scope 退出按钮的底色。
+   * 用 color-mix 派生自 --accent，所以换主色/换主题都跟着走，不必再维护一份色板。 */
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+  /* 玻璃拟态令牌：frosted glass 表面与浮层。半透明 + backdrop-filter 模糊，
+   * 配合 body 的渐变底，玻璃面才会「透出」后面颜色。浅色主题在下方 light 块覆盖。 */
+  --glass: rgba(255, 255, 255, 0.05);
+  --glass-2: rgba(255, 255, 255, 0.09);
+  --glass-border: rgba(255, 255, 255, 0.13);
+  --sheet: rgba(22, 24, 28, 0.72);
+  --sheet-border: rgba(255, 255, 255, 0.16);
+  --glass-blur: blur(18px) saturate(160%);
   --danger: #f2836f;
   --radius: 12px;
   --radius-sm: 8px;
@@ -49,6 +62,12 @@
   --text: #171a1f;
   --muted: #6b7280;
   --danger: #c0392b;
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass-2: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --sheet: rgba(255, 255, 255, 0.82);
+  --sheet-border: rgba(0, 0, 0, 0.1);
+  --glass-blur: blur(18px) saturate(150%);
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
 }
 
@@ -63,6 +82,12 @@
     --text: #171a1f;
     --muted: #6b7280;
     --danger: #c0392b;
+    --glass: rgba(255, 255, 255, 0.55);
+    --glass-2: rgba(255, 255, 255, 0.72);
+    --glass-border: rgba(0, 0, 0, 0.08);
+    --sheet: rgba(255, 255, 255, 0.82);
+    --sheet-border: rgba(0, 0, 0, 0.1);
+    --glass-blur: blur(18px) saturate(150%);
     --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
   }
 }
@@ -79,7 +104,12 @@ body,
 
 body {
   margin: 0;
-  background: var(--bg);
+  background-color: var(--bg);
+  /* 渐变底：给玻璃面（顶栏/侧栏/浮层）提供可「透出」的色彩，否则 frosted 看不出层次 */
+  background-image:
+    radial-gradient(1100px 560px at 88% -8%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 60%),
+    radial-gradient(900px 520px at 0% 108%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%);
+  background-attachment: fixed;
   color: var(--text);
   font: 14px/1.55 var(--font);
   -webkit-font-smoothing: antialiased;
@@ -128,6 +158,9 @@ body {
   * {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+    /* 玻璃模糊在低端设备上是掉帧主因：偏好减少动效时直接关掉模糊，保留半透明表面 */
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 }
 
@@ -141,8 +174,8 @@ body {
 .btn {
   font: inherit;
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   padding: 7px 14px;
   cursor: pointer;
@@ -152,6 +185,7 @@ body {
 }
 .btn:hover:not(:disabled) {
   border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -319,8 +353,10 @@ body {
   align-items: center;
   gap: 16px;
   padding: 12px 20px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid var(--glass-border);
   flex: none;
 }
 
@@ -375,7 +411,10 @@ body {
 .sidebar {
   min-height: 0;
   overflow: auto;
-  border-right: 1px solid var(--line);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-right: 1px solid var(--glass-border);
   padding: 14px 10px 24px;
 }
 
@@ -384,6 +423,99 @@ body {
   flex-wrap: wrap;
   gap: 6px;
   padding: 0 4px 10px;
+}
+
+/* 全局视图：系统级范围（全部 / 未读 / 收藏 / 关注 / 屏蔽），与下方订阅源分组在视觉上明确分层。
+ * 线性图标 chip + 计数徽标；激活态用 accent 强调色 + 左描边，和 .feed.on 同一套视觉语言，
+ * 这样「全局范围」和「具体频道」在侧栏里一眼能区分开（参照 v1 ChannelList 的 scope 行）。 */
+.gviews {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 2px;
+}
+.gviews.bottom {
+  margin-top: 2px;
+}
+.gview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+.gview:hover {
+  background: var(--glass-2);
+}
+.gview.on {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--accent);
+}
+.gview-ico {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+.gview.on .gview-ico {
+  color: var(--accent);
+}
+.gview-ico svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+.gview-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gview-n {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  min-width: 18px;
+  text-align: center;
+}
+.gview.on .gview-n {
+  color: var(--accent);
+  background: transparent;
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+
+/* 分隔线：全局视图 ↔ 订阅源、订阅源 ↔ 屏蔽之间的视觉分层（两端淡出，不顶满） */
+.nav-sep {
+  height: 1px;
+  margin: 12px 8px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--line-strong) 22%,
+    var(--line-strong) 78%,
+    transparent
+  );
 }
 
 .feeds {
@@ -411,11 +543,12 @@ body {
   transition: background 0.16s ease;
 }
 .feed:hover {
-  background: var(--surface);
+  background: var(--glass-2);
 }
 .feed.on {
-  background: var(--surface);
-  border-color: var(--line-strong);
+  background: var(--glass-2);
+  border-color: var(--glass-border);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 .feed.off {
   opacity: 0.5;
@@ -509,6 +642,7 @@ body {
   border-radius: var(--radius-sm);
   padding: 12px 12px 11px;
   cursor: pointer;
+  position: relative;
   /* 图文并排：图在右、文在左，图缺失时整行自然回到单栏（Thumb 返回 null） */
   display: flex;
   gap: 12px;
@@ -516,8 +650,8 @@ body {
   transition: background 0.16s ease, border-color 0.16s ease;
 }
 .card:hover {
-  background: var(--surface);
-  border-color: var(--line);
+  background: var(--glass-2);
+  border-color: var(--glass-border);
 }
 
 /* ⚠️ min-width: 0 不能省：flex 子项默认 min-width:auto，长标题会把封面挤出容器 */
@@ -536,13 +670,21 @@ body {
   border: 1px solid var(--line);
   background: var(--surface);
 }
-/* 已读降一点存在感，扫列表时新条目更跳 */
-.card-row.read .card-thumb {
-  opacity: 0.7;
+/* 未读标记：卡片左内边距留白处一个随主色变化的小圆点（默认蓝 = 小蓝点）；
+ * 已读不渲染，且已读项不再变暗，保持常规亮度。 */
+.card-row:not(.read) .card {
+  padding-left: 22px;
 }
-.card.read .card-title {
-  color: var(--muted);
-  font-weight: 400;
+.card-row:not(.read) .card::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  left: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
 }
 
 .card-title {
@@ -602,8 +744,10 @@ body {
 .reader-sheet {
   position: relative;
   width: min(var(--reader-width), 100%);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--sheet);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--sheet-border);
   border-radius: 16px;
   box-shadow: var(--shadow);
   padding: 28px 28px 24px;
@@ -1028,8 +1172,8 @@ body {
   font: inherit;
   font-size: 13px;
   color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--glass-2);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
   padding: 6px 9px;
 }
@@ -1092,8 +1236,10 @@ body {
 .admin-sheet {
   position: relative;
   width: min(860px, 100%);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--sheet);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--sheet-border);
   border-radius: 16px;
   box-shadow: var(--shadow);
   padding: 26px 26px 22px;
@@ -1946,8 +2092,10 @@ body {
   max-height: min(62vh, 520px);
   display: flex;
   flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--sheet);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--sheet-border);
   border-radius: 14px;
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -2418,8 +2566,10 @@ body.side-resizing {
 
 .confirm-box {
   width: min(420px, 100%);
-  background: var(--bg);
-  border: 1px solid var(--line);
+  background: var(--sheet);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--sheet-border);
   border-radius: 14px;
   box-shadow: var(--shadow);
   padding: 20px 20px 16px;
@@ -2488,4 +2638,151 @@ body.side-resizing {
 .feed-group-row .icon-btn.on {
   color: var(--accent);
   background: var(--accent-soft);
+}
+
+/* ================= UI 打磨（P10.10） =================
+ * 集中在这一节，方便回滚。全部动画都受顶部 `prefers-reduced-motion` 规则约束
+ * （那段会把 animation/transition 的 duration 压到 0.01ms，等于关掉动效但保留最终态）。
+ */
+
+/* 覆盖层登场：轻量淡入 + 微位移，比「啪一下出现」更有层次，又不喧宾夺主。
+ * 只动层本身（reader-sheet / admin-sheet / cmdk / confirm-box），不动背后的遮罩，
+ * 否则 backdrop 的 grid 居中会被 transform 带歪。 */
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.reader-sheet,
+.admin-sheet,
+.cmdk,
+.confirm-box {
+  animation: sheet-in 0.2s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.lightbox {
+  animation: fade-in 0.16s ease both;
+}
+
+/* 主题化细滚动条：原生滚动条在暗色下是刺眼的浅灰块，统一成低对比的细条。
+ * 只作用于会真的滚动的容器；reader-sheet 靠 backdrop 滚动，不在其内另起。 */
+.list,
+.sidebar,
+.admin-body,
+.cmdk-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.list::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar,
+.admin-body::-webkit-scrollbar,
+.cmdk-list::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.list::-webkit-scrollbar-thumb,
+.sidebar::-webkit-scrollbar-thumb,
+.admin-body::-webkit-scrollbar-thumb,
+.cmdk-list::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.list::-webkit-scrollbar-thumb:hover,
+.sidebar::-webkit-scrollbar-thumb:hover,
+.admin-body::-webkit-scrollbar-thumb:hover,
+.cmdk-list::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: padding-box;
+}
+.list::-webkit-scrollbar-track,
+.sidebar::-webkit-scrollbar-track,
+.admin-body::-webkit-scrollbar-track,
+.cmdk-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 按压微反馈：按钮/卡片被按下时轻轻下沉 1px，给一个「按到了」的触感。
+ * 统一补 transition 把 transform 也纳入过渡；reduced-motion 下 duration 趋零，等于无动画。 */
+.btn,
+.seg-btn,
+.chip,
+.tag-btn,
+.icon-btn,
+.fav-btn,
+.scope-x,
+.reader-close,
+.accent-dot,
+.cmdk-item,
+.feed,
+.card {
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.08s ease;
+}
+.btn:active,
+.seg-btn:active,
+.chip:active,
+.tag-btn:active,
+.icon-btn:active,
+.fav-btn:active,
+.scope-x:active,
+.reader-close:active,
+.accent-dot:active,
+.cmdk-item:active {
+  transform: translateY(1px);
+}
+.feed:active,
+.card:active {
+  transform: translateY(1px);
+}
+
+/* 网格卡片悬停：上浮 1px + 淡阴影，比单纯描边更有「可点」的立体感（列表视图不浮起，避免位移）。 */
+.cards.grid-mode .card {
+  transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.14s ease, box-shadow 0.14s ease;
+}
+.cards.grid-mode .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 16%);
+}
+.cards.grid-mode .card:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* 命令面板：当前项左侧一道强调条，比纯底色更克制，长列表里也不刺眼。 */
+.cmdk-item.on {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* 阅读层标题与正文的呼吸感：顶部留白稍宽，长文不贴边。 */
+.reader-sheet {
+  padding-top: 30px;
+}
+.reader-title {
+  letter-spacing: 0.01em;
+}
+
+/* 暗色下细分割线偏硬，正文区块之间的间距已经够，这里只让阅读层里的小标题更分明。 */
+.reader-body p + p {
+  margin-top: 1.15em;
+}
+
+/* 频道栏「全部频道」这一行作为常驻锚点，给一点底线区隔。
+ * 用专属类而不是 :first-child：搜索态下这一行不渲染，:first-child 会误伤第一个分组。 */
+.feed-all-row {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+  padding-bottom: 4px;
 }
