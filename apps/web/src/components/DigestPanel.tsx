@@ -157,7 +157,7 @@ function ReadTab({ date, onPickDate }: { date: string; onPickDate: (d: string) =
         <article className="digest-body">
           {data.fallback && (
             <p className="admin-alert">
-              这是**规则摘要**，不是模型生成的：{data.error ?? '模型不可用'}。
+              这是<strong>规则摘要</strong>，不是模型生成的：{data.error ?? '模型不可用'}。
               配好模型后点「重新生成」即可。
             </p>
           )}

@@ -338,11 +338,16 @@ function ruleDigest(compact: PoolEntry[], reason: string): {
     sections: [
       {
         title: '频道更新分布',
-        items: topFeeds.slice(0, 6).map(([f, n]) => ({ comment: `${n} 条更新`, item: { name: f, feedName: f, tags: [], size: '', link: null } })),
+        // feedName 留空：这里的「条目」就是频道本身，两处都填会渲染成「IT之家 IT之家」
+        items: topFeeds.slice(0, 6).map(([f, n]) => ({
+          comment: `${n} 条更新`,
+          item: { name: f, feedName: '', tags: [], size: '', link: null },
+        })),
       },
       {
-        title: '最新条目',
-        items: compact.slice(0, 24).map((e, i) => ({ comment: '（规则摘要，未调用模型）', ref: i + 1 })),
+        // 每条都写「（规则摘要）」会在 24 行里重复 24 次，信息量为零；写在标题上一次就够
+        title: '最新条目（规则摘要）',
+        items: compact.slice(0, 24).map((_e, i) => ({ comment: '', ref: i + 1 })),
       },
     ],
     fallback: true,
