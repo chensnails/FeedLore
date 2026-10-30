@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import type { EntriesListQuery } from '@feedlore/client';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
@@ -16,21 +17,36 @@ import { Thumb } from './Thumb';
 export function EntriesPanel() {
   const feedId = useUi((s) => s.feedId);
   const onlyUnread = useUi((s) => s.onlyUnread);
+  const toggleOnlyUnread = useUi((s) => s.toggleOnlyUnread);
   const openEntry = useUi((s) => s.openEntry);
+  const search = useUi((s) => s.search);
+  const setSearch = useUi((s) => s.setSearch);
 
   const setRead = useSetRead();
   const setFavorite = useSetFavorite();
   const readAll = useReadAll();
+
+  /* 搜索框是**受控 + 本地 state**，不是直接绑 store：
+   * 每敲一个字都写 store 会让列表请求跟着抖 5 次（还每次都是一个完整的 ilike 查询）。
+   * 300ms 防抖后再写，顺带把「敲了空格但没输内容」的空搜索挡掉。 */
+  const [kw, setKw] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(kw.trim()), 300);
+    return () => clearTimeout(t);
+  }, [kw, setSearch]);
+
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // hc 的 query 类型只接受字符串（URL 查询串的真实形态），数字要在服务端 coerce
   const query: EntriesListQuery = {
     limit: '30',
     ...(feedId ? { feeds: feedId } : {}),
     ...(onlyUnread ? { unread: '1' } : {}),
+    ...(search ? { q: search } : {}),
   };
 
   const { data, isPending, isError, error, refetch, isFetching } = useQuery({
-    queryKey: [...qk.entries, feedId, onlyUnread],
+    queryKey: [...qk.entries, feedId, onlyUnread, search],
     queryFn: () => api.entries.list(query),
   });
 
@@ -81,6 +97,47 @@ export function EntriesPanel() {
           )}
         </span>
         <span className="list-actions">
+          <button
+            className={`chip sm${onlyUnread ? ' on' : ''}`}
+            onClick={toggleOnlyUnread}
+            aria-pressed={onlyUnread}
+            title="只看未读"
+          >
+            只看未读
+          </button>
+          <span className="search-box">
+            <input
+              ref={inputRef}
+              className="input sm search-input"
+              type="search"
+              value={kw}
+              placeholder="搜索标题、正文、标签…"
+              aria-label="搜索条目"
+              onChange={(e) => setKw(e.target.value)}
+              onKeyDown={(e) => {
+                // 回车立即生效，不用等防抖（搜完就走的场景很常见）
+                if (e.key === 'Enter') setSearch(kw.trim());
+                if (e.key === 'Escape') {
+                  setKw('');
+                  setSearch('');
+                }
+              }}
+            />
+            {kw && (
+              <button
+                className="search-clear"
+                aria-label="清空搜索"
+                title="清空搜索"
+                onClick={() => {
+                  setKw('');
+                  setSearch('');
+                  inputRef.current?.focus();
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </span>
           {data.tags.length > 0 && (
             <span className="tags-inline">
               {data.tags.slice(0, 4).map((t) => (
@@ -93,7 +150,9 @@ export function EntriesPanel() {
           <button
             className="btn ghost sm"
             disabled={readAll.isPending || data.total === 0}
-            onClick={() => readAll.mutate({ feeds: targetFeeds })}
+            /* 搜索态必须把 q 一起带上：不带就变成「把范围内所有未读都标掉」，
+             * 而用户看到的只是搜索结果那几条 —— 这是最容易让人恼火的误操作。 */
+            onClick={() => readAll.mutate({ feeds: targetFeeds, ...(search ? { q: search } : {}) })}
             title="把当前范围内的未读全部标为已读"
           >
             {readAll.isPending ? '处理中…' : '全部已读'}
@@ -132,7 +191,11 @@ export function EntriesPanel() {
         ))}
       </ul>
 
-      {data.entries.length === 0 && <p className="hint">这里还没有条目。</p>}
+      {data.entries.length === 0 && (
+        <p className="hint">
+          {search ? `没有匹配「${search}」的条目。` : '这里还没有条目。'}
+        </p>
+      )}
       {data.hasMore && <p className="hint">仅显示前 {data.limit} 条</p>}
     </main>
   );

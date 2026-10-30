@@ -4,7 +4,13 @@ import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useSetFavorite } from '../lib/mutations';
 import { useUi } from '../store/ui';
+import { ArticleBody } from './ArticleBody';
 import { Thumb } from './Thumb';
+
+/** 正文块里有没有图片。字符串探测就够：块 JSON 由服务端生成，形状固定且不含嵌套。 */
+function hasBodyImages(json: string | null): boolean {
+  return typeof json === 'string' && json.includes('"t":"img"');
+}
 
 /**
  * 阅读层（覆盖式）：只在打开某条时才请求详情。
@@ -57,12 +63,12 @@ export function EntryReader() {
               ))}
             </p>
 
-            {/* 正文按纯文本渲染：抓来的 HTML 未做净化，直接 innerHTML 等于把 XSS 装进自家页面 */}
-            <div className="reader-body">{data.content || data.desc || '（无正文）'}</div>
+            {/* 正文分层渲染：bodyJson 的图文块按原文顺序排开，没有块数组才回退纯文本分段 */}
+            <ArticleBody bodyJson={data.bodyJson} content={data.content} desc={data.desc} title={data.name} />
 
-            {/* 配图单独成组：列表只给封面，详情才把整组图拉出来。
-                服务端已逐张改写成代理地址，这里不碰外链。 */}
-            {data.images.length > 0 && (
+            {/* 图集是「封面的放大版」：正文块里已经有图时不再重复列一遍
+                （否则一篇图集文章会把同一批图渲染两次）。 */}
+            {data.images.length > 0 && !hasBodyImages(data.bodyJson) && (
               <div className="reader-gallery">
                 {data.images.map((u) => (
                   <Thumb key={u} src={u} className="reader-shot" decorative />

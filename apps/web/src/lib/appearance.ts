@@ -33,4 +33,12 @@ export function applyAppearance(a: Appearance): void {
 
   el.dataset.density = a.density;
   el.dataset.fontSize = a.fontSize;
+
+  /* 阅读排版四项：只作用于正文，界面字号不受影响。
+   * 落成 data-* 属性、由 CSS 换算成 --reader-* 令牌，而不是在这里 setProperty
+   * 一堆具体数值 —— 具体值属于样式表，放这里会让「改行高」变成改 JS。 */
+  el.dataset.readerFont = a.readerFont;
+  el.dataset.readerLh = a.readerLh;
+  el.dataset.readerFs = a.readerFs;
+  el.dataset.readerWidth = a.readerWidth;
 }

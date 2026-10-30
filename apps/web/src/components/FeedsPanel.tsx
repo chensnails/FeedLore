@@ -17,6 +17,8 @@ import { Thumb } from './Thumb';
 export function FeedsPanel() {
   const feedId = useUi((s) => s.feedId);
   const setFeedId = useUi((s) => s.setFeedId);
+  const navOpen = useUi((s) => s.navOpen);
+  const closeNav = useUi((s) => s.closeNav);
   const [group, setGroup] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState('');
@@ -55,6 +57,11 @@ export function FeedsPanel() {
     importOpml.mutate(text);
   }
 
+  /* 窄屏时侧栏是抽屉（position: fixed + translateX），靠这个 class 展开；
+   * 桌面端 `.sidebar.open` 没有任何规则，等于无事发生 —— 不用判断视口宽度，
+   * 也就不会出现「JS 认窄屏、CSS 认桌面」的错位。 */
+  const sidebarClass = `sidebar${navOpen ? ' open' : ''}`;
+
   const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: qk.feeds,
     queryFn: () => api.feeds.list(),
@@ -62,14 +69,14 @@ export function FeedsPanel() {
 
   if (isPending) {
     return (
-      <aside className="sidebar">
+      <aside className={sidebarClass}>
         <p className="hint">加载频道…</p>
       </aside>
     );
   }
   if (isError) {
     return (
-      <aside className="sidebar">
+      <aside className={sidebarClass}>
         <p className="hint">频道加载失败：{error instanceof Error ? error.message : '未知错误'}</p>
         <button className="btn" onClick={() => void refetch()}>
           重试
@@ -103,7 +110,15 @@ export function FeedsPanel() {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={sidebarClass}>
+      {/* 只在窄屏抽屉里出现（CSS 控制）：抽屉盖住列表时，给一个不用点遮罩的关闭路径 */}
+      <div className="sidebar-head">
+        <span>频道</span>
+        <button className="btn ghost icon nav-close" aria-label="收起频道栏" onClick={closeNav}>
+          ✕
+        </button>
+      </div>
+
       <div className="chips">
         <button className={`chip${group === null ? ' on' : ''}`} onClick={() => setGroup(null)}>
           全部 <b>{data.total}</b>

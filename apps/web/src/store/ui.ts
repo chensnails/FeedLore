@@ -22,12 +22,23 @@ interface UiState {
   onlyUnread: boolean;
   /** 正在阅读的条目 id；null = 未打开阅读层 */
   readingId: string | null;
+  /** 列表搜索词（服务端搜索，不是前端过滤）。空串 = 不搜 */
+  search: string;
+  /** 窄屏抽屉是否展开。桌面端不用它（侧栏常驻） */
+  navOpen: boolean;
+  /** 设置面板（外观 / 阅读 / 关注规则 / 账号） */
+  settingsOpen: boolean;
   /** 临时提示（写操作结果）。不持久化，3 秒后自动消失。 */
   toast: Toast | null;
   setFeedId: (id: string | null) => void;
   toggleOnlyUnread: () => void;
+  setSearch: (q: string) => void;
   openEntry: (id: string) => void;
   closeEntry: () => void;
+  openNav: () => void;
+  closeNav: () => void;
+  toggleNav: () => void;
+  setSettingsOpen: (open: boolean) => void;
   notify: (text: string, tone?: 'ok' | 'error') => void;
   dismissToast: () => void;
 }
@@ -41,11 +52,21 @@ export const useUi = create<UiState>()(
       feedId: null,
       onlyUnread: false,
       readingId: null,
+      search: '',
+      navOpen: false,
+      settingsOpen: false,
       toast: null,
-      setFeedId: (feedId) => set({ feedId }),
+      /* 选中频道后自动收起抽屉：手机上点频道的目的就是「看这个频道的列表」，
+       * 抽屉不收起来会挡住刚点出来的内容，用户还得多点一次。 */
+      setFeedId: (feedId) => set({ feedId, navOpen: false }),
       toggleOnlyUnread: () => set((s) => ({ onlyUnread: !s.onlyUnread })),
-      openEntry: (readingId) => set({ readingId }),
+      setSearch: (search) => set({ search }),
+      openEntry: (readingId) => set({ readingId, navOpen: false }),
       closeEntry: () => set({ readingId: null }),
+      openNav: () => set({ navOpen: true }),
+      closeNav: () => set({ navOpen: false }),
+      toggleNav: () => set((s) => ({ navOpen: !s.navOpen })),
+      setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
 
       /* 写操作的提示必须集中一处：散在各组件里就会出现「有的失败静默、有的弹 alert」。 */
       notify: (text, tone = 'ok') => {

@@ -103,6 +103,28 @@ export function useReadAll() {
   });
 }
 
+/**
+ * 按当前关注/屏蔽规则**重算历史条目**。
+ *
+ * 为什么需要它：规则只在抓取时对新条目生效（`fetcher` 里打标）。用户改完规则
+ * 回头看列表，旧条目还是老样子，会以为规则没保存。legacy 有这个按钮，切到 v2 不能丢。
+ *
+ * 服务端用的是**同一个 classify()**，所以「重算结果」和「新条目打标」不会分叉。
+ */
+export function useApplyWatch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.entries.applyWatch(),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: qk.entries });
+      useUi
+        .getState()
+        .notify(`已重算历史条目：关注 ${r.watching} 条 · 屏蔽 ${r.blocked} 条（清除旧标记 ${r.cleared} 条）`);
+    },
+    onError: (e) => useUi.getState().notify(`重算失败：${errText(e)}`, 'error'),
+  });
+}
+
 /* ============================ 频道 ============================ */
 
 export function useCreateFeed() {
@@ -156,7 +178,8 @@ export function useImportOpml() {
   });
 }
 
-/** 刷新全部开启采集的频道。会真的回源，可能耗时几十秒。 */export function useRefreshAll() {
+/** 刷新全部开启采集的频道。会真的回源，可能耗时几十秒。 */
+export function useRefreshAll() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.feeds.refreshAll(),

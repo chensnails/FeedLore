@@ -11,6 +11,7 @@ import { EntriesPanel } from './EntriesPanel';
 import { EntryReader } from './EntryReader';
 import { AdminPanel } from './AdminPanel';
 import { DigestPanel } from './DigestPanel';
+import { PrefsPanel } from './PrefsPanel';
 
 /**
  * 登录后的主壳：顶部工具条 + 左频道栏 + 条目列表 + 阅读层覆盖。
@@ -18,12 +19,15 @@ import { DigestPanel } from './DigestPanel';
  */
 export function Shell({ session }: { session: Session }) {
   const qc = useQueryClient();
-  const onlyUnread = useUi((s) => s.onlyUnread);
-  const toggleOnlyUnread = useUi((s) => s.toggleOnlyUnread);
   const toast = useUi((s) => s.toast);
   const dismissToast = useUi((s) => s.dismissToast);
   const [adminOpen, setAdminOpen] = useState(false);
   const [digestOpen, setDigestOpen] = useState(false);
+  const navOpen = useUi((s) => s.navOpen);
+  const toggleNav = useUi((s) => s.toggleNav);
+  const closeNav = useUi((s) => s.closeNav);
+  const settingsOpen = useUi((s) => s.settingsOpen);
+  const setSettingsOpen = useUi((s) => s.setSettingsOpen);
 
   const feedsQuery = useQuery({ queryKey: qk.feeds, queryFn: () => api.feeds.list() });
 
@@ -39,6 +43,16 @@ export function Shell({ session }: { session: Session }) {
   useEffect(() => {
     if (prefsQuery.data) applyAppearance(prefsQuery.data.appearance);
   }, [prefsQuery.data]);
+
+  /* 抽屉开着时按 Esc 收起。与阅读层的 Esc 不冲突：打开条目会先把抽屉关掉。 */
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') closeNav();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navOpen, closeNav]);
 
   const saveAppearance = useSaveAppearance();
   const refreshAll = useRefreshAll();
@@ -65,6 +79,17 @@ export function Shell({ session }: { session: Session }) {
   return (
     <div className="app">
       <header className="topbar">
+        {/* 仅窄屏出现：桌面侧栏常驻，这个按钮不该占位置 */}
+        <button
+          className="btn ghost icon nav-toggle"
+          onClick={toggleNav}
+          aria-label={navOpen ? '收起频道栏' : '展开频道栏'}
+          aria-expanded={navOpen}
+          title="频道"
+        >
+          ☰
+        </button>
+
         <div className="brand">
           <span className="login-mark small" aria-hidden />
           <strong>笺川</strong>
@@ -72,13 +97,8 @@ export function Shell({ session }: { session: Session }) {
 
         <div className="topbar-mid">
           <span className="pill">{unread} 未读</span>
-          <button
-            className={`chip${onlyUnread ? ' on' : ''}`}
-            onClick={toggleOnlyUnread}
-            title="只看未读"
-          >
-            只看未读
-          </button>
+          {/* 「只看未读」已移到列表工具条：它是**列表筛选**，和搜索、全部已读是一类；
+              放在顶栏既撑爆 390px 顶栏，也让人以为它是全局开关。 */}
           <button
             className="btn ghost icon"
             onClick={() => refreshAll.mutate()}
@@ -103,6 +123,14 @@ export function Shell({ session }: { session: Session }) {
               ▤
             </button>
           )}
+          <button
+            className="btn ghost icon"
+            onClick={() => setSettingsOpen(true)}
+            title="外观与阅读设置"
+            aria-label="打开设置"
+          >
+            Aa
+          </button>
           <button
             className="btn ghost icon"
             onClick={() => saveAppearance.mutate({ theme: nextTheme.value })}
@@ -137,7 +165,11 @@ export function Shell({ session }: { session: Session }) {
         <EntriesPanel />
       </div>
 
+      {/* 抽屉遮罩：点空白处收起。桌面端不渲染（navOpen 只可能由 ☰ 触发，而它仅窄屏可见） */}
+      {navOpen && <div className="nav-scrim" onClick={closeNav} role="presentation" />}
+
       <EntryReader />
+      <PrefsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
       <DigestPanel open={digestOpen} onClose={() => setDigestOpen(false)} />
 
