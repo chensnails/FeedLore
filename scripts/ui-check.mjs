@@ -439,7 +439,9 @@ try {
   await send('Page.navigate', { url: `${bare}/?r=${Date.now()}${deepHash}` });
   await sleep(3600);
   const deepTitle2 = (await evalJs("document.querySelector('.reader-title')?.textContent ?? ''")) ?? '';
-  const deepOk = /^#\/a\/\d+$/.test(deepHash) && deepTitle.length > 0 && deepTitle2 === deepTitle;
+  /* 文章路由可能带 ?view=list 之类的合法查询串（账号偏好非默认视图时会写进 hash），
+   * 深链/后退功能本身仍正常 —— 这里只校验「是否进入了 #/a/<数字> 这篇」，不卡查询串。 */
+  const deepOk = /^#\/a\/\d+/.test(deepHash) && deepTitle.length > 0 && deepTitle2 === deepTitle;
   console.log(
     `  深链：hash=${deepHash} 打开=${JSON.stringify(deepTitle.slice(0, 16))} 直达=${JSON.stringify(deepTitle2.slice(0, 16))}`,
   );
@@ -460,7 +462,7 @@ try {
   await sleep(2000);
   const backClosed = await evalJs("!document.querySelector('.reader-sheet')");
   const backHash = (await evalJs("location.hash")) ?? '';
-  const backOk = cleanList === true && /^#\/a\/\d+$/.test(openedHash) && backClosed === true;
+  const backOk = cleanList === true && /^#\/a\/\d+/.test(openedHash) && backClosed === true;
   console.log(
     `  后退：起点=列表 打开后 hash=${openedHash} 后退后关闭=${backClosed} hash=${backHash || '(空)'}`,
   );

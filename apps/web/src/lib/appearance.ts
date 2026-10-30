@@ -8,8 +8,10 @@ import type { Appearance } from '@feedlore/contract';
  * 主题用 `data-theme` 属性驱动 CSS 变量，主色只换两个令牌（--accent / --accent-ink），
  * 不做「每个主题一份完整色板」——那是 6×N 的维护地狱。
  */
+/* 默认蓝改为 CommaFeed 蓝（#3a8dcc），与 :root 回退令牌一致；其余主色选项保留。
+ * 套用 CommaFeed 配色方案：干净中性灰底 + 蓝色强调，替换原 v2 的暖橙/浅蓝调。 */
 const ACCENTS: Record<string, [string, string]> = {
-  blue: ['#5b8def', '#ffffff'],
+  blue: ['#3a8dcc', '#ffffff'],
   violet: ['#9a7bf0', '#ffffff'],
   teal: ['#43b3a3', '#04211d'],
   green: ['#5cba6a', '#08180c'],
