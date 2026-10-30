@@ -416,6 +416,27 @@ async function main(): Promise<void> {
     else bad('POST /api/prefs 内网 webhook → 400', e);
   }
 
+  /* 16b) 关注/屏蔽重算（legacy 有、v2 到 P10 才补）。
+   * 关键不是「返回 200」，而是**重算真的落在条目上，且清空规则后能回滚干净** ——
+   * 否则测试库会残留一片屏蔽态，而用户会看到「屏蔽了但条目还在」。 */
+  try {
+    // 用几乎必然命中的关键词，确保走的是「算出命中并回写」这条路径，而不是空跑
+    await api.prefs.update({
+      watchRules: [{ id: 'smoke-block', name: 'smoke', keywords: ['的'], act: 'block', notify: false, on: true }],
+    });
+    const r1 = await api.entries.applyWatch();
+    if (!r1.ok) throw new Error('ok 不为 true');
+    if (r1.blocked + r1.watching <= 0) throw new Error(`重算没命中任何条目（cleared=${r1.cleared}）`);
+
+    await api.prefs.update({ watchRules: [] });
+    const r2 = await api.entries.applyWatch();
+    if (r2.tagged !== 0) throw new Error(`清空规则后仍有 ${r2.tagged} 条被标记`);
+    if (r2.cleared < r1.blocked) throw new Error(`清空不彻底：cleared=${r2.cleared} < 上轮 ${r1.blocked}`);
+    ok('POST /api/watch/apply 重算与回滚', `标记 ${r1.blocked} 条 → 清空 ${r2.cleared} 条`);
+  } catch (e) {
+    bad('POST /api/watch/apply', e);
+  }
+
   /* ============================ 管理端 ============================ */
 
   // 17) 状态聚合

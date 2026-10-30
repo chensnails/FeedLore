@@ -128,7 +128,9 @@ export function adminConfigRoutes(db: Db | null, auth: AuthInstance | null) {
           `[settings] 采集参数已更新：刷新 ${next.refreshMinutes} 分钟 / 并发 ${next.concurrency} / 保留 ${next.keepPerFeed} 条`,
         );
         if (next.proxyUrl) {
-          console.warn('[settings] proxyUrl 已保存但 v2 的 safeFetch 尚未接出网代理，当前不会生效');
+          // 生效是即时的（saveSource → setOutboundProxy），这里只留一行审计线索：
+          // 代理一旦配错，表现是「全站抓取超时」，事后要知道是什么时候改的。
+          console.log(`[settings] 出网代理已生效：${next.proxyUrl}`);
         }
         return c.json(assertResponse(adminSpec.configPost.response, { ok: true }, 'POST /api/config'));
       },

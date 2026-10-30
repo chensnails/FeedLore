@@ -303,7 +303,8 @@ export function sanitizeDigest(raw: unknown): DigestConfig {
 
 /* ---------------- 从 users.prefs 读出契约形状 ---------------- */
 
-type PrefsBag = Record<string, unknown> | null | undefined;
+/** `users.prefs` 的宽松视图：库里可能躺着老版本写的脏值，读出来一律先当 unknown。 */
+export type PrefsBag = Record<string, unknown> | null | undefined;
 
 const bag = (prefs: PrefsBag, key: string): unknown => (prefs && typeof prefs === 'object' ? prefs[key] : undefined);
 

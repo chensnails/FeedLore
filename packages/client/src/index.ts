@@ -269,6 +269,15 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
         const res = await raw.api.entries['read-all'].$post({ json: body });
         return unwrap(res, entriesEndpoints.readAll.response, 'POST /api/entries/read-all');
       },
+
+      /**
+       * 改完关注/屏蔽规则后回溯已有条目（清空 → 重新判定 → 回写）。
+       * 抓取器只对新条目打标，没有这一步「加了屏蔽旧条目还在」就是必然的。
+       */
+      async applyWatch() {
+        const res = await raw.api.watch.apply.$post();
+        return unwrap(res, entriesEndpoints.watchApply.response, 'POST /api/watch/apply');
+      },
     },
 
     /* ---------------- 偏好 ---------------- */

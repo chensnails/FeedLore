@@ -19,6 +19,7 @@
 import { eq } from 'drizzle-orm';
 import { settings as settingsTable, type Db } from '@feedlore/db';
 import type { SourceConfig } from '@feedlore/contract';
+import { setOutboundProxy } from './net';
 import {
   DEFAULT_KEEP_DAYS,
   DEFAULT_REFRESH_MINUTES,
@@ -59,8 +60,8 @@ export function sourceDefaults(): SourceConfig {
     feedFailLimit: clampInt(FEED_FAIL_LIMIT, 5, 2, 20),
     // 前端自动刷新列表的间隔：0 = 关闭（纯前端行为，服务端只负责存）
     autoRefreshMinutes: clampInt(process.env.AUTO_REFRESH_MINUTES, 0, 0, 1440),
-    // ⚠️ v2 的 safeFetch 尚未接出网代理：字段保留用于配置迁移与界面兼容，
-    //    真正接上之前设置它**不会生效**（admin 面板上有显式提示，不静默吃掉）。
+    // 出网代理：真正接上了（`lib/net.ts` 的 setOutboundProxy / ProxyAgent）。
+    // 走代理时这一跳没有 IP 钉定（DNS 由代理解析），内网地址仍然被拒 —— 取舍写在 net.ts 顶部。
     proxyUrl: String(process.env.PROXY_URL ?? '').trim().slice(0, 500),
     imgTtlDays: clampInt(process.env.IMG_TTL_DAYS, 7, 1, 365),
     imgKeepDays: clampInt(process.env.IMG_KEEP_DAYS, 90, 1, 3650),
@@ -124,6 +125,8 @@ export async function reloadSource(db: Db | null): Promise<SourceConfig | null> 
     const stored = (rows[0]?.value ?? null) as Partial<Record<keyof SourceConfig, unknown>> | null;
     snapshot = normalizeSource(stored);
     snapshotAt = Date.now();
+    // 出网代理跟着快照走：改完保存后，下一次出网就用新的（不用重启）
+    setOutboundProxy(snapshot.proxyUrl);
     return snapshot;
   } catch (e) {
     // 数据库不可用不能让抓取器一起死：用上一次快照（或默认值）继续
@@ -150,6 +153,7 @@ export async function saveSource(db: Db, patch: Partial<Record<keyof SourceConfi
 
   snapshot = next;
   snapshotAt = Date.now();
+  setOutboundProxy(next.proxyUrl);
   return next;
 }
 

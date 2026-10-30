@@ -288,7 +288,13 @@ function StatusTab() {
           {s.digest.oldestDate ? `（最早 ${s.digest.oldestDate}）` : ''}
         </dd>
         <dt>下次生成</dt>
-        <dd>{s.digest.nextRunAt ? fmtTime(s.digest.nextRunAt) : '未启用（AI 模块尚未接入）'}</dd>
+        <dd>
+          {s.digest.nextRunAt
+            ? fmtTime(s.digest.nextRunAt)
+            : s.digest.autoUsers > 0
+              ? '等待下一轮调度'
+              : '没有账号开启自动生成'}
+        </dd>
       </dl>
     </div>
   );
@@ -350,7 +356,8 @@ function ConfigTab() {
             onChange={(e) => setForm((s) => ({ ...s, proxyUrl: e.target.value }))}
           />
           <span className="hint tiny">
-            ⚠️ v2 的出网层（safeFetch）尚未接代理，填了不会生效；保留该字段是为了从 legacy 迁移配置。
+            保存后立即生效（无需重启）。只支持 http/https；走代理时由代理解析域名，服务端不再钉定 IP，
+            但内网地址依旧会被拒。
           </span>
         </label>
       </div>

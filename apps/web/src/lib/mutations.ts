@@ -130,8 +130,33 @@ export function useCreateFeed() {
   });
 }
 
-/** 刷新全部开启采集的频道。会真的回源，可能耗时几十秒。 */
-export function useRefreshAll() {
+/**
+ * OPML 批量导入。
+ *
+ * 与单条添加的区别：一次可能来几十个频道，逐个通知会把 toast 刷屏，所以只报三个数字
+ * （新增 / 已存在 / 跳过）和分组名。新导入的频道由服务端排队抓取，本请求**不等**抓取结果 ——
+ * 这点必须说出来，否则用户看到「导入成功」却发现列表是空的会以为失败。
+ */
+export function useImportOpml() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (opml: string) => api.feeds.importOpml(opml),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: qk.feeds });
+      void qc.invalidateQueries({ queryKey: qk.entries });
+      const parts = [`新增 ${r.added} 个`];
+      if (r.duplicated) parts.push(`已存在 ${r.duplicated} 个`);
+      if (r.skipped) parts.push(`跳过 ${r.skipped} 个`);
+      if (r.groups.length) parts.push(`分组：${r.groups.slice(0, 3).join('/')}${r.groups.length > 3 ? '…' : ''}`);
+      useUi
+        .getState()
+        .notify(`导入完成：${parts.join('，')}（内容在后台陆续抓取）`, r.added ? 'ok' : 'error');
+    },
+    onError: (e) => useUi.getState().notify(`导入失败：${errText(e)}`, 'error'),
+  });
+}
+
+/** 刷新全部开启采集的频道。会真的回源，可能耗时几十秒。 */export function useRefreshAll() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.feeds.refreshAll(),

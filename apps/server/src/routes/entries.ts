@@ -14,9 +14,9 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
-import { and, asc, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
-import { feeds, entries as entriesTable, type Db } from '@feedlore/db';
+import { feeds, entries as entriesTable, users, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import {
   entries as entriesSpec,
@@ -29,6 +29,8 @@ import {
 } from '@feedlore/contract';
 import { assertResponse, BadRequest } from '../lib/validate';
 import { toCard, toEntryDetail } from '../lib/dto';
+import { classify } from '../lib/watch';
+import { userWatchRules, type PrefsBag } from '../lib/prefs';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /** 条目查询公共列（详情另加 content）。字段名与 CardRow 一一对应。 */
@@ -263,6 +265,110 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
         return c.json({ ok: true, updated });
       },
     )
+
+    /* ---------------- POST /api/watch/apply ----------------
+     * 改完关注/屏蔽规则后回溯已有条目。
+     *
+     * 为什么必须有这个端点：抓取器只对**新入库**的条目打标（老条目上一轮判过了）。
+     * 于是「我明明加了屏蔽，旧条目还在墙上」是必然的，用户唯一的自救是删库重抓 ——
+     * legacy 为此专门做了这一步，v2 不能省。
+     *
+     * 三步照搬 legacy 语义（顺序不能换）：
+     * 1. **先清空**该用户全部标记。规则可能被删掉/改名，不清就会留下「指向已不存在规则」的
+     *    标记；清空后下面的遍历范围天然是「全部条目」。
+     * 2. 规则非空时按键集分页（`id > afterId`，不用 OFFSET）遍历并 classify。
+     *    用 OFFSET 在几万条上越翻越慢，且期间若有新条目插入会漏判/重判。
+     * 3. 按 (state, rule) 归组更新，一组一条 UPDATE。
+     *
+     * 复用 `classify()` 而不是另写一份 SQL 匹配：匹配规则一旦有两份实现，
+     * 「新条目」和「重算」迟早判得不一样，而这种不一致极难被发现。
+     */
+    .post(entriesSpec.watchApply.path, requireAuth(auth, 'user'), async (c) => {
+      if (!db) return c.json({ error: '数据库未就绪' }, 503);
+
+      const uid = c.get('user').id;
+
+      const [userRow] = await db.select({ prefs: users.prefs }).from(users).where(eq(users.id, uid)).limit(1);
+      const rules = userWatchRules((userRow?.prefs ?? {}) as PrefsBag);
+
+      /* UPDATE 里不能给表起别名（见 read-all 的注释）；子查询做 owner 隔离，
+       * 因为 entries 表本身没有 owner 列 —— 条件里必须落到 feeds.owner_id。 */
+      const clearedRes = await db.execute(sql`
+        update entries set watch_state = null, watch_rule = null
+         where (watch_state is not null or watch_rule is not null)
+           and feed_id in (select id from feeds where owner_id = ${uid})
+      `);
+      const cleared = Number((clearedRes as unknown as { rowCount?: number | null }).rowCount ?? 0);
+
+      if (!rules.length) {
+        // 规则全删了：清空本身就是结果，不需要再遍历
+        return c.json({ ok: true, cleared, tagged: 0, watching: 0, blocked: 0 });
+      }
+
+      const PAGE = 500;
+      /** 防御性上限：20 万条 = 400 页，够用且不会让请求无限跑 */
+      const MAX_PAGES = 400;
+      let afterId = 0;
+      let tagged = 0;
+      let watching = 0;
+      let blocked = 0;
+
+      for (let page = 0; page < MAX_PAGES; page += 1) {
+        const rows = await db
+          .select({
+            id: entriesTable.id,
+            title: entriesTable.title,
+            description: entriesTable.description,
+            content: entriesTable.content,
+          })
+          .from(entriesTable)
+          .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+          .where(and(eq(feeds.ownerId, uid), gt(entriesTable.id, afterId)))
+          .orderBy(asc(entriesTable.id))
+          .limit(PAGE);
+
+        if (!rows.length) break;
+        const last = rows[rows.length - 1];
+        if (!last) break;
+        afterId = last.id;
+
+        // guid 只是 classify 的身份载体：这里用 id 的字符串形式，回写时再映射回真 id。
+        const verdicts = classify(
+          rules,
+          rows.map((r) => ({ guid: String(r.id), title: r.title, description: r.description, content: r.content })),
+        );
+        if (!verdicts.length) continue;
+
+        const groups = new Map<string, { state: string; rule: string; ids: number[] }>();
+        for (const v of verdicts) {
+          const key = `${v.state}\u0000${v.rule}`;
+          const g = groups.get(key) ?? { state: v.state, rule: v.rule, ids: [] };
+          g.ids.push(Number(v.guid));
+          groups.set(key, g);
+        }
+
+        for (const g of groups.values()) {
+          await db
+            .update(entriesTable)
+            .set({ watchState: g.state, watchRule: g.rule })
+            .where(
+              and(
+                inArray(entriesTable.id, g.ids),
+                sql`${entriesTable.feedId} in (select id from feeds where owner_id = ${uid})`,
+              ),
+            );
+          tagged += g.ids.length;
+          if (g.state === 'watch') watching += g.ids.length;
+          else blocked += g.ids.length;
+        }
+      }
+
+      return c.json(assertResponse(
+        entriesSpec.watchApply.response,
+        { ok: true, cleared, tagged, watching, blocked },
+        'POST /api/watch/apply',
+      ));
+    })
 
     /* ---------------- GET /api/entries/:id ---------------- */
     .get(

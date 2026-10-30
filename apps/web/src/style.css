@@ -797,6 +797,14 @@ body {
 .add-toggle {
   width: 100%;
 }
+/* 添加频道 + 导入 OPML 并排：两者都是「加源」，不该分两层 */
+.add-feed-row {
+  display: flex;
+  gap: 6px;
+}
+.add-feed-row .btn {
+  flex: 1 1 0;
+}
 .input {
   width: 100%;
   font: inherit;

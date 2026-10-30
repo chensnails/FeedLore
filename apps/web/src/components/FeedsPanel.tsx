@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
-import { useCreateFeed, useDeleteFeed, usePatchFeed, useRefreshFeed } from '../lib/mutations';
+import { useCreateFeed, useDeleteFeed, useImportOpml, usePatchFeed, useRefreshFeed } from '../lib/mutations';
 import { useUi } from '../store/ui';
 import type { Feed, FeedsList } from '../lib/types';
 import { Thumb } from './Thumb';
@@ -26,6 +26,34 @@ export function FeedsPanel() {
   const patchFeed = usePatchFeed();
   const deleteFeed = useDeleteFeed();
   const refreshFeed = useRefreshFeed();
+  const importOpml = useImportOpml();
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * 读本地 OPML 并上传。
+   *
+   * 三个细节：
+   * 1. **先把 `input.value` 清空**：不清的话「再选同一个文件」不会触发 change，
+   *    用户会以为按钮坏了（这是 file input 的经典坑）。
+   * 2. 前端只做大小护栏（2MB），XML 结构与 URL 合法性交给服务端 —— 那边本来就要过
+   *    `assertFeedUrl`，前端再解析一遍等于两套规则。
+   * 3. 失败不在这里报：mutation 的 onError 统一走 toast，避免两处提示打架。
+   */
+  async function onPickOpml(e: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      useUi.getState().notify('OPML 文件过大（上限 2MB）', 'error');
+      return;
+    }
+    const text = await file.text();
+    if (!text.trim()) {
+      useUi.getState().notify('这个文件是空的', 'error');
+      return;
+    }
+    importOpml.mutate(text);
+  }
 
   const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: qk.feeds,
@@ -208,9 +236,27 @@ export function FeedsPanel() {
             <p className="hint tiny">添加后会立即抓取一次，源站较慢时可能需要几秒。</p>
           </form>
         ) : (
-          <button className="btn ghost sm add-toggle" onClick={() => setAdding(true)}>
-            ＋ 添加频道
-          </button>
+          <div className="add-feed-row">
+            <button className="btn ghost sm add-toggle" onClick={() => setAdding(true)}>
+              ＋ 添加频道
+            </button>
+            <button
+              className="btn ghost sm"
+              type="button"
+              disabled={importOpml.isPending}
+              onClick={() => fileRef.current?.click()}
+            >
+              {importOpml.isPending ? '导入中…' : '导入 OPML'}
+            </button>
+            {/* 隐藏的文件选择器：OPML 是本地文件，浏览器只能通过 input[type=file] 拿内容 */}
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".opml,.xml,text/xml,application/xml"
+              hidden
+              onChange={onPickOpml}
+            />
+          </div>
         )}
       </div>
     </aside>
