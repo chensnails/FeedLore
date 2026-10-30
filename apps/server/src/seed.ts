@@ -5,9 +5,11 @@
  *   ADMIN_USER=admin ADMIN_PASS='强密码' pnpm --filter @feedlore/server seed
  *
  * 说明：
- * - 之所以不用 HTTP 调 /api/auth/sign-up/username：better-auth 1.7.x 的 username 插件
- *   只提供 **sign-in/username**，注册仍是 sign-up/email（该路径 404）。
  * - 这里直接调 better-auth 的服务端 API，密码哈希由库自己算，不手写加密。
+ *   不用 HTTP 打 `/api/auth/sign-up/email` 也不是因为「没有该端点」——该端点一直是有的，
+ *   真相是 Hono 的 router 退化让 `/api/auth/**` 常年 404（详见 app.ts 的长注释）；
+ *   即便修通，公开注册也按策略默认关闭（`ALLOW_SIGNUP=1` 才开）。
+ *   播种/加人走进程内 API 更省事，也绕开了限流与 CSRF 的无关复杂度。
  * - username 插件启用后 signUpEmail 的 body 可带 username，之后即可用用户名登录。
  */
 

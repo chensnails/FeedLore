@@ -92,12 +92,47 @@ function mountWeb(app: Hono<AppEnv>, root: string): void {
 export function createApp({ db, auth }: AppDeps) {
   const app = new Hono<AppEnv>();
 
+  /* ==========================================================================
+   * better-auth 直通挂载（sign-in/username、sign-out、get-session、admin/* …）
+   *
+   * ⚠️ 这里**不能**写成 `app.on(['GET','POST'], '/api/auth/**', …)`。
+   *    Hono 的默认 SmartRouter 会先试 RegExpRouter，但只要路由表里同时存在
+   *      · 与 `:id` 同位置的静态段（`/api/feeds/reorder`、`/api/feeds/import`），且
+   *      · 让 `:id` 不在末位的路由（`/api/feeds/:id/refresh`），
+   *    RegExpRouter 就会抛 "Unsupported path"，SmartRouter **静默退化成 TrieRouter**。
+   *    而 TrieRouter 根本不认 `**` —— 于是 `/api/auth/**` 永远 404，
+   *    且只在「全部路由注册完」之后才发生（单独注册 `**` 是好的），极难察觉。
+   *
+   *    实际后果：better-auth 的整套 HTTP 端点在生产里是不可达的。
+   *    `seed.ts` 曾把这件事误记为「better-auth 1.7.x 没有 sign-up/username 的 HTTP 端点」，
+   *    于是绕成进程内 `auth.api.signUpEmail()` —— 绕法本身没错（进程内更省事），
+   *    但结论是错的：真因在我们自己的路由表。
+   *
+   * 修法用「全局中间件 + 前缀判断」而不是通配路由：不依赖任何 router 的 `*` 语义，
+   * 将来路由表变化导致 SmartRouter 切回 RegExpRouter，这里也不会跟着坏。
+   * ========================================================================== */
+  app.use('*', async (c, next) => {
+    const path = c.req.path;
+    if (path !== '/api/auth' && !path.startsWith('/api/auth/')) return next();
+    if (!auth) return c.json({ error: '鉴权服务未就绪' }, 503);
+
+    /* 公开注册**默认关闭**。
+     *
+     * 挂通 `/api/auth/*` 会顺带把 `sign-up/email` 暴露出来 —— 对一个自托管实例来说，
+     * 那等于「任何人拿到网址就能注册一个账号，然后开始消耗你的带宽和模型额度」。
+     * 原来的 404 恰好把这条路堵死了，所以修 bug 时必须把这道门显式补回来，
+     * 否则修一个 bug 换一个安全回退。
+     *
+     * 首个管理员与后续加人走 `pnpm seed` / `POST /api/users`（都在进程内调
+     * `auth.api.signUpEmail`），不需要 HTTP 注册口。确实要开放时置 `ALLOW_SIGNUP=1`。
+     */
+    if (path.startsWith('/api/auth/sign-up') && process.env.ALLOW_SIGNUP !== '1') {
+      return c.json({ error: '未开放注册' }, 403);
+    }
+    return auth.handler(c.req.raw);
+  });
+
   const routed = app
-    // better-auth 自带路由（sign-in/username、sign-out、get-session …）
-    .on(['GET', 'POST'], '/api/auth/**', (c) => {
-      if (!auth) return c.json({ error: '鉴权服务未就绪' }, 503);
-      return auth.handler(c.req.raw);
-    })
     .onError((err, c) => {
       // 自定义错误（ContractViolation/BadRequest）与 Hono 的 HTTPException 都带 status
       const raw = err as unknown as { status?: unknown };
