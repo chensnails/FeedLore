@@ -35,6 +35,11 @@
   --sheet-border: rgba(255, 255, 255, 0.16);
   --glass-blur: blur(18px) saturate(160%);
   --danger: #f2836f;
+  /* 渐变底：深色档也加重 accent 晕染，让 frosted 面板透出层次。accent 随主色变。 */
+  --page-bg:
+    radial-gradient(1000px 620px at 86% -10%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 62%),
+    radial-gradient(840px 540px at -6% 112%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 58%),
+    linear-gradient(155deg, color-mix(in srgb, var(--accent) 8%, #0b0c0e) 0%, #0d0f13 52%, #0b0c0e 100%);
   --radius: 12px;
   --radius-sm: 8px;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.28);
@@ -62,13 +67,18 @@
   --text: #171a1f;
   --muted: #6b7280;
   --danger: #c0392b;
-  --glass: rgba(255, 255, 255, 0.55);
-  --glass-2: rgba(255, 255, 255, 0.72);
+  --glass: rgba(255, 255, 255, 0.5);
+  --glass-2: rgba(255, 255, 255, 0.6);
   --glass-border: rgba(0, 0, 0, 0.08);
-  --sheet: rgba(255, 255, 255, 0.82);
+  --sheet: rgba(255, 255, 255, 0.74);
   --sheet-border: rgba(0, 0, 0, 0.1);
   --glass-blur: blur(18px) saturate(150%);
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
+  /* 渐变底：浅色档一抹蓝紫晕染 + 大角度线性底，让半透明白面板透出层次 */
+  --page-bg:
+    radial-gradient(1000px 620px at 86% -10%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 62%),
+    radial-gradient(840px 540px at -6% 112%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 58%),
+    linear-gradient(155deg, color-mix(in srgb, var(--accent) 9%, #ffffff) 0%, #f4f2f9 52%, #fbf9fc 100%);
 }
 
 @media (prefers-color-scheme: light) {
@@ -82,13 +92,17 @@
     --text: #171a1f;
     --muted: #6b7280;
     --danger: #c0392b;
-    --glass: rgba(255, 255, 255, 0.55);
-    --glass-2: rgba(255, 255, 255, 0.72);
+    --glass: rgba(255, 255, 255, 0.5);
+    --glass-2: rgba(255, 255, 255, 0.6);
     --glass-border: rgba(0, 0, 0, 0.08);
-    --sheet: rgba(255, 255, 255, 0.82);
+    --sheet: rgba(255, 255, 255, 0.74);
     --sheet-border: rgba(0, 0, 0, 0.1);
     --glass-blur: blur(18px) saturate(150%);
     --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
+    --page-bg:
+      radial-gradient(1000px 620px at 86% -10%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 62%),
+      radial-gradient(840px 540px at -6% 112%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 58%),
+      linear-gradient(155deg, color-mix(in srgb, var(--accent) 9%, #ffffff) 0%, #f4f2f9 52%, #fbf9fc 100%);
   }
 }
 
@@ -105,10 +119,9 @@ body,
 body {
   margin: 0;
   background-color: var(--bg);
-  /* 渐变底：给玻璃面（顶栏/侧栏/浮层）提供可「透出」的色彩，否则 frosted 看不出层次 */
-  background-image:
-    radial-gradient(1100px 560px at 88% -8%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 60%),
-    radial-gradient(900px 520px at 0% 108%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%);
+  /* 渐变底走 --page-bg（按主题给出不同色温），给玻璃面（顶栏/侧栏/浮层）提供
+   * 可「透出」的色彩，否则 frosted 看不出层次。 */
+  background-image: var(--page-bg);
   background-attachment: fixed;
   color: var(--text);
   font: 14px/1.55 var(--font);
@@ -357,6 +370,7 @@ body {
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
   flex: none;
 }
 
@@ -415,6 +429,7 @@ body {
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   border-right: 1px solid var(--glass-border);
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.4);
   padding: 14px 10px 24px;
 }
 
@@ -670,21 +685,37 @@ body {
   border: 1px solid var(--line);
   background: var(--surface);
 }
-/* 未读标记：卡片左内边距留白处一个随主色变化的小圆点（默认蓝 = 小蓝点）；
+/* 未读标记：随主色变化的小圆点（默认蓝 = 小蓝点），左上角。
  * 已读不渲染，且已读项不再变暗，保持常规亮度。 */
-.card-row:not(.read) .card {
-  padding-left: 22px;
+/* 列表模式：左内边距留出干净槽，蓝点落在无图干扰的留白上，对比最稳 */
+.cards.list-mode .card-row:not(.read) .card {
+  padding-left: 24px;
 }
-.card-row:not(.read) .card::before {
+.cards.list-mode .card-row:not(.read) .card::before {
   content: '';
   position: absolute;
-  top: 14px;
-  left: 8px;
-  width: 8px;
-  height: 8px;
+  top: 15px;
+  left: 9px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 2px var(--bg);
+  box-shadow: 0 0 0 2px var(--bg), 0 1px 2px rgba(0, 0, 0, 0.25);
+  z-index: 2;
+}
+/* 网格模式：封面是顶部通栏图，无法留左槽；蓝点压在封面左上角，
+ * 用实色描边 + 投影保证在任何照片上都看得见 */
+.cards.grid-mode .card-row:not(.read) .card::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2.5px var(--bg), 0 1px 3px rgba(0, 0, 0, 0.4);
+  z-index: 2;
 }
 
 .card-title {
@@ -749,7 +780,7 @@ body {
   backdrop-filter: var(--glass-blur);
   border: 1px solid var(--sheet-border);
   border-radius: 16px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   padding: 28px 28px 24px;
 }
 
@@ -1241,7 +1272,7 @@ body {
   backdrop-filter: var(--glass-blur);
   border: 1px solid var(--sheet-border);
   border-radius: 16px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   padding: 26px 26px 22px;
 }
 
@@ -2097,7 +2128,7 @@ body {
   backdrop-filter: var(--glass-blur);
   border: 1px solid var(--sheet-border);
   border-radius: 14px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   overflow: hidden;
 }
 
@@ -2571,7 +2602,7 @@ body.side-resizing {
   backdrop-filter: var(--glass-blur);
   border: 1px solid var(--sheet-border);
   border-radius: 14px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   padding: 20px 20px 16px;
 }
 
