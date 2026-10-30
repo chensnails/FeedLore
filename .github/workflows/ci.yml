@@ -64,13 +64,24 @@ jobs:
 
       # 镜像构建成功但产物没拷对，是「容器起来就 404」的经典原因；
       # 这一步只查最关键的事实：前端产物在、server 入口在、workspace 包链接在。
+      #
+      # ⚠️ workspace 包链接在**依赖它的那个包**下面，不在根。pnpm 是隔离布局：
+      #    根 package.json 一个 @feedlore/* 都没依赖，所以 /app/node_modules/@feedlore
+      #    从来不存在。这里曾写成 test -d /app/node_modules/@feedlore/ai，
+      #    从 P10 加到 CI 起每次都失败（连续 12 轮红），却被当成「流程还在调」。
+      #    改断言前先跑 docker run 手工验证路径，别看图说话。
       - name: 检查镜像内产物
         run: |
           docker run --rm feedlore-v2:ci sh -c '
             set -e
             test -f /app/apps/web/dist/index.html || { echo "缺少前端产物"; exit 1; }
+            test -f /app/apps/web/dist/sw.js || { echo "缺少 PWA service worker"; exit 1; }
+            test -f /app/apps/web/dist/manifest.json || { echo "缺少 PWA manifest"; exit 1; }
+            ls /app/apps/web/dist/assets/*.js >/dev/null 2>&1 || { echo "缺少带哈希的前端资源"; exit 1; }
             test -f /app/apps/server/src/index.ts || { echo "缺少 server 入口"; exit 1; }
-            test -d /app/node_modules/@feedlore/ai || { echo "workspace 包 @feedlore/ai 未链接"; exit 1; }
+            # 用 -e 而非 -d：跟随符号链接，链接悬空（packages 没拷全）也判失败
+            test -e /app/apps/server/node_modules/@feedlore/ai/package.json || { echo "workspace 包 @feedlore/ai 未链接或悬空"; exit 1; }
+            test -e /app/apps/server/node_modules/@feedlore/contract/package.json || { echo "workspace 包 @feedlore/contract 未链接或悬空"; exit 1; }
             echo "镜像产物齐全"
           '
 
