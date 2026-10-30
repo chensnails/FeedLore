@@ -75,6 +75,37 @@ function randomPassword(): string {
 
 type Row = Record<string, unknown>;
 
+/**
+ * 统一转 Date。
+ *
+ * 两种来源都要吃：pg 对 timestamptz 返回 Date 对象，而 'date' 列（OID 1082）
+ * 默认也被解析成 Date —— 直接 String() 再 new Date() 会得到
+ * "Thu Oct 29 2026 ..." 这种字符串，塞进 drizzle 的 date(mode:'string') 列就是非法值
+ * （演练时真实踩到：digests 插入报错，且错误信息被 drizzle 截断得看不出原因）。
+ */
+/**
+ * date 列（OID 1082）→ YYYY-MM-DD。
+ * 用**本地日期分量**而不是 toISOString：东八区里 "2026-10-29 00:00" 的 ISO 串是
+ * 2026-10-28T16:00Z，slice(0,10) 会整体退一天 —— 日报按日期存，(owner,date) 是主键，
+ * 错一天就是两份不同的日报。
+ */
+function toDateStr(v: unknown): string {
+  if (v instanceof Date) {
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, '0');
+    const d = String(v.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(v ?? '').slice(0, 10);
+}
+
+function toDate(v: unknown): Date | null {
+  if (!v) return null;
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
+  const d = new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
 const bool = (v: unknown): boolean => v === true;
@@ -225,9 +256,9 @@ async function main(): Promise<void> {
             lastStatus: str(f.last_status),
             lastError: str(f.last_error),
             failStreak: num(f.fail_streak) ?? 0,
-            lastFetchedAt: f.last_fetched_at ? new Date(String(f.last_fetched_at)) : null,
-            createdAt: f.created_at ? new Date(String(f.created_at)) : new Date(),
-            updatedAt: f.updated_at ? new Date(String(f.updated_at)) : new Date(),
+            lastFetchedAt: toDate(f.last_fetched_at),
+            createdAt: toDate(f.created_at) ?? new Date(),
+            updatedAt: toDate(f.updated_at) ?? new Date(),
           })
           .returning({ id: feeds.id });
         if (!created) throw new Error(`插入频道失败：${url}`);
@@ -288,12 +319,12 @@ async function main(): Promise<void> {
               image: str(e.image),
               images: Array.isArray(e.images) ? (e.images as string[]) : null,
               sourceUrl: str(e.source_url),
-              publishedAt: e.published_at ? new Date(String(e.published_at)) : null,
-              fetchedAt: e.fetched_at ? new Date(String(e.fetched_at)) : new Date(),
+              publishedAt: toDate(e.published_at),
+              fetchedAt: toDate(e.fetched_at) ?? new Date(),
               isRead: bool(e.is_read),
-              readAt: e.read_at ? new Date(String(e.read_at)) : null,
+              readAt: toDate(e.read_at),
               isFavorite: bool(e.is_favorite),
-              favoritedAt: e.favorited_at ? new Date(String(e.favorited_at)) : null,
+              favoritedAt: toDate(e.favorited_at),
               bodyJson: str(e.body_json),
               links: Array.isArray(e.links) ? (e.links as string[]) : null,
               watchState: str(e.watch_state),
@@ -329,7 +360,7 @@ async function main(): Promise<void> {
 
     /* ---------------- 4. 日报 ---------------- */
     if (ONLY.has('digests')) {
-      const { rows } = await legacyPool.query<Row>(`select * from ${T('digests')} order by date`);
+      const { rows } = await legacyPool.query<Row>(`select date::text as date, owner_id, payload, model, fallback, created_at from ${T('digests')} order by date`);
       log(`legacy 日报 ${rows.length} 份`);
 
       for (const d of rows) {
@@ -347,12 +378,12 @@ async function main(): Promise<void> {
         await db
           .insert(digests)
           .values({
-            date: String(d.date).slice(0, 10),
+            date: toDateStr(d.date),
             ownerId,
             payload: (d.payload ?? {}) as Record<string, unknown>,
             model: str(d.model),
             fallback: bool(d.fallback),
-            createdAt: d.created_at ? new Date(String(d.created_at)) : new Date(),
+            createdAt: toDate(d.created_at) ?? new Date(),
           })
           .onConflictDoUpdate({
             target: [digests.ownerId, digests.date],
