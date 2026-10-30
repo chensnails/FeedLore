@@ -6,7 +6,7 @@
  * 把换算散到各路由里，就会出现「同一个字段两个 DTO 两套写法」——1.7.x 的典型病。
  */
 
-import type { Card, EntryDetail } from '@feedlore/contract';
+import type { Card, EntryDetail, Feed } from '@feedlore/contract';
 
 /**
  * 外链图片 → 展示地址。
@@ -78,4 +78,63 @@ export function toCard(row: CardRow): Card {
 
 export function toEntryDetail(row: CardRow & { content: string | null }): EntryDetail {
   return { ...toCard(row), content: row.content ?? '' };
+}
+
+/** feeds 表行的结构化视图（不 import drizzle 类型，保持本文件只依赖契约）。 */
+export interface FeedRow {
+  id: number;
+  url: string;
+  title: string | null;
+  siteUrl: string | null;
+  description: string | null;
+  iconUrl: string | null;
+  enabled: boolean;
+  cardEnabled: boolean;
+  groupName: string | null;
+  customTitle: string | null;
+  sortOrder: number;
+  refreshMinutes: number | null;
+  lastStatus: string | null;
+  lastError: string | null;
+  lastFetchedAt: Date | null;
+  failStreak: number;
+}
+
+export interface FeedCounts {
+  entryCount?: number;
+  unreadCount?: number;
+}
+
+/**
+ * 频道行 → 契约 Feed。
+ * `effectiveRefreshMinutes` 是「本频道频率优先、否则全局」的换算结果，
+ * 前端只读这一个值就够，不用自己判 null。
+ */
+export function toFeed(
+  row: FeedRow,
+  counts: FeedCounts,
+  globalRefreshMinutes: number,
+): Feed {
+  return {
+    id: String(row.id),
+    url: row.url,
+    title: row.customTitle || row.title || row.url,
+    customTitle: row.customTitle ?? null,
+    siteUrl: row.siteUrl ?? null,
+    description: row.description ?? '',
+    icon: imgUrl(row.iconUrl),
+    enabled: row.enabled,
+    cardEnabled: row.cardEnabled,
+    groupName: row.groupName ?? '',
+    sortOrder: row.sortOrder,
+    entryCount: counts.entryCount ?? 0,
+    unreadCount: counts.unreadCount ?? 0,
+    refreshMinutes: row.refreshMinutes ?? null,
+    effectiveRefreshMinutes: row.refreshMinutes ?? globalRefreshMinutes,
+    nextRefreshAt: null, // 调度器未接入（P5）；接了之后按 lastFetchedAt + 频率算
+    status: row.lastStatus ?? null,
+    error: row.lastError ?? null,
+    lastFetchedAt: iso(row.lastFetchedAt),
+    failStreak: row.failStreak,
+  };
 }

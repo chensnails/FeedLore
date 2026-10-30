@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
+import { useSetFavorite } from '../lib/mutations';
 import { useUi } from '../store/ui';
 
 /**
@@ -14,6 +15,7 @@ import { useUi } from '../store/ui';
 export function EntryReader() {
   const readingId = useUi((s) => s.readingId);
   const close = useUi((s) => s.closeEntry);
+  const setFavorite = useSetFavorite();
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: [...qk.entry, readingId],
@@ -57,13 +59,20 @@ export function EntryReader() {
             {/* 正文按纯文本渲染：抓来的 HTML 未做净化，直接 innerHTML 等于把 XSS 装进自家页面 */}
             <div className="reader-body">{data.content || data.desc || '（无正文）'}</div>
 
-            {(data.sourceUrl || data.link) && (
-              <p className="reader-actions">
+            <p className="reader-actions">
+              {(data.sourceUrl || data.link) && (
                 <a className="btn" href={data.sourceUrl ?? data.link ?? '#'} target="_blank" rel="noreferrer noopener">
                   打开原文
                 </a>
-              </p>
-            )}
+              )}
+              <button
+                className={`btn ghost${data.isFavorite ? ' on' : ''}`}
+                onClick={() => setFavorite.mutate({ id: data.id, isFavorite: !data.isFavorite })}
+                disabled={setFavorite.isPending}
+              >
+                {data.isFavorite ? '★ 已收藏' : '☆ 收藏'}
+              </button>
+            </p>
           </>
         )}
       </article>

@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
+import { useCreateFeed, useDeleteFeed, usePatchFeed } from '../lib/mutations';
 import { useUi } from '../store/ui';
 import type { Feed, FeedsList } from '../lib/types';
 
@@ -16,6 +17,13 @@ export function FeedsPanel() {
   const feedId = useUi((s) => s.feedId);
   const setFeedId = useUi((s) => s.setFeedId);
   const [group, setGroup] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [url, setUrl] = useState('');
+  const [groupName, setGroupName] = useState('');
+
+  const createFeed = useCreateFeed();
+  const patchFeed = usePatchFeed();
+  const deleteFeed = useDeleteFeed();
 
   const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: qk.feeds,
@@ -42,6 +50,28 @@ export function FeedsPanel() {
 
   const feeds = visibleFeeds(data, group);
 
+  function submit(e: FormEvent): void {
+    e.preventDefault();
+    const u = url.trim();
+    if (!u) return;
+    createFeed.mutate(
+      { url: u, ...(groupName.trim() ? { groupName: groupName.trim() } : {}) },
+      {
+        onSuccess: () => {
+          setUrl('');
+          setGroupName('');
+          setAdding(false);
+        },
+      },
+    );
+  }
+
+  function remove(f: Feed): void {
+    // 破坏性操作，且服务端会级联删掉该频道的全部条目 —— 必须让用户明确确认
+    if (!window.confirm(`删除「${f.title}」？\n该频道的 ${f.entryCount} 条记录会一起删除，不可恢复。`)) return;
+    deleteFeed.mutate(f.id);
+  }
+
   return (
     <aside className="sidebar">
       <div className="chips">
@@ -67,7 +97,7 @@ export function FeedsPanel() {
           </button>
         </li>
         {feeds.map((f) => (
-          <li key={f.id}>
+          <li key={f.id} className="feed-row">
             <button
               className={`feed${feedId === f.id ? ' on' : ''}${f.enabled ? '' : ' off'}`}
               onClick={() => setFeedId(f.id)}
@@ -75,19 +105,97 @@ export function FeedsPanel() {
             >
               <span className="dot" data-error={f.error ? '1' : '0'} aria-hidden />
               <div className="feed-main">
-                <p className="feed-title">{f.customTitle ?? f.title}</p>
+                <p className="feed-title">{f.title}</p>
                 <p className="feed-meta">
                   {f.groupName || '未分组'}
                   {f.error ? ' · 抓取失败' : ''}
+                  {f.cardEnabled ? '' : ' · 卡片页隐藏'}
                 </p>
               </div>
               <span className="count">{f.unreadCount}</span>
             </button>
+
+            <span className="feed-ops">
+              {/* 采集开关：与「卡片页展示」是两件事——停采集不一定要隐藏卡片 */}
+              <button
+                className={`icon-btn${f.enabled ? '' : ' off'}`}
+                title={f.enabled ? '暂停采集' : '恢复采集'}
+                aria-label={f.enabled ? '暂停采集' : '恢复采集'}
+                disabled={patchFeed.isPending}
+                onClick={() => patchFeed.mutate({ id: f.id, patch: { enabled: !f.enabled } })}
+              >
+                {f.enabled ? '⏸' : '▶'}
+              </button>
+              <button
+                className={`icon-btn${f.cardEnabled ? '' : ' off'}`}
+                title={f.cardEnabled ? '在卡片页隐藏' : '在卡片页显示'}
+                aria-label={f.cardEnabled ? '在卡片页隐藏' : '在卡片页显示'}
+                disabled={patchFeed.isPending}
+                onClick={() => patchFeed.mutate({ id: f.id, patch: { cardEnabled: !f.cardEnabled } })}
+              >
+                {f.cardEnabled ? '▣' : '▢'}
+              </button>
+              <button
+                className="icon-btn danger"
+                title="删除频道"
+                aria-label="删除频道"
+                disabled={deleteFeed.isPending}
+                onClick={() => remove(f)}
+              >
+                ✕
+              </button>
+            </span>
           </li>
         ))}
       </ul>
 
       {feeds.length === 0 && <p className="hint">这个分组下没有频道。</p>}
+
+      <div className="add-feed">
+        {adding ? (
+          <form onSubmit={submit}>
+            <input
+              autoFocus
+              className="input"
+              type="url"
+              placeholder="https://example.com/feed.xml"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              required
+            />
+            <input
+              className="input"
+              type="text"
+              placeholder="分组（可选）"
+              maxLength={40}
+              value={groupName}
+              onChange={(e) => setGroupName(e.target.value)}
+            />
+            <div className="add-feed-actions">
+              <button className="btn sm" type="submit" disabled={createFeed.isPending || !url.trim()}>
+                {createFeed.isPending ? '添加中…' : '添加'}
+              </button>
+              <button
+                className="btn ghost sm"
+                type="button"
+                onClick={() => {
+                  setAdding(false);
+                  setUrl('');
+                  setGroupName('');
+                }}
+              >
+                取消
+              </button>
+            </div>
+            {/* 抓取器未接入（P5）：新增只会落库，不会立刻有条目，提前说清楚 */}
+            <p className="hint tiny">添加后会先保存地址；抓取管道上线后才会拉取内容。</p>
+          </form>
+        ) : (
+          <button className="btn ghost sm add-toggle" onClick={() => setAdding(true)}>
+            ＋ 添加频道
+          </button>
+        )}
+      </div>
     </aside>
   );
 }

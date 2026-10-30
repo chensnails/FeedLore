@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { api } from '../lib/api';
 import { applyAppearance } from '../lib/appearance';
 import { qk } from '../lib/query';
+import { useSaveAppearance } from '../lib/mutations';
 import { useUi } from '../store/ui';
 import type { Session } from '../lib/types';
 import { FeedsPanel } from './FeedsPanel';
@@ -17,6 +18,8 @@ export function Shell({ session }: { session: Session }) {
   const qc = useQueryClient();
   const onlyUnread = useUi((s) => s.onlyUnread);
   const toggleOnlyUnread = useUi((s) => s.toggleOnlyUnread);
+  const toast = useUi((s) => s.toast);
+  const dismissToast = useUi((s) => s.dismissToast);
 
   const feedsQuery = useQuery({ queryKey: qk.feeds, queryFn: () => api.feeds.list() });
 
@@ -33,12 +36,26 @@ export function Shell({ session }: { session: Session }) {
     if (prefsQuery.data) applyAppearance(prefsQuery.data.appearance);
   }, [prefsQuery.data]);
 
+  const saveAppearance = useSaveAppearance();
+
   const logout = useMutation({
     mutationFn: () => api.logout(),
     onSettled: () => qc.clear(),
   });
 
   const unread = feedsQuery.data?.flags.unread ?? 0;
+
+  /* 主题三态循环：auto → light → dark → auto。
+   * 'github' 是 v1.x 遗留值，按深色展示，点一次就切到 auto（等价于「用户开始用新主题」）。 */
+  const theme = prefsQuery.data?.appearance.theme ?? 'auto';
+  const THEMES = [
+    { value: 'auto', icon: '◐', label: '跟随系统' },
+    { value: 'light', icon: '☀', label: '浅色' },
+    { value: 'dark', icon: '☾', label: '深色' },
+  ] as const;
+  const themeIdx = THEMES.findIndex((t) => t.value === theme);
+  const nextTheme = THEMES[(themeIdx + 1) % THEMES.length] ?? THEMES[0];
+  const themeIcon = theme === 'light' ? '☀' : theme === 'dark' ? '☾' : '◐';
 
   return (
     <div className="app">
@@ -60,6 +77,15 @@ export function Shell({ session }: { session: Session }) {
         </div>
 
         <div className="topbar-right">
+          <button
+            className="btn ghost icon"
+            onClick={() => saveAppearance.mutate({ theme: nextTheme.value })}
+            disabled={saveAppearance.isPending || prefsQuery.isPending}
+            title={`主题：${theme}（点击切换到 ${nextTheme.label}）`}
+            aria-label="切换主题"
+          >
+            {themeIcon}
+          </button>
           <span className="who">
             {session.username}
             {session.role === 'admin' && <em>管理员</em>}
@@ -76,6 +102,12 @@ export function Shell({ session }: { session: Session }) {
       </div>
 
       <EntryReader />
+
+      {toast && (
+        <div className={`toast ${toast.tone}`} role="status" onClick={dismissToast}>
+          {toast.text}
+        </div>
+      )}
     </div>
   );
 }

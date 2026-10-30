@@ -25,7 +25,11 @@ import type { z } from 'zod';
 import {
   HealthSchema,
   SessionSchema,
+  OkSchema,
   auth as authEndpoints,
+  entries as entriesEndpoints,
+  feeds as feedsEndpoints,
+  prefs as prefsEndpoints,
   entriesListResponse,
   EntryDetailSchema,
   EntryFlagsSchema,
@@ -34,9 +38,15 @@ import {
   type EntryDetail,
   type EntryFlags,
   type EntriesListResponse,
+  type EntryFlagPatchBody,
+  type FeedPatchBody,
+  type FeedCreateBody,
+  type FeedReorderBody,
   type Health,
   type LoginBody,
+  type PrefsPatchBody,
   type PrefsResponse,
+  type ReadAllBody,
   type Session,
   type FeedsListResponse,
 } from '@feedlore/contract';
@@ -170,6 +180,30 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
         const res = await raw.api.feeds.$get();
         return unwrap(res, feedsListResponse, 'GET /api/feeds');
       },
+
+      /** 新增订阅。地址会先过服务端的归一化与出网校验（内网地址直接 400）。 */
+      async create(body: FeedCreateBody) {
+        const res = await raw.api.feeds.$post({ json: body });
+        return unwrap(res, feedsEndpoints.create.response, 'POST /api/feeds');
+      },
+
+      /** 改开关 / 分组 / 名称 / 频率 / 地址；地址撞车返回 409。 */
+      async patch(id: string | number, body: FeedPatchBody) {
+        const res = await raw.api.feeds[':id'].$patch({ param: { id: String(id) }, json: body });
+        return unwrap(res, feedsEndpoints.patchOne.response, 'PATCH /api/feeds/:id');
+      },
+
+      /** 删除频道（条目随外键级联删除）。 */
+      async remove(id: string | number): Promise<{ ok: boolean }> {
+        const res = await raw.api.feeds[':id'].$delete({ param: { id: String(id) } });
+        return unwrap(res, OkSchema, 'DELETE /api/feeds/:id');
+      },
+
+      /** 批量重排 / 跨组移动。 */
+      async reorder(body: FeedReorderBody) {
+        const res = await raw.api.feeds.reorder.$post({ json: body });
+        return unwrap(res, feedsEndpoints.reorder.response, 'POST /api/feeds/reorder');
+      },
     },
 
     /* ---------------- 条目 ---------------- */
@@ -193,6 +227,18 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
         const res = await raw.api.entries.flags.$get();
         return unwrap(res, EntryFlagsSchema, 'GET /api/entries/flags');
       },
+
+      /** 单条标记：只改传进来的字段，没传的保持原样。 */
+      async flagPatch(id: string | number, body: EntryFlagPatchBody) {
+        const res = await raw.api.entries[':id'].$patch({ param: { id: String(id) }, json: body });
+        return unwrap(res, entriesEndpoints.flagPatch.response, 'PATCH /api/entries/:id');
+      },
+
+      /** 按当前筛选条件批量标为已读（条件与 list 一致）。 */
+      async readAll(body: ReadAllBody) {
+        const res = await raw.api.entries['read-all'].$post({ json: body });
+        return unwrap(res, entriesEndpoints.readAll.response, 'POST /api/entries/read-all');
+      },
     },
 
     /* ---------------- 偏好 ---------------- */
@@ -201,6 +247,12 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
       async get(): Promise<PrefsResponse> {
         const res = await raw.api.prefs.$get();
         return unwrap(res, prefsResponse, 'GET /api/prefs');
+      },
+
+      /** 保存偏好。appearance/layout 按现有值合并，filters/watchRules 整组替换。 */
+      async update(body: PrefsPatchBody) {
+        const res = await raw.api.prefs.$post({ json: body });
+        return unwrap(res, prefsEndpoints.update.response, 'POST /api/prefs');
       },
     },
   };
