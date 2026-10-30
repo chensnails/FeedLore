@@ -2,6 +2,8 @@
  * 服务端环境变量（集中读取，禁止业务代码散落 process.env）。
  */
 
+import { createRequire } from 'node:module';
+
 function num(v: string | undefined, d: number): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
@@ -42,4 +44,26 @@ export const KEEP_PER_FEED = Math.max(0, num(process.env.KEEP_PER_FEED, 300));
 /** 定时抓取开关：本地调试/迁移期可置 0 只用手动刷新。 */
 export const SCHEDULER_ENABLED = process.env.REFRESH_DISABLED !== '1';
 
-export const APP_VERSION = process.env.APP_VERSION ?? '2.0.0-p8';
+/**
+ * 应用版本号。
+ *
+ * **单一真源是根 `package.json`**（镜像里一定会拷进去，pnpm install 需要它）。
+ * 以前这里硬编码 `'2.0.0-p8'`：阶段号躺在一个没人会去改的默认值里，发版时
+ * 「界面显示 v2.0.0-p8 / package.json 写 2.0.0」两个数会长期并存，
+ * 排查线上问题第一步就要先问「你到底跑的是哪个版本」。
+ *
+ * 读不到时退回 `0.0.0-dev` 而不是编一个像正式版的号 —— 假版本号比没有版本号更坏。
+ * `APP_VERSION` 环境变量仍可覆盖（CI 出镜像时打 tag 用）。
+ */
+function readPackageVersion(): string {
+  try {
+    const require = createRequire(import.meta.url);
+    // apps/server/src/env.ts → 根目录
+    const pkg = require('../../../package.json') as { version?: string };
+    return pkg.version?.trim() || '0.0.0-dev';
+  } catch {
+    return '0.0.0-dev';
+  }
+}
+
+export const APP_VERSION = process.env.APP_VERSION ?? readPackageVersion();

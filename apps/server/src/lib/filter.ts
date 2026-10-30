@@ -38,6 +38,10 @@ export interface Matchable {
 
 /** 单条规则是否命中 */
 export function ruleHit(rule: FilterRule, item: Matchable): boolean {
+  /* 空 pattern 直接不命中。不写这一句的话 `text.includes('')` 恒为 true ——
+   * 一条没填内容的规则会把**所有条目**都屏蔽掉。`applyFilters` 目前会先把空规则
+   * 过滤掉，但那是调用方的自觉，不该是这一层的前提。 */
+  if (!rule.pattern) return false;
   const text = fieldText(rule, item);
   if (!text) return false;
   if (rule.kind === 're') {
