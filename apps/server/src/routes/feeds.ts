@@ -32,7 +32,7 @@ import { assertResponse, BadRequest } from '../lib/validate';
 import { toFeed, type FeedCounts, type FeedRow } from '../lib/dto';
 import { assertFeedUrl, assertPublicHost } from '../lib/net';
 import { getLastRefreshAt, refreshFeeds, refreshOneFeed } from '../lib/fetcher';
-import { parseOpml } from '../lib/opml';
+import { buildOpml, parseOpml } from '../lib/opml';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 import { getSource } from '../lib/settings';
 
@@ -45,6 +45,8 @@ interface AggRow {
   total: number;
   unread: number;
   favorite: number;
+  watching: number;
+  blocked: number;
 }
 interface PerFeedRow {
   feed_id: number;
@@ -117,11 +119,14 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
         const aggRes = await db.execute(sql`
           select count(*)::int as total,
                  count(*) filter (where e.is_read = false)::int as unread,
-                 count(*) filter (where e.is_favorite = true)::int as favorite
+                 count(*) filter (where e.is_favorite = true)::int as favorite,
+                 count(*) filter (where e.watch_state = 'watch')::int as watching,
+                 count(*) filter (where e.watch_state = 'block')::int as blocked
           from entries e join feeds f on f.id = e.feed_id
           where f.owner_id = ${uid}
         `);
-        const agg = (aggRes.rows as unknown as AggRow[])[0] ?? { total: 0, unread: 0, favorite: 0 };
+        const agg = (aggRes.rows as unknown as AggRow[])[0] ??
+          { total: 0, unread: 0, favorite: 0, watching: 0, blocked: 0 };
 
         const perRes = await db.execute(sql`
           select e.feed_id,
@@ -154,7 +159,13 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             cardEnabled: rows.filter((r) => r.cardEnabled).length,
             groups,
             groupOrder: groups,
-            flags: { total: agg.total, unread: agg.unread, favorite: agg.favorite },
+            flags: {
+              total: agg.total,
+              unread: agg.unread,
+              favorite: agg.favorite,
+              watching: agg.watching,
+              blocked: agg.blocked,
+            },
             lastRefreshAt: getLastRefreshAt()?.toISOString() ?? null,
             // 全局口径的「下次抓取」= 各频道里最早到期的那一个（每个频道可单独设频率）
             nextRefreshAt: feedsMapped
@@ -170,6 +181,38 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
         );
 
         return c.json(payload);
+      })
+
+      /* ---------------- GET /api/feeds/export ----------------
+       * 导出 OPML。与导入是同一套字段（xmlUrl / text / groupName），导出的文件能原样再导入。
+       *
+       * ⚠️ 必须注册在 `/api/feeds/:id` **之前**：:id 走 `z.coerce.number()`，
+       * 先命中就会把 "export" 当成 id 解析失败返回 400，而不是走到这里。
+       *
+       * 只导出**本用户**的频道（owner 过滤），且不导出运行期字段（nextRefreshAt 之类）——
+       * 导出文件是给「换台服务器继续用」的，带一堆本机状态只会在导入时制造无意义的差异。 */
+      .get(feedsSpec.exportOpml.path, requireAuth(auth, 'user'), async (c) => {
+        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+
+        const uid = c.get('user').id;
+        const rows = await db
+          .select()
+          .from(feeds)
+          .where(eq(feeds.ownerId, uid))
+          .orderBy(feeds.sortOrder, feeds.id);
+
+        const opml = buildOpml(rows.map((r) => ({
+          title: r.customTitle || r.title || r.url,
+          url: r.url,
+          siteUrl: r.siteUrl,
+          groupName: r.groupName ?? '',
+        })));
+
+        return c.json(assertResponse(
+          feedsSpec.exportOpml.response,
+          { ok: true, count: rows.length, opml },
+          'GET /api/feeds/export',
+        ));
       })
 
       /* ---------------- POST /api/feeds ---------------- */

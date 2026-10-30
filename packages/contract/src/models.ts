@@ -75,6 +75,10 @@ export const EntryFlagsSchema = z.object({
   total: z.number().int(),
   unread: z.number().int(),
   favorite: z.number().int(),
+  /* 关注 / 屏蔽两档计数。legacy 的侧栏与卡片页筛选条都把这两档当一等公民显示，
+   * 缺了它们，「关注」筛选只能盲点 —— 用户不知道点开是 3 条还是 3000 条。 */
+  watching: z.number().int(),
+  blocked: z.number().int(),
 });
 export type EntryFlags = z.infer<typeof EntryFlagsSchema>;
 

@@ -234,6 +234,12 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
         const res = await raw.api.feeds.import.$post({ json: { opml } });
         return unwrap(res, feedsEndpoints.import.response, 'POST /api/feeds/import');
       },
+
+      /** 导出 OPML（文本）。下载动作由调用方做，客户端只负责拿到内容。 */
+      async exportOpml() {
+        const res = await raw.api.feeds.export.$get();
+        return unwrap(res, feedsEndpoints.exportOpml.response, 'GET /api/feeds/export');
+      },
     },
 
     /* ---------------- 条目 ---------------- */

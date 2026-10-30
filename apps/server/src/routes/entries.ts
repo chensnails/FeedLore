@@ -158,13 +158,20 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
           }),
         );
 
-        // 收藏视图按「收藏时刻」倒序；其余按发布时间
+        /* 收藏视图按「收藏时刻」倒序；其余按发布时间。
+         *
+         * `sort=name` 按标题升序。⚠️ 与 legacy 的 `localeCompare(a,b,'zh')` **不完全等价**：
+         * 那边是浏览器里的拼音序，这里只能拿到数据库的码点序（PG 容器默认 collation 不带
+         * zh-ICU）。为什么不在前端排：列表是**服务端分页**的，前端只能排当前这一页 ——
+         * 「第一页内部有序、翻页后整体乱序」比码点序难看得多。 */
         const order =
           q.fav === '1'
             ? [sql`${entriesTable.favoritedAt} desc nulls last`, desc(entriesTable.id)]
             : q.sort === 'old'
               ? [sql`${entriesTable.publishedAt} asc nulls last`, asc(entriesTable.id)]
-              : [sql`${entriesTable.publishedAt} desc nulls last`, desc(entriesTable.id)];
+              : q.sort === 'name'
+                ? [sql`lower(${entriesTable.title}) asc`, asc(entriesTable.id)]
+                : [sql`${entriesTable.publishedAt} desc nulls last`, desc(entriesTable.id)];
 
         const [rows, countRows] = await Promise.all([
           db
@@ -213,12 +220,14 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
           total: sql<number>`count(*)::int`,
           unread: sql<number>`count(*) filter (where ${entriesTable.isRead} = false)::int`,
           favorite: sql<number>`count(*) filter (where ${entriesTable.isFavorite} = true)::int`,
+          watching: sql<number>`count(*) filter (where ${entriesTable.watchState} = 'watch')::int`,
+          blocked: sql<number>`count(*) filter (where ${entriesTable.watchState} = 'block')::int`,
         })
         .from(entriesTable)
         .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
         .where(eq(feeds.ownerId, uid));
 
-      const row = rows[0] ?? { total: 0, unread: 0, favorite: 0 };
+      const row = rows[0] ?? { total: 0, unread: 0, favorite: 0, watching: 0, blocked: 0 };
       return c.json(assertResponse(EntryFlagsSchema, row, 'GET /api/entries/flags'));
     })
 
@@ -248,6 +257,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
             q: body.q,
             tag: body.tag,
             watch: body.watch,
+            fav: body.fav === '1',
             unread: true, // 只标未读的：已是已读的不该刷新 read_at
           }),
         ];

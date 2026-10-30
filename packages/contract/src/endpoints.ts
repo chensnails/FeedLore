@@ -240,6 +240,20 @@ export const feedsListResponse = z.object({
 export type FeedsListResponse = z.infer<typeof feedsListResponse>;
 
 export const feeds = {
+  /* GET /api/feeds/export —— 导出 OPML。
+   * 为什么是「返回一段文本」而不是直接 `text/xml`：v2 的所有响应都要过
+   * `assertResponse` 校验契约，把 OPML 塞在 JSON 字段里才能保持「一个响应一个形状」，
+   * 下载动作交给前端（Blob + a[download]）去做，服务端不关心用户存到哪。 */
+  exportOpml: {
+    method: 'get',
+    path: '/api/feeds/export',
+    auth: 'user',
+    response: z.object({
+      ok: z.boolean(),
+      count: z.number().int(),
+      opml: z.string(),
+    }),
+  },
   list: {
     method: 'get',
     path: '/api/feeds',
@@ -337,7 +351,10 @@ export const entriesQuery = z.object({
   watch: z.enum(['watch', 'block']).optional(),
   scope: z.enum(['all', 'cards']).optional(),
   feeds: z.string().optional(),
-  sort: z.enum(['new', 'old']).optional(),
+  /* name = 按标题排。契约里必须有这一档：LEGACY 的 layout.sort 就写着 new/old/name，
+   * 只让服务端支持前两档的话，v1 用户存了 name 的账号迁过来会静默退回「新→旧」——
+   * 设置里显示「按名称」而列表按时间排，是最难查的那类不一致。 */
+  sort: z.enum(['new', 'old', 'name']).optional(),
 });
 export type EntriesQuery = z.infer<typeof entriesQuery>;
 
@@ -356,6 +373,10 @@ export const readAllBody = z.object({
   q: z.string().max(100).optional(),
   tag: z.string().max(60).optional(),
   watch: z.enum(['watch', 'block']).optional(),
+  /* 收藏视图下的一键已读也必须只命中「收藏且未读」。
+   * 少这个字段，「在收藏视图点全部已读」会把范围内所有未读都标掉 ——
+   * 用户只看到几十条收藏，实际标掉了几千条。 */
+  fav: z.enum(['1']).optional(),
 });
 export type ReadAllBody = z.infer<typeof readAllBody>;
 
