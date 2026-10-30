@@ -327,11 +327,17 @@ export function ChannelsTab() {
                     />
                     <div className="feed-main">
                       <p className="feed-title">{f.title}</p>
-                      <p className="feed-meta">
-                        {f.cardEnabled ? '' : '卡片页隐藏 · '}
-                        {f.error ? '抓取失败' : f.entryCount ? `${f.entryCount} 条` : '暂无条目'}
-                      </p>
                     </div>
+                    {f.error && (
+                      <span className="feed-flag danger" title={f.error}>
+                        失败
+                      </span>
+                    )}
+                    {!f.cardEnabled && (
+                      <span className="feed-flag" title="卡片页隐藏">
+                        隐藏
+                      </span>
+                    )}
                     <span className="count">{f.unreadCount}</span>
                   </div>
 

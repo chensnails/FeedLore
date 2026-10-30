@@ -703,9 +703,25 @@ html {
 .feed-title {
   margin: 0;
   font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 状态徽章：只在「有话说」时出现（抓取失败 / 卡片页隐藏）。
+ * 以前是第二行副标题，把频道行撑到 48px，和 32px 的全局视图行对不齐。 */
+.feed-flag {
+  flex: none;
+  font-size: var(--fs-3xs);
+  line-height: 1.6;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  color: var(--muted);
+}
+.feed-flag.danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 42%, transparent);
 }
 .feed-meta {
   margin: 1px 0 0;
@@ -1279,10 +1295,10 @@ html {
 }
 .feed-ops {
   display: flex;
-  gap: 1px;
+  gap: 0;
   flex: none;
   opacity: 0;
-  transition: opacity 0.16s ease;
+  transition: opacity var(--dur-fast) var(--ease);
 }
 .feed-row:hover .feed-ops,
 .feed-ops:focus-within {
@@ -1606,6 +1622,12 @@ html {
 
 .btn.danger {
   color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 38%, transparent);
+}
+.btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  border-color: var(--danger);
 }
 
 @media (max-width: 560px) {
@@ -1744,6 +1766,8 @@ html {
 .search-ico {
   position: absolute;
   left: 8px;
+  /* 显式定位：绝对定位元素的 auto top 取「静态位置」，在 flex 容器里会跑到输入框下方 */
+  top: calc((var(--ctl-sm) - var(--ico-sm)) / 2);
   color: var(--muted);
   pointer-events: none;
 }
@@ -2143,7 +2167,7 @@ html {
 }
 .channel-search .search-clear {
   position: absolute;
-  top: 3px;
+  top: calc((var(--ctl-sm) - 20px) / 2);
   right: 7px;
   width: 20px;
   height: 20px;
@@ -2575,8 +2599,10 @@ html {
   .cards.grid-mode .card {
     flex-direction: row;
     align-items: stretch;
-    gap: 11px;
-    padding: 10px;
+    gap: var(--gap-3);
+    /* 右侧留出收藏按钮的位置：写 padding 简写会把桌面端的 padding-right:44px 覆盖掉，
+     * 标题就会跑到星标底下（v2.0 手机端曾出现标题被☆压住的 bug）。 */
+    padding: var(--gap-3) 34px var(--gap-3) var(--gap-3);
   }
   .cards.grid-mode .card-thumb {
     width: 110px;
@@ -2596,7 +2622,7 @@ html {
   }
   .cards.grid-mode .card-title {
     -webkit-line-clamp: 2;
-    font-size: var(--fs-sm);
+    font-size: var(--fs-md);
   }
   .cards.grid-mode .card-desc {
     -webkit-line-clamp: 2;
