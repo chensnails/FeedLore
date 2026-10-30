@@ -17,7 +17,7 @@ import type {
 } from '@feedlore/contract';
 import { api } from './api';
 import { applyAppearance } from './appearance';
-import { qk } from './query';
+import { qk, type EntriesPages } from './query';
 import { useUi } from '../store/ui';
 
 /**
@@ -37,8 +37,21 @@ function errText(e: unknown): string {
 
 /** 就地改写条目缓存（列表里所有页 + 已打开的详情）。 */
 function patchEntryCache(qc: QueryClient, id: string, patch: Partial<EntryDetail>): void {
-  qc.setQueriesData<EntriesListResponse>({ queryKey: qk.entries }, (old) => {
+  /* ⚠️ 列表缓存是无限滚动的 `{ pages: [...] }`，不是单页 `{ entries }`。
+   * 只按单页改写的话这段会静默失效（读不到 old.entries 就直接返回原值），
+   * 表现是「点了收藏，星标要等一次重新请求才变色」—— 而且不报错，很难归因。
+   * 两种形状都处理，是为了让以后某个查询退回单页时也不用改这里。 */
+  qc.setQueriesData<EntriesListResponse | EntriesPages>({ queryKey: qk.entries }, (old) => {
     if (!old) return old;
+    if ('pages' in old) {
+      return {
+        ...old,
+        pages: old.pages.map((p) => ({
+          ...p,
+          entries: p.entries.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+        })),
+      };
+    }
     return { ...old, entries: old.entries.map((e) => (e.id === id ? { ...e, ...patch } : e)) };
   });
   qc.setQueriesData<EntryDetail>({ queryKey: qk.entry }, (old) =>

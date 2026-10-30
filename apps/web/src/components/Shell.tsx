@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { applyAppearance } from '../lib/appearance';
 import { qk } from '../lib/query';
-import { useRefreshAll, useSaveAppearance } from '../lib/mutations';
+import { useRefreshAll, useSaveAppearance, useSaveLayout } from '../lib/mutations';
+import { useRouteSync } from '../lib/route';
 import { useUi } from '../store/ui';
 import type { Session } from '../lib/types';
 import { FeedsPanel } from './FeedsPanel';
@@ -13,6 +14,8 @@ import { AdminPanel } from './AdminPanel';
 import { DigestPanel } from './DigestPanel';
 import { PrefsPanel } from './PrefsPanel';
 import { CommandPalette } from './CommandPalette';
+import { ConfirmDialog } from './ConfirmDialog';
+import { SideResize, applySideWidth, SIDE_W_DEFAULT } from './SideResize';
 
 /**
  * 登录后的主壳：顶部工具条 + 左频道栏 + 条目列表 + 阅读层覆盖。
@@ -22,14 +25,16 @@ export function Shell({ session }: { session: Session }) {
   const qc = useQueryClient();
   const toast = useUi((s) => s.toast);
   const dismissToast = useUi((s) => s.dismissToast);
-  const [adminOpen, setAdminOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [digestOpen, setDigestOpen] = useState(false);
   const navOpen = useUi((s) => s.navOpen);
   const toggleNav = useUi((s) => s.toggleNav);
   const closeNav = useUi((s) => s.closeNav);
-  const settingsOpen = useUi((s) => s.settingsOpen);
-  const setSettingsOpen = useUi((s) => s.setSettingsOpen);
+  const panel = useUi((s) => s.panel);
+  const setPanel = useUi((s) => s.setPanel);
+
+  /* 地址栏 ↔ 状态 的接线（深链 + 后退）。放在壳里而不是 App：
+   * 登录态才有「看的是哪个频道」这回事，登录页不该往地址栏写东西。 */
+  useRouteSync();
 
   const feedsQuery = useQuery({ queryKey: qk.feeds, queryFn: () => api.feeds.list() });
 
@@ -73,11 +78,14 @@ export function Shell({ session }: { session: Session }) {
     return () => document.removeEventListener('mousedown', onDown);
   }, [moreOpen]);
 
-  /* 抽屉开着时按 Esc 收起。与阅读层的 Esc 不冲突：打开条目会先把抽屉关掉。 */
+  /* 抽屉开着时按 Esc 收起。与阅读层的 Esc 不冲突：打开条目会先把抽屉关掉。
+   * 确认框在上层时让路 —— 那一层要吃掉 Esc，两层同时响应会「关了对话框也关了抽屉」。 */
   useEffect(() => {
     if (!navOpen) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') closeNav();
+      if (e.key !== 'Escape') return;
+      if (useUi.getState().confirmState) return;
+      closeNav();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -85,6 +93,15 @@ export function Shell({ session }: { session: Session }) {
 
   const saveAppearance = useSaveAppearance();
   const refreshAll = useRefreshAll();
+  const saveLayout = useSaveLayout();
+
+  /* 频道栏宽度：读到偏好后写到 CSS 变量。拖拽手柄只改这个变量、松手才写服务端，
+   * 所以这里的作用是「换设备/刷新后恢复」。CSS 里的兜底值就是默认值，
+   * 首屏到偏好返回之间不会跳一下。 */
+  const sideW = prefsQuery.data?.layout.readerSideWidth ?? SIDE_W_DEFAULT;
+  useEffect(() => {
+    if (prefsQuery.data) applySideWidth(sideW);
+  }, [prefsQuery.data, sideW]);
 
   const logout = useMutation({
     mutationFn: () => api.logout(),
@@ -155,7 +172,7 @@ export function Shell({ session }: { session: Session }) {
           {prefsQuery.data?.layout.digestEnabled !== false && (
             <button
               className="btn ghost icon topbar-digest"
-              onClick={() => setDigestOpen(true)}
+              onClick={() => setPanel('digest')}
               title="AI 日报：把过去 24 小时的条目汇总成一份简报"
               aria-label="打开日报"
             >
@@ -164,7 +181,7 @@ export function Shell({ session }: { session: Session }) {
           )}
           <button
             className="btn ghost icon"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => setPanel('settings')}
             title="外观与阅读设置"
             aria-label="打开设置"
           >
@@ -182,7 +199,7 @@ export function Shell({ session }: { session: Session }) {
           {session.role === 'admin' && (
             <button
               className="btn ghost icon topbar-admin"
-              onClick={() => setAdminOpen(true)}
+              onClick={() => setPanel('admin')}
               title="管理：状态 / 采集参数 / 用户"
               aria-label="打开管理面板"
             >
@@ -220,7 +237,7 @@ export function Shell({ session }: { session: Session }) {
                     role="menuitem"
                     onClick={() => {
                       setMoreOpen(false);
-                      setDigestOpen(true);
+                      setPanel('digest');
                     }}
                   >
                     AI 日报
@@ -231,7 +248,7 @@ export function Shell({ session }: { session: Session }) {
                     role="menuitem"
                     onClick={() => {
                       setMoreOpen(false);
-                      setAdminOpen(true);
+                      setPanel('admin');
                     }}
                   >
                     管理面板
@@ -253,8 +270,12 @@ export function Shell({ session }: { session: Session }) {
         </div>
       </header>
 
+      {/* 三列：频道栏 · 拖拽手柄 · 列表。
+          手柄单独占一列而不是贴边绝对定位 —— `.sidebar` 是 overflow:auto，
+          贴边的手柄会被裁掉一半热区。 */}
       <div className="layout">
         <FeedsPanel />
+        <SideResize width={sideW} onCommit={(w) => saveLayout.mutate({ readerSideWidth: w })} />
         <EntriesPanel />
       </div>
 
@@ -262,14 +283,17 @@ export function Shell({ session }: { session: Session }) {
       {navOpen && <div className="nav-scrim" onClick={closeNav} role="presentation" />}
 
       <EntryReader />
-      <PrefsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <PrefsPanel open={panel === 'settings'} onClose={() => setPanel(null)} />
       <CommandPalette
         role={session.role}
-        onOpenDigest={() => setDigestOpen(true)}
-        onOpenAdmin={() => setAdminOpen(true)}
+        onOpenDigest={() => setPanel('digest')}
+        onOpenAdmin={() => setPanel('admin')}
       />
-      <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
-      <DigestPanel open={digestOpen} onClose={() => setDigestOpen(false)} />
+      <AdminPanel open={panel === 'admin'} onClose={() => setPanel(null)} />
+      <DigestPanel open={panel === 'digest'} onClose={() => setPanel(null)} />
+
+      {/* 确认框放在最后：DOM 顺序即层叠顺序，它在所有面板之上 */}
+      <ConfirmDialog />
 
       {toast && (
         <div className={`toast ${toast.tone}`} role="status" onClick={dismissToast}>

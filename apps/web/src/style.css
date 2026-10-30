@@ -364,7 +364,10 @@ body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 268px minmax(0, 1fr);
+  /* 三列：频道栏 · 拖拽手柄 · 列表。
+   * 手柄单独占一列而不是贴边绝对定位 —— `.sidebar` 是 overflow:auto，
+   * 贴边的手柄会被裁掉一半热区。宽度走 --side-w（账号偏好，180~400）。 */
+  grid-template-columns: var(--side-w, 268px) 6px minmax(0, 1fr);
 }
 
 /* ---------------- 频道栏 ---------------- */
@@ -765,6 +768,11 @@ body {
   .layout {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
+  }
+  /* 抽屉模式下没有「栏宽」这回事。不隐藏的话它会占掉一行隐式轨道，
+   * 列表被挤下去半屏 —— 这种塌法在桌面完全看不出来。 */
+  .side-resize {
+    display: none;
   }
 
   .topbar .btn.nav-toggle {
@@ -2351,4 +2359,126 @@ body {
 .fresh-x:hover {
   opacity: 1;
   background: rgb(0 0 0 / 12%);
+}
+
+/* ---------------- 频道栏拖拽手柄 ---------------- */
+
+.side-resize {
+  position: relative;
+  cursor: col-resize;
+  /* 指针事件全部交给我们处理，否则手机上拖手柄会变成滚页面 */
+  touch-action: none;
+}
+
+/* 视觉只有 2px，热区是整列 6px：细线好拖不到，全靠这里补 */
+.side-resize::before {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.side-resize:hover::before,
+.side-resize:focus-visible::before,
+body.side-resizing .side-resize::before {
+  background: var(--accent);
+}
+
+.side-resize:focus-visible {
+  outline: none;
+}
+
+/* 拖拽期间：整页不再选中文字、光标保持 col-resize。
+   不加 user-select 的话，快速拖动会选中侧栏里的频道名。 */
+body.side-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* ---------------- 统一确认框 ---------------- */
+
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90; /* 在阅读层(40)与 toast(60)之上 */
+  background: rgb(0 0 0 / 0.42);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.confirm-box {
+  width: min(420px, 100%);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 20px 20px 16px;
+}
+
+.confirm-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+
+.confirm-body {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---------------- 列表的滚动哨兵 ---------------- */
+
+.list-sentinel {
+  display: flex;
+  justify-content: center;
+  padding: 18px 0 8px;
+  min-height: 1px;
+}
+
+.list-end {
+  text-align: center;
+  padding: 18px 0 8px;
+}
+
+/* 分组范围的「退出」按钮：跟着标题走，不做成独立一行 */
+.scope-x {
+  margin-left: 6px;
+  border: 0;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.scope-x:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* 「只看这组」按下态：整行打底，和折叠状态区分开 */
+.feed-group-row.on .feed-group-name {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.feed-group-row .icon-btn.on {
+  color: var(--accent);
+  background: var(--accent-soft);
 }

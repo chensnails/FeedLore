@@ -13,6 +13,7 @@ import {
   useUpdateApp,
 } from '../lib/mutations';
 import { AccountForm } from './AccountForm';
+import { useUi } from '../store/ui';
 
 /**
  * 管理面板（仅管理员可见）。
@@ -381,6 +382,7 @@ function ConfigTab() {
 
 function UsersTab() {
   const usersQuery = useQuery({ queryKey: qk.adminUsers, queryFn: () => api.admin.users.list() });
+  const askConfirm = useUi((s) => s.askConfirm);
   const create = useCreateUser();
   const patch = usePatchUser();
   const del = useDeleteUser();
@@ -483,8 +485,15 @@ function UsersTab() {
                   disabled={u.isSelf || del.isPending}
                   title={u.isSelf ? '不能删除当前登录的账号' : '删除该用户及其全部订阅'}
                   onClick={() => {
-                    if (!window.confirm(`删除用户「${u.username}」？其订阅与条目会一起删除，不可恢复。`)) return;
-                    del.mutate(u.id);
+                    void (async () => {
+                      const ok = await askConfirm({
+                        title: `删除用户「${u.username}」？`,
+                        body: '其订阅与条目会一起删除，不可恢复。',
+                        okText: '删除',
+                        danger: true,
+                      });
+                      if (ok) del.mutate(u.id);
+                    })();
                   }}
                 >
                   删除

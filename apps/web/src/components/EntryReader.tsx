@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import { api } from '../lib/api';
-import { qk } from '../lib/query';
+import { flattenEntries, qk, type EntriesPages } from '../lib/query';
 import { useSaveAppearance, useSetFavorite, useSetRead } from '../lib/mutations';
 import { useSwipeDismiss } from '../lib/useSwipeDismiss';
 import { useUi } from '../store/ui';
@@ -60,19 +60,27 @@ export function EntryReader() {
    * 顺序、筛选、排序都已经是用户看到的那一份；再让服务端算一次「相邻」，
    * 两边在筛选条件上稍有出入就会出现「下一篇」跳到用户根本没在看的范围内。
    *
+   * 缓存形状是无限滚动的 `{ pages }`，统一用 flattenEntries 拍平 —— 不能让
+   * 「翻篇」这条链路自己知道分页细节（否则调一次 limit 就要改两处）。
+   *
+   * 已知边界：翻到**已加载的最后一页末尾**时 next 为 null。此时不自动追加下一页 ——
+   * 阅读层里再触发一次分页会把「正在读的东西」和「列表在加载」耦合起来，
+   * 关掉阅读层滚一下即可，代价小且不会出错。
+   *
    * `data` 进依赖是有意的：切换条目后详情变了，说明当前条目在列表里的位置要重算。 */
   const neighbors = useMemo(() => {
     if (!readingId) return null;
-    const lists = qc.getQueriesData<EntriesList>({ queryKey: qk.entries });
+    const lists = qc.getQueriesData<EntriesList | EntriesPages>({ queryKey: qk.entries });
     for (const [, list] of lists) {
-      if (!list) continue;
-      const i = list.entries.findIndex((e) => e.id === readingId);
+      const all = flattenEntries(list);
+      if (!all.length) continue;
+      const i = all.findIndex((e) => e.id === readingId);
       if (i < 0) continue;
       return {
-        prev: list.entries[i - 1]?.id ?? null,
-        next: list.entries[i + 1]?.id ?? null,
+        prev: all[i - 1]?.id ?? null,
+        next: all[i + 1]?.id ?? null,
         pos: i + 1,
-        total: list.entries.length,
+        total: all.length,
       };
     }
     return null;
@@ -101,6 +109,8 @@ export function EntryReader() {
     if (!readingId) return;
     const onKey = (e: KeyboardEvent): void => {
       if (document.querySelector('.lightbox')) return;
+      // 确认框在最上层：它的 Esc 只该关它自己
+      if (useUi.getState().confirmState) return;
       const el = document.activeElement;
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return;
 

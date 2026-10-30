@@ -34,6 +34,11 @@ export function FeedsPanel() {
   const setFeedId = useUi((s) => s.setFeedId);
   const navOpen = useUi((s) => s.navOpen);
   const closeNav = useUi((s) => s.closeNav);
+  const askConfirm = useUi((s) => s.askConfirm);
+  /* 组件里已经有一个同名 state（新增频道时填的分组名），所以 store 的那个
+   * 在本地叫 focusGroup，避免「同一个名字两个东西」这种最容易看错的写法。 */
+  const focusGroup = useUi((s) => s.groupName);
+  const setFocusGroup = useUi((s) => s.setGroupName);
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState('');
   const [groupName, setGroupName] = useState('');
@@ -175,9 +180,17 @@ export function FeedsPanel() {
     );
   }
 
-  function remove(f: Feed): void {
-    // 破坏性操作，且服务端会级联删掉该频道的全部条目 —— 必须让用户明确确认
-    if (!window.confirm(`删除「${f.title}」？\n该频道的 ${f.entryCount} 条记录会一起删除，不可恢复。`)) return;
+  async function remove(f: Feed): Promise<void> {
+    /* 破坏性操作，且服务端会级联删掉该频道的全部条目 —— 必须让用户明确确认。
+     * 用应用内确认框而不是 window.confirm：后者同步阻塞主线程，删除期间按钮
+     * 想进 pending 都进不去；移动端还会被浏览器接管成不可控样式。 */
+    const ok = await askConfirm({
+      title: `删除「${f.title}」？`,
+      body: `该频道的 ${f.entryCount} 条记录会一起删除，不可恢复。`,
+      okText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
     deleteFeed.mutate(f.id);
   }
 
@@ -359,7 +372,7 @@ export function FeedsPanel() {
                     />
                   </div>
                 ) : (
-                  <div className="feed-group-row">
+                  <div className={`feed-group-row${focusGroup === g.name ? ' on' : ''}`}>
                     <button
                       className={`feed-group${isCollapsed ? ' collapsed' : ''}`}
                       aria-expanded={!isCollapsed}
@@ -371,6 +384,26 @@ export function FeedsPanel() {
                       {gUnread > 0 && <span className="feed-group-n">{gUnread}</span>}
                     </button>
                     <span className="feed-group-ops">
+                      {/* 「只看这一组」。v1 是分组行上一个漏斗图标，和折叠共用一个语义 ——
+                          用户分不清点下去是收起来还是筛出来。这里拆成两件事：
+                          标题 = 折叠，◎ = 只看（按下态常显，再点一次取消）。 */}
+                      <button
+                        className={`icon-btn${focusGroup === g.name ? ' on' : ''}`}
+                        title={focusGroup === g.name ? '取消只看这一组' : `只看「${g.name}」这一组`}
+                        aria-label={focusGroup === g.name ? '取消只看这一组' : `只看「${g.name}」这一组`}
+                        aria-pressed={focusGroup === g.name}
+                        onClick={() => {
+                          if (focusGroup === g.name) {
+                            setFocusGroup(null);
+                            return;
+                          }
+                          setFocusGroup(g.name);
+                          // 收起状态下点了会「什么都没变」：先展开再筛
+                          if (collapsedSet.has(g.name)) toggleGroup(g.name);
+                        }}
+                      >
+                        ◎
+                      </button>
                       <button
                         className="icon-btn"
                         title="重命名分组"
@@ -483,7 +516,7 @@ export function FeedsPanel() {
                         title="删除频道"
                         aria-label="删除频道"
                         disabled={deleteFeed.isPending}
-                        onClick={() => remove(f)}
+                        onClick={() => void remove(f)}
                       >
                         ✕
                       </button>

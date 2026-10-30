@@ -168,7 +168,7 @@ export function CommandPalette({
         label: '打开设置',
         hint: 'Aa',
         keywords: 'settings prefs shezhi dakai 设置 外观 阅读 账号 关注规则',
-        run: close(() => useUi.getState().setSettingsOpen(true)),
+        run: close(() => useUi.getState().setPanel('settings')),
       },
       {
         id: 'open-digest',

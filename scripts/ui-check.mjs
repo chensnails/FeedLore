@@ -148,6 +148,13 @@ try {
     if (msg.method === 'Runtime.consoleAPICalled' && msg.params?.type === 'error') {
       errors.push(msg.params.args.map((a) => a.value ?? a.description ?? '').join(' '));
     }
+    /* 原生 confirm/alert 会**同步阻塞渲染进程**，CDP 的 Runtime.evaluate 会一直不返回，
+     * 脚本表现成「跑到一半卡死」。这里直接拒掉并记一条错误：
+     * 「还用着原生对话框」本身就是本次要守的回归点。 */
+    if (msg.method === 'Page.javascriptDialogOpening') {
+      errors.push(`出现原生 ${msg.params?.type} 对话框 —— 应改用应用内确认框`);
+      void send('Page.handleJavaScriptDialog', { accept: false }).catch(() => {});
+    }
   });
   await new Promise((res, rej) => {
     ws.addEventListener('open', res, { once: true });
@@ -409,6 +416,113 @@ try {
     console.log('  ⚠️ 日报面板检查未全部通过');
     process.exitCode = 1;
   }
+  /* ============ 六项交互回归：无限滚动 / 深链 / 后退 / 确认框 / 分组 / 侧栏宽度 ============ */
+
+  // 【1】无限滚动。滚到底后条目数必须变多 —— 不变化说明 sentinel 没触发，
+  // 或者 IntersectionObserver 的 root 没指向 .list（那是最常见的写错法，桌面看不出来）。
+  const rowsBefore = (await evalJs("document.querySelectorAll('.cards .card-row').length")) ?? 0;
+  await evalJs("(() => { const l = document.querySelector('.list'); if (l) l.scrollTop = l.scrollHeight; return 1; })()");
+  await sleep(2800);
+  const rowsAfter = (await evalJs("document.querySelectorAll('.cards .card-row').length")) ?? 0;
+  const tailText = ((await evalJs("document.querySelector('.list-sentinel, .list-end')?.innerText ?? ''")) ?? '').trim();
+  const scrollOk = rowsAfter > rowsBefore;
+  console.log(`  无限滚动：${rowsBefore} → ${rowsAfter} 条（尾部="${tailText}"）`);
+
+  // 【2】深链。带 ?r= 强制文档级导航，否则同文档 hash 跳转测不出「冷启动直达」。
+  await evalJs("(() => { const l = document.querySelector('.list'); if (l) l.scrollTop = 0; return 1; })()");
+  await sleep(400);
+  await evalJs("document.querySelector('.cards .card-row .card')?.click()");
+  await sleep(1500);
+  const deepHash = (await evalJs("location.hash")) ?? '';
+  const deepTitle = (await evalJs("document.querySelector('.reader-title')?.textContent ?? ''")) ?? '';
+  const bare = url.replace(/\/$/, '');
+  await send('Page.navigate', { url: `${bare}/?r=${Date.now()}${deepHash}` });
+  await sleep(3600);
+  const deepTitle2 = (await evalJs("document.querySelector('.reader-title')?.textContent ?? ''")) ?? '';
+  const deepOk = /^#\/a\/\d+$/.test(deepHash) && deepTitle.length > 0 && deepTitle2 === deepTitle;
+  console.log(
+    `  深链：hash=${deepHash} 打开=${JSON.stringify(deepTitle.slice(0, 16))} 直达=${JSON.stringify(deepTitle2.slice(0, 16))}`,
+  );
+  await shot('ui-deeplink.png');
+
+  // 【3】后退。深链是历史里的新一条，后退应回到列表（阅读层必须消失）。
+  await evalJs("history.back()");
+  await sleep(1800);
+  const backClosed = await evalJs("!document.querySelector('.reader-sheet')");
+  const backHash = (await evalJs("location.hash")) ?? '';
+  const backOk = backClosed === true;
+  console.log(`  后退：阅读层关闭=${backClosed} hash=${backHash || '(空)'}`);
+
+  // 【4】确认框。删频道的确认必须是应用内对话框；取消后频道数不变（不能误删）。
+  const feedsBefore = (await evalJs("document.querySelectorAll('.feed-row').length")) ?? 0;
+  await evalJs("document.querySelector('.feed-row .icon-btn.danger')?.click()");
+  await sleep(600);
+  const confirmShown = await evalJs("!!document.querySelector('.confirm-box')");
+  const confirmTitle = ((await evalJs("document.querySelector('.confirm-title')?.textContent ?? ''")) ?? '').slice(0, 22);
+  const cancelFocused = await evalJs("document.activeElement?.innerText?.trim() === '取消'");
+  await evalJs("[...document.querySelectorAll('.confirm-actions .btn')].find((b) => b.innerText.trim() === '取消')?.click()");
+  await sleep(500);
+  const confirmGone = await evalJs("!document.querySelector('.confirm-box')");
+  const feedsAfter = (await evalJs("document.querySelectorAll('.feed-row').length")) ?? 0;
+  const confirmOk = confirmShown === true && confirmGone === true && feedsAfter === feedsBefore;
+  console.log(
+    `  确认框：弹出=${confirmShown} 标题=${JSON.stringify(confirmTitle)} 默认焦点取消=${cancelFocused} 取消后关闭=${confirmGone} 频道 ${feedsBefore}→${feedsAfter}`,
+  );
+  await shot('ui-confirm.png');
+
+  // 【5】只看这一组：◎ 按下 → 标题变「组：x」+ hash 走 #/g/ → 一键退出
+  const grpName = ((await evalJs("document.querySelector('.feed-group-row .feed-group-name')?.textContent ?? ''")) ?? '').trim();
+  let groupOk = null;
+  if (grpName) {
+    await evalJs("document.querySelector('.feed-group-row .icon-btn')?.click()");
+    await sleep(1800);
+    const scopeTitle = ((await evalJs("document.querySelector('.list-title')?.textContent ?? ''")) ?? '').trim();
+    const pressed = await evalJs("document.querySelector('.feed-group-row .icon-btn')?.getAttribute('aria-pressed')");
+    const groupHash = (await evalJs("location.hash")) ?? '';
+    const groupRows = (await evalJs("document.querySelectorAll('.cards .card-row').length")) ?? 0;
+    await evalJs("document.querySelector('.scope-x')?.click()");
+    await sleep(1600);
+    const scopeAfter = ((await evalJs("document.querySelector('.list-title')?.textContent ?? ''")) ?? '').trim();
+    groupOk =
+      scopeTitle.includes(`组：${grpName}`) &&
+      pressed === 'true' &&
+      groupHash.startsWith('#/g/') &&
+      !scopeAfter.startsWith('组：');
+    console.log(
+      `  分组筛选：组=${JSON.stringify(grpName)} 标题=${JSON.stringify(scopeTitle.slice(0, 20))} hash=${groupHash} 条目=${groupRows} 退出后=${JSON.stringify(scopeAfter.slice(0, 16))}`,
+    );
+  } else {
+    console.log('  分组筛选：库里没有分组，跳过');
+  }
+
+  // 【6】侧栏宽度：键盘调宽 → 刷新后仍是这个宽度（证明写进了服务端偏好，不是只改了本地变量）
+  const w0 = await evalJs("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)");
+  const wBump = await evalJs(`(() => {
+    const h = document.querySelector('.side-resize');
+    if (!h) return 'no-handle';
+    for (let i = 0; i < 3; i += 1) h.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    return Math.round(document.querySelector('.sidebar').getBoundingClientRect().width);
+  })()`);
+  await sleep(1600);
+  await send('Page.reload');
+  await sleep(3600);
+  const w1 = await evalJs("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)");
+  const sideOk = typeof wBump === 'number' && typeof w0 === 'number' && wBump > w0 && w1 === wBump;
+  console.log(`  侧栏宽度：${w0} → ${wBump}px，刷新后 ${w1}px`);
+  // 复位成默认，别把测试库的偏好留在 316
+  await evalJs(`(() => {
+    const h = document.querySelector('.side-resize');
+    if (!h) return 0;
+    h.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
+    return 1;
+  })()`);
+  await sleep(1200);
+
+  if (!(scrollOk && deepOk && backOk && confirmOk && sideOk && groupOk !== false)) {
+    console.log('  ⚠️ 六项交互回归未全部通过');
+    process.exitCode = 1;
+  }
+
   console.log(errors.length ? `  控制台错误：\n  - ${errors.join('\n  - ')}` : '  控制台无错误');
   const imgOk = thumbStats.loaded > 0 || iconStats.loaded > 0;
   if (!imgOk) console.log('  ⚠️ 没有任何图片解码成功（可能库里条目都没图，也可能代理全挂）');

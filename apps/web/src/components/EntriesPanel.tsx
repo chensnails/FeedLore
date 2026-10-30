@@ -1,18 +1,17 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EntriesListQuery } from '@feedlore/client';
 import type { ReadAllBody } from '@feedlore/contract';
 import { api } from '../lib/api';
-import { qk } from '../lib/query';
+import { flattenEntries, qk } from '../lib/query';
 import { useReadAll, useSaveLayout, useSetFavorite, useSetRead } from '../lib/mutations';
 import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { useUi, type ListFilter, type ListSort, type ListView } from '../store/ui';
-import type { EntryCard } from '../lib/types';
 import { Thumb } from './Thumb';
 
 /**
- * 条目列表。筛选条件全部来自 store（频道 / 筛选档 / 排序 / 标签 / 搜索词），不额外存派生数据：
- * `queryKey` 带上这几个维度，换条件就是一次正常的缓存命中/重取，不需要手工 relayout。
+ * 条目列表。筛选条件全部来自 store（频道 / 分组 / 筛选档 / 排序 / 标签 / 搜索词），
+ * 不额外存派生数据：`queryKey` 带上这几个维度，换条件就是一次正常的缓存命中/重取。
  *
  * 写操作全部走 `lib/mutations`（乐观更新 + 失败回滚），组件只负责「点了要发生什么」。
  *
@@ -35,8 +34,12 @@ const SORTS: ReadonlyArray<readonly [ListSort, string]> = [
   ['name', '按名称'],
 ];
 
+const PAGE_SIZE = 30;
+
 export function EntriesPanel() {
   const feedId = useUi((s) => s.feedId);
+  const groupName = useUi((s) => s.groupName);
+  const setGroupName = useUi((s) => s.setGroupName);
   const filter = useUi((s) => s.filter);
   const setFilter = useUi((s) => s.setFilter);
   const sort = useUi((s) => s.sort);
@@ -64,11 +67,34 @@ export function EntriesPanel() {
   }, [kw, setSearch]);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // 频道列表已在缓存里（侧栏取过），这里只读不额外请求：算作用范围 + 显示当前频道名
+  const feedsQuery = useQuery({
+    queryKey: qk.feeds,
+    queryFn: () => api.feeds.list(),
+    staleTime: 60_000,
+  });
+
+  /* 「只看这一组」不走新接口：把组内频道的 id 拼成 `feeds` 参数即可，
+   * 服务端早就支持多 id（parseFeedIds 逗号分隔）。少一个接口就少一处两边口径不一致。
+   *
+   * ⚠️ 组内 0 个频道时**不能**退回「全部频道」：接口把空串当成「没有范围」，
+   * 用户会看到「组：技术」配着全站列表，而这种错误看起来完全像功能正常。 */
+  const groupFeedIds = useMemo(() => {
+    if (!groupName) return null;
+    return (feedsQuery.data?.feeds ?? [])
+      .filter((f) => (f.groupName || '') === groupName)
+      .map((f) => Number(f.id));
+  }, [groupName, feedsQuery.data]);
+
+  const groupReady = !groupName || (groupFeedIds !== null && groupFeedIds.length > 0);
 
   // hc 的 query 类型只接受字符串（URL 查询串的真实形态），数字要在服务端 coerce
   const query: EntriesListQuery = {
-    limit: '30',
-    ...(feedId ? { feeds: feedId } : {}),
+    limit: String(PAGE_SIZE),
+    ...(feedId ? { feeds: feedId } : groupFeedIds && groupFeedIds.length ? { feeds: groupFeedIds.join(',') } : {}),
     ...(filter === 'unread' ? { unread: '1' as const } : {}),
     ...(filter === 'favorite' ? { fav: '1' as const } : {}),
     ...(filter === 'watch' ? { watch: 'watch' as const } : {}),
@@ -80,41 +106,91 @@ export function EntriesPanel() {
 
   /* 查询键单独抽出来：自动刷新要靠它判断「浮标属于哪一批结果」，
    * 换条件后不清掉就会留着一个指向旧范围的「N 条新内容」。 */
-  const entriesKey = [...qk.entries, feedId, filter, sort, tag, search] as const;
+  const entriesKey = [...qk.entries, feedId, groupName, filter, sort, tag, search] as const;
 
-  const { data, isError, error, refetch, isFetching } = useQuery({
+  /* 无限滚动。`hasMore` 由服务端「多取一条」判断，这里只管「还能不能再要一页」。 */
+  const {
+    data,
+    isError,
+    error,
+    refetch,
+    isFetching,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: entriesKey,
-    queryFn: () => api.entries.list(query),
+    queryFn: ({ pageParam }) => api.entries.list({ ...query, offset: String(pageParam) }),
+    initialPageParam: 0,
+    getNextPageParam: (last) => (last.hasMore ? last.offset + last.limit : undefined),
     /* ⚠️ 必须保留上一批结果。没有它，每换一次 queryKey（敲搜索词、切频道、切排序）
      * 都会进入 isPending，而下面的 early return 会把**整个 main 连同搜索框**
      * 换成「加载条目…」—— 输入框被卸载，用户敲第二个字就丢焦点，
      * 这是只有真机连着打字才会发现的塌法。 */
     placeholderData: keepPreviousData,
+    /* 分组还没解析出频道 id 时不发请求：否则会先按「全部频道」取一页，
+     * 再把「组」的筛选结果顶上来，闪一下而且多半是错的那一屏。 */
+    enabled: groupReady,
   });
 
-  // 频道列表已在缓存里（侧栏取过），这里只读不额外请求：算作用范围 + 显示当前频道名
-  const feedsQuery = useQuery({
-    queryKey: qk.feeds,
-    queryFn: () => api.feeds.list(),
-    staleTime: 60_000,
-  });
+  const entries = useMemo(() => flattenEntries(data), [data]);
+  // 分页信封上的元信息（总数/标签/limit）以第一页为准，后面几页都是同一批的切片
+  const head = data?.pages[0];
 
   /* 页面自动刷新。间隔来自 `settings.source.autoRefreshMinutes`（管理员在采集参数里改），
-   * 0 = 关闭。收藏视图与搜索态跳过（见 useAutoRefresh 的注释）。 */
+   * 0 = 关闭。收藏视图、搜索态与分组未就绪时跳过（见 useAutoRefresh 的注释）。 */
   const auto = useAutoRefresh({
     query,
     queryKey: entriesKey,
     minutes: feedsQuery.data?.autoRefreshMinutes ?? 0,
-    headIds: (data?.entries ?? []).slice(0, 30).map((e) => e.id),
-    skip: filter === 'favorite' || Boolean(search),
+    headIds: entries.slice(0, PAGE_SIZE).map((e) => e.id),
+    skip: filter === 'favorite' || Boolean(search) || !groupReady,
   });
+
+  /* 滚动到底自动加载。
+   *
+   * ⚠️ `root` **必须显式指向 .list**：滚动发生在 .list 内部（`overflow:auto`），
+   * 不传 root 时 IO 拿 viewport 判定，而 .list 里的元素从视口看从来没离开过，
+   * 于是「到底了」永远判不出来 —— v1 就是踩这个坑才有一版加载更多完全失效。
+   *
+   * 依赖里带 `entries.length` 与 `isFetchingNextPage` 是必须的：内容不满一屏时
+   * sentinel 一开始就在视口里，IO 只会在 observe 的当下回调一次；加载完一页后
+   * 它仍在视口里、状态没变化，不会再有回调。重跑 effect = 重新 observe = 再回调一次，
+   * 这样「一屏还没填满」才可能连续翻几页直到填满或没有更多。 */
+  const fetchingRef = useRef(false);
+  fetchingRef.current = isFetchingNextPage;
+  useEffect(() => {
+    const root = listRef.current;
+    const el = sentinelRef.current;
+    if (!root || !el || !hasNextPage) return undefined;
+    const io = new IntersectionObserver(
+      (rows) => {
+        if (!rows.some((r) => r.isIntersecting)) return;
+        if (fetchingRef.current) return;
+        void fetchNextPage();
+      },
+      { root, rootMargin: '480px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasNextPage, fetchNextPage, entries.length, isFetchingNextPage]);
 
   /* 判据是「有没有数据」而不是 isPending：留着上一次结果时 isPending 也是 true，
    * 那时不该把界面掀掉重画。 */
   if (!data) {
+    if (!groupReady) {
+      return (
+        <main className="list" ref={listRef as React.RefObject<HTMLElement>}>
+          <div className="panel">
+            <p>分组「{groupName}」里还没有频道。</p>
+            <button className="btn" onClick={() => setGroupName(null)}>看全部频道</button>
+          </div>
+        </main>
+      );
+    }
     if (isError) {
       return (
-        <main className="list">
+        <main className="list" ref={listRef as React.RefObject<HTMLElement>}>
           <div className="panel error">
             <p>条目加载失败：{error instanceof Error ? error.message : '未知错误'}</p>
             <button className="btn" onClick={() => void refetch()}>重试</button>
@@ -123,27 +199,30 @@ export function EntriesPanel() {
       );
     }
     return (
-      <main className="list">
+      <main className="list" ref={listRef as React.RefObject<HTMLElement>}>
         <p className="hint">加载条目…</p>
       </main>
     );
   }
 
   /** 点开即已读：先打开阅读层（不等请求），已读标记并行发出。 */
-  function open(e: EntryCard): void {
+  function open(e: { id: string; isRead: boolean }): void {
     openEntry(e.id);
     if (!e.isRead) setRead.mutate({ id: e.id, isRead: true });
   }
 
   /* 「全部已读」的作用范围必须与「屏幕上看到的」一致：
-   * - 选中某频道 → 只标这个频道；全部频道 → 只标卡片开关打开的频道（列表默认 scope=cards 的同批）。
+   * - 选中某频道 → 只标这个频道；选中某分组 → 只标这个分组；
+   *   全部频道 → 只标卡片开关打开的频道（列表默认 scope=cards 的同批）。
    * - 筛选档、标签、搜索词一并带上。少带任何一个，都会把用户没看见的条目一起标掉 ——
    *   这是最容易让人恼火的误操作。 */
   const targetFeeds = feedId
     ? [Number(feedId)]
-    : (feedsQuery.data?.feeds.filter((f) => f.cardEnabled).map((f) => Number(f.id)) ?? []);
+    : groupFeedIds && groupFeedIds.length
+      ? groupFeedIds
+      : (feedsQuery.data?.feeds.filter((f) => f.cardEnabled).map((f) => Number(f.id)) ?? []);
 
-  const unreadVisible = data.entries.filter((e) => !e.isRead).length;
+  const unreadVisible = entries.filter((e) => !e.isRead).length;
 
   const feedName = feedId
     ? (feedsQuery.data?.feeds.find((f) => f.id === feedId)?.title ?? '频道')
@@ -163,7 +242,7 @@ export function EntriesPanel() {
   }
 
   return (
-    <main className="list">
+    <main className="list" ref={listRef as React.RefObject<HTMLElement>}>
       {/* 「N 条新内容」浮标。只在**已经滚下去**时才出现（在顶部时探测会直接套用，
           不打扰）。点一下才把新内容换上来 —— 列表在眼皮底下自己位移是最难受的交互。 */}
       {auto.fresh && (
@@ -179,15 +258,26 @@ export function EntriesPanel() {
 
       <div className="list-head">
         <div className="list-scope">
-          <h1 className="list-title" title={`${feedName} · ${filterName}`}>
-            {feedName}
+          <h1 className="list-title" title={`${groupName ? `组：${groupName}` : feedName} · ${filterName}`}>
+            {groupName ? `组：${groupName}` : feedName}
             {filter !== 'all' && <em>{filterName}</em>}
             {tag && <em>#{tag}</em>}
+            {/* 分组范围要能一键退出：它没有「全部」那一行可以点回去 */}
+            {groupName && (
+              <button
+                className="scope-x"
+                title={`取消分组筛选，看全部频道`}
+                aria-label="取消分组筛选"
+                onClick={() => setGroupName(null)}
+              >
+                ✕
+              </button>
+            )}
           </h1>
           <span className="list-count">
-            {data.total} 条{isFetching ? ' · 更新中…' : ''}
+            {head?.total ?? 0} 条{isFetching && !isFetchingNextPage ? ' · 更新中…' : ''}
             {unreadVisible > 0 && (
-              <em className="inline-unread">本页 {unreadVisible}/{data.entries.length} 未读</em>
+              <em className="inline-unread">已加载 {unreadVisible} 条未读</em>
             )}
           </span>
         </div>
@@ -279,7 +369,7 @@ export function EntriesPanel() {
         <span className="filter-spacer" />
         <button
           className="btn ghost sm"
-          disabled={readAll.isPending || data.total === 0}
+          disabled={readAll.isPending || (head?.total ?? 0) === 0}
           /* 搜索态必须把 q 一起带上：不带就变成「把范围内所有未读都标掉」，
            * 而用户看到的只是搜索结果那几条。筛选档与标签同理。 */
           onClick={() => {
@@ -299,9 +389,9 @@ export function EntriesPanel() {
       </div>
 
       {/* 标签云：点一下就是按标签筛。标签是「条目自带的分类」，比关键词搜索更准确 */}
-      {data.tags.length > 0 && (
+      {(head?.tags.length ?? 0) > 0 && (
         <div className="tag-bar">
-          {data.tags.slice(0, 14).map((t) => (
+          {head?.tags.slice(0, 14).map((t) => (
             <button
               key={t.tag}
               className={`tag tag-btn${tag === t.tag ? ' on' : ''}`}
@@ -321,7 +411,7 @@ export function EntriesPanel() {
       )}
 
       <ul className={`cards ${view === 'list' ? 'list-mode' : 'grid-mode'}`}>
-        {data.entries.map((e) => (
+        {entries.map((e) => (
           <li key={e.id} className={`card-row${e.isRead ? ' read' : ''}`}>
             <button className="card" onClick={() => open(e)}>
               {/* 封面：服务端已把外链改写成本站代理，这里只负责展示与失败降级 */}
@@ -351,8 +441,17 @@ export function EntriesPanel() {
         ))}
       </ul>
 
-      {data.entries.length === 0 && <p className="hint">{emptyText(search, tag, filter)}</p>}
-      {data.hasMore && <p className="hint">仅显示前 {data.limit} 条</p>}
+      {entries.length === 0 && <p className="hint">{emptyText(search, tag, filter, groupName)}</p>}
+
+      {/* 滚动哨兵与加载状态。有更多时放哨兵（IO 靠它触发），没有更多时说清
+          「到底了」—— 无限滚动最怕的是用户不知道是真的没有还是卡住了。 */}
+      {hasNextPage ? (
+        <div ref={sentinelRef} className="list-sentinel">
+          {isFetchingNextPage ? <span className="hint">加载更多…</span> : null}
+        </div>
+      ) : (
+        entries.length > 0 && <p className="hint list-end">共 {head?.total ?? entries.length} 条，已全部加载</p>
+      )}
     </main>
   );
 }
@@ -362,13 +461,14 @@ export function EntriesPanel() {
  * 统一一句「这里还没有条目」会把「搜错了词」和「这个频道真的没内容」混成同一件事，
  * 前者用户会以为抓取坏了，后者用户会以为搜索坏了。
  */
-function emptyText(search: string, tag: string | null, filter: ListFilter): string {
+function emptyText(search: string, tag: string | null, filter: ListFilter, groupName: string | null): string {
   if (search) return `没有匹配「${search}」的条目。`;
   if (tag) return `没有带 #${tag} 的条目。`;
   if (filter === 'unread') return '这个范围内没有未读条目。';
   if (filter === 'favorite') return '还没有收藏过条目。';
   if (filter === 'watch') return '没有命中关注规则的条目。';
   if (filter === 'block') return '没有命中屏蔽规则的条目。';
+  if (groupName) return `分组「${groupName}」里还没有条目。`;
   return '这里还没有条目。';
 }
 

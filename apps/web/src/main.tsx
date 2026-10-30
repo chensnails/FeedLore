@@ -3,7 +3,13 @@ import { createRoot } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { queryClient } from './lib/query';
+import { hydrateFromRoute } from './lib/route';
 import './style.css';
+
+/* 必须在渲染之前：地址栏是筛选条件的**主真相源**，晚一步的话
+ * EntriesPanel 会先用 localStorage 里的值发一次请求、再按 hash 重发一次，
+ * 刷新时表现为列表闪一下再换内容。 */
+hydrateFromRoute();
 
 const el = document.getElementById('root');
 if (!el) throw new Error('缺少 #root 挂载点');
