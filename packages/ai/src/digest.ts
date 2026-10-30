@@ -465,7 +465,9 @@ export async function generateDigest(input: GenerateInput): Promise<GenerateResu
     fallback: raw.fallback === true,
     error: llmError,
     stats: { collected: collected.length, kept: compact.length, feeds: feedCount },
-    overview: String(raw.overview ?? ''),
+    // 概览是「2-3 句话」，600 字已经很宽；不封顶的话模型偶尔会写一大段，
+    // 直接把下面的分类挤到屏幕外（也顺带挡住「错误信息被模型复述」的极端情况）
+    overview: clamp(raw.overview, 600),
     highlights: highlightsRaw
       .map((h) => ({
         text: clamp(stripRef(h.text ?? h.why ?? ''), 60),

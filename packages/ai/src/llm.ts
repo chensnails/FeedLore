@@ -160,6 +160,25 @@ const clamp = (s: string, n: number): string => {
   return t.length > n ? t.slice(0, n) + '…' : t;
 };
 
+/**
+ * 把上游的错误响应体收拾成一句人话。
+ *
+ * 为什么必须处理：OpenAI 兼容接口在地址或路径不对时，返回的常常是 nginx 的
+ * 404/502 **HTML 页面**。原样截 160 字塞进日报，用户看到的是
+ * `<html xmlns=...><head><title>404-1</title><meta http-equiv=...` 这一大坨标签
+ * （截图验证过：降级摘要的告警和概览里各来一遍，占掉半屏）。
+ * HTML 就只取 `<title>`，其余按纯文本截断。
+ */
+function cleanUpstreamError(text: string): string {
+  const t = String(text ?? '').trim();
+  if (!t) return '上游返回空响应';
+  if (/^<(!doctype|html|\?xml)/i.test(t)) {
+    const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(t)?.[1]?.replace(/\s+/g, ' ').trim();
+    return title ? `返回 HTML 页面（${clamp(title, 60)}）` : '返回了 HTML 页面而不是 JSON';
+  }
+  return clamp(t, 160);
+}
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -224,7 +243,7 @@ export async function chat(
       if (resp.status === 401 || resp.status === 403) {
         throw new Error(`模型拒绝鉴权（${resp.status}）：Key 无效或无权限`);
       }
-      throw new Error(`模型返回 ${resp.status}：${clamp(text, 160)}`);
+      throw new Error(`模型返回 ${resp.status}：${cleanUpstreamError(text)}`);
     }
 
     let data: { choices?: Array<{ message?: { content?: string } }> };

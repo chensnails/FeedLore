@@ -356,10 +356,52 @@ try {
     console.log('  ⚠️ 管理面板检查未全部通过');
     process.exitCode = 1;
   }
+
+  // 【日报】▤ 入口 → 面板打开 → 两个页签都有真实内容（空白也当失败）
+  const digestLabel = await evalJs("document.querySelector('[aria-label=\"打开日报\"]') ? 'found' : 'missing'");
+  await evalJs("document.querySelector('[aria-label=\"打开日报\"]')?.click()");
+  await sleep(2200);
+  const digestOpen = await evalJs("!!document.querySelector('.digest-sheet')");
+  const digestTabs = await evalJs("document.querySelectorAll('.digest-sheet .admin-tabs .chip').length");
+  const digestText = (await evalJs("document.querySelector('.digest-sheet .admin-body')?.innerText ?? ''")) ?? '';
+  // 要么有真实日报（概览段），要么是「还没有日报」的提示；一片空白说明渲染挂了
+  const digestHasBody = digestText.length > 20;
+  console.log(
+    `  日报：入口=${digestLabel} 打开=${digestOpen} 页签=${digestTabs} 正文=${
+      digestHasBody ? digestText.slice(0, 28).replace(/\s+/g, ' ') : '空'
+    }`,
+  );
+  await shot('ui-digest.png');
+
+  const dTab = await evalJs(`(() => {
+    const b = [...document.querySelectorAll('.digest-sheet .admin-tabs .chip')].find((x) => x.innerText.includes('设置'));
+    if (!b) return 'no-tab';
+    b.click();
+    return 'ok';
+  })()`);
+  await sleep(1600);
+  const dInputs = await evalJs(
+    "document.querySelectorAll('.digest-sheet .admin-field input, .digest-sheet .admin-field select, .digest-sheet .admin-field textarea').length",
+  );
+  // 「测试连接」在但 apiKey 输入框为空 —— 这两个是本轮最容易被漏掉的界面元素
+  const hasTestBtn = await evalJs(
+    "[...document.querySelectorAll('.digest-sheet button')].some((b) => b.innerText.includes('测试连接'))",
+  );
+  const apiKeyEmpty = await evalJs("document.querySelector('.digest-sheet input[type=password]')?.value === ''");
+  console.log(`  日报设置：${dTab}，控件 ${dInputs} 个，测试连接=${hasTestBtn}，Key 框为空=${apiKeyEmpty}`);
+  await shot('ui-digest-settings.png');
+
+  await evalJs("document.querySelector('.digest-sheet .reader-close')?.click()");
+  await sleep(400);
+  const digestClosed = await evalJs("!document.querySelector('.digest-sheet')");
+  if (!(digestOpen && digestTabs === 2 && digestHasBody && dInputs >= 8 && hasTestBtn && apiKeyEmpty && digestClosed)) {
+    console.log('  ⚠️ 日报面板检查未全部通过');
+    process.exitCode = 1;
+  }
   console.log(errors.length ? `  控制台错误：\n  - ${errors.join('\n  - ')}` : '  控制台无错误');
   const imgOk = thumbStats.loaded > 0 || iconStats.loaded > 0;
   if (!imgOk) console.log('  ⚠️ 没有任何图片解码成功（可能库里条目都没图，也可能代理全挂）');
-  process.exitCode = feedCount > 1 && cardCount > 0 ? 0 : 1;
+  if (feedCount <= 1 || cardCount === 0) process.exitCode = 1;
 } catch (e) {
   console.error('[ui] 失败：', e.message);
   process.exitCode = 1;
