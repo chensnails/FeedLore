@@ -59,6 +59,34 @@ function mountWeb(app: Hono<AppEnv>, root: string): void {
 
   app.use('/', cache('no-cache'));
   app.get('/', serveStatic({ root, path: 'index.html' }));
+
+  /* 根级静态文件（PWA 的 manifest / service worker / 图标）。
+   *
+   * ⚠️ 必须显式列出：`serveStatic({ root })` 只挂在 `/assets/*` 与 `/` 上，
+   * 不列出来的话 `/manifest.json` / `/sw.js` 会落到 `notFound` 返回一段 JSON ——
+   * 浏览器把这段 JSON 当 manifest 解析失败，结果是「PWA 装了但没图标、没名字」，
+   * 而控制台只在安装时才报一句，平时完全看不出来。
+   *
+   * 缓存三档：
+   * - `sw.js` **必须 no-cache**。sw 的更新检测靠字节比对，被缓存住就永远跑旧版本
+   *   （改了策略也不生效，是 PWA 最经典的坑）。
+   * - `manifest.json` 短缓存：改名字/主题色要能在一小时内生效。
+   * - 图标长缓存：文件名固定但内容基本不变，一天一次足够。 */
+  const ROOT_FILES: ReadonlyArray<readonly [string, string]> = [
+    ['manifest.json', 'public, max-age=3600'],
+    ['sw.js', 'no-cache'],
+    ['favicon.ico', 'public, max-age=86400'],
+    ['favicon.svg', 'public, max-age=86400'],
+    ['favicon-32.png', 'public, max-age=86400'],
+    ['apple-touch-icon.png', 'public, max-age=86400'],
+    ['icon-192.png', 'public, max-age=86400'],
+    ['icon-512.png', 'public, max-age=86400'],
+    ['icon-maskable-512.png', 'public, max-age=86400'],
+  ];
+  for (const [file, maxAge] of ROOT_FILES) {
+    app.use(`/${file}`, cache(maxAge));
+    app.get(`/${file}`, serveStatic({ root }));
+  }
 }
 
 export function createApp({ db, auth }: AppDeps) {

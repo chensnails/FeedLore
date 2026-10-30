@@ -31,28 +31,34 @@ interface Command {
   run: () => void;
 }
 
+/* ⚠️ 每档都带一段**手写拼音别名**（wangge / liebiao / pingbi …）。
+ *
+ * 为什么不能只靠 lib/pinyin 自动转：那张表是从 v1 原样搬过来的「常用字」子集，
+ * 「格」「列」「表」「屏」「蔽」都不在里面 —— 结果就是「视图：网格」这条命令
+ * 输入 wg 搜不到，用户以为面板坏了。自动转 + 手写别名两条腿走，
+ * 表覆盖不到的词靠别名兜底，别名漏了的词至少还能直接打汉字。 */
 const THEMES = [
-  ['auto', '跟随系统'],
-  ['light', '浅色'],
-  ['dark', '深色'],
-  ['github', 'GitHub 暗黑'],
+  ['auto', '跟随系统', 'gensuixitong auto'],
+  ['light', '浅色', 'qianse light'],
+  ['dark', '深色', 'shense anse dark'],
+  ['github', 'GitHub 暗黑', 'github anhei '],
 ] as const;
 
-const VIEWS: ReadonlyArray<readonly [ListView, string]> = [
-  ['grid', '网格'],
-  ['list', '列表'],
+const VIEWS: ReadonlyArray<readonly [ListView, string, string]> = [
+  ['grid', '网格', 'wangge shitu view grid'],
+  ['list', '列表', 'liebiao shitu view list'],
 ];
-const SORTS: ReadonlyArray<readonly [ListSort, string]> = [
-  ['new', '新→旧'],
-  ['old', '旧→新'],
-  ['name', '按名称'],
+const SORTS: ReadonlyArray<readonly [ListSort, string, string]> = [
+  ['new', '新→旧', 'xinjiu paixu newest sort new'],
+  ['old', '旧→新', 'jiuxin paixu oldest sort old'],
+  ['name', '按名称', 'anmingcheng paixu biaoti sort name'],
 ];
-const FILTERS: ReadonlyArray<readonly [ListFilter, string]> = [
-  ['all', '全部'],
-  ['unread', '未读'],
-  ['favorite', '收藏'],
-  ['watch', '关注'],
-  ['block', '屏蔽'],
+const FILTERS: ReadonlyArray<readonly [ListFilter, string, string]> = [
+  ['all', '全部', 'quanbu shaixuan filter all'],
+  ['unread', '未读', 'weidu shaixuan unread'],
+  ['favorite', '收藏', 'shoucang shaixuan favorite'],
+  ['watch', '关注', 'guanzhu shaixuan watch'],
+  ['block', '屏蔽', 'pingbi shaixuan block'],
 ];
 
 export function CommandPalette({
@@ -113,45 +119,45 @@ export function CommandPalette({
       setOpen(false);
     };
 
-    for (const [v, label] of VIEWS) {
+    for (const [v, label, py] of VIEWS) {
       cmds.push({
         id: `view-${v}`,
         group: '视图',
         label: `视图：${label}`,
-        keywords: `view ${v} 视图 网格 列表 布局`,
+        keywords: `view ${v} shitu ${py} 视图 网格 列表 布局`,
         run: close(() => {
           useUi.getState().setView(v);
           saveLayout.mutate({ view: v });
         }),
       });
     }
-    for (const [v, label] of SORTS) {
+    for (const [v, label, py] of SORTS) {
       cmds.push({
         id: `sort-${v}`,
         group: '排序',
         label: `排序：${label}`,
-        keywords: `sort ${v} 排序 时间 名称`,
+        keywords: `sort ${v} paixu ${py} 排序 时间 名称`,
         run: close(() => {
           useUi.getState().setSort(v);
           saveLayout.mutate({ sort: v });
         }),
       });
     }
-    for (const [v, label] of FILTERS) {
+    for (const [v, label, py] of FILTERS) {
       cmds.push({
         id: `filter-${v}`,
         group: '筛选',
         label: `筛选：${label}`,
-        keywords: `filter ${v} 筛选 范围 未读 收藏 关注 屏蔽`,
+        keywords: `filter ${v} shaixuan ${py} 筛选 范围 未读 收藏 关注 屏蔽`,
         run: close(() => useUi.getState().setFilter(v)),
       });
     }
-    for (const [v, label] of THEMES) {
+    for (const [v, label, py] of THEMES) {
       cmds.push({
         id: `theme-${v}`,
         group: '主题',
         label: `主题：${label}`,
-        keywords: `theme ${v} 主题 外观 暗色 浅色`,
+        keywords: `theme ${v} zhuti ${py} 主题 外观 暗色 浅色`,
         run: close(() => saveAppearance.mutate({ theme: v })),
       });
     }
@@ -161,28 +167,28 @@ export function CommandPalette({
         group: '设置',
         label: '打开设置',
         hint: 'Aa',
-        keywords: 'settings prefs 设置 外观 阅读 账号 关注规则',
+        keywords: 'settings prefs shezhi dakai 设置 外观 阅读 账号 关注规则',
         run: close(() => useUi.getState().setSettingsOpen(true)),
       },
       {
         id: 'open-digest',
         group: '设置',
         label: '打开 AI 日报',
-        keywords: 'digest ai 日报 摘要 简报',
+        keywords: 'digest ai ribao zhaiyao 日报 摘要 简报',
         run: close(onOpenDigest),
       },
       {
         id: 'refresh',
         group: '操作',
         label: '刷新全部频道',
-        keywords: 'refresh 刷新 同步 拉取',
+        keywords: 'refresh shuaxin tongbu 刷新 同步 拉取',
         run: close(() => refreshAll.mutate()),
       },
       {
         id: 'top',
         group: '操作',
         label: '回到顶部',
-        keywords: 'top 顶部 最上面',
+        keywords: 'top dingbu huidao 顶部 最上面',
         run: close(() => {
           document.querySelector('.list')?.scrollTo({ top: 0, behavior: 'smooth' });
         }),
@@ -193,7 +199,7 @@ export function CommandPalette({
         id: 'open-admin',
         group: '设置',
         label: '打开管理面板',
-        keywords: 'admin 管理 状态 采集 用户',
+        keywords: 'admin guanli zhuangtai caiji yonghu 管理 状态 采集 用户',
         run: close(onOpenAdmin),
       });
     }

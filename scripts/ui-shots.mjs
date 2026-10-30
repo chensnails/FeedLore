@@ -336,6 +336,122 @@ try {
       await sleep(600);
     }
 
+    /* 工具栏特性（只在桌面档跑，三档重复测同样的东西是浪费时间）：
+     * 视图切换 / 排序 / 筛选档 / 标签筛选 / 命令面板 / PWA。
+     * 每一项都读**结果**而不是「按钮存在」—— 「控件在、点了不生效」是这一轮
+     * 最容易犯也最难发现的错（外观设置当初就是这么漏过去的）。 */
+    if (vp.name === 'desktop') {
+      const feat = await evalJs(`(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const cards = () => document.querySelectorAll('.card');
+        const firstTitle = () => (document.querySelector('.card-title')?.textContent ?? '').trim();
+        const out = {};
+
+        // ---- 视图切换 ----
+        const viewBtns = [...document.querySelectorAll('.seg[aria-label="视图"] .seg-btn')];
+        out.viewBtns = viewBtns.length;
+        const colsOf = () => {
+          const c = document.querySelector('.cards');
+          if (!c) return 0;
+          const g = getComputedStyle(c);
+          return g.display === 'grid' ? g.gridTemplateColumns.split(' ').filter(Boolean).length : 1;
+        };
+        out.colsGrid = colsOf();
+        viewBtns[1]?.click();
+        await wait(700);
+        out.afterList = {
+          cls: document.querySelector('.cards')?.className ?? '',
+          display: getComputedStyle(document.querySelector('.cards')).display,
+          cols: colsOf(),
+        };
+        viewBtns[0]?.click();
+        await wait(700);
+        out.afterGrid = { cls: document.querySelector('.cards')?.className ?? '', cols: colsOf() };
+
+        // ---- 排序：切到「旧→新」后首条标题应变化 ----
+        const sel = document.querySelector('.sort-select');
+        const newFirst = firstTitle();
+        const setSel = (v) => {
+          const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+          d.set.call(sel, v);
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        setSel('old');
+        await wait(1600);
+        const oldFirst = firstTitle();
+        out.sort = { newFirst, oldFirst, changed: newFirst !== oldFirst, value: sel.value };
+        setSel('name');
+        await wait(1300);
+        out.sort.nameValue = sel.value;
+        setSel('new');
+        await wait(1300);
+        out.sort.restored = sel.value === 'new';
+
+        // ---- 筛选档 ----
+        const filterBtns = [...document.querySelectorAll('.filter-row .seg-btn')];
+        out.filterBtns = filterBtns.length;
+        const allCount = cards().length;
+        filterBtns.find((b) => b.textContent === '未读')?.click();
+        await wait(1600);
+        out.filter = {
+          unreadCount: cards().length,
+          hasReadRow: !!document.querySelector('.card-row.read'),
+          allCount,
+        };
+        filterBtns.find((b) => b.textContent === '全部')?.click();
+        await wait(1300);
+
+        // ---- 标签筛选 ----
+        const tagBtn = document.querySelector('.tag-btn');
+        if (tagBtn) {
+          tagBtn.click();
+          await wait(1600);
+          out.tag = {
+            on: !!document.querySelector('.tag-btn.on'),
+            count: cards().length,
+            clearBtn: !!document.querySelector('.tag-btn.clear'),
+            headHasTag: (document.querySelector('.list-title')?.textContent ?? '').includes('#'),
+          };
+          document.querySelector('.tag-btn.on')?.click();
+          await wait(1300);
+          out.tag.cleared = !document.querySelector('.tag-btn.on');
+        } else {
+          out.tag = { skipped: 'no-tag' };
+        }
+
+        // ---- 命令面板（自带拼音别名：wg 应命中「视图：网格」）----
+        document.querySelector('.cmdk-btn')?.click();
+        await wait(500);
+        out.cmdkOpen = !!document.querySelector('.cmdk');
+        const cin = document.querySelector('.cmdk-input');
+        if (cin) {
+          const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+          d.set.call(cin, 'wg');
+          cin.dispatchEvent(new Event('input', { bubbles: true }));
+          await wait(400);
+          out.cmdkFirst = (document.querySelector('.cmdk-item .cmdk-label')?.textContent ?? '').trim();
+          out.cmdkCount = document.querySelectorAll('.cmdk-item').length;
+        }
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        await wait(400);
+        out.cmdkClosed = !document.querySelector('.cmdk');
+
+        // ---- PWA ----
+        const mf = await fetch('/manifest.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+        const swText = await fetch('/sw.js').then((r) => (r.ok ? r.text() : '')).catch(() => '');
+        out.pwa = {
+          link: !!document.querySelector('link[rel="manifest"]'),
+          name: mf?.name ?? null,
+          icons: mf?.icons?.length ?? 0,
+          swServed: swText.length > 100,
+          // 预缓存清单里不该出现带哈希的构建产物（每次构建文件名都变，写死等于每次 404）
+          swPrecacheClean: !/index-[A-Za-z0-9_-]+\\.(js|css)/.test(swText),
+        };
+        return out;
+      })()`);
+      rows.push({ viewport: vp.name, toolbar: true, ...feat });
+    }
+
     rows.push({ viewport: vp.name, ...info, search, shot: listShot });
 
     // 打开第一条进入阅读层，再量一次（单栏 / 双栏 / 抽屉式）
@@ -362,6 +478,10 @@ try {
           fontSize: body ? getComputedStyle(body).fontSize : '',
           lineHeight: body ? getComputedStyle(body).lineHeight : '',
           backdrop: !!document.querySelector('.reader-backdrop'),
+          // 翻篇：位置文本形如 "3 / 30"，有它就说明从列表缓存里定位成功了
+          navPos: (document.querySelector('.reader-nav-pos')?.textContent ?? '').trim(),
+          navBtns: document.querySelectorAll('.reader-nav .btn').length,
+          fsBtns: document.querySelectorAll('.reader-fs .btn').length,
         };
       })()`);
 
@@ -379,6 +499,40 @@ try {
         await evalJs("document.querySelector('.lightbox')?.click()");
         await sleep(300);
       }
+
+      /* A+ / A- 必须真的改掉 --reader-fs。点完不生效（没接上 applyAppearance）
+       * 在截图里完全看不出来，只有读 CSS 变量能分辨。 */
+      const fsStep = await evalJs(`(async () => {
+        const read = () => getComputedStyle(document.documentElement).getPropertyValue('--reader-fs').trim();
+        const before = read();
+        const plus = [...document.querySelectorAll('.reader-fs .btn')].find((b) => b.textContent === 'A+');
+        plus?.click();
+        await new Promise((r) => setTimeout(r, 1100));
+        const after = read();
+        const minus = [...document.querySelectorAll('.reader-fs .btn')].find((b) => b.textContent === 'A-');
+        minus?.click();
+        await new Promise((r) => setTimeout(r, 1000));
+        return { before, after, changed: before !== after, restored: read() === before };
+      })()`);
+      rows.push({ viewport: vp.name, fontStep: true, ...fsStep });
+
+      // 下一条：标题应变化、位置文本应递增（读的是同一份列表缓存）
+      const nextNav = await evalJs(`(async () => {
+        const title = () => (document.querySelector('.reader-title')?.textContent ?? '').trim();
+        const before = title();
+        const posBefore = (document.querySelector('.reader-nav-pos')?.textContent ?? '').trim();
+        [...document.querySelectorAll('.reader-nav .btn')]
+          .find((b) => b.textContent.includes('下一条'))?.click();
+        await new Promise((r) => setTimeout(r, 1800));
+        return {
+          before,
+          after: title(),
+          changed: before !== title() && !!title(),
+          posBefore,
+          posAfter: (document.querySelector('.reader-nav-pos')?.textContent ?? '').trim(),
+        };
+      })()`);
+      rows.push({ viewport: vp.name, nextNav: true, ...nextNav });
 
       const readerShot = await shot(`${prefix}-${vp.name}-reader.png`);
       rows.push({ viewport: vp.name, reader: true, ...reader, shot: readerShot });
