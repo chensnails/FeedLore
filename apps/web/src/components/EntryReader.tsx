@@ -291,13 +291,19 @@ export function EntryReader() {
 
 /** 图片类链接的判定：扩展名命中、data:image、以及本站图片代理 /api/img?u=…。
  *  复制链接是为了分享资源（网盘/文章），图片地址混进来只会让人觉得复制错了。 */
-const IMG_EXT_RE = /\.(?:jpe?g|png|gif|webp|avif|svg|bmp|ico|tiff?)(?:[?#].*)?$/i;
+const IMG_EXT_RE = /\.(?:jpe?g|png|gif|webp|avif|svg|bmp|ico|tiff?|heic)(?:[?#].*)?$/i;
+/** 图片站/静态资源站的域名（img. / static. / cdn. / p3. 之流）。
+ *  这类主机上挂的多是配图、挂件、播放器壳子（如 img.ithome.com/app/…html 的日历卡片），
+ *  虽然扩展名不是图片，复制出去同样是噪音，一并排掉。主链接有兜底，不会被误删。 */
+const ASSET_HOST_RE =
+  /^(?:img|image|images|pic|pics|photo|photos|static|cdn|assets?|res|thumb|thumbnails?|p\d+|s\d+)(?:[.-][\w-]+)*\./i;
 function isImageUrl(u: string): boolean {
   if (/^data:image\//i.test(u)) return true;
   try {
     const url = new URL(u);
     if (/\/api\/img\b/i.test(url.pathname)) return true;
     if (IMG_EXT_RE.test(url.pathname)) return true;
+    if (ASSET_HOST_RE.test(url.hostname)) return true;
   } catch {
     return IMG_EXT_RE.test(u);
   }
