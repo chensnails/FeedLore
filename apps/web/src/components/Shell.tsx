@@ -97,10 +97,17 @@ export function Shell({ session }: { session: Session }) {
 
   /* 频道栏宽度：读到偏好后写到 CSS 变量。拖拽手柄只改这个变量、松手才写服务端，
    * 所以这里的作用是「换设备/刷新后恢复」。CSS 里的兜底值就是默认值，
-   * 首屏到偏好返回之间不会跳一下。 */
+   * 首屏到偏好返回之间不会跳一下。
+   *
+   * resize 也要重算：宽度上限受「屏幕 40%」约束，从 1440 拖到 900 时侧栏必须跟着收窄，
+   * 而从 900 拉回 1440 时也要还原成偏好值 —— 只 apply 一次的话它永远停在收窄后的样子。 */
   const sideW = prefsQuery.data?.layout.readerSideWidth ?? SIDE_W_DEFAULT;
   useEffect(() => {
-    if (prefsQuery.data) applySideWidth(sideW);
+    if (!prefsQuery.data) return undefined;
+    applySideWidth(sideW);
+    const onResize = (): void => applySideWidth(sideW);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, [prefsQuery.data, sideW]);
 
   const logout = useMutation({

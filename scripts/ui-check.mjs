@@ -445,13 +445,25 @@ try {
   );
   await shot('ui-deeplink.png');
 
-  // 【3】后退。深链是历史里的新一条，后退应回到列表（阅读层必须消失）。
+  // 【3】后退。
+  //
+  // ⚠️ 必须先回到「干净的列表页」再点开一篇。上一段是深链冷启动，历史里紧挨着的
+  // 前一条就是「push 出来的那篇」—— 在那里直接 back() 只会退到另一个同样开着
+  // 阅读层的状态，测出来是假失败（第一版就是这么误报的）。
+  await send('Page.navigate', { url: `${bare}/?r=${Date.now()}` });
+  await sleep(3400);
+  const cleanList = await evalJs("!document.querySelector('.reader-sheet') && document.querySelectorAll('.cards .card-row').length > 0");
+  await evalJs("document.querySelector('.cards .card-row .card')?.click()");
+  await sleep(1600);
+  const openedHash = (await evalJs("location.hash")) ?? '';
   await evalJs("history.back()");
-  await sleep(1800);
+  await sleep(2000);
   const backClosed = await evalJs("!document.querySelector('.reader-sheet')");
   const backHash = (await evalJs("location.hash")) ?? '';
-  const backOk = backClosed === true;
-  console.log(`  后退：阅读层关闭=${backClosed} hash=${backHash || '(空)'}`);
+  const backOk = cleanList === true && /^#\/a\/\d+$/.test(openedHash) && backClosed === true;
+  console.log(
+    `  后退：起点=列表 打开后 hash=${openedHash} 后退后关闭=${backClosed} hash=${backHash || '(空)'}`,
+  );
 
   // 【4】确认框。删频道的确认必须是应用内对话框；取消后频道数不变（不能误删）。
   const feedsBefore = (await evalJs("document.querySelectorAll('.feed-row').length")) ?? 0;
@@ -487,6 +499,7 @@ try {
       scopeTitle.includes(`组：${grpName}`) &&
       pressed === 'true' &&
       groupHash.startsWith('#/g/') &&
+      groupRows > 0 &&
       !scopeAfter.startsWith('组：');
     console.log(
       `  分组筛选：组=${JSON.stringify(grpName)} 标题=${JSON.stringify(scopeTitle.slice(0, 20))} hash=${groupHash} 条目=${groupRows} 退出后=${JSON.stringify(scopeAfter.slice(0, 16))}`,
@@ -497,10 +510,12 @@ try {
 
   // 【6】侧栏宽度：键盘调宽 → 刷新后仍是这个宽度（证明写进了服务端偏好，不是只改了本地变量）
   const w0 = await evalJs("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)");
+  /* 只发一次。连发三次会全部落在同一帧里，React 每次读到的 width 都是旧值，
+   * 结果只累加一次（实测 232 → 248 而不是 280），看着像功能坏了其实不是。 */
   const wBump = await evalJs(`(() => {
     const h = document.querySelector('.side-resize');
     if (!h) return 'no-handle';
-    for (let i = 0; i < 3; i += 1) h.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    h.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
     return Math.round(document.querySelector('.sidebar').getBoundingClientRect().width);
   })()`);
   await sleep(1600);
