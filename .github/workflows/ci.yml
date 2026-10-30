@@ -24,6 +24,22 @@ jobs:
   v2-check:
     if: github.ref_name == 'v2' || github.base_ref == 'v2'
     runs-on: ubuntu-24.04 # 必须 pin：ubuntu-latest 曾静默迁到 26.04 导致构建失败
+    # 接口级测试要一个真 Postgres。版本钉死到与测试栈/生产同一条线（18.4），
+    # 否则「本地/CI 用 16，线上 18」会在 collation、generated column 这类地方悄悄分叉。
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: feedlore_itest
+          POSTGRES_USER: feedlore_v2
+          POSTGRES_PASSWORD: ci-not-a-secret # 只活在单次 runner 内，容器随 job 销毁
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U feedlore_v2 -d feedlore_itest"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
     steps:
       - uses: actions/checkout@v4
 
@@ -48,8 +64,27 @@ jobs:
       # 纯函数单测 + 契约自检。守的是 tsc 看不见的那一类：
       # 过滤/解析的边界行为、SSRF 判定（198.18 必须放行）、OPML 往返、
       # 以及「契约 path 被拓宽成 string 导致端点静默不进 AppType」。
-      - name: 单元测试
+      #
+      # ⚠️ 这一步刻意**不给 DATABASE_URL**：单元测试必须是自足的。
+      #    给了库地址，接口级测试会在这里也跑一遍，而一旦它因为连不上库而失败，
+      #    你就分不清「逻辑算错了」还是「环境没起好」。
+      - name: 单元测试（不连库）
         run: pnpm -r run test
+        env:
+          DATABASE_URL: ''
+
+      # 真库 + 真鉴权 + 契约校验。守的是「只有装起来才暴露」的那类：
+      # better-auth 的 usePlural / display_username、纯 HTTP 下的 secure Cookie、
+      # 带 Cookie 的请求缺 Origin 被 403、cuid 主键与契约 IdSchema 不匹配 …
+      - name: 数据库迁移
+        run: pnpm --filter @feedlore/db run migrate
+        env:
+          DATABASE_URL: postgres://feedlore_v2:ci-not-a-secret@127.0.0.1:5432/feedlore_itest
+
+      - name: 接口级集成测试（真库）
+        run: pnpm --filter @feedlore/server exec node --import tsx --test src/api.integration.test.ts
+        env:
+          DATABASE_URL: postgres://feedlore_v2:ci-not-a-secret@127.0.0.1:5432/feedlore_itest
 
       - name: 构建前端
         run: pnpm --filter @feedlore/web run build
