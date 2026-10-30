@@ -103,8 +103,16 @@ const LAYOUT_PROBE = `(() => {
     /* 顶栏折行判据：直接子元素的 offsetTop 是否分成了两层。
      * 不能用「高度 > N」—— 按钮本身有内边距，单行也有 60px 上下，会误报。 */
     topbarWrapped: (() => {
-      const tops = [...(q('.topbar')?.children ?? [])].map((c) => c.offsetTop);
-      return tops.length > 0 && Math.max(...tops) - Math.min(...tops) > 4;
+      /* 判据是「各元素的垂直中心是否在同一条线上」。
+       * 不能用 offsetTop：顶栏是 align-items:center，同一排里高矮不同的元素
+       * offsetTop 本来就差几像素，会把单行误判成折行（第一版就这么误报的）。 */
+      const centers = [...(q('.topbar')?.children ?? [])]
+        .filter((c) => c.offsetParent !== null)
+        .map((c) => {
+          const r = c.getBoundingClientRect();
+          return Math.round(r.top + r.height / 2);
+        });
+      return centers.length > 0 && Math.max(...centers) - Math.min(...centers) > 8;
     })(),
   };
 })()`;

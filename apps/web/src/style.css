@@ -850,13 +850,25 @@ body {
   .topbar-right .btn {
     padding: 5px 7px;
   }
-  /* 搜索框在窄屏独占一行，否则会把「全部已读」挤成竖排 */
+  /* 搜索框在窄屏独占一行 */
   .list-head {
     flex-wrap: wrap;
   }
   .search-box {
     flex: 1 1 100%;
     order: -1;
+  }
+  /* 标签统计在手机上会把「全部已读」挤成竖排（每个标签一个字一行）——
+   * 这一排本来就没有纵向空间，标签计数对手机用户价值也最低，直接收掉 */
+  .tags-inline {
+    display: none;
+  }
+  .list-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .list-actions .btn {
+    white-space: nowrap;
   }
 }
 
