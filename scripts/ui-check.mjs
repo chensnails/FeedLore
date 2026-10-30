@@ -275,7 +275,7 @@ try {
 
   // 【写操作】主题切换 → 验证 data-theme 真的变了 → 还原
   const themeBefore = await evalJs("document.documentElement.dataset.theme || 'auto'");
-  await evalJs("document.querySelector('.topbar-right .btn.icon')?.click()");
+  await evalJs("document.querySelector('[aria-label=\"切换主题\"]')?.click()");
   await sleep(1200);
   const themeAfter = await evalJs("document.documentElement.dataset.theme || 'auto'");
   console.log(`  主题切换：${themeBefore} → ${themeAfter}`);
@@ -317,6 +317,45 @@ try {
   console.log(`  清理测试频道：${cleanup}`);
   await shot('ui-write.png');
 
+
+  // 【管理面板】只有管理员看得到 ⚙；三个页签必须有真实内容（空壳也算失败）
+  const gearLabel = await evalJs("document.querySelector('[aria-label=\"打开管理面板\"]') ? 'found' : 'missing'");
+  await evalJs("document.querySelector('[aria-label=\"打开管理面板\"]')?.click()");
+  await sleep(1800);
+  const adminOpen = await evalJs("!!document.querySelector('.admin-sheet')");
+  const adminTabs = await evalJs("document.querySelectorAll('.admin-tabs .chip').length");
+  const statusText = (await evalJs("document.querySelector('.admin-body')?.innerText ?? ''")) ?? '';
+  const statusOk = statusText.includes('数据库') && statusText.includes('采集');
+  console.log(`  管理面板：入口=${gearLabel} 打开=${adminOpen} 页签=${adminTabs} 状态页内容=${statusOk ? '有' : '空'}`);
+  await shot('ui-admin-status.png');
+
+  const clickTab = (label) =>
+    evalJs(`(() => {
+      const b = [...document.querySelectorAll('.admin-tabs .chip')].find((x) => x.innerText.includes(${JSON.stringify(label)}));
+      if (!b) return 'no-tab';
+      b.click();
+      return 'ok';
+    })()`);
+
+  const cfgTab = await clickTab('采集参数');
+  await sleep(1200);
+  const cfgInputs = await evalJs("document.querySelectorAll('.admin-field input').length");
+  console.log(`  参数页：${cfgTab}，输入框 ${cfgInputs} 个`);
+
+  const userTab = await clickTab('用户');
+  await sleep(1200);
+  const userRows = await evalJs("document.querySelectorAll('.admin-table tbody tr').length");
+  const selfMark = await evalJs("document.body.innerText.includes('当前登录')");
+  console.log(`  用户页：${userTab}，${userRows} 行，自己标记=${selfMark}`);
+  await shot('ui-admin-users.png');
+
+  await evalJs("document.querySelector('.admin-sheet .reader-close')?.click()");
+  await sleep(500);
+  const adminClosed = await evalJs("!document.querySelector('.admin-sheet')");
+  if (!(adminOpen && adminTabs === 3 && statusOk && cfgInputs >= 11 && userRows >= 1 && adminClosed)) {
+    console.log('  ⚠️ 管理面板检查未全部通过');
+    process.exitCode = 1;
+  }
   console.log(errors.length ? `  控制台错误：\n  - ${errors.join('\n  - ')}` : '  控制台无错误');
   const imgOk = thumbStats.loaded > 0 || iconStats.loaded > 0;
   if (!imgOk) console.log('  ⚠️ 没有任何图片解码成功（可能库里条目都没图，也可能代理全挂）');

@@ -89,6 +89,15 @@ export function Shell({ session }: { session: Session }) {
         </div>
 
         <div className="topbar-right">
+          <button
+            className="btn ghost icon"
+            onClick={() => saveAppearance.mutate({ theme: nextTheme.value })}
+            disabled={saveAppearance.isPending || prefsQuery.isPending}
+            title={`主题：${theme}（点击切换到 ${nextTheme.label}）`}
+            aria-label="切换主题"
+          >
+            {themeIcon}
+          </button>
           {session.role === 'admin' && (
             <button
               className="btn ghost icon"
@@ -99,15 +108,6 @@ export function Shell({ session }: { session: Session }) {
               ⚙
             </button>
           )}
-          <button
-            className="btn ghost icon"
-            onClick={() => saveAppearance.mutate({ theme: nextTheme.value })}
-            disabled={saveAppearance.isPending || prefsQuery.isPending}
-            title={`主题：${theme}（点击切换到 ${nextTheme.label}）`}
-            aria-label="切换主题"
-          >
-            {themeIcon}
-          </button>
           <span className="who">
             {session.username}
             {session.role === 'admin' && <em>管理员</em>}
