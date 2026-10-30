@@ -45,8 +45,19 @@ jobs:
       - name: 类型检查
         run: pnpm -r run typecheck
 
+      # 纯函数单测 + 契约自检。守的是 tsc 看不见的那一类：
+      # 过滤/解析的边界行为、SSRF 判定（198.18 必须放行）、OPML 往返、
+      # 以及「契约 path 被拓宽成 string 导致端点静默不进 AppType」。
+      - name: 单元测试
+        run: pnpm -r run test
+
       - name: 构建前端
         run: pnpm --filter @feedlore/web run build
+
+      # 查的是**打包之后**的事实：PWA 文件有没有进产物、资源带不带哈希、
+      # 触屏媒体查询有没有被工具链吞掉。单测跑源码，这些它看不到。
+      - name: 校验前端产物
+        run: node scripts/verify-dist.mjs
 
       - name: 构建镜像（不推送）
         run: docker build -f Dockerfile -t feedlore-v2:ci .

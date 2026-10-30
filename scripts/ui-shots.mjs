@@ -277,10 +277,14 @@ try {
       // 关注规则页签：只截图，不点保存（避免污染测试库的规则）
       const watch = await evalJs(`(async () => {
         const tabs = [...document.querySelectorAll('.prefs-sheet .admin-tabs .chip')];
-        tabs.find((t) => t.textContent === '关注规则')?.click();
+        tabs.find((t) => t.textContent === '关注')?.click();
         await new Promise((r) => setTimeout(r, 400));
         return {
           rules: document.querySelectorAll('.prefs-sheet .rule-row').length,
+          // webhook 地址与「推送」勾选：后端一直在用，界面是这一轮才补的
+          hookInput: !!document.querySelector('.prefs-sheet .hook-row .input'),
+          hookSave: (document.querySelector('.prefs-sheet .hook-row .btn')?.textContent ?? '').trim(),
+          pushChecks: document.querySelectorAll('.prefs-sheet .rule-row .rule-on').length,
           actions: document.querySelectorAll('.prefs-sheet .admin-actions .btn').length,
           saveDisabled: [...document.querySelectorAll('.prefs-sheet .admin-actions .btn')]
             .some((b) => b.textContent.includes('已保存')),
@@ -290,7 +294,56 @@ try {
       })()`);
       const watchShot = await shot(`${prefix}-${vp.name}-prefs-watch.png`);
 
-      rows.push({ viewport: vp.name, prefs: true, ...prefs, applied, reading, watch, shot: prefsShot });
+      /* 过滤页签：条目过滤规则（抓取写库前的那道闸门）。
+       * 重点不是「有几个控件」，而是**非法正则会不会被拦住** ——
+       * 服务端对编译不过的正则是静默丢弃，界面不拦就成了「保存了但少一条」。 */
+      const filters = await evalJs(`(async () => {
+        const tabs = [...document.querySelectorAll('.prefs-sheet .admin-tabs .chip')];
+        tabs.find((t) => t.textContent === '过滤')?.click();
+        await new Promise((r) => setTimeout(r, 400));
+        const before = document.querySelectorAll('.prefs-sheet .filter-rule').length;
+        const addBtn = [...document.querySelectorAll('.prefs-sheet .admin-actions .btn')]
+          .find((b) => b.textContent.includes('添加规则'));
+        addBtn?.click();
+        await new Promise((r) => setTimeout(r, 350));
+        const after = document.querySelectorAll('.prefs-sheet .filter-rule').length;
+
+        const row = document.querySelector('.prefs-sheet .filter-rule');
+        // 第 3 个 select 是「匹配方式」，切到正则
+        const kindSel = row?.querySelectorAll('select')[2];
+        if (kindSel) {
+          const d = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+          d.set.call(kindSel, 're');
+          kindSel.dispatchEvent(new Event('change', { bubbles: true }));
+          await new Promise((r) => setTimeout(r, 300));
+        }
+        const inp = document.querySelector('.prefs-sheet .filter-pattern');
+        if (inp) {
+          const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+          d.set.call(inp, '([a-z');
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          await new Promise((r) => setTimeout(r, 350));
+        }
+        const badMarked = !!document.querySelector('.prefs-sheet .filter-rule.bad');
+        const saveBtn = [...document.querySelectorAll('.prefs-sheet .admin-actions .btn')]
+          .find((b) => b.textContent.includes('保存'));
+        const saveBlocked = saveBtn ? saveBtn.disabled === true : null;
+
+        // 删掉这条临时规则（不保存，避免污染测试库）
+        document.querySelector('.prefs-sheet .filter-rule [aria-label="删除规则"]')?.click();
+        await new Promise((r) => setTimeout(r, 300));
+        return {
+          before,
+          after,
+          badRegexMarked: badMarked,
+          saveBlocked,
+          cleaned: document.querySelectorAll('.prefs-sheet .filter-rule').length,
+        };
+      })()`);
+      const filterShot = await shot(`${prefix}-${vp.name}-prefs-filter.png`);
+      void filterShot;
+
+      rows.push({ viewport: vp.name, prefs: true, ...prefs, applied, reading, watch, filters, shot: prefsShot });
       // 阅读页签把正文字号改成了「大」，恢复默认「中」
       await evalJs(`(async () => {
         const tabs = [...document.querySelectorAll('.prefs-sheet .admin-tabs .chip')];
@@ -454,6 +507,34 @@ try {
         return out;
       })()`);
       rows.push({ viewport: vp.name, toolbar: true, ...feat });
+
+      /* 管理面板「关于」：版本号现在只有一个真源（根 package.json），
+       * 这里顺便验证「界面显示的数」和「服务端读到的数」是一回事。 */
+      const about = await evalJs(`(async () => {
+        document.querySelector('.topbar-admin')?.click();
+        await new Promise((r) => setTimeout(r, 700));
+        const sheet = document.querySelector('.admin-sheet');
+        if (!sheet) return { opened: false };
+        const tabs = [...sheet.querySelectorAll('.admin-tabs .chip')];
+        tabs.find((t) => t.textContent === '关于')?.click();
+        await new Promise((r) => setTimeout(r, 1100));
+        const dds = [...sheet.querySelectorAll('.admin-grid dd')].map((x) => x.textContent.trim());
+        const btns = [...sheet.querySelectorAll('.admin-actions .btn')].map((b) => b.textContent.trim());
+        return {
+          opened: true,
+          tabs: tabs.length,
+          version: dds[0] ?? null,
+          repo: dds[1] ?? null,
+          channel: dds[2] ?? null,
+          buttons: btns.join('/'),
+        };
+      })()`);
+      const aboutShot = await shot(`${prefix}-${vp.name}-admin-about.png`);
+      void aboutShot;
+      // 关掉管理面板，后面的断言还要用列表
+      await evalJs("document.querySelector('.admin-sheet .reader-close')?.click()");
+      await sleep(400);
+      rows.push({ viewport: vp.name, about: true, ...about });
     }
 
     rows.push({ viewport: vp.name, ...info, search, shot: listShot });
@@ -537,6 +618,21 @@ try {
         };
       })()`);
       rows.push({ viewport: vp.name, nextNav: true, ...nextNav });
+
+      /* 键盘 ← / → 翻篇：v1 里就有，v2 一直到这一轮才接上（之前只有 Esc）。
+       * 先 → 再 ←，验证能翻过去也能翻回来（只测单向的话，方向写反也看不出来）。 */
+      const keyNav = await evalJs(`(async () => {
+        const title = () => (document.querySelector('.reader-title')?.textContent ?? '').trim();
+        const before = title();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        await new Promise((r) => setTimeout(r, 1700));
+        const after = title();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+        await new Promise((r) => setTimeout(r, 1500));
+        const back = title();
+        return { keyChanged: !!after && after !== before, keyRestored: back === before, after };
+      })()`);
+      rows.push({ viewport: vp.name, keyNav: true, ...keyNav });
 
       const readerShot = await shot(`${prefix}-${vp.name}-reader.png`);
       rows.push({ viewport: vp.name, reader: true, ...reader, shot: readerShot });
