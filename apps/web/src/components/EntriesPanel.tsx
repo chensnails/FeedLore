@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import type { EntriesListQuery } from '@feedlore/client';
 import { api } from '../lib/api';
@@ -45,9 +45,14 @@ export function EntriesPanel() {
     ...(search ? { q: search } : {}),
   };
 
-  const { data, isPending, isError, error, refetch, isFetching } = useQuery({
+  const { data, isError, error, refetch, isFetching } = useQuery({
     queryKey: [...qk.entries, feedId, onlyUnread, search],
     queryFn: () => api.entries.list(query),
+    /* ⚠️ 必须保留上一批结果。没有它，每换一次 queryKey（敲搜索词、切频道）
+     * 都会进入 isPending，而下面的 early return 会把**整个 main 连同搜索框**
+     * 换成「加载条目…」—— 输入框被卸载，用户敲第二个字就丢焦点，
+     * 这是只有真机连着打字才会发现的塌法。 */
+    placeholderData: keepPreviousData,
   });
 
   // 频道列表已在缓存里（侧栏取过），这里只读不额外请求，用来算「全部已读」的作用范围
@@ -57,14 +62,22 @@ export function EntriesPanel() {
     staleTime: 60_000,
   });
 
-  if (isPending) return <main className="list"><p className="hint">加载条目…</p></main>;
-  if (isError) {
+  /* 判据是「有没有数据」而不是 isPending：留着上一次结果时 isPending 也是 true，
+   * 那时不该把界面掀掉重画。 */
+  if (!data) {
+    if (isError) {
+      return (
+        <main className="list">
+          <div className="panel error">
+            <p>条目加载失败：{error instanceof Error ? error.message : '未知错误'}</p>
+            <button className="btn" onClick={() => void refetch()}>重试</button>
+          </div>
+        </main>
+      );
+    }
     return (
       <main className="list">
-        <div className="panel error">
-          <p>条目加载失败：{error instanceof Error ? error.message : '未知错误'}</p>
-          <button className="btn" onClick={() => void refetch()}>重试</button>
-        </div>
+        <p className="hint">加载条目…</p>
       </main>
     );
   }

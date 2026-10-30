@@ -238,9 +238,10 @@ try {
     let search = null;
     if (info.searchBox) {
       search = await evalJs(`(async () => {
-        const inp = document.querySelector('.search-input');
         const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
         const type = async (word) => {
+          // 每次重查：列表若被卸载重挂，旧引用会写到游离节点上，测出假结果
+          const inp = document.querySelector('.search-input');
           d.set.call(inp, word);
           inp.dispatchEvent(new Event('input', { bubbles: true }));
           await new Promise((r) => setTimeout(r, 1300));
