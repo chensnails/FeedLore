@@ -178,6 +178,35 @@ export function useImportOpml() {
   });
 }
 
+/**
+ * 导出 OPML。
+ *
+ * 下载动作放在这里而不是组件里：它涉及一个必须被回收的 object URL
+ * （立即 revoke 在部分浏览器会打断下载，所以延迟 1 秒），
+ * 这种「有副作用的收尾」散在组件里迟早有人漏掉，然后每次导出泄漏一个 blob URL。
+ */
+export function useExportOpml() {
+  return useMutation({
+    mutationFn: async (): Promise<number> => {
+      const r = await api.feeds.exportOpml();
+      const blob = new Blob([r.opml], { type: 'text/xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      a.download = `feedlore-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.opml`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return r.count;
+    },
+    onSuccess: (n) => useUi.getState().notify(`已导出 ${n} 个频道（.opml）`),
+    onError: (e) => useUi.getState().notify(`导出失败：${errText(e)}`, 'error'),
+  });
+}
+
 /** 刷新全部开启采集的频道。会真的回源，可能耗时几十秒。 */
 export function useRefreshAll() {
   const qc = useQueryClient();
@@ -289,6 +318,24 @@ export function useSavePrefs() {
       useUi.getState().notify('已保存');
     },
     onError: (e) => useUi.getState().notify(`保存失败：${errText(e)}`, 'error'),
+  });
+}
+
+/**
+ * 静默保存布局偏好（视图 / 排序）。
+ *
+ * 为什么不复用 `useSavePrefs`：那个会弹「已保存」。而视图和排序是**工具栏上的开关**，
+ * 用户点一下网格图标就弹一次 toast，等于每次换视图都被打断一下。
+ * 这里只在失败时出声 —— 成功是默认结果，不值得占屏幕。
+ *
+ * 也不做 `invalidateQueries`：本地 state 已经是最新值，重取一遍只会让
+ * Shell 里的 applyAppearance 白跑一趟、还可能在慢网下把刚点的选择闪回旧值。
+ */
+export function useSaveLayout() {
+  return useMutation({
+    mutationFn: (patch: Partial<PrefsPatchBody['layout'] & object>) =>
+      api.prefs.update({ layout: patch }),
+    onError: (e) => useUi.getState().notify(`布局偏好保存失败：${errText(e)}`, 'error'),
   });
 }
 

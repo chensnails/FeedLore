@@ -1,35 +1,74 @@
 import { useQuery } from '@tanstack/react-query';
-import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
-import { useCreateFeed, useDeleteFeed, useImportOpml, usePatchFeed, useRefreshFeed } from '../lib/mutations';
+import {
+  useCreateFeed,
+  useDeleteFeed,
+  useExportOpml,
+  useImportOpml,
+  usePatchFeed,
+  useRefreshFeed,
+  useSaveLayout,
+} from '../lib/mutations';
 import { useUi } from '../store/ui';
-import type { Feed, FeedsList } from '../lib/types';
+import type { Feed } from '../lib/types';
 import { Thumb } from './Thumb';
 
 /**
  * 左侧频道栏。
  *
- * 分组筛选是**纯显示**的局部状态，放组件里（不需要跨视图共享）；
- * 选中的频道要跨视图（列表/阅读）共享，才进 zustand。
- * 这条边界划清楚，就不会再出现「同一个筛选条件两处各存一份、改一处不生效」。
+ * 三件事都对齐 v1 的 ChannelList：
+ * 1. **分组是折叠的，不是筛选的**。v2 早期用一行分组 chip 做筛选，等于每看一个分组要先点两下
+ *    （点分组 → 再点频道），而且看不到别的分组还有多少未读。折叠列表一次能扫完全部。
+ * 2. 折叠状态存服务端 `layout.collapsedGroups`（换设备还是收着的）。
+ * 3. 频道多了要能搜：这是频道栏唯一随规模退化的能力，超过二三十个源就必须有。
+ *
+ * 选中的频道要跨视图（列表/阅读）共享，才进 zustand；折叠与搜索是纯显示状态，留组件里 /
+ * 服务端偏好里，不进 store。
  */
 export function FeedsPanel() {
   const feedId = useUi((s) => s.feedId);
   const setFeedId = useUi((s) => s.setFeedId);
   const navOpen = useUi((s) => s.navOpen);
   const closeNav = useUi((s) => s.closeNav);
-  const [group, setGroup] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState('');
   const [groupName, setGroupName] = useState('');
+  const [ql, setQl] = useState('');
 
   const createFeed = useCreateFeed();
   const patchFeed = usePatchFeed();
   const deleteFeed = useDeleteFeed();
   const refreshFeed = useRefreshFeed();
   const importOpml = useImportOpml();
+  const exportOpml = useExportOpml();
+  const saveLayout = useSaveLayout();
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const { data, isPending, isError, error, refetch } = useQuery({
+    queryKey: qk.feeds,
+    queryFn: () => api.feeds.list(),
+  });
+
+  /* 折叠集合以服务端 `layout.collapsedGroups` 为准，但**本地要能立刻响应**：
+   * 点一下等一次请求回来才收起，手感会像卡了。所以先写本地、再异步写服务端。
+   * 失败只提示不回滚 —— 视觉状态本来就能重新点回去，强行弹回更让人误会。 */
+  const prefsQuery = useQuery({
+    queryKey: qk.prefs,
+    queryFn: () => api.prefs.get(),
+    staleTime: 5 * 60_000,
+  });
+  const [collapsed, setCollapsed] = useState<Set<string> | null>(null);
+  const collapsedSet = collapsed ?? new Set(prefsQuery.data?.layout.collapsedGroups ?? []);
+
+  function toggleGroup(name: string): void {
+    const next = new Set(collapsedSet);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    setCollapsed(next);
+    saveLayout.mutate({ collapsedGroups: [...next] });
+  }
 
   /**
    * 读本地 OPML 并上传。
@@ -62,10 +101,23 @@ export function FeedsPanel() {
    * 也就不会出现「JS 认窄屏、CSS 认桌面」的错位。 */
   const sidebarClass = `sidebar${navOpen ? ' open' : ''}`;
 
-  const { data, isPending, isError, error, refetch } = useQuery({
-    queryKey: qk.feeds,
-    queryFn: () => api.feeds.list(),
-  });
+  /** 分组 → 频道。未分组的排最后（v1 同序：分组按 groupOrder，未分组垫底）。 */
+  const grouped = useMemo(() => {
+    if (!data) return [];
+    const kw = ql.trim().toLowerCase();
+    const match = (f: Feed) => !kw || f.title.toLowerCase().includes(kw) || f.url.toLowerCase().includes(kw);
+    const order = data.groupOrder.length ? data.groupOrder : data.groups;
+    const out: Array<{ name: string; feeds: Feed[] }> = [];
+    for (const g of order) {
+      const feeds = data.feeds.filter((f) => (f.groupName || '') === g && match(f));
+      if (feeds.length) out.push({ name: g, feeds });
+    }
+    // 未分组（groupName 为空）与「groupOrder 里没登记的分组」都落这里
+    const known = new Set(order);
+    const rest = data.feeds.filter((f) => !f.groupName || !known.has(f.groupName)).filter(match);
+    if (rest.length) out.push({ name: '', feeds: rest });
+    return out;
+  }, [data, ql]);
 
   if (isPending) {
     return (
@@ -84,8 +136,6 @@ export function FeedsPanel() {
       </aside>
     );
   }
-
-  const feeds = visibleFeeds(data, group);
 
   function submit(e: FormEvent): void {
     e.preventDefault();
@@ -109,6 +159,8 @@ export function FeedsPanel() {
     deleteFeed.mutate(f.id);
   }
 
+  const allMatch = !ql.trim() || '全部频道'.includes(ql.trim());
+
   return (
     <aside className={sidebarClass}>
       {/* 只在窄屏抽屉里出现（CSS 控制）：抽屉盖住列表时，给一个不用点遮罩的关闭路径 */}
@@ -119,97 +171,132 @@ export function FeedsPanel() {
         </button>
       </div>
 
-      <div className="chips">
-        <button className={`chip${group === null ? ' on' : ''}`} onClick={() => setGroup(null)}>
-          全部 <b>{data.total}</b>
-        </button>
-        {data.groups.map((g) => (
-          <button key={g} className={`chip${group === g ? ' on' : ''}`} onClick={() => setGroup(g)}>
-            {g}
+      <div className="channel-search">
+        <input
+          className="input sm"
+          type="search"
+          value={ql}
+          placeholder="筛选频道…"
+          aria-label="筛选频道"
+          onChange={(e) => setQl(e.target.value)}
+        />
+        {ql && (
+          <button className="search-clear" aria-label="清空" title="清空" onClick={() => setQl('')}>
+            ✕
           </button>
-        ))}
+        )}
       </div>
 
       <ul className="feeds">
-        <li>
-          <button className={`feed${feedId === null ? ' on' : ''}`} onClick={() => setFeedId(null)}>
-            <span className="dot" aria-hidden />
-            <div className="feed-main">
-              <p className="feed-title">全部频道</p>
-              <p className="feed-meta">所有频道的最新条目</p>
-            </div>
-            <span className="count">{data.flags.unread}</span>
-          </button>
-        </li>
-        {feeds.map((f) => (
-          <li key={f.id} className="feed-row">
-            <button
-              className={`feed${feedId === f.id ? ' on' : ''}${f.enabled ? '' : ' off'}`}
-              onClick={() => setFeedId(f.id)}
-              title={f.error ?? f.url}
-            >
-              <Thumb
-                src={f.icon}
-                className="feed-icon"
-                decorative
-                fallback={<span className="dot" data-error={f.error ? '1' : '0'} aria-hidden />}
-              />
+        {allMatch && (
+          <li>
+            <button className={`feed${feedId === null ? ' on' : ''}`} onClick={() => setFeedId(null)}>
+              <span className="dot" aria-hidden />
               <div className="feed-main">
-                <p className="feed-title">{f.title}</p>
+                <p className="feed-title">全部频道</p>
                 <p className="feed-meta">
-                  {f.groupName || '未分组'}
-                  {f.error ? ' · 抓取失败' : ''}
-                  {f.cardEnabled ? '' : ' · 卡片页隐藏'}
+                  {data.feeds.length} 个频道 · {data.flags.total} 条
                 </p>
               </div>
-              <span className="count">{f.unreadCount}</span>
+              <span className="count">{data.flags.unread}</span>
             </button>
-
-            <span className="feed-ops">
-              {/* 单频道刷新：看到「这个源没更新」时最先要按的按钮 */}
-              <button
-                className="icon-btn"
-                title="立即抓取这个频道"
-                aria-label="立即抓取这个频道"
-                disabled={refreshFeed.isPending}
-                onClick={() => refreshFeed.mutate(f.id)}
-              >
-                ⟳
-              </button>
-              {/* 采集开关：与「卡片页展示」是两件事——停采集不一定要隐藏卡片 */}
-              <button
-                className={`icon-btn${f.enabled ? '' : ' off'}`}
-                title={f.enabled ? '暂停采集' : '恢复采集'}
-                aria-label={f.enabled ? '暂停采集' : '恢复采集'}
-                disabled={patchFeed.isPending}
-                onClick={() => patchFeed.mutate({ id: f.id, patch: { enabled: !f.enabled } })}
-              >
-                {f.enabled ? '⏸' : '▶'}
-              </button>
-              <button
-                className={`icon-btn${f.cardEnabled ? '' : ' off'}`}
-                title={f.cardEnabled ? '在卡片页隐藏' : '在卡片页显示'}
-                aria-label={f.cardEnabled ? '在卡片页隐藏' : '在卡片页显示'}
-                disabled={patchFeed.isPending}
-                onClick={() => patchFeed.mutate({ id: f.id, patch: { cardEnabled: !f.cardEnabled } })}
-              >
-                {f.cardEnabled ? '▣' : '▢'}
-              </button>
-              <button
-                className="icon-btn danger"
-                title="删除频道"
-                aria-label="删除频道"
-                disabled={deleteFeed.isPending}
-                onClick={() => remove(f)}
-              >
-                ✕
-              </button>
-            </span>
           </li>
-        ))}
+        )}
+
+        {grouped.map((g) => {
+          /* 未分组那一组不折叠：它没有名字，折叠起来就是一堆「▸ 未分组」，
+           * 点开才知道里面有什么，还不如直接列出来。 */
+          const foldable = g.name !== '';
+          const isCollapsed = foldable && collapsedSet.has(g.name);
+          const gUnread = g.feeds.reduce((n, f) => n + f.unreadCount, 0);
+          return (
+            <li key={g.name || '__ungrouped'} className="feed-group-wrap">
+              {foldable && (
+                <button
+                  className={`feed-group${isCollapsed ? ' collapsed' : ''}`}
+                  aria-expanded={!isCollapsed}
+                  title={isCollapsed ? '展开分组' : '收起分组'}
+                  onClick={() => toggleGroup(g.name)}
+                >
+                  <span className="feed-group-caret" aria-hidden>▾</span>
+                  <span className="feed-group-name">{g.name}</span>
+                  {gUnread > 0 && <span className="feed-group-n">{gUnread}</span>}
+                </button>
+              )}
+              {!isCollapsed &&
+                g.feeds.map((f) => (
+                  <div key={f.id} className="feed-row">
+                    <button
+                      className={`feed${feedId === f.id ? ' on' : ''}${f.enabled ? '' : ' off'}`}
+                      onClick={() => setFeedId(f.id)}
+                      title={f.error ?? f.url}
+                    >
+                      <Thumb
+                        src={f.icon}
+                        className="feed-icon"
+                        decorative
+                        fallback={<LetterAvatar title={f.title} />}
+                      />
+                      <div className="feed-main">
+                        <p className="feed-title">{f.title}</p>
+                        <p className="feed-meta">
+                          {f.cardEnabled ? '' : '卡片页隐藏 · '}
+                          {f.error ? '抓取失败' : f.entryCount ? `${f.entryCount} 条` : '暂无条目'}
+                        </p>
+                      </div>
+                      <span className="count">{f.unreadCount}</span>
+                    </button>
+
+                    <span className="feed-ops">
+                      {/* 单频道刷新：看到「这个源没更新」时最先要按的按钮 */}
+                      <button
+                        className="icon-btn"
+                        title="立即抓取这个频道"
+                        aria-label="立即抓取这个频道"
+                        disabled={refreshFeed.isPending}
+                        onClick={() => refreshFeed.mutate(f.id)}
+                      >
+                        ⟳
+                      </button>
+                      {/* 采集开关：与「卡片页展示」是两件事——停采集不一定要隐藏卡片 */}
+                      <button
+                        className={`icon-btn${f.enabled ? '' : ' off'}`}
+                        title={f.enabled ? '暂停采集' : '恢复采集'}
+                        aria-label={f.enabled ? '暂停采集' : '恢复采集'}
+                        disabled={patchFeed.isPending}
+                        onClick={() => patchFeed.mutate({ id: f.id, patch: { enabled: !f.enabled } })}
+                      >
+                        {f.enabled ? '⏸' : '▶'}
+                      </button>
+                      <button
+                        className={`icon-btn${f.cardEnabled ? '' : ' off'}`}
+                        title={f.cardEnabled ? '在卡片页隐藏' : '在卡片页显示'}
+                        aria-label={f.cardEnabled ? '在卡片页隐藏' : '在卡片页显示'}
+                        disabled={patchFeed.isPending}
+                        onClick={() => patchFeed.mutate({ id: f.id, patch: { cardEnabled: !f.cardEnabled } })}
+                      >
+                        {f.cardEnabled ? '▣' : '▢'}
+                      </button>
+                      <button
+                        className="icon-btn danger"
+                        title="删除频道"
+                        aria-label="删除频道"
+                        disabled={deleteFeed.isPending}
+                        onClick={() => remove(f)}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  </div>
+                ))}
+            </li>
+          );
+        })}
       </ul>
 
-      {feeds.length === 0 && <p className="hint">这个分组下没有频道。</p>}
+      {grouped.length === 0 && (
+        <p className="hint">{ql.trim() ? `没有匹配「${ql.trim()}」的频道。` : '还没有频道。'}</p>
+      )}
 
       <div className="add-feed">
         {adding ? (
@@ -261,7 +348,17 @@ export function FeedsPanel() {
               disabled={importOpml.isPending}
               onClick={() => fileRef.current?.click()}
             >
-              {importOpml.isPending ? '导入中…' : '导入 OPML'}
+              {importOpml.isPending ? '导入中…' : '导入'}
+            </button>
+            {/* 导出是「换服务器 / 备份订阅」的出口。没有它，用户迁移时只能一条条抄地址 */}
+            <button
+              className="btn ghost sm"
+              type="button"
+              disabled={exportOpml.isPending || data.feeds.length === 0}
+              title="把当前全部频道导出成 OPML 文件"
+              onClick={() => exportOpml.mutate()}
+            >
+              {exportOpml.isPending ? '导出中…' : '导出'}
             </button>
             {/* 隐藏的文件选择器：OPML 是本地文件，浏览器只能通过 input[type=file] 拿内容 */}
             <input
@@ -278,6 +375,28 @@ export function FeedsPanel() {
   );
 }
 
-function visibleFeeds(data: FeedsList, group: string | null): Feed[] {
-  return group === null ? data.feeds : data.feeds.filter((f) => f.groupName === group);
+/**
+ * 频道没图标时的字母头像。
+ *
+ * 为什么不用 `.dot`：一列灰点等于没有信息量 —— 12 个频道时还能靠位置记，30 个就完全没法扫。
+ * 首字取自标题（中文取第一个字，英文取首字母），配色由标题哈希决定：
+ * 同一个频道每台设备、每次刷新都是同一个颜色。
+ */
+const AVATAR_HUES = [212, 268, 168, 96, 32, 340] as const;
+
+function LetterAvatar({ title }: { title: string }) {
+  const t = (title || '?').trim();
+  const ch = t ? [...t][0] ?? '?' : '?';
+  let h = 0;
+  for (let i = 0; i < t.length; i += 1) h = (h * 31 + t.charCodeAt(i)) % 9973;
+  const hue = AVATAR_HUES[h % AVATAR_HUES.length] ?? 212;
+  return (
+    <span
+      className="feed-avatar"
+      style={{ background: `hsl(${hue} 46% 34%)`, color: '#fff' }}
+      aria-hidden
+    >
+      {ch.toUpperCase()}
+    </span>
+  );
 }

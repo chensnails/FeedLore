@@ -1,23 +1,49 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import type { EntriesListQuery } from '@feedlore/client';
+import type { ReadAllBody } from '@feedlore/contract';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
-import { useReadAll, useSetFavorite, useSetRead } from '../lib/mutations';
-import { useUi } from '../store/ui';
+import { useReadAll, useSaveLayout, useSetFavorite, useSetRead } from '../lib/mutations';
+import { useUi, type ListFilter, type ListSort, type ListView } from '../store/ui';
 import type { EntryCard } from '../lib/types';
 import { Thumb } from './Thumb';
 
 /**
- * 条目列表。筛选条件全部来自「选中频道 + 只看未读」，不额外存派生数据：
- * `queryKey` 带上这两个维度，切频道就是一次正常的缓存命中/重取，不需要手工 relayout。
+ * 条目列表。筛选条件全部来自 store（频道 / 筛选档 / 排序 / 标签 / 搜索词），不额外存派生数据：
+ * `queryKey` 带上这几个维度，换条件就是一次正常的缓存命中/重取，不需要手工 relayout。
  *
  * 写操作全部走 `lib/mutations`（乐观更新 + 失败回滚），组件只负责「点了要发生什么」。
+ *
+ * 工具栏 DOM 顺序是 v1 定下的铁律：**频道 → 标题 → [排序 → 视图 → 搜索]**。
+ * v2 的频道切换在侧栏，所以这条在列表里表现为「范围标题 → 排序 → 视图 → 搜索」；
+ * 搜索**永远在最右**，因为它是唯一会把结果集换成另一批东西的控件。
  */
+
+const FILTERS: ReadonlyArray<readonly [ListFilter, string]> = [
+  ['all', '全部'],
+  ['unread', '未读'],
+  ['favorite', '收藏'],
+  ['watch', '关注'],
+  ['block', '屏蔽'],
+];
+
+const SORTS: ReadonlyArray<readonly [ListSort, string]> = [
+  ['new', '新→旧'],
+  ['old', '旧→新'],
+  ['name', '按名称'],
+];
+
 export function EntriesPanel() {
   const feedId = useUi((s) => s.feedId);
-  const onlyUnread = useUi((s) => s.onlyUnread);
-  const toggleOnlyUnread = useUi((s) => s.toggleOnlyUnread);
+  const filter = useUi((s) => s.filter);
+  const setFilter = useUi((s) => s.setFilter);
+  const sort = useUi((s) => s.sort);
+  const setSort = useUi((s) => s.setSort);
+  const view = useUi((s) => s.view);
+  const setView = useUi((s) => s.setView);
+  const tag = useUi((s) => s.tag);
+  const setTag = useUi((s) => s.setTag);
   const openEntry = useUi((s) => s.openEntry);
   const search = useUi((s) => s.search);
   const setSearch = useUi((s) => s.setSearch);
@@ -25,6 +51,7 @@ export function EntriesPanel() {
   const setRead = useSetRead();
   const setFavorite = useSetFavorite();
   const readAll = useReadAll();
+  const saveLayout = useSaveLayout();
 
   /* 搜索框是**受控 + 本地 state**，不是直接绑 store：
    * 每敲一个字都写 store 会让列表请求跟着抖 5 次（还每次都是一个完整的 ilike 查询）。
@@ -41,21 +68,26 @@ export function EntriesPanel() {
   const query: EntriesListQuery = {
     limit: '30',
     ...(feedId ? { feeds: feedId } : {}),
-    ...(onlyUnread ? { unread: '1' } : {}),
+    ...(filter === 'unread' ? { unread: '1' as const } : {}),
+    ...(filter === 'favorite' ? { fav: '1' as const } : {}),
+    ...(filter === 'watch' ? { watch: 'watch' as const } : {}),
+    ...(filter === 'block' ? { watch: 'block' as const } : {}),
+    ...(tag ? { tag } : {}),
+    ...(sort !== 'new' ? { sort } : {}),
     ...(search ? { q: search } : {}),
   };
 
   const { data, isError, error, refetch, isFetching } = useQuery({
-    queryKey: [...qk.entries, feedId, onlyUnread, search],
+    queryKey: [...qk.entries, feedId, filter, sort, tag, search],
     queryFn: () => api.entries.list(query),
-    /* ⚠️ 必须保留上一批结果。没有它，每换一次 queryKey（敲搜索词、切频道）
+    /* ⚠️ 必须保留上一批结果。没有它，每换一次 queryKey（敲搜索词、切频道、切排序）
      * 都会进入 isPending，而下面的 early return 会把**整个 main 连同搜索框**
      * 换成「加载条目…」—— 输入框被卸载，用户敲第二个字就丢焦点，
      * 这是只有真机连着打字才会发现的塌法。 */
     placeholderData: keepPreviousData,
   });
 
-  // 频道列表已在缓存里（侧栏取过），这里只读不额外请求，用来算「全部已读」的作用范围
+  // 频道列表已在缓存里（侧栏取过），这里只读不额外请求：算作用范围 + 显示当前频道名
   const feedsQuery = useQuery({
     queryKey: qk.feeds,
     queryFn: () => api.feeds.list(),
@@ -89,35 +121,81 @@ export function EntriesPanel() {
   }
 
   /* 「全部已读」的作用范围必须与「屏幕上看到的」一致：
-   * - 选中某频道 → 只标这个频道；
-   * - 全部频道 → 只标卡片开关打开的频道（列表默认 scope=cards 的同一批）。
-   * 不传 feeds 服务端会标「全部频道」，会把卡片页看不到的频道一起标掉。 */
+   * - 选中某频道 → 只标这个频道；全部频道 → 只标卡片开关打开的频道（列表默认 scope=cards 的同批）。
+   * - 筛选档、标签、搜索词一并带上。少带任何一个，都会把用户没看见的条目一起标掉 ——
+   *   这是最容易让人恼火的误操作。 */
   const targetFeeds = feedId
     ? [Number(feedId)]
     : (feedsQuery.data?.feeds.filter((f) => f.cardEnabled).map((f) => Number(f.id)) ?? []);
 
   const unreadVisible = data.entries.filter((e) => !e.isRead).length;
 
+  const feedName = feedId
+    ? (feedsQuery.data?.feeds.find((f) => f.id === feedId)?.title ?? '频道')
+    : '全部频道';
+  const filterName = FILTERS.find(([v]) => v === filter)?.[1] ?? '全部';
+
+  /** 改视图/排序：本地立刻生效，异步写服务端（换设备还是这个样子）。 */
+  function pickView(v: ListView): void {
+    if (v === view) return;
+    setView(v);
+    saveLayout.mutate({ view: v });
+  }
+  function pickSort(v: ListSort): void {
+    if (v === sort) return;
+    setSort(v);
+    saveLayout.mutate({ sort: v });
+  }
+
   return (
     <main className="list">
       <div className="list-head">
-        <span>
-          {data.total} 条{isFetching ? ' · 更新中…' : ''}
-          {unreadVisible > 0 && (
-            <em className="inline-unread">
-              · 本页 {unreadVisible}/{data.entries.length} 未读
-            </em>
-          )}
-        </span>
-        <span className="list-actions">
-          <button
-            className={`chip sm${onlyUnread ? ' on' : ''}`}
-            onClick={toggleOnlyUnread}
-            aria-pressed={onlyUnread}
-            title="只看未读"
+        <div className="list-scope">
+          <h1 className="list-title" title={`${feedName} · ${filterName}`}>
+            {feedName}
+            {filter !== 'all' && <em>{filterName}</em>}
+            {tag && <em>#{tag}</em>}
+          </h1>
+          <span className="list-count">
+            {data.total} 条{isFetching ? ' · 更新中…' : ''}
+            {unreadVisible > 0 && (
+              <em className="inline-unread">本页 {unreadVisible}/{data.entries.length} 未读</em>
+            )}
+          </span>
+        </div>
+
+        <div className="list-actions">
+          {/* 排序 → 视图 → 搜索：这个顺序在 v1 就固定了，改顺序会让用惯的人每次都点错 */}
+          <select
+            className="input sm sort-select"
+            aria-label="排序"
+            value={sort}
+            onChange={(e) => pickSort(e.target.value as ListSort)}
           >
-            只看未读
-          </button>
+            {SORTS.map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
+          </select>
+
+          <span className="seg" role="group" aria-label="视图">
+            <button
+              className={`seg-btn${view === 'grid' ? ' on' : ''}`}
+              aria-pressed={view === 'grid'}
+              title="网格视图"
+              onClick={() => pickView('grid')}
+            >
+              ▦
+            </button>
+            <button
+              className={`seg-btn${view === 'list' ? ' on' : ''}`}
+              aria-pressed={view === 'list'}
+              title="列表视图"
+              onClick={() => pickView('list')}
+            >
+              ☰
+            </button>
+          </span>
+
           <span className="search-box">
             <input
               ref={inputRef}
@@ -151,32 +229,75 @@ export function EntriesPanel() {
               </button>
             )}
           </span>
-          {data.tags.length > 0 && (
-            <span className="tags-inline">
-              {data.tags.slice(0, 4).map((t) => (
-                <span key={t.tag} className="tag">
-                  {t.tag} <b>{t.n}</b>
-                </span>
-              ))}
-            </span>
-          )}
-          <button
-            className="btn ghost sm"
-            disabled={readAll.isPending || data.total === 0}
-            /* 搜索态必须把 q 一起带上：不带就变成「把范围内所有未读都标掉」，
-             * 而用户看到的只是搜索结果那几条 —— 这是最容易让人恼火的误操作。 */
-            onClick={() => readAll.mutate({ feeds: targetFeeds, ...(search ? { q: search } : {}) })}
-            title="把当前范围内的未读全部标为已读"
-          >
-            {readAll.isPending ? '处理中…' : '全部已读'}
-          </button>
-        </span>
+        </div>
       </div>
 
-      <ul className="cards">
+      {/* 筛选档 + 全部已读。放在标题下面单独一行：它们是「决定看什么」的开关，
+          和「决定怎么显示」（排序/视图）不是一类东西，混在一行会在窄屏挤成一团。 */}
+      <div className="filter-row">
+        <div className="seg" role="tablist" aria-label="筛选">
+          {FILTERS.map(([v, label]) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={filter === v}
+              className={`seg-btn${filter === v ? ' on' : ''}`}
+              onClick={() => setFilter(v)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="filter-spacer" />
+        <button
+          className="btn ghost sm"
+          disabled={readAll.isPending || data.total === 0}
+          /* 搜索态必须把 q 一起带上：不带就变成「把范围内所有未读都标掉」，
+           * 而用户看到的只是搜索结果那几条。筛选档与标签同理。 */
+          onClick={() => {
+            const body: ReadAllBody = {
+              feeds: targetFeeds,
+              ...(search ? { q: search } : {}),
+              ...(tag ? { tag } : {}),
+              ...(filter === 'favorite' ? { fav: '1' as const } : {}),
+              ...(filter === 'watch' || filter === 'block' ? { watch: filter } : {}),
+            };
+            readAll.mutate(body);
+          }}
+          title="把当前范围内的未读全部标为已读"
+        >
+          {readAll.isPending ? '处理中…' : '全部已读'}
+        </button>
+      </div>
+
+      {/* 标签云：点一下就是按标签筛。标签是「条目自带的分类」，比关键词搜索更准确 */}
+      {data.tags.length > 0 && (
+        <div className="tag-bar">
+          {data.tags.slice(0, 14).map((t) => (
+            <button
+              key={t.tag}
+              className={`tag tag-btn${tag === t.tag ? ' on' : ''}`}
+              aria-pressed={tag === t.tag}
+              title={tag === t.tag ? '取消标签筛选' : `只看 #${t.tag}`}
+              onClick={() => setTag(tag === t.tag ? null : t.tag)}
+            >
+              {t.tag} <b>{t.n}</b>
+            </button>
+          ))}
+          {tag && (
+            <button className="tag tag-btn clear" onClick={() => setTag(null)}>
+              清除标签 ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      <ul className={`cards ${view === 'list' ? 'list-mode' : 'grid-mode'}`}>
         {data.entries.map((e) => (
           <li key={e.id} className={`card-row${e.isRead ? ' read' : ''}`}>
             <button className="card" onClick={() => open(e)}>
+              {/* 封面：服务端已把外链改写成本站代理，这里只负责展示与失败降级 */}
+              <Thumb src={e.image} className="card-thumb" decorative />
               <div className="card-body">
                 <p className="card-title">{e.name}</p>
                 {e.desc && <p className="card-desc">{e.desc}</p>}
@@ -189,8 +310,6 @@ export function EntriesPanel() {
                   ))}
                 </p>
               </div>
-              {/* 封面：服务端已把外链改写成本站代理，这里只负责展示与失败降级 */}
-              <Thumb src={e.image} className="card-thumb" decorative />
             </button>
             <button
               className={`fav-btn${e.isFavorite ? ' on' : ''}`}
@@ -204,14 +323,25 @@ export function EntriesPanel() {
         ))}
       </ul>
 
-      {data.entries.length === 0 && (
-        <p className="hint">
-          {search ? `没有匹配「${search}」的条目。` : '这里还没有条目。'}
-        </p>
-      )}
+      {data.entries.length === 0 && <p className="hint">{emptyText(search, tag, filter)}</p>}
       {data.hasMore && <p className="hint">仅显示前 {data.limit} 条</p>}
     </main>
   );
+}
+
+/**
+ * 空态文案必须说清「为什么空」。
+ * 统一一句「这里还没有条目」会把「搜错了词」和「这个频道真的没内容」混成同一件事，
+ * 前者用户会以为抓取坏了，后者用户会以为搜索坏了。
+ */
+function emptyText(search: string, tag: string | null, filter: ListFilter): string {
+  if (search) return `没有匹配「${search}」的条目。`;
+  if (tag) return `没有带 #${tag} 的条目。`;
+  if (filter === 'unread') return '这个范围内没有未读条目。';
+  if (filter === 'favorite') return '还没有收藏过条目。';
+  if (filter === 'watch') return '没有命中关注规则的条目。';
+  if (filter === 'block') return '没有命中屏蔽规则的条目。';
+  return '这里还没有条目。';
 }
 
 function fmtDate(iso: string): string {

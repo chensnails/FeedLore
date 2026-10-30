@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { applyAppearance } from '../lib/appearance';
 import { qk } from '../lib/query';
@@ -12,6 +12,7 @@ import { EntryReader } from './EntryReader';
 import { AdminPanel } from './AdminPanel';
 import { DigestPanel } from './DigestPanel';
 import { PrefsPanel } from './PrefsPanel';
+import { CommandPalette } from './CommandPalette';
 
 /**
  * 登录后的主壳：顶部工具条 + 左频道栏 + 条目列表 + 阅读层覆盖。
@@ -22,6 +23,7 @@ export function Shell({ session }: { session: Session }) {
   const toast = useUi((s) => s.toast);
   const dismissToast = useUi((s) => s.dismissToast);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [digestOpen, setDigestOpen] = useState(false);
   const navOpen = useUi((s) => s.navOpen);
   const toggleNav = useUi((s) => s.toggleNav);
@@ -43,6 +45,33 @@ export function Shell({ session }: { session: Session }) {
   useEffect(() => {
     if (prefsQuery.data) applyAppearance(prefsQuery.data.appearance);
   }, [prefsQuery.data]);
+
+  /* 布局偏好（视图 / 排序）从服务端回填到本地 store。
+   *
+   * ⚠️ **只回填一次**。prefs 会被反复 invalidate，如果每次数据变化都覆盖本地值，
+   * 那么「用户刚点了网格、请求还没回来」时到达的那份旧数据会把选择打回列表视图 ——
+   * 表现是「点了视图按钮，闪一下又变回去」。用 ref 锁住首帧即可：
+   * 之后本地就是唯一真相，改动本身会写回服务端。 */
+  const layoutHydrated = useRef(false);
+  const layout = prefsQuery.data?.layout;
+  useEffect(() => {
+    if (!layout || layoutHydrated.current) return;
+    layoutHydrated.current = true;
+    useUi.getState().setView(layout.view);
+    useUi.getState().setSort(layout.sort === 'name' ? 'name' : layout.sort);
+  }, [layout]);
+
+  /* 溢出菜单点空白处收起：它没有遮罩（挡住半个屏幕反而更难用），
+   * 所以只能靠全局点击兜底。判断用 contains，点菜单内部不关。 */
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest('.topbar-more')) setMoreOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [moreOpen]);
 
   /* 抽屉开着时按 Esc 收起。与阅读层的 Esc 不冲突：打开条目会先把抽屉关掉。 */
   useEffect(() => {
@@ -108,6 +137,16 @@ export function Shell({ session }: { session: Session }) {
           >
             {refreshAll.isPending ? '⟳…' : '⟳'}
           </button>
+          {/* 命令面板入口。快捷键是 ⌘K / Ctrl+K，但**必须有按钮**：
+              纯快捷键的功能等于只有作者知道（v1 后期才有这个按钮）。 */}
+          <button
+            className="btn ghost icon cmdk-btn"
+            title="命令面板（⌘K / Ctrl+K）"
+            aria-label="打开命令面板"
+            onClick={() => window.dispatchEvent(new Event('feedlore:cmdk'))}
+          >
+            ⌘K
+          </button>
         </div>
 
         <div className="topbar-right">
@@ -115,7 +154,7 @@ export function Shell({ session }: { session: Session }) {
               藏入口只是顺手，真正的开关在服务端（generate 会 400）—— 两处都在才算真关掉。 */}
           {prefsQuery.data?.layout.digestEnabled !== false && (
             <button
-              className="btn ghost icon"
+              className="btn ghost icon topbar-digest"
               onClick={() => setDigestOpen(true)}
               title="AI 日报：把过去 24 小时的条目汇总成一份简报"
               aria-label="打开日报"
@@ -142,7 +181,7 @@ export function Shell({ session }: { session: Session }) {
           </button>
           {session.role === 'admin' && (
             <button
-              className="btn ghost icon"
+              className="btn ghost icon topbar-admin"
               onClick={() => setAdminOpen(true)}
               title="管理：状态 / 采集参数 / 用户"
               aria-label="打开管理面板"
@@ -154,9 +193,63 @@ export function Shell({ session }: { session: Session }) {
             {session.username}
             {session.role === 'admin' && <em>管理员</em>}
           </span>
-          <button className="btn ghost" onClick={() => logout.mutate()} disabled={logout.isPending}>
+          <button
+            className="btn ghost topbar-logout"
+            onClick={() => logout.mutate()}
+            disabled={logout.isPending}
+          >
             退出
           </button>
+
+          {/* 窄屏溢出菜单：390px 宽的顶栏放不下「日报 / 管理 / 退出」三个，
+              硬挤会换行（v1 修过一次），所以窄屏收进 ⋯ 里。桌面端这套菜单不显示。 */}
+          <span className="topbar-more">
+            <button
+              className="btn ghost icon"
+              aria-label="更多操作"
+              aria-expanded={moreOpen}
+              title="更多"
+              onClick={() => setMoreOpen((v) => !v)}
+            >
+              ⋯
+            </button>
+            {moreOpen && (
+              <div className="more-menu" role="menu">
+                {prefsQuery.data?.layout.digestEnabled !== false && (
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      setDigestOpen(true);
+                    }}
+                  >
+                    AI 日报
+                  </button>
+                )}
+                {session.role === 'admin' && (
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      setAdminOpen(true);
+                    }}
+                  >
+                    管理面板
+                  </button>
+                )}
+                <button
+                  role="menuitem"
+                  disabled={logout.isPending}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    logout.mutate();
+                  }}
+                >
+                  退出登录{session.username ? `（${session.username}）` : ''}
+                </button>
+              </div>
+            )}
+          </span>
         </div>
       </header>
 
@@ -170,6 +263,11 @@ export function Shell({ session }: { session: Session }) {
 
       <EntryReader />
       <PrefsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <CommandPalette
+        role={session.role}
+        onOpenDigest={() => setDigestOpen(true)}
+        onOpenAdmin={() => setAdminOpen(true)}
+      />
       <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
       <DigestPanel open={digestOpen} onClose={() => setDigestOpen(false)} />
 

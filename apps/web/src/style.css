@@ -1547,3 +1547,623 @@ body {
     flex: none;
   }
 }
+
+/* ================= P10.6 列表工具栏 / 网格视图 =================
+ * 这一段是「卡片页」从 v1 迁过来的部分：视图切换、排序、筛选档、标签云。
+ * 全部规则都以 .list 为前缀，避免和阅读层、设置面板的同名类互相污染。
+ */
+
+.list-scope {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.list-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.list-title em {
+  margin-left: 6px;
+  font-style: normal;
+  font-weight: 400;
+  font-size: 11.5px;
+  color: var(--accent);
+}
+.list-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 筛选档那一行：左边是互斥档位，右边是「全部已读」，中间靠 spacer 撑开 */
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px 8px;
+}
+.filter-spacer {
+  flex: 1;
+}
+
+/* 排序下拉：宽度写死，避免「按名称」和「新→旧」之间切换时工具栏左右跳 */
+.sort-select {
+  width: 90px;
+  flex: none;
+}
+
+/* 标签云：卡片页顶部的可点标签。与 .tag 共用配色，只是变成了按钮 */
+.tag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 2px 10px;
+}
+.tag-btn {
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 9px;
+  color: var(--muted);
+  transition: color 0.16s ease, border-color 0.16s ease;
+}
+.tag-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.tag-btn.on {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.tag-btn.on b {
+  color: var(--accent-ink);
+  opacity: 0.75;
+}
+.tag-btn.clear {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: transparent;
+}
+
+/* ---------------- 两种视图 ---------------- */
+
+/* 网格：封面在上、文字在下。auto-fill + minmax 让 1440 / 820 / 390 三档
+ * 自动落到「5 列 / 2 列 / 1 列」，不需要为每档写一遍媒体查询。 */
+.cards.grid-mode {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(224px, 1fr));
+  gap: 12px;
+}
+/* 网格靠间距分隔，不需要行分隔线 */
+.cards.grid-mode > li + li {
+  border-top: 0;
+}
+.cards.grid-mode .card {
+  flex-direction: column;
+  gap: 0;
+  padding: 0 0 10px;
+  border-color: var(--line);
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.cards.grid-mode .card:hover {
+  border-color: var(--accent);
+}
+.cards.grid-mode .card-thumb {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.cards.grid-mode .card-body {
+  padding: 9px 11px 0;
+}
+.cards.grid-mode .card-title {
+  font-size: 13.5px;
+  /* 网格里标题最多两行：三行以上会把卡片拉得高低不齐，整行看起来像没收好的书架 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cards.grid-mode .card-desc {
+  -webkit-line-clamp: 2;
+  font-size: 12px;
+}
+/* 网格卡片的收藏按钮压在封面右上角，始终可见（没有 hover 概念时也要能点） */
+.cards.grid-mode .fav-btn {
+  top: 7px;
+  right: 7px;
+  opacity: 1;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border-color: var(--line);
+}
+
+/* 列表：一行一条，封面在右。与 v2 原有样式一致，只补上 .list-mode 的前缀约束 */
+.cards.list-mode {
+  display: flex;
+  flex-direction: column;
+}
+.cards.list-mode .card {
+  flex-direction: row;
+  padding: 12px 44px 11px 12px;
+  border-radius: var(--radius-sm);
+}
+
+@media (max-width: 820px) {
+  /* 平板两列：224px 的下限在 820 宽下会挤成 3 列半，强制两列更好扫 */
+  .cards.grid-mode {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .filter-row {
+    flex-wrap: wrap;
+  }
+  .filter-spacer {
+    display: none;
+  }
+}
+@media (max-width: 560px) {
+  .list-head {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .list-actions {
+    width: 100%;
+    gap: 6px;
+  }
+  .list-actions .search-box {
+    flex: 1;
+    min-width: 0;
+  }
+  .search-input {
+    width: 100%;
+  }
+  .cards.grid-mode {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* 手机上优先保证一行文字的完整：网格卡片在 390 宽下信息密度太低 */
+  .sort-select {
+    width: 84px;
+  }
+  .tag-bar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .tag-bar::-webkit-scrollbar {
+    display: none;
+  }
+  .tag-btn {
+    flex: none;
+  }
+}
+
+/* ---------------- 频道栏：搜索 / 分组折叠 / 字母头像 ---------------- */
+
+.channel-search {
+  position: relative;
+  padding: 0 12px 8px;
+  flex: none;
+}
+.channel-search .input {
+  width: 100%;
+  padding-right: 26px;
+}
+.channel-search .search-clear {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.channel-search .search-clear:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+/* 分组标题行：整行可点（不是只有箭头），这是 v1 里点得最顺的一处细节 */
+.feed-group {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px 5px 14px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.feed-group:hover {
+  color: var(--text);
+}
+.feed-group-caret {
+  display: inline-block;
+  font-size: 9px;
+  transition: transform 0.16s ease;
+}
+.feed-group.collapsed .feed-group-caret {
+  transform: rotate(-90deg);
+}
+.feed-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feed-group-n {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  color: var(--accent);
+}
+/* 折叠后组内的频道不再占位，需要给组标题一点下边距，否则会贴着下一个组 */
+.feed-group.collapsed {
+  padding-bottom: 7px;
+}
+
+/* 字母头像：无图标频道的替身。尺寸与 .feed-icon 一致，切换时不会跳动 */
+.feed-avatar {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 4px;
+  user-select: none;
+}
+
+/* ---------------- 阅读层工具行 / 提取码 / 下拉把手 ---------------- */
+
+.reader-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: -14px -14px 10px 0;
+}
+/* 阅读层里的关闭按钮回到文档流（设置面板里的那个仍然是绝对定位的浮动叉） */
+.reader-tools .reader-close {
+  position: static;
+  top: auto;
+  right: auto;
+}
+.reader-fs {
+  display: inline-flex;
+  gap: 2px;
+}
+.reader-fs .btn {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* 提取码：网盘条目的关键信息，给一行独立高亮，别混在正文里让人翻 */
+.reader-pwd {
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  border-radius: var(--radius-sm);
+}
+.reader-pwd code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+/* 下拉把手只在窄屏出现：桌面有遮罩可点、有 Esc，不需要手势 */
+.reader-grip {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  .reader-grip {
+    display: block;
+    width: 38px;
+    height: 4px;
+    margin: 0 auto 10px;
+    border-radius: 999px;
+    background: var(--line);
+  }
+  .reader-tools {
+    margin: 0 0 8px;
+  }
+}
+
+/* ---------------- 命令面板（⌘K） ---------------- */
+
+.cmdk-btn {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.cmdk-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgb(0 0 0 / 45%);
+  display: grid;
+  place-items: start center;
+  padding: 12vh 16px 16px;
+}
+
+.cmdk {
+  width: min(560px, 100%);
+  max-height: min(62vh, 520px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.cmdk-input {
+  flex: none;
+  width: 100%;
+  padding: 14px 16px;
+  font: inherit;
+  font-size: 14.5px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  outline: none;
+}
+.cmdk-input::placeholder {
+  color: var(--muted);
+}
+
+.cmdk-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+}
+
+.cmdk-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+/* 选中态用背景而不是边框：键盘上下移动时行高不变，列表不会跟着抖 */
+.cmdk-item.on {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.cmdk-group {
+  flex: none;
+  min-width: 76px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.cmdk-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmdk-hint {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cmdk-empty {
+  margin: 0;
+  padding: 18px 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cmdk-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 14px 9px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+.cmdk-foot kbd {
+  font: inherit;
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.cmdk-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .cmdk-backdrop {
+    padding: 0;
+    place-items: stretch;
+  }
+  .cmdk {
+    width: 100%;
+    max-height: none;
+    height: 100%;
+    border-radius: 0;
+    border: 0;
+  }
+  .cmdk-group {
+    min-width: 60px;
+  }
+}
+
+/* ================= 触屏适配 =================
+ * 手机上没有 hover，所以所有「hover 才出现」的控件在手机上等于不存在 ——
+ * v1 早期就是这样：手机端根本点不到频道的刷新 / 暂停 / 删除，也点不到卡片收藏。
+ * 这里按能力查询修正，而不是按宽度猜设备（平板 + 键盘同样适用 hover）。
+ */
+
+@media (hover: none) {
+  /* 1. 隐藏式操作一律常显 */
+  .feed-ops,
+  .fav-btn {
+    opacity: 1;
+  }
+  /* 2. hover 背景在触屏会「粘住」：点过的那一行一直亮着，看起来像选中了。
+     这里把纯观感性的 hover 复位，功能性的（展开操作）保留。 */
+  .card:hover {
+    background: transparent;
+    border-color: transparent;
+  }
+  .cards.grid-mode .card:hover {
+    border-color: var(--line);
+  }
+  .card-row:hover .fav-btn {
+    /* 常显已由上面覆盖，这条只是让特异性对齐，避免被更长的选择器压回去 */
+    opacity: 1;
+  }
+}
+
+@media (pointer: coarse) {
+  /* 触控目标最小 32px：26px 的图标在拇指下经常点偏一个 */
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
+  }
+  .btn.icon {
+    padding: 7px 10px;
+  }
+  .fav-btn {
+    width: 32px;
+    height: 32px;
+  }
+  .feed {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+  /* 触屏不需要「移动到才浮起」的过渡，去掉能省掉一次无意义的合成 */
+  .card,
+  .chip,
+  .btn {
+    transition: none;
+  }
+}
+
+/* ---------------- 顶栏溢出菜单（窄屏） ---------------- */
+
+.topbar-more {
+  position: relative;
+  display: none;
+}
+.more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 35;
+  min-width: 156px;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.more-menu button {
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.more-menu button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.more-menu button:disabled {
+  opacity: 0.5;
+}
+
+@media (max-width: 560px) {
+  /* 窄屏：日报 / 管理 / 退出 收进 ⋯，顶栏只留「频道 / 品牌 / 刷新 / ⌘K / Aa / 主题 / ⋯」 */
+  .topbar-digest,
+  .topbar-admin,
+  .topbar-logout {
+    display: none;
+  }
+  .topbar-more {
+    display: block;
+  }
+}
+
+/* 阅读层翻篇：贴在正文末尾，左右两个按钮 + 中间的进度 */
+.reader-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.reader-nav-pos {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
