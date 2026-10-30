@@ -16,8 +16,14 @@ export const PORT = num(process.env.PORT, 3000);
  */
 export const DATABASE_URL = process.env.DATABASE_URL ?? '';
 
+/**
+ * 前端构建产物目录（`apps/web/dist`）。为空表示不托管静态资源（本地开发用 vite dev server）。
+ * 容器里由 Dockerfile 设为 `/app/apps/web/dist`。
+ */
+export const WEB_ROOT = process.env.WEB_ROOT ?? '';
+
 /** 站点级采集参数：P4 前用默认值，之后改从 settings 表读取。 */
 export const DEFAULT_REFRESH_MINUTES = num(process.env.REFRESH_MINUTES, 30);
 export const DEFAULT_KEEP_DAYS = num(process.env.KEEP_DAYS, 90);
 
-export const APP_VERSION = process.env.APP_VERSION ?? '2.0.0-p3';
+export const APP_VERSION = process.env.APP_VERSION ?? '2.0.0-p4';

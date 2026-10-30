@@ -9,10 +9,12 @@
  *   这样测试可以直接 import 而不监听端口。
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { serveStatic } from '@hono/node-server/serve-static';
 import type { Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import type { AppEnv } from './middleware/auth';
+import { WEB_ROOT } from './env';
 import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
 import { feedsRoutes } from './routes/feeds';
@@ -22,34 +24,61 @@ export interface AppDeps {
   auth: AuthInstance | null;
 }
 
+/**
+ * 托管前端产物（同一容器、同源部署，因此不需要 CORS，Cookie 也是同站的）。
+ *
+ * 缓存策略遵循 v1.x 的 CDN 铁律：
+ * - `assets/*` 由 Vite 打上内容哈希 → immutable，可长缓存；
+ * - `index.html` 无哈希 → no-cache，否则新 HTML 配旧 JS/CSS（1.4.0 搜索框事故）。
+ */
+function mountWeb(app: Hono<AppEnv>, root: string): void {
+  // ⚠️ 必须改 `c.res.headers`，不能用 `c.header()`：后者写的是「待发送头」，
+  //    在 `await next()` 之后响应已生成，再写不会生效（表现为静态资源永远 no-cache）。
+  const cache = (value: string) => async (c: Context<AppEnv>, next: () => Promise<void>) => {
+    await next();
+    if (c.res && !c.res.headers.has('Cache-Control')) {
+      c.res.headers.set('Cache-Control', value);
+    }
+  };
+
+  app.use('/assets/*', cache('public, max-age=31536000, immutable'));
+  app.use('/assets/*', serveStatic({ root }));
+
+  app.use('/', cache('no-cache'));
+  app.get('/', serveStatic({ root, path: 'index.html' }));
+}
+
 export function createApp({ db, auth }: AppDeps) {
   const app = new Hono<AppEnv>();
 
-  return (
-    app
-      // better-auth 自带路由（sign-in/username、sign-out、get-session …）
-      .on(['GET', 'POST'], '/api/auth/**', (c) => {
-        if (!auth) return c.json({ error: '鉴权服务未就绪' }, 503);
-        return auth.handler(c.req.raw);
-      })
-      .onError((err, c) => {
-        // 自定义错误（ContractViolation/BadRequest）带 status；Hono 的 HTTPResponseError 不带。
-        const raw = err as unknown as { status?: unknown };
-        const s = typeof raw.status === 'number' ? raw.status : 500;
-        if (s >= 500) console.error('[error]', err);
-        const body = { error: s >= 500 ? '服务器内部错误' : err.message };
-        if (s === 400) return c.json(body, 400);
-        if (s === 401) return c.json(body, 401);
-        if (s === 403) return c.json(body, 403);
-        if (s === 501) return c.json(body, 501);
-        if (s === 503) return c.json(body, 503);
-        return c.json(body, 500);
-      })
-      .notFound((c) => c.json({ error: '接口不存在' }, 404))
-      .route('/', healthRoutes(db))
-      .route('/', authRoutes(db, auth))
-      .route('/', feedsRoutes(db, auth))
-  );
+  const routed = app
+    // better-auth 自带路由（sign-in/username、sign-out、get-session …）
+    .on(['GET', 'POST'], '/api/auth/**', (c) => {
+      if (!auth) return c.json({ error: '鉴权服务未就绪' }, 503);
+      return auth.handler(c.req.raw);
+    })
+    .onError((err, c) => {
+      // 自定义错误（ContractViolation/BadRequest）带 status；Hono 的 HTTPResponseError 不带。
+      const raw = err as unknown as { status?: unknown };
+      const s = typeof raw.status === 'number' ? raw.status : 500;
+      if (s >= 500) console.error('[error]', err);
+      const body = { error: s >= 500 ? '服务器内部错误' : err.message };
+      if (s === 400) return c.json(body, 400);
+      if (s === 401) return c.json(body, 401);
+      if (s === 403) return c.json(body, 403);
+      if (s === 501) return c.json(body, 501);
+      if (s === 503) return c.json(body, 503);
+      return c.json(body, 500);
+    })
+    .notFound((c) => c.json({ error: '接口不存在' }, 404))
+    .route('/', healthRoutes(db))
+    .route('/', authRoutes(db, auth))
+    .route('/', feedsRoutes(db, auth));
+
+  // 静态资源挂在同一个实例上；`route()` 返回的是 this，所以这里注册的路由同样生效。
+  if (WEB_ROOT) mountWeb(app, WEB_ROOT);
+
+  return routed;
 }
 
 /**
