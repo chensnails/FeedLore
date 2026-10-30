@@ -35,7 +35,10 @@ export interface CreateAuthOptions {
 
 export function createAuth(opts: CreateAuthOptions) {
   return betterAuth({
-    database: drizzleAdapter(opts.db, { provider: 'pg' }),
+    // ⚠️ usePlural 必须显式开启：better-auth 默认按**单数**表名（user/session/account/
+    // verification）查找，而 packages/db 的 schema 是复数（users/sessions/...）。
+    // 漏掉这一项时编译期一切正常，运行期才抛 SchemaMismatchError（Missing tables）。
+    database: drizzleAdapter(opts.db, { provider: 'pg', usePlural: true }),
     secret: opts.secret,
     baseURL: opts.baseURL,
     trustedOrigins: opts.trustedOrigins,
