@@ -286,7 +286,9 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             .limit(1);
           if (!current) return c.json({ error: '频道不存在' }, 404);
 
-          const set: Record<string, unknown> = {};
+          /* 用 Partial<typeof feeds.$inferInsert> 而不是 Record<string, unknown>：
+           * 后者能编过任何列名，`groupName` 手滑写成 `groupname` 会在运行期静默不生效。 */
+          const set: Partial<typeof feeds.$inferInsert> = {};
           if (body.enabled !== undefined) set.enabled = body.enabled;
           if (body.cardEnabled !== undefined) set.cardEnabled = body.cardEnabled;
           if (body.groupName !== undefined) set.groupName = body.groupName.trim().slice(0, 40) || null;
@@ -338,7 +340,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             );
           }
 
-          set.updatedAt = sql`now()`;
+          set.updatedAt = new Date();
           await db
             .update(feeds)
             .set(set)

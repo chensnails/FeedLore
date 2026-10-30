@@ -158,9 +158,86 @@ try {
     const hasSheet = await evalJs("!!document.querySelector('.reader-sheet')");
     console.log(`  阅读层：${hasSheet ? '已打开' : '未打开'}，正文 ${readerText.length} 字`);
     await shot('ui-reader.png');
+
+    // 阅读层里的收藏按钮（写操作的最短路径：点完看它自己变没变）
+    const favBefore = await evalJs("document.querySelector('.reader-actions .btn.ghost')?.innerText ?? ''");
+    await evalJs("document.querySelector('.reader-actions .btn.ghost')?.click()");
+    await sleep(1200);
+    const favAfter = await evalJs("document.querySelector('.reader-actions .btn.ghost')?.innerText ?? ''");
+    console.log(`  阅读层收藏：${JSON.stringify(favBefore)} → ${JSON.stringify(favAfter)}`);
+    // 撤回，别改测试库状态
+    await evalJs("document.querySelector('.reader-actions .btn.ghost')?.click()");
+    await sleep(900);
+
     await evalJs("document.querySelector('.reader-close')?.click()");
     await sleep(400);
   }
+
+  // 【写操作】列表里的收藏按钮
+  if (cardCount > 0) {
+    await evalJs("document.querySelector('.card-row .fav-btn')?.click()");
+    await sleep(1200);
+    const on = await evalJs("document.querySelector('.card-row .fav-btn')?.classList.contains('on')");
+    console.log(`  列表收藏按钮：${on ? '已收藏（★ 高亮）' : '未生效'}`);
+    if (on) {
+      await evalJs("document.querySelector('.card-row .fav-btn')?.click()");
+      await sleep(900);
+    }
+  }
+
+  // 【写操作】全部已读
+  const readAllBtn = await evalJs(`(() => {
+    const b = [...document.querySelectorAll('.list-actions .btn')].find((x) => x.innerText.includes('全部已读'));
+    if (!b) return 'no-btn';
+    b.click();
+    return 'clicked';
+  })()`);
+  await sleep(1500);
+  const toastText = (await evalJs("document.querySelector('.toast')?.innerText ?? ''")) ?? '';
+  console.log(`  全部已读：${readAllBtn}，提示=${JSON.stringify(toastText)}`);
+
+  // 【写操作】主题切换 → 验证 data-theme 真的变了 → 还原
+  const themeBefore = await evalJs("document.documentElement.dataset.theme || 'auto'");
+  await evalJs("document.querySelector('.topbar-right .btn.icon')?.click()");
+  await sleep(1200);
+  const themeAfter = await evalJs("document.documentElement.dataset.theme || 'auto'");
+  console.log(`  主题切换：${themeBefore} → ${themeAfter}`);
+  await evalJs(
+    `fetch('/api/prefs',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({appearance:{theme:${JSON.stringify(themeBefore)}}})}).then(r=>r.status)`,
+  );
+  await sleep(600);
+
+  // 【写操作】添加频道（抓取器未接入，只落库）→ 确认列表 +1 → 走接口删掉
+  await evalJs("[...document.querySelectorAll('.add-toggle')].find((b)=>b.innerText.includes('添加频道'))?.click()");
+  await sleep(300);
+  const added = await evalJs(`(() => {
+    const setVal = (el, v) => {
+      const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+      d.set.call(el, v);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const inputs = document.querySelectorAll('.add-feed .input');
+    if (inputs.length < 1) return 'no-input';
+    setVal(inputs[0], 'https://example.com/ui-check.xml');
+    const form = document.querySelector('.add-feed form');
+    if (!form) return 'no-form';
+    form.requestSubmit();
+    return 'submitted';
+  })()`);
+  await sleep(1800);
+  const feedRowsAfter = await evalJs("document.querySelectorAll('.feed-row').length");
+  const addToast = (await evalJs("document.querySelector('.toast')?.innerText ?? ''")) ?? '';
+  console.log(`  添加频道：${added}，频道行 ${feedCount - 1} → ${feedRowsAfter}，提示=${JSON.stringify(addToast)}`);
+  const cleanup = await evalJs(`(async () => {
+    const j = await (await fetch('/api/feeds')).json();
+    const f = (j.feeds || []).find((x) => x.url.includes('ui-check.xml'));
+    if (!f) return 'not-found';
+    const r = await fetch('/api/feeds/' + f.id, { method: 'DELETE' });
+    return 'deleted:' + r.status;
+  })()`);
+  console.log(`  清理测试频道：${cleanup}`);
+  await shot('ui-write.png');
 
   console.log(errors.length ? `  控制台错误：\n  - ${errors.join('\n  - ')}` : '  控制台无错误');
   process.exitCode = feedCount > 1 && cardCount > 0 ? 0 : 1;
