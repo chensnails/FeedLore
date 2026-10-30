@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { bodyParagraphs, dropTitleEcho, fallbackText, parseBlocks, type BodyBlock } from '../lib/article';
 import { Icon } from './Icon';
 
@@ -100,7 +101,16 @@ export function ArticleBody({
     return (
       <div className="reader-body">
         {nodes}
-        {box && <Lightbox box={box} onClose={() => setBox(null)} onIdx={(idx) => setBox({ ...box, idx })} />}
+        {/*
+         * 灯箱必须 portal 到 body：`.reader-sheet` 上有 backdrop-filter，按规范它会给
+         * `position: fixed` 的后代新建包含块——灯箱留在树里就只会铺满阅读层那一列，
+         * 且 50% 按整张长 sheet 算，左右翻页箭头会被推到视口下方看不见。
+         */}
+        {box &&
+          createPortal(
+            <Lightbox box={box} onClose={() => setBox(null)} onIdx={(idx) => setBox({ ...box, idx })} />,
+            document.body,
+          )}
       </div>
     );
   }
