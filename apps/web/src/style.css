@@ -1153,6 +1153,11 @@ body {
 .feed-ops:focus-within {
   opacity: 1;
 }
+/* 设置 → 频道是「管理」页：操作按钮常显，不能靠 hover 才发现（手机上根本没有 hover）。 */
+.prefs-sheet .feed-ops,
+.prefs-sheet .feed-group-ops {
+  opacity: 1;
+}
 .icon-btn {
   font: inherit;
   font-size: 11px;
