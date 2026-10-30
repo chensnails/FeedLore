@@ -179,6 +179,15 @@ export function EntriesPanel() {
    * 那时不该把界面掀掉重画。 */
   if (!data) {
     if (!groupReady) {
+      /* 两种「没数据」不能混：频道列表还没回来时只是等待，回来后组里真的没频道才是空。
+       * 混成一句「这个分组里还没有频道」，会在每次刷新时先闪一句假的空态。 */
+      if (feedsQuery.isPending) {
+        return (
+          <main className="list" ref={listRef as React.RefObject<HTMLElement>}>
+            <p className="hint">加载条目…</p>
+          </main>
+        );
+      }
       return (
         <main className="list" ref={listRef as React.RefObject<HTMLElement>}>
           <div className="panel">
@@ -259,14 +268,18 @@ export function EntriesPanel() {
       <div className="list-head">
         <div className="list-scope">
           <h1 className="list-title" title={`${groupName ? `组：${groupName}` : feedName} · ${filterName}`}>
-            {groupName ? `组：${groupName}` : feedName}
-            {filter !== 'all' && <em>{filterName}</em>}
-            {tag && <em>#{tag}</em>}
+            {/* 文字单独一层做省略号：✕ 挂在 h1 里，如果省略号写在 h1 上，
+                标题一长会把按钮一起裁掉（用户就看不出自己在筛选分组了）。 */}
+            <span className="list-title-text">
+              {groupName ? `组：${groupName}` : feedName}
+              {filter !== 'all' && <em>{filterName}</em>}
+              {tag && <em>#{tag}</em>}
+            </span>
             {/* 分组范围要能一键退出：它没有「全部」那一行可以点回去 */}
             {groupName && (
               <button
                 className="scope-x"
-                title={`取消分组筛选，看全部频道`}
+                title="取消分组筛选，看全部频道"
                 aria-label="取消分组筛选"
                 onClick={() => setGroupName(null)}
               >

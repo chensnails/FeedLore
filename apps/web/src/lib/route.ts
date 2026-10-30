@@ -172,7 +172,13 @@ function writeHash(hash: string, mode: 'push' | 'replace'): void {
  * 只有「换了个地方」才 push；「同一个地方调整一下」一律 replace。
  */
 function shouldPush(prev: RouteState, next: RouteState): boolean {
-  // 打开/关闭阅读层单独在 onStoreChange 里处理（关闭走 back），这里只关心「换范围」
+  /* 打开阅读层：从「没有条目」到「有条目」是一次真正的跳转，必须进历史，
+   * 否则后退键回不到列表 —— 这条和下面的「关闭」是一对，漏任何一个都会让
+   * 后退键在「文章 ↔ 列表」这条主干路径上失效。
+   * （条目→条目 = 翻篇，落在最后 return false 走 replace，避免历史爆炸。） */
+  if (!prev.entryId && next.entryId) return true;
+
+  // 关闭阅读层在 onStoreChange 里单独处理（走 back），这里只关心「换范围」
   if (prev.feedId !== next.feedId) return true;
   if (prev.groupName !== next.groupName) return true;
   if (prev.panel !== next.panel) return true;
