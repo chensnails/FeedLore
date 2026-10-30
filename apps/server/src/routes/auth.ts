@@ -26,6 +26,16 @@ function baseURL(): string {
   return process.env.AUTH_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3000}`;
 }
 
+/**
+ * better-auth 对**带会话 Cookie 的状态变更请求**做 CSRF 校验，缺少 Origin 会直接
+ * 403 MISSING_OR_NULL_ORIGIN（浏览器会自动带 Origin，curl 不会）。
+ * 这里优先透传真实 Origin 以保留 CSRF 语义；客户端未带时回退到受信任的 baseURL origin
+ * （交叉站点的伪造请求会带上自己的 Origin，不在 trustedOrigins 内仍会被拒）。
+ */
+function originOf(c: { req: { header: (n: string) => string | undefined } }): string {
+  return c.req.header('origin') ?? new URL(baseURL()).origin;
+}
+
 export function authRoutes(db: Db | null, auth: AuthInstance | null): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
@@ -40,7 +50,7 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null): Hono<AppEn
     const res = await auth.handler(
       new Request(new URL('/api/auth/sign-in/username', baseURL()), {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', origin: originOf(c) },
         body: JSON.stringify({ username: body.username, password: body.password }),
       }),
     );
@@ -79,6 +89,7 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null): Hono<AppEn
         headers: {
           cookie: c.req.header('cookie') ?? '',
           'content-type': 'application/json',
+          origin: originOf(c),
         },
         body: '{}',
       }),
