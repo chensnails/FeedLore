@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { api } from '../lib/api';
 import { applyAppearance } from '../lib/appearance';
 import { qk } from '../lib/query';
-import { useSaveAppearance } from '../lib/mutations';
+import { useRefreshAll, useSaveAppearance } from '../lib/mutations';
 import { useUi } from '../store/ui';
 import type { Session } from '../lib/types';
 import { FeedsPanel } from './FeedsPanel';
@@ -37,6 +37,7 @@ export function Shell({ session }: { session: Session }) {
   }, [prefsQuery.data]);
 
   const saveAppearance = useSaveAppearance();
+  const refreshAll = useRefreshAll();
 
   const logout = useMutation({
     mutationFn: () => api.logout(),
@@ -73,6 +74,15 @@ export function Shell({ session }: { session: Session }) {
             title="只看未读"
           >
             只看未读
+          </button>
+          <button
+            className="btn ghost icon"
+            onClick={() => refreshAll.mutate()}
+            disabled={refreshAll.isPending}
+            title="刷新全部开启采集的频道"
+            aria-label="刷新全部频道"
+          >
+            {refreshAll.isPending ? '⟳…' : '⟳'}
           </button>
         </div>
 

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
-import { useCreateFeed, useDeleteFeed, usePatchFeed } from '../lib/mutations';
+import { useCreateFeed, useDeleteFeed, usePatchFeed, useRefreshFeed } from '../lib/mutations';
 import { useUi } from '../store/ui';
 import type { Feed, FeedsList } from '../lib/types';
 
@@ -24,6 +24,7 @@ export function FeedsPanel() {
   const createFeed = useCreateFeed();
   const patchFeed = usePatchFeed();
   const deleteFeed = useDeleteFeed();
+  const refreshFeed = useRefreshFeed();
 
   const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: qk.feeds,
@@ -116,6 +117,16 @@ export function FeedsPanel() {
             </button>
 
             <span className="feed-ops">
+              {/* 单频道刷新：看到「这个源没更新」时最先要按的按钮 */}
+              <button
+                className="icon-btn"
+                title="立即抓取这个频道"
+                aria-label="立即抓取这个频道"
+                disabled={refreshFeed.isPending}
+                onClick={() => refreshFeed.mutate(f.id)}
+              >
+                ⟳
+              </button>
               {/* 采集开关：与「卡片页展示」是两件事——停采集不一定要隐藏卡片 */}
               <button
                 className={`icon-btn${f.enabled ? '' : ' off'}`}
@@ -187,8 +198,8 @@ export function FeedsPanel() {
                 取消
               </button>
             </div>
-            {/* 抓取器未接入（P5）：新增只会落库，不会立刻有条目，提前说清楚 */}
-            <p className="hint tiny">添加后会先保存地址；抓取管道上线后才会拉取内容。</p>
+            {/* 新增会立刻抓一次；源站报错时会把原因带回来，所以这里只需说明「会等一会儿」 */}
+            <p className="hint tiny">添加后会立即抓取一次，源站较慢时可能需要几秒。</p>
           </form>
         ) : (
           <button className="btn ghost sm add-toggle" onClick={() => setAdding(true)}>

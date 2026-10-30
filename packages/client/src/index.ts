@@ -204,6 +204,24 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
         const res = await raw.api.feeds.reorder.$post({ json: body });
         return unwrap(res, feedsEndpoints.reorder.response, 'POST /api/feeds/reorder');
       },
+
+      /** 刷新全部开启采集的频道（会真的回源，耗时从秒到几十秒不等）。 */
+      async refreshAll() {
+        const res = await raw.api.feeds.refresh.$post();
+        return unwrap(res, feedsEndpoints.refresh.response, 'POST /api/feeds/refresh');
+      },
+
+      /** 刷新单个频道。源站报错时 `ok:false` 且 `result.error` 有原因，HTTP 仍是 200。 */
+      async refreshOne(id: string | number) {
+        const res = await raw.api.feeds[':id'].refresh.$post({ param: { id: String(id) } });
+        return unwrap(res, feedsEndpoints.refreshOne.response, 'POST /api/feeds/:id/refresh');
+      },
+
+      /** OPML 批量导入。新导入的频道由服务端在后台抓取，本请求不等它。 */
+      async importOpml(opml: string) {
+        const res = await raw.api.feeds.import.$post({ json: { opml } });
+        return unwrap(res, feedsEndpoints.import.response, 'POST /api/feeds/import');
+      },
     },
 
     /* ---------------- 条目 ---------------- */

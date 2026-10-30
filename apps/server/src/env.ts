@@ -22,8 +22,19 @@ export const DATABASE_URL = process.env.DATABASE_URL ?? '';
  */
 export const WEB_ROOT = process.env.WEB_ROOT ?? '';
 
-/** 站点级采集参数：P4 前用默认值，之后改从 settings 表读取。 */
+/** 站点级采集参数：P5 前用环境变量默认值，之后改从 settings 表读取（管理员可调）。 */
 export const DEFAULT_REFRESH_MINUTES = num(process.env.REFRESH_MINUTES, 30);
 export const DEFAULT_KEEP_DAYS = num(process.env.KEEP_DAYS, 90);
+
+/** 单次出网抓取的超时（毫秒）。订阅源挂死时不能拖住整轮抓取。 */
+export const FETCH_TIMEOUT_MS = num(process.env.RSS_TIMEOUT_MS, 25000);
+/** 并发抓取的 URL 组数（同 URL 的多个订阅合并成一组，只回源一次）。 */
+export const REFRESH_CONCURRENCY = Math.min(10, Math.max(1, num(process.env.REFRESH_CONCURRENCY, 3)));
+/** 连续失败多少次自动停用采集（clamp 2~20，与 legacy 一致）。 */
+export const FEED_FAIL_LIMIT = Math.min(20, Math.max(2, num(process.env.FEED_FAIL_LIMIT, 5)));
+/** 每个频道最多保留多少条（按发布时间倒序裁剪）。0 = 不限。 */
+export const KEEP_PER_FEED = Math.max(0, num(process.env.KEEP_PER_FEED, 300));
+/** 定时抓取开关：本地调试/迁移期可置 0 只用手动刷新。 */
+export const SCHEDULER_ENABLED = process.env.REFRESH_DISABLED !== '1';
 
 export const APP_VERSION = process.env.APP_VERSION ?? '2.0.0-p4';

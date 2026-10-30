@@ -131,7 +131,13 @@ export function toFeed(
     unreadCount: counts.unreadCount ?? 0,
     refreshMinutes: row.refreshMinutes ?? null,
     effectiveRefreshMinutes: row.refreshMinutes ?? globalRefreshMinutes,
-    nextRefreshAt: null, // 调度器未接入（P5）；接了之后按 lastFetchedAt + 频率算
+    // 下次抓取时间 = 上次抓取 + 本频道频率（从未抓过 → 立刻该抓）。停用采集的返回 null。
+    nextRefreshAt: row.enabled
+      ? new Date(
+        (row.lastFetchedAt?.getTime() ?? Date.now())
+        + (row.refreshMinutes ?? globalRefreshMinutes) * 60_000,
+      ).toISOString()
+      : null,
     status: row.lastStatus ?? null,
     error: row.lastError ?? null,
     lastFetchedAt: iso(row.lastFetchedAt),

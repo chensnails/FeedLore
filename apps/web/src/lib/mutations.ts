@@ -107,15 +107,62 @@ export function useCreateFeed() {
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: qk.feeds });
       void qc.invalidateQueries({ queryKey: qk.entries });
-      /* 抓取器未接入（P5）：频道能建但还不会有条目，必须如实告诉用户，
-       * 否则「加了频道却什么都没有」会被当成 bug。 */
-      useUi.getState().notify(
-        r.existed
-          ? `这个地址已经在订阅列表里：${r.feed.title}`
-          : `已添加「${r.feed.title || r.feed.url}」，等待首次抓取`,
-      );
+
+      /* P5 起新增频道会**立即抓一次**，所以 added 是真的。
+       * 三种结果要分开说：本来就有 / 抓到了 / 加了但源站报错——
+       * 最后一种最容易让人误会（频道出现了却没内容），必须把源站的原因说出来。 */
+      if (r.existed) {
+        useUi.getState().notify(`这个地址已经在订阅列表里：${r.feed.title}`);
+      } else if (r.feed.status === 'error') {
+        useUi.getState().notify(`已添加，但源站报错：${r.feed.error ?? '未知错误'}`, 'error');
+      } else if (r.added > 0) {
+        useUi.getState().notify(`已添加「${r.feed.title || r.feed.url}」，抓取 ${r.added} 条`);
+      } else {
+        useUi.getState().notify(`已添加「${r.feed.title || r.feed.url}」，源站暂无新内容`);
+      }
     },
     onError: (e) => useUi.getState().notify(`添加失败：${errText(e)}`, 'error'),
+  });
+}
+
+/** 刷新全部开启采集的频道。会真的回源，可能耗时几十秒。 */
+export function useRefreshAll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.feeds.refreshAll(),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: qk.feeds });
+      void qc.invalidateQueries({ queryKey: qk.entries });
+      const parts = [`新增 ${r.added} 条`];
+      if (r.filtered) parts.push(`过滤 ${r.filtered} 条`);
+      if (r.failed.length) parts.push(`${r.failed.length} 个源失败`);
+      if (r.autoDisabled) parts.push(`${r.autoDisabled} 个已自动停用`);
+      useUi
+        .getState()
+        .notify(`刷新完成：${parts.join('，')}`, r.failed.length ? 'error' : 'ok');
+    },
+    onError: (e) => useUi.getState().notify(`刷新失败：${errText(e)}`, 'error'),
+  });
+}
+
+/** 刷新单个频道（源站报错时 HTTP 仍 200，靠 ok/result.error 判断）。 */
+export function useRefreshFeed() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.feeds.refreshOne(id),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: qk.feeds });
+      void qc.invalidateQueries({ queryKey: qk.entries });
+      const name = r.feed.title || r.feed.url;
+      if (!r.ok) {
+        useUi.getState().notify(`「${name}」抓取失败：${r.result.error ?? '未知错误'}`, 'error');
+      } else if (r.result.added) {
+        useUi.getState().notify(`「${name}」新增 ${r.result.added} 条`);
+      } else {
+        useUi.getState().notify(`「${name}」没有新内容`);
+      }
+    },
+    onError: (e) => useUi.getState().notify(`刷新失败：${errText(e)}`, 'error'),
   });
 }
 

@@ -201,7 +201,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // 14) 新增频道（公网地址，不抓取只落库）→ 改分组/开关 → 重排 → 删除
+  // 14) 新增频道（公网地址但**没有 RSS**）→ 改分组/开关 → 重排 → 删除
   let tmpFeedId: string | null = null;
   try {
     const created = await api.feeds.create({
@@ -211,10 +211,13 @@ async function main(): Promise<void> {
       cardEnabled: false,
     });
     tmpFeedId = created.feed.id;
-    if (created.added !== 0) throw new Error('抓取器未接入时 added 应为 0');
+    /* P5 起新增会立即抓一次：example.com/feed.xml 是 404，
+     * 所以这里 added=0 **且** status='error' —— 频道建成功、源站报错，两件事要同时成立。 */
+    if (created.added !== 0) throw new Error(`404 地址竟抓到 ${created.added} 条`);
+    if (created.feed.status !== 'error') throw new Error(`404 地址的 status 应为 error，实际 ${created.feed.status}`);
     ok(
-      'POST /api/feeds 新增',
-      `id=${created.feed.id} existed=${created.existed} group=${created.feed.groupName} added=${created.added}`,
+      'POST /api/feeds 新增（源站 404）',
+      `id=${created.feed.id} existed=${created.existed} added=${created.added} status=${created.feed.status}`,
     );
 
     // 同地址再建一次：existed=true，不产生第二条
@@ -267,6 +270,55 @@ async function main(): Promise<void> {
     if (tmpFeedId) {
       await api.feeds.remove(tmpFeedId).catch(() => undefined);
     }
+  }
+
+  // 14b) 真实源抓取（默认用用户给的两个测试源，可用 SMOKE_FEEDS 覆盖，逗号分隔）
+  const realFeeds = (process.env.SMOKE_FEEDS ?? 'https://www.ithome.com/rss/,https://rsshub.9610000.xyz/telegram/channel/bdwpzhpd')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const realFeedIds: string[] = [];
+  for (const url of realFeeds) {
+    try {
+      const created = await api.feeds.create({ url, groupName: 'smoke 真实源' });
+      realFeedIds.push(created.feed.id);
+
+      if (created.existed) {
+        // 第二轮起是已存在：改用单频道刷新，仍然要求能拿到「成功」状态
+        const r = await api.feeds.refreshOne(created.feed.id);
+        if (!r.ok) throw new Error(`已存在的源刷新失败：${r.result.error ?? '未知'}`);
+        ok(`POST /api/feeds/:id/refresh`, `${url} added=${r.result.added ?? 0}`);
+      } else {
+        if (created.added <= 0) throw new Error('新源首抓没有抓到任何条目');
+        ok('POST /api/feeds 首抓', `${url} added=${created.added} status=${created.feed.status}`);
+      }
+
+      // 抓到的条目必须真的能按频道筛出来，并且详情带正文
+      const page = await api.entries.list({ feeds: created.feed.id, limit: '3' });
+      if (!page.entries.length) throw new Error('该频道筛不出条目');
+      const detail = await api.entries.detail(page.entries[0]!.id);
+      ok(
+        '抓取结果可读',
+        `${page.total} 条，首条「${detail.name.slice(0, 24)}」正文 ${detail.content.length} 字`,
+      );
+    } catch (e) {
+      bad(`真实源 ${url}`, e);
+    }
+  }
+
+  // 14c) 刷新全部（含刚加的两个真实源；只抓开启采集的频道）
+  try {
+    const r = await api.feeds.refreshAll();
+    ok(
+      'POST /api/feeds/refresh',
+      `added=${r.added} skipped=${r.skipped} failed=${r.failed.length} 过滤=${r.filtered ?? 0}`,
+    );
+    if (r.failed.length) {
+      console.log(`    失败源：${r.failed.map((f) => f.url + ' → ' + f.error).join('; ')}`);
+    }
+  } catch (e) {
+    bad('POST /api/feeds/refresh', e);
   }
 
   // 15) 偏好保存：改主题必须保留未提交的键（合并语义，不是整份替换）

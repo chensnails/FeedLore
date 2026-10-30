@@ -271,6 +271,10 @@ export const feeds = {
       added: z.number().int(),
       skipped: z.number().int(),
       failed: z.array(z.object({ url: z.string(), error: z.string() })),
+      /** 本轮因连续失败被自动停用的频道数（optional：老客户端不认也无所谓） */
+      autoDisabled: z.number().int().optional(),
+      /** 本轮按条目过滤规则丢弃的条数 */
+      filtered: z.number().int().optional(),
     }),
   },
   import: {

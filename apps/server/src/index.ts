@@ -15,6 +15,8 @@ import type { AuthInstance } from '@feedlore/auth';
 import { APP_VERSION, DATABASE_URL, HOST, PORT } from './env';
 import { getAuth } from './auth';
 import { createApp } from './app';
+import { startScheduler } from './lib/fetcher';
+import { undiciVersionMismatch, undiciVersions } from './lib/net';
 
 let db: Db | null = null;
 if (DATABASE_URL) {
@@ -40,6 +42,23 @@ if (db) {
 }
 
 const app = createApp({ db, auth });
+
+/* 抓取器：进程内调度（每分钟检查一次到期频道）。
+ * 不用外部队列是刻意的 P5 决策——单进程足够、少一个故障点；多实例时才需要 BullMQ。 */
+if (db) startScheduler(db);
+
+/* undici 版本对齐：跨大版本会让 IP 钉定失效（1.7.3 全站抓取失败的真凶）。
+ * 这里只喊一声，真正的兜底在 lib/net.safeFetch —— 钉定失效时降级重试并告警。 */
+if (undiciVersionMismatch()) {
+  const v = undiciVersions();
+  console.warn(
+    `[net] ⚠️ undici 版本不匹配（内置 ${v.builtin} / 依赖 ${v.installed}）：`
+    + 'IP 钉定会失效，请把 apps/server 的 undici 锁到与 Node 内置一致的大版本',
+  );
+} else {
+  const v = undiciVersions();
+  console.log(`[net] undici 对齐：内置 ${v.builtin} / 依赖 ${v.installed}`);
+}
 
 serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
   console.log(`[v2] FeedLore ${APP_VERSION} 已启动 → http://${HOST}:${info.port}`);
