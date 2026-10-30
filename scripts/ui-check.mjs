@@ -349,10 +349,21 @@ try {
   console.log(`  用户页：${userTab}，${userRows} 行，自己标记=${selfMark}`);
   await shot('ui-admin-users.png');
 
+  /* 关于页：版本号必须是 vX.Y.Z 形态。
+   * 这条同时守着「版本只有一个真源」—— 版本号从根 package.json 读，
+   * 以后谁再把阶段号硬编码回 env.ts，这里显示的东西就会和 tag 对不上。 */
+  const aboutTab = await clickTab('关于');
+  await sleep(900);
+  const aboutVersion = ((await evalJs("document.querySelector('.admin-grid dd')?.textContent ?? ''")) ?? '').trim();
+  const aboutBtns = await evalJs("document.querySelectorAll('.admin-actions .btn').length");
+  const aboutOk = /^v\d+\.\d+\.\d+/.test(aboutVersion) && (aboutBtns ?? 0) >= 1;
+  console.log(`  关于页：${aboutTab} 版本=${aboutVersion} 按钮=${aboutBtns} ${aboutOk ? '' : '⚠️ 版本号形态不对'}`);
+  await shot('ui-admin-about.png');
+
   await evalJs("document.querySelector('.admin-sheet .reader-close')?.click()");
   await sleep(500);
   const adminClosed = await evalJs("!document.querySelector('.admin-sheet')");
-  if (!(adminOpen && adminTabs === 3 && statusOk && cfgInputs >= 11 && userRows >= 1 && adminClosed)) {
+  if (!(adminOpen && adminTabs === 4 && statusOk && cfgInputs >= 11 && userRows >= 1 && aboutOk && adminClosed)) {
     console.log('  ⚠️ 管理面板检查未全部通过');
     process.exitCode = 1;
   }

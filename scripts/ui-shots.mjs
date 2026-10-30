@@ -622,6 +622,13 @@ try {
       /* 键盘 ← / → 翻篇：v1 里就有，v2 一直到这一轮才接上（之前只有 Esc）。
        * 先 → 再 ←，验证能翻过去也能翻回来（只测单向的话，方向写反也看不出来）。 */
       const keyNav = await evalJs(`(async () => {
+        /* 先把可能还开着的灯箱关掉：上一段测过灯箱，而灯箱打开时
+         * 阅读层的键盘处理会主动让路（这是刻意的），不关就会被测成「翻篇失效」。 */
+        document.querySelector('.lightbox')?.click();
+        await new Promise((r) => setTimeout(r, 300));
+        /* 焦点必须挪开：阅读层刻意「不劫持输入框里的方向键」（用户可能正在备注/搜索），
+         * 而前面几段测试点过搜索框与设置里的输入框，不 blur 就会被自己写的保护逻辑挡住。 */
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
         const title = () => (document.querySelector('.reader-title')?.textContent ?? '').trim();
         const before = title();
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
