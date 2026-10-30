@@ -3,10 +3,17 @@
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022"],
-    "types": ["node"],
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "node"
+    ],
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "."
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "scripts"
+  ]
 }

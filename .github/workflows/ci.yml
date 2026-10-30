@@ -1,13 +1,85 @@
 name: CI
 
+# 两条并行的检查线，按分支分流（决策见 docs/技术栈与重构架构.md 的 P10 一节）：
+# - `main`  ：1.7.x 单体（npm），发版镜像由 release.yml 构建并推 ghcr latest；
+# - `v2`    ：monorepo（pnpm + turbo），只做检查与本地镜像构建，**不推任何 registry**。
+#
+# ⚠️ v2 的镜像绝不在这里推 ghcr：latest 是 172.26.1.1 生产站 Watchtower 的唯一触发点，
+#    在 v2 分支上推一次就等于把线上换成半成品。
 on:
   push:
-    branches: [main]
+    branches: [main, v2]
   pull_request:
-    branches: [main]
+    branches: [main, v2]
+
+# 同一分支连续 push 时取消旧的一轮：CI 只关心最新提交
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
+  # ==========================================================================
+  # v2：monorepo 全量检查
+  # ==========================================================================
+  v2-check:
+    if: github.ref_name == 'v2' || github.base_ref == 'v2'
+    runs-on: ubuntu-24.04 # 必须 pin：ubuntu-latest 曾静默迁到 26.04 导致构建失败
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm 要在 setup-node 之前就位，否则 `cache: pnpm` 找不到 pnpm 可执行文件
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.16.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # 六个包逐个 tsc --noEmit。注意它守不住「契约 path 字面量被拓宽」这类问题
+      # （P7 的真坑：服务端全绿、前端 hc 却缺路由），所以真正的守门是下面两步。
+      - name: 类型检查
+        run: pnpm -r run typecheck
+
+      - name: 构建前端
+        run: pnpm --filter @feedlore/web run build
+
+      - name: 构建镜像（不推送）
+        run: docker build -f Dockerfile -t feedlore-v2:ci .
+
+      # 镜像构建成功但产物没拷对，是「容器起来就 404」的经典原因；
+      # 这一步只查最关键的事实：前端产物在、server 入口在、workspace 包链接在。
+      - name: 检查镜像内产物
+        run: |
+          docker run --rm feedlore-v2:ci sh -c '
+            set -e
+            test -f /app/apps/web/dist/index.html || { echo "缺少前端产物"; exit 1; }
+            test -f /app/apps/server/src/index.ts || { echo "缺少 server 入口"; exit 1; }
+            test -d /app/node_modules/@feedlore/ai || { echo "workspace 包 @feedlore/ai 未链接"; exit 1; }
+            echo "镜像产物齐全"
+          '
+
+  # ARM64 单独跑一次镜像构建：生产机是 ARM，而 sharp 这类原生依赖
+  # 在 x64 上构建成功不代表 arm64 有对应预编译包 —— 那正是「本地好、线上崩」的常见来源。
+  # 放在 check 之后（needs 它），避免每次 push 都并行跑两遍完整依赖安装。
+  v2-image-arm64:
+    if: github.ref_name == 'v2' || github.base_ref == 'v2'
+    needs: v2-check
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: 构建镜像（arm64，不推送）
+        run: docker build -f Dockerfile -t feedlore-v2:ci-arm64 .
+
+  # ==========================================================================
+  # legacy（1.7.x 单体，main 分支）—— 保持原样，不在本轮重构范围内
+  # ==========================================================================
+  legacy:
+    if: github.ref_name == 'main' || github.base_ref == 'main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

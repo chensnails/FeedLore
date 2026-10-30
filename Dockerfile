@@ -1,7 +1,11 @@
 # FeedLore v2 —— 生产形态镜像（Web 静态产物 + API 同容器）
 #
 # 构建上下文必须是**仓库根目录**（monorepo），因为需要 packages/* 与根级 workspace 清单：
-#   docker build -f apps/server/Dockerfile -t feedlore-v2:test .
+#   docker build -f Dockerfile -t feedlore-v2:test .
+#
+# 位置说明（P10 起）：本文件在**仓库根**。`main` 分支的根 Dockerfile 是 1.7.x 单体的，
+# 两边的文件同名但属于不同分支，互不覆盖 —— 合并 `v2` 到 `main` 是「切换」那一刻的事，
+# 届时必须同时改 release.yml（它默认取根 Dockerfile 并推 latest）。
 #
 # ⚠️ 该镜像仅供 172.26.1.2 测试用，与线上 ghcr.io/chensnails/feedlore:latest 完全无关，
 #    绝不能被 watchtower 拉取（本机 watchtower 只更新带 enable 标签的容器，这里不打标签）。

@@ -13,7 +13,7 @@
 
 x-server-build: &server-build
   context: .
-  dockerfile: apps/server/Dockerfile
+  dockerfile: Dockerfile
 
 services:
   v2-db:

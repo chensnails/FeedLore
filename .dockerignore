@@ -1,25 +1,43 @@
+# 构建上下文是**仓库根**（monorepo），所以必须显式排除：
+# 不排的话 `docker build .` 会把这台开发机的 node_modules（几百 MB）与截图、
+# legacy 的 dist 一起打包上传，构建从十几秒变几分钟。
+
 # 版本控制 / 本地
 .git
 .gitignore
 *.log
 
-# 依赖：镜像里用 npm ci 重装，不拷本地 node_modules
+# 依赖：镜像里用 pnpm install 重装，不拷本地 node_modules
+# ⚠️ 必须写 **/node_modules：只写 `node_modules` 只匹配根级，
+#    apps/* / packages/* 下面那一堆会照旧被打进上下文
 node_modules
+**/node_modules
 npm-debug.log*
 
-# Vite 构建产物：镜像内多阶段构建重新产出，不拷本地 dist（避免陈旧产物）
-dist
+# 构建产物：前端在 stage1 重新产出，不拷本地 dist（避免陈旧产物）
+**/dist
 .vite
 
-# 旧版的落盘配置/摘要（v2 起数据全部存 PostgreSQL）
+# 1.7.x 单体：v2 镜像完全不需要它（保留目录只为灰度期对照与迁移脚本参考）
+apps/legacy
+
+# 文档、记忆、验证截图 —— 与运行无关
+docs
+.workbuddy
+.workbuddy-ai
+ui-*.png
+screenshots
+
+# 旧版的落盘数据（v2 起全部存 PostgreSQL）
 data
 
+# 凭据：容器里的配置一律走环境变量（compose / .env），绝不烤进镜像
+.env
+.env.*
+!.env.example
+
 # 开发辅助
-screenshots
 Dockerfile
 .dockerignore
 docker-compose.yml
-.env
-.env.example
 README.md
-.workbuddy-ai
