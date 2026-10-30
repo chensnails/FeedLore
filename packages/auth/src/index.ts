@@ -31,6 +31,15 @@ export interface CreateAuthOptions {
    * 不会回传 secure Cookie**，表现为「登录成功但后续请求仍 401」。测试栈必须显式传 false。
    */
   secureCookies?: boolean;
+  /**
+   * 是否信任反代的客户端 IP 头（`X-Forwarded-For` / `X-Real-IP`）。
+   *
+   * ⚠️ 只有**确实挂在反代后面**时才开：直接暴露端口时开它，任何人都能伪造该头，
+   * 把登录限流按 IP 分桶的防护变成一句空话（换一个 header 就是一次新配额）。
+   * 不开的代价是 better-auth 拿不到客户端 IP → 限流退化成「全站共用一个桶」，
+   * 别人连错几次密码就可能把你也锁在门外。生产（1Panel 反代 → 3211）应当开启。
+   */
+  trustProxy?: boolean;
 }
 
 export function createAuth(opts: CreateAuthOptions) {
@@ -58,6 +67,10 @@ export function createAuth(opts: CreateAuthOptions) {
         httpOnly: true,
         sameSite: (opts.secureCookies ?? true) ? 'none' : 'lax',
       },
+      // 反代后面才信任 XFF：见 CreateAuthOptions.trustProxy 注释
+      ...(opts.trustProxy
+        ? { ipAddress: { ipAddressHeaders: ['x-forwarded-for', 'x-real-ip'] } }
+        : {}),
     },
   });
 }

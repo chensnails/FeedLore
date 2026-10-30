@@ -31,10 +31,12 @@ export function getAuth(db: Db): AuthInstance {
     baseURL: process.env.AUTH_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3000}`,
     trustedOrigins,
     secureCookies,
+    // 只有真的挂在反代后面才开；直接暴露端口时开它等于让限流按 IP 分桶形同虚设
+    trustProxy: process.env.TRUST_PROXY === '1',
   });
 
   console.log(
-    `[auth] better-auth 就绪 | baseURL=${process.env.AUTH_BASE_URL ?? '(默认)'} | secureCookies=${secureCookies} | trustedOrigins=${trustedOrigins.length}`,
+    `[auth] better-auth 就绪 | baseURL=${process.env.AUTH_BASE_URL ?? '(默认)'} | secureCookies=${secureCookies} | trustedOrigins=${trustedOrigins.length} | trustProxy=${process.env.TRUST_PROXY === '1'}`,
   );
   return _auth;
 }
