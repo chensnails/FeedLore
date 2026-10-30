@@ -356,6 +356,10 @@ try {
           const g = getComputedStyle(c);
           return g.display === 'grid' ? g.gridTemplateColumns.split(' ').filter(Boolean).length : 1;
         };
+        /* 先把视图设回网格再量：上一轮跑完会把 layout.view 存成上一次点的那个，
+         * 直接量会把「上次留下的状态」当成初始态，数字每跑一次都不一样。 */
+        viewBtns[0]?.click();
+        await wait(700);
         out.colsGrid = colsOf();
         viewBtns[1]?.click();
         await wait(700);
@@ -541,6 +545,33 @@ try {
       await sleep(600);
     }
   }
+
+  /* 触屏能力（hover:none / pointer:coarse）。
+   *
+   * ⚠️ 这一段只能**静态检查 CSSOM**，不能靠 `Emulation.setEmulatedMedia` 读运行结果：
+   * Edge headless 不接受对 hover / pointer 的媒体特性覆盖（设了 matchMedia 仍是 false），
+   * 而此时读到的 opacity=1 其实是鼠标停在第一行上造成的 hover —— 假阳性。
+   * 所以这里退一步：确认「规则确实存在且确实包住了那几个控件」。
+   * 规则被删掉 / 选择器被改名，都能被这条断言抓住；「浏览器有没有真的应用」只能靠真机。
+   */
+  const touch = await evalJs(`(() => {
+    const rules = [...document.styleSheets].flatMap((s) => {
+      try { return [...s.cssRules]; } catch { return []; }
+    });
+    const media = (needle) => rules.filter((r) => (r.conditionText ?? '').includes(needle));
+    const covers = (blocks, sel) => blocks.some((b) =>
+      [...(b.cssRules ?? [])].some((r) => (r.selectorText ?? '').includes(sel)));
+    const hoverNone = media('hover: none');
+    const coarse = media('pointer: coarse');
+    return {
+      cssHoverNoneRules: hoverNone.reduce((n, b) => n + (b.cssRules?.length ?? 0), 0),
+      coversFeedOps: covers(hoverNone, '.feed-ops'),
+      coversFavBtn: covers(hoverNone, '.fav-btn'),
+      cssCoarseRules: coarse.reduce((n, b) => n + (b.cssRules?.length ?? 0), 0),
+      coversTapTarget: covers(coarse, '.icon-btn'),
+    };
+  })()`);
+  rows.push({ viewport: 'touch', ...touch });
 
   console.log(`\n[shots] ${url}\n`);
   for (const r of rows) {

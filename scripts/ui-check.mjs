@@ -240,7 +240,7 @@ try {
   // 【写操作】全部已读
   await clearToast();
   const readAllBtn = await evalJs(`(() => {
-    const b = [...document.querySelectorAll('.list-actions .btn')].find((x) => x.innerText.includes('全部已读'));
+    const b = [...document.querySelectorAll('.filter-row .btn')].find((x) => x.innerText.includes('全部已读'));
     if (!b) return 'no-btn';
     b.click();
     return 'clicked';
