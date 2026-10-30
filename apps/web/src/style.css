@@ -2167,3 +2167,12 @@ body {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* 手机端单列网格：封面占比太大时一屏只能看一张卡片，扫读效率反而比列表差。
+ * 压到 16/9 且不超过 210px —— 既保留「封面能看出内容」的好处，又让一屏能落两张。 */
+@media (max-width: 560px) {
+  .cards.grid-mode .card-thumb {
+    aspect-ratio: 16 / 9;
+    max-height: 210px;
+  }
+}
