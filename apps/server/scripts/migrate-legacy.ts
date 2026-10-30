@@ -13,14 +13,16 @@
  * 3. **不搬图片缓存**。`image_cache` 是纯缓存（丢了会回源重建），
  *    几十万行 BYTEA 搬过去既慢又占空间。要保留就单独拿 pg_dump。
  *
- * 用法：
+ * 用法（三个环境变量都要，AUTH_SECRET 最容易被忘）：
  *   LEGACY_DATABASE_URL=postgres://... DATABASE_URL=postgres://... \
+ *   AUTH_SECRET=<与目标 v2 服务同一个值> \
  *     pnpm --filter @feedlore/server migrate:legacy --dry-run
  *   ...（去掉 --dry-run 才真写）
  *
  * 可选：
  *   --only=settings,users,feeds,entries,digests,prefs   只跑其中几段（排查用）
  *   LEGACY_SCHEMA=legacy                                legacy 表所在 schema（演练时用）
+ *   AUTH_BASE_URL=http://host:port                      只影响日志里的 baseURL
  */
 
 import crypto from 'node:crypto';
@@ -53,6 +55,15 @@ if (!LEGACY_URL) {
 }
 if (!V2_URL) {
   console.error('[migrate] 缺少 DATABASE_URL（v2 的库）');
+  process.exit(1);
+}
+/*
+ * AUTH_SECRET 是第三个必填项，但**报错方式很误导**：脚本只借它创建账号
+ * （密码哈希与它无关），可 env 校验会在 getAuth 里先抛，打印「缺少环境变量 AUTH_SECRET」，
+ * 读起来像是「跑错了脚本」。在这里提前拦一道，把「为什么迁移需要它」说清楚。
+ */
+if (!process.env.AUTH_SECRET) {
+  console.error('[migrate] 缺少 AUTH_SECRET —— 迁移只借它创建账号（与目标 v2 服务同一个值即可）');
   process.exit(1);
 }
 if (LEGACY_URL === V2_URL && LEGACY_SCHEMA === 'public') {
