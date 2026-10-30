@@ -83,8 +83,15 @@ export type TagCount = z.infer<typeof TagCountSchema>;
 
 /* ============================ 用户 ============================ */
 
+/**
+ * 用户。
+ *
+ * ⚠️ `id` 不是数字：feeds/entries 的主键是 bigserial（所以用 IdSchema「纯数字」），
+ * 而 users.id 由 better-auth 生成（cuid，字母数字混合）。照抄 IdSchema 会让
+ * `GET /api/users` 在 `assertResponse` 处 500 —— 运行期才发现，编译期完全看不出来。
+ */
 export const UserSchema = z.object({
-  id: IdSchema,
+  id: z.string().min(1),
   username: z.string(),
   role: RoleSchema,
   createdAt: IsoDateTime.nullable(),
