@@ -215,10 +215,11 @@ try {
           scrim: !!document.querySelector('.nav-scrim'),
         };
       })()`);
+      // 先拍再关：现在拍的是「关掉之后」的列表，跟 list 截图长得一模一样
+      const drawerShot = await shot(`${prefix}-${vp.name}-drawer.png`);
       await evalJs("document.querySelector('.nav-scrim')?.click()");
       await sleep(350);
       drawer.closedAfterScrim = await evalJs("!document.querySelector('.sidebar')?.classList.contains('open')");
-      const drawerShot = await shot(`${prefix}-${vp.name}-drawer.png`);
       rows.push({ viewport: vp.name, drawer: true, ...drawer, shot: drawerShot });
     }
 
@@ -237,9 +238,75 @@ try {
     })()`);
     if (prefs && prefs.open) {
       const prefsShot = await shot(`${prefix}-${vp.name}-prefs.png`);
-      rows.push({ viewport: vp.name, prefs: true, ...prefs, shot: prefsShot });
+
+      /* 点一个色板，确认 --accent 真的变了再点回去。
+       * 只数控件个数是不够的：控件在、点了不生效（没接上 applyAppearance）
+       * 视觉上一模一样，只有读 CSS 变量才看得出来。 */
+      const applied = await evalJs(`(async () => {
+        const root = document.documentElement;
+        const read = () => getComputedStyle(root).getPropertyValue('--accent').trim();
+        const dots = [...document.querySelectorAll('.prefs-sheet .accent-dot')];
+        const cur = dots.findIndex((d) => d.classList.contains('on'));
+        if (cur < 0 || dots.length < 2) return { skipped: true };
+        const before = read();
+        dots[(cur + 1) % dots.length].click();
+        await new Promise((r) => setTimeout(r, 900));
+        const after = read();
+        dots[cur].click();               // 还原，别给下一个视口留下改过的偏好
+        await new Promise((r) => setTimeout(r, 700));
+        return { accentBefore: before, accentAfter: after, changed: before !== after, restored: read() === before };
+      })()`);
+
+      // 阅读页签：点「大」正文字号，读 --reader-fs 是否跟着变
+      const reading = await evalJs(`(async () => {
+        const tabs = [...document.querySelectorAll('.prefs-sheet .admin-tabs .chip')];
+        tabs.find((t) => t.textContent === '阅读')?.click();
+        await new Promise((r) => setTimeout(r, 300));
+        const root = document.documentElement;
+        const read = () => getComputedStyle(root).getPropertyValue('--reader-fs').trim();
+        const before = read();
+        const big = [...document.querySelectorAll('.prefs-sheet .seg-btn')].find((b) => b.textContent === '大');
+        big?.click();
+        await new Promise((r) => setTimeout(r, 900));
+        const after = read();
+        const segRows = document.querySelectorAll('.prefs-sheet .seg-row').length;
+        return { segRows, fsBefore: before, fsAfter: after, changed: before !== after };
+      })()`);
+      const readingShot = await shot(`${prefix}-${vp.name}-prefs-reading.png`);
+
+      // 关注规则页签：只截图，不点保存（避免污染测试库的规则）
+      const watch = await evalJs(`(async () => {
+        const tabs = [...document.querySelectorAll('.prefs-sheet .admin-tabs .chip')];
+        tabs.find((t) => t.textContent === '关注规则')?.click();
+        await new Promise((r) => setTimeout(r, 400));
+        return {
+          rules: document.querySelectorAll('.prefs-sheet .rule-row').length,
+          actions: document.querySelectorAll('.prefs-sheet .admin-actions .btn').length,
+          saveDisabled: [...document.querySelectorAll('.prefs-sheet .admin-actions .btn')]
+            .some((b) => b.textContent.includes('已保存')),
+          recomputeDisabled: [...document.querySelectorAll('.prefs-sheet .admin-actions .btn')]
+            .some((b) => b.disabled && b.textContent.includes('重算')),
+        };
+      })()`);
+      const watchShot = await shot(`${prefix}-${vp.name}-prefs-watch.png`);
+
+      rows.push({ viewport: vp.name, prefs: true, ...prefs, applied, reading, watch, shot: prefsShot });
+      // 阅读页签把正文字号改成了「大」，恢复默认「中」
+      await evalJs(`(async () => {
+        const tabs = [...document.querySelectorAll('.prefs-sheet .admin-tabs .chip')];
+        tabs.find((t) => t.textContent === '阅读')?.click();
+        await new Promise((r) => setTimeout(r, 250));
+        /* 按「标签名 + 第几档」定位，不能用 index：
+         * 阅读页里「正文行高」也有一个「中」，按序号取会点错行（第一版就这么错的）。 */
+        const fsRow = [...document.querySelectorAll('.prefs-sheet .seg-row')]
+          .find((r) => (r.querySelector('.seg-label')?.textContent ?? '').startsWith('正文字号'));
+        fsRow?.querySelectorAll('.seg-btn')[1]?.click();
+        await new Promise((r) => setTimeout(r, 500));
+      })()`);
       await evalJs("document.querySelector('.prefs-sheet .reader-close')?.click()");
       await sleep(300);
+      void readingShot;
+      void watchShot;
     }
 
     // 搜索：先输一个必然搜不到的词 —— 命中 0 条才算真的走了服务端 q 参数
