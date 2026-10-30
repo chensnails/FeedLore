@@ -67,18 +67,19 @@
   --text: #171a1f;
   --muted: #6b7280;
   --danger: #c0392b;
-  --glass: rgba(255, 255, 255, 0.5);
-  --glass-2: rgba(255, 255, 255, 0.6);
+  --glass: rgba(255, 255, 255, 0.42);
+  --glass-2: rgba(255, 255, 255, 0.52);
   --glass-border: rgba(0, 0, 0, 0.08);
-  --sheet: rgba(255, 255, 255, 0.74);
+  --sheet: rgba(255, 255, 255, 0.66);
   --sheet-border: rgba(0, 0, 0, 0.1);
-  --glass-blur: blur(18px) saturate(150%);
+  --glass-blur: blur(20px) saturate(150%);
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
-  /* 渐变底：浅色档一抹蓝紫晕染 + 大角度线性底，让半透明白面板透出层次 */
+  /* 渐变底：浅色档用一抹明显的蓝紫晕染 + 偏冷的线性底，让半透明白面板能透出 frosted 层次。
+   * 颜色够「有内容」才看得出玻璃，但又压在浅色区间，不抢文字。 */
   --page-bg:
-    radial-gradient(1000px 620px at 86% -10%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 62%),
-    radial-gradient(840px 540px at -6% 112%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 58%),
-    linear-gradient(155deg, color-mix(in srgb, var(--accent) 9%, #ffffff) 0%, #f4f2f9 52%, #fbf9fc 100%);
+    radial-gradient(1000px 620px at 86% -10%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 60%),
+    radial-gradient(840px 540px at -8% 112%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 56%),
+    linear-gradient(155deg, color-mix(in srgb, var(--accent) 20%, #e7eef8) 0%, #e2ddf0 50%, #efeaf6 100%);
 }
 
 @media (prefers-color-scheme: light) {
@@ -92,17 +93,17 @@
     --text: #171a1f;
     --muted: #6b7280;
     --danger: #c0392b;
-    --glass: rgba(255, 255, 255, 0.5);
-    --glass-2: rgba(255, 255, 255, 0.6);
+    --glass: rgba(255, 255, 255, 0.42);
+    --glass-2: rgba(255, 255, 255, 0.52);
     --glass-border: rgba(0, 0, 0, 0.08);
-    --sheet: rgba(255, 255, 255, 0.74);
+    --sheet: rgba(255, 255, 255, 0.66);
     --sheet-border: rgba(0, 0, 0, 0.1);
-    --glass-blur: blur(18px) saturate(150%);
+    --glass-blur: blur(20px) saturate(150%);
     --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
     --page-bg:
-      radial-gradient(1000px 620px at 86% -10%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 62%),
-      radial-gradient(840px 540px at -6% 112%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 58%),
-      linear-gradient(155deg, color-mix(in srgb, var(--accent) 9%, #ffffff) 0%, #f4f2f9 52%, #fbf9fc 100%);
+      radial-gradient(1000px 620px at 86% -10%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 60%),
+      radial-gradient(840px 540px at -8% 112%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 56%),
+      linear-gradient(155deg, color-mix(in srgb, var(--accent) 20%, #e7eef8) 0%, #e2ddf0 50%, #efeaf6 100%);
   }
 }
 
