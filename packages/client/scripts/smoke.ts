@@ -416,7 +416,157 @@ async function main(): Promise<void> {
     else bad('POST /api/prefs 内网 webhook → 400', e);
   }
 
-  // 17) 登出
+  /* ============================ 管理端 ============================ */
+
+  // 17) 状态聚合
+  try {
+    const st = await api.admin.status();
+    if (!st.db.ready) throw new Error(`数据库不可用：${st.db.error ?? '未知'}`);
+    if (!st.app.version) throw new Error('version 为空');
+    if (st.rss.feeds.total < 0) throw new Error('频道计数异常');
+    ok(
+      'GET /api/status',
+      `v${st.app.version} · db ${st.db.latencyMs}ms · 池 ${st.db.pool?.total ?? '-'}/${st.db.pool?.max ?? '-'} · ` +
+        `频道 ${st.rss.feeds.total} · 条目 ${st.rss.entries.total} · 问题 ${st.rss.problems.length}`,
+    );
+  } catch (e) {
+    bad('GET /api/status', e);
+  }
+
+  // 18) 采集参数：越界值必须被夹回区间（不是报错，也不是原样存进去）
+  try {
+    const cfg = await api.admin.config();
+    if (cfg.username !== USER) throw new Error(`回显的 username 不符：${cfg.username}`);
+    const origin = { refreshMinutes: cfg.source.refreshMinutes, keepPerFeed: cfg.source.keepPerFeed };
+
+    await api.admin.saveConfig({ source: { refreshMinutes: 9999, keepPerFeed: -5 } });
+    const clamped = await api.admin.config();
+    if (clamped.source.refreshMinutes !== 1440) {
+      throw new Error(`refreshMinutes 未夹到 1440，实际 ${clamped.source.refreshMinutes}`);
+    }
+    if (clamped.source.keepPerFeed !== 0) {
+      throw new Error(`keepPerFeed 未夹到 0，实际 ${clamped.source.keepPerFeed}`);
+    }
+    ok('POST /api/config 越界值夹取', '9999 → 1440，-5 → 0');
+
+    // 还原：下一轮抓取的间隔别被测试改掉
+    await api.admin.saveConfig({ source: origin });
+    const back = await api.admin.config();
+    if (back.source.refreshMinutes !== origin.refreshMinutes) throw new Error('还原 refreshMinutes 失败');
+    ok('POST /api/config 还原', `refreshMinutes=${back.source.refreshMinutes}`);
+  } catch (e) {
+    bad('POST /api/config', e);
+  }
+
+  // 19) 图片缓存统计
+  try {
+    const c = await api.admin.imageCache();
+    if (typeof c.count !== 'number' || typeof c.bytes !== 'number') throw new Error('字段类型不对');
+    ok('GET /api/image-cache', `${c.count} 张 · ${(c.bytes / 1024).toFixed(0)}KB`);
+  } catch (e) {
+    bad('GET /api/image-cache', e);
+  }
+
+  // 20) 用户列表
+  try {
+    const list = await api.admin.users.list();
+    const me = list.find((u) => u.isSelf);
+    if (!me) throw new Error('列表里找不到 isSelf 的那个用户');
+    if (me.role !== 'admin') throw new Error('当前账号不是管理员');
+    ok('GET /api/users', `${list.length} 个用户 · 自己 ${me.username} · 频道 ${me.feedCount}`);
+  } catch (e) {
+    bad('GET /api/users', e);
+  }
+
+  // 21) 用户 CRUD + 权限隔离（新建一个临时账号，最后删掉）
+  const tempName = 'smoke_' + String(Date.now()).slice(-6);
+  let tempId = '';
+  try {
+    const created = await api.admin.users.create({ username: tempName, password: 'smoke-pass-1', role: 'user' });
+    tempId = created.user.id;
+    if (created.user.role !== 'user') throw new Error('角色不对');
+    ok('POST /api/users 创建', `${created.user.username} (${tempId})`);
+
+    // 重复用户名必须 409（「已存在」是冲突，不是请求格式错）
+    try {
+      await api.admin.users.create({ username: tempName, password: 'smoke-pass-2' });
+      throw new Error('重复用户名居然成功了');
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 409) throw e;
+      ok('POST /api/users 重名 → 409');
+    }
+
+    // 新账号必须能登录，但看不到管理端（权限在后端，不是靠前端藏按钮）
+    const jar2 = createCookieJarFetch();
+    const api2 = createApiClient(BASE, { fetch: jar2.fetch, credentials: 'omit' });
+    const login2 = await api2.login({ username: tempName, password: 'smoke-pass-1' });
+    if (login2.role !== 'user') throw new Error(`新账号角色成了 ${login2.role}`);
+    try {
+      await api2.admin.status();
+      throw new Error('普通用户读到了 /api/status');
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 403) throw e;
+      ok('普通用户访问 /api/status → 403');
+    }
+
+    // 改角色 + 重置密码（新密码要能真的登录，否则「重置」只是改了个字段）
+    const promoted = await api.admin.users.patch(tempId, { role: 'admin' });
+    if (promoted.user.role !== 'admin') throw new Error('提权失败');
+    await api.admin.users.patch(tempId, { password: 'smoke-pass-9' });
+    const jar3 = createCookieJarFetch();
+    const api3 = createApiClient(BASE, { fetch: jar3.fetch, credentials: 'omit' });
+    await api3.login({ username: tempName, password: 'smoke-pass-9' });
+    ok('PATCH /api/users/:id', '角色改为 admin，重置后的新密码可登录');
+
+    // 不能删自己
+    const me = (await api.admin.users.list()).find((u) => u.isSelf);
+    try {
+      await api.admin.users.remove(me!.id);
+      throw new Error('删掉了自己');
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status !== 400) throw e;
+      ok('DELETE /api/users/:id 删自己 → 400');
+    }
+  } catch (e) {
+    bad('POST/PATCH /api/users', e);
+  } finally {
+    // 无论上面哪一步失败都要清掉临时账号，否则测试库会越积越多
+    if (tempId) {
+      try {
+        await api.admin.users.remove(tempId);
+        ok('DELETE /api/users/:id 清理临时账号');
+      } catch (e) {
+        bad('DELETE /api/users/:id 清理临时账号', e);
+      }
+    }
+  }
+
+  // 22) 账号：当前密码错必须 400（不区分「用户不存在」与「密码错」）
+  try {
+    await api.account({ currentPassword: 'definitely-not-the-password', newPassword: 'whatever-1' });
+    throw new Error('错误密码居然通过了');
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 400) ok('POST /api/account 当前密码错 → 400');
+    else bad('POST /api/account 当前密码错 → 400', e);
+  }
+
+  // 23) 版本：info 必成功；check 依赖外网，只断言形状
+  try {
+    const v = await api.version.info();
+    if (!v.version || !v.repo) throw new Error('version/repo 为空');
+    const c = await api.version.check();
+    if (typeof c.ok !== 'boolean') throw new Error('check 缺 ok 字段');
+    ok(
+      'GET /api/version + check',
+      c.ok
+        ? `当前 ${v.version} / 最新 ${c.latest ?? '?'}（hasUpdate=${c.hasUpdate}）`
+        : `当前 ${v.version} / 检查失败：${c.error ?? ''}`,
+    );
+  } catch (e) {
+    bad('GET /api/version', e);
+  }
+
+  // 24) 登出
   try {
     const r = await api.logout();
     if (!r.ok) throw new Error('登出返回 ok=false');
@@ -425,7 +575,7 @@ async function main(): Promise<void> {
     bad('POST /api/logout', e);
   }
 
-  // 18) 登出后必须失效
+  // 25) 登出后必须失效
   try {
     const s = await api.session();
     if (s.authenticated) throw new Error('登出后会话仍有效');

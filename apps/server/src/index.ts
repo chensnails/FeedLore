@@ -17,6 +17,7 @@ import { getAuth } from './auth';
 import { createApp } from './app';
 import { startScheduler } from './lib/fetcher';
 import { undiciVersionMismatch, undiciVersions } from './lib/net';
+import { reloadSource } from './lib/settings';
 import { pruneImageCache } from './routes/img';
 
 let db: Db | null = null;
@@ -43,6 +44,14 @@ if (db) {
 }
 
 const app = createApp({ db, auth });
+
+/* 首个 tick 前预热站点参数快照：图片 TTL / 压缩参数 / 抓取间隔都读它，
+ * 否则进程刚起的几分钟里会静默用 env 默认值（管理员改过的配置看起来没生效）。 */
+if (db) {
+  void reloadSource(db).then((s) => {
+    if (s) console.log(`[settings] 采集参数：刷新 ${s.refreshMinutes} 分钟 / 并发 ${s.concurrency} / 保留 ${s.keepPerFeed} 条`);
+  });
+}
 
 /* 抓取器：进程内调度（每分钟检查一次到期频道）。
  * 不用外部队列是刻意的 P5 决策——单进程足够、少一个故障点；多实例时才需要 BullMQ。 */

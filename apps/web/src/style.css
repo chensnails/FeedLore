@@ -860,3 +860,194 @@ body {
     height: 58px;
   }
 }
+
+/* ---------------- 管理面板 ---------------- */
+
+.admin-sheet {
+  position: relative;
+  width: min(860px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 26px 26px 22px;
+}
+
+.admin-title {
+  margin: 0 40px 14px 0;
+  font-size: 18px;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.admin-body {
+  /* 面板自带滚动：状态页很长，撑高整页会把关闭按钮顶出视口 */
+  max-height: min(68vh, 720px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.admin-h3 {
+  margin: 20px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.admin-grid dt {
+  color: var(--muted);
+}
+
+.admin-grid dd {
+  margin: 0;
+  /* 长串（表行数 / 错误原因）必须能断行，否则会在窄屏把面板撑出横向滚动 */
+  overflow-wrap: anywhere;
+}
+
+.admin-alert {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.admin-problems {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.admin-problems li {
+  margin-bottom: 8px;
+}
+
+.admin-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px 14px;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.admin-field.wide {
+  grid-column: 1 / -1;
+}
+
+.admin-field-label {
+  color: var(--muted);
+}
+
+.admin-field input,
+.admin-create input,
+.admin-create select,
+.admin-inline-input,
+.admin-table select {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.admin-field input:focus,
+.admin-create input:focus,
+.admin-table select:focus,
+.admin-inline-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.admin-table th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.admin-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-inline-input {
+  width: 120px;
+}
+
+.admin-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-create input {
+  min-width: 140px;
+}
+
+.btn.danger {
+  color: var(--danger);
+}
+
+@media (max-width: 560px) {
+  .admin-sheet {
+    padding: 20px 16px 16px;
+  }
+
+  .admin-grid {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .admin-grid dd {
+    margin-bottom: 8px;
+  }
+
+  .admin-body {
+    max-height: 72vh;
+  }
+}

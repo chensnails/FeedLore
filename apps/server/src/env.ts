@@ -28,6 +28,11 @@ export const DEFAULT_KEEP_DAYS = num(process.env.KEEP_DAYS, 90);
 
 /** 单次出网抓取的超时（毫秒）。订阅源挂死时不能拖住整轮抓取。 */
 export const FETCH_TIMEOUT_MS = num(process.env.RSS_TIMEOUT_MS, 25000);
+/** 同上，按「秒」表达（settings 表与界面用的单位，legacy 的 `timeoutSeconds`）。 */
+export const RSS_TIMEOUT_SECONDS = num(
+  process.env.RSS_TIMEOUT_SECONDS,
+  Math.round(FETCH_TIMEOUT_MS / 1000),
+);
 /** 并发抓取的 URL 组数（同 URL 的多个订阅合并成一组，只回源一次）。 */
 export const REFRESH_CONCURRENCY = Math.min(10, Math.max(1, num(process.env.REFRESH_CONCURRENCY, 3)));
 /** 连续失败多少次自动停用采集（clamp 2~20，与 legacy 一致）。 */

@@ -168,7 +168,11 @@ export const auth = {
           .nullable(),
       }),
     }),
-  } satisfies EndpointSpec,
+    // ⚠️ 这里必须同时写 `as const`：只写 `satisfies EndpointSpec` 时，satisfies 会先给
+    // 属性套上 `path: string` 的上下文类型，字面量被拓宽成 string；外层对象的 `as const`
+    // 收不回来。结果是 `authSpec.status.path` 类型是 string，Hono 取不到路径字面量，
+    // **`/api/status` 静默不进 AppType**（服务端类型全绿，但前端 hc 里没有这个键）。
+  } as const satisfies EndpointSpec,
   version: {
     method: 'get',
     path: '/api/version',

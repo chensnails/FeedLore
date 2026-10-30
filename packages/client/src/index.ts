@@ -26,6 +26,7 @@ import {
   HealthSchema,
   SessionSchema,
   OkSchema,
+  admin as adminEndpoints,
   auth as authEndpoints,
   entries as entriesEndpoints,
   feeds as feedsEndpoints,
@@ -35,6 +36,10 @@ import {
   EntryFlagsSchema,
   feedsListResponse,
   prefsResponse,
+  type AccountBody,
+  type AdminUser,
+  type ConfigGetResponse,
+  type ConfigPatchBody,
   type EntryDetail,
   type EntryFlags,
   type EntriesListResponse,
@@ -49,6 +54,10 @@ import {
   type ReadAllBody,
   type Session,
   type FeedsListResponse,
+  type UserCreateBody,
+  type UserPatchBody,
+  type VersionCheck,
+  type VersionInfo,
 } from '@feedlore/contract';
 
 /**
@@ -273,7 +282,97 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
         return unwrap(res, prefsEndpoints.update.response, 'POST /api/prefs');
       },
     },
+
+    /* ---------------- 账号（改自己的） ---------------- */
+
+    /**
+     * 改密码 / 用户名。⚠️ `currentPassword` 必须正确，否则 400「当前密码不正确」。
+     * 改密不会踢掉当前会话（只改哈希），其他设备上的会话也保持（`revokeOtherSessions: false`）。
+     */
+    async account(body: AccountBody) {
+      const res = await raw.api.account.$post({ json: body });
+      return unwrap(res, adminEndpoints.account.response, 'POST /api/account');
+    },
+
+    /* ---------------- 版本 ---------------- */
+
+    version: {
+      async info(): Promise<VersionInfo> {
+        const res = await raw.api.version.$get();
+        return unwrap(res, authEndpoints.version.response, 'GET /api/version');
+      },
+
+      /** 检查更新：服务端缓存 10 分钟。GitHub 不可达时仍是 200 + `ok:false`。 */
+      async check(): Promise<VersionCheck> {
+        const res = await raw.api.version.check.$post();
+        return unwrap(res, authEndpoints.versionCheck.response, 'POST /api/version/check');
+      },
+
+      /** 一键更新（镜像模式，POST watchtower）。未配置更新通道返回 501。 */
+      async update(): Promise<{ ok: boolean }> {
+        const res = await raw.api.update.$post();
+        return unwrap(res, OkSchema, 'POST /api/update');
+      },
+    },
+
+    /* ---------------- 管理端 ---------------- */
+
+    admin: {
+      /** 状态页聚合。⚠️ 数据库挂了也是 200，读 `db.ready` / `db.error` 判断。 */
+      async status(): Promise<Status> {
+        const res = await raw.api.status.$get();
+        return unwrap(res, authEndpoints.status.response, 'GET /api/status');
+      },
+
+      async config(): Promise<ConfigGetResponse> {
+        const res = await raw.api.config.$get();
+        return unwrap(res, adminEndpoints.configGet.response, 'GET /api/config');
+      },
+
+      /** 保存采集参数。越界值会被服务端夹回区间（不是报错），保存后立即生效。 */
+      async saveConfig(body: ConfigPatchBody) {
+        const res = await raw.api.config.$post({ json: body });
+        return unwrap(res, adminEndpoints.configPost.response, 'POST /api/config');
+      },
+
+      async imageCache() {
+        const res = await raw.api['image-cache'].$get();
+        return unwrap(res, adminEndpoints.imageCacheGet.response, 'GET /api/image-cache');
+      },
+
+      /** 清空图片缓存（库 + 内存一起清）。 */
+      async clearImageCache() {
+        const res = await raw.api['image-cache'].clear.$post();
+        return unwrap(res, adminEndpoints.imageCacheClear.response, 'POST /api/image-cache/clear');
+      },
+
+      users: {
+        async list(): Promise<AdminUser[]> {
+          const res = await raw.api.users.$get();
+          const data = await unwrap(res, adminEndpoints.usersList.response, 'GET /api/users');
+          return data.users;
+        },
+
+        async create(body: UserCreateBody) {
+          const res = await raw.api.users.$post({ json: body });
+          return unwrap(res, adminEndpoints.userCreate.response, 'POST /api/users');
+        },
+
+        async patch(id: string, body: UserPatchBody) {
+          const res = await raw.api.users[':id'].$patch({ param: { id }, json: body });
+          return unwrap(res, adminEndpoints.userPatch.response, 'PATCH /api/users/:id');
+        },
+
+        async remove(id: string): Promise<{ ok: boolean }> {
+          const res = await raw.api.users[':id'].$delete({ param: { id } });
+          return unwrap(res, OkSchema, 'DELETE /api/users/:id');
+        },
+      },
+    },
   };
 }
+
+/** 状态页响应类型（契约推导，不手抄一份）。 */
+export type Status = z.infer<typeof authEndpoints.status.response>;
 
 export type ApiClient = ReturnType<typeof createApiClient>;

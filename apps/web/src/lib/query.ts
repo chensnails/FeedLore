@@ -26,4 +26,9 @@ export const qk = {
   entries: ['entries'] as const,
   entry: ['entry'] as const,
   prefs: ['prefs'] as const,
+  /** 管理端：以 `admin` 为前缀，权限变化时可一次全清。 */
+  adminStatus: ['admin', 'status'] as const,
+  adminConfig: ['admin', 'config'] as const,
+  adminUsers: ['admin', 'users'] as const,
+  adminImageCache: ['admin', 'image-cache'] as const,
 };

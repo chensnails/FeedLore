@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { applyAppearance } from '../lib/appearance';
 import { qk } from '../lib/query';
@@ -9,6 +9,7 @@ import type { Session } from '../lib/types';
 import { FeedsPanel } from './FeedsPanel';
 import { EntriesPanel } from './EntriesPanel';
 import { EntryReader } from './EntryReader';
+import { AdminPanel } from './AdminPanel';
 
 /**
  * 登录后的主壳：顶部工具条 + 左频道栏 + 条目列表 + 阅读层覆盖。
@@ -20,6 +21,7 @@ export function Shell({ session }: { session: Session }) {
   const toggleOnlyUnread = useUi((s) => s.toggleOnlyUnread);
   const toast = useUi((s) => s.toast);
   const dismissToast = useUi((s) => s.dismissToast);
+  const [adminOpen, setAdminOpen] = useState(false);
 
   const feedsQuery = useQuery({ queryKey: qk.feeds, queryFn: () => api.feeds.list() });
 
@@ -87,6 +89,16 @@ export function Shell({ session }: { session: Session }) {
         </div>
 
         <div className="topbar-right">
+          {session.role === 'admin' && (
+            <button
+              className="btn ghost icon"
+              onClick={() => setAdminOpen(true)}
+              title="管理：状态 / 采集参数 / 用户"
+              aria-label="打开管理面板"
+            >
+              ⚙
+            </button>
+          )}
           <button
             className="btn ghost icon"
             onClick={() => saveAppearance.mutate({ theme: nextTheme.value })}
@@ -112,6 +124,7 @@ export function Shell({ session }: { session: Session }) {
       </div>
 
       <EntryReader />
+      <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
 
       {toast && (
         <div className={`toast ${toast.tone}`} role="status" onClick={dismissToast}>

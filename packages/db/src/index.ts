@@ -46,3 +46,11 @@ export function createDb(connectionString?: string): Db {
   }
   return drizzle(_pool, { schema });
 }
+
+/**
+ * 取当前连接池（状态页要报 total/idle/waiting/max）。
+ * 未初始化时返回 null —— 调用方不该因为「还没连库」而崩。
+ */
+export function getPool(): pg.Pool | null {
+  return _pool;
+}

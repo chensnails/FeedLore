@@ -40,6 +40,7 @@ import { assertPublicHost, safeFetch } from '../lib/net';
 import { compressImage, imageCacheKey, isImageType, IMG_MAX_BYTES } from '../lib/image';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 import { APP_VERSION } from '../env';
+import { sourceSnapshot } from '../lib/settings';
 
 /* ============================================================================
  * 参数
@@ -49,9 +50,10 @@ const UPSTREAM_TIMEOUT_MS = 15_000;
 const L1_MAX = 500;
 
 /** 缓存新鲜期：超过就转后台刷新（但**仍然先返回旧图**）。 */
-const TTL_MS = Math.max(1, Number(process.env.IMG_TTL_DAYS) || 7) * 86_400_000;
+/** 缓存新鲜期：超过就转后台刷新（但**仍然先返回旧图**）。每次读快照，管理员改参数即时生效。 */
+const ttlMs = (): number => Math.max(1, sourceSnapshot()?.imgTtlDays ?? 7) * 86_400_000;
 /** 库内保留天数：更老的直接删（由 `pruneImageCache` 在调度 tick 里清）。 */
-export const IMG_KEEP_DAYS = Math.max(1, Number(process.env.IMG_KEEP_DAYS) || 90);
+export const imgKeepDays = (): number => Math.max(1, sourceSnapshot()?.imgKeepDays ?? 90);
 
 /** 浏览器缓存时长：一天。图片内容基本不变，本地再多存也没坏处。 */
 const BROWSER_CACHE = 'public, max-age=86400';
@@ -91,7 +93,7 @@ function l1Set(key: string, v: Cached): void {
 /** 同键并发去重：in-flight 的请求共享同一个 Promise。 */
 const inFlight = new Map<string, Promise<Cached | null>>();
 
-/** 测试用：清空内存缓存与在途表。 */
+/** 清空内存缓存与在途表。测试用；管理端「清空图片缓存」也复用它（L1 不清会看起来没删掉）。 */
 export function resetImageCache(): void {
   l1.clear();
   inFlight.clear();
@@ -175,7 +177,11 @@ async function fetchAndCache(db: Db | null, key: string, url: string): Promise<C
   try {
     const { buf: raw, type, origSize } = await fetchUpstream(url, ctl.signal);
 
-    const comp = await compressImage(raw, type);
+    const snap = sourceSnapshot();
+    const comp = await compressImage(raw, type, {
+      maxDim: snap?.imgMaxDim,
+      quality: snap?.imgQuality,
+    });
     const out: Cached = comp
       ? { type: comp.contentType, buf: comp.buf }
       : { type, buf: raw };
@@ -286,7 +292,7 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
             .limit(1);
           if (row) {
             l2 = { type: row.contentType, buf: row.data };
-            fresh = Date.now() - new Date(row.createdAt).getTime() < TTL_MS;
+            fresh = Date.now() - new Date(row.createdAt).getTime() < ttlMs();
           }
         } catch (e) {
           // 库抖一下不该让图片全挂：当作未命中，直接回源
@@ -339,7 +345,7 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
  */
 export async function pruneImageCache(db: Db | null): Promise<number> {
   if (!db) return 0;
-  const before = new Date(Date.now() - IMG_KEEP_DAYS * 86_400_000);
+  const before = new Date(Date.now() - imgKeepDays() * 86_400_000);
   try {
     // ⚠️ 不用 `.returning()`：几万行的 key 会被全拉回内存（entries 清理踩过同款）。
     // 走原始 SQL 只取 rowCount。

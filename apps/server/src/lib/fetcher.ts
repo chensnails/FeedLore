@@ -32,6 +32,7 @@ import {
   REFRESH_CONCURRENCY,
   SCHEDULER_ENABLED,
 } from '../env';
+import { getSource, sourceSnapshot, type SourceConfig } from './settings';
 
 export type FeedRow = typeof feeds.$inferSelect;
 
@@ -445,16 +446,16 @@ async function flushWatchNotify(db: Db, prefs: Map<string, Record<string, unknow
 }
 
 /** 抓一组「订阅了同一 URL」的频道：只回源一次，结果写回组内每个 feed 行 */
-async function refreshGroup(db: Db, key: string, members: FeedRow[]): Promise<GroupResult> {
+async function refreshGroup(db: Db, key: string, members: FeedRow[], src: SourceConfig): Promise<GroupResult> {
   const running = inFlight.get(key);
   if (running) return { ...(await running), skipped: 'in-flight' };
 
-  const p = doRefreshGroup(db, key, members).finally(() => inFlight.delete(key));
+  const p = doRefreshGroup(db, key, members, src).finally(() => inFlight.delete(key));
   inFlight.set(key, p);
   return p;
 }
 
-async function doRefreshGroup(db: Db, key: string, members: FeedRow[]): Promise<GroupResult> {
+async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: SourceConfig): Promise<GroupResult> {
   // 5s 内刚抓过这个 URL → 跳过（防连点刷新打爆源站）
   const last = recentFetchMs.get(key);
   if (last && Date.now() - last < REFRESH_MIN_INTERVAL_MS) {
@@ -471,7 +472,11 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[]): Promise<
   const prefs = await loadPrefs(db, members.map((m) => m.ownerId));
 
   try {
-    const r = await loadFeed(first.url, { etag: src.etag, lastModified: src.lastModified });
+    const r = await loadFeed(first.url, {
+      etag: src.etag,
+      lastModified: src.lastModified,
+      timeoutMs: cfg.timeoutSeconds * 1000,
+    });
 
     if (r.notModified) {
       for (const m of members) {
@@ -539,11 +544,11 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[]): Promise<
     for (const m of members) {
       await saveFeedMeta(db, m.id, { status: 'error', error: msg }).catch(() => {});
       const streak = await bumpFailStreak(db, m.id).catch(() => 0);
-      if (streak >= FEED_FAIL_LIMIT && m.enabled) autoOff.push({ id: m.id, title: m.customTitle || m.title || m.url });
+      if (streak >= cfg.feedFailLimit && m.enabled) autoOff.push({ id: m.id, title: m.customTitle || m.title || m.url });
     }
     for (const f of autoOff) {
       await db.update(feeds).set({ enabled: false, updatedAt: new Date() }).where(eq(feeds.id, f.id)).catch(() => {});
-      console.log(`[rss] 频道连续失败 ${FEED_FAIL_LIMIT} 次，已自动停用采集：${f.title}`);
+      console.log(`[rss] 频道连续失败 ${cfg.feedFailLimit} 次，已自动停用采集：${f.title}`);
     }
 
     return { url: key, error: msg, added: 0, feeds: members.length, autoDisabled: autoOff.length };
@@ -553,10 +558,12 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[]): Promise<
 }
 
 /** 清理：每个频道保留 N 条 + 按天数裁剪（收藏的条目一律豁免） */
-export async function pruneEntries(db: Db): Promise<number> {
+export async function pruneEntries(db: Db, cfg?: SourceConfig): Promise<number> {
+  const keepPerFeed = cfg?.keepPerFeed ?? KEEP_PER_FEED;
+  const keepDays = cfg?.keepDays ?? DEFAULT_KEEP_DAYS;
   let pruned = 0;
 
-  if (KEEP_PER_FEED > 0) {
+  if (keepPerFeed > 0) {
     const res = await db.execute(sql`
       delete from entries where id in (
         select id from (
@@ -564,18 +571,18 @@ export async function pruneEntries(db: Db): Promise<number> {
             partition by feed_id order by published_at desc nulls last, id desc
           ) as rn
           from entries where is_favorite = false
-        ) x where x.rn > ${KEEP_PER_FEED}
+        ) x where x.rn > ${keepPerFeed}
       )
     `);
     pruned += res.rowCount ?? 0;
   }
 
-  if (DEFAULT_KEEP_DAYS > 0) {
+  if (keepDays > 0) {
     const res = await db.execute(sql`
       delete from entries
        where is_favorite = false
          and published_at is not null
-         and published_at < now() - make_interval(days => ${Math.floor(DEFAULT_KEEP_DAYS)})
+         and published_at < now() - make_interval(days => ${Math.floor(keepDays)})
     `);
     pruned += res.rowCount ?? 0;
   }
@@ -586,6 +593,8 @@ export async function pruneEntries(db: Db): Promise<number> {
 /** 并发抓一批频道，抓完清理并汇总。手动「刷新全部」与定时 tick 都走这里。 */
 export async function refreshFeeds(db: Db, rows: FeedRow[], label = '抓取'): Promise<RefreshSummary> {
   const startedAt = Date.now();
+  // 站点参数每轮读一次快照（保存配置后立即失效，不需要重启进程）
+  const cfg = await getSource(db);
   const groups = new Map<string, FeedRow[]>();
   for (const f of rows) {
     const key = groupKey(f.url);
@@ -603,16 +612,16 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = '抓取'): P
       const idx = cursor++;
       const entry = items[idx];
       if (!entry) return;
-      results.push(await refreshGroup(db, entry[0], entry[1]));
+      results.push(await refreshGroup(db, entry[0], entry[1], cfg));
     }
   };
-  await Promise.all(Array.from({ length: Math.min(REFRESH_CONCURRENCY, items.length || 1) }, worker));
+  await Promise.all(Array.from({ length: Math.min(cfg.concurrency, items.length || 1) }, worker));
 
   // 关注命中先推送（需要 prefs，直接用本轮已经查过的）
   const prefs = await loadPrefs(db, rows.map((r) => r.ownerId));
   await flushWatchNotify(db, prefs);
 
-  const pruned = await pruneEntries(db).catch(() => 0);
+  const pruned = await pruneEntries(db, cfg).catch(() => 0);
 
   const added = results.reduce((n, r) => n + r.added, 0);
   const autoDisabled = results.reduce((n, r) => n + (r.autoDisabled ?? 0), 0);
@@ -621,6 +630,16 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = '抓取'): P
   const skipped = results.filter((r) => r.skipped).length;
 
   lastRefreshAt = new Date();
+  lastRun = {
+    at: lastRefreshAt,
+    added,
+    pruned,
+    skipped,
+    failed: failed.length,
+    autoDisabled,
+    filtered,
+    durationMs: Date.now() - startedAt,
+  };
 
   console.log(
     `[rss] ${label}完成：${groups.size} 个 URL 组 / ${rows.length} 个订阅，新增 ${added} 条`
@@ -637,11 +656,14 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = '抓取'): P
 
 /** 抓单个频道（手动刷新单个用）；与批量刷新共享按 URL 的去重 */
 export async function refreshOneFeed(db: Db, feed: FeedRow): Promise<GroupResult> {
-  return refreshGroup(db, groupKey(feed.url), [feed]);
+  return refreshGroup(db, groupKey(feed.url), [feed], await getSource(db));
 }
 
 /** 该频道多久抓一次：自己设了就用它，否则跟随全局 */
-export function feedIntervalMs(f: Pick<FeedRow, 'refreshMinutes'>, globalMinutes = DEFAULT_REFRESH_MINUTES): number {
+export function feedIntervalMs(
+  f: Pick<FeedRow, 'refreshMinutes'>,
+  globalMinutes = sourceSnapshot()?.refreshMinutes ?? DEFAULT_REFRESH_MINUTES,
+): number {
   const own = Number(f.refreshMinutes);
   const mins = Number.isFinite(own) && own > 0 ? own : globalMinutes;
   return mins * 60_000;
@@ -663,6 +685,25 @@ export function dueFeeds(rows: FeedRow[], now = Date.now()): FeedRow[] {
 let lastRefreshAt: Date | null = null;
 export const getLastRefreshAt = (): Date | null => lastRefreshAt;
 
+/** 最近一轮抓取的摘要（状态页展示「上一轮抓了多少、失败几个」）。
+ *  只留计数字段：`results` 里的 per-URL 明细会让状态页白拉一堆无用数据。 */
+export interface LastRunStat {
+  at: Date;
+  added: number;
+  pruned: number;
+  skipped: number;
+  failed: number;
+  autoDisabled: number;
+  filtered: number;
+  durationMs: number;
+}
+
+let lastRun: LastRunStat | null = null;
+export const getLastRun = (): LastRunStat | null => lastRun;
+
+/** 正在回源的 URL 组数（状态页「正在抓取 N 个」）。 */
+export const inFlightCount = (): number => inFlight.size;
+
 const TICK_MS = 60_000;
 let timer: ReturnType<typeof setInterval> | null = null;
 let ticking = false;
@@ -672,6 +713,8 @@ export async function tickRefresh(db: Db): Promise<RefreshSummary | null> {
   if (ticking) return null; // 上一轮还没抓完（源站慢），本轮直接跳过
   ticking = true;
   try {
+    // 先确保快照新鲜：`dueFeeds` 用的是全局间隔，读到旧值会漏抓/多抓
+    await getSource(db);
     const all = await db.select().from(feeds).where(eq(feeds.enabled, true));
     const due = dueFeeds(all);
     if (!due.length) return null;
@@ -687,12 +730,15 @@ export function startScheduler(db: Db): void {
     return;
   }
   if (timer) clearInterval(timer);
+  // 预热快照：首个 tick 不该因为「还没读过库」而用 env 默认值算间隔
+  void getSource(db)
+    .then((cfg) => console.log(`[rss] 调度就绪：全局 ${cfg.refreshMinutes} 分钟，每分钟检查一次到期频道`))
+    .catch((e: unknown) => console.error('[rss] 读取采集参数失败：', (e as Error)?.message ?? e));
   timer = setInterval(() => {
     void tickRefresh(db).catch((e: unknown) =>
       console.error('[rss] 定时抓取失败：', (e as Error)?.message ?? e),
     );
   }, TICK_MS);
-  console.log(`[rss] 调度就绪：全局 ${DEFAULT_REFRESH_MINUTES} 分钟，每分钟检查一次到期频道`);
 }
 
 export function stopScheduler(): void {

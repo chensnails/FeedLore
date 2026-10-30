@@ -34,7 +34,12 @@ import { assertFeedUrl, assertPublicHost } from '../lib/net';
 import { getLastRefreshAt, refreshFeeds, refreshOneFeed } from '../lib/fetcher';
 import { parseOpml } from '../lib/opml';
 import { requireAuth, type AppEnv } from '../middleware/auth';
-import { DEFAULT_KEEP_DAYS, DEFAULT_REFRESH_MINUTES } from '../env';
+import { getSource } from '../lib/settings';
+
+/** 全局抓取间隔（分钟）：来自 settings 快照（管理员可改），用于算 nextRefreshAt / 展示频率。 */
+async function globalMinutes(db: Db): Promise<number> {
+  return (await getSource(db)).refreshMinutes;
+}
 
 interface AggRow {
   total: number;
@@ -101,6 +106,8 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
         // ⚠️ 必须按 owner 过滤：feeds 是多用户表，漏了 owner 就是把所有人的订阅一起返回
         const uid = c.get('user').id;
 
+        const src = await getSource(db);
+
         const rows = await db
           .select()
           .from(feeds)
@@ -135,7 +142,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
 
         const feedsMapped = rows.map((r) => {
           const p = per.get(r.id);
-          return toFeed(r, { entryCount: p?.total, unreadCount: p?.unread }, DEFAULT_REFRESH_MINUTES);
+          return toFeed(r, { entryCount: p?.total, unreadCount: p?.unread }, src.refreshMinutes);
         });
 
         const payload = assertResponse(
@@ -154,9 +161,10 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
               .map((f) => f.nextRefreshAt)
               .filter((v): v is string => Boolean(v))
               .sort()[0] ?? null,
-            refreshMinutes: DEFAULT_REFRESH_MINUTES,
-            keepDays: DEFAULT_KEEP_DAYS,
-            autoRefreshMinutes: DEFAULT_REFRESH_MINUTES,
+            refreshMinutes: src.refreshMinutes,
+            keepDays: src.keepDays,
+            // 前端自动刷新间隔与「采集频率」是两个独立参数（legacy 同口径），别拿 refreshMinutes 顶
+            autoRefreshMinutes: src.autoRefreshMinutes,
           },
           'GET /api/feeds',
         );
@@ -209,7 +217,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
 
           if (!inserted) return c.json({ error: '频道创建失败' }, 500);
 
-          const got = await readFeed(db, uid, inserted.id, DEFAULT_REFRESH_MINUTES);
+          const got = await readFeed(db, uid, inserted.id, await globalMinutes(db));
           if (!got) return c.json({ error: '频道创建失败' }, 500);
 
           /* 立即抓一次：让「添加频道」不是空壳。
@@ -225,7 +233,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             added = probe?.added ?? 0;
           }
 
-          const after = (await readFeed(db, uid, inserted.id, DEFAULT_REFRESH_MINUTES)) ?? got;
+          const after = (await readFeed(db, uid, inserted.id, await globalMinutes(db))) ?? got;
 
           return c.json(
             assertResponse(
@@ -233,7 +241,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
               {
                 ok: true,
                 existed: Boolean(dup),
-                feed: toFeed(after.row, after.counts, DEFAULT_REFRESH_MINUTES),
+                feed: toFeed(after.row, after.counts, await globalMinutes(db)),
                 added,
               },
               'POST /api/feeds',
@@ -349,12 +357,12 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           if (set.enabled === true) set.failStreak = 0;
 
           if (!Object.keys(set).length) {
-            const got = await readFeed(db, uid, id, DEFAULT_REFRESH_MINUTES);
+            const got = await readFeed(db, uid, id, await globalMinutes(db));
             if (!got) return c.json({ error: '频道不存在' }, 404);
             return c.json(
               assertResponse(
                 feedsSpec.patchOne.response,
-                { ok: true, feed: toFeed(got.row, got.counts, DEFAULT_REFRESH_MINUTES) },
+                { ok: true, feed: toFeed(got.row, got.counts, await globalMinutes(db)) },
                 'PATCH /api/feeds/:id',
               ),
             );
@@ -371,7 +379,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
            * 失败也不影响保存 —— 状态写进 last_status/last_error，响应里 probe 带回来。 */
           let probe: { ok: boolean; error?: string; added?: number } | undefined;
           if (urlChanged) {
-            const afterPatch = await readFeed(db, uid, id, DEFAULT_REFRESH_MINUTES);
+            const afterPatch = await readFeed(db, uid, id, await globalMinutes(db));
             if (afterPatch) {
               const r = await refreshOneFeed(db, afterPatch.row).catch((e: unknown) => ({
                 url: afterPatch.row.url,
@@ -385,7 +393,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             }
           }
 
-          const got = await readFeed(db, uid, id, DEFAULT_REFRESH_MINUTES);
+          const got = await readFeed(db, uid, id, await globalMinutes(db));
           if (!got) return c.json({ error: '频道不存在' }, 404);
 
           return c.json(
@@ -395,7 +403,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
                 ok: true,
                 urlChanged: urlChanged || undefined,
                 probe,
-                feed: toFeed(got.row, got.counts, DEFAULT_REFRESH_MINUTES),
+                feed: toFeed(got.row, got.counts, await globalMinutes(db)),
               },
               'PATCH /api/feeds/:id',
             ),
@@ -450,7 +458,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
 
           const result = await refreshOneFeed(db, row);
 
-          const got = await readFeed(db, uid, id, DEFAULT_REFRESH_MINUTES);
+          const got = await readFeed(db, uid, id, await globalMinutes(db));
           if (!got) return c.json({ error: '频道不存在' }, 404);
 
           return c.json(
@@ -465,7 +473,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
                   filtered: result.filtered ?? 0,
                   skipped: result.skipped ?? null,
                 },
-                feed: toFeed(got.row, got.counts, DEFAULT_REFRESH_MINUTES),
+                feed: toFeed(got.row, got.counts, await globalMinutes(db)),
               },
               'POST /api/feeds/:id/refresh',
             ),
@@ -607,6 +615,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           const all = await db.select().from(feeds).where(eq(feeds.ownerId, uid)).orderBy(feeds.sortOrder, feeds.id);
           const newSet = new Set(addedIds);
           const groups = [...new Set(all.map((f) => f.groupName).filter((g): g is string => Boolean(g)))];
+          const gMins = await globalMinutes(db);
 
           return c.json(
             assertResponse(
@@ -617,7 +626,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
                 duplicated,
                 skipped,
                 groups,
-                feeds: all.filter((f) => newSet.has(f.id)).map((f) => toFeed(f, {}, DEFAULT_REFRESH_MINUTES)),
+                feeds: all.filter((f) => newSet.has(f.id)).map((f) => toFeed(f, {}, gMins)),
               },
               'POST /api/feeds/import',
             ),

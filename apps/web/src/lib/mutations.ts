@@ -1,12 +1,16 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type {
+  AccountBody,
   Appearance,
+  ConfigPatchBody,
   EntriesListResponse,
   EntryDetail,
   FeedCreateBody,
   FeedPatchBody,
   PrefsPatchBody,
   ReadAllBody,
+  UserCreateBody,
+  UserPatchBody,
 } from '@feedlore/contract';
 import { api } from './api';
 import { applyAppearance } from './appearance';
@@ -236,5 +240,95 @@ export function useSavePrefs() {
       useUi.getState().notify('已保存');
     },
     onError: (e) => useUi.getState().notify(`保存失败：${errText(e)}`, 'error'),
+  });
+}
+
+/* ============================ 管理端 ============================ */
+
+/**
+ * 保存采集参数。
+ * 服务端会把越界值**夹回区间**而不是报错，所以保存成功后要用服务端返回值刷新界面，
+ * 否则界面还显示着用户刚敲的 9999，让人以为真的存进去了。
+ */
+export function useSaveSourceConfig() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (source: ConfigPatchBody['source']) => api.admin.saveConfig({ source }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.adminConfig });
+      void qc.invalidateQueries({ queryKey: qk.adminStatus });
+      void qc.invalidateQueries({ queryKey: qk.feeds });
+      useUi.getState().notify('采集参数已保存（越界值会自动夹回合法区间）');
+    },
+    onError: (e) => useUi.getState().notify(`保存失败：${errText(e)}`, 'error'),
+  });
+}
+
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UserCreateBody) => api.admin.users.create(body),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: qk.adminUsers });
+      void qc.invalidateQueries({ queryKey: qk.adminStatus });
+      useUi.getState().notify(`已创建用户「${r.user.username}」`);
+    },
+    onError: (e) => useUi.getState().notify(`创建失败：${errText(e)}`, 'error'),
+  });
+}
+
+/**
+ * 改角色 / 重置密码。
+ * ⚠️ 重置密码会**把该用户踢下线**吗：不会。better-auth 只换哈希，
+ * 已有会话继续有效（要踢人得删用户或手动清 sessions）。
+ */
+export function usePatchUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UserPatchBody }) => api.admin.users.patch(id, body),
+    onSuccess: (r, { body }) => {
+      void qc.invalidateQueries({ queryKey: qk.adminUsers });
+      useUi.getState().notify(body.password ? `已重置「${r.user.username}」的密码` : `「${r.user.username}」已设为${r.user.role === 'admin' ? '管理员' : '普通用户'}`);
+    },
+    onError: (e) => useUi.getState().notify(`修改失败：${errText(e)}`, 'error'),
+  });
+}
+
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.admin.users.remove(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.adminUsers });
+      void qc.invalidateQueries({ queryKey: qk.adminStatus });
+      useUi.getState().notify('用户及其订阅已删除');
+    },
+    onError: (e) => useUi.getState().notify(`删除失败：${errText(e)}`, 'error'),
+  });
+}
+
+export function useClearImageCache() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.admin.clearImageCache(),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: qk.adminImageCache });
+      void qc.invalidateQueries({ queryKey: qk.adminStatus });
+      useUi.getState().notify(`已清空图片缓存 ${r.removed} 条`);
+    },
+    onError: (e) => useUi.getState().notify(`清空失败：${errText(e)}`, 'error'),
+  });
+}
+
+/** 改自己的密码 / 用户名。成功后用户名可能变了，会话信息要重取。 */
+export function useSaveAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AccountBody) => api.account(body),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: qk.session });
+      useUi.getState().notify(`已更新账号：${r.username}`);
+    },
+    onError: (e) => useUi.getState().notify(`更新失败：${errText(e)}`, 'error'),
   });
 }
