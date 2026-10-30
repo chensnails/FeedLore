@@ -8,6 +8,7 @@ import { useOverlayFocus } from '../lib/useOverlayFocus';
 import { useUi, type PrefsTab } from '../store/ui';
 import { AccountForm } from './AccountForm';
 import { ChannelsTab } from './ChannelsTab';
+import { Icon } from './Icon';
 
 /**
  * 设置面板（每个账号自己的）。
@@ -51,8 +52,8 @@ export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => vo
   return (
     <div className="reader-backdrop" onClick={onClose} role="presentation">
       <section className="admin-sheet prefs-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
-        <button className="reader-close btn ghost" onClick={onClose} aria-label="关闭">
-          ✕
+        <button className="reader-close btn ghost icon" onClick={onClose} aria-label="关闭">
+          <Icon name="close" size={16} />
         </button>
 
         <h2 className="admin-title">设置</h2>
@@ -316,11 +317,12 @@ function WatchTab() {
               启用
             </label>
             <button
-              className="btn ghost sm"
+              className="btn ghost sm icon"
               aria-label="删除规则"
+              title="删除这条规则"
               onClick={() => setRules((rs) => (rs ?? []).filter((x) => x.id !== r.id))}
             >
-              ✕
+              <Icon name="trash" size={14} />
             </button>
           </li>
         ))}
@@ -330,7 +332,8 @@ function WatchTab() {
 
       <p className="admin-actions">
         <button className="btn ghost sm" onClick={() => setRules((rs) => [...(rs ?? []), emptyRule()])}>
-          ＋ 添加规则
+          <Icon name="plus" size={14} />
+          添加规则
         </button>
         <button
           className="btn sm"
@@ -513,11 +516,12 @@ function FilterTab() {
                 onChange={(e) => patch(f.id, { pattern: e.target.value })}
               />
               <button
-                className="btn ghost sm"
+                className="btn ghost sm icon"
                 aria-label="删除规则"
+                title="删除这条规则"
                 onClick={() => setFilters((fs) => (fs ?? []).filter((x) => x.id !== f.id))}
               >
-                ✕
+                <Icon name="trash" size={14} />
               </button>
               {bad && <span className="filter-err">正则写错了，保存时会被丢弃</span>}
             </li>
@@ -536,7 +540,8 @@ function FilterTab() {
           title={filters.length >= 50 ? '最多 50 条' : '再加一条'}
           onClick={() => setFilters((fs) => [...(fs ?? []), emptyFilter()])}
         >
-          ＋ 添加规则
+          <Icon name="plus" size={14} />
+          添加规则
         </button>
         <button
           className="btn sm"

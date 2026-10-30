@@ -6,6 +6,7 @@ import { useSaveLayout } from '../lib/mutations';
 import { useUi, type ListFilter } from '../store/ui';
 import type { Feed } from '../lib/types';
 import { Thumb } from './Thumb';
+import { Icon, type IconName } from './Icon';
 
 /**
  * 左侧频道栏（**纯导航**）。
@@ -108,11 +109,11 @@ export function FeedsPanel() {
     setFilter(k);
   }
 
-  const gviews: Array<{ key: ListFilter; name: string; n: number; icon: GIconName }> = [
+  const gviews: Array<{ key: ListFilter; name: string; n: number; icon: IconName }> = [
     { key: 'all', name: '全部频道', n: data.flags.total, icon: 'all' },
-    { key: 'unread', name: '未读', n: data.flags.unread, icon: 'unread' },
-    { key: 'favorite', name: '收藏', n: data.flags.favorite, icon: 'favorite' },
-    { key: 'watch', name: '关注', n: data.flags.watching, icon: 'watch' },
+    { key: 'unread', name: '未读', n: data.flags.unread, icon: 'inbox' },
+    { key: 'favorite', name: '收藏', n: data.flags.favorite, icon: 'star' },
+    { key: 'watch', name: '关注', n: data.flags.watching, icon: 'eye' },
   ];
 
   return (
@@ -121,7 +122,7 @@ export function FeedsPanel() {
       <div className="sidebar-head">
         <span>频道</span>
         <button className="btn ghost icon nav-close" aria-label="收起频道栏" onClick={closeNav}>
-          ✕
+          <Icon name="close" size={16} />
         </button>
       </div>
 
@@ -134,9 +135,10 @@ export function FeedsPanel() {
           aria-label="筛选频道"
           onChange={(e) => setQl(e.target.value)}
         />
+        <Icon name="search" size={14} className="search-ico" />
         {ql && (
           <button className="search-clear" aria-label="清空" title="清空" onClick={() => setQl('')}>
-            ✕
+            <Icon name="close" size={12} />
           </button>
         )}
       </div>
@@ -150,7 +152,7 @@ export function FeedsPanel() {
             onClick={() => pickScope(g.key)}
           >
             <span className="gview-ico">
-              <GIcon name={g.icon} />
+              <Icon name={g.icon} size={16} />
             </span>
             <span className="gview-name">{g.name}</span>
             {g.n > 0 && <span className="gview-n">{g.n}</span>}
@@ -175,7 +177,9 @@ export function FeedsPanel() {
                     title={isCollapsed ? '展开分组' : '收起分组'}
                     onClick={() => toggleGroup(g.name)}
                   >
-                    <span className="feed-group-caret" aria-hidden>▾</span>
+                    <span className="feed-group-caret" aria-hidden>
+                      <Icon name="chevron-down" size={12} />
+                    </span>
                     <span className="feed-group-name">{g.name}</span>
                     {gUnread > 0 && <span className="feed-group-n">{gUnread}</span>}
                   </button>
@@ -195,7 +199,7 @@ export function FeedsPanel() {
                         if (collapsedSet.has(g.name)) toggleGroup(g.name);
                       }}
                     >
-                      ◎
+                      <Icon name="target" size={14} />
                     </button>
                   </span>
                 </div>
@@ -243,7 +247,7 @@ export function FeedsPanel() {
           onClick={() => pickScope('block')}
         >
           <span className="gview-ico">
-            <GIcon name="block" />
+            <Icon name="block" size={16} />
           </span>
           <span className="gview-name">屏蔽</span>
           {data.flags.blocked > 0 && <span className="gview-n">{data.flags.blocked}</span>}
@@ -257,7 +261,8 @@ export function FeedsPanel() {
             title="添加 / 删除频道、管理分组、导入导出"
             onClick={() => openSettings('channels')}
           >
-            ⚙ 频道管理
+            <Icon name="settings" size={14} />
+            频道管理
           </button>
         </div>
       </div>
@@ -287,62 +292,3 @@ function LetterAvatar({ title }: { title: string }) {
   );
 }
 
-type GIconName = 'all' | 'unread' | 'favorite' | 'watch' | 'block';
-
-/**
- * 全局视图的线性图标。统一描边 currentColor，随主题/激活态变色。
- */
-function GIcon({ name }: { name: GIconName }) {
-  const c = {
-    width: 16,
-    height: 16,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.8,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    'aria-hidden': true,
-  };
-  switch (name) {
-    case 'all':
-      return (
-        <svg {...c}>
-          <rect x="3" y="3" width="7" height="7" rx="1.6" />
-          <rect x="14" y="3" width="7" height="7" rx="1.6" />
-          <rect x="3" y="14" width="7" height="7" rx="1.6" />
-          <rect x="14" y="14" width="7" height="7" rx="1.6" />
-        </svg>
-      );
-    case 'unread':
-      return (
-        <svg {...c}>
-          <circle cx="12" cy="12" r="5.5" fill="currentColor" stroke="none" />
-        </svg>
-      );
-    case 'favorite':
-      return (
-        <svg {...c}>
-          <path
-            d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9 6.8 19.6l1-5.8L3.6 9.7l5.8-.8z"
-            fill="currentColor"
-            stroke="none"
-          />
-        </svg>
-      );
-    case 'watch':
-      return (
-        <svg {...c}>
-          <path d="M2 12s3.6-6.6 10-6.6S22 12 22 12s-3.6 6.6-10 6.6S2 12 2 12z" />
-          <circle cx="12" cy="12" r="3" />
-        </svg>
-      );
-    case 'block':
-      return (
-        <svg {...c}>
-          <circle cx="12" cy="12" r="8.5" />
-          <path d="M5.5 5.5l13 13" />
-        </svg>
-      );
-  }
-}

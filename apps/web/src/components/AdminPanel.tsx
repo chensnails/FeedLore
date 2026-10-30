@@ -15,6 +15,7 @@ import {
 import { useOverlayFocus } from '../lib/useOverlayFocus';
 import { AccountForm } from './AccountForm';
 import { useUi } from '../store/ui';
+import { Icon } from './Icon';
 
 /**
  * 管理面板（仅管理员可见）。
@@ -95,8 +96,8 @@ export function AdminPanel({ open, onClose }: { open: boolean; onClose: () => vo
   return (
     <div className="reader-backdrop" onClick={onClose} role="presentation">
       <section className="admin-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
-        <button className="reader-close btn ghost" onClick={onClose} aria-label="关闭">
-          ✕
+        <button className="reader-close btn ghost icon" onClick={onClose} aria-label="关闭">
+          <Icon name="close" size={16} />
         </button>
 
         <h2 className="admin-title">管理</h2>

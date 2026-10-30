@@ -8,6 +8,7 @@ import { useReadAll, useSaveLayout, useSetFavorite, useSetRead } from '../lib/mu
 import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { useUi, type ListFilter, type ListSort, type ListView } from '../store/ui';
 import { Thumb } from './Thumb';
+import { Icon } from './Icon';
 
 /**
  * 条目列表。筛选条件全部来自 store（频道 / 分组 / 筛选档 / 排序 / 标签 / 搜索词），
@@ -257,10 +258,11 @@ export function EntriesPanel() {
       {auto.fresh && (
         <div className="fresh-pill" role="status">
           <button className="fresh-go" onClick={auto.apply} title="加载新内容并回到顶部">
-            ↑ {auto.fresh.n} 条新内容
+            <Icon name="arrow-up" size={13} />
+            {auto.fresh.n} 条新内容
           </button>
           <button className="fresh-x" aria-label="忽略这批新内容" title="忽略" onClick={auto.dismiss}>
-            ✕
+            <Icon name="close" size={12} />
           </button>
         </div>
       )}
@@ -283,7 +285,7 @@ export function EntriesPanel() {
                 aria-label="取消分组筛选"
                 onClick={() => setGroupName(null)}
               >
-                ✕
+                <Icon name="close" size={12} />
               </button>
             )}
           </h1>
@@ -315,7 +317,7 @@ export function EntriesPanel() {
               title="网格视图"
               onClick={() => pickView('grid')}
             >
-              ▦
+              <Icon name="grid" size={15} />
             </button>
             <button
               className={`seg-btn${view === 'list' ? ' on' : ''}`}
@@ -323,11 +325,12 @@ export function EntriesPanel() {
               title="列表视图"
               onClick={() => pickView('list')}
             >
-              ☰
+              <Icon name="list" size={15} />
             </button>
           </span>
 
           <span className="search-box">
+            <Icon name="search" size={14} className="search-ico" />
             <input
               ref={inputRef}
               className="input sm search-input"
@@ -356,7 +359,7 @@ export function EntriesPanel() {
                   inputRef.current?.focus();
                 }}
               >
-                ✕
+                <Icon name="close" size={12} />
               </button>
             )}
           </span>
@@ -383,7 +386,14 @@ export function EntriesPanel() {
           }}
           title="把当前范围内的未读全部标为已读"
         >
-          {readAll.isPending ? '处理中…' : '全部已读'}
+          {readAll.isPending ? (
+            '处理中…'
+          ) : (
+            <>
+              <Icon name="check-all" size={14} />
+              全部已读
+            </>
+          )}
         </button>
       </div>
 
@@ -403,7 +413,8 @@ export function EntriesPanel() {
           ))}
           {tag && (
             <button className="tag tag-btn clear" onClick={() => setTag(null)}>
-              清除标签 ✕
+              清除标签
+              <Icon name="close" size={11} />
             </button>
           )}
         </div>
@@ -421,7 +432,11 @@ export function EntriesPanel() {
                 <p className="card-meta">
                   <span>{e.feedName}</span>
                   {e.date && <span>{fmtDate(e.date)}</span>}
-                  {e.isFavorite && <span className="fav" title="已收藏">★</span>}
+                  {e.isFavorite && (
+                    <span className="fav" title="已收藏">
+                      <Icon name="star-filled" size={12} />
+                    </span>
+                  )}
                   {e.tags.slice(0, 3).map((t) => (
                     <span key={t} className="tag">{t}</span>
                   ))}
@@ -434,7 +449,7 @@ export function EntriesPanel() {
               title={e.isFavorite ? '取消收藏' : '收藏'}
               onClick={() => setFavorite.mutate({ id: e.id, isFavorite: !e.isFavorite })}
             >
-              {e.isFavorite ? '★' : '☆'}
+              <Icon name={e.isFavorite ? 'star-filled' : 'star'} size={15} />
             </button>
           </li>
         ))}

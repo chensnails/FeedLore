@@ -8,6 +8,7 @@ import { useOverlayFocus } from '../lib/useOverlayFocus';
 import { useUi } from '../store/ui';
 import type { EntriesList } from '../lib/types';
 import { ArticleBody } from './ArticleBody';
+import { Icon } from './Icon';
 import { Thumb } from './Thumb';
 
 /** 正文块里有没有图片。字符串探测就够：块 JSON 由服务端生成，形状固定且不含嵌套。 */
@@ -189,8 +190,8 @@ export function EntryReader() {
               A+
             </button>
           </span>
-          <button className="reader-close btn ghost" onClick={close} aria-label="关闭">
-            ✕
+          <button className="reader-close btn ghost icon" onClick={close} aria-label="关闭">
+            <Icon name="close" size={16} />
           </button>
         </div>
 
@@ -235,6 +236,7 @@ export function EntryReader() {
             <p className="reader-actions">
               {(data.sourceUrl || data.link) && (
                 <a className="btn" href={data.sourceUrl ?? data.link ?? '#'} target="_blank" rel="noreferrer noopener">
+                  <Icon name="external" size={14} />
                   打开原文
                 </a>
               )}
@@ -243,7 +245,8 @@ export function EntryReader() {
                 onClick={() => setFavorite.mutate({ id: data.id, isFavorite: !data.isFavorite })}
                 disabled={setFavorite.isPending}
               >
-                {data.isFavorite ? '★ 已收藏' : '☆ 收藏'}
+                <Icon name={data.isFavorite ? 'star-filled' : 'star'} size={14} />
+                {data.isFavorite ? '已收藏' : '收藏'}
               </button>
               <button
                 className="btn ghost"
@@ -255,6 +258,7 @@ export function EntryReader() {
                   void copy(text, count > 1 ? `已复制 ${count} 个链接${tail}` : `已复制链接${tail}`);
                 }}
               >
+                <Icon name="link" size={14} />
                 复制链接
               </button>
             </p>
@@ -269,7 +273,8 @@ export function EntryReader() {
                   title="上一条（键盘 ←）"
                   onClick={() => step(neighbors.prev)}
                 >
-                  ← 上一条
+                  <Icon name="arrow-left" size={13} />
+                  上一条
                 </button>
                 <span className="reader-nav-pos">
                   {neighbors.pos} / {neighbors.total}
@@ -280,7 +285,8 @@ export function EntryReader() {
                   title="下一条（键盘 →）"
                   onClick={() => step(neighbors.next)}
                 >
-                  下一条 →
+                  下一条
+                  <Icon name="arrow-right" size={13} />
                 </button>
               </nav>
             )}

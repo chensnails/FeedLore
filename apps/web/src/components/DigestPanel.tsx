@@ -5,6 +5,7 @@ import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useGenerateDigest, useSavePrefs, useTestLlm } from '../lib/mutations';
 import { useOverlayFocus } from '../lib/useOverlayFocus';
+import { Icon } from './Icon';
 
 /**
  * 日报面板（每个账号自己的，不是管理端）。
@@ -59,8 +60,8 @@ export function DigestPanel({ open, onClose }: { open: boolean; onClose: () => v
   return (
     <div className="reader-backdrop" onClick={onClose} role="presentation">
       <section className="admin-sheet digest-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
-        <button className="reader-close btn ghost" onClick={onClose} aria-label="关闭">
-          ✕
+        <button className="reader-close btn ghost icon" onClick={onClose} aria-label="关闭">
+          <Icon name="close" size={16} />
         </button>
 
         <h2 className="admin-title">日报</h2>

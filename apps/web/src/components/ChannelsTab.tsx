@@ -15,6 +15,7 @@ import {
 import { useUi } from '../store/ui';
 import type { Feed } from '../lib/types';
 import { Thumb } from './Thumb';
+import { Icon } from './Icon';
 
 /**
  * 设置的「频道」页签：频道分组 + 频道源的完整管理。
@@ -233,9 +234,10 @@ export function ChannelsTab() {
           aria-label="筛选频道"
           onChange={(e) => setQl(e.target.value)}
         />
+        <Icon name="search" size={14} className="search-ico" />
         {ql && (
           <button className="search-clear" aria-label="清空" title="清空" onClick={() => setQl('')}>
-            ✕
+            <Icon name="close" size={12} />
           </button>
         )}
       </div>
@@ -266,7 +268,9 @@ export function ChannelsTab() {
                 ) : (
                   <div className="feed-group-row">
                     <div className="feed-group">
-                      <span className="feed-group-caret" aria-hidden>▾</span>
+                      <span className="feed-group-caret" aria-hidden>
+                        <Icon name="chevron-down" size={12} />
+                      </span>
                       <span className="feed-group-name">{g.name}</span>
                       {gUnread > 0 && <span className="feed-group-n">{gUnread}</span>}
                     </div>
@@ -277,7 +281,7 @@ export function ChannelsTab() {
                         aria-label={`重命名分组 ${g.name}`}
                         onClick={() => setRenaming({ from: g.name, to: g.name })}
                       >
-                        ✎
+                        <Icon name="pencil" size={14} />
                       </button>
                       <button
                         className="icon-btn"
@@ -285,7 +289,7 @@ export function ChannelsTab() {
                         aria-label={`上移分组 ${g.name}`}
                         onClick={() => moveGroup(g.name, -1)}
                       >
-                        ↑
+                        <Icon name="arrow-up" size={14} />
                       </button>
                       <button
                         className="icon-btn"
@@ -293,7 +297,7 @@ export function ChannelsTab() {
                         aria-label={`下移分组 ${g.name}`}
                         onClick={() => moveGroup(g.name, 1)}
                       >
-                        ↓
+                        <Icon name="arrow-down" size={14} />
                       </button>
                     </span>
                   </div>
@@ -339,7 +343,7 @@ export function ChannelsTab() {
                       disabled={refreshFeed.isPending}
                       onClick={() => refreshFeed.mutate(f.id)}
                     >
-                      ⟳
+                      <Icon name="refresh" size={14} className={refreshFeed.isPending ? 'spin' : undefined} />
                     </button>
                     <button
                       className={`icon-btn${f.enabled ? '' : ' off'}`}
@@ -348,7 +352,7 @@ export function ChannelsTab() {
                       disabled={patchFeed.isPending}
                       onClick={() => patchFeed.mutate({ id: f.id, patch: { enabled: !f.enabled } })}
                     >
-                      {f.enabled ? '⏸' : '▶'}
+                      <Icon name={f.enabled ? 'pause' : 'play'} size={14} />
                     </button>
                     <button
                       className={`icon-btn${f.cardEnabled ? '' : ' off'}`}
@@ -357,7 +361,7 @@ export function ChannelsTab() {
                       disabled={patchFeed.isPending}
                       onClick={() => patchFeed.mutate({ id: f.id, patch: { cardEnabled: !f.cardEnabled } })}
                     >
-                      {f.cardEnabled ? '▣' : '▢'}
+                      <Icon name={f.cardEnabled ? 'grid' : 'list'} size={14} />
                     </button>
                     <button
                       className="icon-btn danger"
@@ -366,7 +370,7 @@ export function ChannelsTab() {
                       disabled={deleteFeed.isPending}
                       onClick={() => void remove(f)}
                     >
-                      ✕
+                      <Icon name="close" size={14} />
                     </button>
                   </span>
                 </div>
@@ -421,7 +425,8 @@ export function ChannelsTab() {
         ) : (
           <div className="add-feed-row">
             <button className="btn ghost sm add-toggle" onClick={() => setAdding(true)}>
-              ＋ 添加频道
+              <Icon name="plus" size={14} />
+              添加频道
             </button>
             <button
               className="btn ghost sm"

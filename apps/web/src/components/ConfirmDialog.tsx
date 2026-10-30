@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useUi } from '../store/ui';
+import { Icon } from './Icon';
 
 /**
  * 统一确认框（替代 `window.confirm`）。
@@ -59,7 +60,12 @@ export function ConfirmDialog() {
         aria-labelledby="confirm-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="confirm-title" id="confirm-title">{c.title}</h3>
+        <div className="confirm-head">
+          <span className={`confirm-ico${c.danger ? ' danger' : ''}`} aria-hidden>
+            <Icon name={c.danger ? 'alert' : 'check'} size={16} />
+          </span>
+          <h3 className="confirm-title" id="confirm-title">{c.title}</h3>
+        </div>
         {c.body && <p className="confirm-body">{c.body}</p>}
         <div className="confirm-actions">
           <button ref={cancelRef} className="btn ghost" onClick={() => resolve(false)}>

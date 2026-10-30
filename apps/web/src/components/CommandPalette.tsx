@@ -5,6 +5,7 @@ import { cjkPinyin } from '../lib/pinyin';
 import { qk } from '../lib/query';
 import { useRefreshAll, useSaveAppearance, useSaveLayout } from '../lib/mutations';
 import { useUi, type ListFilter, type ListSort, type ListView } from '../store/ui';
+import { Icon } from './Icon';
 
 /**
  * 命令面板（⌘K / Ctrl+K）。
@@ -166,7 +167,6 @@ export function CommandPalette({
         id: 'open-prefs',
         group: '设置',
         label: '打开设置',
-        hint: 'Aa',
         keywords: 'settings prefs shezhi dakai 设置 外观 阅读 账号 关注规则',
         run: close(() => useUi.getState().setPanel('settings')),
       },
@@ -265,6 +265,7 @@ export function CommandPalette({
         aria-label="命令面板"
         onClick={(e) => e.stopPropagation()}
       >
+        <Icon name="search" size={16} className="cmdk-ico" />
         <input
           ref={inputRef}
           className="cmdk-input"

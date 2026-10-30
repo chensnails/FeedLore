@@ -6,6 +6,7 @@ import { qk } from '../lib/query';
 import { useRefreshAll, useSaveAppearance, useSaveLayout } from '../lib/mutations';
 import { useRouteSync } from '../lib/route';
 import { useUi } from '../store/ui';
+import { Icon, type IconName } from './Icon';
 import type { Session } from '../lib/types';
 import { FeedsPanel } from './FeedsPanel';
 import { EntriesPanel } from './EntriesPanel';
@@ -121,13 +122,13 @@ export function Shell({ session }: { session: Session }) {
    * 'github' 是 v1.x 遗留值，按深色展示，点一次就切到 auto（等价于「用户开始用新主题」）。 */
   const theme = prefsQuery.data?.appearance.theme ?? 'auto';
   const THEMES = [
-    { value: 'auto', icon: '◐', label: '跟随系统' },
-    { value: 'light', icon: '☀', label: '浅色' },
-    { value: 'dark', icon: '☾', label: '深色' },
-  ] as const;
+    { value: 'auto', icon: 'auto', label: '跟随系统' },
+    { value: 'light', icon: 'sun', label: '浅色' },
+    { value: 'dark', icon: 'moon', label: '深色' },
+  ] as const satisfies ReadonlyArray<{ value: string; icon: IconName; label: string }>;
   const themeIdx = THEMES.findIndex((t) => t.value === theme);
   const nextTheme = THEMES[(themeIdx + 1) % THEMES.length] ?? THEMES[0];
-  const themeIcon = theme === 'light' ? '☀' : theme === 'dark' ? '☾' : '◐';
+  const themeIcon: IconName = theme === 'light' ? 'sun' : theme === 'dark' ? 'moon' : 'auto';
 
   return (
     <div className="app">
@@ -140,7 +141,7 @@ export function Shell({ session }: { session: Session }) {
           aria-expanded={navOpen}
           title="频道"
         >
-          ☰
+          <Icon name="menu" size={18} />
         </button>
 
         <div className="brand">
@@ -159,7 +160,7 @@ export function Shell({ session }: { session: Session }) {
             title="刷新全部开启采集的频道"
             aria-label="刷新全部频道"
           >
-            {refreshAll.isPending ? '⟳…' : '⟳'}
+            <Icon name="refresh" size={16} className={refreshAll.isPending ? 'spin' : undefined} />
           </button>
           {/* 命令面板入口。快捷键是 ⌘K / Ctrl+K，但**必须有按钮**：
               纯快捷键的功能等于只有作者知道（v1 后期才有这个按钮）。 */}
@@ -169,7 +170,7 @@ export function Shell({ session }: { session: Session }) {
             aria-label="打开命令面板"
             onClick={() => window.dispatchEvent(new Event('feedlore:cmdk'))}
           >
-            ⌘K
+            <Icon name="command" size={16} />
           </button>
         </div>
 
@@ -183,7 +184,7 @@ export function Shell({ session }: { session: Session }) {
               title="AI 日报：把过去 24 小时的条目汇总成一份简报"
               aria-label="打开日报"
             >
-              ▤
+              <Icon name="sparkle" size={16} />
             </button>
           )}
           <button
@@ -192,7 +193,7 @@ export function Shell({ session }: { session: Session }) {
             title="外观与阅读设置"
             aria-label="打开设置"
           >
-            Aa
+            <Icon name="settings" size={17} />
           </button>
           <button
             className="btn ghost icon"
@@ -201,7 +202,7 @@ export function Shell({ session }: { session: Session }) {
             title={`主题：${theme}（点击切换到 ${nextTheme.label}）`}
             aria-label="切换主题"
           >
-            {themeIcon}
+            <Icon name={themeIcon} size={16} />
           </button>
           {session.role === 'admin' && (
             <button
@@ -210,7 +211,7 @@ export function Shell({ session }: { session: Session }) {
               title="管理：状态 / 采集参数 / 用户"
               aria-label="打开管理面板"
             >
-              ⚙
+              <Icon name="shield" size={16} />
             </button>
           )}
           <span className="who">
@@ -235,7 +236,7 @@ export function Shell({ session }: { session: Session }) {
               title="更多"
               onClick={() => setMoreOpen((v) => !v)}
             >
-              ⋯
+              <Icon name="more" size={18} />
             </button>
             {moreOpen && (
               <div className="more-menu" role="menu">
@@ -247,6 +248,7 @@ export function Shell({ session }: { session: Session }) {
                       setPanel('digest');
                     }}
                   >
+                    <Icon name="sparkle" size={15} />
                     AI 日报
                   </button>
                 )}
@@ -258,6 +260,7 @@ export function Shell({ session }: { session: Session }) {
                       setPanel('admin');
                     }}
                   >
+                    <Icon name="shield" size={15} />
                     管理面板
                   </button>
                 )}
@@ -269,6 +272,7 @@ export function Shell({ session }: { session: Session }) {
                     logout.mutate();
                   }}
                 >
+                  <Icon name="arrow-right" size={15} />
                   退出登录{session.username ? `（${session.username}）` : ''}
                 </button>
               </div>
@@ -304,6 +308,7 @@ export function Shell({ session }: { session: Session }) {
 
       {toast && (
         <div className={`toast ${toast.tone}`} role="status" onClick={dismissToast}>
+          <Icon name={toast.tone === 'error' ? 'alert' : 'check'} size={14} />
           {toast.text}
         </div>
       )}
