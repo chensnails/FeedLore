@@ -5,6 +5,7 @@ import { qk } from '../lib/query';
 import { useReadAll, useSetFavorite, useSetRead } from '../lib/mutations';
 import { useUi } from '../store/ui';
 import type { EntryCard } from '../lib/types';
+import { Thumb } from './Thumb';
 
 /**
  * 条目列表。筛选条件全部来自「选中频道 + 只看未读」，不额外存派生数据：
@@ -104,16 +105,20 @@ export function EntriesPanel() {
         {data.entries.map((e) => (
           <li key={e.id} className={`card-row${e.isRead ? ' read' : ''}`}>
             <button className="card" onClick={() => open(e)}>
-              <p className="card-title">{e.name}</p>
-              {e.desc && <p className="card-desc">{e.desc}</p>}
-              <p className="card-meta">
-                <span>{e.feedName}</span>
-                {e.date && <span>{fmtDate(e.date)}</span>}
-                {e.isFavorite && <span className="fav" title="已收藏">★</span>}
-                {e.tags.slice(0, 3).map((t) => (
-                  <span key={t} className="tag">{t}</span>
-                ))}
-              </p>
+              <div className="card-body">
+                <p className="card-title">{e.name}</p>
+                {e.desc && <p className="card-desc">{e.desc}</p>}
+                <p className="card-meta">
+                  <span>{e.feedName}</span>
+                  {e.date && <span>{fmtDate(e.date)}</span>}
+                  {e.isFavorite && <span className="fav" title="已收藏">★</span>}
+                  {e.tags.slice(0, 3).map((t) => (
+                    <span key={t} className="tag">{t}</span>
+                  ))}
+                </p>
+              </div>
+              {/* 封面：服务端已把外链改写成本站代理，这里只负责展示与失败降级 */}
+              <Thumb src={e.image} className="card-thumb" decorative />
             </button>
             <button
               className={`fav-btn${e.isFavorite ? ' on' : ''}`}

@@ -5,6 +5,7 @@ import { qk } from '../lib/query';
 import { useCreateFeed, useDeleteFeed, usePatchFeed, useRefreshFeed } from '../lib/mutations';
 import { useUi } from '../store/ui';
 import type { Feed, FeedsList } from '../lib/types';
+import { Thumb } from './Thumb';
 
 /**
  * 左侧频道栏。
@@ -104,7 +105,12 @@ export function FeedsPanel() {
               onClick={() => setFeedId(f.id)}
               title={f.error ?? f.url}
             >
-              <span className="dot" data-error={f.error ? '1' : '0'} aria-hidden />
+              <Thumb
+                src={f.icon}
+                className="feed-icon"
+                decorative
+                fallback={<span className="dot" data-error={f.error ? '1' : '0'} aria-hidden />}
+              />
               <div className="feed-main">
                 <p className="feed-title">{f.title}</p>
                 <p className="feed-meta">

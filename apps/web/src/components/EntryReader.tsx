@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useSetFavorite } from '../lib/mutations';
 import { useUi } from '../store/ui';
+import { Thumb } from './Thumb';
 
 /**
  * 阅读层（覆盖式）：只在打开某条时才请求详情。
@@ -58,6 +59,16 @@ export function EntryReader() {
 
             {/* 正文按纯文本渲染：抓来的 HTML 未做净化，直接 innerHTML 等于把 XSS 装进自家页面 */}
             <div className="reader-body">{data.content || data.desc || '（无正文）'}</div>
+
+            {/* 配图单独成组：列表只给封面，详情才把整组图拉出来。
+                服务端已逐张改写成代理地址，这里不碰外链。 */}
+            {data.images.length > 0 && (
+              <div className="reader-gallery">
+                {data.images.map((u) => (
+                  <Thumb key={u} src={u} className="reader-shot" decorative />
+                ))}
+              </div>
+            )}
 
             <p className="reader-actions">
               {(data.sourceUrl || data.link) && (

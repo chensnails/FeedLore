@@ -9,23 +9,63 @@
 import type { Card, EntryDetail, Feed } from '@feedlore/contract';
 
 /**
- * 外链图片 → 展示地址。
+ * 外链图片 → 展示地址（一律改写成本站 `/api/img` 代理）。
  *
- * v1.x 一律改写成 `/api/img?u=...`（防防盗链、防签名过期）。
- * v2 的图片代理尚未实现（需要走 `lib/net` 的 SSRF 校验 + 图片缓存，排在 P6），
- * 因此这里**暂时原样返回**：契约字段类型不变，接上代理时只改这一个函数。
+ * 为什么必须改写：源站防盗链按 Referer 拦直连、混合内容被浏览器拦、
+ * 部分 CDN 地址带短时效签名 —— 三者任一都会让卡片封面变白块。
+ *
+ * 两条边界（都来自 legacy 的线上踩坑）：
+ *  1. **`data:` 直通**：RSSHub 之类会给内嵌 base64 图标，它本身就是完整资源。
+ *     塞进代理只会被 `new URL()` 判成非法协议返回 400，表现为「整列图标全空」（v2.2.5）。
+ *  2. **重复协议头归一**：个别源写成 `https:https://...`，不修的话解析出的主机名是 "https:"。
+ *
+ * v2 新增：支持 `base` 补全**相对地址**（`/logo.png`）。legacy 直接把相对地址塞进代理，
+ * 代理端必然 400；这里用频道 siteUrl 补全，补不出来才丢弃。
  */
-export function imgUrl(u: string | null | undefined): string | null {
+const proxied = (u: string): string => '/api/img?u=' + encodeURIComponent(u);
+
+export function imgUrl(u: string | null | undefined, base?: string | null): string | null {
   const v = typeof u === 'string' ? u.trim() : '';
-  return v || null;
+  if (!v) return null;
+  if (/^data:/i.test(v)) return v;
+
+  const fixed = v.replace(/^(https?):\1:\/\//i, '$1://');
+  // 非 http(s) 绝对地址 → 尝试用 base 补全（相对路径走这条）
+  let abs = fixed;
+  if (!/^https?:\/\//i.test(fixed)) {
+    try {
+      abs = new URL(fixed, base ?? undefined).toString();
+    } catch {
+      return null; // 既不是绝对地址、也没有可用的 base → 丢掉（比给前端一个必 400 的链接好）
+    }
+  }
+  if (!/^https?:\/\//i.test(abs)) return null;
+  return proxied(abs);
 }
 
 /**
- * 图文块 JSON 里图片块的改写点。当前与 imgUrl 同步为直通；
- * 接代理后这里要把 `{t:'img',src}` 逐块换掉（legacy `proxyBodyJson` 同款）。
+ * 图文块 JSON 里图片块的改写点（legacy `proxyBodyJson` 同款）。
+ *
+ * 只在**确实改到东西**时重新序列化：绝大多数条目的块里没有 http 图片，
+ * 原样返回字符串可以省掉一次 JSON.parse→stringify 的开销（列表 50 条会放大成 50 次）。
  */
 export function bodyJsonUrl(json: string | null | undefined): string | null {
-  return typeof json === 'string' && json ? json : null;
+  if (typeof json !== 'string' || !json) return null;
+  try {
+    const blocks: unknown = JSON.parse(json);
+    if (!Array.isArray(blocks)) return json;
+
+    let changed = false;
+    for (const b of blocks as Array<Record<string, unknown>>) {
+      if (b && b.t === 'img' && typeof b.src === 'string' && /^https?:\/\//i.test(b.src)) {
+        b.src = proxied(b.src);
+        changed = true;
+      }
+    }
+    return changed ? JSON.stringify(blocks) : json;
+  } catch {
+    return json; // 解析不了就原样给，前端按自己的容错处理
+  }
 }
 
 /** 条目查询的公共列（列表与详情共用，详情多一列 content）。 */
@@ -54,6 +94,8 @@ const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() 
 
 export function toCard(row: CardRow): Card {
   const images = Array.isArray(row.images) ? row.images : [];
+  // 相对图片路径用条目自身的落地页补全（根相对 `/img/a.png` 与页相对 `a.png` 都成立）
+  const base = row.link ?? row.sourceUrl ?? null;
   return {
     id: String(row.id),
     name: row.title,
@@ -63,8 +105,8 @@ export function toCard(row: CardRow): Card {
     link: row.link ?? null,
     pwd: row.pwd ?? null,
     links: Array.isArray(row.links) ? row.links : [],
-    image: imgUrl(row.image),
-    images: images.map((u) => imgUrl(u)).filter((u): u is string => u !== null),
+    image: imgUrl(row.image, base),
+    images: images.map((u) => imgUrl(u, base)).filter((u): u is string => u !== null),
     bodyJson: bodyJsonUrl(row.bodyJson),
     sourceUrl: row.sourceUrl ?? null,
     date: iso(row.publishedAt),
@@ -122,7 +164,7 @@ export function toFeed(
     customTitle: row.customTitle ?? null,
     siteUrl: row.siteUrl ?? null,
     description: row.description ?? '',
-    icon: imgUrl(row.iconUrl),
+    icon: imgUrl(row.iconUrl, row.siteUrl ?? row.url),
     enabled: row.enabled,
     cardEnabled: row.cardEnabled,
     groupName: row.groupName ?? '',

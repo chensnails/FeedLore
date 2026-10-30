@@ -121,6 +121,73 @@ async function main(): Promise<void> {
     else bad('GET /api/entries/999999999 → 404', e);
   }
 
+  /* ---------------- 图片代理 ----------------
+   * 判据是「真的把一张外网图取回来」，不是「接口没报错」：
+   * 拿列表里第一条带封面的条目（其 image 已被服务端改写成 /api/img?u=...），
+   * 直接请求那个地址，校验状态 / Content-Type / 字节数 / 安全头。
+   * 1.7.x 的教训——测试桩全绿、线上全挂，就是因为没走真实出网链路。 */
+  let proxyPath: string | null = null;
+  try {
+    const { entries } = await api.entries.list({ limit: '50' });
+    const withImg = entries.find((e) => e.image);
+    proxyPath = withImg?.image ?? null;
+
+    if (!proxyPath) {
+      ok('GET /api/img', '跳过：当前库里没有带封面的条目');
+    } else {
+      const t0 = Date.now();
+      const r1 = await jar.fetch(`${BASE}${proxyPath}`);
+      const ct = r1.headers.get('content-type') ?? '';
+      const buf = Buffer.from(await r1.arrayBuffer());
+      if (!r1.ok) throw new Error(`HTTP ${r1.status}`);
+      if (!/^image\//i.test(ct)) throw new Error(`content-type=${ct}`);
+      if (buf.length === 0) throw new Error('空响应');
+
+      // SVG 通过 <img> 不执行脚本，但「右键 → 新标签打开」就是同源文档。
+      // 这两个头是把它锁进沙箱的唯一手段，缺了等于留一个 XSS 口子。
+      const csp = r1.headers.get('content-security-policy') ?? '';
+      if (!/sandbox/.test(csp)) throw new Error(`缺 CSP sandbox（${csp || '空'}）`);
+      if (r1.headers.get('x-content-type-options') !== 'nosniff') throw new Error('缺 nosniff');
+
+      ok('GET /api/img 回源成功', `${ct} ${(buf.length / 1024).toFixed(1)}KB ${Date.now() - t0}ms`);
+
+      // 第二次必须走缓存：命中 L1/L2 时不该再解析压缩
+      const t1 = Date.now();
+      const r2 = await jar.fetch(`${BASE}${proxyPath}`);
+      const buf2 = Buffer.from(await r2.arrayBuffer());
+      if (!r2.ok || buf2.length !== buf.length) {
+        throw new Error(`二次请求不一致：HTTP ${r2.status} ${buf2.length}B vs ${buf.length}B`);
+      }
+      ok('GET /api/img 二次命中缓存', `${Date.now() - t1}ms`);
+    }
+  } catch (e) {
+    bad('GET /api/img', e);
+  }
+
+  // 图片代理也是出网入口：内网/云元数据地址必须在这一层被拦（否则就是个 SSRF 探针）
+  for (const evil of ['http://127.0.0.1/a.png', 'http://169.254.169.254/latest/meta-data/']) {
+    try {
+      const r = await jar.fetch(`${BASE}/api/img?u=${encodeURIComponent(evil)}`);
+      await r.body?.cancel();
+      if (r.status === 400) ok('GET /api/img 拦内网地址 → 400', evil);
+      else bad(`GET /api/img ${evil} 应 400`, new Error(`HTTP ${r.status}`));
+    } catch (e) {
+      bad(`GET /api/img ${evil} → 400`, e);
+    }
+  }
+
+  // 未登录必须 401：代理不做鉴权等于给全网开了一个免费图床 + 探针
+  if (proxyPath) {
+    try {
+      const r = await fetch(`${BASE}${proxyPath}`);
+      await r.body?.cancel();
+      if (r.status === 401) ok('GET /api/img 未登录 → 401');
+      else bad('GET /api/img 未登录 → 401', new Error(`HTTP ${r.status}`));
+    } catch (e) {
+      bad('GET /api/img 未登录 → 401', e);
+    }
+  }
+
   // 9) 偏好
   try {
     const p = await api.prefs.get();

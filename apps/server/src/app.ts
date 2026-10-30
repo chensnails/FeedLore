@@ -21,6 +21,7 @@ import { authRoutes } from './routes/auth';
 import { feedsRoutes } from './routes/feeds';
 import { entriesRoutes } from './routes/entries';
 import { prefsRoutes } from './routes/prefs';
+import { imgRoutes } from './routes/img';
 
 export interface AppDeps {
   db: Db | null;
@@ -78,7 +79,8 @@ export function createApp({ db, auth }: AppDeps) {
     .route('/', authRoutes(db, auth))
     .route('/', feedsRoutes(db, auth))
     .route('/', entriesRoutes(db, auth))
-    .route('/', prefsRoutes(db, auth));
+    .route('/', prefsRoutes(db, auth))
+    .route('/', imgRoutes(db, auth));
 
   // 静态资源挂在同一个实例上；`route()` 返回的是 this，所以这里注册的路由同样生效。
   if (WEB_ROOT) mountWeb(app, WEB_ROOT);

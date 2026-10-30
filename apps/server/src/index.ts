@@ -17,6 +17,7 @@ import { getAuth } from './auth';
 import { createApp } from './app';
 import { startScheduler } from './lib/fetcher';
 import { undiciVersionMismatch, undiciVersions } from './lib/net';
+import { pruneImageCache } from './routes/img';
 
 let db: Db | null = null;
 if (DATABASE_URL) {
@@ -46,6 +47,23 @@ const app = createApp({ db, auth });
 /* 抓取器：进程内调度（每分钟检查一次到期频道）。
  * 不用外部队列是刻意的 P5 决策——单进程足够、少一个故障点；多实例时才需要 BullMQ。 */
 if (db) startScheduler(db);
+
+/* 图片缓存清理：`image_cache` 随阅读量线性增长，不清会悄悄吃掉磁盘。
+ * 首次延迟 10 分钟（别在冷启动和第一轮抓取抢数据库），之后每 6 小时一次。 */
+if (db) scheduleImagePrune(db);
+
+function scheduleImagePrune(database: Db): void {
+  const run = (): void => {
+    void pruneImageCache(database)
+      .then((n) => {
+        if (n > 0) console.log(`[img] 清理超期图片缓存 ${n} 条`);
+      })
+      .catch(() => { /* pruneImageCache 内部已记录 */ });
+  };
+  // unref：定时器不阻止进程退出（容器 stop 时不必等它）
+  setTimeout(run, 10 * 60_000).unref();
+  setInterval(run, 6 * 3600_000).unref();
+}
 
 /* undici 版本对齐：跨大版本会让 IP 钉定失效（1.7.3 全站抓取失败的真凶）。
  * 这里只喊一声，真正的兜底在 lib/net.safeFetch —— 钉定失效时降级重试并告警。 */

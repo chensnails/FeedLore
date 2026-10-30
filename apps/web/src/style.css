@@ -472,12 +472,36 @@ body {
   border-radius: var(--radius-sm);
   padding: 12px 12px 11px;
   cursor: pointer;
-  display: block;
+  /* 图文并排：图在右、文在左，图缺失时整行自然回到单栏（Thumb 返回 null） */
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
   transition: background 0.16s ease, border-color 0.16s ease;
 }
 .card:hover {
   background: var(--surface);
   border-color: var(--line);
+}
+
+/* ⚠️ min-width: 0 不能省：flex 子项默认 min-width:auto，长标题会把封面挤出容器 */
+.card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 封面：定尺寸 + cover 裁切。不同源的图高矮不一，不定尺寸会把列表撑得参差不齐 */
+.card-thumb {
+  flex: none;
+  width: 116px;
+  height: 76px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+/* 已读降一点存在感，扫列表时新条目更跳 */
+.card-row.read .card-thumb {
+  opacity: 0.7;
 }
 .card.read .card-title {
   color: var(--muted);
@@ -513,6 +537,16 @@ body {
 
 .fav {
   color: var(--accent);
+}
+
+/* 频道图标：与 .dot 同占位，有图标时替换它，失败时 Thumb 回落到 .dot */
+.feed-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  object-fit: contain;
+  background: var(--surface);
 }
 
 /* ---------------- 阅读层 ---------------- */
@@ -570,6 +604,22 @@ body {
 
 .reader-actions {
   margin: 22px 0 0;
+}
+
+/* 正文配图：自适应网格，一张图不会撑成巨幅，多张图自然排开 */
+.reader-gallery {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+}
+.reader-shot {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
 }
 
 /* ---------------- 窄屏 ---------------- */
@@ -803,5 +853,10 @@ body {
   }
   .card {
     padding-right: 40px;
+  }
+  /* 窄屏把封面缩一档：既保住「一图胜两行摘要」的辨识度，又别把标题挤成一列字 */
+  .card-thumb {
+    width: 84px;
+    height: 58px;
   }
 }
