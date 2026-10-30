@@ -43,7 +43,7 @@ tests/ui/.build/
 # scripts/ui-check.mjs 的截图落盘位置（脚本写到 cwd）
 /ui-*.png
 # scripts/ui-shots.mjs（响应式三档实拍）同样写 cwd
-/rwd-*.png
+/*.png
 
 # Turborepo 缓存 / TS 增量编译产物
 .turbo/
