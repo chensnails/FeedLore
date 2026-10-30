@@ -10,6 +10,7 @@
  */
 
 import { Hono, type Context } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { serveStatic } from '@hono/node-server/serve-static';
 import type { Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
@@ -60,17 +61,17 @@ export function createApp({ db, auth }: AppDeps) {
       return auth.handler(c.req.raw);
     })
     .onError((err, c) => {
-      // 自定义错误（ContractViolation/BadRequest）带 status；Hono 的 HTTPResponseError 不带。
+      // 自定义错误（ContractViolation/BadRequest）与 Hono 的 HTTPException 都带 status
       const raw = err as unknown as { status?: unknown };
-      const s = typeof raw.status === 'number' ? raw.status : 500;
+      const declared = typeof raw.status === 'number' ? raw.status : 500;
+      const s = declared >= 400 && declared <= 599 ? declared : 500;
       if (s >= 500) console.error('[error]', err);
+
+      /* ⚠️ 这里曾经是 `if (s===400) ... if (s===401) ...` 的穷举链，结果 HTTPException(409)
+       * 无处可去、被静默降级成 500（频道地址撞车的提示还在，但状态码错了，前端判不出冲突）。
+       * 现在按声明值透传，只强制两件事：5xx 不吐内部 message、非 4xx/5xx 一律 500。 */
       const body = { error: s >= 500 ? '服务器内部错误' : err.message };
-      if (s === 400) return c.json(body, 400);
-      if (s === 401) return c.json(body, 401);
-      if (s === 403) return c.json(body, 403);
-      if (s === 501) return c.json(body, 501);
-      if (s === 503) return c.json(body, 503);
-      return c.json(body, 500);
+      return c.json(body, s as ContentfulStatusCode);
     })
     .notFound((c) => c.json({ error: '接口不存在' }, 404))
     .route('/', healthRoutes(db))

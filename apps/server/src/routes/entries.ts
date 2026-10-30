@@ -252,9 +252,12 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
 
         // 用原始 SQL 拿 rowCount：drizzle 的 .returning() 会把几万个 id 全部拉回内存，
         // 而「标了多少条」只需要一个数字。
+        /* ⚠️ UPDATE 这里**不能给表起别名**：entryConditions 生成的列引用是
+         * `"entries"."feed_id"`（drizzle 按表名限定），一旦写成 `update entries e`
+         * 就变成「引用不存在的 FROM 项」，整个语句 500。 */
         const res = await db.execute(sql`
-          update entries e set is_read = true, read_at = now()
-           where ${sql.join(conds, sql` and `)} and e.is_read = false
+          update entries set is_read = true, read_at = now()
+           where ${sql.join(conds, sql` and `)} and entries.is_read = false
         `);
         const updated = Number((res as unknown as { rowCount?: number | null }).rowCount ?? 0);
         return c.json({ ok: true, updated });
