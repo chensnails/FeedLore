@@ -143,10 +143,23 @@ try {
   await shot('ui-feeds.png');
 
   const feedCount = await evalJs("document.querySelectorAll('.feed').length");
-  console.log(`  频道行数：${feedCount}`);
+  const cardCount = await evalJs("document.querySelectorAll('.card').length");
+  console.log(`  频道行数：${feedCount}（含「全部频道」）  条目卡片：${cardCount}`);
+
+  // 点开第一条，验证阅读层能拿到详情（列表不带正文，详情才带）
+  if (cardCount > 0) {
+    await evalJs("document.querySelector('.card').click()");
+    await sleep(1500);
+    const readerText = (await evalJs("document.querySelector('.reader-body')?.innerText ?? ''")) ?? '';
+    const hasSheet = await evalJs("!!document.querySelector('.reader-sheet')");
+    console.log(`  阅读层：${hasSheet ? '已打开' : '未打开'}，正文 ${readerText.length} 字`);
+    await shot('ui-reader.png');
+    await evalJs("document.querySelector('.reader-close')?.click()");
+    await sleep(400);
+  }
 
   console.log(errors.length ? `  控制台错误：\n  - ${errors.join('\n  - ')}` : '  控制台无错误');
-  process.exitCode = feedCount > 0 ? 0 : 1;
+  process.exitCode = feedCount > 1 && cardCount > 0 ? 0 : 1;
 } catch (e) {
   console.error('[ui] 失败：', e.message);
   process.exitCode = 1;

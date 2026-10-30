@@ -455,7 +455,11 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+}
+
+/* 分隔线放 li 上而不是卡片 margin：hover 背景能把整行连成一片，视觉更稳 */
+.cards > li + li {
+  border-top: 1px solid var(--line);
 }
 
 .card {
