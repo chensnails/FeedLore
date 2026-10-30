@@ -50,6 +50,8 @@ export const users = pgTable('users', {
   id: text('id').primaryKey(), // better-auth 生成 cuid
   name: text('name'),
   username: text('username').unique(), // username 插件
+  // username 插件要求：展示用用户名（与登录用的规范化 username 分离，可为空）
+  displayUsername: text('display_username'),
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
