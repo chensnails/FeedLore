@@ -70,10 +70,17 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null): Hono<AppEn
   app.post(authSpec.logout.path, requireAuth(auth, 'user'), async (c) => {
     if (!auth) return c.json({ error: '鉴权服务未就绪' }, 503);
 
+    // ⚠️ 只透传 Cookie，不要原样转发 c.req.raw.headers：
+    // 原请求带 content-length 而这里新构造的 Request 若不带 body，会让 better-auth
+    // 解析失败 → 返回 ok:false 且**会话并未失效**（登出形同无效）。
     const res = await auth.handler(
       new Request(new URL('/api/auth/sign-out', baseURL()), {
         method: 'POST',
-        headers: c.req.raw.headers,
+        headers: {
+          cookie: c.req.header('cookie') ?? '',
+          'content-type': 'application/json',
+        },
+        body: '{}',
       }),
     );
 
