@@ -73,6 +73,31 @@ function evalJs(expression) {
   }).then((r) => r.result?.result?.value);
 }
 
+/**
+ * 等一条 toast 出现并读它。
+ * ⚠️ 不能「睡够时间再读一次」：toast 只显示两三秒，而刷新全部要 2~10 秒，
+ * 睡 12s 再读必然读到空字符串 —— 那就成了「测试通过但什么都没验证」。
+ * 这里每 250ms 轮询，抓到第一条非空就返回。
+ */
+async function waitToast(timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = '';
+  while (Date.now() < deadline) {
+    const t = await evalJs("document.querySelector('.toast')?.innerText ?? ''");
+    if (t) last = t;
+    if (last && !(await evalJs("!!document.querySelector('.toast')"))) return last;
+    if (last) return last;
+    await sleep(250);
+  }
+  return last;
+}
+
+/** 点掉当前 toast（toast 点击即关闭）。否则下一步会读到上一条操作的残留文案。 */
+async function clearToast() {
+  await evalJs("document.querySelector('.toast')?.click()");
+  await sleep(200);
+}
+
 try {
   // 等 CDP 端口就绪
   let targets = null;
@@ -186,15 +211,40 @@ try {
   }
 
   // 【写操作】全部已读
+  await clearToast();
   const readAllBtn = await evalJs(`(() => {
     const b = [...document.querySelectorAll('.list-actions .btn')].find((x) => x.innerText.includes('全部已读'));
     if (!b) return 'no-btn';
     b.click();
     return 'clicked';
   })()`);
-  await sleep(1500);
-  const toastText = (await evalJs("document.querySelector('.toast')?.innerText ?? ''")) ?? '';
+  const toastText = await waitToast(8000);
   console.log(`  全部已读：${readAllBtn}，提示=${JSON.stringify(toastText)}`);
+
+  // 【写操作】刷新全部（会真的回源，等得比普通操作久）
+  await clearToast();
+  const refreshClicked = await evalJs(`(() => {
+    const b = document.querySelector('[aria-label="刷新全部频道"]');
+    if (!b) return 'no-btn';
+    b.click();
+    return 'clicked';
+  })()`);
+  await sleep(800);
+  const refreshToast = await waitToast(20000);
+  const cardsAfterRefresh = await evalJs("document.querySelectorAll('.card').length");
+  console.log(`  刷新全部：${refreshClicked}，提示=${JSON.stringify(refreshToast)}，卡片 ${cardCount} → ${cardsAfterRefresh}`);
+  await shot('ui-refresh.png');
+
+  // 【写操作】单频道刷新（频道行 hover 才出现的 ⟳，headless 下用 click() 直接触发）
+  await clearToast();
+  const oneRefresh = await evalJs(`(() => {
+    const b = document.querySelector('.feed-row .feed-ops .icon-btn');
+    if (!b) return 'no-btn';
+    b.click();
+    return b.getAttribute('aria-label') || 'clicked';
+  })()`);
+  const oneToast = await waitToast(20000);
+  console.log(`  单频道刷新：${oneRefresh}，提示=${JSON.stringify(oneToast)}`);
 
   // 【写操作】主题切换 → 验证 data-theme 真的变了 → 还原
   const themeBefore = await evalJs("document.documentElement.dataset.theme || 'auto'");
@@ -208,9 +258,11 @@ try {
   );
   await sleep(600);
 
-  // 【写操作】添加频道（抓取器未接入，只落库）→ 确认列表 +1 → 走接口删掉
+  // 【写操作】添加频道（会立即抓一次；example.com/ui-check.xml 是 404，
+  //   所以期望提示是「已添加，但源站报错：HTTP 404」——这同时验证了「抓取失败不算创建失败」）
   await evalJs("[...document.querySelectorAll('.add-toggle')].find((b)=>b.innerText.includes('添加频道'))?.click()");
   await sleep(300);
+  await clearToast();
   const added = await evalJs(`(() => {
     const setVal = (el, v) => {
       const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
@@ -225,9 +277,8 @@ try {
     form.requestSubmit();
     return 'submitted';
   })()`);
-  await sleep(1800);
+  const addToast = await waitToast(20000);
   const feedRowsAfter = await evalJs("document.querySelectorAll('.feed-row').length");
-  const addToast = (await evalJs("document.querySelector('.toast')?.innerText ?? ''")) ?? '';
   console.log(`  添加频道：${added}，频道行 ${feedCount - 1} → ${feedRowsAfter}，提示=${JSON.stringify(addToast)}`);
   const cleanup = await evalJs(`(async () => {
     const j = await (await fetch('/api/feeds')).json();

@@ -73,7 +73,11 @@ export function EntriesPanel() {
       <div className="list-head">
         <span>
           {data.total} 条{isFetching ? ' · 更新中…' : ''}
-          {unreadVisible > 0 && <em className="inline-unread">本页 {unreadVisible} 条未读</em>}
+          {unreadVisible > 0 && (
+            <em className="inline-unread">
+              · 本页 {unreadVisible}/{data.entries.length} 未读
+            </em>
+          )}
         </span>
         <span className="list-actions">
           {data.tags.length > 0 && (
