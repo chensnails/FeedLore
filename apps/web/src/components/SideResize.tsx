@@ -34,6 +34,17 @@ export function SideResize({ width, onCommit }: { width: number; onCommit: (w: n
   const liveRef = useRef<number | null>(null);
   const [live, setLive] = useState<number | null>(null);
 
+  /* 当前宽度的**本地基准**。
+   *
+   * ⚠️ 不能直接拿 `width` prop 当基准：它来自服务端偏好缓存，而 onCommit 只是发请求，
+   * 缓存要等响应回来才更新。连按两下 ← 时，第二下读到的还是旧 prop，两次都算成
+   * 「旧值 - 16」，结果只动一格（实测 268 按一次直接跳到 184 那种错位也是这么来的）。
+   * 这里自己记住「提交过的最新值」，服务端回填后才用 prop 覆盖。 */
+  const baseRef = useRef(width);
+  useEffect(() => {
+    baseRef.current = width;
+  }, [width]);
+
   // 组件卸载时若还在拖拽（比如窄屏切宽），把全局态清干净，否则页面一直不能选中文字
   useEffect(() => {
     return () => {
@@ -43,6 +54,7 @@ export function SideResize({ width, onCommit }: { width: number; onCommit: (w: n
 
   function settle(w: number): void {
     const v = clamp(w);
+    baseRef.current = v;
     applySideWidth(v);
     onCommit(v);
   }
@@ -53,7 +65,7 @@ export function SideResize({ width, onCommit }: { width: number; onCommit: (w: n
       role="separator"
       aria-orientation="vertical"
       aria-label="调整频道栏宽度"
-      aria-valuenow={live ?? width}
+      aria-valuenow={live ?? baseRef.current}
       aria-valuemin={MIN_W}
       aria-valuemax={MAX_W}
       tabIndex={0}
@@ -61,7 +73,7 @@ export function SideResize({ width, onCommit }: { width: number; onCommit: (w: n
       onPointerDown={(e) => {
         e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
-        drag.current = { startX: e.clientX, startW: width };
+        drag.current = { startX: e.clientX, startW: baseRef.current };
         document.body.classList.add('side-resizing');
       }}
       onPointerMove={(e) => {
@@ -87,7 +99,7 @@ export function SideResize({ width, onCommit }: { width: number; onCommit: (w: n
         if (!drag.current) return;
         drag.current = null;
         document.body.classList.remove('side-resizing');
-        const v = liveRef.current ?? width;
+        const v = liveRef.current ?? baseRef.current;
         liveRef.current = null;
         setLive(null);
         applySideWidth(v);
@@ -96,7 +108,7 @@ export function SideResize({ width, onCommit }: { width: number; onCommit: (w: n
       onKeyDown={(e) => {
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           e.preventDefault();
-          settle(width + (e.key === 'ArrowRight' ? KEY_STEP : -KEY_STEP));
+          settle(baseRef.current + (e.key === 'ArrowRight' ? KEY_STEP : -KEY_STEP));
         } else if (e.key === 'Home') {
           e.preventDefault();
           settle(DEFAULT_W);

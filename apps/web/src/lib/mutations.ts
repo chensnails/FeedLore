@@ -370,9 +370,18 @@ export function useSavePrefs() {
  * Shell 里的 applyAppearance 白跑一趟、还可能在慢网下把刚点的选择闪回旧值。
  */
 export function useSaveLayout() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (patch: Partial<PrefsPatchBody['layout'] & object>) =>
       api.prefs.update({ layout: patch }),
+    /* 把服务端夹取后的真值写回缓存。
+     * 不写的话，「侧栏宽度」这类**有回读**的控件会一直对着旧偏好算下一步：
+     * 服务端把越界值夹回区间、或连续操作时，界面显示的和服务端存的会各说各话。 */
+    onSuccess: (r) => {
+      qc.setQueryData(qk.prefs, (old: Awaited<ReturnType<typeof api.prefs.get>> | undefined) =>
+        old ? { ...old, layout: r.layout } : old,
+      );
+    },
     onError: (e) => useUi.getState().notify(`布局偏好保存失败：${errText(e)}`, 'error'),
   });
 }

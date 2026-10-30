@@ -509,29 +509,52 @@ try {
   }
 
   // 【6】侧栏宽度：键盘调宽 → 刷新后仍是这个宽度（证明写进了服务端偏好，不是只改了本地变量）
+  /* 先 Home 归到默认，再按 **ArrowLeft 减一档**。
+   *
+   * 为什么不用 ArrowRight：宽度上限是「屏幕 40%」，测试窗口只有 700~800px 宽时
+   * 上限算出来正好 310，而 310 就可能是当前值 —— 按右键被 clamp 掉，测出来是
+   * 「宽度没变」，看着像功能坏了，实际是已经顶到天花板。
+   * 减的方向只要当前 > 180（下限）就一定生效。
+   *
+   * 每档之间必须隔一帧：同一帧里连发多次，React 每次读到的 width 都是旧值，
+   * 三次只会累加一次（实测 232 → 248 而不是 280）。 */
+  /* ⚠️ 必须先切到桌面视口。手边这台 headless 窗口只有 700~800px，而 820px 以下
+   * `.side-resize` 是 display:none、侧栏变抽屉且宽度由 `min(310px, 84vw)` 决定 ——
+   * 那时读到的「宽度」是抽屉宽度，跟偏好和 --side-w 一点关系都没有，
+   * 测出来永远是 310 → 310。第一版就是在这个假象上反复误判的。 */
+  await send('Emulation.setDeviceMetricsOverride', {
+    width: 1440,
+    height: 900,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  await sleep(900);
+
+  const press = (key) =>
+    evalJs(`(() => {
+      const h = document.querySelector('.side-resize');
+      if (!h) return 'no-handle';
+      h.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }));
+      return Math.round(document.querySelector('.sidebar').getBoundingClientRect().width);
+    })()`);
+
+  await press('Home');
+  await sleep(700);
   const w0 = await evalJs("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)");
-  /* 只发一次。连发三次会全部落在同一帧里，React 每次读到的 width 都是旧值，
-   * 结果只累加一次（实测 232 → 248 而不是 280），看着像功能坏了其实不是。 */
-  const wBump = await evalJs(`(() => {
-    const h = document.querySelector('.side-resize');
-    if (!h) return 'no-handle';
-    h.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
-    return Math.round(document.querySelector('.sidebar').getBoundingClientRect().width);
-  })()`);
-  await sleep(1600);
+  await press('ArrowLeft');
+  await sleep(700);
+  const w1 = await evalJs("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)");
+  await sleep(1400);
   await send('Page.reload');
   await sleep(3600);
-  const w1 = await evalJs("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)");
-  const sideOk = typeof wBump === 'number' && typeof w0 === 'number' && wBump > w0 && w1 === wBump;
-  console.log(`  侧栏宽度：${w0} → ${wBump}px，刷新后 ${w1}px`);
-  // 复位成默认，别把测试库的偏好留在 316
-  await evalJs(`(() => {
-    const h = document.querySelector('.side-resize');
-    if (!h) return 0;
-    h.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
-    return 1;
-  })()`);
+  const w2 = await evalJs("Math.round(document.querySelector('.sidebar').getBoundingClientRect().width)");
+  const sideOk = typeof w0 === 'number' && w0 > 180 && w1 === w0 - 16 && w2 === w1;
+  if (!sideOk) console.log('  ⚠️ 侧栏宽度未按预期变化（检查 .side-resize 是否可见）');
+  console.log(`  侧栏宽度：${w0} → ${w1}px（键盘减一档），刷新后 ${w2}px`);
+  // 复位成默认，别把测试库的偏好留在 252
+  await press('Home');
   await sleep(1200);
+  await send('Emulation.clearDeviceMetricsOverride');
 
   if (!(scrollOk && deepOk && backOk && confirmOk && sideOk && groupOk !== false)) {
     console.log('  ⚠️ 六项交互回归未全部通过');
