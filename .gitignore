@@ -40,6 +40,8 @@ tests/ui/.build/
 # 审计/验证临时产物（CDP 截图、Edge 临时配置）
 .audit-shots/
 .audit-*
+# scripts/ui-check.mjs 的截图落盘位置（脚本写到 cwd）
+/ui-*.png
 
 # Turborepo 缓存 / TS 增量编译产物
 .turbo/

@@ -98,6 +98,24 @@ async function clearToast() {
   await sleep(200);
 }
 
+/** 图片解码统计：naturalWidth > 0 才算「真的显示出来」。
+ *  只数 <img> 节点会把「代理 403 / 白图 / 防盗链」全部放过 —— 这几类恰恰是最常见的失败。
+ */
+async function imgStats(selector) {
+  const r = await evalJs(`(() => {
+    const imgs = [...document.querySelectorAll(${JSON.stringify(selector)})];
+    const loaded = imgs.filter((i) => i.complete && i.naturalWidth > 0);
+    const first = loaded[0];
+    return {
+      total: imgs.length,
+      loaded: loaded.length,
+      sample: first ? (first.currentSrc.split("u=")[1] || first.currentSrc).slice(0, 48) + " " + first.naturalWidth + "x" + first.naturalHeight : "",
+    };
+  })()`);
+  return r ?? { total: 0, loaded: 0, sample: "" };
+}
+
+
 try {
   // 等 CDP 端口就绪
   let targets = null;
@@ -173,6 +191,13 @@ try {
 
   const feedCount = await evalJs("document.querySelectorAll('.feed').length");
   const cardCount = await evalJs("document.querySelectorAll('.card').length");
+
+  // 图片：必须真的解码出来（见 imgStats 注释）。懒加载 + 代理回源需要时间，等一会儿再数。
+  await sleep(2000);
+  const thumbStats = await imgStats('.card-thumb');
+  const iconStats = await imgStats('.feed-icon');
+  console.log(`  卡片封面：${thumbStats.loaded}/${thumbStats.total} 已解码 ${thumbStats.sample}`);
+  console.log(`  频道图标：${iconStats.loaded}/${iconStats.total} 已解码 ${iconStats.sample}`);
   console.log(`  频道行数：${feedCount}（含「全部频道」）  条目卡片：${cardCount}`);
 
   // 点开第一条，验证阅读层能拿到详情（列表不带正文，详情才带）
@@ -181,6 +206,8 @@ try {
     await sleep(1500);
     const readerText = (await evalJs("document.querySelector('.reader-body')?.innerText ?? ''")) ?? '';
     const hasSheet = await evalJs("!!document.querySelector('.reader-sheet')");
+  const shotStats = await imgStats('.reader-shot');
+  console.log(`  正文配图：${shotStats.loaded}/${shotStats.total} 已解码 ${shotStats.sample}`);
     console.log(`  阅读层：${hasSheet ? '已打开' : '未打开'}，正文 ${readerText.length} 字`);
     await shot('ui-reader.png');
 
@@ -291,6 +318,8 @@ try {
   await shot('ui-write.png');
 
   console.log(errors.length ? `  控制台错误：\n  - ${errors.join('\n  - ')}` : '  控制台无错误');
+  const imgOk = thumbStats.loaded > 0 || iconStats.loaded > 0;
+  if (!imgOk) console.log('  ⚠️ 没有任何图片解码成功（可能库里条目都没图，也可能代理全挂）');
   process.exitCode = feedCount > 1 && cardCount > 0 ? 0 : 1;
 } catch (e) {
   console.error('[ui] 失败：', e.message);

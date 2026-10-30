@@ -9,7 +9,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "probe:images": "tsx scripts/probe-images.ts"
   },
   "dependencies": {
     "@feedlore/contract": "workspace:*",
