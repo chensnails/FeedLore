@@ -250,7 +250,9 @@ export function EntryReader() {
                 title="复制链接与提取码"
                 onClick={() => {
                   const { text, count } = buildCopyText(data);
-                  void copy(text, count > 1 ? `已复制 ${count} 个链接与提取码` : '已复制链接与提取码');
+                  // 没有提取码时别硬说「与提取码」，提示要跟实际复制到的内容一致
+                  const tail = data.pwd ? '与提取码' : '';
+                  void copy(text, count > 1 ? `已复制 ${count} 个链接${tail}` : `已复制链接${tail}`);
                 }}
               >
                 复制链接
@@ -336,10 +338,13 @@ function buildCopyText(d: {
     seen.add(s);
     picked.push(s);
   }
-  // 全被过滤掉（极端情况：只有图片链接）时，至少把主链接带上
-  const lines = picked.length ? picked : primary ? [primary] : [];
+  // 全被过滤掉（极端情况：只有图片链接）时，至少把主链接带上。
+  // ⚠️ 这里必须是 picked 的**副本**：若直接 push 到 picked，下面 count 会把
+  // 「提取码」那一行也算成链接（曾出现 2 个链接提示「已复制 3 个链接」）。
+  const lines = picked.length ? [...picked] : primary ? [primary] : [];
+  const count = lines.length;
   if (d.pwd) lines.push(`提取码：${d.pwd}`);
-  return { text: lines.join('\n'), count: picked.length };
+  return { text: lines.join('\n'), count };
 }
 
 /** execCommand 兜底：只在非安全上下文（纯 HTTP）下走到这条路，不追求完美，能用就行。 */
