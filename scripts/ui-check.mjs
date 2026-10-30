@@ -98,6 +98,20 @@ async function clearToast() {
   await sleep(200);
 }
 
+/* 频道/分组管理已迁到「设置 → 频道」页签：进入前先打开设置并切到该页签。 */
+async function openChannelsTab() {
+  await evalJs("document.querySelector('[aria-label=\"打开设置\"]')?.click()");
+  await sleep(500);
+  await evalJs(
+    "[...document.querySelectorAll('.admin-tabs .chip')].find((b) => b.innerText.trim() === '频道')?.click()",
+  );
+  await sleep(500);
+}
+async function closeSettings() {
+  await evalJs("document.querySelector('.prefs-sheet .reader-close')?.click()");
+  await sleep(400);
+}
+
 /** 图片解码统计：naturalWidth > 0 才算「真的显示出来」。
  *  只数 <img> 节点会把「代理 403 / 白图 / 防盗链」全部放过 —— 这几类恰恰是最常见的失败。
  */
@@ -269,15 +283,17 @@ try {
   console.log(`  刷新全部：${refreshClicked}，提示=${JSON.stringify(refreshToast)}，卡片 ${cardCount} → ${cardsAfterRefresh}`);
   await shot('ui-refresh.png');
 
-  // 【写操作】单频道刷新（频道行 hover 才出现的 ⟳，headless 下用 click() 直接触发）
+  // 【写操作】单频道刷新（管理已迁到 设置 → 频道 页签）
   await clearToast();
+  await openChannelsTab();
   const oneRefresh = await evalJs(`(() => {
-    const b = document.querySelector('.feed-row .feed-ops .icon-btn');
+    const b = document.querySelector('.prefs-sheet .feed-row .feed-ops .icon-btn');
     if (!b) return 'no-btn';
     b.click();
     return b.getAttribute('aria-label') || 'clicked';
   })()`);
   const oneToast = await waitToast(20000);
+  await closeSettings();
   console.log(`  单频道刷新：${oneRefresh}，提示=${JSON.stringify(oneToast)}`);
 
   // 【写操作】主题切换 → 验证 data-theme 真的变了 → 还原
@@ -294,7 +310,9 @@ try {
 
   // 【写操作】添加频道（会立即抓一次；example.com/ui-check.xml 是 404，
   //   所以期望提示是「已添加，但源站报错：HTTP 404」——这同时验证了「抓取失败不算创建失败」）
-  await evalJs("[...document.querySelectorAll('.add-toggle')].find((b)=>b.innerText.includes('添加频道'))?.click()");
+  await clearToast();
+  await openChannelsTab();
+  await evalJs("[...document.querySelectorAll('.prefs-sheet .add-toggle')].find((b)=>b.innerText.includes('添加频道'))?.click()");
   await sleep(300);
   await clearToast();
   const added = await evalJs(`(() => {
@@ -303,16 +321,17 @@ try {
       d.set.call(el, v);
       el.dispatchEvent(new Event('input', { bubbles: true }));
     };
-    const inputs = document.querySelectorAll('.add-feed .input');
+    const inputs = document.querySelectorAll('.prefs-sheet .add-feed .input');
     if (inputs.length < 1) return 'no-input';
     setVal(inputs[0], 'https://example.com/ui-check.xml');
-    const form = document.querySelector('.add-feed form');
+    const form = document.querySelector('.prefs-sheet .add-feed form');
     if (!form) return 'no-form';
     form.requestSubmit();
     return 'submitted';
   })()`);
   const addToast = await waitToast(20000);
-  const feedRowsAfter = await evalJs("document.querySelectorAll('.feed-row').length");
+  const feedRowsAfter = await evalJs("document.querySelectorAll('.prefs-sheet .feed-row').length");
+  await closeSettings();
   console.log(`  添加频道：${added}，频道行 ${feedCount - 1} → ${feedRowsAfter}，提示=${JSON.stringify(addToast)}`);
   const cleanup = await evalJs(`(async () => {
     const j = await (await fetch('/api/feeds')).json();
@@ -468,8 +487,9 @@ try {
   );
 
   // 【4】确认框。删频道的确认必须是应用内对话框；取消后频道数不变（不能误删）。
-  const feedsBefore = (await evalJs("document.querySelectorAll('.feed-row').length")) ?? 0;
-  await evalJs("document.querySelector('.feed-row .icon-btn.danger')?.click()");
+  await openChannelsTab();
+  const feedsBefore = (await evalJs("document.querySelectorAll('.prefs-sheet .feed-row').length")) ?? 0;
+  await evalJs("document.querySelector('.prefs-sheet .feed-row .icon-btn.danger')?.click()");
   await sleep(600);
   const confirmShown = await evalJs("!!document.querySelector('.confirm-box')");
   const confirmTitle = ((await evalJs("document.querySelector('.confirm-title')?.textContent ?? ''")) ?? '').slice(0, 22);
@@ -477,7 +497,8 @@ try {
   await evalJs("[...document.querySelectorAll('.confirm-actions .btn')].find((b) => b.innerText.trim() === '取消')?.click()");
   await sleep(500);
   const confirmGone = await evalJs("!document.querySelector('.confirm-box')");
-  const feedsAfter = (await evalJs("document.querySelectorAll('.feed-row').length")) ?? 0;
+  const feedsAfter = (await evalJs("document.querySelectorAll('.prefs-sheet .feed-row').length")) ?? 0;
+  await closeSettings();
   const confirmOk = confirmShown === true && confirmGone === true && feedsAfter === feedsBefore;
   console.log(
     `  确认框：弹出=${confirmShown} 标题=${JSON.stringify(confirmTitle)} 默认焦点取消=${cancelFocused} 取消后关闭=${confirmGone} 频道 ${feedsBefore}→${feedsAfter}`,

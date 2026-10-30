@@ -5,7 +5,9 @@ import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useApplyWatch, useSaveAppearance, useSavePrefs } from '../lib/mutations';
 import { useOverlayFocus } from '../lib/useOverlayFocus';
+import { useUi, type PrefsTab } from '../store/ui';
 import { AccountForm } from './AccountForm';
+import { ChannelsTab } from './ChannelsTab';
 
 /**
  * 设置面板（每个账号自己的）。
@@ -22,12 +24,18 @@ import { AccountForm } from './AccountForm';
  * - 账号：改密码（普通用户唯一的路径）
  */
 
-type Tab = 'appearance' | 'reading' | 'watch' | 'filter' | 'account';
+type Tab = PrefsTab;
 
 export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('appearance');
+  const prefsTab = useUi((s) => s.prefsTab);
   const sheetRef = useRef<HTMLElement>(null);
   useOverlayFocus(open, sheetRef);
+
+  // 从频道栏「频道管理」入口打开时，直接落到「频道」页签
+  useEffect(() => {
+    if (open && prefsTab) setTab(prefsTab);
+  }, [open, prefsTab]);
 
   useEffect(() => {
     if (!open) return;
@@ -52,6 +60,7 @@ export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => vo
           {([
             { id: 'appearance' as const, label: '外观' },
             { id: 'reading' as const, label: '阅读' },
+            { id: 'channels' as const, label: '频道' },
             { id: 'watch' as const, label: '关注' },
             { id: 'filter' as const, label: '过滤' },
             { id: 'account' as const, label: '账号' },
@@ -71,6 +80,7 @@ export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => vo
         <div className="admin-body">
           {tab === 'appearance' && <AppearanceTab />}
           {tab === 'reading' && <ReadingTab />}
+          {tab === 'channels' && <ChannelsTab />}
           {tab === 'watch' && <WatchTab />}
           {tab === 'filter' && <FilterTab />}
           {tab === 'account' && <AccountTab />}

@@ -14,32 +14,33 @@
 :root {
   color-scheme: dark;
 
-  --bg: #0b0c0e;
-  --surface: #14161a;
-  --surface-2: #1b1e23;
-  --line: rgba(255, 255, 255, 0.09);
-  --line-strong: rgba(255, 255, 255, 0.16);
-  --text: #e9ebef;
-  --muted: #99a0aa;
-  --accent: #3a8dcc;
+  /* 暗色档：CommaFeed 暖灰底 + GitHub 蓝强调（替换原先的纯黑中性灰 + 蓝调）。 */
+  --bg: #1b1a17;
+  --surface: #25231e;
+  --surface-2: #2d2a24;
+  --line: rgba(255, 243, 224, 0.1);
+  --line-strong: rgba(255, 243, 224, 0.17);
+  --text: #eae5db;
+  --muted: #a69d8e;
+  --accent: #1f6feb;
   --accent-ink: #ffffff;
   /* 主色的淡底：分组「只看」按下态、scope 退出按钮的底色。
    * 用 color-mix 派生自 --accent，所以换主色/换主题都跟着走，不必再维护一份色板。 */
   --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
   /* 玻璃拟态令牌：frosted glass 表面与浮层。半透明 + backdrop-filter 模糊，
    * 配合 body 的渐变底，玻璃面才会「透出」后面颜色。浅色主题在下方 light 块覆盖。 */
-  --glass: rgba(255, 255, 255, 0.05);
-  --glass-2: rgba(255, 255, 255, 0.09);
-  --glass-border: rgba(255, 255, 255, 0.13);
-  --sheet: rgba(22, 24, 28, 0.72);
-  --sheet-border: rgba(255, 255, 255, 0.16);
+  --glass: rgba(255, 243, 224, 0.05);
+  --glass-2: rgba(255, 243, 224, 0.09);
+  --glass-border: rgba(255, 243, 224, 0.13);
+  --sheet: rgba(30, 28, 23, 0.74);
+  --sheet-border: rgba(255, 243, 224, 0.16);
   --glass-blur: blur(18px) saturate(160%);
   --danger: #f2836f;
-  /* 渐变底：深色档也加重 accent 晕染，让 frosted 面板透出层次。accent 随主色变。 */
+  /* 渐变底：暖灰底 + accent 晕染，让 frosted 面板透出层次。accent 随主色变。 */
   --page-bg:
-    radial-gradient(1000px 620px at 86% -10%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 62%),
-    radial-gradient(840px 540px at -6% 112%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 58%),
-    linear-gradient(155deg, color-mix(in srgb, var(--accent) 8%, #0b0c0e) 0%, #0d0f13 52%, #0b0c0e 100%);
+    radial-gradient(1000px 620px at 86% -10%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 62%),
+    radial-gradient(840px 540px at -6% 112%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 58%),
+    linear-gradient(155deg, color-mix(in srgb, var(--accent) 7%, #1b1a17) 0%, #201e1a 52%, #1b1a17 100%);
   --radius: 12px;
   --radius-sm: 8px;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.28);
@@ -1002,6 +1003,11 @@ body {
     border-radius: 0;
     border: none;
     min-height: 100%;
+    /* 手机端整屏阅读层必须是实底：半透明的 --sheet 会让背后的列表透出来，
+     * 看起来像「文章页异常透明」。桌面浮层保留玻璃质感。 */
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 
@@ -1846,6 +1852,9 @@ body {
   padding: 0 0 10px;
   border-color: var(--line);
   background: var(--surface);
+  /* 圆角 + overflow:hidden 时，子层合成会让底角透出页面：isolate + padding-box 兜住 */
+  background-clip: padding-box;
+  isolation: isolate;
   border-radius: var(--radius);
   overflow: hidden;
 }
@@ -2262,7 +2271,11 @@ body {
     border-color: transparent;
   }
   .cards.grid-mode .card:hover {
+    /* 触屏会「粘住」hover：网格卡片必须保持实底，且取消上浮（上浮会在底边留一条缝隙） */
+    background: var(--surface);
     border-color: var(--line);
+    transform: none;
+    box-shadow: none;
   }
   .card-row:hover .fav-btn {
     /* 常显已由上面覆盖，这条只是让特异性对齐，避免被更长的选择器压回去 */
@@ -2363,12 +2376,42 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* 手机端单列网格：封面占比太大时一屏只能看一张卡片，扫读效率反而比列表差。
- * 压到 16/9 且不超过 210px —— 既保留「封面能看出内容」的好处，又让一屏能落两张。 */
+/* 手机端卡片模式只有一栏时，整宽大封面会把卡片撑得异常大、一屏只看得到一张。
+ * 改为紧凑横排（封面在左、文字在右），一屏能扫 5~6 条，同时保留封面便于辨认。 */
 @media (max-width: 560px) {
+  .cards.grid-mode .card {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 11px;
+    padding: 10px;
+  }
   .cards.grid-mode .card-thumb {
-    aspect-ratio: 16 / 9;
-    max-height: 210px;
+    width: 110px;
+    height: 84px;
+    aspect-ratio: auto;
+    max-height: none;
+    flex: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+  }
+  .cards.grid-mode .card-body {
+    padding: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .cards.grid-mode .card-title {
+    -webkit-line-clamp: 2;
+    font-size: 13px;
+  }
+  .cards.grid-mode .card-desc {
+    -webkit-line-clamp: 2;
+    margin-top: 2px;
+  }
+  .cards.grid-mode .fav-btn {
+    top: 6px;
+    right: 6px;
   }
 }
 

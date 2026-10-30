@@ -38,6 +38,9 @@ export interface ConfirmRequest {
 /** 覆盖式面板。三者互斥（同一时刻只开一个），所以用一个字段而不是三个布尔。 */
 export type Panel = 'settings' | 'digest' | 'admin';
 
+/** 设置面板页签。`channels` 承载「频道分组 / 频道源管理」（从频道栏迁入）。 */
+export type PrefsTab = 'appearance' | 'reading' | 'channels' | 'watch' | 'filter' | 'account';
+
 /**
  * 列表筛选。`all` 之外的四档对应服务端的 unread / fav / watch 参数。
  */
@@ -72,6 +75,8 @@ interface UiState {
   navOpen: boolean;
   /** 当前打开的覆盖式面板（设置 / 日报 / 管理）；null = 都关着 */
   panel: Panel | null;
+  /** 打开设置时直接定位到哪个页签（如频道栏的「频道管理」→ channels）；null = 保持默认 */
+  prefsTab: PrefsTab | null;
   /** 临时提示（写操作结果）。不持久化，3 秒后自动消失。 */
   toast: Toast | null;
   /** 当前挂着的确认框；null = 没有 */
@@ -90,6 +95,8 @@ interface UiState {
   closeNav: () => void;
   toggleNav: () => void;
   setPanel: (p: Panel | null) => void;
+  /** 打开设置面板（可指定初始页签） */
+  openSettings: (tab?: PrefsTab) => void;
   notify: (text: string, tone?: 'ok' | 'error') => void;
   dismissToast: () => void;
   /** 弹确认框并等用户选择 */
@@ -116,6 +123,7 @@ export const useUi = create<UiState>()(
       search: '',
       navOpen: false,
       panel: null,
+      prefsTab: null,
       toast: null,
       confirmState: null,
       /* 选中频道后自动收起抽屉：手机上点频道的目的就是「看这个频道的列表」，
@@ -136,7 +144,9 @@ export const useUi = create<UiState>()(
       openNav: () => set({ navOpen: true }),
       closeNav: () => set({ navOpen: false }),
       toggleNav: () => set((s) => ({ navOpen: !s.navOpen })),
-      setPanel: (panel) => set({ panel }),
+      /* 通用打开/关闭：走这里时清空 prefsTab，避免「上次停在频道页签」被带到下次普通打开 */
+      setPanel: (panel) => set({ panel, prefsTab: null }),
+      openSettings: (tab) => set({ panel: 'settings', prefsTab: tab ?? null }),
 
       /* 写操作的提示必须集中一处：散在各组件里就会出现「有的失败静默、有的弹 alert」。 */
       notify: (text, tone = 'ok') => {

@@ -247,8 +247,11 @@ export function EntryReader() {
               </button>
               <button
                 className="btn ghost"
-                title="复制标题与链接"
-                onClick={() => void copy(copyText(data), '已复制标题与链接')}
+                title="复制链接与提取码"
+                onClick={() => {
+                  const { text, count } = buildCopyText(data);
+                  void copy(text, count > 1 ? `已复制 ${count} 个链接与提取码` : '已复制链接与提取码');
+                }}
               >
                 复制链接
               </button>
@@ -286,12 +289,51 @@ export function EntryReader() {
   );
 }
 
-/** 复制用的文本：标题 + 主链接 + 提取码。单独给一行空行，粘到聊天窗口时不会挤成一团。 */
-function copyText(d: { name: string; link: string | null; sourceUrl: string | null; links: string[]; pwd: string | null }): string {
-  const url = d.sourceUrl ?? d.link ?? d.links[0] ?? '';
-  const lines = [d.name, url];
+/** 图片类链接的判定：扩展名命中、data:image、以及本站图片代理 /api/img?u=…。
+ *  复制链接是为了分享资源（网盘/文章），图片地址混进来只会让人觉得复制错了。 */
+const IMG_EXT_RE = /\.(?:jpe?g|png|gif|webp|avif|svg|bmp|ico|tiff?)(?:[?#].*)?$/i;
+function isImageUrl(u: string): boolean {
+  if (/^data:image\//i.test(u)) return true;
+  try {
+    const url = new URL(u);
+    if (/\/api\/img\b/i.test(url.pathname)) return true;
+    if (IMG_EXT_RE.test(url.pathname)) return true;
+  } catch {
+    return IMG_EXT_RE.test(u);
+  }
+  return false;
+}
+
+/**
+ * 复制用的文本：**只要链接 + 提取码，不带标题**。
+ *
+ * 网盘/资源帖常含多个链接，逐个一行展示（粘到聊天窗口就是一条条可点的地址）；
+ * 图片类链接一律排除。`links` 已按「主链接优先、其余按出现顺序」排好，
+ * 这里再补一次 sourceUrl/link 兜底（links 可能因上限被截断）。
+ */
+function buildCopyText(d: {
+  name: string;
+  link: string | null;
+  sourceUrl: string | null;
+  links: string[];
+  pwd: string | null;
+}): { text: string; count: number } {
+  const primary = d.sourceUrl ?? d.link;
+  const all = primary ? [primary, ...d.links] : [...d.links];
+  const seen = new Set<string>();
+  const picked: string[] = [];
+  for (const raw of all) {
+    const s = (raw ?? '').trim();
+    if (!s || !/^https?:\/\//i.test(s)) continue;
+    if (isImageUrl(s)) continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    picked.push(s);
+  }
+  // 全被过滤掉（极端情况：只有图片链接）时，至少把主链接带上
+  const lines = picked.length ? picked : primary ? [primary] : [];
   if (d.pwd) lines.push(`提取码：${d.pwd}`);
-  return lines.filter(Boolean).join('\n');
+  return { text: lines.join('\n'), count: picked.length };
 }
 
 /** execCommand 兜底：只在非安全上下文（纯 HTTP）下走到这条路，不追求完美，能用就行。 */
