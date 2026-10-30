@@ -1,13 +1,12 @@
 /**
- * 会话中间件（P3 骨架）。
+ * 会话中间件（P4：接 better-auth 真实校验）。
  *
- * P3 只搭骨架：better-auth 尚未接入，因此这里不假装鉴权生效——
- * 未开测试开关时直接返回 501「未实现」，避免留下一个看似有鉴权实则全放行的坑。
- * P4 接入 better-auth 后，改为 auth.api.getSession 并按 level 校验 role。
+ * 与 P3 的区别：P3 是 501 桩（宁可拒绝也不假装放行）；P4 起真正校验会话，
+ * 并把 better-auth 的用户映射成契约里的 SessionUser 注入 context。
  */
 
 import type { MiddlewareHandler } from 'hono';
-import { AUTH_DISABLED } from '../env';
+import type { AuthInstance } from '@feedlore/auth';
 
 export interface SessionUser {
   id: string;
@@ -21,19 +20,39 @@ export type AppEnv = {
   };
 };
 
-/** 测试容器里的固定开发身份（仅 V2_AUTH_DISABLED=1 时使用）。 */
-const DEV_USER: SessionUser = { id: '0', username: 'dev', role: 'admin' };
+/** better-auth 的 user 形状随插件变化，这里收窄成我们真正用的字段。 */
+interface AuthUserLike {
+  id: string;
+  username?: string | null;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+}
 
-export function requireAuth(level: 'user' | 'admin'): MiddlewareHandler<AppEnv> {
+export function requireAuth(
+  auth: AuthInstance | null,
+  level: 'user' | 'admin',
+): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    if (AUTH_DISABLED) {
-      c.set('user', DEV_USER);
-      await next();
-      return;
+    if (!auth) {
+      console.error('[auth] better-auth 未初始化（缺少 AUTH_SECRET 或数据库未就绪）');
+      return c.json({ error: '鉴权服务未就绪' }, 503);
     }
-    // TODO(P4): 接入 better-auth：const s = await auth.api.getSession({ headers: c.req.raw.headers })
-    //          未登录 → 401；level==='admin' 且 role!=='admin' → 403
-    console.warn(`[auth] 会话校验未接入，拒绝 ${level} 级访问 ${c.req.path}`);
-    return c.json({ error: '会话校验尚未接入（P4 进行中）' }, 501);
+
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (!session) return c.json({ error: '未登录' }, 401);
+
+    const u = session.user as unknown as AuthUserLike;
+    const role: 'admin' | 'user' = u.role === 'admin' ? 'admin' : 'user';
+    if (level === 'admin' && role !== 'admin') {
+      return c.json({ error: '需要管理员权限' }, 403);
+    }
+
+    c.set('user', {
+      id: u.id,
+      username: u.username ?? u.name ?? u.email ?? '',
+      role,
+    });
+    await next();
   };
 }

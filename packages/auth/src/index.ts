@@ -11,14 +11,26 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
  */
 
 export interface CreateAuthOptions {
-  /** Drizzle pg 实例（来自 packages/db）。 */
-  db: NodePgDatabase;
+  /**
+   * Drizzle pg 实例（来自 packages/db）。
+   * 泛型放开：db 包导出的是带具体 schema 的 NodePgDatabase<typeof schema>，
+   * 而 better-auth 的 drizzleAdapter 只按运行时形态访问表；若把泛型收紧成
+   * Record<string, never>，传入具体实例会因 dbName 不兼容而编译失败。
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: NodePgDatabase<any>;
   /** 会话加密密钥（对应 AUTH_SECRET / BETTER_AUTH_SECRET）。 */
   secret: string;
   /** 后端基础 URL，better-auth 用于拼接回调。 */
   baseURL: string;
   /** 受信前端源（SPA 跨域携带 Cookie 必需）。 */
   trustedOrigins: string[];
+  /**
+   * Cookie 是否仅限 HTTPS。
+   * ⚠️ 默认 true（生产正确），但在**纯 HTTP 环境（如内网测试容器）下浏览器/客户端
+   * 不会回传 secure Cookie**，表现为「登录成功但后续请求仍 401」。测试栈必须显式传 false。
+   */
+  secureCookies?: boolean;
 }
 
 export function createAuth(opts: CreateAuthOptions) {
@@ -37,7 +49,12 @@ export function createAuth(opts: CreateAuthOptions) {
     // openAPI：可选，便于生成客户端与文档
     plugins: [username(), admin(), openAPI()],
     advanced: {
-      defaultCookieAttributes: { secure: true, httpOnly: true, sameSite: 'none' },
+      // secure Cookie 在纯 HTTP 下不会被回传 → 登录成功却仍 401，测试栈务必传 false。
+      defaultCookieAttributes: {
+        secure: opts.secureCookies ?? true,
+        httpOnly: true,
+        sameSite: (opts.secureCookies ?? true) ? 'none' : 'lax',
+      },
     },
   });
 }

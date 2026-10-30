@@ -8,6 +8,7 @@
 import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import { schema, type Db } from '@feedlore/db';
+import type { AuthInstance } from '@feedlore/auth';
 import { feeds as feedsSpec, feedsListResponse } from '@feedlore/contract';
 import { assertResponse } from '../lib/validate';
 import { requireAuth, type AppEnv } from '../middleware/auth';
@@ -24,10 +25,10 @@ interface PerFeedRow {
   unread: number;
 }
 
-export function feedsRoutes(db: Db | null): Hono<AppEnv> {
+export function feedsRoutes(db: Db | null, auth: AuthInstance | null): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
-  app.get(feedsSpec.list.path, requireAuth('user'), async (c) => {
+  app.get(feedsSpec.list.path, requireAuth(auth, 'user'), async (c) => {
     if (!db) return c.json({ error: '数据库未就绪' }, 503);
 
     const rows = await db

@@ -53,8 +53,14 @@ services:
     environment:
       DATABASE_URL: postgres://feedlore_v2:Wt-BdNHT_W352iukuWhF1ax0@v2-db:5432/feedlore_v2
       PORT: "3000"
-      # P3 临时：跳过会话校验（better-auth 在 P4 接入）
-      V2_AUTH_DISABLED: "1"
+      # ---- better-auth（P4 起真实鉴权，已移除 V2_AUTH_DISABLED 开关）----
+      AUTH_SECRET: "96Y2O14RO6F66oprqg6a8TgdTdnqDv8oIayEFm74458"
+      # 外部访问地址，务必与实际访问方式一致，否则回调/Cookie 域不匹配
+      AUTH_BASE_URL: "http://172.26.1.2:3211"
+      AUTH_TRUSTED_ORIGINS: "http://172.26.1.2:3211"
+      # ⚠️ 纯 HTTP 环境必须留空/非 1：secure Cookie 在 HTTP 下不会被回传，
+      #    表现为「登录成功但后续仍 401」。走 HTTPS 反代时改为 "1"。
+      AUTH_SECURE_COOKIES: "0"
       REFRESH_MINUTES: "30"
       KEEP_DAYS: "90"
     ports:
