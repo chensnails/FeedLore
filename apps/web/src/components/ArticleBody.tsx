@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { bodyParagraphs, dropTitleEcho, fallbackText, parseBlocks, type BodyBlock } from '../lib/article';
+import { Icon } from './Icon';
 
 /**
  * 正文渲染：块数组 → 段落 + 内联图片；没有块数组时退回纯文本分段。
@@ -162,7 +163,7 @@ function Lightbox({
             onIdx((box.idx - 1 + box.srcs.length) % box.srcs.length);
           }}
         >
-          ‹
+          <Icon name="chevron-left" size={24} />
         </button>
       )}
       {cur && (
@@ -183,7 +184,7 @@ function Lightbox({
             onIdx((box.idx + 1) % box.srcs.length);
           }}
         >
-          ›
+          <Icon name="chevron-right" size={24} />
         </button>
       )}
       <p className="lightbox-hint">

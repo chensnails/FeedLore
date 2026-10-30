@@ -1033,8 +1033,11 @@ html {
   transform: translateY(-50%);
   width: 44px;
   height: 44px;
-  font-size: var(--fs-2xl);
-  line-height: 1;
+  /* 图标化了：字形换成 <Icon>，靠 flex 居中而不是 font-size + line-height（字形基线不可控）。 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   color: #fff;
   background: rgb(255 255 255 / 12%);
   border: 1px solid rgb(255 255 255 / 24%);
