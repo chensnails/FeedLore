@@ -268,7 +268,10 @@ async function main(): Promise<void> {
         const values = rows
           .map((e) => {
             const feedId = feedIdMap.get(Number(e.feed_id));
-            if (!feedId || feedId < 0) {
+            /* 只判 falsy：真库里 id 从 1 起（bigserial），0/undefined 都表示「这个频道没迁过来」。
+             * ⚠️ 不要在这里判 `feedId < 0` —— 干跑时新建频道用负 id 占位，
+             * 一旦拒掉负数，干跑会把所有条目都算成「跳过」，数字全错（踩过）。 */
+            if (!feedId) {
               stats.entries.skipped += 1;
               return null;
             }
