@@ -19,13 +19,16 @@
  *   ...（去掉 --dry-run 才真写）
  *
  * 可选：
- *   --only=users,feeds,entries,digests,prefs   只跑其中几段（排查用）
- *   LEGACY_SCHEMA=legacy                        legacy 表所在 schema（演练时用）
+ *   --only=settings,users,feeds,entries,digests,prefs   只跑其中几段（排查用）
+ *   LEGACY_SCHEMA=legacy                                legacy 表所在 schema（演练时用）
  */
 
 import crypto from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { createDb, createPool, digests, entries, feeds, userLlm, users } from '@feedlore/db';
+import { createDb, createPool, digests, entries, feeds, settings, userLlm, users } from '@feedlore/db';
+// 键名从 @feedlore/ai 取，不在脚本里再写一遍字面量：这个名字一旦漂移，
+// 密文就是**静默**解不开（不报错、只是全变「请重填」），属于最难查的那类。
+import { SECRET_SETTING_KEY as CRYPTO_SECRET_KEY } from '@feedlore/ai';
 import { getAuth } from '../src/auth';
 
 /* ============================ 参数 ============================ */
@@ -34,7 +37,7 @@ const argv = process.argv.slice(2);
 const DRY = argv.includes('--dry-run');
 const onlyArg = argv.find((a) => a.startsWith('--only='));
 const ONLY = new Set(
-  (onlyArg?.slice('--only='.length).split(',') ?? ['users', 'feeds', 'entries', 'digests', 'prefs'])
+  (onlyArg?.slice('--only='.length).split(',') ?? ['settings', 'users', 'feeds', 'entries', 'digests', 'prefs'])
     .map((s) => s.trim())
     .filter(Boolean),
 );
@@ -141,6 +144,61 @@ async function main(): Promise<void> {
   const newCredentials: Array<{ username: string; password: string }> = [];
 
   try {
+    /* ---------------- 0. 站点主密钥（必须最先跑） ---------------- */
+    /*
+     * `settings.cryptoSecret` 是解密 `user_llm.encrypted_key` 的唯一钥匙。
+     * 漏搬的后果不是报错，而是**静默失效**：v2 在新库读不到这一枚，
+     * getCryptoSecret() 会当场生成新的 32 字节 hex 回写，之后每个迁移用户的
+     * Key 都「解不开」，界面上就是一排「请重填」。而演练用的假密文
+     * （enc.v1.aaa.bbb.ccc）本来就解不开，会把这个真 bug 完全掩盖。
+     * 所以这一段放在最前面，且放在 prefs 之前。
+     */
+    if (ONLY.has('settings')) {
+      const { rows } = await legacyPool.query<Row>(`select key, value from ${T('settings')}`);
+      const secretRow = rows.find((r) => r.key === CRYPTO_SECRET_KEY);
+      const others = rows.filter((r) => r.key !== CRYPTO_SECRET_KEY).map((r) => String(r.key));
+      const legacySecret = typeof secretRow?.value === 'string' ? secretRow.value : '';
+
+      if (!legacySecret) {
+        // legacy 老版本若从未存过 Key，就不会有这一枚，此时没有密文需要兼容
+        log(`站点主密钥：legacy 无 ${CRYPTO_SECRET_KEY}（未存过模型 Key）→ 跳过，v2 首次使用时会自行生成`);
+      } else {
+        const [existing] = await db
+          .select({ value: settings.value })
+          .from(settings)
+          .where(eq(settings.key, CRYPTO_SECRET_KEY))
+          .limit(1);
+        const v2Secret = typeof existing?.value === 'string' ? existing.value : '';
+
+        if (DRY) {
+          if (v2Secret && v2Secret !== legacySecret) {
+            log('站点主密钥：⚠️ 目标库已有一枚**不同**的主密钥 —— 真跑时将以 legacy 覆盖（迁移密文依赖它）');
+          } else {
+            log(`站点主密钥：将搬入 legacy 的那一枚（${legacySecret.slice(0, 6)}…，长度 ${legacySecret.length}）`);
+          }
+        } else {
+          if (v2Secret && v2Secret !== legacySecret) {
+            // 取舍：迁移过来的密文是存量主体，v2 预存的那枚只可能是切换前的零星试玩，
+            // 让存量大的一方赢，并把代价说清楚（不静默）
+            log('站点主密钥：⚠️ 目标库已有不同主密钥，以 legacy 覆盖 —— 切换前在 v2 里存的少数 Key 需重填');
+          }
+          await db
+            .insert(settings)
+            .values({ key: CRYPTO_SECRET_KEY, value: legacySecret as unknown as Record<string, unknown> })
+            .onConflictDoUpdate({
+              target: settings.key,
+              set: { value: legacySecret as unknown as Record<string, unknown>, updatedAt: new Date() },
+            });
+          log('站点主密钥：已搬入（与 legacy 同一枚，老密文可直接解）');
+        }
+      }
+
+      if (others.length) {
+        // 站点级 llm 配置在 v1.4.0 就整层退场了，v2 不认它；其余键也不属于迁移范围
+        log(`站点设置：忽略 ${others.join(', ')}（v2 不读站点级配置）`);
+      }
+    }
+
     /* ---------------- 1. 用户 ---------------- */
     if (ONLY.has('users')) {
       const { rows } = await legacyPool.query<Row>(`select id, username, role, prefs from ${T('users')} order by id`);
@@ -408,8 +466,8 @@ async function main(): Promise<void> {
         const llm = (prefs.llm ?? {}) as Record<string, unknown>;
 
         /* legacy 把模型配置塞在 prefs.llm 里，v2 拆到 user_llm 侧表。
-         * apiKeyEnc 原样搬 —— 只要 v2 读到同一个 cryptoSecret（同名同格式），
-         * 密文就能解；否则该账号表现为「存过但解不开」，界面提示重填。 */
+         * apiKeyEnc 原样搬 —— 依赖第 0 段把 settings.cryptoSecret 一并搬过来，
+         * 两件事必须成对：只搬密文不搬主密钥 = 每个用户都要重填 Key。 */
         const prefsWithoutLlm: Record<string, unknown> = { ...prefs };
         delete prefsWithoutLlm.llm;
         if (DRY) {
@@ -449,7 +507,9 @@ async function main(): Promise<void> {
     console.log(`日报   写入 ${stats.digests.upserted} / 跳过 ${stats.digests.skipped}`);
     console.log(`偏好   账号 ${stats.prefs.updated} / 模型 ${stats.prefs.llm}`);
     if (DRY) console.log('\n（干跑：以上数字均为预计值，未写入任何数据）');
-    console.log('\n⚠️ 图片缓存（image_cache）不在迁移范围内：要保留请单独 pg_dump 这两张表。');
+    console.log('\n⚠️ 切换自检：用户能登录后，去看「日报设置」里的 Key 是否仍显示掩码。');
+    console.log('   解不开（显示「请重填」）= settings.cryptoSecret 没搬成功，回到第 0 段查。');
+    console.log('⚠️ 图片缓存（image_cache）不在迁移范围内：要保留请单独 pg_dump 这两张表。');
   } finally {
     await legacyPool.end().catch(() => {});
     // drizzle 的连接池由 createDb 内部持有，进程退出时自然关闭

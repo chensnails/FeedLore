@@ -12,6 +12,7 @@
 
 export {
   ENCRYPTED_PREFIX,
+  SECRET_SETTING_KEY,
   encryptSecret,
   decryptSecret,
   maskSecret,

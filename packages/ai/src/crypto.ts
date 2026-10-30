@@ -22,7 +22,8 @@ export const ENCRYPTED_PREFIX = 'enc.v1.';
 const ENC_PREFIX = ENCRYPTED_PREFIX;
 const ENC_SALT = 'feedlore.secret.v1';
 /** settings 表里存 cryptoSecret 的键名（与 legacy 同名，迁移时直接沿用）。 */
-const SECRET_KEY = 'cryptoSecret';
+export const SECRET_SETTING_KEY = 'cryptoSecret';
+const SECRET_KEY = SECRET_SETTING_KEY;
 
 /** 从 cryptoSecret 派生 32 字节主密钥。参数不可改：改了老密文就解不开。 */
 export function secretKey(cryptoSecret: string): Buffer {

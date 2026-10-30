@@ -80,7 +80,21 @@ create table legacy.digests (
   primary key (owner_id, date)
 );
 
--- 一个普通用户，prefs 里带 legacy 形状的 llm（密文用假值，只验搬运不断言能解密）
+-- 站点设置：cryptoSecret 是解密 apiKey 的主密钥，迁移必须成对搬（见脚本第 0 段）。
+-- 另外塞一个站点级 llm，验证脚本会明确忽略它（v1.4.0 起已退场）。
+create table legacy.settings (
+  key        text primary key,
+  value      jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+insert into legacy.settings (key, value) values
+  ('cryptoSecret', '"legacy-crypto-secret-fixture-0001"'::jsonb),
+  ('llm', '{"model":"site-level-should-be-ignored"}'::jsonb);
+
+-- 一个普通用户，prefs 里带 legacy 形状的 llm。
+-- 密文是**真密文**（用上面的 cryptoSecret 加密 'sk-legacy-9f2c4d7e1a3b5c6d'），
+-- 这样迁移后能在 v2 里断言「解得出明文 → 掩码正确」，而不是只验搬运。
 insert into legacy.users (username, salt, password_hash, role, prefs) values (
   'legacyuser', 's1', 'deadbeef',
   'user',
@@ -91,7 +105,7 @@ insert into legacy.users (username, salt, password_hash, role, prefs) values (
      "watchRules": [],
      "webhookUrl": "",
      "digest": {"auto":true,"time":"08:30","mode":"all","feeds":[],"maxPerFeed":15,"maxTotal":120,"keepDays":14,"style":"简洁点","lastAuto":""},
-     "llm": {"baseUrl":"https://api.example.com/v1","model":"legacy-model","apiKeyEnc":"enc.v1.aaa.bbb.ccc","temperature":0.4,"thinking":true,"thinkingDepth":"high"}
+     "llm": {"baseUrl":"https://api.example.com/v1","model":"legacy-model","apiKeyEnc":"enc.v1.6_krKwbAF6zySEdN.-J6xHU2c2jnNRO_PF4WyfQ.t75wIlSEx6i1lhAuimGDOlhBZxFnN8H605A","temperature":0.4,"thinking":true,"thinkingDepth":"high"}
    }'::jsonb
 );
 
@@ -119,4 +133,5 @@ select 'legacy 演练数据已就绪' as msg,
        (select count(*) from legacy.users) as users,
        (select count(*) from legacy.feeds) as feeds,
        (select count(*) from legacy.entries) as entries,
-       (select count(*) from legacy.digests) as digests;
+       (select count(*) from legacy.digests) as digests,
+       (select count(*) from legacy.settings) as settings;
