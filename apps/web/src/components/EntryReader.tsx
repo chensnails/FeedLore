@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useSaveAppearance, useSetFavorite, useSetRead } from '../lib/mutations';
@@ -52,16 +52,6 @@ export function EntryReader() {
   });
   const fs = prefsQuery.data?.appearance.readerFs ?? 'm';
 
-  // Esc 关闭：阅读层是模态的，键盘用户不该只能找那个小叉
-  useEffect(() => {
-    if (!readingId) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [readingId, close]);
-
   const { panelRef, handlers } = useSwipeDismiss(close);
 
   /* 上一条 / 下一条：按**当前列表的顺序**走（不是按时间重新排）。
@@ -94,6 +84,40 @@ export function EntryReader() {
     useUi.getState().openEntry(to);
     setRead.mutate({ id: to, isRead: true });
   }
+
+  /* 键盘：Esc 关闭 · ← / → 翻篇（与 v1 的 ReaderView 一致）。
+   *
+   * 三条必须处理的情况：
+   * 1. **灯箱开着时要让路**：灯箱的监听也挂在 window 上，这里不退出的话按一次 →
+   *    会「翻一张图 + 翻一篇」—— 用户看到的是图片换了、文章也没了。
+   *    用 DOM 存在性判断而不是共享 state：灯箱在 ArticleBody 内部，为了一个按键
+   *    把它的开关提到阅读层，只会多一条不必要的状态链。
+   * 2. 焦点在输入框里不劫持方向键。
+   * 3. 到头了（第一篇/最后一篇）什么都不做，也不 preventDefault —— 让浏览器
+   *    的默认滚动还能用。 */
+  const setReadRef = useRef(setRead);
+  setReadRef.current = setRead;
+  useEffect(() => {
+    if (!readingId) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (document.querySelector('.lightbox')) return;
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return;
+
+      if (e.key === 'Escape') {
+        close();
+        return;
+      }
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const to = e.key === 'ArrowLeft' ? neighbors?.prev : neighbors?.next;
+      if (!to) return;
+      e.preventDefault();
+      useUi.getState().openEntry(to);
+      setReadRef.current.mutate({ id: to, isRead: true });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [readingId, close, neighbors]);
 
   if (!readingId) return null;
 
@@ -225,6 +249,7 @@ export function EntryReader() {
                 <button
                   className="btn ghost sm"
                   disabled={!neighbors.prev}
+                  title="上一条（键盘 ←）"
                   onClick={() => step(neighbors.prev)}
                 >
                   ← 上一条
@@ -235,6 +260,7 @@ export function EntryReader() {
                 <button
                   className="btn ghost sm"
                   disabled={!neighbors.next}
+                  title="下一条（键盘 →）"
                   onClick={() => step(neighbors.next)}
                 >
                   下一条 →

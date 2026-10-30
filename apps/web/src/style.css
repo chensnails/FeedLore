@@ -2176,3 +2176,179 @@ body {
     max-height: 210px;
   }
 }
+
+/* ---------------- 设置面板：条目过滤规则 / webhook ---------------- */
+
+/* ⚠️ 类名不能叫 .filter-row：卡片页工具栏那一行筛选档已经占用了这个名字，
+ * 两处样式会互相污染（工具栏那行是「档位按钮 + 占满剩余空间」，这里是一条表单）。 */
+.filter-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.filter-rule {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.filter-rule .input {
+  width: auto;
+  font-size: 12.5px;
+  padding: 4px 8px;
+}
+.filter-pattern {
+  flex: 1 1 220px;
+  min-width: 150px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+.filter-check {
+  flex: none;
+  margin: 0;
+}
+/* 正则写错时把整行标出来：只有红字没有行底色的话，一屏十几条时找不到是哪一条 */
+.filter-rule.bad .input {
+  border-color: var(--danger);
+}
+.filter-err {
+  flex: 0 0 100%;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.hook-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.hook-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 屏蔽规则下的「推送」勾选框：置灰表示这档不支持，不是坏掉了 */
+.rule-on.off {
+  opacity: 0.45;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* ---------------- 频道栏：分组操作 / 拖拽排序 ---------------- */
+
+/* 分组标题行改成「标题按钮 + 三个小操作」的横向容器：
+ * 原来整行都是按钮，加操作就没地方放（嵌套 button 是非法的）。 */
+.feed-group-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 8px;
+}
+.feed-group-row .feed-group {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+.feed-group-ops {
+  display: none;
+  align-items: center;
+  flex: none;
+}
+/* hover 或键盘聚焦时出现：分组操作是低频动作，常显会让 20 个分组看起来像仪表盘 */
+.feed-group-row:hover .feed-group-ops,
+.feed-group-row:focus-within .feed-group-ops {
+  display: flex;
+}
+.feed-group-ops .icon-btn {
+  width: 20px;
+  height: 20px;
+  font-size: 10.5px;
+}
+.feed-group-row.editing {
+  padding: 2px 8px 4px 6px;
+}
+.feed-group-row.editing .input {
+  width: 100%;
+  font-size: 12px;
+  padding: 3px 7px;
+}
+
+/* 拖动中的那一行淡出，给「要落到哪儿」让出视觉重心 */
+.feed-row.dragging {
+  opacity: 0.4;
+}
+.feed-row[draggable='true'] .feed {
+  cursor: grab;
+}
+.feed-row[draggable='true'] .feed:active {
+  cursor: grabbing;
+}
+
+/* 触屏没有 HTML5 拖拽，也没有 Alt 键：显式说明「在桌面端可拖拽排序」，
+ * 比让用户长按试半天没反应要好。 */
+@media (hover: none) {
+  .feed-row[draggable='true'] .feed {
+    cursor: pointer;
+  }
+  .feed-group-ops {
+    display: flex;
+  }
+}
+
+/* 「发现新版本」用强调色而不是危险色：这不是故障，是一个可选的升级提醒 */
+.admin-ok {
+  margin: 6px 0 10px;
+  padding: 8px 11px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  border-radius: var(--radius-sm);
+}
+.admin-ok a {
+  color: var(--accent);
+}
+
+/* ---------------- 「N 条新内容」浮标（自动刷新） ---------------- */
+
+/* sticky + 居中：粘在列表可视区顶部，滚到哪儿都看得见；
+ * 宽度按内容而非整行，免得盖住列表两侧的点击区域。 */
+.fresh-pill {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: fit-content;
+  margin: 0 auto 8px;
+  padding: 3px;
+  background: var(--accent);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+}
+.fresh-pill button {
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent-ink);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.fresh-go {
+  padding: 4px 6px 4px 10px;
+  white-space: nowrap;
+}
+.fresh-x {
+  padding: 4px 7px;
+  border-radius: 999px;
+  opacity: 0.7;
+}
+.fresh-x:hover {
+  opacity: 1;
+  background: rgb(0 0 0 / 12%);
+}

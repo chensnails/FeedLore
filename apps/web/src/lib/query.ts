@@ -31,6 +31,7 @@ export const qk = {
   adminConfig: ['admin', 'config'] as const,
   adminUsers: ['admin', 'users'] as const,
   adminImageCache: ['admin', 'image-cache'] as const,
+  adminVersion: ['admin', 'version'] as const,
   /** 日报：日期列表与单日内容分开缓存（切日期不该重拉列表）。 */
   digestDates: ['digest', 'dates'] as const,
   digest: ['digest', 'one'] as const,

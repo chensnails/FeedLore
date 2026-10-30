@@ -9,7 +9,9 @@ import {
   useImportOpml,
   usePatchFeed,
   useRefreshFeed,
+  useReorderFeeds,
   useSaveLayout,
+  useSavePrefs,
 } from '../lib/mutations';
 import { useUi } from '../store/ui';
 import type { Feed } from '../lib/types';
@@ -43,8 +45,25 @@ export function FeedsPanel() {
   const refreshFeed = useRefreshFeed();
   const importOpml = useImportOpml();
   const exportOpml = useExportOpml();
+  const reorder = useReorderFeeds();
   const saveLayout = useSaveLayout();
+  const savePrefs = useSavePrefs();
   const fileRef = useRef<HTMLInputElement>(null);
+
+  /* ---------------- 排序 / 分组改名 / 分组排序 ----------------
+   *
+   * 这三件事在 v1 的「数据源」设置页里都有，迁到 v2 时端点搬了、界面没搬。
+   *
+   * ⚠️ 服务端 reorder 一次写两列（sort_order + group_name），所以拖拽与改名共用
+   * 同一条提交路径。而它对 groupName 的处理是 `String(raw ?? '').trim() || null` ——
+   * **少传一个字段等于把那个频道踢出分组**（undefined → null）。因此每次提交都必须
+   * 把每个频道自己的分组名一起带上，不能只传被拖动的那一个。
+   */
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [localOrder, setLocalOrder] = useState<string[] | null>(null);
+  const [renaming, setRenaming] = useState<{ from: string; to: string } | null>(null);
+  /** 重排后要把焦点还给刚移动的那一行：拖拽/键盘都会触发整表重渲染，焦点会掉到 body */
+  const focusAfter = useRef<string | null>(null);
 
   const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: qk.feeds,
@@ -106,9 +125,12 @@ export function FeedsPanel() {
     if (!data) return [];
     const kw = ql.trim().toLowerCase();
     const match = (f: Feed) => !kw || f.title.toLowerCase().includes(kw) || f.url.toLowerCase().includes(kw);
-    const order = data.groupOrder.length ? data.groupOrder : data.groups;
+    const saved = data.groupOrder.length ? data.groupOrder : data.groups;
+    // 本地刚调过分组顺序时以本地为准（等一次往返再变，手感会像卡了）
+    const order = localOrder ?? saved;
     const out: Array<{ name: string; feeds: Feed[] }> = [];
     for (const g of order) {
+      if (!g) continue; // '' 是未分组，单独处理
       const feeds = data.feeds.filter((f) => (f.groupName || '') === g && match(f));
       if (feeds.length) out.push({ name: g, feeds });
     }
@@ -117,7 +139,7 @@ export function FeedsPanel() {
     const rest = data.feeds.filter((f) => !f.groupName || !known.has(f.groupName)).filter(match);
     if (rest.length) out.push({ name: '', feeds: rest });
     return out;
-  }, [data, ql]);
+  }, [data, ql, localOrder]);
 
   if (isPending) {
     return (
@@ -157,6 +179,112 @@ export function FeedsPanel() {
     // 破坏性操作，且服务端会级联删掉该频道的全部条目 —— 必须让用户明确确认
     if (!window.confirm(`删除「${f.title}」？\n该频道的 ${f.entryCount} 条记录会一起删除，不可恢复。`)) return;
     deleteFeed.mutate(f.id);
+  }
+
+  /* ---------------- 排序 / 分组 ----------------
+   *
+   * 三条纪律：
+   * 1. **搜索态一律禁排**：此时 `grouped` 只含匹配项，照着它写回顺序会把没匹配到的
+   *    频道挤到一起（用户搜了个「少数派」，回来发现别的频道顺序全变了）。
+   * 2. **跨组拖拽不接**：改分组归属是另一件事，误拖一次就把频道搬走了。
+   * 3. 每次提交都带全量顺序（服务端整批重写 sort_order），不做增量。
+   */
+  const canSort = !ql.trim();
+  const groupOrder = localOrder ?? (data.groupOrder.length ? data.groupOrder : data.groups);
+
+  function pushOrder(next: Array<{ name: string; feeds: Feed[] }>): void {
+    const items: Array<{ id: number; sortOrder: number; groupName: string }> = [];
+    for (const g of next) {
+      for (const f of g.feeds) {
+        // groupName 必须带：服务端把 undefined 归一成 null（= 未分组），漏传等于踢出分组
+        items.push({ id: Number(f.id), sortOrder: items.length * 10, groupName: g.name });
+      }
+    }
+    const keep = focusAfter.current;
+    focusAfter.current = null;
+    reorder.mutate(
+      { feeds: items },
+      {
+        onSettled: () => {
+          if (!keep) return;
+          // 整表重渲染后焦点掉到 body，把焦点还回刚移动的那一行（键盘连续移动靠它）
+          window.setTimeout(() => {
+            document.querySelector<HTMLElement>(`[data-fid="${keep}"] .feed`)?.focus();
+          }, 60);
+        },
+      },
+    );
+  }
+
+  /** 组内上下移一格（键盘 Alt+↑/↓ 与拖拽共用这套重排逻辑）。 */
+  function moveFeed(group: string, id: string, delta: number): void {
+    if (!canSort) return;
+    const next = grouped.map((g) => ({ name: g.name, feeds: [...g.feeds] }));
+    const g = next.find((x) => x.name === group);
+    if (!g) return;
+    const i = g.feeds.findIndex((f) => f.id === id);
+    const j = i + delta;
+    const a = g.feeds[i];
+    const b = g.feeds[j];
+    if (!a || !b) return;
+    g.feeds[i] = b;
+    g.feeds[j] = a;
+    focusAfter.current = id;
+    pushOrder(next);
+  }
+
+  function dropOn(group: string, targetId: string): void {
+    const id = dragId;
+    setDragId(null);
+    if (!id || id === targetId || !canSort) return;
+    const next = grouped.map((g) => ({ name: g.name, feeds: [...g.feeds] }));
+    const g = next.find((x) => x.name === group);
+    if (!g) return;
+    const from = g.feeds.findIndex((f) => f.id === id);
+    const to = g.feeds.findIndex((f) => f.id === targetId);
+    if (from < 0 || to < 0) return; // 跨组：忽略
+    const [moved] = g.feeds.splice(from, 1);
+    if (!moved) return;
+    g.feeds.splice(to, 0, moved);
+    focusAfter.current = id;
+    pushOrder(next);
+  }
+
+  /** 分组上下移：只调 `layout.groupOrder`，不动频道本身。 */
+  function moveGroup(name: string, delta: number): void {
+    const names = grouped.map((g) => g.name).filter((n) => n !== '');
+    const i = names.indexOf(name);
+    const j = i + delta;
+    const a = names[i];
+    const b = names[j];
+    if (!a || !b) return;
+    names[i] = b;
+    names[j] = a;
+    setLocalOrder(names);
+    savePrefs.mutate({ groupOrder: names });
+  }
+
+  /**
+   * 分组改名 = 把这一组所有频道的 group_name 一起换掉（服务端一次 UPDATE 完成）。
+   *
+   * ⚠️ 同时要改 `layout.groupOrder` 里的旧名：不改的话顺序表里留着一个已不存在的分组名，
+   * 而新名字没登记，下次渲染顺序看起来像随机的。
+   */
+  function commitRename(from: string, to: string): void {
+    const name = to.trim().slice(0, 40);
+    if (!name || name === from) {
+      setRenaming(null);
+      return;
+    }
+    if (grouped.some((g) => g.name === name)) {
+      useUi.getState().notify(`已经有叫「${name}」的分组了`, 'error');
+      return;
+    }
+    pushOrder(grouped.map((g) => ({ name: g.name === from ? name : g.name, feeds: g.feeds })));
+    const order = groupOrder.map((n) => (n === from ? name : n));
+    setLocalOrder(order);
+    savePrefs.mutate({ groupOrder: order });
+    setRenaming(null);
   }
 
   const allMatch = !ql.trim() || '全部频道'.includes(ql.trim());
@@ -211,25 +339,98 @@ export function FeedsPanel() {
           const gUnread = g.feeds.reduce((n, f) => n + f.unreadCount, 0);
           return (
             <li key={g.name || '__ungrouped'} className="feed-group-wrap">
-              {foldable && (
-                <button
-                  className={`feed-group${isCollapsed ? ' collapsed' : ''}`}
-                  aria-expanded={!isCollapsed}
-                  title={isCollapsed ? '展开分组' : '收起分组'}
-                  onClick={() => toggleGroup(g.name)}
-                >
-                  <span className="feed-group-caret" aria-hidden>▾</span>
-                  <span className="feed-group-name">{g.name}</span>
-                  {gUnread > 0 && <span className="feed-group-n">{gUnread}</span>}
-                </button>
-              )}
+              {foldable &&
+                (renaming?.from === g.name ? (
+                  /* 内联改名而不是 window.prompt：prompt 在部分移动端浏览器被拦，
+                   * 而且它会把整页的焦点偷走，回来时侧栏滚到哪儿都不一定。 */
+                  <div className="feed-group-row editing">
+                    <input
+                      className="input sm"
+                      autoFocus
+                      maxLength={40}
+                      value={renaming.to}
+                      aria-label="分组名称"
+                      onChange={(e) => setRenaming({ from: g.name, to: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitRename(g.name, renaming.to);
+                        if (e.key === 'Escape') setRenaming(null);
+                      }}
+                      onBlur={() => commitRename(g.name, renaming.to)}
+                    />
+                  </div>
+                ) : (
+                  <div className="feed-group-row">
+                    <button
+                      className={`feed-group${isCollapsed ? ' collapsed' : ''}`}
+                      aria-expanded={!isCollapsed}
+                      title={isCollapsed ? '展开分组' : '收起分组'}
+                      onClick={() => toggleGroup(g.name)}
+                    >
+                      <span className="feed-group-caret" aria-hidden>▾</span>
+                      <span className="feed-group-name">{g.name}</span>
+                      {gUnread > 0 && <span className="feed-group-n">{gUnread}</span>}
+                    </button>
+                    <span className="feed-group-ops">
+                      <button
+                        className="icon-btn"
+                        title="重命名分组"
+                        aria-label={`重命名分组 ${g.name}`}
+                        onClick={() => setRenaming({ from: g.name, to: g.name })}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        className="icon-btn"
+                        title="上移分组"
+                        aria-label={`上移分组 ${g.name}`}
+                        onClick={() => moveGroup(g.name, -1)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        className="icon-btn"
+                        title="下移分组"
+                        aria-label={`下移分组 ${g.name}`}
+                        onClick={() => moveGroup(g.name, 1)}
+                      >
+                        ↓
+                      </button>
+                    </span>
+                  </div>
+                ))}
               {!isCollapsed &&
                 g.feeds.map((f) => (
-                  <div key={f.id} className="feed-row">
+                  <div
+                    key={f.id}
+                    className={`feed-row${dragId === f.id ? ' dragging' : ''}`}
+                    data-fid={f.id}
+                    /* 拖拽只在非搜索态开启：搜索时列表是筛选后的子集，照着它重排会打乱其余频道 */
+                    draggable={canSort}
+                    onDragStart={() => setDragId(f.id)}
+                    onDragEnd={() => setDragId(null)}
+                    onDragOver={(e) => {
+                      if (dragId && canSort) e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      dropOn(g.name, f.id);
+                    }}
+                  >
                     <button
                       className={`feed${feedId === f.id ? ' on' : ''}${f.enabled ? '' : ' off'}`}
                       onClick={() => setFeedId(f.id)}
-                      title={f.error ?? f.url}
+                      title={`${f.error ?? f.url}${canSort ? '\\nAlt+↑/↓ 可调整顺序' : ''}`}
+                      /* 键盘也能排：拖拽对只用键盘的人是死路，而这是纯视觉顺序的调整 */
+                      onKeyDown={(e) => {
+                        if (!e.altKey) return;
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          moveFeed(g.name, f.id, -1);
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          moveFeed(g.name, f.id, 1);
+                        }
+                      }}
                     >
                       <Thumb
                         src={f.icon}

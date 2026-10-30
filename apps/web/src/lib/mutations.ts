@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 import type {
   AccountBody,
   Appearance,
@@ -7,6 +8,7 @@ import type {
   EntryDetail,
   FeedCreateBody,
   FeedPatchBody,
+  FeedReorderBody,
   LlmConfig,
   PrefsPatchBody,
   ReadAllBody,
@@ -264,6 +266,29 @@ export function usePatchFeed() {
   });
 }
 
+/**
+ * 批量重排频道：一次请求同时写 `sort_order` 与 `group_name`。
+ *
+ * 为什么把「拖拽排序」「分组改名」合并到这一个 mutation：服务端的 reorder 端点是
+ * `UPDATE ... FROM (VALUES ...)` 单语句 —— 分组改名在它眼里就是「这一组所有行的
+ * group_name 一起换」。走 PATCH 逐个改会发 N 个请求且**中途失败会留下半个改名**。
+ */
+export function useReorderFeeds() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: FeedReorderBody) => api.feeds.reorder(body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.feeds });
+      // 分组改名会改变卡片页的分组归属，条目列表的分组标题也要重取
+      void qc.invalidateQueries({ queryKey: qk.entries });
+    },
+    onError: (e) => {
+      void qc.invalidateQueries({ queryKey: qk.feeds });
+      useUi.getState().notify(`排序保存失败：${errText(e)}`, 'error');
+    },
+  });
+}
+
 export function useDeleteFeed() {
   const qc = useQueryClient();
   return useMutation({
@@ -413,6 +438,66 @@ export function useClearImageCache() {
       useUi.getState().notify(`已清空图片缓存 ${r.removed} 条`);
     },
     onError: (e) => useUi.getState().notify(`清空失败：${errText(e)}`, 'error'),
+  });
+}
+
+/* ============================ 版本 ============================ */
+
+/**
+ * 检查更新。
+ *
+ * ⚠️ GitHub 不可达时服务端仍返回 200 + `ok:false`，所以成败要看 `ok` 而不是 `isError`。
+ * 这与模型连通性测试是同一类坑：把「查不到」当成「没有新版本」，用户会以为自己在最新版。
+ */
+export function useCheckVersion() {
+  return useMutation({
+    mutationFn: () => api.version.check(),
+    onSuccess: (r) => {
+      if (!r.ok) useUi.getState().notify(`检查失败：${r.error ?? '无法访问更新源'}`, 'error');
+    },
+    onError: (e) => useUi.getState().notify(`检查失败：${errText(e)}`, 'error'),
+  });
+}
+
+/**
+ * 一键更新（向 Watchtower 发触发，容器随后重启）。
+ *
+ * 难点全在**重启窗口**：更新触发后服务会短暂不可用，此时任何请求都可能失败 ——
+ * 那是预期，不是失败。所以这里不报错，而是每 5 秒问一次版本号，变了就刷新页面。
+ * 超时（5 分钟）只提示，不重试：真出问题的话，再点一次和等一会儿是一样的。
+ */
+export function useUpdateApp() {
+  const timer = useRef<number | null>(null);
+  return useMutation({
+    mutationFn: async (): Promise<string> => {
+      const before = await api.version.info();
+      await api.version.update();
+      return before.version;
+    },
+    onSuccess: (from) => {
+      useUi.getState().notify(`已触发更新（当前 v${from}），容器重启中，稍后自动刷新…`);
+      if (timer.current) window.clearInterval(timer.current);
+      const started = Date.now();
+      timer.current = window.setInterval(() => {
+        void api.version
+          .info()
+          .then((v) => {
+            if (v.version === from) return;
+            if (timer.current) window.clearInterval(timer.current);
+            window.location.reload();
+          })
+          // 重启期间连接被拒是正常现象，静默重试
+          .catch(() => undefined);
+        if (Date.now() - started > 5 * 60_000 && timer.current) {
+          window.clearInterval(timer.current);
+          useUi.getState().notify('等待更新超时（5 分钟），请手动刷新查看版本', 'error');
+        }
+      }, 5000);
+    },
+    onError: (e) =>
+      useUi
+        .getState()
+        .notify(`更新失败：${errText(e)}（未接入一键更新通道时请手动 docker pull）`, 'error'),
   });
 }
 

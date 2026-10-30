@@ -4,11 +4,13 @@ import type { SourceConfig } from '@feedlore/contract';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import {
+  useCheckVersion,
   useClearImageCache,
   useCreateUser,
   useDeleteUser,
   usePatchUser,
   useSaveSourceConfig,
+  useUpdateApp,
 } from '../lib/mutations';
 import { AccountForm } from './AccountForm';
 
@@ -24,12 +26,13 @@ import { AccountForm } from './AccountForm';
  * 引入路由会把「刷新后回到哪个视图」这个新问题一起引进来，当前不值得。
  */
 
-type Tab = 'status' | 'config' | 'users';
+type Tab = 'status' | 'config' | 'users' | 'about';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'status', label: '状态' },
   { id: 'config', label: '采集参数' },
   { id: 'users', label: '用户' },
+  { id: 'about', label: '关于' },
 ];
 
 /** 采集参数的定义表：一处维护「标签 / 单位 / 提示」，界面与提交都从这里读。 */
@@ -110,6 +113,7 @@ export function AdminPanel({ open, onClose }: { open: boolean; onClose: () => vo
         {tab === 'status' && <StatusTab />}
         {tab === 'config' && <ConfigTab />}
         {tab === 'users' && <UsersTab />}
+        {tab === 'about' && <AboutTab />}
       </section>
     </div>
   );
@@ -516,3 +520,75 @@ function UsersTab() {
   );
 }
 
+
+/* ============================ 关于 / 版本 ============================ */
+
+/**
+ * 版本与更新通道。
+ *
+ * 为什么单独一页而不是塞进「状态」：状态页是**运行时**（正在抓什么、内存多少），
+ * 10 秒轮询一次；版本是**部署态**，一分钟都不该变。混在一起会让状态页每次轮询
+ * 都去问一次 GitHub（服务端虽有 10 分钟缓存，但前端请求次数白涨），
+ * 更重要的是「检查更新」是个会改变服务器状态的入口，放在只读页里很危险。
+ *
+ * 更新通道的差别必须说清楚：镜像模式 + Watchtower 才有 `updateEnabled`，
+ * 其它部署方式点了也没用 —— 那种「有个按钮但永远失败」的界面比没有按钮更糟。
+ */
+function AboutTab() {
+  const infoQuery = useQuery({
+    queryKey: qk.adminVersion,
+    queryFn: () => api.version.info(),
+    staleTime: 60_000,
+  });
+  const check = useCheckVersion();
+  const update = useUpdateApp();
+  const r = check.data;
+
+  return (
+    <div className="admin-body">
+      <h3 className="admin-h3">版本</h3>
+      <dl className="admin-grid">
+        <dt>当前版本</dt>
+        <dd>{infoQuery.data ? `v${infoQuery.data.version}` : '读取中…'}</dd>
+        <dt>仓库</dt>
+        <dd>{infoQuery.data?.repo ?? '—'}</dd>
+        <dt>更新通道</dt>
+        <dd>{infoQuery.data?.updateEnabled ? '已接入（Watchtower HTTP API）' : '未接入'}</dd>
+      </dl>
+
+      <p className="admin-actions">
+        <button className="btn sm" disabled={check.isPending} onClick={() => check.mutate()}>
+          {check.isPending ? '检查中…' : '检查更新'}
+        </button>
+        {infoQuery.data?.updateEnabled && (
+          <button className="btn ghost sm" disabled={update.isPending} onClick={() => update.mutate()}>
+            {update.isPending ? '触发中…' : '立即更新'}
+          </button>
+        )}
+      </p>
+
+      {r && !r.ok && <p className="admin-alert">检查失败：{r.error ?? '无法访问更新源'}</p>}
+      {r?.ok && r.hasUpdate && (
+        <p className="admin-ok">
+          发现新版本 <b>v{r.latest}</b>（当前 v{r.current}）
+          {r.publishedAt ? ` · 发布于 ${r.publishedAt.slice(0, 10)}` : ''}
+          {r.releaseUrl && (
+            <>
+              {' · '}
+              <a href={r.releaseUrl} target="_blank" rel="noreferrer">
+                发布说明
+              </a>
+            </>
+          )}
+        </p>
+      )}
+      {r?.ok && !r.hasUpdate && <p className="hint">已是最新版本（v{r.current ?? infoQuery.data?.version ?? '—'}）。</p>}
+
+      <p className="hint tiny">
+        检查会向 GitHub 查询最新的 Release / Tag，服务端缓存 10 分钟，不会频繁请求。
+        {!infoQuery.data?.updateEnabled &&
+          ' 当前部署未接入一键更新通道（仅「镜像 + Watchtower」支持）；检测到新版本后请手动更新容器。'}
+      </p>
+    </div>
+  );
+}

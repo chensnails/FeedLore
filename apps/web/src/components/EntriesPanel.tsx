@@ -5,6 +5,7 @@ import type { ReadAllBody } from '@feedlore/contract';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useReadAll, useSaveLayout, useSetFavorite, useSetRead } from '../lib/mutations';
+import { useAutoRefresh } from '../lib/useAutoRefresh';
 import { useUi, type ListFilter, type ListSort, type ListView } from '../store/ui';
 import type { EntryCard } from '../lib/types';
 import { Thumb } from './Thumb';
@@ -77,8 +78,12 @@ export function EntriesPanel() {
     ...(search ? { q: search } : {}),
   };
 
+  /* 查询键单独抽出来：自动刷新要靠它判断「浮标属于哪一批结果」，
+   * 换条件后不清掉就会留着一个指向旧范围的「N 条新内容」。 */
+  const entriesKey = [...qk.entries, feedId, filter, sort, tag, search] as const;
+
   const { data, isError, error, refetch, isFetching } = useQuery({
-    queryKey: [...qk.entries, feedId, filter, sort, tag, search],
+    queryKey: entriesKey,
     queryFn: () => api.entries.list(query),
     /* ⚠️ 必须保留上一批结果。没有它，每换一次 queryKey（敲搜索词、切频道、切排序）
      * 都会进入 isPending，而下面的 early return 会把**整个 main 连同搜索框**
@@ -92,6 +97,16 @@ export function EntriesPanel() {
     queryKey: qk.feeds,
     queryFn: () => api.feeds.list(),
     staleTime: 60_000,
+  });
+
+  /* 页面自动刷新。间隔来自 `settings.source.autoRefreshMinutes`（管理员在采集参数里改），
+   * 0 = 关闭。收藏视图与搜索态跳过（见 useAutoRefresh 的注释）。 */
+  const auto = useAutoRefresh({
+    query,
+    queryKey: entriesKey,
+    minutes: feedsQuery.data?.autoRefreshMinutes ?? 0,
+    headIds: (data?.entries ?? []).slice(0, 30).map((e) => e.id),
+    skip: filter === 'favorite' || Boolean(search),
   });
 
   /* 判据是「有没有数据」而不是 isPending：留着上一次结果时 isPending 也是 true，
@@ -149,6 +164,19 @@ export function EntriesPanel() {
 
   return (
     <main className="list">
+      {/* 「N 条新内容」浮标。只在**已经滚下去**时才出现（在顶部时探测会直接套用，
+          不打扰）。点一下才把新内容换上来 —— 列表在眼皮底下自己位移是最难受的交互。 */}
+      {auto.fresh && (
+        <div className="fresh-pill" role="status">
+          <button className="fresh-go" onClick={auto.apply} title="加载新内容并回到顶部">
+            ↑ {auto.fresh.n} 条新内容
+          </button>
+          <button className="fresh-x" aria-label="忽略这批新内容" title="忽略" onClick={auto.dismiss}>
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="list-head">
         <div className="list-scope">
           <h1 className="list-title" title={`${feedName} · ${filterName}`}>

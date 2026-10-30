@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import type { Appearance, WatchRule } from '@feedlore/contract';
+import type { Appearance, FilterRule, WatchRule } from '@feedlore/contract';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useApplyWatch, useSaveAppearance, useSavePrefs } from '../lib/mutations';
@@ -21,7 +21,7 @@ import { AccountForm } from './AccountForm';
  * - 账号：改密码（普通用户唯一的路径）
  */
 
-type Tab = 'appearance' | 'reading' | 'watch' | 'account';
+type Tab = 'appearance' | 'reading' | 'watch' | 'filter' | 'account';
 
 export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('appearance');
@@ -49,7 +49,8 @@ export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => vo
           {([
             { id: 'appearance' as const, label: '外观' },
             { id: 'reading' as const, label: '阅读' },
-            { id: 'watch' as const, label: '关注规则' },
+            { id: 'watch' as const, label: '关注' },
+            { id: 'filter' as const, label: '过滤' },
             { id: 'account' as const, label: '账号' },
           ]).map((t) => (
             <button
@@ -68,6 +69,7 @@ export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => vo
           {tab === 'appearance' && <AppearanceTab />}
           {tab === 'reading' && <ReadingTab />}
           {tab === 'watch' && <WatchTab />}
+          {tab === 'filter' && <FilterTab />}
           {tab === 'account' && <AccountTab />}
         </div>
       </section>
@@ -224,6 +226,7 @@ function WatchTab() {
   const save = useSavePrefs();
   const apply = useApplyWatch();
   const [rules, setRules] = useState<WatchRule[] | null>(null);
+  const [hook, setHook] = useState<string | null>(null);
 
   // 首次拿到服务端规则时灌进本地（之后以本地为准，避免每次 invalidate 冲掉正在编辑的内容）
   useEffect(() => {
@@ -236,6 +239,14 @@ function WatchTab() {
     setRules((rs) => (rs ?? []).map((r) => (r.id === id ? { ...r, ...p } : r)));
 
   const dirty = JSON.stringify(rules) !== JSON.stringify(q.data?.watchRules ?? []);
+
+  /* webhook 与规则**分开保存**（legacy 同口径）：规则是一张列表，改一半就提交会把
+   * 正在编辑的其它行一起发出去；地址是一条字符串，改完立刻能存，不该被规则的 dirty 拦住。 */
+  const savedHook = q.data?.webhookUrl ?? '';
+  const hookValue = hook ?? savedHook;
+  const hookDirty = hookValue.trim() !== savedHook;
+
+  const notifyCount = rules.filter((r) => r.act === 'watch' && r.notify && r.on !== false).length;
 
   return (
     <>
@@ -275,6 +286,18 @@ function WatchTab() {
               <option value="watch">关注</option>
               <option value="block">屏蔽</option>
             </select>
+            {/* 推送勾选只在「关注」下有意义：屏蔽的条目不推（推了等于把噪音发到手机上）。
+                这个字段一直在契约里、服务端也认，但一直没有入口 —— 默认 false，
+                于是「配了 webhook 却从没收到推送」是必然结果。 */}
+            <label className={`rule-on${r.act === 'watch' ? '' : ' off'}`} title={r.act === 'watch' ? '命中时推送 webhook' : '屏蔽规则不推送'}>
+              <input
+                type="checkbox"
+                checked={r.notify && r.act === 'watch'}
+                disabled={r.act !== 'watch'}
+                onChange={(e) => patch(r.id, { notify: e.target.checked })}
+              />
+              推送
+            </label>
             <label className="rule-on" title="关掉只是停用，不删除">
               <input type="checkbox" checked={r.on} onChange={(e) => patch(r.id, { on: e.target.checked })} />
               启用
@@ -315,6 +338,213 @@ function WatchTab() {
         </button>
       </p>
       {dirty && <p className="hint tiny">规则有改动，先保存再重算。</p>}
+
+      <h3 className="admin-h3">推送通知（webhook）</h3>
+      <div className="hook-row">
+        <input
+          className="input sm"
+          type="url"
+          spellCheck={false}
+          autoComplete="off"
+          placeholder="https://example.com/hook（留空则不推送）"
+          value={hookValue}
+          onChange={(e) => setHook(e.target.value)}
+        />
+        <button
+          className="btn sm"
+          disabled={save.isPending || !hookDirty}
+          onClick={() => save.mutate({ webhookUrl: hookValue.trim() })}
+        >
+          {hookDirty ? '保存地址' : '已保存'}
+        </button>
+      </div>
+      <p className="hint tiny">
+        命中<strong>勾了「推送」的关注规则</strong>时，服务端把新条目 POST 成一条 JSON（含标题 / 链接 / 频道）。
+        屏蔽规则不推送，未勾「推送」的规则也不推送 —— 当前会推送的规则：{notifyCount} 条。
+        <br />
+        地址必须是公网 http(s)：内网地址会被拒绝，保存后 DNS 变化也会在发送前再校验一次。
+      </p>
+    </>
+  );
+}
+
+/* ============================ 条目过滤规则 ============================ */
+
+const FILTER_ACTS = [
+  ['block', '屏蔽'],
+  ['allow', '只收'],
+] as const;
+
+const FILTER_FIELDS = [
+  ['all', '全部'],
+  ['title', '标题'],
+  ['desc', '摘要'],
+  ['content', '正文'],
+] as const;
+
+const FILTER_KINDS = [
+  ['kw', '关键词'],
+  ['re', '正则'],
+] as const;
+
+/** 规则 id：时间戳 + 随机后缀。只用时间戳的话，连点两次「添加」会拿到同一个 id，
+ * 服务端 `sanitizeFilters` 遇到重复 id 会改名，于是本地这条的编辑对象就变了。 */
+const emptyFilter = (): FilterRule => ({
+  id: `f_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+  on: true,
+  act: 'block',
+  field: 'all',
+  kind: 'kw',
+  pattern: '',
+});
+
+/**
+ * 非法正则的判断必须在**提交前**做。
+ *
+ * 服务端 `sanitizeFilters` 对编译不过的正则是 `catch { continue }` —— 静默丢弃。
+ * 用户点「保存」看到「已保存」，回头发现规则少了一条，只会以为界面在骗他。
+ */
+function badRegex(r: FilterRule): boolean {
+  if (r.kind !== 're' || !r.pattern.trim()) return false;
+  try {
+    new RegExp(r.pattern);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function FilterTab() {
+  const q = useQuery({ queryKey: qk.prefs, queryFn: () => api.prefs.get(), staleTime: 5 * 60_000 });
+  const save = useSavePrefs();
+  const [filters, setFilters] = useState<FilterRule[] | null>(null);
+
+  useEffect(() => {
+    if (filters === null && q.data) setFilters(q.data.filters);
+  }, [q.data, filters]);
+
+  if (filters === null) return <p className="hint">加载规则…</p>;
+
+  const patch = (id: string, p: Partial<FilterRule>): void =>
+    setFilters((fs) => (fs ?? []).map((f) => (f.id === id ? { ...f, ...p } : f)));
+
+  const dirty = JSON.stringify(filters) !== JSON.stringify(q.data?.filters ?? []);
+  const broken = filters.filter(badRegex);
+  const empty = filters.filter((f) => !f.pattern.trim());
+  const blocked = filters.filter((f) => f.act === 'block' && f.on !== false && f.pattern.trim()).length;
+  const allowed = filters.filter((f) => f.act === 'allow' && f.on !== false && f.pattern.trim()).length;
+
+  return (
+    <>
+      <p className="hint tiny">
+        在<strong>抓取写库之前</strong>按规则过滤：命中的条目不进数据库。
+        <strong>屏蔽</strong> = 命中即丢；<strong>只收</strong> = 只留命中的（白名单）。
+        两者同时存在时<span className="nowrap">先按屏蔽拉黑、再按只收拉白</span>。
+      </p>
+
+      <ul className="filter-list">
+        {filters.map((f) => {
+          const bad = badRegex(f);
+          return (
+            <li className={`filter-rule${bad ? ' bad' : ''}`} key={f.id}>
+              <input
+                type="checkbox"
+                className="filter-check"
+                checked={f.on !== false}
+                title="启用这条规则"
+                aria-label="启用这条规则"
+                onChange={(e) => patch(f.id, { on: e.target.checked })}
+              />
+              <select
+                className="input sm"
+                aria-label="动作"
+                value={f.act}
+                onChange={(e) => patch(f.id, { act: e.target.value as FilterRule['act'] })}
+              >
+                {FILTER_ACTS.map(([v, t]) => (
+                  <option key={v} value={v}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="input sm"
+                aria-label="匹配范围"
+                value={f.field}
+                onChange={(e) => patch(f.id, { field: e.target.value as FilterRule['field'] })}
+              >
+                {FILTER_FIELDS.map(([v, t]) => (
+                  <option key={v} value={v}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="input sm"
+                aria-label="匹配方式"
+                value={f.kind}
+                onChange={(e) => patch(f.id, { kind: e.target.value as FilterRule['kind'] })}
+              >
+                {FILTER_KINDS.map(([v, t]) => (
+                  <option key={v} value={v}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="input sm filter-pattern"
+                spellCheck={false}
+                autoComplete="off"
+                placeholder={f.kind === 're' ? '如：v\\d+\\.\\d+' : '关键词，不区分大小写'}
+                value={f.pattern}
+                onChange={(e) => patch(f.id, { pattern: e.target.value })}
+              />
+              <button
+                className="btn ghost sm"
+                aria-label="删除规则"
+                onClick={() => setFilters((fs) => (fs ?? []).filter((x) => x.id !== f.id))}
+              >
+                ✕
+              </button>
+              {bad && <span className="filter-err">正则写错了，保存时会被丢弃</span>}
+            </li>
+          );
+        })}
+      </ul>
+
+      {filters.length === 0 && (
+        <p className="hint">还没有规则。加一条试试，比如屏蔽标题含「广告」的条目。</p>
+      )}
+
+      <p className="admin-actions">
+        <button
+          className="btn ghost sm"
+          disabled={filters.length >= 50}
+          title={filters.length >= 50 ? '最多 50 条' : '再加一条'}
+          onClick={() => setFilters((fs) => [...(fs ?? []), emptyFilter()])}
+        >
+          ＋ 添加规则
+        </button>
+        <button
+          className="btn sm"
+          disabled={save.isPending || !dirty || broken.length > 0}
+          title={broken.length ? '先修正标红的正则' : undefined}
+          onClick={() => save.mutate({ filters: filters.filter((f) => f.pattern.trim()) })}
+        >
+          {save.isPending ? '保存中…' : dirty ? '保存规则' : '已保存'}
+        </button>
+        <span className="hint tiny">
+          {filters.length}/50 条
+          {blocked ? ` · 屏蔽 ${blocked}` : ''}
+          {allowed ? ` · 只收 ${allowed}` : ''}
+        </span>
+      </p>
+
+      {empty.length > 0 && <p className="hint tiny">有 {empty.length} 条规则没填内容，保存时会自动跳过。</p>}
+      <p className="hint tiny">
+        只影响<strong>之后新抓</strong>的条目，已入库的文章不会被删（想清掉得手动删频道重抓）。
+        关键词不区分大小写；匹配范围「全部」= 标题 + 摘要 + 正文。单条关键词上限 200 字。
+      </p>
     </>
   );
 }
