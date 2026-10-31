@@ -30,18 +30,29 @@ function forwardCookies(c: Context<AppEnv>, res: Response): void {
   for (const sc of setCookiesOf(res)) c.header('Set-Cookie', sc, { append: true });
 }
 
-function baseURL(): string {
-  return process.env.AUTH_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3000}`;
+/**
+ * better-auth 的 baseURL。没配 AUTH_BASE_URL 时用**本次请求的 origin**：
+ * 零配置部署里域名只有请求自己知道，写死 127.0.0.1 会让 origin 校验拿到一个
+ * 与用户实际访问地址无关的白名单条目。
+ */
+function baseURLOf(c: { req: { url: string } }): string {
+  const configured = process.env.AUTH_BASE_URL?.trim();
+  if (configured) return configured;
+  try {
+    return new URL(c.req.url).origin;
+  } catch {
+    return `http://127.0.0.1:${process.env.PORT ?? 3000}`;
+  }
 }
 
 /**
  * better-auth 对**带会话 Cookie 的状态变更请求**做 CSRF 校验，缺少 Origin 会直接
  * 403 MISSING_OR_NULL_ORIGIN（浏览器会自动带 Origin，curl 不会）。
- * 这里优先透传真实 Origin 以保留 CSRF 语义；客户端未带时回退到受信任的 baseURL origin
+ * 这里优先透传真实 Origin 以保留 CSRF 语义；客户端未带时回退到本站 origin
  * （交叉站点的伪造请求会带上自己的 Origin，不在 trustedOrigins 内仍会被拒）。
  */
-function originOf(c: { req: { header: (n: string) => string | undefined } }): string {
-  return c.req.header('origin') ?? new URL(baseURL()).origin;
+function originOf(c: { req: { url: string; header: (n: string) => string | undefined } }): string {
+  return c.req.header('origin') ?? new URL(baseURLOf(c)).origin;
 }
 
 export function authRoutes(db: Db | null, auth: AuthInstance | null) {
@@ -65,7 +76,7 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
 
         // 交给 better-auth 的 username 登录端点（真正校验密码并签发会话）
         const res = await auth.handler(
-          new Request(new URL('/api/auth/sign-in/username', baseURL()), {
+          new Request(new URL('/api/auth/sign-in/username', baseURLOf(c)), {
             method: 'POST',
             headers: { 'content-type': 'application/json', origin: originOf(c) },
             body: JSON.stringify({ username: body.username, password: body.password }),
@@ -100,7 +111,7 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
       // 原请求带 content-length 而这里新构造的 Request 若不带 body，会让 better-auth
       // 解析失败 → 返回 ok:false 且**会话并未失效**（登出形同无效）。
       const res = await auth.handler(
-        new Request(new URL('/api/auth/sign-out', baseURL()), {
+        new Request(new URL('/api/auth/sign-out', baseURLOf(c)), {
           method: 'POST',
           headers: {
             cookie: c.req.header('cookie') ?? '',

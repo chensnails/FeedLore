@@ -1,9 +1,11 @@
 /**
  * FeedLore v2 —— apps/server（Hono）进程入口。
  *
- * 只做副作用：连库、初始化 better-auth、装配 app、监听端口。
+ * 只做副作用：自举（1.x → v2 零配置切换）、连库、初始化 better-auth、装配 app、监听端口。
  * 路由与类型在 app.ts（那里导出的 AppType 供前端 hc 推导）。
  *
+ * - 启动前先跑 `bootstrap()`：DATABASE_URL 指向 1.x 库时自动完成建库/迁移/校验，
+ *   并把连接串改写成新库；普通 v2 站点只是补一枚零配置 AUTH_SECRET（见 bootstrap.ts）。
  * - DATABASE_URL 缺失时仍启动（健康检查报 db.ready=false），便于容器排错。
  * - 鉴权交给 better-auth：其自带 /api/auth/** 直接挂载，业务侧另按契约提供
  *   /api/login、/api/logout、/api/session。
@@ -12,9 +14,10 @@
 import { serve } from '@hono/node-server';
 import { createDb, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
-import { APP_VERSION, DATABASE_URL, HOST, PORT } from './env';
+import { APP_VERSION, HOST, PORT } from './env';
 import { getAuth } from './auth';
 import { createApp } from './app';
+import { bootstrap } from './bootstrap';
 import { startScheduler } from './lib/fetcher';
 import { startDigestScheduler } from './lib/digest';
 import { undiciVersionMismatch, undiciVersions } from './lib/net';
@@ -22,50 +25,7 @@ import { reloadSource } from './lib/settings';
 import { pruneImageCache } from './routes/img';
 
 let db: Db | null = null;
-if (DATABASE_URL) {
-  try {
-    db = createDb(DATABASE_URL);
-    console.log('[db] 已初始化连接池');
-  } catch (e) {
-    console.error('[db] 初始化失败：', (e as Error)?.message ?? e);
-  }
-} else {
-  console.warn('[boot] 未设置 DATABASE_URL —— 数据类端点将返回 503');
-}
-
 let auth: AuthInstance | null = null;
-if (db) {
-  try {
-    auth = getAuth(db);
-  } catch (e) {
-    console.error('[auth] better-auth 初始化失败：', (e as Error)?.message ?? e);
-  }
-} else {
-  console.warn('[boot] 数据库未就绪 —— better-auth 未启动，鉴权端点返回 503');
-}
-
-const app = createApp({ db, auth });
-
-/* 首个 tick 前预热站点参数快照：图片 TTL / 压缩参数 / 抓取间隔都读它，
- * 否则进程刚起的几分钟里会静默用 env 默认值（管理员改过的配置看起来没生效）。 */
-if (db) {
-  void reloadSource(db).then((s) => {
-    if (s) console.log(`[settings] 采集参数：刷新 ${s.refreshMinutes} 分钟 / 并发 ${s.concurrency} / 保留 ${s.keepPerFeed} 条`);
-  });
-}
-
-/* 抓取器：进程内调度（每分钟检查一次到期频道）。
- * 不用外部队列是刻意的 P5 决策——单进程足够、少一个故障点；多实例时才需要 BullMQ。 */
-if (db) startScheduler(db);
-
-/* 日报调度：每分钟检查一次「谁的 08:00 到了」。与抓取器同款进程内调度，
- * 理由相同（单进程够用、少一个故障点）。账号没配模型时会先落「今天已处理」再跳过，
- * 所以不会每分钟重复烧额度。 */
-if (db) startDigestScheduler(db);
-
-/* 图片缓存清理：`image_cache` 随阅读量线性增长，不清会悄悄吃掉磁盘。
- * 首次延迟 10 分钟（别在冷启动和第一轮抓取抢数据库），之后每 6 小时一次。 */
-if (db) scheduleImagePrune(db);
 
 function scheduleImagePrune(database: Db): void {
   const run = (): void => {
@@ -80,22 +40,78 @@ function scheduleImagePrune(database: Db): void {
   setInterval(run, 6 * 3600_000).unref();
 }
 
-/* undici 版本对齐：跨大版本会让 IP 钉定失效（1.7.3 全站抓取失败的真凶）。
- * 这里只喊一声，真正的兜底在 lib/net.safeFetch —— 钉定失效时降级重试并告警。 */
-if (undiciVersionMismatch()) {
-  const v = undiciVersions();
-  console.warn(
-    `[net] ⚠️ undici 版本不匹配（内置 ${v.builtin} / 依赖 ${v.installed}）：`
-    + 'IP 钉定会失效，请把 apps/server 的 undici 锁到与 Node 内置一致的大版本',
-  );
-} else {
-  const v = undiciVersions();
-  console.log(`[net] undici 对齐：内置 ${v.builtin} / 依赖 ${v.installed}`);
+async function main(): Promise<void> {
+  /* 自举可能耗时数分钟（大库迁移）。失败就退出，让容器重启重试 ——
+   * 迁移是幂等的，重启不会写出半套数据；1.x 的库全程只读。 */
+  await bootstrap();
+  const databaseUrl = process.env.DATABASE_URL?.trim() ?? '';
+
+  if (databaseUrl) {
+    try {
+      db = createDb(databaseUrl);
+      console.log('[db] 已初始化连接池');
+    } catch (e) {
+      console.error('[db] 初始化失败：', (e as Error)?.message ?? e);
+    }
+  } else {
+    console.warn('[boot] 未设置 DATABASE_URL —— 数据类端点将返回 503');
+  }
+
+  if (db) {
+    try {
+      auth = getAuth(db);
+    } catch (e) {
+      console.error('[auth] better-auth 初始化失败：', (e as Error)?.message ?? e);
+    }
+  } else {
+    console.warn('[boot] 数据库未就绪 —— better-auth 未启动，鉴权端点返回 503');
+  }
+
+  const app = createApp({ db, auth });
+
+  /* 首个 tick 前预热站点参数快照：图片 TTL / 压缩参数 / 抓取间隔都读它，
+   * 否则进程刚起的几分钟里会静默用 env 默认值（管理员改过的配置看起来没生效）。 */
+  if (db) {
+    void reloadSource(db).then((s) => {
+      if (s) console.log(`[settings] 采集参数：刷新 ${s.refreshMinutes} 分钟 / 并发 ${s.concurrency} / 保留 ${s.keepPerFeed} 条`);
+    });
+  }
+
+  /* 抓取器：进程内调度（每分钟检查一次到期频道）。
+   * 不用外部队列是刻意的 P5 决策——单进程足够、少一个故障点；多实例时才需要 BullMQ。 */
+  if (db) startScheduler(db);
+
+  /* 日报调度：每分钟检查一次「谁的 08:00 到了」。与抓取器同款进程内调度，
+   * 理由相同（单进程够用、少一个故障点）。账号没配模型时会先落「今天已处理」再跳过，
+   * 所以不会每分钟重复烧额度。 */
+  if (db) startDigestScheduler(db);
+
+  /* 图片缓存清理：`image_cache` 随阅读量线性增长，不清会悄悄吃掉磁盘。
+   * 首次延迟 10 分钟（别在冷启动和第一轮抓取抢数据库），之后每 6 小时一次。 */
+  if (db) scheduleImagePrune(db);
+
+  /* undici 版本对齐：跨大版本会让 IP 钉定失效（1.7.3 全站抓取失败的真凶）。
+   * 这里只喊一声，真正的兜底在 lib/net.safeFetch —— 钉定失效时降级重试并告警。 */
+  if (undiciVersionMismatch()) {
+    const v = undiciVersions();
+    console.warn(
+      `[net] ⚠️ undici 版本不匹配（内置 ${v.builtin} / 依赖 ${v.installed}）：`
+      + 'IP 钉定会失效，请把 apps/server 的 undici 锁到与 Node 内置一致的大版本',
+    );
+  } else {
+    const v = undiciVersions();
+    console.log(`[net] undici 对齐：内置 ${v.builtin} / 依赖 ${v.installed}`);
+  }
+
+  serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
+    console.log(`[v2] FeedLore ${APP_VERSION} 已启动 → http://${HOST}:${info.port}`);
+    console.log(
+      `[v2] 端点：GET /api/health、GET /api/session、POST /api/login、POST /api/logout、GET /api/feeds(user)`,
+    );
+  });
 }
 
-serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
-  console.log(`[v2] FeedLore ${APP_VERSION} 已启动 → http://${HOST}:${info.port}`);
-  console.log(
-    `[v2] 端点：GET /api/health、GET /api/session、POST /api/login、POST /api/logout、GET /api/feeds(user)`,
-  );
+main().catch((e) => {
+  console.error('[v2] 启动失败：', (e as Error)?.stack ?? e);
+  process.exit(1);
 });

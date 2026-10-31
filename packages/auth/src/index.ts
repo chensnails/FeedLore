@@ -66,6 +66,17 @@ export async function verifyPasswordHash(data: { hash: string; password: string 
   return verifyPassword(data);
 }
 
+/**
+ * 受信来源：静态列表，或按请求推导的函数。
+ *
+ * 零配置部署里域名是未知的（1.x 用户升级前不填任何东西），只能从请求的 Host
+ * 推出「同源」候选。浏览器带来的 Origin 无法伪造：跨站请求的 Origin 是攻击者
+ * 域名，与本站 Host 对不上，仍会被拒。
+ */
+export type TrustedOrigins =
+  | string[]
+  | ((request?: Request) => (string | undefined | null)[] | Promise<(string | undefined | null)[]>);
+
 export interface CreateAuthOptions {
   /**
    * Drizzle pg 实例（来自 packages/db）。
@@ -80,7 +91,7 @@ export interface CreateAuthOptions {
   /** 后端基础 URL，better-auth 用于拼接回调。 */
   baseURL: string;
   /** 受信前端源（SPA 跨域携带 Cookie 必需）。 */
-  trustedOrigins: string[];
+  trustedOrigins: TrustedOrigins;
   /**
    * Cookie 是否仅限 HTTPS。
    * ⚠️ 默认 true（生产正确），但在**纯 HTTP 环境（如内网测试容器）下浏览器/客户端

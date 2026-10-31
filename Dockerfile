@@ -53,8 +53,10 @@ ENV WEB_ROOT=/app/apps/web/dist
 
 EXPOSE 3000
 
-# 健康检查直接打契约端点：DB 未就绪时 /api/health 返回 503 → 容器 unhealthy
-HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
+# 健康检查直接打契约端点：DB 未就绪时 /api/health 返回 503 → 容器 unhealthy。
+# start-period 给到 5 分钟：v1→v2 的库迁移在启动自举里完成，大库要跑几分钟，
+# 这期间端口还没监听，不能被当成「起不来」反复重启（watchtower 重建时旧容器已停）。
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
   CMD node -e "const p=process.env.PORT||3000;fetch('http://127.0.0.1:'+p+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["pnpm", "--filter", "@feedlore/server", "start"]

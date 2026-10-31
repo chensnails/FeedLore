@@ -26,6 +26,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { createDb, createPool, getPool, settings, type Db } from '@feedlore/db';
+import { ensureAuthSecret } from '../src/lib/auth-secret';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../../..');
@@ -252,7 +253,6 @@ async function writeMarker(db: Db, c: Counts): Promise<void> {
 async function main(): Promise<void> {
   if (!LEGACY_URL) fail('缺少 LEGACY_DATABASE_URL（v1 的库）');
   if (!V2_URL) fail('缺少 DATABASE_URL（v2 的新库，不能与 LEGACY_DATABASE_URL 相同）');
-  if (!process.env.AUTH_SECRET) fail('缺少 AUTH_SECRET（必须与 v2 服务用的是同一个值）');
   if (LEGACY_URL === V2_URL) fail('LEGACY_DATABASE_URL 与 DATABASE_URL 相同：v2 必须写到新库（如 feedlore_v2）');
 
   /* 时区不对会**静默**写偏历史时间，宁可在这里停下。 */
@@ -299,6 +299,9 @@ async function main(): Promise<void> {
     return;
   }
 
+  /* AUTH_SECRET 只被 migrate:legacy 用来建账号；没配就自动生成并持久化到 v2 库，
+   * app 启动时读同一枚（见 src/lib/auth-secret.ts），用户不必先编辑 .env。 */
+  await ensureAuthSecret(V2_URL);
   runStep('v1 数据迁移（migrate:legacy，幂等）', ['--filter', '@feedlore/server', 'migrate:legacy'], REPO_ROOT);
   await copyImageCache();
   const counts = await verify();
