@@ -186,7 +186,7 @@ export function UserManagement() {
       <p className="hint tiny">
         用户名可用字母、数字与 . _ - @，最长 40 位。登录用用户名，不用邮箱。
       </p>
-      <p className="hint tiny">改自己的用户名或密码请去「账号」页签。</p>
+      <p className="hint tiny">改自己的用户名或密码请去「我的账号」页签。</p>
     </div>
   );
 }
