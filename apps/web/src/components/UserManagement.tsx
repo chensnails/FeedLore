@@ -4,15 +4,17 @@ import { api } from '../lib/api';
 import { qk } from '../lib/query';
 import { useCreateUser, useDeleteUser, usePatchUser } from '../lib/mutations';
 import { useUi } from '../store/ui';
-import { Icon } from './Icon';
-import { AccountForm } from './AccountForm';
 
 /**
  * 用户账户管理（仅管理员可见）。
  *
  * 权限边界（见需求「权限控制」）：管理员角色 = 普通用户全部权限 + **仅**用户账户管理。
- * 本组件只承载账号增删改、改角色、重置密码、以及当前账号自身的设置（AccountForm），
- * 不碰任何系统级能力（状态 / 采集参数 / 更新检查）。
+ * 本组件只承载**他人**账号的增删改、改角色、重置密码，不碰任何系统级能力
+ * （状态 / 采集参数 / 更新检查）。
+ *
+ * 为什么不在这里再放一份「我的账号」：设置页已有面向所有用户的「账号」页签，
+ * 两个入口渲染同一个 AccountForm 就是纯粹的功能重复（管理员会看到两处改密表单）。
+ * 自己的账号去「账号」改，这里只管别人。
  *
  * 入口归置：本组件不再是一个独立覆盖层，而是「设置」面板里的一个**仅管理员可见**的页签
  * （见 PrefsPanel）。普通用户打开设置时看不到这一页签，也就没有进入用户管理这条路；
@@ -184,9 +186,7 @@ export function UserManagement() {
       <p className="hint tiny">
         用户名可用字母、数字与 . _ - @，最长 40 位。登录用用户名，不用邮箱。
       </p>
-
-      <h3 className="admin-h3">我的账号</h3>
-      <AccountForm />
+      <p className="hint tiny">改自己的用户名或密码请去「账号」页签。</p>
     </div>
   );
 }

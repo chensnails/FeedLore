@@ -21,8 +21,10 @@ import { Icon } from './Icon';
  * - 外观：整站观感（主题 / 主色 / 界面字号 / 密度）
  * - 阅读：只管文章正文（字体 / 行高 / 字号 / 宽度）
  * - 关注规则：改完要**手动重算**历史条目才能看到效果
- * - 账号：改密码（普通用户唯一的路径）
- * - 用户管理：**仅管理员可见**，是用户账户管理的唯一入口（不再有顶栏盾牌 / 溢出菜单 / 命令面板等平行入口）
+ * - 账号：改自己（所有人都有，包括管理员）
+ * - 用户管理：**仅管理员可见**，只管**他人**账号（增删改 / 改角色 / 重置密码），
+ *   是全系统用户管理的唯一入口（不再有顶栏盾牌 / 溢出菜单 / 命令面板等平行入口）。
+ *   「我的账号」只留在「账号」页签，这里**不再重复一份表单**。
  */
 
 type Tab = PrefsTab;
@@ -64,7 +66,7 @@ export function PrefsPanel({ open, onClose, role }: { open: boolean; onClose: ()
             { id: 'channels' as const, label: '频道' },
             { id: 'watch' as const, label: '关注' },
             { id: 'filter' as const, label: '过滤' },
-            { id: 'account' as const, label: '账号' },
+            { id: 'account' as const, label: '我的账号' },
             /* 用户管理仅管理员可见：普通用户看不到这一页签，也就没有进入用户管理的入口。
              * 这是全系统唯一一个用户管理入口，且由 role 严格门控。 */
             ...(role === 'admin'
@@ -578,8 +580,9 @@ function FilterTab() {
 function AccountTab() {
   return (
     <>
-      <h3 className="admin-h3">我的账号</h3>
+      <h3 className="admin-h3">用户名与密码</h3>
       <AccountForm />
+      <p className="hint tiny">这里只改你自己的登录凭据；管理其他账号请去「用户管理」（仅管理员可见）。</p>
     </>
   );
 }
