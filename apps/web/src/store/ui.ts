@@ -39,8 +39,17 @@ export interface ConfirmRequest {
 export type Panel = 'settings' | 'digest';
 
 /** 设置面板页签。`channels` 承载「频道分组 / 频道源管理」（从频道栏迁入）。
+ * `collection` 是采集参数（全局抓取行为），仅管理员可见。
  * `users` 是用户账户管理，仅管理员可见（入口归置：用户管理不再有独立面板/顶栏入口）。 */
-export type PrefsTab = 'appearance' | 'reading' | 'channels' | 'watch' | 'filter' | 'account' | 'users';
+export type PrefsTab =
+  | 'appearance'
+  | 'reading'
+  | 'channels'
+  | 'collection'
+  | 'watch'
+  | 'filter'
+  | 'account'
+  | 'users';
 
 /**
  * 列表筛选。`all` 之外的四档对应服务端的 unread / fav / watch 参数。

@@ -8,6 +8,7 @@ import { useOverlayFocus } from '../lib/useOverlayFocus';
 import { useUi, type PrefsTab } from '../store/ui';
 import { AccountForm } from './AccountForm';
 import { ChannelsTab } from './ChannelsTab';
+import { CollectionTab } from './CollectionTab';
 import { UserManagement } from './UserManagement';
 import { Icon } from './Icon';
 
@@ -22,6 +23,8 @@ import { Icon } from './Icon';
  * - 阅读：只管文章正文（字体 / 行高 / 字号 / 宽度）
  * - 关注规则：改完要**手动重算**历史条目才能看到效果
  * - 账号：改自己（所有人都有，包括管理员）
+ * - 采集参数：**仅管理员可见**，全局抓取行为（间隔/超时/并发/保留/代理）；
+ *   单个频道的间隔在「频道」页签按行设置，这页只管全站默认值。
  * - 用户管理：**仅管理员可见**，只管**他人**账号（增删改 / 改角色 / 重置密码），
  *   是全系统用户管理的唯一入口（不再有顶栏盾牌 / 溢出菜单 / 命令面板等平行入口）。
  *   「我的账号」只留在「账号」页签，这里**不再重复一份表单**。
@@ -64,6 +67,8 @@ export function PrefsPanel({ open, onClose, role }: { open: boolean; onClose: ()
             { id: 'appearance' as const, label: '外观' },
             { id: 'reading' as const, label: '阅读' },
             { id: 'channels' as const, label: '频道' },
+            /* 采集参数仅管理员可见：改的是全站抓取行为（间隔/并发/保留），普通用户无权写。 */
+            ...(role === 'admin' ? [{ id: 'collection' as const, label: '采集参数' }] : []),
             { id: 'watch' as const, label: '关注' },
             { id: 'filter' as const, label: '过滤' },
             { id: 'account' as const, label: '我的账号' },
@@ -89,6 +94,7 @@ export function PrefsPanel({ open, onClose, role }: { open: boolean; onClose: ()
           {tab === 'appearance' && <AppearanceTab />}
           {tab === 'reading' && <ReadingTab />}
           {tab === 'channels' && <ChannelsTab />}
+          {tab === 'collection' && role === 'admin' && <CollectionTab />}
           {tab === 'watch' && <WatchTab />}
           {tab === 'filter' && <FilterTab />}
           {tab === 'account' && <AccountTab />}

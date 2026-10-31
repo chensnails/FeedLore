@@ -32,6 +32,10 @@ import { Icon } from './Icon';
  * 2. **跨组拖拽不接**：改分组归属是另一件事。
  * 3. 每次重排都带全量顺序（服务端整批重写 sort_order）。
  */
+
+/** 单频道采集间隔的档位（分钟）。服务端夹取区间是 5–1440；「跟随全局」发 'global'。 */
+const INTERVALS = [10, 15, 30, 60, 120, 240, 360, 720, 1440] as const;
+const intervalLabel = (m: number): string => (m >= 1440 ? '1 天' : m >= 60 ? `${m / 60} 时` : `${m} 分`);
 export function ChannelsTab() {
   const askConfirm = useUi((s) => s.askConfirm);
   const createFeed = useCreateFeed();
@@ -342,6 +346,33 @@ export function ChannelsTab() {
                   </div>
 
                   <span className="feed-ops">
+                    {/* 单频道采集间隔：null = 跟随全局。选择即保存（patch 静默成功，
+                        select 的值本身就是反馈）。非预设档（历史遗留值）动态补一项，别让它显示成空。 */}
+                    <select
+                      className="input sm feed-interval"
+                      title="采集间隔（跟随全局或单独设置）"
+                      aria-label={`采集间隔：${f.title}`}
+                      value={f.refreshMinutes ?? ''}
+                      disabled={patchFeed.isPending}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        patchFeed.mutate({
+                          id: f.id,
+                          patch: { refreshMinutes: v === '' ? 'global' : Number(v) },
+                        });
+                      }}
+                    >
+                      <option value="">跟随全局</option>
+                      {INTERVALS.map((m) => (
+                        <option key={m} value={m}>
+                          {intervalLabel(m)}
+                        </option>
+                      ))}
+                      {f.refreshMinutes !== null &&
+                        !INTERVALS.includes(f.refreshMinutes as (typeof INTERVALS)[number]) && (
+                          <option value={f.refreshMinutes}>{intervalLabel(f.refreshMinutes)}</option>
+                        )}
+                    </select>
                     <button
                       className="icon-btn"
                       title="立即抓取这个频道"

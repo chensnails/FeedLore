@@ -1402,6 +1402,14 @@ html {
 .prefs-sheet .feed-group-ops {
   opacity: 1;
 }
+/* 单频道采集间隔：行内的紧凑下拉。宽度收紧（最长文案「跟随全局」3 字 + 箭头），
+   高度与旁边 --ctl-sm 的图标按钮同档，频道行保持单行 32 的节拍。 */
+.feed-interval {
+  width: 88px;
+  flex: none;
+  padding: 0 var(--gap-2);
+  margin-right: var(--gap-1);
+}
 .icon-btn {
   font: inherit;
   width: var(--ctl-sm);
