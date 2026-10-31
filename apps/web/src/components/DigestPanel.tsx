@@ -311,13 +311,13 @@ function SettingsTab() {
 
         <label className="admin-field">
           <span className="admin-field-label">生成时间</span>
-          <input type="time" value={d.time} onChange={(e) => setDigest('time', e.target.value)} />
+          <input className="input" type="time" value={d.time} onChange={(e) => setDigest('time', e.target.value)} />
           <span className="hint tiny">上海时区</span>
         </label>
 
         <label className="admin-field">
           <span className="admin-field-label">摘要范围</span>
-          <select value={d.mode} onChange={(e) => setDigest('mode', e.target.value as DigestConfig['mode'])}>
+          <select className="input" value={d.mode} onChange={(e) => setDigest('mode', e.target.value as DigestConfig['mode'])}>
             <option value="enabled">仅开启采集的频道</option>
             <option value="all">全部频道</option>
             <option value="custom">自定义（在频道面板里选）</option>
@@ -327,6 +327,7 @@ function SettingsTab() {
         <label className="admin-field">
           <span className="admin-field-label">每个频道上限（条）</span>
           <input
+            className="input"
             type="number"
             value={d.maxPerFeed}
             onChange={(e) => setDigest('maxPerFeed', Number(e.target.value))}
@@ -335,18 +336,29 @@ function SettingsTab() {
 
         <label className="admin-field">
           <span className="admin-field-label">总量上限（条）</span>
-          <input type="number" value={d.maxTotal} onChange={(e) => setDigest('maxTotal', Number(e.target.value))} />
+          <input
+            className="input"
+            type="number"
+            value={d.maxTotal}
+            onChange={(e) => setDigest('maxTotal', Number(e.target.value))}
+          />
           <span className="hint tiny">超过 90 条会自动走 map-reduce</span>
         </label>
 
         <label className="admin-field">
           <span className="admin-field-label">日报保留（天）</span>
-          <input type="number" value={d.keepDays} onChange={(e) => setDigest('keepDays', Number(e.target.value))} />
+          <input
+            className="input"
+            type="number"
+            value={d.keepDays}
+            onChange={(e) => setDigest('keepDays', Number(e.target.value))}
+          />
         </label>
 
         <label className="admin-field wide">
           <span className="admin-field-label">风格要求（可选）</span>
           <textarea
+            className="input"
             rows={3}
             value={d.style}
             placeholder="例如：优先挑影视资源，少提工具类；每条点评尽量短。"
@@ -361,6 +373,7 @@ function SettingsTab() {
         <label className="admin-field wide">
           <span className="admin-field-label">接口地址</span>
           <input
+            className="input"
             type="text"
             placeholder="https://api.openai.com/v1 或完整的 …/chat/completions"
             value={form.llm.baseUrl}
@@ -372,6 +385,7 @@ function SettingsTab() {
         <label className="admin-field">
           <span className="admin-field-label">模型名</span>
           <input
+            className="input"
             type="text"
             placeholder="gpt-4o-mini / qwen-plus / …"
             value={form.llm.model}
@@ -382,6 +396,7 @@ function SettingsTab() {
         <label className="admin-field">
           <span className="admin-field-label">API Key</span>
           <input
+            className="input"
             type="password"
             autoComplete="off"
             placeholder={view.llm.apiKeySet ? `已保存：${view.llm.apiKeyHint || '（无法解密，请重填）'}` : 'sk-…'}
@@ -408,6 +423,7 @@ function SettingsTab() {
         <label className="admin-field">
           <span className="admin-field-label">温度</span>
           <input
+            className="input"
             type="number"
             step="0.1"
             min={0}
@@ -424,7 +440,7 @@ function SettingsTab() {
             <input type="checkbox" checked={form.llm.thinking} onChange={(e) => setLlm('thinking', e.target.checked)} />
             <span>开启（仅部分模型支持）</span>
           </label>
-          <select value={form.llm.thinkingDepth} onChange={(e) => setLlm('thinkingDepth', Number(e.target.value))}>
+          <select className="input" value={form.llm.thinkingDepth} onChange={(e) => setLlm('thinkingDepth', Number(e.target.value))}>
             <option value={1}>浅（512 token）</option>
             <option value={2}>中（2048 token）</option>
             <option value={3}>深（8192 token）</option>

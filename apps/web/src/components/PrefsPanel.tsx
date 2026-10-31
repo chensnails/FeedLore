@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Appearance, FilterRule, WatchRule } from '@feedlore/contract';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
-import { useApplyWatch, useSaveAppearance, useSavePrefs } from '../lib/mutations';
+import { useApplyWatch, useSaveAppearance, useSaveLayout, useSavePrefs } from '../lib/mutations';
 import { useOverlayFocus } from '../lib/useOverlayFocus';
 import { useUi, type PrefsTab } from '../store/ui';
 import { AccountForm } from './AccountForm';
@@ -156,14 +156,26 @@ const ACCENTS = [
   ['rose', '玫红', '#e0708f'],
 ] as const;
 
-function useAppearance(): { a: Appearance | null; save: ReturnType<typeof useSaveAppearance> } {
+function useAppearance(): {
+  a: Appearance | null;
+  /** layout.digestEnabled（默认开）：顶栏日报入口与服务端自动生成都看这个开关 */
+  digestOn: boolean;
+  save: ReturnType<typeof useSaveAppearance>;
+  saveLayout: ReturnType<typeof useSaveLayout>;
+} {
   const q = useQuery({ queryKey: qk.prefs, queryFn: () => api.prefs.get(), staleTime: 5 * 60_000 });
   const save = useSaveAppearance();
-  return { a: q.data?.appearance ?? null, save };
+  const saveLayout = useSaveLayout();
+  return {
+    a: q.data?.appearance ?? null,
+    digestOn: q.data?.layout.digestEnabled !== false,
+    save,
+    saveLayout,
+  };
 }
 
 function AppearanceTab() {
-  const { a, save } = useAppearance();
+  const { a, digestOn, save, saveLayout } = useAppearance();
   if (!a) return <p className="hint">加载偏好…</p>;
 
   /* github 主题自带整套配色，这里把主色调板禁用（legacy 同规则）：
@@ -201,8 +213,21 @@ function AppearanceTab() {
         </div>
       </div>
 
+      {/* layout.digestEnabled 是日报的总开关：顶栏/溢出菜单的「AI 日报」入口和
+       * 服务端的到点自动生成都读它。之前只有读取方没有写入方（用户想关都关不掉）。
+       * 放在外观页而不是日报面板里——入口被隐藏后，日报面板也打不开了，
+       * 只有设置页是永远可达的。 */}
+      <Seg
+        label="AI 日报入口"
+        hint="隐藏后顶栏不再显示日报，到点也不会自动生成"
+        value={digestOn ? 'on' : 'off'}
+        options={[['on', '显示'], ['off', '隐藏']] as const}
+        disabled={saveLayout.isPending}
+        onChange={(v) => saveLayout.mutate({ digestEnabled: v === 'on' })}
+      />
+
       <p className="hint tiny">
-        主题、主色与界面字号都在这页改；顶栏不再放单独的快捷开关，所有外观设置统一从这里进入。
+        主题、主色与界面字号都在这页改；「AI 日报入口」隐藏后可随时回这里重新打开。
       </p>
     </>
   );

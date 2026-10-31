@@ -64,10 +64,13 @@ const FILTERS: ReadonlyArray<readonly [ListFilter, string, string]> = [
 
 export function CommandPalette({
   role,
+  digestOn,
   onOpenDigest,
 }: {
   /** 会话角色（当前预留给未来的权限区分，UI 暂未区分角色命令） */
   role: string | null;
+  /** layout.digestEnabled：日报入口被隐藏时，「打开 AI 日报」命令一起消失 */
+  digestOn: boolean;
   onOpenDigest: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -168,13 +171,19 @@ export function CommandPalette({
         keywords: 'settings prefs shezhi dakai 设置 外观 阅读 账号 关注规则',
         run: close(() => useUi.getState().setPanel('settings')),
       },
-      {
-        id: 'open-digest',
-        group: '设置',
-        label: '打开 AI 日报',
-        keywords: 'digest ai ribao zhaiyao 日报 摘要 简报',
-        run: close(onOpenDigest),
-      },
+      /* 日报入口被隐藏时命令一起消失：顶栏/溢出菜单/命令面板三个入口必须同进同退，
+       * 否则「隐藏」就只藏了一半。想找回去「设置 → 外观 → AI 日报入口」。 */
+      ...(digestOn
+        ? [
+            {
+              id: 'open-digest',
+              group: '设置',
+              label: '打开 AI 日报',
+              keywords: 'digest ai ribao zhaiyao 日报 摘要 简报',
+              run: close(onOpenDigest),
+            },
+          ]
+        : []),
       {
         id: 'refresh',
         group: '操作',
@@ -213,7 +222,7 @@ export function CommandPalette({
     return cmds;
     /* store 一律走 getState()：命令集合只依赖 role / 频道列表，不该随
      * 「搜索词、是否打开抽屉」这些无关状态重算（每敲一个字就重建几十条命令纯属浪费）。 */
-  }, [role, feedsQuery.data, onOpenDigest]);
+  }, [role, digestOn, feedsQuery.data, onOpenDigest]);
 
   /** 过滤：先算好拼音串，再做「整串包含 / 子序列」两级匹配（与 v1 同一套）。 */
   const filtered = useMemo(() => {

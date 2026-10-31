@@ -252,6 +252,7 @@ export function Shell({ session }: { session: Session }) {
       <PrefsPanel open={panel === 'settings'} onClose={() => setPanel(null)} role={session.role} />
       <CommandPalette
         role={session.role}
+        digestOn={prefsQuery.data?.layout.digestEnabled !== false}
         onOpenDigest={() => setPanel('digest')}
       />
       <DigestPanel open={panel === 'digest'} onClose={() => setPanel(null)} />
