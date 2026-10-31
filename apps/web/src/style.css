@@ -961,6 +961,11 @@ html {
   place-items: start center;
   overflow: auto;
   padding: 40px 16px;
+  /* 吸顶层的停靠偏移 = 本容器的上内距。sticky 的 top 是相对**可视视口**算的
+   * （40px 内距把它推到可视区之外），照搬列表那样「把内距挪进吸顶层」在这里做不到
+   * —— 那 40px 是居中浮层「悬浮」的观感本身。所以用一个令牌把两者锁死成同一个数：
+   * 宽屏 40、窄屏整屏档 0（见下方 max-width:820 覆盖）。 */
+  --reader-sticky: 40px;
 }
 
 .reader-sheet {
@@ -1271,6 +1276,7 @@ html {
   .reader-backdrop {
     padding: 0;
     place-items: stretch;
+    --reader-sticky: 0px;
     /* 手机整屏阅读层后面的遮罩也要实底：半透明的 0.55 黑会在文章末尾边缘
      * 透出背后的列表，看起来像「文章末端渐隐/透明」。直接压成实色底。 */
     background: var(--bg);
@@ -2335,7 +2341,9 @@ textarea.input {
  * 原来那个 -14px 的上边距去掉了：吸顶层按自己的盒顶对齐，负上边距会让它被裁掉一截。 */
 .reader-tools {
   position: sticky;
-  top: 0;
+  /* 不能写 top:0 —— .reader-backdrop 有 40px 上内距，top:0 会把工具条停在可视区
+   * 之上（窄屏实测：A-/A+/× 整条滚出屏幕）。见 .reader-backdrop 的 --reader-sticky。 */
+  top: var(--reader-sticky);
   z-index: 2;
   display: flex;
   align-items: center;

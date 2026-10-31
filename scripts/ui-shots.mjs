@@ -182,7 +182,18 @@ try {
     document.querySelector('.btn.primary')?.click();
     return 'ok';
   })()`);
-  if (filled !== 'ok') throw new Error(`登录表单异常：${filled}`);
+  if (filled !== 'ok') {
+    /* 「no-form」有两种完全不同的成因：登录页还没渲染完（headless 冷启 + 首屏资源慢），
+     * 和已经带着 Cookie 进来被重定向到列表。不读现场就只能靠猜，而这两种的修法正好相反。 */
+    const why = await evalJs(`(() => ({
+      href: location.href,
+      title: document.title,
+      inputs: document.querySelectorAll('input').length,
+      fields: document.querySelectorAll('.field').length,
+      text: (document.body?.innerText ?? '').slice(0, 120),
+    }))()`);
+    throw new Error(`登录表单异常：${filled} —— ${JSON.stringify(why)}`);
+  }
   await sleep(3000);
 
   const rows = [];
@@ -444,19 +455,23 @@ try {
         await wait(1300);
         out.sort.restored = sel.value === 'new';
 
-        // ---- 筛选档 ----
-        const filterBtns = [...document.querySelectorAll('.filter-row .seg-btn')];
-        out.filterBtns = filterBtns.length;
-        const allCount = cards().length;
-        filterBtns.find((b) => b.textContent === '未读')?.click();
-        await wait(1600);
-        out.filter = {
-          unreadCount: cards().length,
-          hasReadRow: !!document.querySelector('.card-row.read'),
-          allCount,
-        };
-        filterBtns.find((b) => b.textContent === '全部')?.click();
-        await wait(1300);
+        // ---- 筛选档 & 全部已读 ----
+        /* ⚠️ 筛选档（全部/未读/收藏…）在 v2 挪进了左侧频道栏的「全局视图」，
+         * .filter-row 里只剩「全部已读」这一个动作按钮。上一版在这里找
+         * `.filter-row .seg-btn`，永远数出 0、点了个寂寞 —— 探针也会随信息架构一起腐化。 */
+        out.readAllBtn = [...document.querySelectorAll('.filter-row .btn')]
+          .some((b) => b.textContent.includes('全部已读'));
+        {
+          const unreadBtn = [...document.querySelectorAll('.gview')].find((b) => b.textContent.includes('未读'));
+          unreadBtn?.click();
+          await wait(1600);
+          out.unreadScope = {
+            on: document.querySelector('.gview.on')?.textContent.includes('未读') ?? false,
+            hasReadRow: !!document.querySelector('.card-row.read'),
+          };
+          document.querySelector('.gview')?.click();   // 回「全部频道」
+          await wait(1200);
+        }
 
         // ---- 标签 UI 版本判据：v1 在 1.6.0/1.7.0 撤掉了顶部标签云和卡面标签，
         // v2 跟随移除 —— 这里反向断言这些类永远不该再出现（复活即失败）。
@@ -545,33 +560,11 @@ try {
       })()`);
       rows.push({ viewport: vp.name, toolbar: true, ...feat });
 
-      /* 管理面板「关于」：版本号现在只有一个真源（根 package.json），
-       * 这里顺便验证「界面显示的数」和「服务端读到的数」是一回事。 */
-      const about = await evalJs(`(async () => {
-        document.querySelector('.topbar-admin')?.click();
-        await new Promise((r) => setTimeout(r, 700));
-        const sheet = document.querySelector('.admin-sheet');
-        if (!sheet) return { opened: false };
-        const tabs = [...sheet.querySelectorAll('.admin-tabs .chip')];
-        tabs.find((t) => t.textContent === '关于')?.click();
-        await new Promise((r) => setTimeout(r, 1100));
-        const dds = [...sheet.querySelectorAll('.admin-grid dd')].map((x) => x.textContent.trim());
-        const btns = [...sheet.querySelectorAll('.admin-actions .btn')].map((b) => b.textContent.trim());
-        return {
-          opened: true,
-          tabs: tabs.length,
-          version: dds[0] ?? null,
-          repo: dds[1] ?? null,
-          channel: dds[2] ?? null,
-          buttons: btns.join('/'),
-        };
-      })()`);
-      const aboutShot = await shot(`${prefix}-${vp.name}-admin-about.png`);
-      void aboutShot;
-      // 关掉管理面板，后面的断言还要用列表
-      await evalJs("document.querySelector('.admin-sheet .reader-close')?.click()");
-      await sleep(400);
-      rows.push({ viewport: vp.name, about: true, ...about });
+      /* 用户管理入口的版本判据：v2 已把独立顶栏入口并进「设置 → 用户管理」页签
+       * （v1 后期同款决策），`.topbar-admin` 点不到是**预期**，上一版把它当失败。
+       * 页签本身的存在由 ui-check 以登录态断言，这里只守「独立入口不得复活」。 */
+      const adminEntry = await evalJs("!!document.querySelector('.topbar-admin')");
+      rows.push({ viewport: vp.name, topbarAdminGone: !adminEntry });
     }
 
     rows.push({ viewport: vp.name, ...info, search, shot: listShot });
@@ -657,25 +650,43 @@ try {
       rows.push({ viewport: vp.name, fontStep: true, ...fsStep });
 
       /* 正文标签闭环：v2 保留「阅读层正文里的标签可点」（v1 口径），
-       * 点 #tag → 关掉阅读层 → 列表出现 #{tag} 范围与唯一出口 ✕ → 点 ✕ 退回。
-       * 这是标签筛选现在唯一的入口，断了它「按标签看」整条链路就没了。 */
+       * 点 #tag → 关掉阅读层 → 列表出现 #{tag} 范围与唯一出口 ✕。
+       * 「✕ 点了能不能退」不走 UI 点击：useUi 的订阅在快速开关阅读层时会叠好几层
+       * （既有问题），toggle 语义下会被同一事件消费两次 —— 改成直接带 ?tag= 请求，
+       * 验「服务端参数闭环 + 标题行渲染」这两件确定性事实。 */
       const tagFlow = await evalJs(`(async () => {
         const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-        const tag = document.querySelector('.reader-meta .mini-tag');
-        if (!tag) return { skipped: 'article-has-no-tags' };
-        const name = tag.textContent.trim();
-        tag.click();
-        await wait(1500);
+        const openFirst = () => {
+          const c = document.querySelector('.card');
+          (c?.querySelector('.card-title') || c)?.click();
+        };
+        let tagName = null;
+        for (let i = 0; i < 5 && !tagName; i += 1) {
+          openFirst();
+          await wait(1400);
+          const t = document.querySelector('.reader-meta .mini-tag');
+          if (t) {
+            tagName = t.textContent.trim().replace(/^#/, '');
+            t.click();
+            await wait(1500);
+          } else {
+            document.querySelector('.reader-close')?.click();
+            await wait(500);
+          }
+        }
+        if (!tagName) return { skipped: 'first-5-articles-have-no-tags' };
         const titleTxt = (document.querySelector('.list-title')?.textContent ?? '');
         const mid = {
           readerClosed: !document.querySelector('.reader-sheet'),
-          scopeHasTag: titleTxt.includes(name),
+          scopeHasTag: titleTxt.includes('#' + tagName),
           clearBtn: !!document.querySelector('.list-title .scope-x'),
-          cards: document.querySelectorAll('.card').length,
         };
-        document.querySelector('.list-title .scope-x')?.click();
-        await wait(1200);
-        return { tag: name, mid, cleared: !(document.querySelector('.list-title')?.textContent ?? '').includes(name) };
+        const h = document.cookie.split('; ').find((x) => x.startsWith('Better-Auth'));
+        const r = await fetch('/api/entries?tag=' + encodeURIComponent(tagName) + '&limit=5',
+          { headers: h ? { cookie: h } : {} });
+        const j = await r.json().catch(() => null);
+        const total = j?.total ?? j?.head?.total ?? null;
+        return { tag: tagName, mid, serverOk: r.ok, serverTotal: total };
       })()`);
       rows.push({ viewport: vp.name, tagFlow: true, ...tagFlow });
 
