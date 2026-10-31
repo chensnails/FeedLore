@@ -42,7 +42,7 @@ AUTH_BASE_URL=http://192.168.1.10:3210
 | `AUTH_TRUSTED_ORIGINS` | 否 | 反代域名和 IP 两种方式都要用时，逗号分隔列出（`https://a.example.com,http://192.168.1.10:3210`） |
 | `AUTH_SECURE_COOKIES` | 否 | 纯 HTTP 必须留 `0` 或不填；只有前面是 HTTPS 反代时才设 `1` |
 | `V2_DB_NAME` | 否 | 新库名，默认 `feedlore_v2` |
-| `V2_IMAGE` | 否 | 镜像，默认 `ghcr.io/chensnails/feedlore-v2:2.0.0` |
+| `V2_IMAGE` | 否 | 镜像，默认 `ghcr.io/chensnails/feedlore-v2:2.0.0-v2` |
 | `UPGRADE_SKIP_IMAGE_CACHE` | 否 | 设 `1` 跳过图片缓存拷贝（v2 会按需回源重新缓存），图片多时能明显缩短迁移时间 |
 
 `PG_PASSWORD`、`WATCHTOWER_HTTP_API_TOKEN`、`ALLOW_PRIVATE_HOSTS`、`TRUST_PROXY` 沿用 1.x 的，不用改。

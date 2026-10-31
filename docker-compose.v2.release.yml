@@ -78,7 +78,7 @@ services:
   # - 每次 up 都会执行：兼作后续版本的数据库结构迁移
   # ---------------------------------------------------------------
   upgrade:
-    image: &v2-image ${V2_IMAGE:-ghcr.io/chensnails/feedlore-v2:2.0.0}
+    image: &v2-image ${V2_IMAGE:-ghcr.io/chensnails/feedlore-v2:2.0.0-v2}
     container_name: feedlore-upgrade
     restart: "no"
     depends_on:
