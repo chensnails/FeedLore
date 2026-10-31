@@ -20,7 +20,6 @@ const dom = new JSDOM('<!DOCTYPE html><html><body>' +
   '<div id="aiRoot"></div>' +
   '<div id="cardsRoot"></div>' +
   '<div id="readerRoot"></div>' +
-  '<header class="topbar" id="topbarRoot"></header>' +
   '<div id="overlaysRoot"></div>' +
   '</body></html>', {
   url: 'http://localhost:3000/',
@@ -118,13 +117,12 @@ let accountPostOk = true;
 let statusFailNext = false;
 let promptInstallResult = false;
 const clipboardWrites = [];
-/* ---- App Shell（顶栏，P4a）测试可控状态 ---- */
+/* ---- 视图导航 / ⋮ 菜单读取的 shell 快照 ---- */
 let shellSnap = {
   stat: 12, subtitle: '拾取值得读的 · 采集 2/3 个频道', view: 'reader',
   themeLabel: '跟随系统', themeIco: 'theme-auto',
   installReady: false, statVisible: false, digestVisible: true,
 };
-let refreshDeferred = null;   // 非空时 refresh() 返回它（测忙态）
 /* ---- 覆盖层（toast / 新内容浮标 / 灯箱，v2.1.0 React 化）测试可控状态 ---- */
 let overlayState = {
   toast: { msg: '', ok: true, show: false },
@@ -555,7 +553,7 @@ w.feedlore = {
   exportOpml: noop('exportOpml'),
   // v1.6.0：账号面板「一键安装」桥（旧 app.js promptInstall）
   promptInstall: () => { calls.push(['promptInstall']); return Promise.resolve(promptInstallResult); },
-  // —— v1.10.0：App Shell 顶栏（P4a，组件见 src/shell/TopBar.jsx） ——
+  // —— 视图导航 / ⋮ 溢出菜单读取的 shell 快照 ——
   getShell: () => Object.assign({}, shellSnap),
   switchView: (v) => { calls.push(['switchView', v]); shellSnap.view = v; shellSnap.statVisible = v === 'cards'; shellTick(); },
   // 日报开关：与 core/reader.js 同口径——写偏好 + 刷顶栏快照；关掉时正停在日报页要弹回文章页
@@ -567,7 +565,7 @@ w.feedlore = {
     if (!next && shellSnap.view === 'ai') shellSnap.view = 'reader';
     shellTick();
   },
-  refresh: () => { calls.push(['refresh']); return refreshDeferred || Promise.resolve(); },
+  refresh: () => { calls.push(['refresh']); return Promise.resolve(); },
   // —— v2.1.0：覆盖层（组件见 src/ui/Overlays.jsx） ——
   getToastState: () => Object.assign({}, overlayState.toast),
   getNewPillState: () => Object.assign({}, overlayState.pill),
@@ -780,13 +778,11 @@ require('./.build/mount-settings.cjs');
 require('./.build/mount-ai.cjs');
 require('./.build/mount-cards.cjs');
 require('./.build/mount-reader.cjs');
-require('./.build/mount-shell.cjs');
 require('./.build/mount-overlays.cjs');
 const __mount = w.__mount;
 const __mountAi = w.__mountAi;
 const __mountCards = w.__mountCards;
 const __mountReader = w.__mountReader;
-const __mountTopBar = w.__mountTopBar;
 const __mountOverlays = w.__mountOverlays;
 __mount(document.getElementById('settingsRoot'));
 
@@ -1115,39 +1111,22 @@ const withEFP = (el, fn) => {
     }
   });
 
-  // 两栏工具图标同尺寸 + 吸顶不依赖 display:contents（v1.3.10）
-  // 手机上顶栏（第一栏）与页面头部（第二栏）上下紧挨着；图标 15 / 16 混用、按钮 33 / 36
-  // 混用都会一眼看出来「一大一小」。同时把 --topbar-h 改为量外层 .topbar（含 1px 边线），
-  // 否则吸顶条的顶端会被顶栏压住一条缝。
-  t('style.css + 顶栏：两栏图标同一尺寸，吸顶偏移量取自外层顶栏', () => {
+  // 视图导航与页面头部的工具图标同尺寸；吸顶偏移量取头部实测高度（含 1px 底边线），
+  // 否则吸顶条的顶端会被头部压住一条缝。
+  t('style.css + 头部：工具图标同一尺寸，吸顶偏移量取自实测高度', () => {
     const root = path.join(__dirname, '..', '..');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
-    if (!/--ico-ctl:\s*1rem/.test(css)) throw new Error('缺 --ico-ctl 令牌（两栏共用的图标尺寸）');
-    const icoRule = css.match(/\.topbar-actions \.btn \.ico,[\s\S]{0,220}?\{([^}]*)\}/);
-    if (!icoRule) throw new Error('缺「顶栏 + 页面头部」共用的图标尺寸规则');
+    if (!/--ico-ctl:\s*1rem/.test(css)) throw new Error('缺 --ico-ctl 令牌（工具图标尺寸）');
+    const icoRule = css.match(/\.viewnav-btn \.ico,[\s\S]{0,240}?\{([^}]*)\}/);
+    if (!icoRule) throw new Error('缺「视图导航 + 页面头部」共用的图标尺寸规则');
     if (!/\.page-head \.btn \.ico/.test(icoRule[0])) throw new Error('图标规则必须同时覆盖页面头部（.page-head .btn .ico）');
     if (!/width:\s*var\(--ico-ctl\)/.test(icoRule[1]) || !/font-size:\s*var\(--ico-ctl\)/.test(icoRule[1])) {
       throw new Error('.ico 自带 font-size，只改按钮字号带不动图标，宽高与字号都要钉到 --ico-ctl');
     }
-    // 移动档：顶栏按钮外框与头部控件同尺寸。
-    // v1.3.11 起这条规则挪到 ≤820px（= 文字收起的同一档）：放在 720 时，
-    // 721–820 这段视图切换已经是 32（--head-ctl）而工具按钮还是 34（内边距撑的），并排差 2px。
-    // 820 有两段（顶栏降级 / 视图切换），取含这条规则的那一段。
-    const seg = css.match(/@media \(max-width: 820px\) \{[\s\S]*?\.topbar-actions \.btn \{[\s\S]{0,700}?\n\}/);
-    if (!seg) throw new Error('≤820px 应把顶栏工具按钮拉到与头部控件同尺寸');
-    const block = seg[0];
-    const bar = block.match(/\.topbar-actions \.btn \{([^}]*)\}/);
-    if (!bar || !/width:\s*var\(--head-ctl\)/.test(bar[1]) || !/height:\s*var\(--head-ctl\)/.test(bar[1])) {
-      throw new Error('顶栏按钮应直接用 --head-ctl（两栏同一把尺子）');
-    }
-    if (!/#refreshBtn, #themeBtn, #settingsBtn \{ padding: 0/.test(block)) {
-      throw new Error('≤820px 的 padding 规则特异度更高，要同段点名压回 0');
-    }
-    // 吸顶偏移：外层 .topbar 的实测高度（含 1px 底边线）
-    const topbar = fs.readFileSync(path.join(root, 'src', 'shell', 'TopBar.jsx'), 'utf8');
-    if (topbar.indexOf("closest('.topbar')") < 0) throw new Error('--topbar-h 应量外层 .topbar，不是内层 .topbar-inner');
-    if (!/getBoundingClientRect\(\)\.height/.test(topbar) || !/Math\.ceil/.test(topbar)) {
-      throw new Error('--topbar-h 应取整（含小数像素时吸顶会露 1px 缝）');
+    // 吸顶偏移：头部（.reader-head / .cards-head / .page-head）的实测高度
+    const hook = fs.readFileSync(path.join(root, 'src', 'shell', 'useTopbarHeight.js'), 'utf8');
+    if (!/getBoundingClientRect\(\)\.height/.test(hook) || !/Math\.ceil/.test(hook)) {
+      throw new Error('--topbar-h 应按实测高度取整（含小数像素时吸顶会露 1px 缝）');
     }
     // v1.6.0 App Shell：头部在内容区独立滚动容器内 sticky top:0 钉住，不随内容移动
     const head = css.match(/\.page-head,\s*\.reader-head,\s*\.cards-head \{([^}]*)\}/);
@@ -3757,89 +3736,6 @@ const withEFP = (el, fn) => {
     if (cd.indexOf('className="art-actions"') < 0) throw new Error('卡片详情没复用 .art-actions，两处动作行会各改一半');
   });
 
-  // ============ App Shell 顶栏（P4a React 化） ============
-  __mountTopBar(document.getElementById('topbarRoot'));
-  await sleep(40);
-  const S = (sel) => document.querySelector(sel);
-  const navBtns = () => [...document.querySelectorAll('#viewNav .viewnav-btn')];
-
-  t('顶栏渲染：品牌 / 三个导航 / 按钮', () => {
-    if (!S('#topbarRoot .topbar-inner')) throw new Error('无 .topbar-inner');
-    if (!S('#topbarRoot .brand-logo')) throw new Error('无 logo');
-    if (navBtns().length !== 3) throw new Error('导航按钮 ' + navBtns().length);
-    if (S('#subtitle').textContent !== '拾取值得读的 · 采集 2/3 个频道') throw new Error('subtitle: ' + S('#subtitle').textContent);
-    for (const id of ['refreshBtn', 'themeBtn', 'settingsBtn']) if (!S('#' + id)) throw new Error('缺 #' + id);
-  });
-  t('导航高亮跟随 view（reader）', () => {
-    const a = navBtns().filter((b) => b.classList.contains('active')).map((b) => b.getAttribute('data-view'));
-    if (a.join() !== 'reader') throw new Error('active: ' + a.join());
-  });
-  t('顶栏不再渲染「条资源」统计', () => {
-    if (S('#stat') || S('#topbarRoot .stat')) throw new Error('条资源统计应已移除');
-  });
-
-  // 日报开关（账号级）：入口整枚消失，不是灰着 —— 留着只会让人以为点坏了
-  shellSnap.digestVisible = false;
-  shellTick();
-  await sleep(20);
-  t('日报关闭：顶栏不渲染「日报」入口（不是 disabled）', () => {
-    const ids = navBtns().map((b) => b.getAttribute('data-view'));
-    if (ids.length !== 2) throw new Error('导航按钮: ' + ids.join());
-    if (ids.indexOf('ai') >= 0) throw new Error('日报入口仍在');
-    if (navBtns().some((b) => b.disabled)) throw new Error('不该出现禁用态');
-  });
-  shellSnap.digestVisible = true;
-  shellTick();
-  await sleep(20);
-  t('日报重新开启：入口回来', () => {
-    const ids = navBtns().map((b) => b.getAttribute('data-view'));
-    if (ids.indexOf('ai') < 0) throw new Error('导航按钮: ' + ids.join());
-  });
-
-  navBtns()[1].click();
-  await sleep(20);
-  t('点「卡片」→ switchView(cards)', () => {
-    if (!callsOf('switchView').some((c) => c[1] === 'cards')) throw new Error('未触发');
-  });
-  t('切卡片后：卡片高亮', () => {
-    if (!navBtns()[1].classList.contains('active')) throw new Error('卡片未高亮');
-  });
-
-  shellSnap.themeLabel = 'GitHub 暗黑';
-  shellSnap.themeIco = 'github';
-  shellTick();
-  await sleep(20);
-  t('主题按钮随快照更新（图标 / title）', () => {
-    const use = S('#themeIco use');
-    if (use.getAttribute('href') !== '#i-github') throw new Error('href: ' + use.getAttribute('href'));
-    if (S('#themeBtn').title.indexOf('GitHub 暗黑') < 0) throw new Error('title: ' + S('#themeBtn').title);
-  });
-  S('#themeBtn').click();
-  await sleep(10);
-  t('点主题 → cycleTheme', () => { if (!callsOf('cycleTheme').length) throw new Error('未触发'); });
-
-  S('#settingsBtn').click();
-  await sleep(10);
-  t('点设置 → openSettings', () => { if (!callsOf('openSettings').length) throw new Error('未触发'); });
-
-  // 刷新忙态（refresh 返回挂起的 Promise）
-  let resolveRefresh;
-  refreshDeferred = new Promise((r) => { resolveRefresh = r; });
-  S('#refreshBtn').click();
-  await sleep(20);
-  t('刷新中：按钮禁用 + 图标自旋', () => {
-    if (!callsOf('refresh').length) throw new Error('未触发 refresh');
-    if (S('#refreshBtn').disabled !== true) throw new Error('按钮未禁用');
-    if (!S('#refreshBtn .ico').classList.contains('spin')) throw new Error('未自旋');
-  });
-  resolveRefresh();
-  refreshDeferred = null;
-  await sleep(30);
-  t('刷新完成：恢复可点', () => {
-    if (S('#refreshBtn').disabled) throw new Error('仍禁用');
-    if (S('#refreshBtn .ico').classList.contains('spin')) throw new Error('仍自旋');
-  });
-
   // ============ 覆盖层：toast / 新内容浮标 / 灯箱（v2.1.0 React 化） ============
   __mountOverlays(document.getElementById('overlaysRoot'));
   await sleep(30);
@@ -4210,12 +4106,11 @@ const withEFP = (el, fn) => {
 
   // 无文字按钮的可访问名：.btn-label 被 display:none 后，名字只能靠 aria-label
   t('可访问性：视图切换在窄屏仍有可访问名与选中态', () => {
-    const top = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'shell', 'TopBar.jsx'), 'utf8');
-    const nav = top.slice(top.indexOf('viewnav'), top.indexOf('viewnav-actions') < 0 ? undefined : undefined);
-    if (!/aria-label=\{v\.label\}/.test(top)) {
+    const nav = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'ui', 'ViewNav.jsx'), 'utf8');
+    if (!/aria-label=\{v\.label\}/.test(nav)) {
       throw new Error('视图切换按钮缺 aria-label —— 窄屏 .btn-label 被 display:none 后按钮就无名了');
     }
-    if (!/aria-current=\{active \? 'page' : undefined\}/.test(top)) throw new Error('当前视图应用 aria-current 表达，而不是只有 .active 类');
+    if (!/aria-current=\{active \? 'page' : undefined\}/.test(nav)) throw new Error('当前视图应用 aria-current 表达，而不是只有 .active 类');
     if (nav.indexOf('aria-hidden="true">{v.label}') < 0) throw new Error('视觉文字重复朗读，应给 .btn-label 加 aria-hidden');
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
     if (!/@media \(max-width: 820px\)[\s\S]{0,900}?\.viewnav-btn \{/.test(css)) {
@@ -4255,15 +4150,10 @@ const withEFP = (el, fn) => {
     if (!/\.cards-head > #feedDD \{/.test(mw[1])) throw new Error('下拉的标题样式应只作用于 ≥721px');
   });
 
-  // 吸顶条的滚动边界 + 卡片浮动按钮的悬停门控
-  t('视觉：滚动边界与卡片动作的显隐策略', () => {
+  // 卡片浮动按钮的悬停门控
+  t('视觉：卡片动作的显隐策略', () => {
     const root = path.join(__dirname, '..', '..');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
-    if (!/body\.is-scrolled \.page-head,[\s\S]{0,80}?box-shadow: 0 1px 0 0 var\(--border\)/.test(css)) {
-      throw new Error('缺 body.is-scrolled 的吸顶边界（滚动后内容从条下穿过，需要一条 1px 说明）');
-    }
-    const top = fs.readFileSync(path.join(root, 'src', 'shell', 'TopBar.jsx'), 'utf8');
-    if (top.indexOf("classList.toggle('is-scrolled'") < 0) throw new Error('TopBar 未维护 body.is-scrolled');
     if (!/@media \(hover: hover\) and \(pointer: fine\)[\s\S]{0,240}?\.card-media-actions/.test(css)) {
       throw new Error('卡片浮动按钮应有 hover 门控（触屏那档必须继续常显）');
     }

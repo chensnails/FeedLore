@@ -299,7 +299,7 @@ export function applyTheme(mode, animate) {
   const meta = THEME_META[m];
   const tc = document.querySelector('meta[name="theme-color"]');
   if (tc) tc.setAttribute('content', meta.color || (dark ? '#242424' : '#ffffff'));
-  emitShell();   // 顶栏主题按钮的图标与提示由 React 重绘
+  emitShell();   // ⋮ 菜单里的夜间模式图标由 React 重绘
 
   // 外观页的主题分段控件已 React 化：选中态由窗口级 __appearanceChanged 事件回流，
   // 不再在这里直接操作 DOM
@@ -399,7 +399,7 @@ export function saveAppearance(pref) {
 /** 写进 <html> 属性（样式全挂在属性选择器上）。
  *  控件选中态自 v1.3.0 起由 React 外观面板（src/settings/AppearancePane.jsx）从
  *  偏好数据直接推导、不再回写 DOM；末尾派发 __appearanceChanged 通知面板同步，
- *  覆盖顶栏主题按钮、恢复默认、localStorage 迁移等一切外部改动。 */
+ *  覆盖 ⋮ 菜单的主题图标、恢复默认、localStorage 迁移等一切外部改动。 */
 export function applyAppearance(pref) {
   const el = document.documentElement;
   Object.keys(APPR_ATTR).forEach((k) => el.setAttribute(APPR_ATTR[k], pref[k]));

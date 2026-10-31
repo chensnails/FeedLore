@@ -164,7 +164,7 @@ export function feedTitle(f) {
   return f.customTitle || f.title || f.url || '';
 }
 
-/** 通知 App Shell（顶栏，src/shell/TopBar.jsx）重绘：它监听 __shellTick 后重读 getShell() */
+/** 通知视图导航 / ⋮ 菜单重绘：它们监听 __shellTick 后重读 getShell() */
 export function emitShell() { window.dispatchEvent(new Event('__shellTick')); }
 
 /** 通知覆盖层（src/ui/Overlays.jsx）重绘：toast / 新内容浮标 / 图片灯箱都归它渲染 */

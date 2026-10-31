@@ -60,9 +60,9 @@ export const core = {
   cardsSetFlag: (id, patch) => UI.cardSetFlag(id, patch),
   cardsDetailRead: (id) => UI.cardDetailRead(id),
   copyText: U.copyText, openLinkMenu: U.openLinkMenu, fmtDate: U.fmtDate,
-  // —— App Shell 顶栏（P4a） ——
+  // —— 视图导航 / ⋮ 菜单快照 ——
   getShell: UI.shellSnapshot,
-  // —— 日报开关（账号级，关掉即收起顶栏入口） ——
+  // —— 日报开关（账号级，关掉即收起三视图导航里的日报入口） ——
   digestIsEnabled: UI.digestIsEnabled, setDigestEnabled: UI.setDigestEnabled,
   fmtFull: U.fmtFull,
   // —— 文章视图（P3c） ——

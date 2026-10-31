@@ -19,8 +19,8 @@ import { hideNewPill } from './autorefresh.js';
 // cardsView 改共享 state 并重绘；旧 DOM 绑定移除。
 
 /* 刷新：先让服务端去抓一轮最新条目，再重新拉列表。
-   顶栏「刷新」按钮已 React 化（src/shell/TopBar.jsx），经桥 switchView / refresh 调用。
-   按钮的忙态（disabled + 图标自旋）由组件本地维护，这里只负责数据。 */
+   ⋮ 溢出菜单的「刷新」项经桥 refresh 调用（src/ui/OverflowMenu.jsx），
+   按钮的忙态由组件本地维护，这里只负责数据。 */
 export async function refreshFeeds() {
   hideNewPill();   // 手动刷新了，自动刷新挂的那个「有新内容」提示就作废了
   try {
@@ -39,7 +39,7 @@ export async function refreshFeeds() {
   }
 }
 
-// 顶栏（设置 / 主题 / 刷新 / 视图导航）已随 App Shell React 化，
+// 视图导航（src/ui/ViewNav.jsx）与 ⋮ 菜单已 React 化，
 // 交互经桥 openSettings / cycleTheme / refresh / switchView；旧 DOM 绑定移除。
 // 设置弹层的关闭按钮 / 遮罩点击 / tab 点击由 src/settings/SettingsModal.jsx 内部处理。
 
@@ -242,7 +242,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // 安装到手机：Chromium 系（Edge / Chrome）满足条件时会触发 beforeinstallprompt
-export let deferredInstall = null;   // 捕获到的 beforeinstallprompt 事件（顶栏安装按钮经桥 promptInstall 触发）
+export let deferredInstall = null;   // 捕获到的 beforeinstallprompt 事件（账号面板「一键安装」经桥 promptInstall 触发）
 
 window.addEventListener('beforeinstallprompt', (ev) => {
   ev.preventDefault();
@@ -428,7 +428,7 @@ export function setDigestEnabled(on) {
   emitShell();
 }
 
-/** App Shell（顶栏）一次性快照：React 的 TopBar 经桥 getShell() 读取 */
+/** 视图导航 / ⋮ 菜单的一次性快照：React 组件经桥 getShell() 读取 */
 export function shellSnapshot() {
   const mode = THEME_MODES.indexOf(currentThemeMode()) >= 0 ? currentThemeMode() : 'auto';
   const meta = THEME_META[mode];

@@ -167,7 +167,7 @@ export function applyFilters() {
 }
 
 /* ---------------- 渲染 ---------------- */
-/** 顶栏副标题文本（纯计算；App Shell 的 TopBar 经桥 getShell 读取） */
+/** 顶栏副标题文本（纯计算；React 组件经桥 getShell 读取） */
 export function subtitleText() {
   const meta = state.feedMeta;
   if (!meta) return '正在加载频道…';

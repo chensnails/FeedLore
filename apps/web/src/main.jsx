@@ -1,8 +1,8 @@
 /* 笺川前端 React 入口（渐进式混合期）。
  * 职责：把 React 组件挂到旧 HTML 的挂载点上。
- * 目前挂 App Shell 顶栏（#topbarRoot）、命令面板（#cmdkRoot）、
- * 设置弹层（#settingsRoot）、AI 视图（#aiRoot）、卡片视图（#cardsRoot）、文章视图（#readerRoot）
- * —— 三大视图与顶栏全部 React 化。
+ * 目前挂命令面板（#cmdkRoot）、设置弹层（#settingsRoot）、AI 视图（#aiRoot）、
+ * 卡片视图（#cardsRoot）、文章视图（#readerRoot）、覆盖层（#overlaysRoot）
+ * —— 三大视图与覆盖层全部 React 化。
  * 核心逻辑（v2.1.0 起拆分在 src/core/*.js）经 @core 别名共享为单例。 */
 
 import '@core';   // 初始化核心逻辑（原 public/app.js）：首屏主题/视图、事件绑定、init()
@@ -20,8 +20,8 @@ import { CardsView } from './views/CardsView.jsx';
 import { ReaderView } from './views/ReaderView.jsx';
 import { Overlays } from './ui/Overlays.jsx';
 
-/* v1.6.0：全局顶栏（TopBar）并入各视图自带的第一行（≡频道 / 标题 / 搜索 / ⋮），
-   不再单独挂载 #topbarRoot —— 三视图各自渲染合并后的 Row1 并写入 --topbar-h。 */
+/* v1.6.0：顶栏并入各视图自带的第一行（≡频道 / 标题 / 搜索 / ⋮），
+   三视图各自渲染合并后的 Row1 并写入 --topbar-h。 */
 
 const el = document.getElementById('cmdkRoot');
 if (el) {

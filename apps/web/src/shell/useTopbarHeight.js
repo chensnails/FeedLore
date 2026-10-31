@@ -1,4 +1,4 @@
-/* 把「合并后头部」的高度写进 --topbar-h（原先由全局 TopBar 经 ResizeObserver 实测）。
+/* 把「合并后头部」的高度写进 --topbar-h。
  * 各视图的 Row1 头部（.cards-sticky / .reader-head / .ai-head）调用本钩子，
  * 内容吸顶锚点（抽屉、频道列表、浮层、两页头部）统一消费这个变量。
  * 三个视图常驻挂载、靠显隐切换；用 getClientRects 守卫：display:none 的视图测得 0 高时不写，
