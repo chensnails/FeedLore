@@ -13,6 +13,9 @@ on:
         description: 删除带这个标签的包版本
         required: true
         default: latest
+  # 默认分支上没有这个文件，workflow_dispatch 调不起来；临时用 tag 触发
+  push:
+    tags: ['cleanup-*']
 
 permissions:
   packages: write
@@ -25,7 +28,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OWNER: ${{ github.repository_owner }}
-          TAG: ${{ inputs.match_tag }}
+          TAG: ${{ github.event.inputs.match_tag || 'latest' }}
         run: |
           set -euo pipefail
           API="/users/$OWNER/packages/container/feedlore-v2/versions"
