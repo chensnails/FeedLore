@@ -183,7 +183,17 @@ try {
   check(expanded === 'clicked', '点开第一条');
   check(await waitFor("!!document.querySelector('#readerList .art-item.open .art-body .art-inner')", 20000),
     '阅读层展开并出现正文容器');
-  const bodyLen = (await evalJs("document.querySelector('#readerList .art-item.open .art-body')?.innerText.length ?? 0")) ?? 0;
+  /* 正文是异步拉的：容器先出现、内容后到，所以等「有字」而不是等容器。 */
+  const bodyLen = (await (async () => {
+    const deadline = Date.now() + 20000;
+    let n = 0;
+    while (Date.now() < deadline) {
+      n = (await evalJs("document.querySelector('#readerList .art-item.open .art-body')?.innerText.length ?? 0")) ?? 0;
+      if (n > 20) break;
+      await sleep(300);
+    }
+    return n;
+  })());
   check(bodyLen > 20, `正文已渲染（${bodyLen} 字）`);
   check(await evalJs("/^#reader\\/art\\/.+/.test(location.hash)"), `展开后 hash 指向条目（${await evalJs('location.hash')}）`);
   await shot('ui-v1-reader.png');
@@ -191,7 +201,10 @@ try {
   /* 4) 卡片页：切过去有卡片，视图导航高亮跟着走 */
   await evalJs("document.querySelector('.viewnav-btn[data-view=\"cards\"]')?.click()");
   check(await waitFor("!!document.querySelector('#grid .card, #grid .row-item')", 20000), '卡片页渲染出卡片');
-  check(await evalJs("!!document.querySelector('.viewnav-btn[data-view=\"cards\"].active')"), '卡片视图导航高亮');
+  /* 三视图各自渲染一份 ViewNav，DOM 里有多组同名按钮；只认「看得见的那组」高亮。 */
+  check(await waitFor(`[...document.querySelectorAll('.viewnav-btn[data-view="cards"]')]
+    .some((b) => b.classList.contains('active') && b.getBoundingClientRect().width > 0)`, 5000),
+  '卡片视图导航高亮');
   await shot('ui-v1-cards.png');
 
   await evalJs("document.querySelector('.viewnav-btn[data-view=\"reader\"]')?.click()");
@@ -207,9 +220,11 @@ try {
     console.log('  - 日报已关闭，跳过入口检查');
   }
 
-  /* 6) 设置：页签数量 + 数据源里的每频道采集间隔（v1 把采集参数放在数据源页） */
-  await waitFor("!!document.querySelector('#settingsBtn')");
-  await evalJs("document.querySelector('#settingsBtn')?.click()");
+  /* 6) 设置：入口在 ⋮ 溢出菜单（v1.7.0 起），检查页签数量 + 数据源里的每频道采集间隔 */
+  await evalJs("document.querySelector('.overflow-btn')?.click()");
+  check(await waitFor("!!document.querySelector('.overflow-menu')"), '⋮ 溢出菜单可展开');
+  await evalJs(`[...document.querySelectorAll('.overflow-menu .overflow-item')]
+    .find((b) => b.innerText.trim() === '设置')?.click()`);
   check(await waitFor("!!document.querySelector('.modal-mask:not([hidden]) .settings-modal')"), '设置弹层打开');
   const tabCount = (await evalJs("document.querySelectorAll('#tabs .tab').length")) ?? 0;
   check(tabCount >= 7, `设置页签 ${tabCount} 个（≥7）`);
@@ -233,14 +248,19 @@ try {
   check(menuVisible, '390px 下频道抽屉按钮可见');
   await evalJs("document.querySelector('#readerMenuBtn')?.click()");
   check(await waitFor("document.body.classList.contains('reader-drawer-open')"), '点按钮后 body 进入抽屉态');
+  /* 抽屉是 transition 滑入的，class 先到、位移后到，要等它真正进到视口里。 */
+  check(await waitFor(`(() => {
+    const r = document.querySelector('#readerSide')?.getBoundingClientRect();
+    return !!r && r.width > 0 && r.left >= 0;
+  })()`, 5000), '抽屉滑入视口');
   const sideRect = await evalJs(`(() => {
     const el = document.querySelector('#readerSide');
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return { w: Math.round(r.width), left: Math.round(r.left) };
   })()`);
-  check(!!sideRect && sideRect.w > 0 && sideRect.left >= 0,
-    `抽屉在视口内展开（宽 ${sideRect?.w ?? 0}px，left ${sideRect?.left ?? '-'}）`);
+  check(!!sideRect && sideRect.w > 0 && sideRect.w < 390,
+    `抽屉宽度合理（${sideRect?.w ?? 0}px，left ${sideRect?.left ?? '-'}）`);
   await shot('ui-v1-phone-drawer.png');
   await evalJs("document.querySelector('#readerSideClose')?.click()");
   check(await waitFor("!document.body.classList.contains('reader-drawer-open')"), '抽屉可收起');
