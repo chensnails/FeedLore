@@ -1,0 +1,52 @@
+name: Package cleanup
+
+# 一次性运维工作流：按镜像标签找到 ghcr 上的包版本并删除。
+# 本次用途：清掉 feedlore-v2 上带 latest 的旧 2.0.0 版本。用完即删，不要留在仓库里。
+#
+# 注意：ghcr 没有"删单个标签"的接口，删除的是整个包版本（该版本上的所有标签一起消失）。
+# 所以这里先按标签找到版本，再校验它不含 2.0.0-v2（正在用的版本），才执行删除。
+
+on:
+  workflow_dispatch:
+    inputs:
+      match_tag:
+        description: 删除带这个标签的包版本
+        required: true
+        default: latest
+
+permissions:
+  packages: write
+
+jobs:
+  delete:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 查找并删除
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ inputs.match_tag }}
+        run: |
+          set -euo pipefail
+          API="/users/$OWNER/packages/container/feedlore-v2/versions"
+          curl_versions() {
+            gh api -H "Accept: application/vnd.github+json" "$API" > versions.json
+            node -e 'const v=require("./versions.json");for(const x of v){console.log(x.id, x.name, JSON.stringify(x.metadata.container.tags||[]))}'
+          }
+
+          echo "== 现有版本 =="
+          curl_versions
+
+          ID=$(node -e '
+            const v = require("./versions.json");
+            const hit = v.find((x) => (x.metadata.container?.tags ?? []).includes(process.env.TAG));
+            if (!hit) { console.error("没有找到带标签 " + process.env.TAG + " 的版本"); process.exit(2); }
+            const tags = hit.metadata.container.tags ?? [];
+            if (tags.includes("2.0.0-v2")) { console.error("拒绝删除：" + JSON.stringify(tags) + " 含 2.0.0-v2"); process.exit(3); }
+            console.log(hit.id);
+          ')
+          echo "将删除 version id=$ID"
+
+          gh api -X DELETE "$API/$ID"
+          echo "已删除，剩余版本："
+          curl_versions
