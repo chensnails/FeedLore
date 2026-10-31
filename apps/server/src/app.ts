@@ -10,6 +10,7 @@
  */
 
 import { Hono, type Context } from 'hono';
+import { compress } from 'hono/compress';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { readFile } from 'node:fs/promises';
@@ -140,6 +141,11 @@ async function injectBootPrefs(html: string, c: Context<AppEnv>, deps: AppDeps):
 
 export function createApp({ db, auth }: AppDeps) {
   const app = new Hono<AppEnv>();
+
+  /* 文本响应 gzip（v1 的 server.js 一直有，v2 迁移时漏了）。
+   * CSS / JS / HTML 在弱网下是最大的一笔首屏成本：不压缩等于把 100KB+ 原样发出去。
+   * compress 只对文本型 content-type 生效，图片（/api/img）本身已压缩会被跳过。 */
+  app.use(compress());
 
   /* ==========================================================================
    * better-auth 直通挂载（sign-in/username、sign-out、get-session、admin/* …）
