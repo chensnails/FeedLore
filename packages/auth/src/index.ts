@@ -34,6 +34,11 @@ export function isLegacyPasswordHash(hash: string | null | undefined): boolean {
   return typeof hash === 'string' && hash.startsWith(LEGACY_PASSWORD_PREFIX);
 }
 
+/** v1 用户名校验规则：`/^[\w.\-@]{1,40}$/`，区分大小写。 */
+export function isLegacyUsername(value: string): boolean {
+  return /^[\w.\-@]{1,40}$/.test(value);
+}
+
 /** 回调版 scrypt：不阻塞事件循环，参数与 legacy 的 scryptSync 默认值一致。 */
 function scryptLegacy(password: string, salt: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -109,10 +114,21 @@ export function createAuth(opts: CreateAuthOptions) {
       // 只替换 verify：新密码仍用 better-auth 默认 scrypt(r=16) 生成
       password: { verify: verifyPasswordHash },
     },
-    // username：保持 legacy「用户名即登录标识」的体验（better-auth 默认走 email）
+    // username：保持 legacy「用户名即登录标识」的体验（better-auth 默认走 email）。
+    // 默认插件只收 [A-Za-z0-9_.] 且强制小写；v1 的规则是 [\w.\-@]{1,40} 且区分大小写，
+    // 不放宽的话，带 `-`/`@` 或大写的存量用户名迁移后根本登不进来。
     // admin：提供 /api/auth/admin/* 与 user.role 列，替代手写 isAdmin()
     // openAPI：可选，便于生成客户端与文档
-    plugins: [username(), admin(), openAPI()],
+    plugins: [
+      username({
+        minUsernameLength: 1,
+        maxUsernameLength: 40,
+        usernameNormalization: false,
+        usernameValidator: isLegacyUsername,
+      }),
+      admin(),
+      openAPI(),
+    ],
     hooks: {
       after: createAuthMiddleware(async (ctx) => {
         // legacy 哈希登录成功后原地换成 r=16；verify 拿不到用户 id，只能在这里做。

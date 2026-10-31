@@ -255,9 +255,11 @@ async function main(): Promise<void> {
         // signUpEmail 需要明文；有 legacy 哈希时这串随机值只用于把账号建出来，
         // 下一步立刻换成 legacy 标记，用户永远不知道它。
         const password = randomPassword();
+        // better-auth 必须要 email 且唯一；登录标识是 username，email 只做占位。
+        // 用 legacy id 而不是 username：v1 用户名允许 `@`/大写，拼成邮箱会非法或撞车。
         // username 插件把 username 加进 signUpEmail 的 body，类型未覆盖 → cast
         await auth.api.signUpEmail({
-          body: { email: `${username}@example.com`, password, name: username, username } as never,
+          body: { email: `u${legacyId}@legacy.invalid`, password, name: username, username } as never,
         });
         const [created] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
         if (!created) throw new Error(`创建 v2 用户失败：${username}`);

@@ -9,7 +9,12 @@
 import assert from 'node:assert/strict';
 import { scryptSync } from 'node:crypto';
 import test from 'node:test';
-import { formatLegacyPasswordHash, isLegacyPasswordHash, verifyPasswordHash } from '@feedlore/auth';
+import {
+  formatLegacyPasswordHash,
+  isLegacyPasswordHash,
+  isLegacyUsername,
+  verifyPasswordHash,
+} from '@feedlore/auth';
 import { hashPassword } from 'better-auth/crypto';
 
 const SALT = '0123456789abcdef0123456789abcdef';
@@ -29,6 +34,15 @@ test('legacy 哈希：v1 原密码在 v2 仍可登录，错密码/畸形标记�
     'legacy$' + SALT + '$' + '0'.repeat(64),
   ]) {
     assert.equal(await verifyPasswordHash({ hash: malformed, password: '原密码-1234' }), false, malformed);
+  }
+});
+
+test('v1 用户名规则原样保留（- @ 与大小写都能登录，非法字符仍拒绝）', () => {
+  for (const ok of ['admin', 'my-user', 'name@host', 'A.B_c', 'Admin']) {
+    assert.equal(isLegacyUsername(ok), true, ok);
+  }
+  for (const bad of ['', 'a b', '中文', 'x'.repeat(41)]) {
+    assert.equal(isLegacyUsername(bad), false, bad);
   }
 });
 
