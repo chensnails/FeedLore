@@ -164,6 +164,11 @@ try {
   /* 服务端注入的首屏偏好：暗色 / 侧栏宽度靠它在首帧生效，失效时页面正常但会闪白 */
   check(await evalJs("typeof window.__APPEARANCE__ === 'object' && window.__APPEARANCE__ != null"),
     '服务端注入了 window.__APPEARANCE__');
+  /* 首页里带着这个账号的外观/布局；一旦可被缓存，代理就会把 A 的偏好发给 B。
+   * Hono 的 compress 在 finalized 后补 Vary 会重建 Response、丢掉 c.res.headers 上的头，
+   * 这条断言就是那个坑的哨兵。 */
+  const rootCC = await evalJs("fetch('/').then((r) => r.headers.get('cache-control'))");
+  check(rootCC === 'no-cache', `首页 Cache-Control=${rootCC}（必须 no-cache）`);
 
   /* 3) 文章页：频道栏 + 列表 + 展开正文 */
   check(await waitFor("document.querySelectorAll('.rd-ch').length > 0"), '文章页频道栏有频道');

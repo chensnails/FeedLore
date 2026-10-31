@@ -51,13 +51,14 @@ export interface AppDeps {
  * - `index.html` 无哈希 → no-cache，否则新 HTML 配旧 JS/CSS（1.4.0 搜索框事故）。
  */
 function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
-  // ⚠️ 必须改 `c.res.headers`，不能用 `c.header()`：后者写的是「待发送头」，
-  //    在 `await next()` 之后响应已生成，再写不会生效（表现为静态资源永远 no-cache）。
+  /* ⚠️ 必须在 `await next()` **之前**写：Hono 在 finalized 之后调 `c.header()` 会重建
+   *    Response，而重建会把直接写在 `c.res.headers` 上的头丢掉。compress 正是这么干的
+   *    （响应 ≥1KB 时它要补 `Vary: Accept-Encoding`），于是「先 next 再补 Cache-Control」
+   *    的写法在挂了 compress 之后静默失效 —— 首页（含账号外观注入）就这样裸发了一轮。
+   *    写在待发送头上则会被响应构造带进去；下游显式设置自己的 Cache-Control 仍然覆盖它。 */
   const cache = (value: string) => async (c: Context<AppEnv>, next: () => Promise<void>) => {
+    c.header('Cache-Control', value);
     await next();
-    if (c.res && !c.res.headers.has('Cache-Control')) {
-      c.res.headers.set('Cache-Control', value);
-    }
   };
 
   app.use('/assets/*', cache('public, max-age=31536000, immutable'));
