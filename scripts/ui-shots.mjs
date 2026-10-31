@@ -169,7 +169,10 @@ try {
   await sleep(2500);
 
   if (!pass) throw new Error('缺少密码参数');
-  const filled = await evalJs(`(() => {
+  /* 2.5s 固定等待在冷启动时不够（headless 首个页面要连拉 HTML+JS+CSS，实测会拿到
+   * 空 body 就报 no-form）。轮询到表单出现为止 —— 只放宽时间，判据不变。 */
+  let filled = 'no-form';
+  const fillOnce = () => evalJs(`(() => {
     const setVal = (el, v) => {
       const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
       d.set.call(el, v);
@@ -182,6 +185,11 @@ try {
     document.querySelector('.btn.primary')?.click();
     return 'ok';
   })()`);
+  for (let i = 0; i < 20; i += 1) {
+    filled = await fillOnce();
+    if (filled === 'ok') break;
+    await sleep(700);
+  }
   if (filled !== 'ok') {
     /* 「no-form」有两种完全不同的成因：登录页还没渲染完（headless 冷启 + 首屏资源慢），
      * 和已经带着 Cookie 进来被重定向到列表。不读现场就只能靠猜，而这两种的修法正好相反。 */
@@ -458,7 +466,7 @@ try {
         // ---- 筛选档 & 全部已读 ----
         /* ⚠️ 筛选档（全部/未读/收藏…）在 v2 挪进了左侧频道栏的「全局视图」，
          * .filter-row 里只剩「全部已读」这一个动作按钮。上一版在这里找
-         * `.filter-row .seg-btn`，永远数出 0、点了个寂寞 —— 探针也会随信息架构一起腐化。 */
+         * filter-row 里的 seg-btn，永远数出 0、点了个寂寞 —— 探针也会随信息架构一起腐化。 */
         out.readAllBtn = [...document.querySelectorAll('.filter-row .btn')]
           .some((b) => b.textContent.includes('全部已读'));
         {
@@ -611,6 +619,9 @@ try {
             return {
               pos: getComputedStyle(t).position,
               canScroll,
+              /* sheet 高必须随内容长：它一旦被网格 stretch 钉成视口高，sticky 的
+               * 活动范围就只剩一屏，滚过之后工具条整条出屏（实测过这个塌法）。 */
+              sheetTaller: (document.querySelector('.reader-sheet')?.getBoundingClientRect().height ?? 0) > scroller.clientHeight,
               // 相对滚动口判断：吸顶后工具的顶边应贴着 backdrop 可视区上沿
               inView: r.top >= sr.top - 1 && r.bottom > sr.top && r.top < sr.bottom,
             };
@@ -661,7 +672,9 @@ try {
           (c?.querySelector('.card-title') || c)?.click();
         };
         let tagName = null;
-        for (let i = 0; i < 5 && !tagName; i += 1) {
+        /* 试到第 8 条：TG 频道不少条目本来就没有标签，5 条里全空是常态而不是坏了
+         * （上一版就在「首条无标签」上整段跳过，等于这条链路从来没被验过）。 */
+        for (let i = 0; i < 8 && !tagName; i += 1) {
           openFirst();
           await wait(1400);
           const t = document.querySelector('.reader-meta .mini-tag');

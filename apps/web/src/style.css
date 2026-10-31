@@ -1285,6 +1285,15 @@ html {
     border-radius: 0;
     border: none;
     min-height: 100%;
+    /* ⚠️ align-self: start 是吸顶工具条的前提，不是美化：
+     * backdrop 是 `display:grid`，place-items:stretch 会让 sheet 这个网格项
+     * 「被拉伸到轨道高」而不是「按内容长」—— 实测 390 档下 sheet 高被钉成 844
+     * （=视口高），而内容 2959 溢出在它外面。sticky 的活动范围 = 包含块（sheet）高，
+     * 于是滚过 844 之后工具条被整条拽出屏幕：实测 top:0/30/40 三种取值结果都是
+     * rect.top=-125（top 值完全不起作用 = sticky 已撞到底）。
+     * 只放开纵轴（align-self），横轴仍交给 stretch 保持整屏宽；
+     * min-height:100% 留着，短文的实底背景才不会只盖半屏。 */
+    align-self: start;
     /* 手机端整屏阅读层必须是实底：半透明的 --sheet 会让背后的列表透出来，
      * 看起来像「文章页异常透明」。桌面浮层保留玻璃质感。 */
     background: var(--surface);
