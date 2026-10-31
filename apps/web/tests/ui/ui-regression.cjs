@@ -3665,6 +3665,21 @@ const withEFP = (el, fn) => {
     if (!resize) throw new Error('缺 .reader-resize 规则');
     if (resize[1].indexOf('col-resize') < 0) throw new Error('分隔条应有 col-resize 光标');
   });
+  // 移动端卡片网格最少两栏：一栏 = 一张卡占满整屏，读起来像详情页。
+  // 用 min(宽度, 50% - 半格) 把单栏下限压到半宽，320px 也能并排两张；
+  // 紧凑密度的基础规则（216px）特异度更高，必须同断点按同一口径覆盖。
+  t('响应式：≤720px 卡片网格最少两栏（含紧凑密度）', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    if (!/\.grid \{ grid-template-columns: repeat\(auto-fill, minmax\(min\(160px, calc\(50% - var\(--sp-2\)\)\), 1fr\)\); gap:var\(--sp-4\); \}/.test(css)) {
+      throw new Error('≤720px 卡片网格要用 min(160px, 50% - 半格) 保证最少两栏');
+    }
+    if (!/:root\[data-density="compact"\] \.grid \{\s*grid-template-columns: repeat\(auto-fill, minmax\(min\(140px, calc\(50% - var\(--sp-2\)\)\), 1fr\)\);/.test(css)) {
+      throw new Error('紧凑密度的移动端网格同样要保证最少两栏');
+    }
+    if (/\.grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(css)) {
+      throw new Error('卡片网格不要再写死两栏（宽屏应自适应更多栏）');
+    }
+  });
   // 目录树层级：组头贴左，频道行缩进到组名起线（折叠键 18 + 间隙 4 = 22px）。
   // 层级只靠这条起线表达，所以组名左侧那条 3px 色块不能长回来，
   // 且缩进只能落在 data-feed 上 —— 顶部三个固定入口不属于任何分组。

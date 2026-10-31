@@ -1046,11 +1046,10 @@ textarea:disabled {
   border-radius: var(--radius-sm);
 }
 
-/* 移动端 / 窄屏适配：手机双列、收紧内边距与字号、浮层按钮贴边 */
+/* 移动端 / 窄屏适配：收紧内边距与字号、浮层按钮贴边
+   （卡片网格的栏数在 ≤720px 那一段统一给，见「最少两栏」的说明） */
 @media (max-width: 640px) {
   .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap:var(--sp-3);
     padding:var(--sp-4) 0 var(--sp-1);
   }
   .card-body { padding:var(--sp-3) var(--sp-3) var(--sp-3); }
@@ -3103,7 +3102,13 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
 @media (max-width: 720px) {
   .wrap { padding:0 var(--sp-4); }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap:var(--sp-4); }
+  /* 卡片网格最少两栏：min(160px, 50% - 半格) 把单栏下限压到半宽，
+     320px 宽也能并排两张卡（窄屏一栏 = 一张卡占满整屏，读起来像详情页）。
+     紧凑密度的基础规则（216px）特异度更高，必须在同一断点里按同一口径覆盖。 */
+  .grid { grid-template-columns: repeat(auto-fill, minmax(min(160px, calc(50% - var(--sp-2))), 1fr)); gap:var(--sp-4); }
+  :root[data-density="compact"] .grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(140px, calc(50% - var(--sp-2))), 1fr));
+  }
   /* ⚠️ 这里曾有「复制链接独占一行」的规则（.btn-copy{flex:1 0 100%}）：那是复制按钮
      还是带文字的整宽按钮时的设计。v1.7.0 起复制按钮已收成图标方块（宽度定死 32/34px），
      那条规则会把方块按钮拉成整行宽的巨型蓝条 —— 已移除。 */
