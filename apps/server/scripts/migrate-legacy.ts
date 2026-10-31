@@ -5,11 +5,14 @@
  * 1. **幂等**：可以反复跑。用户按 username 复用、feeds 按 (owner, url) 复用、
  *    entries 撞 (feed_id, guid) 跳过、digests 按 (owner, date) 覆盖。
  *    切换当天跑三遍和跑一遍结果一样。
- * 2. **不搬密码哈希**。legacy 用 `scryptSync(pwd, salt, 64)`（Node 默认 r=8），
- *    better-auth 的 scrypt 参数是 r=16 —— 拼不进同一个校验路径。硬兼容等于在生产里
- *    永久保留第二套密码校验代码，为一次迁移而永久扩大攻击面，不值得。
- *    改为：新账号生成一次性随机密码并**只打印一次**，登录后各自去改。
- *    已在 v2 存在的账号（比如 seed 出来的 admin）密码完全不动。
+ * 2. **密码无损迁移**。legacy 用 `scryptSync(pwd, salt, 64)`（Node 默认 r=8），
+ *    better-auth 默认 r=16。这里不重算密码（拿不到明文），而是把 legacy 的
+ *    `salt` / `password_hash` 以 `legacy$<salt>$<hash>` 标记写进 v2 的 accounts.password；
+ *    @feedlore/auth 的 verify 识别该标记并按 r=8 校验，首次登录成功后自动换成 r=16。
+ *    → v1 用户升级后**原密码直接可登录**，无需改密。
+ *    legacy 行缺 salt/password_hash 的（极少见）才退回一次性随机密码并打印。
+ *    已在 v2 存在的账号（比如 seed 出来的 admin）密码完全不动 —— 重复跑不会覆盖
+ *    用户在 v2 里改过的密码。
  * 3. **不搬图片缓存**。`image_cache` 是纯缓存（丢了会回源重建），
  *    几十万行 BYTEA 搬过去既慢又占空间。要保留就单独拿 pg_dump。
  *
@@ -27,7 +30,8 @@
 
 import crypto from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { createDb, createPool, digests, entries, feeds, settings, userLlm, users } from '@feedlore/db';
+import { accounts, createDb, createPool, digests, entries, feeds, settings, userLlm, users } from '@feedlore/db';
+import { formatLegacyPasswordHash } from '@feedlore/auth';
 // 键名从 @feedlore/ai 取，不在脚本里再写一遍字面量：这个名字一旦漂移，
 // 密文就是**静默**解不开（不报错、只是全变「请重填」），属于最难查的那类。
 import { SECRET_SETTING_KEY as CRYPTO_SECRET_KEY } from '@feedlore/ai';
@@ -82,7 +86,7 @@ function log(...a: unknown[]): void {
   console.log(`[${now()}]`, ...a);
 }
 
-/** 一次性随机密码：用户登录后自行修改（迁移不搬 legacy 哈希，见文件头第 2 条）。 */
+/** legacy 行缺 salt/password_hash 时的兜底：一次性随机密码（正常数据不会走到）。 */
 function randomPassword(): string {
   return crypto.randomBytes(12).toString('base64url'); // 16 字符，够强且能手打
 }
@@ -128,7 +132,7 @@ const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
 /* ============================ 主流程 ============================ */
 
 interface Stats {
-  users: { reused: number; created: number; skipped: number };
+  users: { reused: number; created: number; skipped: number; passwordsKept: number; passwordsReset: number };
   feeds: { inserted: number; reused: number; skipped: number };
   entries: { inserted: number; existed: number; skipped: number };
   digests: { upserted: number; skipped: number };
@@ -143,7 +147,7 @@ async function main(): Promise<void> {
   const auth = getAuth(db);
 
   const stats: Stats = {
-    users: { reused: 0, created: 0, skipped: 0 },
+    users: { reused: 0, created: 0, skipped: 0, passwordsKept: 0, passwordsReset: 0 },
     feeds: { inserted: 0, reused: 0, skipped: 0 },
     entries: { inserted: 0, existed: 0, skipped: 0 },
     digests: { upserted: 0, skipped: 0 },
@@ -212,7 +216,9 @@ async function main(): Promise<void> {
 
     /* ---------------- 1. 用户 ---------------- */
     if (ONLY.has('users')) {
-      const { rows } = await legacyPool.query<Row>(`select id, username, role, prefs from ${T('users')} order by id`);
+      const { rows } = await legacyPool.query<Row>(
+        `select id, username, role, prefs, salt, password_hash from ${T('users')} order by id`,
+      );
       log(`legacy 用户 ${rows.length} 个`);
 
       for (const u of rows) {
@@ -235,12 +241,19 @@ async function main(): Promise<void> {
           continue;
         }
 
+        const legacySalt = str(u.salt);
+        const legacyHash = str(u.password_hash);
+
         if (DRY) {
           userIdMap.set(legacyId, `dry-${legacyId}`);
           stats.users.created += 1;
+          if (legacySalt && legacyHash) stats.users.passwordsKept += 1;
+          else stats.users.passwordsReset += 1;
           continue;
         }
 
+        // signUpEmail 需要明文；有 legacy 哈希时这串随机值只用于把账号建出来，
+        // 下一步立刻换成 legacy 标记，用户永远不知道它。
         const password = randomPassword();
         // username 插件把 username 加进 signUpEmail 的 body，类型未覆盖 → cast
         await auth.api.signUpEmail({
@@ -249,20 +262,35 @@ async function main(): Promise<void> {
         const [created] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
         if (!created) throw new Error(`创建 v2 用户失败：${username}`);
 
+        if (legacySalt && legacyHash) {
+          const updated = await db
+            .update(accounts)
+            .set({ password: formatLegacyPasswordHash(legacySalt, legacyHash), updatedAt: new Date() })
+            .where(and(eq(accounts.userId, created.id), eq(accounts.providerId, 'credential')))
+            .returning({ id: accounts.id });
+          if (!updated.length) throw new Error(`写入 legacy 密码失败：${username}`);
+          stats.users.passwordsKept += 1;
+        } else {
+          newCredentials.push({ username, password });
+          stats.users.passwordsReset += 1;
+        }
+
         if (u.role === 'admin') {
           await db.update(users).set({ role: 'admin' }).where(eq(users.id, created.id));
         }
         userIdMap.set(legacyId, created.id);
-        newCredentials.push({ username, password });
         stats.users.created += 1;
       }
 
       log(`用户：复用 ${stats.users.reused} / 新建 ${stats.users.created} / 跳过 ${stats.users.skipped}`);
+      log(
+        `密码：沿用 v1 ${stats.users.passwordsKept} 个（原密码可登录，成功后自动升级哈希） / 随机重置 ${stats.users.passwordsReset} 个`,
+      );
       if (newCredentials.length) {
-        // 密码只在这一次输出。脚本幂等，但**密码不会再打印第二次**（用户已建好）
-        console.log('\n===== 新账号的一次性密码（登录后请立即修改） =====');
+        // 只有 legacy 行缺 salt/password_hash 才会走到这里。密码只打印这一次。
+        console.log('\n===== 无法沿用 v1 密码的账号（登录后请立即修改） =====');
         for (const c of newCredentials) console.log(`  ${c.username}\t${c.password}`);
-        console.log('==================================================\n');
+        console.log('======================================================\n');
       }
     } else {
       // 只跑部分段时必须先拿到映射，否则所有 owner_id 都会丢

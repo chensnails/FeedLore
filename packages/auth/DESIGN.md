@@ -79,12 +79,13 @@ P3 实现时优先前者，限流状态存进程内存（单实例部署足够�
 
 ## 6. 密码哈希迁移（最大坑）
 
-legacy `hashPassword` = `sha256(salt + password)`（自定义，非标准 KDF）。better-auth 默认用 scrypt/argon2。**两种迁移策略**：
+legacy `hashPassword` = `scryptSync(password, salt, 64)`（Node 默认 N=16384、r=8、p=1）；better-auth 默认 scrypt 的 r=16 —— 两者不能共用同一条校验路径。
 
-- **A（推荐，最安全）**：首次切换时**强制所有用户重设密码**（管理员在迁移脚本里重置，普通用户走「忘记密码」）。彻底摆脱自定义哈希，零兼容包袱。FeedLore 当前单管理员 + 少量用户，代价可接受。
-- B（兼容）：把 legacy `password_hash`+`salt` 迁到 `user` 表保留列，写 better-auth 自定义密码验证器适配。复杂度高、且赖掉「换更强 KDF」的安全收益，不推荐。
+迁移脚本拿不到明文，所以不重算：把 legacy 的 `salt` / `password_hash` 以 `legacy$<salt>$<hash>` 标记写进 v2 的 `accounts.password`。`emailAndPassword.password.verify` 识别该前缀，按 v1 参数校验；首次成功登录（`/sign-in/username` 或 `/sign-in/email`）后，after 钩子用 better-auth 默认的 r=16 重算并原地覆盖。老格式随用户登录自然退场，**v1 用户升级后原密码直接可登录**。
 
-→ P3 采用策略 A。
+- 只替换 `verify`，不替换 `hash`：新密码、改密、重置仍走 better-auth 默认 KDF。
+- 钩子失败只记日志：密码已校验通过，不能因为后台升级失败把用户挡在门外。
+- 已知遗留：在旧迁移脚本下建过账号的（一次性随机密码），不会回填 legacy 哈希 —— 重复跑迁移不能覆盖用户已改过的密码，这类账号需要管理员重置。
 
 ## 7. 安全属性对齐
 
@@ -103,7 +104,7 @@ legacy `hashPassword` = `sha256(salt + password)`（自定义，非标准 KDF）
 ## 9. P3 实现清单（待办）
 
 - [ ] `packages/db` 加 `auth-schema`（better-auth CLI 生成 + `role`/`prefs`/`user_llm` 列）
-- [ ] `drizzle-kit` 迁移；一次性数据迁移脚本（策略 A：重置密码）
+- [ ] `drizzle-kit` 迁移；一次性数据迁移脚本（密码无损：`legacy$salt$hash` + 首次登录重算）
 - [ ] `apps/server` 挂载 `auth.handler` + 会话中间件 + `requireAdmin`
 - [ ] 登录限流中间件（复用 legacy 逻辑）
 - [ ] `apps/web` 接 `createAuthClient`，替换登录/会话

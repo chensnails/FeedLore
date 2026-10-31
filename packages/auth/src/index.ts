@@ -1,5 +1,8 @@
+import { scrypt, timingSafeEqual } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { createAuthMiddleware } from 'better-auth/api';
+import { verifyPassword } from 'better-auth/crypto';
 import { admin, openAPI, username } from 'better-auth/plugins';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
@@ -9,6 +12,54 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
  * 设计要点见同目录 DESIGN.md。本文件是可编译的骨架，表明 better-auth + Hono + Drizzle
  * 的组合在类型层面成立；真正落地需等 packages/db 的 auth schema 就绪（P3）。
  */
+
+/**
+ * v1（legacy）密码哈希的兼容标记。
+ *
+ * legacy 用 `scryptSync(pwd, salt, 64)`（Node 默认 N=16384,r=8,p=1），better-auth
+ * 默认是 r=16 —— 两者不能走同一条校验路径。迁移脚本把 v1 的 `salt` / `password_hash`
+ * 原样存成 `legacy$<salt>$<hex>`，这里识别该前缀并复刻 legacy 的派生参数；
+ * 首次成功登录后由 after 钩子换成 better-auth 的哈希（r=16），老格式随即退场。
+ *
+ * 前缀用 `$` 是为了和 better-auth 的 `salt:hash` 天然区分（salt 是 hex，不含 `$`）。
+ */
+const LEGACY_PASSWORD_PREFIX = 'legacy$';
+
+/** 迁移脚本写入 v2 accounts.password 的格式。 */
+export function formatLegacyPasswordHash(salt: string, hash: string): string {
+  return `${LEGACY_PASSWORD_PREFIX}${salt}$${hash}`;
+}
+
+export function isLegacyPasswordHash(hash: string | null | undefined): boolean {
+  return typeof hash === 'string' && hash.startsWith(LEGACY_PASSWORD_PREFIX);
+}
+
+/** 回调版 scrypt：不阻塞事件循环，参数与 legacy 的 scryptSync 默认值一致。 */
+function scryptLegacy(password: string, salt: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    scrypt(password, salt, 64, (err, key) => (err ? reject(err) : resolve(key)));
+  });
+}
+
+async function verifyLegacyPassword(hash: string, password: string): Promise<boolean> {
+  const parts = hash.split('$');
+  if (parts.length !== 3) return false;
+  const [, salt, expectedHex] = parts;
+  if (!salt || !expectedHex) return false;
+  const expected = Buffer.from(expectedHex, 'hex');
+  if (expected.length !== 64) return false;
+  const actual = await scryptLegacy(password, salt);
+  return timingSafeEqual(actual, expected);
+}
+
+/**
+ * 密码校验入口：legacy 标记走 v1 参数，其余交给 better-auth 默认实现。
+ * 导出是为了让「迁移后仍能用 v1 密码登录」有独立的回归测试。
+ */
+export async function verifyPasswordHash(data: { hash: string; password: string }): Promise<boolean> {
+  if (isLegacyPasswordHash(data.hash)) return verifyLegacyPassword(data.hash, data.password);
+  return verifyPassword(data);
+}
 
 export interface CreateAuthOptions {
   /**
@@ -55,11 +106,32 @@ export function createAuth(opts: CreateAuthOptions) {
       enabled: true,
       minPasswordLength: 4,
       requireEmailVerification: false,
+      // 只替换 verify：新密码仍用 better-auth 默认 scrypt(r=16) 生成
+      password: { verify: verifyPasswordHash },
     },
     // username：保持 legacy「用户名即登录标识」的体验（better-auth 默认走 email）
     // admin：提供 /api/auth/admin/* 与 user.role 列，替代手写 isAdmin()
     // openAPI：可选，便于生成客户端与文档
     plugins: [username(), admin(), openAPI()],
+    hooks: {
+      after: createAuthMiddleware(async (ctx) => {
+        // legacy 哈希登录成功后原地换成 r=16；verify 拿不到用户 id，只能在这里做。
+        // 失败只记日志：密码已经校验通过，不能因为后台升级失败把用户挡在门外。
+        // /api/login 走的是 username 插件（/sign-in/username），别只盯 email。
+        if (ctx.path !== '/sign-in/email' && ctx.path !== '/sign-in/username') return;
+        const user = ctx.context.newSession?.user;
+        const body = ctx.body as { password?: unknown } | undefined;
+        if (!user || typeof body?.password !== 'string') return;
+        try {
+          const account = await ctx.context.internalAdapter.findCredentialAccount(user.id);
+          if (!isLegacyPasswordHash(account?.password)) return;
+          const upgraded = await ctx.context.password.hash(body.password);
+          await ctx.context.internalAdapter.updatePassword(user.id, upgraded);
+        } catch (err) {
+          ctx.context.logger.error('legacy 密码升级失败（本次登录不受影响）', err);
+        }
+      }),
+    },
     advanced: {
       // secure Cookie 在纯 HTTP 下不会被回传 → 登录成功却仍 401，测试栈务必传 false。
       defaultCookieAttributes: {
