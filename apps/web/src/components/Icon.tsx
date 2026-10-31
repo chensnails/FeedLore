@@ -34,7 +34,6 @@ export type IconName =
   | 'block'
   | 'folder'
   | 'rss'
-  | 'tag'
   /* 动作 */
   | 'close'
   | 'pencil'
@@ -59,7 +58,6 @@ export type IconName =
   /* 方向 */
   | 'arrow-up'
   | 'arrow-down'
-  | 'arrow-left'
   | 'arrow-right'
   | 'chevron-up'
   | 'chevron-down'
@@ -186,12 +184,6 @@ const PATHS: Record<IconName, ReactNode> = {
       <circle cx="6.2" cy="17.6" r="1.4" fill="currentColor" stroke="none" />
       <path d="M5 11.2a7.6 7.6 0 0 1 7.6 7.6" />
       <path d="M5 5.4A13.4 13.4 0 0 1 18.4 18.8" />
-    </>
-  ),
-  tag: (
-    <>
-      <path d="M4.2 12.4V5.6a1.4 1.4 0 0 1 1.4-1.4h6.8l7.4 7.4-8.2 8.2z" />
-      <circle cx="8.4" cy="8.4" r="1.3" />
     </>
   ),
   close: (
@@ -324,11 +316,6 @@ const PATHS: Record<IconName, ReactNode> = {
   'arrow-down': (
     <>
       <path d="M12 4.6V19M6.4 13.4L12 19l5.6-5.6" />
-    </>
-  ),
-  'arrow-left': (
-    <>
-      <path d="M19.4 12H4.6M10.2 6.4L4.6 12l5.6 5.6" />
     </>
   ),
   'arrow-right': (

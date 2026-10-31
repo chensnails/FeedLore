@@ -1,12 +1,11 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
-import { flattenEntries, qk, type EntriesPages } from '../lib/query';
-import { useSaveAppearance, useSetFavorite, useSetRead } from '../lib/mutations';
+import { qk } from '../lib/query';
+import { useSaveAppearance, useSetFavorite } from '../lib/mutations';
 import { useSwipeDismiss } from '../lib/useSwipeDismiss';
 import { useOverlayFocus } from '../lib/useOverlayFocus';
 import { useUi } from '../store/ui';
-import type { EntriesList } from '../lib/types';
 import { ArticleBody } from './ArticleBody';
 import { Icon } from './Icon';
 import { Thumb } from './Thumb';
@@ -34,10 +33,10 @@ const FS_LABEL = { s: '小', m: '中', l: '大' } as const;
 export function EntryReader() {
   const readingId = useUi((s) => s.readingId);
   const close = useUi((s) => s.closeEntry);
+  const tag = useUi((s) => s.tag);
+  const setTag = useUi((s) => s.setTag);
   const setFavorite = useSetFavorite();
   const saveAppearance = useSaveAppearance();
-  const setRead = useSetRead();
-  const qc = useQueryClient();
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: [...qk.entry, readingId],
@@ -77,87 +76,44 @@ export function EntryReader() {
     return () => document.removeEventListener('mousedown', onDown);
   }, [copyMenuOpen]);
 
-  /* 上一条 / 下一条：按**当前列表的顺序**走（不是按时间重新排）。
+  /* 键盘：只负责 Esc 关闭。
    *
-   * 为什么从缓存里找位置而不是另开一个「相邻条目」接口：列表数据本来就在缓存里，
-   * 顺序、筛选、排序都已经是用户看到的那一份；再让服务端算一次「相邻」，
-   * 两边在筛选条件上稍有出入就会出现「下一篇」跳到用户根本没在看的范围内。
+   * v1 在 1.7.1 按产品决策移除了全部阅读器式快捷键（j/k/o/s/u/?、`/` 聚焦搜索、
+   * 以及上下篇），v2 照同一口径不做翻篇快捷键与相邻条目导航；这里保留的三件事是
+   * v1 也没删的：⌘K 命令面板（另在 Shell 里）、Esc 关浮层、灯箱的 ←/→ 翻图。
    *
-   * 缓存形状是无限滚动的 `{ pages }`，统一用 flattenEntries 拍平 —— 不能让
-   * 「翻篇」这条链路自己知道分页细节（否则调一次 limit 就要改两处）。
-   *
-   * 已知边界：翻到**已加载的最后一页末尾**时 next 为 null。此时不自动追加下一页 ——
-   * 阅读层里再触发一次分页会把「正在读的东西」和「列表在加载」耦合起来，
-   * 关掉阅读层滚一下即可，代价小且不会出错。
-   *
-   * `data` 进依赖是有意的：切换条目后详情变了，说明当前条目在列表里的位置要重算。 */
-  const neighbors = useMemo(() => {
-    if (!readingId) return null;
-    const lists = qc.getQueriesData<EntriesList | EntriesPages>({ queryKey: qk.entries });
-    for (const [, list] of lists) {
-      const all = flattenEntries(list);
-      if (!all.length) continue;
-      const i = all.findIndex((e) => e.id === readingId);
-      if (i < 0) continue;
-      return {
-        prev: all[i - 1]?.id ?? null,
-        next: all[i + 1]?.id ?? null,
-        pos: i + 1,
-        total: all.length,
-      };
-    }
-    return null;
-  }, [qc, readingId, data]);
-
-  /** 切到相邻条目：同时补一次已读标记（在阅读层里翻篇，同样算读过了）。 */
-  function step(to: string | null): void {
-    if (!to) return;
-    useUi.getState().openEntry(to);
-    setRead.mutate({ id: to, isRead: true });
-  }
-
-  /* 键盘：Esc 关闭 · ← / → 翻篇（与 v1 的 ReaderView 一致）。
-   *
-   * 三条必须处理的情况：
-   * 1. **灯箱开着时要让路**：灯箱的监听也挂在 window 上，这里不退出的话按一次 →
-   *    会「翻一张图 + 翻一篇」—— 用户看到的是图片换了、文章也没了。
-   *    用 DOM 存在性判断而不是共享 state：灯箱在 ArticleBody 内部，为了一个按键
-   *    把它的开关提到阅读层，只会多一条不必要的状态链。
-   * 2. 焦点在输入框里不劫持方向键。
-   * 3. 到头了（第一篇/最后一篇）什么都不做，也不 preventDefault —— 让浏览器
-   *    的默认滚动还能用。 */
-  const setReadRef = useRef(setRead);
-  setReadRef.current = setRead;
+   * 两条必须处理的让路：
+   * 1. **灯箱开着时不抢 Esc**：灯箱在 ArticleBody 内部自管开关，这里用 DOM 存在性
+   *    判断，而不是为了一个按键把它的状态提到阅读层（那只会多一条状态链）。
+   * 2. 确认框 / 复制菜单在最上层，Esc 只该关它们自己。
+   * 3. 焦点在输入框里时不劫持 Esc（正在打字）。 */
   useEffect(() => {
     if (!readingId) return;
     const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
       if (document.querySelector('.lightbox')) return;
       // 确认框在最上层：它的 Esc 只该关它自己
       if (useUi.getState().confirmState) return;
       const el = document.activeElement;
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return;
-
-      if (e.key === 'Escape') {
-        /* 复制菜单开着时 Esc 只关菜单 —— 不让路就会「关个菜单把整篇文章也关了」。 */
-        if (document.querySelector('.copy-menu')) {
-          setCopyMenuOpen(false);
-          return;
-        }
-        close();
+      /* 复制菜单开着时 Esc 只关菜单 —— 不让路就会「关个菜单把整篇文章也关了」。 */
+      if (document.querySelector('.copy-menu')) {
+        setCopyMenuOpen(false);
         return;
       }
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      const to = e.key === 'ArrowLeft' ? neighbors?.prev : neighbors?.next;
-      if (!to) return;
-      e.preventDefault();
-      useUi.getState().openEntry(to);
-      setReadRef.current.mutate({ id: to, isRead: true });
+      close();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [readingId, close, neighbors]);
+  }, [readingId, close]);
 
   if (!readingId) return null;
+
+  /** 点正文标签 = 用这个标签去筛列表，所以顺带关掉阅读层（留着就挡住了刚筛出来的结果）。 */
+  function gotoTag(t: string): void {
+    setTag(tag === t ? null : t);
+    close();
+  }
 
   function stepFont(dir: -1 | 1): void {
     const i = FS_ORDER.indexOf(fs);
@@ -230,8 +186,18 @@ export function EntryReader() {
               <span>{data.feedName}</span>
               {data.date && <span>{new Date(data.date).toLocaleString('zh-CN')}</span>}
               {data.size && <span>{data.size}</span>}
+              {/* 标签是阅读层里唯一的「按分类再看一批」入口（v1 在 1.6.0 撤掉顶部标签云后，
+                  列表上的标签筛选全靠这里点进来）。点一下关掉阅读层、列表换成该标签的范围。 */}
               {data.tags.map((t) => (
-                <span key={t} className="tag">{t}</span>
+                <button
+                  key={t}
+                  type="button"
+                  className="mini-tag"
+                  title={tag === t ? `取消 #${t} 筛选` : `只看 #${t}`}
+                  onClick={() => gotoTag(t)}
+                >
+                  #{t}
+                </button>
               ))}
             </p>
 
@@ -323,34 +289,6 @@ export function EntryReader() {
                 )}
               </span>
             </p>
-
-            {/* 翻篇放在正文末尾，而不是顶部：读完一篇才需要去下一篇。
-                位置同时显示「第几条 / 共几条」，让人知道自己在列表里的哪儿。 */}
-            {neighbors && (
-              <nav className="reader-nav" aria-label="相邻条目">
-                <button
-                  className="btn ghost sm"
-                  disabled={!neighbors.prev}
-                  title="上一条（键盘 ←）"
-                  onClick={() => step(neighbors.prev)}
-                >
-                  <Icon name="arrow-left" size={13} />
-                  上一条
-                </button>
-                <span className="reader-nav-pos">
-                  {neighbors.pos} / {neighbors.total}
-                </span>
-                <button
-                  className="btn ghost sm"
-                  disabled={!neighbors.next}
-                  title="下一条（键盘 →）"
-                  onClick={() => step(neighbors.next)}
-                >
-                  下一条
-                  <Icon name="arrow-right" size={13} />
-                </button>
-              </nav>
-            )}
           </>
         )}
       </article>

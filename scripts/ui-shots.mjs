@@ -458,23 +458,15 @@ try {
         filterBtns.find((b) => b.textContent === '全部')?.click();
         await wait(1300);
 
-        // ---- 标签筛选 ----
-        const tagBtn = document.querySelector('.tag-btn');
-        if (tagBtn) {
-          tagBtn.click();
-          await wait(1600);
-          out.tag = {
-            on: !!document.querySelector('.tag-btn.on'),
-            count: cards().length,
-            clearBtn: !!document.querySelector('.tag-btn.clear'),
-            headHasTag: (document.querySelector('.list-title')?.textContent ?? '').includes('#'),
-          };
-          document.querySelector('.tag-btn.on')?.click();
-          await wait(1300);
-          out.tag.cleared = !document.querySelector('.tag-btn.on');
-        } else {
-          out.tag = { skipped: 'no-tag' };
-        }
+        // ---- 标签 UI 版本判据：v1 在 1.6.0/1.7.0 撤掉了顶部标签云和卡面标签，
+        // v2 跟随移除 —— 这里反向断言这些类永远不该再出现（复活即失败）。
+        // 正文标签（.mini-tag）的点击闭环在阅读层那段测。
+        out.removedUi = {
+          tagBar: !!document.querySelector('.tag-bar'),
+          tagBtn: !!document.querySelector('.tag-btn'),
+          cardTags: !!document.querySelector('.card-tags, .tags-inline'),
+          readerNav: !!document.querySelector('.reader-nav, .reader-nav-pos'),
+        };
 
         // ---- 命令面板（自带拼音别名：wg 应命中「视图：网格」）----
         document.querySelector('.cmdk-btn')?.click();
@@ -504,6 +496,51 @@ try {
           // 预缓存清单里不该出现带哈希的构建产物（每次构建文件名都变，写死等于每次 404）
           swPrecacheClean: !/index-[A-Za-z0-9_-]+\\.(js|css)/.test(swText),
         };
+
+        // ---- 列表工具块吸顶：滚动后筛选/排序/视图必须还在视口里 ----
+        {
+          const l = document.querySelector('.list');
+          const bar = document.querySelector('.list-bar');
+          const pos = bar ? getComputedStyle(bar).position : null;
+          if (l && bar) {
+            l.scrollTop = 1200;
+            await wait(350);
+          }
+          const r = bar?.getBoundingClientRect();
+          out.listSticky = {
+            pos,
+            inView: !!r && r.top >= -1 && r.bottom > 0 && r.bottom <= window.innerHeight,
+            actionsVisible: !!document.querySelector('.sort-select')?.offsetParent,
+          };
+          l && (l.scrollTop = 0);
+          await wait(250);
+        }
+
+        // ---- 动效语言：卡片入场错峰 + 骨架屏规则必须在 CSS 里 ----
+        {
+          const rules = [...document.styleSheets].flatMap((s) => {
+            try { return [...s.cssRules]; } catch { return []; }
+          });
+          // keyframes 规则的名称字段是 name，普通规则才有 selectorText —— 两种都要认
+          const has = (t) => rules.some((r) => (r.selectorText ?? '').includes(t) || (r.name ?? '') === t);
+          const cardAnim = getComputedStyle(document.querySelector('.cards > li') ?? document.body).animationName;
+          out.motion = {
+            cardInApplied: cardAnim === 'card-in',
+            cardInKeyframes: has('card-in'),
+            skeletonCss: has('.sk-line') && has('.load-dots'),
+            stateLayers: has('--state-hover') || rules.some((r) => (r.cssText ?? '').includes('var(--state-hover)')),
+          };
+        }
+
+        // ---- ⋯ 溢出菜单的键盘契约（桌面档：菜单本身是窄屏控件，这里只查 DOM/ARIA）----
+        {
+          const more = document.querySelector('.topbar-more');
+          out.menuDom = {
+            trigger: !!more?.querySelector('button[aria-haspopup="menu"]'),
+            expandedAttr: more?.querySelector('button')?.getAttribute('aria-expanded') ?? null,
+            hiddenOnWide: more ? !more.offsetParent : true,
+          };
+        }
         return out;
       })()`);
       rows.push({ viewport: vp.name, toolbar: true, ...feat });
@@ -563,10 +600,28 @@ try {
           fontSize: body ? getComputedStyle(body).fontSize : '',
           lineHeight: body ? getComputedStyle(body).lineHeight : '',
           backdrop: !!document.querySelector('.reader-backdrop'),
-          // 翻篇：位置文本形如 "3 / 30"，有它就说明从列表缓存里定位成功了
-          navPos: (document.querySelector('.reader-nav-pos')?.textContent ?? '').trim(),
-          navBtns: document.querySelectorAll('.reader-nav .btn').length,
+          /* 翻篇已按 v1 1.7.1 的决策移除（上一条/下一条 + 「第几条/共几条」全部下掉）：
+           * 反向断言 .reader-nav 不得出现；字号按钮数量仍是正向契约（A-/A+ 在用）。 */
+          navGone: !document.querySelector('.reader-nav, .reader-nav-pos'),
           fsBtns: document.querySelectorAll('.reader-fs .btn').length,
+          /* 工具条吸顶：正文长到滚动之后，A-/A+/× 必须还在视口里。
+           * 用 scrollHeight>clientHeight 确认这篇真的滚得动 —— 滚不动的「吸顶成功」是假的。 */
+          toolsSticky: (() => {
+            const t = document.querySelector('.reader-tools');
+            // 滚动容器是 backdrop（sheet 自己不滚，见 style.css 的滚动条注释）
+            const scroller = document.querySelector('.reader-backdrop');
+            if (!t || !scroller) return { pos: null, canScroll: false, inView: false };
+            const canScroll = scroller.scrollHeight > scroller.clientHeight + 40;
+            if (canScroll) scroller.scrollTop = 900;
+            const r = t.getBoundingClientRect();
+            const sr = scroller.getBoundingClientRect();
+            return {
+              pos: getComputedStyle(t).position,
+              canScroll,
+              // 相对滚动口判断：吸顶后工具的顶边应贴着 backdrop 可视区上沿
+              inView: r.top >= sr.top - 1 && r.bottom > sr.top && r.top < sr.bottom,
+            };
+          })(),
         };
       })()`);
 
@@ -601,51 +656,85 @@ try {
       })()`);
       rows.push({ viewport: vp.name, fontStep: true, ...fsStep });
 
-      // 下一条：标题应变化、位置文本应递增（读的是同一份列表缓存）
-      const nextNav = await evalJs(`(async () => {
-        const title = () => (document.querySelector('.reader-title')?.textContent ?? '').trim();
-        const before = title();
-        const posBefore = (document.querySelector('.reader-nav-pos')?.textContent ?? '').trim();
-        [...document.querySelectorAll('.reader-nav .btn')]
-          .find((b) => b.textContent.includes('下一条'))?.click();
-        await new Promise((r) => setTimeout(r, 1800));
-        return {
-          before,
-          after: title(),
-          changed: before !== title() && !!title(),
-          posBefore,
-          posAfter: (document.querySelector('.reader-nav-pos')?.textContent ?? '').trim(),
+      /* 正文标签闭环：v2 保留「阅读层正文里的标签可点」（v1 口径），
+       * 点 #tag → 关掉阅读层 → 列表出现 #{tag} 范围与唯一出口 ✕ → 点 ✕ 退回。
+       * 这是标签筛选现在唯一的入口，断了它「按标签看」整条链路就没了。 */
+      const tagFlow = await evalJs(`(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const tag = document.querySelector('.reader-meta .mini-tag');
+        if (!tag) return { skipped: 'article-has-no-tags' };
+        const name = tag.textContent.trim();
+        tag.click();
+        await wait(1500);
+        const titleTxt = (document.querySelector('.list-title')?.textContent ?? '');
+        const mid = {
+          readerClosed: !document.querySelector('.reader-sheet'),
+          scopeHasTag: titleTxt.includes(name),
+          clearBtn: !!document.querySelector('.list-title .scope-x'),
+          cards: document.querySelectorAll('.card').length,
         };
+        document.querySelector('.list-title .scope-x')?.click();
+        await wait(1200);
+        return { tag: name, mid, cleared: !(document.querySelector('.list-title')?.textContent ?? '').includes(name) };
       })()`);
-      rows.push({ viewport: vp.name, nextNav: true, ...nextNav });
+      rows.push({ viewport: vp.name, tagFlow: true, ...tagFlow });
 
-      /* 键盘 ← / → 翻篇：v1 里就有，v2 一直到这一轮才接上（之前只有 Esc）。
-       * 先 → 再 ←，验证能翻过去也能翻回来（只测单向的话，方向写反也看不出来）。 */
-      const keyNav = await evalJs(`(async () => {
-        /* 先把可能还开着的灯箱关掉：上一段测过灯箱，而灯箱打开时
-         * 阅读层的键盘处理会主动让路（这是刻意的），不关就会被测成「翻篇失效」。 */
-        document.querySelector('.lightbox')?.click();
-        await new Promise((r) => setTimeout(r, 300));
-        /* 焦点必须挪开：阅读层刻意「不劫持输入框里的方向键」（用户可能正在备注/搜索），
-         * 而前面几段测试点过搜索框与设置里的输入框，不 blur 就会被自己写的保护逻辑挡住。 */
+      /* 方向键翻篇已随「上一条/下一条」移除（v1 1.7.1）：反向断言 ——
+       * 在阅读层按 ←/→ 标题不许变。Esc 仍然有效，由下面的关闭验证。 */
+      const keyNavGone = await evalJs(`(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const card = document.querySelector('.card');
+        (card?.querySelector('.card-title') || card)?.click();
+        await wait(1500);
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
         const title = () => (document.querySelector('.reader-title')?.textContent ?? '').trim();
         const before = title();
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-        await new Promise((r) => setTimeout(r, 1700));
-        const after = title();
+        await wait(800);
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
-        await new Promise((r) => setTimeout(r, 1500));
-        const back = title();
-        return { keyChanged: !!after && after !== before, keyRestored: back === before, after };
+        await wait(800);
+        return { before, after: title(), unchanged: !!before && before === title() };
       })()`);
-      rows.push({ viewport: vp.name, keyNav: true, ...keyNav });
+      rows.push({ viewport: vp.name, keyNavGone: true, ...keyNavGone });
 
       const readerShot = await shot(`${prefix}-${vp.name}-reader.png`);
       rows.push({ viewport: vp.name, reader: true, ...reader, shot: readerShot });
       // 关闭阅读层，回到列表再切下一档
       await evalJs("document.querySelector('.reader-close')?.click()");
       await sleep(600);
+    }
+
+    /* ⋯ 溢出菜单键盘导航（只在菜单真的可见的窄屏档跑，桌面档查过 DOM 契约）。
+     * 真实 keydown 走 window 监听（和实现同一入口），focus 轨迹用 document.activeElement 读 ——
+     * 「菜单能点开」不等于「键盘能用」，这一轮补的就是后者。 */
+    const menuVisible = await evalJs("!!document.querySelector('.topbar-more')?.offsetParent");
+    if (menuVisible) {
+      const menuKey = await evalJs(`(async () => {
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        const trig = document.querySelector('.topbar-more button');
+        trig.click();
+        await wait(400);
+        const items = [...document.querySelectorAll('.more-menu [role="menuitem"]:not(:disabled)')];
+        const focusOnOpen = items.includes(document.activeElement);
+        const n = items.length;
+        document.activeElement?.blur();
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+        await wait(150);
+        const afterDown = items.indexOf(document.activeElement);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+        await wait(150);
+        const afterUp = items.indexOf(document.activeElement);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        await wait(300);
+        return {
+          items: n, focusOnOpen, afterDown, afterUp,
+          // 实现是首尾环绕：第一项按 ↑ 应落到最后一项，而不是停住
+          upWraps: afterUp === n - 1,
+          closedByEsc: !document.querySelector('.more-menu'),
+          focusRestored: document.activeElement === trig,
+        };
+      })()`);
+      rows.push({ viewport: vp.name, menuKey: true, ...menuKey });
     }
   }
 
@@ -671,7 +760,11 @@ try {
       coversFeedOps: covers(hoverNone, '.feed-ops'),
       coversFavBtn: covers(hoverNone, '.fav-btn'),
       cssCoarseRules: coarse.reduce((n, b) => n + (b.cssRules?.length ?? 0), 0),
+      // v1 实测尺寸：关闭 40 / 行内图标 32 / 收藏 34 / 菜单项 ≥44 —— 规则在，尺寸才可能在
+      coversClose40: covers(coarse, '.nav-close'),
       coversTapTarget: covers(coarse, '.icon-btn'),
+      coversFav34: covers(coarse, '.fav-btn'),
+      coversMenu44: covers(coarse, '.more-menu button'),
     };
   })()`);
   rows.push({ viewport: 'touch', ...touch });

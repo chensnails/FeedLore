@@ -103,6 +103,25 @@ if (cssFile) {
   check(/--reader-width/.test(css), 'CSS 含 --reader-width 令牌');
   // 抽屉：窄屏导航的唯一实现方式
   check(/\.sidebar\.open/.test(css), 'CSS 含抽屉展开态 .sidebar.open');
+
+  /* ---- P10.10 版本判据 ----
+   * 每条都是「少了会坏体验 / 多了会坏性能」的双向闸门，全部来自这一轮的决策记录。 */
+  check(/\.list-bar\s*\{[^}]*position: *sticky/.test(css), '列表工具块 .list-bar 是 sticky（滚下去筛选/排序还在）');
+  check(/\.reader-tools\s*\{[^}]*position: *sticky/.test(css), '阅读层工具条 .reader-tools 是 sticky');
+  check(/\.sk-line/.test(css) && /@keyframes *sk\b/.test(css), '骨架屏规则与 shimmer 关键帧在产物里');
+  check(/@keyframes *card-in\b/.test(css), '卡片入场错峰 card-in 关键帧在产物里');
+  check(/\.mini-tag/.test(css), '正文标签按钮 .mini-tag 在（阅读层点标签筛列表的唯一入口）');
+
+  // v1 后续版本删掉的东西，v2 必须也不在（被哪轮顺手加回来，这里拦住）
+  check(!/\.tag-btn/.test(css), 'CSS 无已删除的 .tag-btn（顶部标签云）');
+  check(!/\.tag-bar/.test(css), 'CSS 无已删除的 .tag-bar');
+  check(!/\.reader-nav[^-a-z]/.test(css), 'CSS 无已删除的 .reader-nav（阅读层翻篇）');
+
+  /* 玻璃模糊预算：backdrop-filter 只允许出现在「静止表面」（顶栏 / 浮层 sheet）。
+   * 滚动容器和吸顶层每帧重采样必掉帧 —— v1 用性能实测换来的规矩，加了 sticky 之后
+   * 最容易复发的就是「给 sticky 条补一层模糊好看一点」。6 条规则 × webkit 双写 = 12 为上限。 */
+  const blurDecls = (css.match(/backdrop-filter:\s*var\(--glass-blur\)/g) ?? []).length;
+  check(blurDecls <= 12, `活跃 backdrop-filter 声明 ${blurDecls} 条（≤12：6 个静止表面 × webkit 双写）`);
 }
 
 /* ---------------- 汇总 ---------------- */

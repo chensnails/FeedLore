@@ -84,6 +84,55 @@ export function Shell({ session }: { session: Session }) {
     return () => document.removeEventListener('mousedown', onDown);
   }, [moreOpen]);
 
+  /* 溢出菜单的键盘操作（对齐 v1 的 OverflowMenu）：打开即把焦点送进第一项，
+   * ↑↓ 循环漫游、Home/End 跳首尾、Esc 收起并把焦点还给 ⋯。
+   *
+   * 焦点必须回得到触发按钮上：不还的话键盘用户按完 Esc 就掉回页面顶部，
+   * 得把整条顶栏重新 Tab 一遍才能再打开。
+   *
+   * 这里没有单选档（每项都是「去做一件事」），所以用 menuitem 而不是
+   * v1 那种 menuitemradio —— 那套语义是为「排序 / 视图」子菜单准备的，
+   * 而 v2 的排序与视图常驻在列表工具条里，从未收进 ⋯，不需要子菜单。
+   *
+   * 设置 / 日报浮层开着时让路：那一层自己会吃 Esc，两层同时响应会「关了菜单也关了浮层」。 */
+  const moreWrapRef = useRef<HTMLSpanElement>(null);
+  const moreBtnRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+    const items = (): HTMLButtonElement[] => [
+      ...(moreWrapRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitem"]:not(:disabled)',
+      ) ?? []),
+    ];
+    items()[0]?.focus();
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        if (useUi.getState().confirmState || useUi.getState().panel) return;
+        setMoreOpen(false);
+        moreBtnRef.current?.focus();
+        return;
+      }
+      /* Tab 走出菜单 = 离开这个上下文，收起它（留着会留一个「看不见焦点在哪」的浮层）。 */
+      if (e.key === 'Tab') {
+        setMoreOpen(false);
+        return;
+      }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+      const list = items();
+      if (!list.length) return;
+      e.preventDefault();
+      const i = list.indexOf(document.activeElement as HTMLButtonElement);
+      const to =
+        e.key === 'ArrowDown' ? (i + 1) % list.length
+          : e.key === 'ArrowUp' ? (i - 1 + list.length) % list.length
+          : e.key === 'Home' ? 0
+          : list.length - 1;
+      list[to]?.focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [moreOpen]);
+
   /* 抽屉开着时按 Esc 收起。与阅读层的 Esc 不冲突：打开条目会先把抽屉关掉。
    * 确认框在上层时让路 —— 那一层要吃掉 Esc，两层同时响应会「关了对话框也关了抽屉」。 */
   useEffect(() => {
@@ -201,10 +250,13 @@ export function Shell({ session }: { session: Session }) {
 
           {/* 窄屏溢出菜单：390px 宽的顶栏放不下「日报 / 管理 / 退出」三个，
               硬挤会换行（v1 修过一次），所以窄屏收进 ⋯ 里。桌面端这套菜单不显示。 */}
-          <span className="topbar-more">
+          <span className="topbar-more" ref={moreWrapRef}>
             <button
+              type="button"
               className="btn ghost icon"
+              ref={moreBtnRef}
               aria-label="更多操作"
+              aria-haspopup="menu"
               aria-expanded={moreOpen}
               title="更多"
               onClick={() => setMoreOpen((v) => !v)}
@@ -212,9 +264,10 @@ export function Shell({ session }: { session: Session }) {
               <Icon name="more" size={18} />
             </button>
             {moreOpen && (
-              <div className="more-menu" role="menu">
+              <div className="more-menu" role="menu" aria-label="更多操作">
                 {prefsQuery.data?.layout.digestEnabled !== false && (
                   <button
+                    type="button"
                     role="menuitem"
                     onClick={() => {
                       setMoreOpen(false);
@@ -226,6 +279,7 @@ export function Shell({ session }: { session: Session }) {
                   </button>
                 )}
                 <button
+                  type="button"
                   role="menuitem"
                   disabled={logout.isPending}
                   onClick={() => {

@@ -1,5 +1,6 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { EntriesListQuery } from '@feedlore/client';
 import type { ReadAllBody } from '@feedlore/contract';
 import { api } from '../lib/api';
@@ -185,7 +186,7 @@ export function EntriesPanel() {
       if (feedsQuery.isPending) {
         return (
           <main className="list" ref={listRef as React.RefObject<HTMLElement>}>
-            <p className="hint">加载条目…</p>
+            <ListSkeleton view={view} />
           </main>
         );
       }
@@ -210,7 +211,7 @@ export function EntriesPanel() {
     }
     return (
       <main className="list" ref={listRef as React.RefObject<HTMLElement>}>
-        <p className="hint">加载条目…</p>
+        <ListSkeleton view={view} />
       </main>
     );
   }
@@ -242,7 +243,7 @@ export function EntriesPanel() {
   /** 改视图/排序：本地立刻生效，异步写服务端（换设备还是这个样子）。 */
   function pickView(v: ListView): void {
     if (v === view) return;
-    setView(v);
+    applyWithTransition(() => setView(v));
     saveLayout.mutate({ view: v });
   }
   function pickSort(v: ListSort): void {
@@ -253,172 +254,170 @@ export function EntriesPanel() {
 
   return (
     <main className="list" ref={listRef as React.RefObject<HTMLElement>}>
-      {/* 「N 条新内容」浮标。只在**已经滚下去**时才出现（在顶部时探测会直接套用，
-          不打扰）。点一下才把新内容换上来 —— 列表在眼皮底下自己位移是最难受的交互。 */}
-      {auto.fresh && (
-        <div className="fresh-pill" role="status">
-          <button className="fresh-go" onClick={auto.apply} title="加载新内容并回到顶部">
-            <Icon name="arrow-up" size={13} />
-            {auto.fresh.n} 条新内容
-          </button>
-          <button className="fresh-x" aria-label="忽略这批新内容" title="忽略" onClick={auto.dismiss}>
-            <Icon name="close" size={12} />
-          </button>
-        </div>
-      )}
+      {/* 一条吸顶的工具块：新内容浮标 + 标题行 + 筛选行。长列表滚下去之后，
+          「我在看哪一批 / 换一档筛选 / 加载新内容」都不该要靠滚回顶端才能做。
+          浮标放进同一块里而不是另开一层 sticky：两层各自 top:0 会叠在一起。 */}
+      <div className="list-bar">
+        {/* 「N 条新内容」浮标。只在**已经滚下去**时才出现（在顶部时探测会直接套用，
+            不打扰）。点一下才把新内容换上来 —— 列表在眼皮底下自己位移是最难受的交互。 */}
+        {auto.fresh && (
+          <div className="fresh-pill" role="status">
+            <button className="fresh-go" onClick={auto.apply} title="加载新内容并回到顶部">
+              <Icon name="arrow-up" size={13} />
+              {auto.fresh.n} 条新内容
+            </button>
+            <button className="fresh-x" aria-label="忽略这批新内容" title="忽略" onClick={auto.dismiss}>
+              <Icon name="close" size={12} />
+            </button>
+          </div>
+        )}
 
-      <div className="list-head">
-        <div className="list-scope">
-          <h1 className="list-title" title={`${groupName ? `组：${groupName}` : feedName} · ${filterName}`}>
-            {/* 文字单独一层做省略号：✕ 挂在 h1 里，如果省略号写在 h1 上，
-                标题一长会把按钮一起裁掉（用户就看不出自己在筛选分组了）。 */}
-            <span className="list-title-text">
-              {groupName ? `组：${groupName}` : feedName}
-              {filter !== 'all' && <em>{filterName}</em>}
-              {tag && <em>#{tag}</em>}
+        <div className="list-head">
+          <div className="list-scope">
+            <h1 className="list-title" title={`${groupName ? `组：${groupName}` : feedName} · ${filterName}`}>
+              {/* 文字单独一层做省略号：✕ 挂在 h1 里，如果省略号写在 h1 上，
+                  标题一长会把按钮一起裁掉（用户就看不出自己在筛选分组了）。 */}
+              <span className="list-title-text">
+                {groupName ? `组：${groupName}` : feedName}
+                {filter !== 'all' && <em>{filterName}</em>}
+                {tag && <em>#{tag}</em>}
+              </span>
+              {/* 分组范围要能一键退出：它没有「全部」那一行可以点回去 */}
+              {groupName && (
+                <button
+                  className="scope-x"
+                  title="取消分组筛选，看全部频道"
+                  aria-label="取消分组筛选"
+                  onClick={() => setGroupName(null)}
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              )}
+              {/* 标签筛选的唯一出口：v1 在 1.6.0 撤掉了顶部标签云，从文章里点标签进来后
+                  只能「再点一次同一标签」取消，用户在列表上根本退不出去。 */}
+              {tag && (
+                <button
+                  className="scope-x"
+                  title="取消标签筛选"
+                  aria-label="取消标签筛选"
+                  onClick={() => setTag(null)}
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              )}
+            </h1>
+            <span className="list-count">
+              {head?.total ?? 0} 条{isFetching && !isFetchingNextPage ? ' · 更新中…' : ''}
+              {unreadVisible > 0 && (
+                <em className="inline-unread">已加载 {unreadVisible} 条未读</em>
+              )}
             </span>
-            {/* 分组范围要能一键退出：它没有「全部」那一行可以点回去 */}
-            {groupName && (
+          </div>
+
+          <div className="list-actions">
+            {/* 排序 → 视图 → 搜索：这个顺序在 v1 就固定了，改顺序会让用惯的人每次都点错 */}
+            <select
+              className="input sm sort-select"
+              aria-label="排序"
+              value={sort}
+              onChange={(e) => pickSort(e.target.value as ListSort)}
+            >
+              {SORTS.map(([v, label]) => (
+                <option key={v} value={v}>{label}</option>
+              ))}
+            </select>
+
+            <span className="seg" role="group" aria-label="视图">
               <button
-                className="scope-x"
-                title="取消分组筛选，看全部频道"
-                aria-label="取消分组筛选"
-                onClick={() => setGroupName(null)}
+                className={`seg-btn${view === 'grid' ? ' on' : ''}`}
+                aria-pressed={view === 'grid'}
+                title="网格视图"
+                onClick={() => pickView('grid')}
               >
-                <Icon name="close" size={12} />
+                <Icon name="grid" size={15} />
               </button>
-            )}
-          </h1>
-          <span className="list-count">
-            {head?.total ?? 0} 条{isFetching && !isFetchingNextPage ? ' · 更新中…' : ''}
-            {unreadVisible > 0 && (
-              <em className="inline-unread">已加载 {unreadVisible} 条未读</em>
-            )}
-          </span>
-        </div>
-
-        <div className="list-actions">
-          {/* 排序 → 视图 → 搜索：这个顺序在 v1 就固定了，改顺序会让用惯的人每次都点错 */}
-          <select
-            className="input sm sort-select"
-            aria-label="排序"
-            value={sort}
-            onChange={(e) => pickSort(e.target.value as ListSort)}
-          >
-            {SORTS.map(([v, label]) => (
-              <option key={v} value={v}>{label}</option>
-            ))}
-          </select>
-
-          <span className="seg" role="group" aria-label="视图">
-            <button
-              className={`seg-btn${view === 'grid' ? ' on' : ''}`}
-              aria-pressed={view === 'grid'}
-              title="网格视图"
-              onClick={() => pickView('grid')}
-            >
-              <Icon name="grid" size={15} />
-            </button>
-            <button
-              className={`seg-btn${view === 'list' ? ' on' : ''}`}
-              aria-pressed={view === 'list'}
-              title="列表视图"
-              onClick={() => pickView('list')}
-            >
-              <Icon name="list" size={15} />
-            </button>
-          </span>
-
-          <span className="search-box">
-            <Icon name="search" size={14} className="search-ico" />
-            <input
-              ref={inputRef}
-              className="input sm search-input"
-              type="search"
-              value={kw}
-              placeholder="搜索标题、正文、标签…"
-              aria-label="搜索条目"
-              onChange={(e) => setKw(e.target.value)}
-              onKeyDown={(e) => {
-                // 回车立即生效，不用等防抖（搜完就走的场景很常见）
-                if (e.key === 'Enter') setSearch(kw.trim());
-                if (e.key === 'Escape') {
-                  setKw('');
-                  setSearch('');
-                }
-              }}
-            />
-            {kw && (
               <button
-                className="search-clear"
-                aria-label="清空搜索"
-                title="清空搜索"
-                onClick={() => {
-                  setKw('');
-                  setSearch('');
-                  inputRef.current?.focus();
+                className={`seg-btn${view === 'list' ? ' on' : ''}`}
+                aria-pressed={view === 'list'}
+                title="列表视图"
+                onClick={() => pickView('list')}
+              >
+                <Icon name="list" size={15} />
+              </button>
+            </span>
+
+            <span className="search-box">
+              <Icon name="search" size={14} className="search-ico" />
+              <input
+                ref={inputRef}
+                className="input sm search-input"
+                type="search"
+                value={kw}
+                placeholder="搜索标题、正文、标签…"
+                aria-label="搜索条目"
+                onChange={(e) => setKw(e.target.value)}
+                onKeyDown={(e) => {
+                  // 回车立即生效，不用等防抖（搜完就走的场景很常见）
+                  if (e.key === 'Enter') setSearch(kw.trim());
+                  if (e.key === 'Escape') {
+                    setKw('');
+                    setSearch('');
+                  }
                 }}
-              >
-                <Icon name="close" size={12} />
-              </button>
+              />
+              {kw && (
+                <button
+                  className="search-clear"
+                  aria-label="清空搜索"
+                  title="清空搜索"
+                  onClick={() => {
+                    setKw('');
+                    setSearch('');
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              )}
+            </span>
+          </div>
+        </div>
+
+        {/* 「全部已读」：作用范围 = 当前可见列表（频道/分组/筛选/标签/搜索），
+            和排序/视图不是一类，单独一行右对齐。筛选档已挪到左侧频道栏的「全局视图」。 */}
+        <div className="filter-row">
+          <button
+            className="btn ghost sm"
+            disabled={readAll.isPending || (head?.total ?? 0) === 0}
+            /* 搜索态必须把 q 一起带上：不带就变成「把范围内所有未读都标掉」，
+             * 而用户看到的只是搜索结果那几条。筛选档与标签同理。 */
+            onClick={() => {
+              const body: ReadAllBody = {
+                feeds: targetFeeds,
+                ...(search ? { q: search } : {}),
+                ...(tag ? { tag } : {}),
+                ...(filter === 'favorite' ? { fav: '1' as const } : {}),
+                ...(filter === 'watch' || filter === 'block' ? { watch: filter } : {}),
+              };
+              readAll.mutate(body);
+            }}
+            title="把当前范围内的未读全部标为已读"
+          >
+            {readAll.isPending ? (
+              '处理中…'
+            ) : (
+              <>
+                <Icon name="check-all" size={14} />
+                全部已读
+              </>
             )}
-          </span>
+          </button>
         </div>
       </div>
 
-      {/* 「全部已读」：作用范围 = 当前可见列表（频道/分组/筛选/标签/搜索），
-          和排序/视图不是一类，单独一行右对齐。筛选档已挪到左侧频道栏的「全局视图」。 */}
-      <div className="filter-row">
-        <button
-          className="btn ghost sm"
-          disabled={readAll.isPending || (head?.total ?? 0) === 0}
-          /* 搜索态必须把 q 一起带上：不带就变成「把范围内所有未读都标掉」，
-           * 而用户看到的只是搜索结果那几条。筛选档与标签同理。 */
-          onClick={() => {
-            const body: ReadAllBody = {
-              feeds: targetFeeds,
-              ...(search ? { q: search } : {}),
-              ...(tag ? { tag } : {}),
-              ...(filter === 'favorite' ? { fav: '1' as const } : {}),
-              ...(filter === 'watch' || filter === 'block' ? { watch: filter } : {}),
-            };
-            readAll.mutate(body);
-          }}
-          title="把当前范围内的未读全部标为已读"
-        >
-          {readAll.isPending ? (
-            '处理中…'
-          ) : (
-            <>
-              <Icon name="check-all" size={14} />
-              全部已读
-            </>
-          )}
-        </button>
-      </div>
-
-      {/* 标签云：点一下就是按标签筛。标签是「条目自带的分类」，比关键词搜索更准确 */}
-      {(head?.tags.length ?? 0) > 0 && (
-        <div className="tag-bar">
-          {head?.tags.slice(0, 14).map((t) => (
-            <button
-              key={t.tag}
-              className={`tag tag-btn${tag === t.tag ? ' on' : ''}`}
-              aria-pressed={tag === t.tag}
-              title={tag === t.tag ? '取消标签筛选' : `只看 #${t.tag}`}
-              onClick={() => setTag(tag === t.tag ? null : t.tag)}
-            >
-              {t.tag} <b>{t.n}</b>
-            </button>
-          ))}
-          {tag && (
-            <button className="tag tag-btn clear" onClick={() => setTag(null)}>
-              清除标签
-              <Icon name="close" size={11} />
-            </button>
-          )}
-        </div>
-      )}
+      {/* 顶部标签云按 v1 的决策移除（1.6.0 撤掉 TagBar，1.7.0 连带去掉卡面标签）：
+          标签真正的入口在阅读层正文里，那里点一下就是按标签筛。列表上只留标题行的
+          退出按钮，避免同一件事在三个地方各有一套视觉。 */}
 
       <ul className={`cards ${view === 'list' ? 'list-mode' : 'grid-mode'}`}>
         {entries.map((e) => (
@@ -437,9 +436,6 @@ export function EntriesPanel() {
                       <Icon name="star-filled" size={12} />
                     </span>
                   )}
-                  {e.tags.slice(0, 3).map((t) => (
-                    <span key={t} className="tag">{t}</span>
-                  ))}
                 </p>
               </div>
             </button>
@@ -455,18 +451,56 @@ export function EntriesPanel() {
         ))}
       </ul>
 
-      {entries.length === 0 && <p className="hint">{emptyText(search, tag, filter, groupName)}</p>}
+      {entries.length === 0 && isFetching && <ListSkeleton view={view} />}
+      {entries.length === 0 && !isFetching && (
+        <p className="hint">{emptyText(search, tag, filter, groupName)}</p>
+      )}
 
       {/* 滚动哨兵与加载状态。有更多时放哨兵（IO 靠它触发），没有更多时说清
           「到底了」—— 无限滚动最怕的是用户不知道是真的没有还是卡住了。 */}
       {hasNextPage ? (
         <div ref={sentinelRef} className="list-sentinel">
-          {isFetchingNextPage ? <span className="hint">加载更多…</span> : null}
+          {isFetchingNextPage && (
+            <span className="load-dots" role="status" aria-label="加载更多…">
+              <i aria-hidden />
+              <i aria-hidden />
+              <i aria-hidden />
+            </span>
+          )}
         </div>
       ) : (
         entries.length > 0 && <p className="hint list-end">共 {head?.total ?? entries.length} 条，已全部加载</p>
       )}
     </main>
+  );
+}
+
+/** 骨架条数：取「一屏大概几张卡」。再多就是让用户以为还有一页没加载完。 */
+const SKELETON_N = 6;
+
+/**
+ * 首屏骨架。形状跟着 view 走（网格=封面在上、列表=封面在左），
+ * 换成真卡片时位置不跳 —— 骨架最怕的就是「闪一下又重排」。
+ *
+ * 复用真实的 `.cards / .card-row / .card / .card-thumb / .card-body` 类是刻意的：
+ * 卡片几何（网格列宽、封面比例、内距）已经调过好几轮，另写一份骨架尺寸必然对不齐。
+ */
+function ListSkeleton({ view }: { view: ListView }) {
+  return (
+    <ul className={`cards ${view === 'list' ? 'list-mode' : 'grid-mode'}`} aria-hidden>
+      {Array.from({ length: SKELETON_N }, (_, i) => (
+        <li key={i} className="card-row">
+          <div className="card">
+            <span className="card-thumb sk" />
+            <div className="card-body">
+              <span className="sk-line w70" />
+              <span className="sk-line w90" />
+              <span className="sk-line w40" />
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -491,4 +525,23 @@ function fmtDate(iso: string): string {
   if (Number.isNaN(d.getTime())) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * View Transitions API：网格 ⇄ 列表整片交叉淡切，而不是「啪一下重排」。
+ *
+ * 三个不能省的点：
+ * 1. `flushSync` —— startViewTransition 在回调执行后才截「新」快照，React 默认批处理
+ *    会让提交落到快照之后，过渡拍到的还是旧布局（淡切变成硬切，等于没写）。
+ * 2. API 缺席的浏览器（Firefox 长期未开放）直接执行 —— 渐进增强，不 polyfill。
+ * 3. 减动效偏好下跳过 —— v1 在 core/ui.js 里同一条规矩：CSS 那段只压 duration，
+ *    压不住 View Transition 自己的跨淡层。
+ */
+function applyWithTransition(update: () => void): void {
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!document.startViewTransition || reduced) {
+    update();
+    return;
+  }
+  document.startViewTransition(() => flushSync(update));
 }

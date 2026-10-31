@@ -221,6 +221,30 @@ try {
   console.log(`  频道图标：${iconStats.loaded}/${iconStats.total} 已解码 ${iconStats.sample}`);
   console.log(`  频道行数：${feedCount}（含「全部频道」）  条目卡片：${cardCount}`);
 
+  /* 版本判据 + 吸顶契约（P10.10）：
+   * 「v1 后来删掉的东西」在 v2 也必须不在 —— 标签云 / 卡面标签 / 阅读层翻篇一旦被哪一轮
+   * 顺手加回来，截图看不出来，只有反向断言能拦住。
+   * 吸顶用真实滚动验证：滚下去之后 .list-bar 必须还在视口顶部（sticky 没生效时它跟着走了）。 */
+  const rwdChecks = await evalJs(`(() => {
+    const l = document.querySelector('.list');
+    const bar = document.querySelector('.list-bar');
+    let sticky = 'no-list';
+    if (l && bar) {
+      l.scrollTop = 1500;
+      const r = bar.getBoundingClientRect();
+      sticky = getComputedStyle(bar).position === 'sticky' && r.top >= -1 ? 'ok' : 'fail';
+      l.scrollTop = 0;
+    }
+    return {
+      removed: ['.tag-bar', '.tag-btn', '.card-tags', '.reader-nav'].filter((s) => document.querySelector(s)),
+      sticky,
+      skeletonCss: [...document.styleSheets].some((s) => {
+        try { return [...s.cssRules].some((r) => (r.selectorText ?? '').includes('.sk-line')); } catch { return false; }
+      }),
+    };
+  })()`);
+  console.log(`  已删组件回归：${rwdChecks.removed.length ? '发现 ' + rwdChecks.removed.join(',') : '无（符合预期）'}  列表吸顶：${rwdChecks.sticky}  骨架屏 CSS：${rwdChecks.skeletonCss}`);
+
   // 点开第一条，验证阅读层能拿到详情（列表不带正文，详情才带）
   if (cardCount > 0) {
     await evalJs("document.querySelector('.card').click()");

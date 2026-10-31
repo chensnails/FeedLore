@@ -27,6 +27,17 @@
   /* 主色的淡底：分组「只看」按下态、scope 退出按钮的底色。
    * 用 color-mix 派生自 --accent，所以换主色/换主题都跟着走，不必再维护一份色板。 */
   --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+  /* 骨架屏的两档底色：暖白半透叠加在卡片面上，天生比表面亮一档，
+   * 换主题只改这两条，不必再猜一组具体色值。 */
+  --sk-a: rgba(255, 243, 224, 0.07);
+  --sk-b: rgba(255, 243, 224, 0.14);
+  /* MD3 状态层：悬停 / 聚焦 / 按下 / 拖拽四档「叠在表面上的一层薄色」。
+   * 关键在它是从 --text 派生的：暗色下叠白、浅色下叠黑，两种主题都看得见。
+   * --glass-2 是**表面**（浅色档是半透明白），把它当悬停反馈用，浅色主题下等于没反馈。 */
+  --state-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  --state-focus: color-mix(in srgb, var(--text) 10%, transparent);
+  --state-press: color-mix(in srgb, var(--text) 12%, transparent);
+  --state-drag: color-mix(in srgb, var(--text) 16%, transparent);
   /* 玻璃拟态令牌：frosted glass 表面与浮层。半透明 + backdrop-filter 模糊，
    * 配合 body 的渐变底，玻璃面才会「透出」后面颜色。浅色主题在下方 light 块覆盖。 */
   --glass: rgba(255, 243, 224, 0.05);
@@ -94,6 +105,9 @@
   --dur-fast: 120ms;
   --dur: 180ms;
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  /* 卡片入场错峰步长：第 2 张起每张晚一档，第 11 张封顶（见 .cards 的 nth-child 阶梯）。
+   * 纯 CSS 实现，不给卡片挂内联 style —— 那会打断卡片的 memo。 */
+  --stagger: 20ms;
   /* 焦点环：键盘可见，鼠标点击不出现 */
   --ring: 0 0 0 2px var(--bg), 0 0 0 4px color-mix(in srgb, var(--accent) 65%, transparent);
 
@@ -125,6 +139,8 @@
   --glass-border: rgba(0, 0, 0, 0.08);
   --sheet: rgba(255, 255, 255, 0.66);
   --sheet-border: rgba(0, 0, 0, 0.1);
+  --sk-a: rgba(0, 0, 0, 0.05);
+  --sk-b: rgba(0, 0, 0, 0.09);
   --glass-blur: blur(20px) saturate(150%);
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
   /* 渐变底：浅色档用一抹明显的蓝紫晕染 + 偏冷的线性底，让半透明白面板能透出 frosted 层次。
@@ -151,6 +167,8 @@
     --glass-border: rgba(0, 0, 0, 0.08);
     --sheet: rgba(255, 255, 255, 0.66);
     --sheet-border: rgba(0, 0, 0, 0.1);
+    --sk-a: rgba(0, 0, 0, 0.05);
+    --sk-b: rgba(0, 0, 0, 0.09);
     --glass-blur: blur(20px) saturate(150%);
     --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.08);
     --page-bg:
@@ -368,21 +386,24 @@ html {
   gap: var(--gap-1);
 }
 
-.tag {
+/* 阅读层正文里的标签：标签筛选在列表上没有入口（v1.6.0 撤掉顶部标签云），
+   这里是唯一的入口，所以它是按钮 —— 主色文字 + 主色淡底，和「可点的强调」同一套语言。
+   直接写 var(--accent) 在暖灰暗底上偏暗，掺一点文字色提亮。 */
+.mini-tag {
+  font: inherit;
   font-size: var(--fs-2xs);
   line-height: 1.5;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-full);
-  padding: 0 var(--gap-2);
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+  cursor: pointer;
+  border: 0;
+  border-radius: var(--radius-xs);
+  padding: 1px var(--gap-2);
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
+  background: var(--accent-soft);
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.tag b {
-  font-weight: var(--fw-semibold);
-  font-variant-numeric: tabular-nums;
-  opacity: 0.65;
+.mini-tag:hover {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--text);
 }
 
 .hint {
@@ -561,11 +582,11 @@ html {
 .sidebar {
   min-height: 0;
   overflow: auto;
-  background: var(--glass);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  border-right: 1px solid var(--glass-border);
-  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.4);
+  /* 实底，不用 backdrop-filter：这栏自己就是滚动容器（频道列表动辄上百行），
+   * 「模糊底 + 自身滚动」等于每帧对下方内容重做采样 —— v1 的玻璃治理第一个砍掉的就是它。
+   * 顶栏不在此列：它在流式布局里，没有内容从下面滚过，采样一次就缓存住了。 */
+  background: var(--surface);
+  border-right: 1px solid var(--line);
   padding: var(--gap-4) var(--gap-3) var(--gap-7);
 }
 
@@ -606,7 +627,7 @@ html {
     color var(--dur-fast) var(--ease);
 }
 .gview:hover {
-  background: var(--glass-2);
+  background: var(--state-hover);
 }
 .gview.on {
   background: var(--accent-soft);
@@ -696,7 +717,7 @@ html {
   transition: background var(--dur-fast) var(--ease);
 }
 .feed:hover {
-  background: var(--glass-2);
+  background: var(--state-hover);
 }
 .feed.on {
   background: var(--glass-2);
@@ -766,9 +787,26 @@ html {
 /* ---------------- 条目列表 ---------------- */
 
 .list {
+  /* 左右内距抽成变量：吸顶条 .list-bar 要用同样的值做负外边距，才能在窄屏（14 / 12）
+     下也把底色铺满滚动容器，不在两侧漏出滚动的卡片。 */
+  --list-pad-x: var(--gap-6);
   min-height: 0;
   overflow: auto;
-  padding: var(--gap-4) var(--gap-6) var(--gap-8);
+  /* 顶部不留内距：留了就会在吸顶条上方漏出一条 12px 的滚动内容，那截既没底色也遮不住。
+   * 这 12px 改由 .list-bar 自己的 padding-top 承担。 */
+  padding: 0 var(--list-pad-x) var(--gap-8);
+}
+
+/* 一条吸顶的工具块（浮标 + 标题行 + 筛选行）。
+ * 实底、不加 backdrop-filter：这层下面每帧都在滚列表内容，模糊采样在长列表上必掉帧
+ * （v1 在 .reader-head / .topbar 上量过同一条）。 */
+.list-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 calc(var(--list-pad-x) * -1);
+  padding: var(--gap-4) var(--list-pad-x) 0;
+  background: var(--bg);
 }
 
 .list-head {
@@ -782,12 +820,6 @@ html {
   color: var(--muted);
   border-bottom: 1px solid var(--line);
   margin-bottom: var(--gap-3);
-}
-
-.tags-inline {
-  display: flex;
-  gap: 6px;
-  overflow: hidden;
 }
 
 .cards {
@@ -821,7 +853,7 @@ html {
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .card:hover {
-  background: var(--glass-2);
+  background: var(--state-hover);
   border-color: var(--glass-border);
 }
 
@@ -954,7 +986,8 @@ html {
 }
 
 .reader-title {
-  margin: 0 44px var(--gap-2) 0;
+  /* 关闭按钮在上方那条吸顶工具行里（不在标题同一行），所以标题不必再为它让出 44px */
+  margin: 0 0 var(--gap-2);
   font-size: var(--fs-xl);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
@@ -1125,7 +1158,7 @@ html {
   cursor: pointer;
 }
 .copy-menu button:hover:not(:disabled) {
-  background: var(--glass-2);
+  background: var(--state-hover);
 }
 .copy-menu .copy-all {
   color: var(--accent);
@@ -1232,7 +1265,8 @@ html {
   }
 
   .list {
-    padding: 10px 14px 40px;
+    --list-pad-x: 14px;
+    padding: 0 var(--list-pad-x) 40px;
   }
   .reader-backdrop {
     padding: 0;
@@ -1250,7 +1284,7 @@ html {
     background: var(--surface);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-    /* 末端留足底部内距（含刘海屏安全区），让「上一条/下一条」不被屏幕底边裁掉 */
+    /* 末端留足底部内距（含刘海屏安全区），让正文末尾的动作条不被屏幕底边裁掉 */
     padding-bottom: max(var(--gap-6), env(safe-area-inset-bottom));
   }
 }
@@ -1436,7 +1470,7 @@ html {
 .icon-btn:hover:not(:disabled) {
   color: var(--text);
   border-color: var(--line);
-  background: var(--glass-2);
+  background: var(--state-hover);
 }
 .icon-btn.off {
   opacity: 0.55;
@@ -2063,43 +2097,6 @@ textarea.input {
   flex: none;
 }
 
-/* 标签云：卡片页顶部的可点标签。与 .tag 共用配色，只是变成了按钮 */
-.tag-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap-2);
-  padding: 0 var(--gap-1) var(--gap-3);
-}
-.tag-btn {
-  font: inherit;
-  font-size: var(--fs-2xs);
-  cursor: pointer;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-full);
-  padding: 3px 9px;
-  color: var(--muted);
-  transition: color 0.16s ease, border-color 0.16s ease;
-}
-.tag-btn:hover {
-  color: var(--text);
-  border-color: var(--accent);
-}
-.tag-btn.on {
-  color: var(--accent-ink);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.tag-btn.on b {
-  color: var(--accent-ink);
-  opacity: 0.75;
-}
-.tag-btn.clear {
-  color: var(--danger);
-  border-color: var(--danger);
-  background: transparent;
-}
-
 /* ---------------- 两种视图 ---------------- */
 
 /* 网格：封面在上、文字在下。auto-fill + minmax 让 1440 / 820 / 390 三档
@@ -2221,7 +2218,8 @@ textarea.input {
   /* 双列网格：手机端也用两列（封面在上、标题在下），比单行使信息密度更合适；
    * 同时把页面左右边距收到 16px，给两列卡片留出更均匀的列宽。 */
   .list {
-    padding: var(--gap-4) var(--gap-4) var(--gap-6);
+    --list-pad-x: var(--gap-4);
+    padding: 0 var(--list-pad-x) var(--gap-6);
   }
   .cards.grid-mode {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2229,17 +2227,6 @@ textarea.input {
   }
   .sort-select {
     width: 84px;
-  }
-  .tag-bar {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    scrollbar-width: none;
-  }
-  .tag-bar::-webkit-scrollbar {
-    display: none;
-  }
-  .tag-btn {
-    flex: none;
   }
 }
 
@@ -2342,12 +2329,23 @@ textarea.input {
 
 /* ---------------- 阅读层工具行 / 提取码 / 下拉把手 ---------------- */
 
+/* 吸顶：长文滚下去后 A-/A+ 与 × 仍在手边（v1 的阅读页头部条同理）。
+ * 底色用实底 var(--surface) 而不是再叠一层 backdrop-filter —— 这行下面每帧都在滚正文。
+ * 负左右外边距把整行铺满浮层内宽，正文不会从两侧留白里漏出来（浮层左右内距 24，收到 10）。
+ * 原来那个 -14px 的上边距去掉了：吸顶层按自己的盒顶对齐，负上边距会让它被裁掉一截。 */
 .reader-tools {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-  margin: -14px -14px 10px 0;
+  margin: 0 -14px 10px;
+  padding: 4px 6px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-sm);
 }
 /* 阅读层里的关闭按钮回到文档流（设置面板里的那个仍然是绝对定位的浮动叉） */
 .reader-tools .reader-close {
@@ -2586,20 +2584,32 @@ textarea.input {
 }
 
 @media (pointer: coarse) {
-  /* 触控目标最小 32px：26px 的图标在拇指下经常点偏一个 */
+  /* 触控目标按 v1 在真机上量出来的档位：图钉级 40、行内操作 32、菜单项 ≥44。
+   * 全部改**真实盒子尺寸**，不用伪元素虚扩 —— 虚扩会让相邻两个按钮互相抢点击
+   * （v1 的折叠键和抽屉关闭键只隔 4px，虚扩后点了这个出那个）。 */
+  .nav-close {
+    width: 40px;
+    height: 40px;
+  }
   .icon-btn {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
     font-size: var(--fs-xs);
+  }
+  .fav-btn {
+    width: 34px;
+    height: 34px;
   }
   .btn.icon {
     padding: 7px 10px;
   }
-  .fav-btn {
-    width: 32px;
-    height: 32px;
+  /* ⋯ 菜单：一行一个动作，拇指要能整行落进目标里 */
+  .more-menu button {
+    min-height: 44px;
   }
-  .feed {
+  /* 侧栏的行本来就靠 padding 撑高：这里补足到 40+，比改控件尺寸更稳 */
+  .feed,
+  .gview {
     padding-top: 9px;
     padding-bottom: 9px;
   }
@@ -2647,8 +2657,19 @@ textarea.input {
   cursor: pointer;
   white-space: nowrap;
 }
+/* 状态层：悬停 / 键盘焦点 / 按下各叠一档薄色（--state-*，从 --text 派生）。
+ * 原先这里叠的是主色 14%：菜单项是「动作」而不是「选中档」，主色叠上去会和在用的
+ * 强调态抢视线；浅色主题下 --glass-2 那类半透明白也几乎看不见。 */
 .more-menu button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: var(--state-hover);
+}
+.more-menu button:focus-visible {
+  outline: none;
+  background: var(--state-focus);
+  box-shadow: var(--ring);
+}
+.more-menu button:active:not(:disabled) {
+  background: var(--state-press);
 }
 .more-menu button:disabled {
   opacity: 0.5;
@@ -2664,23 +2685,6 @@ textarea.input {
   .topbar-more {
     display: block;
   }
-}
-
-/* 阅读层翻篇：贴在正文末尾，左右两个按钮 + 中间的进度 */
-.reader-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 20px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-}
-.reader-nav-pos {
-  font-size: var(--fs-2xs);
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
 }
 
 /* 手机端卡片模式只有一栏时，整宽大封面会把卡片撑得异常大、一屏只看得到一张。
@@ -2825,17 +2829,14 @@ textarea.input {
 /* 「发现新版本」用强调色而不是危险色：这不是故障，是一个可选的升级提醒 */
 /* ---------------- 「N 条新内容」浮标（自动刷新） ---------------- */
 
-/* sticky + 居中：粘在列表可视区顶部，滚到哪儿都看得见；
- * 宽度按内容而非整行，免得盖住列表两侧的点击区域。 */
+/* 居中、宽度按内容而非整行，免得盖住列表两侧的点击区域。
+ * 它自己不 sticky —— 已经在吸顶的 .list-bar 里，两层各自 top:0 会叠在一起。 */
 .fresh-pill {
-  position: sticky;
-  top: 0;
-  z-index: 12;
   display: flex;
   align-items: center;
   gap: 2px;
   width: fit-content;
-  margin: 0 auto 8px;
+  margin: 0 auto var(--gap-3);
   padding: 3px;
   background: var(--accent);
   border-radius: var(--radius-full);
@@ -2982,6 +2983,79 @@ body.side-resizing {
   padding: 18px 0 8px;
 }
 
+/* ---------------- 骨架屏与加载态（P10.10 #37） ----------------
+ * 形状复用真实的 .card-thumb / .card-body 类（ListSkeleton 刻意挂在同一棵结构树上），
+ * 这里只补「 shimmer 底」和「行数比例」两件事 —— 另写一份骨架几何必然和真卡片对不齐。
+ * 颜色走 --sk-a/--sk-b 两个令牌，浅深主题各配一档（暗色不能用纯白打底，会刺眼）。
+ */
+.card-thumb.sk,
+.sk-line {
+  background-image: linear-gradient(90deg, var(--sk-a) 25%, var(--sk-b) 37%, var(--sk-a) 63%);
+  background-size: 400% 100%;
+  animation: sk 1.4s ease infinite;
+}
+.card-thumb.sk {
+  display: block;
+}
+.sk-line {
+  display: block;
+  height: 12px;
+  border-radius: var(--radius-xs);
+  margin-top: var(--gap-2);
+}
+.sk-line.w70 {
+  width: 70%;
+  height: 14px;
+}
+.sk-line.w90 {
+  width: 90%;
+  height: 10px;
+}
+.sk-line.w40 {
+  width: 40%;
+  height: 10px;
+}
+@keyframes sk {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* 无限滚动的「加载中」：三个弹跳点替代「加载更多…」文字。
+ * 文字会被读成报错，点只表达「还在干活」。 */
+.load-dots {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 10px 0;
+}
+.load-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: bounce 1s infinite ease-in-out;
+}
+.load-dots i:nth-child(2) {
+  animation-delay: var(--dur-fast);
+}
+.load-dots i:nth-child(3) {
+  animation-delay: var(--dur);
+}
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.35;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 /* 分组范围的「退出」按钮：跟着标题走，不做成独立一行 */
 .scope-x {
   margin-left: var(--gap-2);
@@ -3050,6 +3124,42 @@ body.side-resizing {
   animation: fade-in 0.16s ease both;
 }
 
+/* 卡片入场错峰：列表首屏 / 切频道时一批卡片依次浮起，比「整屏啪一下」更有层次。
+ * 纯 CSS nth-child 阶梯，不给卡片挂内联 style —— 内联样式会打断卡片组件的 memo，
+ * 每渲染一次都重新 diff 一遍。第 11 张起封顶：再往下延迟已经长到像卡顿。
+ *
+ * ⚠️ prefers-reduced-motion 段只压了 animation-duration，压不住 delay：
+ * `backwards` 填充下延迟期间卡片是透明首帧，200ms 的错峰会被误读成「加载慢」。
+ * 所以这里单独把 delay 归零 —— 减动效偏好下卡片一次性全部到位。 */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.cards > li {
+  animation: card-in var(--dur) var(--ease) backwards;
+}
+.cards > li:nth-child(2) { animation-delay: calc(var(--stagger) * 1); }
+.cards > li:nth-child(3) { animation-delay: calc(var(--stagger) * 2); }
+.cards > li:nth-child(4) { animation-delay: calc(var(--stagger) * 3); }
+.cards > li:nth-child(5) { animation-delay: calc(var(--stagger) * 4); }
+.cards > li:nth-child(6) { animation-delay: calc(var(--stagger) * 5); }
+.cards > li:nth-child(7) { animation-delay: calc(var(--stagger) * 6); }
+.cards > li:nth-child(8) { animation-delay: calc(var(--stagger) * 7); }
+.cards > li:nth-child(9) { animation-delay: calc(var(--stagger) * 8); }
+.cards > li:nth-child(10) { animation-delay: calc(var(--stagger) * 9); }
+.cards > li:nth-child(n + 11) { animation-delay: calc(var(--stagger) * 9); }
+@media (prefers-reduced-motion: reduce) {
+  .cards > li {
+    animation-delay: 0s;
+  }
+}
+
 /* 主题化细滚动条：原生滚动条在暗色下是刺眼的浅灰块，统一成低对比的细条。
  * 只作用于会真的滚动的容器；reader-sheet 靠 backdrop 滚动，不在其内另起。 */
 .list,
@@ -3094,7 +3204,7 @@ body.side-resizing {
 .btn,
 .seg-btn,
 .chip,
-.tag-btn,
+.mini-tag,
 .icon-btn,
 .fav-btn,
 .scope-x,
@@ -3108,7 +3218,7 @@ body.side-resizing {
 .btn:active,
 .seg-btn:active,
 .chip:active,
-.tag-btn:active,
+.mini-tag:active,
 .icon-btn:active,
 .fav-btn:active,
 .scope-x:active,
