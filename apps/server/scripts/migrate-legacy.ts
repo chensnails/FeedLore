@@ -10,7 +10,7 @@
  *    `salt` / `password_hash` 以 `legacy$<salt>$<hash>` 标记写进 v2 的 accounts.password；
  *    @feedlore/auth 的 verify 识别该标记并按 r=8 校验，首次登录成功后自动换成 r=16。
  *    → v1 用户升级后**原密码直接可登录**，无需改密。
- *    legacy 行缺 salt/password_hash 的（极少见）才退回一次性随机密码并打印。
+ *    legacy 行缺 salt/password_hash 或格式不是 64 字节 scrypt 的（极少见）才退回一次性随机密码并打印。
  *    已在 v2 存在的账号（比如 seed 出来的 admin）密码完全不动 —— 重复跑不会覆盖
  *    用户在 v2 里改过的密码。
  * 3. **不搬图片缓存**。`image_cache` 是纯缓存（丢了会回源重建），
@@ -243,11 +243,14 @@ async function main(): Promise<void> {
 
         const legacySalt = str(u.salt);
         const legacyHash = str(u.password_hash);
+        // 只认 v1 现行格式（scrypt 输出 64 字节 → 128 位 hex）。格式异常的旧行
+        // 就算写成 legacy 标记也校验不过，退回一次性密码至少还能登进来。
+        const keepLegacy = Boolean(legacySalt && legacyHash && /^[0-9a-f]{128}$/i.test(legacyHash));
 
         if (DRY) {
           userIdMap.set(legacyId, `dry-${legacyId}`);
           stats.users.created += 1;
-          if (legacySalt && legacyHash) stats.users.passwordsKept += 1;
+          if (keepLegacy) stats.users.passwordsKept += 1;
           else stats.users.passwordsReset += 1;
           continue;
         }
@@ -264,7 +267,7 @@ async function main(): Promise<void> {
         const [created] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
         if (!created) throw new Error(`创建 v2 用户失败：${username}`);
 
-        if (legacySalt && legacyHash) {
+        if (keepLegacy && legacySalt && legacyHash) {
           const updated = await db
             .update(accounts)
             .set({ password: formatLegacyPasswordHash(legacySalt, legacyHash), updatedAt: new Date() })
