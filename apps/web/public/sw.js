@@ -13,7 +13,7 @@
  * `/assets/index-<hash>.css`，文件名每次构建都变，写死等于每次发版都预缓存 404。
  * 只预缓存真正稳定的那几个（图标、manifest），其余靠运行时按需写入。
  */
-const VERSION = 'feedlore-v2-2';
+const VERSION = 'feedlore-v2-3';
 const CACHE = `${VERSION}-static`;
 
 /** 带内容哈希的资源：/assets/xxx-<hash>.ext */
@@ -21,6 +21,7 @@ const HASHED = /\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/i;
 
 const PRECACHE = [
   '/',
+  '/login.html',
   '/manifest.json',
   '/favicon.svg',
   '/favicon.ico',

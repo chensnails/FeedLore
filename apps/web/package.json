@@ -10,12 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@feedlore/client": "workspace:*",
-    "@feedlore/contract": "workspace:*",
-    "@tanstack/react-query": "^5.62.7",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "zustand": "^5.0.2"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.2",

@@ -12,10 +12,15 @@
 import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { serveStatic } from '@hono/node-server/serve-static';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { eq } from 'drizzle-orm';
 import type { Db } from '@feedlore/db';
+import { users } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import type { AppEnv } from './middleware/auth';
 import { WEB_ROOT } from './env';
+import { userAppearance, userLayout } from './lib/prefs';
 import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
 import { feedsRoutes } from './routes/feeds';
@@ -44,7 +49,7 @@ export interface AppDeps {
  * - `assets/*` 由 Vite 打上内容哈希 → immutable，可长缓存；
  * - `index.html` 无哈希 → no-cache，否则新 HTML 配旧 JS/CSS（1.4.0 搜索框事故）。
  */
-function mountWeb(app: Hono<AppEnv>, root: string): void {
+function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
   // ⚠️ 必须改 `c.res.headers`，不能用 `c.header()`：后者写的是「待发送头」，
   //    在 `await next()` 之后响应已生成，再写不会生效（表现为静态资源永远 no-cache）。
   const cache = (value: string) => async (c: Context<AppEnv>, next: () => Promise<void>) => {
@@ -58,7 +63,21 @@ function mountWeb(app: Hono<AppEnv>, root: string): void {
   app.use('/assets/*', serveStatic({ root }));
 
   app.use('/', cache('no-cache'));
-  app.get('/', serveStatic({ root, path: 'index.html' }));
+  /* 已登录访问首页：把该账号的外观/布局注入 <head>（与 v1 同款）。
+   *
+   * v1 的前端启动只用 `window.__APPEARANCE__` / `window.__LAYOUT__`，从不 GET
+   * /api/prefs 来补首屏值；少了这段注入，换设备登录会先按默认值画一遍（闪一下），
+   * 排序 / 阅读宽度 / 折叠分组这些布局项也要等用户手改一次才会被写进 layoutPref。 */
+  app.get('/', async (c) => {
+    const html = await readFile(join(root, 'index.html'), 'utf8').catch(() => null);
+    if (html === null) return c.text('Not found', 404);
+    return c.html(await injectBootPrefs(html, c, deps));
+  });
+
+  /* 登录页是独立文档（v1 的 MPA 入口）。同样 no-cache：它是版本的另一个入口，
+   * 缓存住会让改过的登录逻辑在用户机器上「永远不生效」。 */
+  app.use('/login.html', cache('no-cache'));
+  app.get('/login.html', serveStatic({ root }));
 
   /* 根级静态文件（PWA 的 manifest / service worker / 图标）。
    *
@@ -87,6 +106,36 @@ function mountWeb(app: Hono<AppEnv>, root: string): void {
     app.use(`/${file}`, cache(maxAge));
     app.get(`/${file}`, serveStatic({ root }));
   }
+}
+
+/**
+ * 把账号的外观/布局注入首页 <head>（锚点是 v1 index.html 里固定的 theme-color meta）。
+ * 未登录 / 没连库时原样返回，交给 index.html 内联脚本用 localStorage 兜底。
+ */
+async function injectBootPrefs(html: string, c: Context<AppEnv>, deps: AppDeps): Promise<string> {
+  const anchor = '<meta name="theme-color" content="#ffffff">';
+  const at = html.indexOf(anchor);
+  if (at < 0 || !deps.auth || !deps.db) return html;
+
+  const session = await deps.auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
+  if (!session) return html;
+
+  const rows = await deps.db
+    .select({ prefs: users.prefs })
+    .from(users)
+    .where(eq(users.id, session.user.id))
+    .limit(1);
+  const prefs = rows[0]?.prefs ?? null;
+
+  /* `<` 转义：分组名是用户输入，直接拼进 <script> 会提前闭合标签。 */
+  const json = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
+  const script =
+    '<script>window.__APPEARANCE__=' +
+    json(userAppearance(prefs)) +
+    ';window.__LAYOUT__=' +
+    json(userLayout(prefs)) +
+    ';</script>';
+  return html.slice(0, at + anchor.length) + '\n' + script + html.slice(at + anchor.length);
 }
 
 export function createApp({ db, auth }: AppDeps) {
@@ -162,7 +211,7 @@ export function createApp({ db, auth }: AppDeps) {
     .route('/', adminVersionRoutes(db, auth));
 
   // 静态资源挂在同一个实例上；`route()` 返回的是 this，所以这里注册的路由同样生效。
-  if (WEB_ROOT) mountWeb(app, WEB_ROOT);
+  if (WEB_ROOT) mountWeb(app, WEB_ROOT, { db, auth });
 
   return routed;
 }

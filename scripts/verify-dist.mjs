@@ -101,36 +101,34 @@ if (cssFile) {
   // 阅读层令牌：正文排版全靠这几个变量，被改名/删掉会让设置项变成死开关
   check(/--reader-fs/.test(css), 'CSS 含 --reader-fs 令牌');
   check(/--reader-width/.test(css), 'CSS 含 --reader-width 令牌');
-  // 抽屉：窄屏导航的唯一实现方式
-  check(/\.sidebar\.open/.test(css), 'CSS 含抽屉展开态 .sidebar.open');
+  // 抽屉：窄屏导航的唯一实现方式（v1 用 body 上的状态类 + 侧栏位移）
+  check(/body\.reader-drawer-open \.reader-side/.test(css), 'CSS 含阅读页抽屉展开态（body.reader-drawer-open .reader-side）');
+  check(/body\.cards-drawer-open \.cards-side/.test(css), 'CSS 含卡片页抽屉展开态（body.cards-drawer-open .cards-side）');
 
-  /* ---- P10.10 版本判据 ----
-   * 每条都是「少了会坏体验 / 多了会坏性能」的双向闸门，全部来自这一轮的决策记录。 */
-  check(/\.list-bar\s*\{[^}]*position: *sticky/.test(css), '列表工具块 .list-bar 是 sticky（滚下去筛选/排序还在）');
-  check(/\.reader-tools\s*\{[^}]*position: *sticky/.test(css), '阅读层工具条 .reader-tools 是 sticky');
-  check(/\.sk-line/.test(css) && /@keyframes *sk\b/.test(css), '骨架屏规则与 shimmer 关键帧在产物里');
-  check(/@keyframes *card-in\b/.test(css), '卡片入场错峰 card-in 关键帧在产物里');
+  // 列表 / 阅读层的关键件（这几个没了，对应功能直接不可见或不可点）
+  check(/\.sk-card/.test(css) && /\.sk-row/.test(css) && /@keyframes *sk\b/.test(css), '骨架屏规则与 shimmer 关键帧在产物里');
+  check(/@keyframes *cardIn\b/.test(css), '卡片入场错峰 cardIn 关键帧在产物里');
   check(/\.mini-tag/.test(css), '正文标签按钮 .mini-tag 在（阅读层点标签筛列表的唯一入口）');
 
-  // v1 后续版本删掉的东西，v2 必须也不在（被哪轮顺手加回来，这里拦住）
+  // v1 后续版本删掉的东西必须也不在（被哪轮顺手加回来，这里拦住）
   check(!/\.tag-btn/.test(css), 'CSS 无已删除的 .tag-btn（顶部标签云）');
   check(!/\.tag-bar/.test(css), 'CSS 无已删除的 .tag-bar');
   check(!/\.reader-nav[^-a-z]/.test(css), 'CSS 无已删除的 .reader-nav（阅读层翻篇）');
 
-  /* 玻璃模糊预算：backdrop-filter 只允许出现在「静止表面」（顶栏 / 浮层 sheet）。
-   * 滚动容器和吸顶层每帧重采样必掉帧 —— v1 用性能实测换来的规矩，加了 sticky 之后
-   * 最容易复发的就是「给 sticky 条补一层模糊好看一点」。6 条规则 × webkit 双写 = 12 为上限。 */
-  const blurDecls = (css.match(/backdrop-filter:\s*var\(--glass-blur\)/g) ?? []).length;
-  check(blurDecls <= 12, `活跃 backdrop-filter 声明 ${blurDecls} 条（≤12：6 个静止表面 × webkit 双写）`);
+  /* 玻璃模糊预算：只有两个全屏遮罩（.modal-mask / .cmdk-mask）允许模糊。
+   * 滚动容器与长列表每帧重采样必掉帧 —— 这是 v1 用性能实测换来的规矩。
+   * 2 个类 × 标准属性 + webkit 双写 = 4 条声明。 */
+  const blurDecls = (css.match(/backdrop-filter:\s*blur\(/g) ?? []).length;
+  check(blurDecls <= 4, `活跃 backdrop-filter 声明 ${blurDecls} 条（≤4：两个遮罩 × webkit 双写）`);
 }
 
-/* ---------------- JS 侧：阅读层 ↔ 路由 ---------------- */
+/* ---------------- JS 侧：阅读层标签入口 ---------------- */
 const jsRef = html.match(/\/assets\/index-[A-Za-z0-9._-]+\.js/)?.[0];
 const js = jsRef ? readFileSync(join(DIST, jsRef.replace(/^\//, '')), 'utf8') : '';
-/* 「点正文标签 = 筛列表 + 退出阅读层」必须是一次 store 写入。写成 setTag() + close()
- * 两行时，路由先 push 一条带标签的阅读层、再对它执行关闭时的 back()，落回的那条历史
- * 没有标签 —— 实测表现是「点了标签：文章还开着、列表也没筛」。 */
-check(/tagFromEntry/.test(js), '阅读层标签走一次性 tagFromEntry（拆回两行就红）');
+/* 阅读层正文标签是筛列表的唯一入口（v1.6.0 撤掉顶部标签云后）。
+ * core 导出对象的属性名不会被压缩，掉了说明桥接断了。 */
+check(/readerTagToCards/.test(js), 'core 暴露 readerTagToCards（阅读层点标签筛列表的桥）');
+check(/__APPEARANCE__/.test(js), '前端仍在读服务端注入的 __APPEARANCE__（首屏外观）');
 
 /* ---------------- 汇总 ---------------- */
 for (const m of oks) console.log(`✓ ${m}`);

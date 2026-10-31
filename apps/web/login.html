@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · 笺川</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#ffffff">
+<script>
+/* 主题：与主站共用同一份偏好，首屏前定好 data-theme 避免闪白。
+   四档与主站一致：auto / light / dark（CommaFeed 暗色）/ github（GitHub 暗黑）。 */
+(function () {
+  var KEY = 'feedlore.theme.v1';
+  var MODES = ['auto', 'light', 'dark', 'github'];
+  var mode = 'auto';
+  try { mode = localStorage.getItem(KEY) || 'auto'; } catch (e) { /* 隐私模式 */ }
+  if (MODES.indexOf(mode) < 0) mode = 'auto';
+  var mq = window.matchMedia('(prefers-color-scheme: dark)');
+  var eff = mode === 'auto' ? (mq.matches ? 'dark' : 'light') : mode;
+  var el = document.documentElement;
+  el.setAttribute('data-theme', eff);
+  el.setAttribute('data-theme-mode', mode);
+  window.__themeBoot = { KEY: KEY, mq: mq, mode: mode, MODES: MODES };
+})();
+</script>
+<!-- 样式表由 src/login-main.js 引入，Vite 打出带内容哈希的 /assets/login-<hash>.css
+     并自动注入 <link>（v1.5.0：此前固定路径 /login.css 会被 CDN 缓存，与主站同样错配）。 -->
+<script type="module" src="/src/login-main.js"></script>
+</head>
+<body>
+  <!-- 图标 sprite：登录页是独立文档，拿不到主站 index.html 的 sprite，这里只带主题图标 -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <symbol id="i-theme-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17Z" fill="currentColor"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.2 5.2l1.4 1.4M17.4 17.4l1.4 1.4M18.8 5.2l-1.4 1.4M6.6 17.4l-1.4 1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1Z"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2.2a9.8 9.8 0 0 0-3.1 19.1c.49.09.67-.21.67-.47v-1.86c-2.73.6-3.3-1.17-3.3-1.17-.45-1.13-1.1-1.43-1.1-1.43-.9-.61.07-.6.07-.6 1 .07 1.53 1.02 1.53 1.02.88 1.51 2.32 1.07 2.88.82.09-.64.35-1.08.63-1.33-2.18-.25-4.47-1.09-4.47-4.85 0-1.07.38-1.95 1.02-2.63-.1-.25-.45-1.26.1-2.63 0 0 .83-.27 2.72 1a9.4 9.4 0 0 1 4.94 0c1.89-1.27 2.71-1 2.71-1 .55 1.37.2 2.38.1 2.63.64.68 1.02 1.56 1.02 2.63 0 3.77-2.3 4.6-4.49 4.84.35.31.67.9.67 1.82v2.7c0 .26.18.57.68.47A9.8 9.8 0 0 0 12 2.2Z"/></symbol>
+  </svg>
+
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <button type="button" class="theme-toggle" id="themeBtn" title="主题：跟随系统" aria-label="切换主题">
+      <svg class="ico" aria-hidden="true" focusable="false"><use href="#i-theme-auto"/></svg>
+    </button>
+    <svg class="logo" viewBox="0 0 64 64" role="img" aria-label="笺川"><rect width="64" height="64" rx="15" fill="var(--accent)"/><rect x="8" y="17" width="33" height="37" rx="6" fill="#ffffff"/><rect x="15" y="25" width="19" height="5" rx="2.5" fill="var(--accent)"/><rect x="15" y="35" width="12" height="5" rx="2.5" fill="var(--accent)"/><rect x="15" y="45" width="16" height="5" rx="2.5" fill="var(--accent)"/><path d="M51.5 6 l2.9 7.1 7.1 2.9 -7.1 2.9 -2.9 7.1 -2.9 -7.1 -7.1 -2.9 7.1 -2.9 z" fill="#ffffff"/></svg>
+    <h1>笺川</h1>
+    <p class="sub">拾取值得读的，登录后查看</p>
+
+    <div class="field">
+      <label for="username">用户名</label>
+      <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+    </div>
+    <div class="field">
+      <label for="password">密码</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+    </div>
+
+    <button type="submit" id="submitBtn">登 录</button>
+    <div class="error" id="error"></div>
+
+    <p class="tip">默认管理员账号 <code>admin</code>（初始密码 admin），登录后请在「设置 → 账号」中修改</p>
+  </form>
+
+<script>
+  const form = document.getElementById('loginForm');
+  const btn = document.getElementById('submitBtn');
+  const errBox = document.getElementById('error');
+
+  /* ---------- 主题切换（与主站共用 feedlore.theme.v1，四档一致） ---------- */
+  const THEME_KEY = 'feedlore.theme.v1';
+  const THEME_MODES = ['auto', 'light', 'dark', 'github'];
+  const THEME_META = {
+    auto: { ico: 'i-theme-auto', label: '跟随系统' },
+    light: { ico: 'i-sun', label: '浅色' },
+    dark: { ico: 'i-moon', label: 'CommaFeed 暗色' },
+    github: { ico: 'i-github', label: 'GitHub 暗黑' },
+  };
+  const THEME_DATA_ATTR = { auto: null, light: 'light', dark: 'dark', github: 'github' };
+  const themeBtn = document.getElementById('themeBtn');
+  const themeUse = themeBtn.querySelector('use');
+
+  function prefersDark() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+  function currentThemeMode() {
+    try {
+      const m = localStorage.getItem(THEME_KEY);
+      return THEME_MODES.indexOf(m) >= 0 ? m : 'auto';
+    } catch (_) { return 'auto'; }
+  }
+  function applyTheme(mode) {
+    const m = THEME_MODES.indexOf(mode) >= 0 ? mode : 'auto';
+    const eff = THEME_DATA_ATTR[m] || (prefersDark() ? 'dark' : 'light');
+    const el = document.documentElement;
+    el.setAttribute('data-theme', eff);
+    el.setAttribute('data-theme-mode', m);
+    try { localStorage.setItem(THEME_KEY, m); } catch (_) { /* 忽略 */ }
+    if (themeUse) themeUse.setAttribute('href', '#' + THEME_META[m].ico);
+    themeBtn.title = '主题：' + THEME_META[m].label + '（点击切换）';
+    themeBtn.setAttribute('aria-label', '主题：' + THEME_META[m].label);
+    const tc = document.querySelector('meta[name="theme-color"]');
+    if (tc) tc.setAttribute('content', eff === 'light' ? '#ffffff' : (eff === 'github' ? '#0d1117' : '#1b1d21'));
+  }
+
+  themeBtn.addEventListener('click', () => {
+    const next = THEME_MODES[(THEME_MODES.indexOf(currentThemeMode()) + 1) % THEME_MODES.length];
+    applyTheme(next);
+  });
+  try {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (currentThemeMode() === 'auto') applyTheme('auto');
+    });
+  } catch (_) { /* 老浏览器忽略 */ }
+  applyTheme(currentThemeMode());
+
+  /* ---------- 登录 ---------- */
+  function showError(msg) {
+    errBox.textContent = msg;
+    errBox.classList.add('show');
+  }
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    errBox.classList.remove('show');
+    btn.disabled = true;
+    btn.textContent = '登录中…';
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        const next = new URLSearchParams(location.search).get('next');
+        location.replace(next && next.startsWith('/') ? next : '/');
+        return;
+      }
+      showError(data.error || '登录失败');
+    } catch (_) {
+      showError('网络异常，请重试');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '登 录';
+    }
+  });
+</script>
+</body>
+</html>
