@@ -35,11 +35,12 @@ export interface ConfirmRequest {
   danger?: boolean;
 }
 
-/** 覆盖式面板。三者互斥（同一时刻只开一个），所以用一个字段而不是三个布尔。 */
-export type Panel = 'settings' | 'digest' | 'admin';
+/** 覆盖式面板。两者互斥（同一时刻只开一个），所以用一个字段而不是两个布尔。 */
+export type Panel = 'settings' | 'digest';
 
-/** 设置面板页签。`channels` 承载「频道分组 / 频道源管理」（从频道栏迁入）。 */
-export type PrefsTab = 'appearance' | 'reading' | 'channels' | 'watch' | 'filter' | 'account';
+/** 设置面板页签。`channels` 承载「频道分组 / 频道源管理」（从频道栏迁入）。
+ * `users` 是用户账户管理，仅管理员可见（入口归置：用户管理不再有独立面板/顶栏入口）。 */
+export type PrefsTab = 'appearance' | 'reading' | 'channels' | 'watch' | 'filter' | 'account' | 'users';
 
 /**
  * 列表筛选。`all` 之外的四档对应服务端的 unread / fav / watch 参数。

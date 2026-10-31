@@ -8,26 +8,26 @@ import { useOverlayFocus } from '../lib/useOverlayFocus';
 import { useUi, type PrefsTab } from '../store/ui';
 import { AccountForm } from './AccountForm';
 import { ChannelsTab } from './ChannelsTab';
+import { UserManagement } from './UserManagement';
 import { Icon } from './Icon';
 
 /**
  * 设置面板（每个账号自己的）。
  *
- * 为什么单独开一个面板而不是塞进管理面板：管理面板 `role === 'admin'` 才可见，
- * 而「改主色 / 调正文字号 / 配关注规则」是**每个用户**都该有的。P8 之前这些能力
- * 全都写在 CSS 变量与后端接口里，却没有任何入口 —— 能力在、用户摸不到，等于没有。
+ * 为什么单独开一个面板：改主色 / 调正文字号 / 配关注规则是**每个用户**都该有的能力，
+ * 而 P8 之前这些能力全写在 CSS 变量与后端接口里、却没有任何入口 —— 等于没有。
  *
- * 四个页签按「改完之后影响什么」分：
+ * 页签按「改完之后影响什么」分：
  * - 外观：整站观感（主题 / 主色 / 界面字号 / 密度）
- * - 阅读：只管文章正文（字体 / 行高 / 字号 / 宽度）—— 与外观分开是因为它俩
- *   调的是完全不同的东西，混在一页会让人以为「正文字号」会把按钮也变大
- * - 关注规则：改完要**手动重算**历史条目才能看到效果，所以按钮就在旁边
+ * - 阅读：只管文章正文（字体 / 行高 / 字号 / 宽度）
+ * - 关注规则：改完要**手动重算**历史条目才能看到效果
  * - 账号：改密码（普通用户唯一的路径）
+ * - 用户管理：**仅管理员可见**，是用户账户管理的唯一入口（不再有顶栏盾牌 / 溢出菜单 / 命令面板等平行入口）
  */
 
 type Tab = PrefsTab;
 
-export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function PrefsPanel({ open, onClose, role }: { open: boolean; onClose: () => void; role: string | null }) {
   const [tab, setTab] = useState<Tab>('appearance');
   const prefsTab = useUi((s) => s.prefsTab);
   const sheetRef = useRef<HTMLElement>(null);
@@ -65,6 +65,11 @@ export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => vo
             { id: 'watch' as const, label: '关注' },
             { id: 'filter' as const, label: '过滤' },
             { id: 'account' as const, label: '账号' },
+            /* 用户管理仅管理员可见：普通用户看不到这一页签，也就没有进入用户管理的入口。
+             * 这是全系统唯一一个用户管理入口，且由 role 严格门控。 */
+            ...(role === 'admin'
+              ? [{ id: 'users' as const, label: '用户管理' }]
+              : []),
           ]).map((t) => (
             <button
               key={t.id}
@@ -85,6 +90,7 @@ export function PrefsPanel({ open, onClose }: { open: boolean; onClose: () => vo
           {tab === 'watch' && <WatchTab />}
           {tab === 'filter' && <FilterTab />}
           {tab === 'account' && <AccountTab />}
+          {tab === 'users' && role === 'admin' && <UserManagement />}
         </div>
       </section>
     </div>

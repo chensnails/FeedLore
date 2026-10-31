@@ -17,7 +17,6 @@ export type IconName =
   | 'menu'
   | 'search'
   | 'settings'
-  | 'shield'
   | 'refresh'
   | 'command'
   | 'more'
@@ -85,12 +84,6 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M4 7h9M17.5 7H20M4 17h5M13.5 17H20" />
       <circle cx="15" cy="7" r="2.2" />
       <circle cx="11" cy="17" r="2.2" />
-    </>
-  ),
-  shield: (
-    <>
-      <path d="M12 3.2l7 2.8v5.8c0 4.2-2.9 7.5-7 9-4.1-1.5-7-4.8-7-9V6z" />
-      <path d="M9.2 12.2l1.9 1.9 3.8-3.8" />
     </>
   ),
   refresh: (

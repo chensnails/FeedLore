@@ -65,12 +65,10 @@ const FILTERS: ReadonlyArray<readonly [ListFilter, string, string]> = [
 export function CommandPalette({
   role,
   onOpenDigest,
-  onOpenAdmin,
 }: {
-  /** 会话角色可能是 null（未登录/未知），只有 'admin' 才挂管理命令 */
+  /** 会话角色（当前预留给未来的权限区分，UI 暂未区分角色命令） */
   role: string | null;
   onOpenDigest: () => void;
-  onOpenAdmin: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -194,15 +192,6 @@ export function CommandPalette({
         }),
       },
     );
-    if (role === 'admin') {
-      cmds.push({
-        id: 'open-admin',
-        group: '设置',
-        label: '打开用户管理',
-        keywords: 'admin guanli yonghu zhanghao 管理 用户 账号',
-        run: close(onOpenAdmin),
-      });
-    }
     // 频道跳转：频道多的时候这是最省事的一条路（不用在侧栏里翻折叠组）
     cmds.push({
       id: 'feed-all',
@@ -224,7 +213,7 @@ export function CommandPalette({
     return cmds;
     /* store 一律走 getState()：命令集合只依赖 role / 频道列表，不该随
      * 「搜索词、是否打开抽屉」这些无关状态重算（每敲一个字就重建几十条命令纯属浪费）。 */
-  }, [role, feedsQuery.data, onOpenDigest, onOpenAdmin]);
+  }, [role, feedsQuery.data, onOpenDigest]);
 
   /** 过滤：先算好拼音串，再做「整串包含 / 子序列」两级匹配（与 v1 同一套）。 */
   const filtered = useMemo(() => {

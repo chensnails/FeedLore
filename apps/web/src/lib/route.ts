@@ -47,7 +47,7 @@ const EMPTY: RouteState = {
 const FILTERS: readonly ListFilter[] = ['all', 'unread', 'favorite', 'watch', 'block'];
 const SORTS: readonly ListSort[] = ['new', 'old', 'name'];
 const VIEWS: readonly ListView[] = ['grid', 'list'];
-const PANELS: readonly Panel[] = ['settings', 'digest', 'admin'];
+const PANELS: readonly Panel[] = ['settings', 'digest'];
 
 /** 形如 `#/f/12/a/34?filter=unread&sort=old`。默认值一律不写进地址栏。 */
 export function buildRoute(s: RouteState): string {

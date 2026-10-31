@@ -1,63 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../lib/api';
 import { qk } from '../lib/query';
-import {
-  useCreateUser,
-  useDeleteUser,
-  usePatchUser,
-} from '../lib/mutations';
-import { useOverlayFocus } from '../lib/useOverlayFocus';
-import { AccountForm } from './AccountForm';
+import { useCreateUser, useDeleteUser, usePatchUser } from '../lib/mutations';
 import { useUi } from '../store/ui';
 import { Icon } from './Icon';
+import { AccountForm } from './AccountForm';
 
 /**
- * 用户管理面板（仅管理员可见）。
+ * 用户账户管理（仅管理员可见）。
  *
  * 权限边界（见需求「权限控制」）：管理员角色 = 普通用户全部权限 + **仅**用户账户管理。
- * 因此本面板只承载账号增删改、改角色、重置密码、以及当前账号自身的设置（AccountForm）。
- * 原「状态 / 采集参数 / 关于」三个系统级页签已按权限收口移除——它们既不属于用户账户管理，
- * 普通用户也无此权限，按「管理员不得额外扩展任何功能」的要求不再对管理员开放。
+ * 本组件只承载账号增删改、改角色、重置密码、以及当前账号自身的设置（AccountForm），
+ * 不碰任何系统级能力（状态 / 采集参数 / 更新检查）。
  *
- * 刻意做成覆盖层而不是独立路由：v2 前端还没有路由（单页 + 覆盖层），引入路由会把
- * 「刷新后回到哪个视图」这个新问题一起引进来，当前不值得。
+ * 入口归置：本组件不再是一个独立覆盖层，而是「设置」面板里的一个**仅管理员可见**的页签
+ * （见 PrefsPanel）。普通用户打开设置时看不到这一页签，也就没有进入用户管理这条路；
+ * 整个系统里用户管理只有这唯一一个入口，且由 `session.role === 'admin'` 严格门控。
  */
-
-export function AdminPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const sheetRef = useRef<HTMLElement>(null);
-  useOverlayFocus(open, sheetRef);
-
-  // Esc 关闭：与阅读层一致，键盘用户不该只能去找那个叉
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  return (
-    <div className="reader-backdrop" onClick={onClose} role="presentation">
-      <section className="admin-sheet" ref={sheetRef} onClick={(e) => e.stopPropagation()}>
-        <button className="reader-close btn ghost icon" onClick={onClose} aria-label="关闭">
-          <Icon name="close" size={16} />
-        </button>
-
-        <h2 className="admin-title">用户管理</h2>
-
-        <UsersTab />
-      </section>
-    </div>
-  );
-}
-
-/* ============================ 用户账户管理 ============================ */
-
-function UsersTab() {
+export function UserManagement() {
   const usersQuery = useQuery({ queryKey: qk.adminUsers, queryFn: () => api.admin.users.list() });
   const askConfirm = useUi((s) => s.askConfirm);
   const create = useCreateUser();
@@ -73,7 +34,11 @@ function UsersTab() {
 
   if (usersQuery.isPending) return <p className="hint">读取用户…</p>;
   if (usersQuery.isError) {
-    return <p className="hint error-text">用户读取失败：{String((usersQuery.error as Error)?.message ?? '未知错误')}</p>;
+    return (
+      <p className="hint error-text">
+        用户读取失败：{String((usersQuery.error as Error)?.message ?? '未知错误')}
+      </p>
+    );
   }
 
   const users = usersQuery.data;
@@ -121,7 +86,9 @@ function UsersTab() {
                 </select>
               </td>
               <td className="tab-num">{u.feedCount}</td>
-              <td className="hint tiny">{u.createdAt ? new Date(u.createdAt).toLocaleDateString('zh-CN') : '—'}</td>
+              <td className="hint tiny">
+                {u.createdAt ? new Date(u.createdAt).toLocaleDateString('zh-CN') : '—'}
+              </td>
               <td className="admin-row-actions">
                 {resetFor === u.id ? (
                   <>
@@ -184,7 +151,12 @@ function UsersTab() {
 
       <h3 className="admin-h3">新增用户</h3>
       <div className="admin-create">
-        <input className="input" placeholder="用户名" value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          className="input"
+          placeholder="用户名"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
         <input
           className="input"
           placeholder="初始密码（至少 4 位）"
@@ -192,15 +164,26 @@ function UsersTab() {
           value={pw}
           onChange={(e) => setPw(e.target.value)}
         />
-        <select className="input" value={role} onChange={(e) => setRole(e.target.value as 'user' | 'admin')} aria-label="新用户角色">
+        <select
+          className="input"
+          value={role}
+          onChange={(e) => setRole(e.target.value as 'user' | 'admin')}
+          aria-label="新用户角色"
+        >
           <option value="user">普通用户</option>
           <option value="admin">管理员</option>
         </select>
-        <button className="btn sm" onClick={submitCreate} disabled={create.isPending || !name.trim() || pw.length < 4}>
+        <button
+          className="btn sm"
+          onClick={submitCreate}
+          disabled={create.isPending || !name.trim() || pw.length < 4}
+        >
           {create.isPending ? '创建中…' : '创建'}
         </button>
       </div>
-      <p className="hint tiny">用户名可用字母、数字与 . _ - @，最长 40 位。登录用用户名，不用邮箱。</p>
+      <p className="hint tiny">
+        用户名可用字母、数字与 . _ - @，最长 40 位。登录用用户名，不用邮箱。
+      </p>
 
       <h3 className="admin-h3">我的账号</h3>
       <AccountForm />

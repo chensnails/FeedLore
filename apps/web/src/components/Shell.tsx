@@ -11,7 +11,6 @@ import type { Session } from '../lib/types';
 import { FeedsPanel } from './FeedsPanel';
 import { EntriesPanel } from './EntriesPanel';
 import { EntryReader } from './EntryReader';
-import { AdminPanel } from './AdminPanel';
 import { DigestPanel } from './DigestPanel';
 import { PrefsPanel } from './PrefsPanel';
 import { CommandPalette } from './CommandPalette';
@@ -177,21 +176,11 @@ export function Shell({ session }: { session: Session }) {
           <button
             className="btn ghost icon"
             onClick={() => setPanel('settings')}
-            title="外观与阅读设置"
+            title="设置（外观、阅读、频道、关注、过滤、账号）"
             aria-label="打开设置"
           >
             <Icon name="settings" size={17} />
           </button>
-          {session.role === 'admin' && (
-            <button
-              className="btn ghost icon topbar-admin"
-              onClick={() => setPanel('admin')}
-              title="用户管理"
-              aria-label="打开用户管理"
-            >
-              <Icon name="shield" size={16} />
-            </button>
-          )}
           <span className="who">
             {session.username}
             {session.role === 'admin' && <em>管理员</em>}
@@ -230,18 +219,6 @@ export function Shell({ session }: { session: Session }) {
                     AI 日报
                   </button>
                 )}
-                {session.role === 'admin' && (
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      setMoreOpen(false);
-                      setPanel('admin');
-                    }}
-                  >
-                    <Icon name="shield" size={15} />
-                    用户管理
-                  </button>
-                )}
                 <button
                   role="menuitem"
                   disabled={logout.isPending}
@@ -272,13 +249,11 @@ export function Shell({ session }: { session: Session }) {
       {navOpen && <div className="nav-scrim" onClick={closeNav} role="presentation" />}
 
       <EntryReader />
-      <PrefsPanel open={panel === 'settings'} onClose={() => setPanel(null)} />
+      <PrefsPanel open={panel === 'settings'} onClose={() => setPanel(null)} role={session.role} />
       <CommandPalette
         role={session.role}
         onOpenDigest={() => setPanel('digest')}
-        onOpenAdmin={() => setPanel('admin')}
       />
-      <AdminPanel open={panel === 'admin'} onClose={() => setPanel(null)} />
       <DigestPanel open={panel === 'digest'} onClose={() => setPanel(null)} />
 
       {/* 确认框放在最后：DOM 顺序即层叠顺序，它在所有面板之上 */}

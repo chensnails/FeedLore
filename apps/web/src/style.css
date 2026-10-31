@@ -2527,9 +2527,9 @@ html {
 }
 
 @media (max-width: 560px) {
-  /* 窄屏：日报 / 管理 / 退出 收进 ⋯，顶栏只留「频道 / 品牌 / 刷新 / ⌘K / Aa / 主题 / ⋯」 */
+  /* 窄屏：日报 / 退出 收进 ⋯，顶栏只留「频道 / 品牌 / 刷新 / ⌘K / 设置 / ⋯」。
+   * 用户管理入口已并入「设置 → 用户管理」页签，不再有独立顶栏入口。 */
   .topbar-digest,
-  .topbar-admin,
   .topbar-logout {
     display: none;
   }
