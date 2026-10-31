@@ -1,0 +1,186 @@
+# FeedLore 2.0 —— 从 1.x 升级的发布态 Compose（镜像模式）
+#
+# 全新安装也能用同一份文件（upgrade 会按「空站点」跳过数据迁移），
+# 但还需要另外创建管理员：
+#   docker exec -e ADMIN_USER=admin -e 'ADMIN_PASS=<强密码>' feedlore \
+#     pnpm --filter @feedlore/server seed
+#
+# 与 1.x 的 docker-compose.release.yml **同一个 compose 项目**（name: feedlore），
+# 因此可以直接复用现有的 .env、数据卷（feedlore-pgdata）、网络和端口：
+# v2 用同一台 Postgres 实例里的**新库**（默认 feedlore_v2），1.x 的库原样保留，
+# 数据迁移只读 v1、写入新库，随时可以回退。
+#
+# 升级步骤（在 1.x 的部署目录里）：
+#   1) 备份（强烈建议）：
+#        docker exec feedlore-db pg_dump -U "${PG_USER:-feedlore}" -d "${PG_DB:-feedlore}" -Fc > feedlore-v1.dump
+#   2) 在 .env 里补两行（2.0 新增，缺了 compose 会直接报错，不会半启动）：
+#        AUTH_SECRET=<openssl rand -hex 32 的输出>
+#        AUTH_BASE_URL=http://<用户实际访问的地址>:3210
+#      走 HTTPS 反代再加：AUTH_SECURE_COOKIES=1
+#   3) docker compose -f docker-compose.v2.release.yml up -d
+#      → upgrade 一次性服务先建库、跑结构迁移、迁移数据、校验；
+#        这期间 1.x 应用仍然在线；成功后才替换应用容器（停机 ≈ 重建容器的几秒）。
+#   4) docker compose -f docker-compose.v2.release.yml logs upgrade    查看迁移结果
+#
+# 回滚（切换后写入 v2 的数据不会回流到 v1）：
+#   docker compose -f docker-compose.release.yml up -d
+#   （用 1.x 的 compose 重新拉起 v1；v1 的库与卷从未被写过）
+#
+# 硬约束（都踩过坑，别改）：
+# - upgrade 与 app 固定 TZ=UTC。v1 是 timestamptz、v2 是 timestamp，且 v1 的
+#   Postgres 容器时区是 Asia/Shanghai；upgrade 会把 v2 库的库级时区也钉成 UTC，
+#   否则 defaultNow() 写出来的时间整体偏 8 小时。
+# - 不给 app 打 watchtower 标签：主版本升级不做静默推送，换版本由用户显式改 tag。
+# - AUTH_BASE_URL 必须是用户真实访问的地址：登录/登出的 Origin 校验按它来，
+#   写成 localhost 会让外网访问时登录被拒。
+# - v1 容器的名字/端口/库名都沿用默认（feedlore / 3210 / feedlore），
+#   改过的话同步改这里以及 .env 里的 PG_*。
+
+name: feedlore
+
+services:
+  # ---------------------------------------------------------------
+  # 专用 PostgreSQL —— 与 1.x 完全一致（配置一字不改，避免容器被重建）
+  # ---------------------------------------------------------------
+  db:
+    image: postgres:18.4-alpine
+    container_name: feedlore-db
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      POSTGRES_DB: ${PG_DB:-feedlore}
+      POSTGRES_USER: ${PG_USER:-feedlore}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?请先在 .env 中设置 PG_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - feedlore
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------
+  # 一次性升级任务：建库 → drizzle 结构迁移 → v1 数据迁移 → 图片缓存 → 校验
+  #
+  # - 幂等：成功后在 v2 库写 settings.v1Upgrade 标记，重复执行只跑结构迁移
+  # - 失败即非零退出 → app 的 depends_on 会把它挡在启动之前，1.x 继续服务
+  # - 每次 up 都会执行：兼作后续版本的数据库结构迁移
+  # ---------------------------------------------------------------
+  upgrade:
+    image: &v2-image ${V2_IMAGE:-ghcr.io/chensnails/feedlore-v2:2.0.0}
+    container_name: feedlore-upgrade
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TZ: UTC
+      # 源：1.x 的库（只读）。目标：同一实例里的新库，必须不同名。
+      LEGACY_DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD}@db:5432/${PG_DB:-feedlore}
+      DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD}@db:5432/${V2_DB_NAME:-feedlore_v2}
+      # 迁移借它创建 v2 账号；必须与 app 用同一个值
+      AUTH_SECRET: ${AUTH_SECRET:?请在 .env 中设置 AUTH_SECRET（openssl rand -hex 32）}
+      AUTH_BASE_URL: ${AUTH_BASE_URL:?请在 .env 中设置 AUTH_BASE_URL（用户实际访问地址）}
+      # 图片缓存体积大时可设 1 跳过（v2 会按需重新回源）
+      UPGRADE_SKIP_IMAGE_CACHE: ${UPGRADE_SKIP_IMAGE_CACHE:-}
+    command: ["pnpm", "--filter", "@feedlore/server", "upgrade:v1"]
+    networks:
+      - feedlore
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------
+  # 应用：upgrade 成功后才启动/替换 1.x 的 app 容器
+  # ---------------------------------------------------------------
+  app:
+    image: *v2-image
+    container_name: feedlore
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      upgrade:
+        condition: service_completed_successfully
+    environment:
+      # ⚠️ 不要改成 Asia/Shanghai：v2 的 timestamp 列按 UTC 壁钟存值
+      TZ: UTC
+      PORT: "3000"
+      DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD}@db:5432/${V2_DB_NAME:-feedlore_v2}
+
+      # ---- better-auth ----
+      AUTH_SECRET: ${AUTH_SECRET:?请在 .env 中设置 AUTH_SECRET（openssl rand -hex 32）}
+      AUTH_BASE_URL: ${AUTH_BASE_URL:?请在 .env 中设置 AUTH_BASE_URL（用户实际访问地址）}
+      # 非必填：需要额外信任的来源（反代域名 / IP 两种访问方式都开）时逗号分隔
+      AUTH_TRUSTED_ORIGINS: ${AUTH_TRUSTED_ORIGINS:-}
+      # 纯 HTTP 必须为 0：Secure Cookie 在 HTTP 下不会被浏览器回传，表现为「登录成功但仍未登录」
+      AUTH_SECURE_COOKIES: ${AUTH_SECURE_COOKIES:-0}
+
+      # ---- 出网安全 / 反代（与 1.x 同名参数，直接沿用）----
+      ALLOW_PRIVATE_HOSTS: "${ALLOW_PRIVATE_HOSTS:-}"
+      TRUST_PROXY: "${TRUST_PROXY:-}"
+
+      # ---- 采集默认值（仅新库首次落库时生效；迁移过的站点以 settings.source 为准）----
+      REFRESH_MINUTES: ${REFRESH_MINUTES:-30}
+      KEEP_PER_FEED: ${KEEP_PER_FEED:-300}
+      KEEP_DAYS: ${KEEP_DAYS:-90}
+    ports:
+      - "${HOST_PORT:-3210}:3000"
+    networks:
+      - feedlore
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # 刻意不给 watchtower 标签，也不传 UPDATE_WEBHOOK_*：2.x 的更新由用户显式改
+    # V2_IMAGE 后 up -d 完成；等 2.x 有了稳定的滚动 tag（如 :2）再一起打开
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------
+  # Watchtower：保留 1.x 的容器（同配置不会被重建），但 v2 app 未打标签，
+  # 因此它不会自动升级任何东西 —— 留着是为了不产生孤儿容器和端口/项目漂移。
+  # ---------------------------------------------------------------
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    container_name: feedlore-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      TZ: Asia/Shanghai
+      WATCHTOWER_LABEL_ENABLE: "true"
+      DOCKER_API_VERSION: "1.44"
+      WATCHTOWER_POLL_INTERVAL: "300"
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_HTTP_API_UPDATE: "true"
+      WATCHTOWER_HTTP_API_PERIODIC_POLLS: "true"
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:?发布态需要 WATCHTOWER_HTTP_API_TOKEN}
+    networks:
+      - feedlore
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  feedlore:
+    name: feedlore
+    driver: bridge
+
+volumes:
+  pgdata:
+    name: feedlore-pgdata

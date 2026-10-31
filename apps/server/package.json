@@ -12,7 +12,8 @@
     "seed": "tsx src/seed.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
-    "migrate:legacy": "tsx scripts/migrate-legacy.ts"
+    "migrate:legacy": "tsx scripts/migrate-legacy.ts",
+    "upgrade:v1": "tsx scripts/upgrade.ts"
   },
   "dependencies": {
     "@feedlore/auth": "workspace:*",
