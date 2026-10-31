@@ -1,16 +1,15 @@
 name: CI
 
-# 两条并行的检查线，按分支分流（决策见 docs/技术栈与重构架构.md 的 P10 一节）：
-# - `main`  ：1.7.x 单体（npm），发版镜像由 release.yml 构建并推 ghcr latest；
-# - `v2`    ：monorepo（pnpm + turbo），只做检查与本地镜像构建，**不推任何 registry**。
+# 单一主线 main（2.x monorepo：pnpm + turbo），只做检查与本地镜像构建，
+# **不推任何 registry**。
 #
-# ⚠️ v2 的镜像绝不在这里推 ghcr：latest 是 172.26.1.1 生产站 Watchtower 的唯一触发点，
-#    在 v2 分支上推一次就等于把线上换成半成品。
+# ⚠️ 镜像只由 release.yml 在打 tag 时推送：latest 是所有站点 Watchtower 的触发点，
+#    在这里推一次就等于把线上换成未发布的代码。
 on:
   push:
-    branches: [main, v2]
+    branches: [main]
   pull_request:
-    branches: [main, v2]
+    branches: [main]
 
 # 同一分支连续 push 时取消旧的一轮：CI 只关心最新提交
 concurrency:
@@ -19,10 +18,9 @@ concurrency:
 
 jobs:
   # ==========================================================================
-  # v2：monorepo 全量检查
+  # monorepo 全量检查
   # ==========================================================================
-  v2-check:
-    if: github.ref_name == 'v2' || github.base_ref == 'v2'
+  check:
     runs-on: ubuntu-24.04 # 必须 pin：ubuntu-latest 曾静默迁到 26.04 导致构建失败
     # 接口级测试要一个真 Postgres。版本钉死到与测试栈/生产同一条线（18.4），
     # 否则「本地/CI 用 16，线上 18」会在 collation、generated column 这类地方悄悄分叉。
@@ -95,7 +93,7 @@ jobs:
         run: node scripts/verify-dist.mjs
 
       - name: 构建镜像（不推送）
-        run: docker build -f Dockerfile -t feedlore-v2:ci .
+        run: docker build -f Dockerfile -t feedlore:ci .
 
       # 镜像构建成功但产物没拷对，是「容器起来就 404」的经典原因；
       # 这一步只查最关键的事实：前端产物在、server 入口在、workspace 包链接在。
@@ -107,7 +105,7 @@ jobs:
       #    改断言前先跑 docker run 手工验证路径，别看图说话。
       - name: 检查镜像内产物
         run: |
-          docker run --rm feedlore-v2:ci sh -c '
+          docker run --rm feedlore:ci sh -c '
             set -e
             test -f /app/apps/web/dist/index.html || { echo "缺少前端产物"; exit 1; }
             test -f /app/apps/web/dist/sw.js || { echo "缺少 PWA service worker"; exit 1; }
@@ -123,43 +121,10 @@ jobs:
   # ARM64 单独跑一次镜像构建：生产机是 ARM，而 sharp 这类原生依赖
   # 在 x64 上构建成功不代表 arm64 有对应预编译包 —— 那正是「本地好、线上崩」的常见来源。
   # 放在 check 之后（needs 它），避免每次 push 都并行跑两遍完整依赖安装。
-  v2-image-arm64:
-    if: github.ref_name == 'v2' || github.base_ref == 'v2'
-    needs: v2-check
+  image-arm64:
+    needs: check
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - name: 构建镜像（arm64，不推送）
-        run: docker build -f Dockerfile -t feedlore-v2:ci-arm64 .
-
-  # ==========================================================================
-  # legacy（1.7.x 单体，main 分支）—— 保持原样，不在本轮重构范围内
-  # ==========================================================================
-  legacy:
-    if: github.ref_name == 'main' || github.base_ref == 'main'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: 安装依赖
-        run: npm ci
-
-      - name: 构建前端
-        run: npm run build
-
-      - name: UI 回归测试
-        run: npm run test:ui
-
-      # 含三项静态校验：① Dockerfile 有没有漏拷 lib/（镜像构建成功但容器启动即崩）
-      # ② 抽走的顶层标识符有没有留下裸引用（v2.2.1 的 imgCache 教训）
-      # ③ deploy.sh 的启动期错误日志扫描护栏还在不在（v2.2.2）
-      - name: 后端单测 + 静态校验
-        run: npm run test:server
-
-      - name: 冒烟：Node 端可加载
-        run: node --check server.js
+        run: docker build -f Dockerfile -t feedlore:ci-arm64 .

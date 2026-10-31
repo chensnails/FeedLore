@@ -72,7 +72,7 @@ docker exec feedlore-db pg_dump -U "${PG_USER:-feedlore}" -d "${PG_DB:-feedlore}
 放到 1.x 的 compose 旁边：
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/v2/docker-compose.v2.release.yml
+curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
 ```
 
 `name: feedlore` 与 1.x 相同，复用同一个 compose 项目、同一个 `feedlore-pgdata` 卷、

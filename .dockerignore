@@ -18,9 +18,6 @@ npm-debug.log*
 **/dist
 .vite
 
-# 1.7.x 单体：v2 镜像完全不需要它（保留目录只为灰度期对照与迁移脚本参考）
-apps/legacy
-
 # 文档、记忆、验证截图 —— 与运行无关
 docs
 .workbuddy

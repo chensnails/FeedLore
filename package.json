@@ -1,6 +1,8 @@
 {
   "name": "feedlore",
   "version": "2.0.1",
+  "description": "笺川（FeedLore）—— 自托管 RSS 阅读器与资源卡片墙，数据存 PostgreSQL",
+  "license": "MIT",
   "private": true,
   "packageManager": "pnpm@12.16.1",
   "engines": {
