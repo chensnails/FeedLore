@@ -196,9 +196,15 @@ function onStoreChange(): void {
   /* 关闭阅读层：如果这条历史是我们 push 出来的，就应该真的「退回去」，
    * 而不是把当前这条改成无 entry 的版本 —— 后者会在历史里留下一条
    * 和第列表页一模一样的记录，用户按后退看起来「没反应」。
-   * 直接深链进来（历史里没有 reader 标记）的才用 replace 去掉 a 段。 */
+   * 直接深链进来（历史里没有 reader 标记）的才用 replace 去掉 a 段。
+   *
+   * 但「边退边换范围」（阅读层里点正文标签：既要筛 #tag 又要关文章）不能走 back：
+   * back 落回的那条历史是**点标签之前**的列表，标签会被 applyRoute 一并抹掉，
+   * 现象就是「点了标签，啥也没发生、文章还开着」。只有范围没变时 back 才等价于
+   * 用户想要的那一步。 */
   if (prev.entryId && !next.entryId) {
-    if (window.history.state?.reader) {
+    const scopeSame = buildRoute({ ...prev, entryId: null }) === buildRoute(next);
+    if (scopeSame && window.history.state?.reader) {
       window.history.back(); // 真正的回退交给 popstate 处理
       return;
     }

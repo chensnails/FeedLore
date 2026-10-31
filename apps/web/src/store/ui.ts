@@ -101,6 +101,8 @@ interface UiState {
   setSearch: (q: string) => void;
   openEntry: (id: string) => void;
   closeEntry: () => void;
+  /** 从阅读层点正文标签：同时「按这个标签筛列表」和「退出阅读层」 */
+  tagFromEntry: (t: string | null) => void;
   openNav: () => void;
   closeNav: () => void;
   toggleNav: () => void;
@@ -151,6 +153,10 @@ export const useUi = create<UiState>()(
       setSearch: (search) => set({ search }),
       openEntry: (readingId) => set({ readingId, navOpen: false }),
       closeEntry: () => set({ readingId: null }),
+      /* 一次 set 同时做完「筛标签」和「退出阅读层」。分开两次会先在地址栏 push 一条
+       * 「带着标签的阅读层」，紧接着的关闭又对它执行 back() —— 落回的那条历史没有标签，
+       * 结果是点了标签文章还开着、列表也没筛。见 lib/route.ts onStoreChange 的注释。 */
+      tagFromEntry: (tag) => set({ tag, readingId: null }),
       openNav: () => set({ navOpen: true }),
       closeNav: () => set({ navOpen: false }),
       toggleNav: () => set((s) => ({ navOpen: !s.navOpen })),

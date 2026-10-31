@@ -124,6 +124,14 @@ if (cssFile) {
   check(blurDecls <= 12, `活跃 backdrop-filter 声明 ${blurDecls} 条（≤12：6 个静止表面 × webkit 双写）`);
 }
 
+/* ---------------- JS 侧：阅读层 ↔ 路由 ---------------- */
+const jsRef = html.match(/\/assets\/index-[A-Za-z0-9._-]+\.js/)?.[0];
+const js = jsRef ? readFileSync(join(DIST, jsRef.replace(/^\//, '')), 'utf8') : '';
+/* 「点正文标签 = 筛列表 + 退出阅读层」必须是一次 store 写入。写成 setTag() + close()
+ * 两行时，路由先 push 一条带标签的阅读层、再对它执行关闭时的 back()，落回的那条历史
+ * 没有标签 —— 实测表现是「点了标签：文章还开着、列表也没筛」。 */
+check(/tagFromEntry/.test(js), '阅读层标签走一次性 tagFromEntry（拆回两行就红）');
+
 /* ---------------- 汇总 ---------------- */
 for (const m of oks) console.log(`✓ ${m}`);
 if (fails.length) {

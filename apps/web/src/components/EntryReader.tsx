@@ -34,7 +34,7 @@ export function EntryReader() {
   const readingId = useUi((s) => s.readingId);
   const close = useUi((s) => s.closeEntry);
   const tag = useUi((s) => s.tag);
-  const setTag = useUi((s) => s.setTag);
+  const tagFromEntry = useUi((s) => s.tagFromEntry);
   const setFavorite = useSetFavorite();
   const saveAppearance = useSaveAppearance();
 
@@ -109,10 +109,12 @@ export function EntryReader() {
 
   if (!readingId) return null;
 
-  /** 点正文标签 = 用这个标签去筛列表，所以顺带关掉阅读层（留着就挡住了刚筛出来的结果）。 */
+  /** 点正文标签 = 用这个标签去筛列表，所以顺带关掉阅读层（留着就挡住了刚筛出来的结果）。
+   * 必须走 tagFromEntry 这个「一次 set」的动作，不能写成 setTag() + close() 两行：
+   * 两次 store 变更会先在地址栏 push 一条「带标签的阅读层」，随后的关闭对它执行
+   * back()，落回的历史里没有标签 —— 点上去文章不关、列表也不筛。 */
   function gotoTag(t: string): void {
-    setTag(tag === t ? null : t);
-    close();
+    tagFromEntry(tag === t ? null : t);
   }
 
   function stepFont(dir: -1 | 1): void {
