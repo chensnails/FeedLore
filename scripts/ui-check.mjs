@@ -344,53 +344,33 @@ try {
   await shot('ui-write.png');
 
 
-  // 【管理面板】只有管理员看得到 ⚙；三个页签必须有真实内容（空壳也算失败）
-  const gearLabel = await evalJs("document.querySelector('[aria-label=\"打开管理面板\"]') ? 'found' : 'missing'");
-  await evalJs("document.querySelector('[aria-label=\"打开管理面板\"]')?.click()");
-  await sleep(1800);
-  const adminOpen = await evalJs("!!document.querySelector('.admin-sheet')");
-  const adminTabs = await evalJs("document.querySelectorAll('.admin-tabs .chip').length");
-  const statusText = (await evalJs("document.querySelector('.admin-body')?.innerText ?? ''")) ?? '';
-  const statusOk = statusText.includes('数据库') && statusText.includes('采集');
-  console.log(`  管理面板：入口=${gearLabel} 打开=${adminOpen} 页签=${adminTabs} 状态页内容=${statusOk ? '有' : '空'}`);
-  await shot('ui-admin-status.png');
-
-  const clickTab = (label) =>
-    evalJs(`(() => {
-      const b = [...document.querySelectorAll('.admin-tabs .chip')].find((x) => x.innerText.includes(${JSON.stringify(label)}));
-      if (!b) return 'no-tab';
-      b.click();
-      return 'ok';
-    })()`);
-
-  const cfgTab = await clickTab('采集参数');
-  await sleep(1200);
-  const cfgInputs = await evalJs("document.querySelectorAll('.admin-field input').length");
-  console.log(`  参数页：${cfgTab}，输入框 ${cfgInputs} 个`);
-
-  const userTab = await clickTab('用户');
-  await sleep(1200);
-  const userRows = await evalJs("document.querySelectorAll('.admin-table tbody tr').length");
-  const selfMark = await evalJs("document.body.innerText.includes('当前登录')");
-  console.log(`  用户页：${userTab}，${userRows} 行，自己标记=${selfMark}`);
+  // 【用户管理】唯一入口在「设置 → 用户管理」页签（管理员专属）。
+  //   顶栏不再有独立盾牌按钮 / 溢出菜单项 / 命令面板命令 —— 这里顺带守住「无重复入口」。
+  await evalJs("document.querySelector('[aria-label=\"打开设置\"]')?.click()");
+  await sleep(700);
+  const adminTabPresent = await evalJs(
+    "[...document.querySelectorAll('.prefs-sheet .admin-tabs .chip')].some((b) => b.innerText.trim() === '用户管理')",
+  );
+  const noTopbarAdmin = await evalJs("!document.querySelector('.topbar-admin')");
+  await evalJs(
+    "[...document.querySelectorAll('.prefs-sheet .admin-tabs .chip')].find((b) => b.innerText.trim() === '用户管理')?.click()",
+  );
+  await sleep(1000);
+  const userRows = await evalJs("document.querySelectorAll('.prefs-sheet .admin-table tbody tr').length");
+  const selfMark = await evalJs(
+    "document.querySelector('.prefs-sheet .admin-table')?.innerText.includes('当前登录') ?? false",
+  );
+  const addForm = await evalJs("document.querySelectorAll('.prefs-sheet .admin-create input').length");
+  console.log(
+    `  用户管理：页签=${adminTabPresent} 顶栏独立入口=${noTopbarAdmin ? '无(对)' : '有(错)'} 表格行=${userRows} 自己标记=${selfMark} 新增输入=${addForm}`,
+  );
   await shot('ui-admin-users.png');
 
-  /* 关于页：版本号必须是 vX.Y.Z 形态。
-   * 这条同时守着「版本只有一个真源」—— 版本号从根 package.json 读，
-   * 以后谁再把阶段号硬编码回 env.ts，这里显示的东西就会和 tag 对不上。 */
-  const aboutTab = await clickTab('关于');
-  await sleep(900);
-  const aboutVersion = ((await evalJs("document.querySelector('.admin-grid dd')?.textContent ?? ''")) ?? '').trim();
-  const aboutBtns = await evalJs("document.querySelectorAll('.admin-actions .btn').length");
-  const aboutOk = /^v\d+\.\d+\.\d+/.test(aboutVersion) && (aboutBtns ?? 0) >= 1;
-  console.log(`  关于页：${aboutTab} 版本=${aboutVersion} 按钮=${aboutBtns} ${aboutOk ? '' : '⚠️ 版本号形态不对'}`);
-  await shot('ui-admin-about.png');
-
-  await evalJs("document.querySelector('.admin-sheet .reader-close')?.click()");
-  await sleep(500);
-  const adminClosed = await evalJs("!document.querySelector('.admin-sheet')");
-  if (!(adminOpen && adminTabs === 4 && statusOk && cfgInputs >= 11 && userRows >= 1 && aboutOk && adminClosed)) {
-    console.log('  ⚠️ 管理面板检查未全部通过');
+  await evalJs("document.querySelector('.prefs-sheet .reader-close')?.click()");
+  await sleep(400);
+  const adminClosed = await evalJs("!document.querySelector('.prefs-sheet')");
+  if (!(adminTabPresent && noTopbarAdmin && userRows >= 1 && selfMark && addForm >= 2 && adminClosed)) {
+    console.log('  ⚠️ 用户管理入口检查未全部通过');
     process.exitCode = 1;
   }
 
