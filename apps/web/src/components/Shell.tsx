@@ -186,8 +186,8 @@ export function Shell({ session }: { session: Session }) {
             <button
               className="btn ghost icon topbar-admin"
               onClick={() => setPanel('admin')}
-              title="管理：状态 / 采集参数 / 用户"
-              aria-label="打开管理面板"
+              title="用户管理"
+              aria-label="打开用户管理"
             >
               <Icon name="shield" size={16} />
             </button>
@@ -239,7 +239,7 @@ export function Shell({ session }: { session: Session }) {
                     }}
                   >
                     <Icon name="shield" size={15} />
-                    管理面板
+                    用户管理
                   </button>
                 )}
                 <button

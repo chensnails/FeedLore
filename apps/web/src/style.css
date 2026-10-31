@@ -190,15 +190,30 @@ html {
   font-size: 16px;
 }
 :root[data-font-size='s'] {
-  font-size: var(--fs-lg);
+  font-size: 15px;
+}
+:root[data-font-size='m'] {
+  font-size: 16px;
 }
 :root[data-font-size='l'] {
   font-size: 17.5px;
 }
-:root[data-density='compact'] .feed,
-:root[data-density='compact'] .card {
-  padding-top: 7px;
+/* 紧凑度只压垂直留白、不改字号。默认 cozy 不写规则，compact 显式收紧。
+ * 必须写到 .cards.list-mode / .cards.grid-mode 才会压过卡片自身的 padding 规则
+ * （两者特异性相同，靠后者覆盖前者会失效），所以各布局单独列一条。 */
+:root[data-density='compact'] .feed {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+:root[data-density='compact'] .cards.list-mode .card {
+  padding-top: 8px;
   padding-bottom: 7px;
+}
+:root[data-density='compact'] .cards.grid-mode .card {
+  padding-bottom: 7px;
+}
+:root[data-density='compact'] .cards.grid-mode .card-body {
+  padding-top: 6px;
 }
 
 /* 阅读排版四项：走 data-* 属性而不是内联 style，是为了让「具体数值」留在样式表里 */
@@ -1452,11 +1467,11 @@ html {
   }
 }
 
-/* ---------------- 管理面板 ---------------- */
+/* ---------------- 用户管理面板 ---------------- */
 
 .admin-sheet {
   position: relative;
-  width: min(860px, 100%);
+  width: min(720px, 100%);
   background: var(--sheet);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
@@ -1474,17 +1489,8 @@ html {
   letter-spacing: var(--ls-title);
 }
 
-.admin-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--gap-2);
-  margin-bottom: var(--gap-4);
-  padding-bottom: var(--gap-4);
-  border-bottom: 1px solid var(--line);
-}
-
 .admin-body {
-  /* 面板自带滚动：状态页很长，撑高整页会把关闭按钮顶出视口 */
+  /* 面板自带滚动：用户多时表格撑高，整页滚动会把关闭按钮顶出视口 */
   max-height: min(68vh, 720px);
   overflow-y: auto;
   padding-right: 4px;
@@ -1499,91 +1505,12 @@ html {
   color: var(--muted);
 }
 
-.admin-grid {
-  display: grid;
-  grid-template-columns: 92px 1fr;
-  gap: 6px 14px;
-  margin: 0;
-  font-size: var(--fs-sm);
-}
-
-.admin-grid dt {
-  color: var(--muted);
-}
-
-.admin-grid dd {
-  margin: 0;
-  /* 长串（表行数 / 错误原因）必须能断行，否则会在窄屏把面板撑出横向滚动 */
-  overflow-wrap: anywhere;
-}
-
-.admin-alert {
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--danger);
-  border-radius: var(--radius-sm);
-  color: var(--danger);
-  font-size: var(--fs-sm);
-}
-
-.admin-problems {
-  margin: 0;
-  padding-left: 18px;
-  font-size: var(--fs-sm);
-}
-
-.admin-problems li {
-  margin-bottom: 8px;
-}
-
-.admin-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 12px 14px;
-}
-
-.admin-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--fs-sm);
-}
-
-.admin-field.wide {
-  grid-column: 1 / -1;
-}
-
-.admin-field-label {
-  color: var(--muted);
-}
-
-.admin-field input,
-.admin-create input,
-.admin-create select,
-.admin-inline-input,
-.admin-table select {
-  font: inherit;
-  font-size: var(--fs-sm);
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 6px 8px;
-}
-
-.admin-field input:focus,
-.admin-create input:focus,
-.admin-table select:focus,
-.admin-inline-input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
-
-.admin-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 16px;
+/* 表单控件统一复用全局 .input 设计系统（高度 / 聚焦光晕 / 过渡一致）。
+ * 仅在这里把创建表单的控件从 width:100% 改回自适应，避免每个控件各占一行。 */
+.admin-create .input {
+  width: auto;
+  min-width: 160px;
+  flex: 1 1 160px;
 }
 
 .admin-table {
@@ -1595,15 +1522,29 @@ html {
 .admin-table th,
 .admin-table td {
   text-align: left;
-  padding: 8px 6px;
+  padding: 9px 8px;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
 }
 
 .admin-table th {
   color: var(--muted);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   font-size: var(--fs-xs);
+}
+
+.admin-table tbody tr {
+  transition: background var(--dur-fast) var(--ease);
+}
+.admin-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.tab-num {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
 }
 
 .admin-row-actions {
@@ -1611,6 +1552,7 @@ html {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  justify-content: flex-end;
 }
 
 .admin-inline-input {
@@ -1622,10 +1564,6 @@ html {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-}
-
-.admin-create input {
-  min-width: 140px;
 }
 
 .btn.danger {
@@ -1642,18 +1580,11 @@ html {
   .admin-sheet {
     padding: 20px 16px 16px;
   }
-
-  .admin-grid {
-    grid-template-columns: 1fr;
-    gap: 2px;
-  }
-
-  .admin-grid dd {
-    margin-bottom: 8px;
-  }
-
   .admin-body {
     max-height: 72vh;
+  }
+  .admin-row-actions {
+    justify-content: flex-start;
   }
 }
 
@@ -1681,8 +1612,7 @@ html {
 /* select / textarea 与 input 共用同一套外观：只给 input 写样式时，
    表单里混着两代控件，视觉上像是拼接出来的 */
 .digest-date select,
-.admin-field select,
-.admin-field textarea {
+.digest-date textarea {
   font: inherit;
   font-size: var(--fs-sm);
   color: var(--text);
@@ -1692,7 +1622,7 @@ html {
   padding: 6px 8px;
 }
 
-.admin-field textarea {
+.digest-date textarea {
   resize: vertical;
   min-height: 64px;
 }
@@ -2160,10 +2090,15 @@ html {
   .search-input {
     width: 100%;
   }
-  .cards.grid-mode {
-    grid-template-columns: minmax(0, 1fr);
+  /* 双列网格：手机端也用两列（封面在上、标题在下），比单行使信息密度更合适；
+   * 同时把页面左右边距收到 16px，给两列卡片留出更均匀的列宽。 */
+  .list {
+    padding: var(--gap-4) var(--gap-4) var(--gap-6);
   }
-  /* 手机上优先保证一行文字的完整：网格卡片在 390 宽下信息密度太低 */
+  .cards.grid-mode {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--gap-3);
+  }
   .sort-select {
     width: 84px;
   }
@@ -2623,37 +2558,13 @@ html {
 /* 手机端卡片模式只有一栏时，整宽大封面会把卡片撑得异常大、一屏只看得到一张。
  * 改为紧凑横排（封面在左、文字在右），一屏能扫 5~6 条，同时保留封面便于辨认。 */
 @media (max-width: 560px) {
-  .cards.grid-mode .card {
-    flex-direction: row;
-    align-items: stretch;
-    gap: var(--gap-3);
-    /* 右侧留出收藏按钮的位置：写 padding 简写会把桌面端的 padding-right:44px 覆盖掉，
-     * 标题就会跑到星标底下（v2.0 手机端曾出现标题被☆压住的 bug）。 */
-    padding: var(--gap-3) 34px var(--gap-3) var(--gap-3);
-  }
-  .cards.grid-mode .card-thumb {
-    width: 110px;
-    height: 84px;
-    aspect-ratio: auto;
-    max-height: none;
-    flex: none;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-  }
-  .cards.grid-mode .card-body {
-    padding: 0;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
+  /* 双列网格下保持「封面在上、标题在下」的卡片形态（不再退回行内布局）。
+   * 两列每卡约 170px 宽，标题用 12px 更耐看；封面 16:10 自动撑高，整排等高。 */
   .cards.grid-mode .card-title {
-    -webkit-line-clamp: 2;
-    font-size: var(--fs-md);
+    font-size: var(--fs-xs);
   }
   .cards.grid-mode .card-desc {
     -webkit-line-clamp: 2;
-    margin-top: 2px;
   }
   .cards.grid-mode .fav-btn {
     top: 6px;
@@ -2784,19 +2695,6 @@ html {
 }
 
 /* 「发现新版本」用强调色而不是危险色：这不是故障，是一个可选的升级提醒 */
-.admin-ok {
-  margin: 6px 0 10px;
-  padding: 8px 11px;
-  font-size: var(--fs-sm);
-  color: var(--text);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
-  border-radius: var(--radius-sm);
-}
-.admin-ok a {
-  color: var(--accent);
-}
-
 /* ---------------- 「N 条新内容」浮标（自动刷新） ---------------- */
 
 /* sticky + 居中：粘在列表可视区顶部，滚到哪儿都看得见；

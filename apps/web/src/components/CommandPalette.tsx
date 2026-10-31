@@ -198,8 +198,8 @@ export function CommandPalette({
       cmds.push({
         id: 'open-admin',
         group: '设置',
-        label: '打开管理面板',
-        keywords: 'admin guanli zhuangtai caiji yonghu 管理 状态 采集 用户',
+        label: '打开用户管理',
+        keywords: 'admin guanli yonghu zhanghao 管理 用户 账号',
         run: close(onOpenAdmin),
       });
     }
