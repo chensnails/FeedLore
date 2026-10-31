@@ -53,12 +53,14 @@ function send(method, params = {}) {
   ws.send(JSON.stringify({ id, method, params }));
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
+    /* 20s 对「远端 ARM 服务器 + 每次全新 profile」太紧：首屏要冷跑 HTML+JS+CSS+首个
+     * /api 往返，慢起来就是 20+ 秒，超时报错看起来像功能坏了而不是机器慢。 */
     setTimeout(() => {
       if (pending.has(id)) {
         pending.delete(id);
         reject(new Error(`${method} 超时`));
       }
-    }, 20000);
+    }, 45000);
   });
 }
 
@@ -170,7 +172,9 @@ try {
 
   if (!pass) throw new Error('缺少密码参数');
   /* 2.5s 固定等待在冷启动时不够（headless 首个页面要连拉 HTML+JS+CSS，实测会拿到
-   * 空 body 就报 no-form）。轮询到表单出现为止 —— 只放宽时间，判据不变。 */
+   * 空 body 就报 no-form）。轮询到表单出现为止 —— 只放宽时间，判据不变。
+   * 40 次 ≈ 28 秒：远端 ARM 服务器撞上采集任务时首屏 JS 能慢到十几秒，
+   * 上一轮 14 秒的窗口就是这么被吃掉、报出「no-form 但页面其实正常」的假故障的。 */
   let filled = 'no-form';
   const fillOnce = () => evalJs(`(() => {
     const setVal = (el, v) => {
@@ -185,7 +189,7 @@ try {
     document.querySelector('.btn.primary')?.click();
     return 'ok';
   })()`);
-  for (let i = 0; i < 20; i += 1) {
+  for (let i = 0; i < 40; i += 1) {
     filled = await fillOnce();
     if (filled === 'ok') break;
     await sleep(700);
@@ -198,6 +202,8 @@ try {
       title: document.title,
       inputs: document.querySelectorAll('input').length,
       fields: document.querySelectorAll('.field').length,
+      boot: (document.querySelector('.boot')?.textContent ?? '').trim(),
+      rootHtmlLen: (document.getElementById('root')?.innerHTML ?? '').length,
       text: (document.body?.innerText ?? '').slice(0, 120),
     }))()`);
     throw new Error(`登录表单异常：${filled} —— ${JSON.stringify(why)}`);
@@ -205,6 +211,17 @@ try {
   await sleep(3000);
 
   const rows = [];
+  /* 等到「会话已解析、列表骨架出现」再量：远端机器慢的时候，固定 2.6 秒会量到
+   * 还在 `正在连接…` 的空 Shell，读出来的数字全是假的。判据用 .list-bar
+   * （Shell 渲染完就有，不依赖条目数据），再留 1.5 秒给卡片接口返回。 */
+  const waitShell = async () => {
+    for (let i = 0; i < 30; i += 1) {
+      const ok = await evalJs("!!document.querySelector('.list-bar')");
+      if (ok) break;
+      await sleep(700);
+    }
+    await sleep(1500);
+  };
   for (const vp of VIEWPORTS) {
     await send('Emulation.setDeviceMetricsOverride', {
       width: vp.width,
@@ -214,7 +231,7 @@ try {
     });
     // 视口变了要重排：重载一次比等 ResizeObserver 稳，且顺带验证「窄屏首屏不炸」
     await send('Page.navigate', { url });
-    await sleep(2600);
+    await waitShell();
     const info = await evalJs(LAYOUT_PROBE);
     const listShot = await shot(`${prefix}-${vp.name}-list.png`);
 
@@ -662,44 +679,44 @@ try {
 
       /* 正文标签闭环：v2 保留「阅读层正文里的标签可点」（v1 口径），
        * 点 #tag → 关掉阅读层 → 列表出现 #{tag} 范围与唯一出口 ✕。
+       *
+       * 先问数据再点开那一篇：卡面标签虽然按 v1 决策下掉了，**列表接口一直带着
+       * tags 数组**，所以能用一次 fetch 找到第一篇有标签的条目，直接点它的序号位。
+       * 之前是「连开 8 篇试」，每次 1.4~1.9 秒 —— 整段 eval 撞上脚本超时，
+       * 失败长得像功能坏了，其实只是探针写得慢。
+       *
        * 「✕ 点了能不能退」不走 UI 点击：useUi 的订阅在快速开关阅读层时会叠好几层
        * （既有问题），toggle 语义下会被同一事件消费两次 —— 改成直接带 ?tag= 请求，
        * 验「服务端参数闭环 + 标题行渲染」这两件确定性事实。 */
       const tagFlow = await evalJs(`(async () => {
         const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-        const openFirst = () => {
-          const c = document.querySelector('.card');
-          (c?.querySelector('.card-title') || c)?.click();
-        };
-        let tagName = null;
-        /* 试到第 8 条：TG 频道不少条目本来就没有标签，5 条里全空是常态而不是坏了
-         * （上一版就在「首条无标签」上整段跳过，等于这条链路从来没被验过）。 */
-        for (let i = 0; i < 8 && !tagName; i += 1) {
-          openFirst();
-          await wait(1400);
-          const t = document.querySelector('.reader-meta .mini-tag');
-          if (t) {
-            tagName = t.textContent.trim().replace(/^#/, '');
-            t.click();
-            await wait(1500);
-          } else {
-            document.querySelector('.reader-close')?.click();
-            await wait(500);
-          }
-        }
-        if (!tagName) return { skipped: 'first-5-articles-have-no-tags' };
+        const h = document.cookie.split('; ').find((x) => x.startsWith('Better-Auth'));
+        const j = await (await fetch('/api/entries?limit=40', { headers: h ? { cookie: h } : {} })).json().catch(() => null);
+        const list = j?.items ?? j?.entries ?? [];
+        const withTags = list.findIndex((e) => (e.tags ?? []).length > 0);
+        if (withTags < 0) return { skipped: 'first-40-entries-have-no-tags', listSize: list.length };
+        const tagName = String(list[withTags].tags[0]);
+        const cards = [...document.querySelectorAll('.cards > li .card')];
+        const target = cards[withTags] ?? cards[0];
+        if (!cards[withTags]) return { skipped: 'row-not-rendered', withTags, rendered: cards.length };
+        (target.querySelector('.card-title') || target)?.click();
+        await wait(1800);
+        const chip = [...document.querySelectorAll('.reader-meta .mini-tag')]
+          .find((b) => b.textContent.trim() === '#' + tagName);
+        if (!chip) return { skipped: 'chip-missing-for-' + tagName, readerOpen: !!document.querySelector('.reader-sheet') };
+        chip.click();
+        await wait(1600);
         const titleTxt = (document.querySelector('.list-title')?.textContent ?? '');
         const mid = {
           readerClosed: !document.querySelector('.reader-sheet'),
           scopeHasTag: titleTxt.includes('#' + tagName),
           clearBtn: !!document.querySelector('.list-title .scope-x'),
         };
-        const h = document.cookie.split('; ').find((x) => x.startsWith('Better-Auth'));
-        const r = await fetch('/api/entries?tag=' + encodeURIComponent(tagName) + '&limit=5',
+        const srv = await fetch('/api/entries?tag=' + encodeURIComponent(tagName) + '&limit=5',
           { headers: h ? { cookie: h } : {} });
-        const j = await r.json().catch(() => null);
-        const total = j?.total ?? j?.head?.total ?? null;
-        return { tag: tagName, mid, serverOk: r.ok, serverTotal: total };
+        const srvJson = await srv.json().catch(() => null);
+        const total = srvJson?.total ?? srvJson?.head?.total ?? null;
+        return { tag: tagName, mid, serverOk: srv.ok, serverTotal: total };
       })()`);
       rows.push({ viewport: vp.name, tagFlow: true, ...tagFlow });
 
