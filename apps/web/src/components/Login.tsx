@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { qk } from '../lib/query';
+import { BrandLogo } from './BrandLogo';
 
 /**
  * 登录页。刻意保持极简：一个表单 + 一个内联错误位。
@@ -38,7 +39,7 @@ export function Login() {
         }}
       >
         <div className="login-brand">
-          <span className="login-mark" aria-hidden />
+          <BrandLogo className="login-logo" />
           <h1>笺川</h1>
         </div>
         <p className="login-sub">FeedLore · 自托管阅读</p>

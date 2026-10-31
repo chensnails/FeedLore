@@ -430,16 +430,23 @@ html {
   margin: 0;
   letter-spacing: 0.06em;
 }
-.login-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #000));
+/* 品牌 logo（笺川）：文档 + 星形（components/BrandLogo.tsx）。
+ * --logo-fg 是图形里的白色部分：三主题恒白，不随主色/主题反色（v1 同口径）。 */
+:root {
+  --logo-fg: #ffffff;
+  --logo-shadow: rgba(31, 92, 232, 0.26);
 }
-.login-mark.small {
-  width: 18px;
-  height: 18px;
-  border-radius: var(--radius-xs);
+.brand-logo {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: block;
+  filter: drop-shadow(0 2px 6px var(--logo-shadow));
+}
+.login-logo {
+  width: 40px;
+  height: 40px;
+  filter: drop-shadow(0 6px 16px var(--logo-shadow));
 }
 .login-sub {
   margin: -6px 0 8px;

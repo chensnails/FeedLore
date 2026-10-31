@@ -8,6 +8,7 @@ import { useRouteSync } from '../lib/route';
 import { useEdgeSwipeNav } from '../lib/useEdgeSwipeNav';
 import { useUi } from '../store/ui';
 import { Icon } from './Icon';
+import { BrandLogo } from './BrandLogo';
 import type { Session } from '../lib/types';
 import { FeedsPanel } from './FeedsPanel';
 import { EntriesPanel } from './EntriesPanel';
@@ -136,7 +137,7 @@ export function Shell({ session }: { session: Session }) {
         </button>
 
         <div className="brand">
-          <span className="login-mark small" aria-hidden />
+          <BrandLogo />
           <strong>笺川</strong>
         </div>
 
