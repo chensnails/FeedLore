@@ -159,7 +159,7 @@ async function main(): Promise<void> {
   const newCredentials: Array<{ username: string; password: string }> = [];
 
   try {
-    /* ---------------- 0. 站点主密钥（必须最先跑） ---------------- */
+    /* ---------------- 0. 站点设置（主密钥 + 采集参数；必须最先跑） ---------------- */
     /*
      * `settings.cryptoSecret` 是解密 `user_llm.encrypted_key` 的唯一钥匙。
      * 漏搬的后果不是报错，而是**静默失效**：v2 在新库读不到这一枚，
@@ -167,12 +167,23 @@ async function main(): Promise<void> {
      * Key 都「解不开」，界面上就是一排「请重填」。而演练用的假密文
      * （enc.v1.aaa.bbb.ccc）本来就解不开，会把这个真 bug 完全掩盖。
      * 所以这一段放在最前面，且放在 prefs 之前。
+     *
+     * `settings.source` 是全局采集参数（刷新间隔 / 保留 / 并发 / 超时 / 失败上限 /
+     * 自动刷新 / 代理 / 图片缓存），v2 的键名与区间完全沿用 legacy，原样搬过去即可；
+     * v2 读取时会再过一遍 normalizeSource 夹边界。
      */
     if (ONLY.has('settings')) {
       const { rows } = await legacyPool.query<Row>(`select key, value from ${T('settings')}`);
       const secretRow = rows.find((r) => r.key === CRYPTO_SECRET_KEY);
-      const others = rows.filter((r) => r.key !== CRYPTO_SECRET_KEY).map((r) => String(r.key));
+      const sourceRow = rows.find((r) => r.key === 'source');
+      const others = rows
+        .filter((r) => r.key !== CRYPTO_SECRET_KEY && r.key !== 'source')
+        .map((r) => String(r.key));
       const legacySecret = typeof secretRow?.value === 'string' ? secretRow.value : '';
+      const legacySource =
+        sourceRow?.value && typeof sourceRow.value === 'object' && !Array.isArray(sourceRow.value)
+          ? (sourceRow.value as Record<string, unknown>)
+          : null;
 
       if (!legacySecret) {
         // legacy 老版本若从未存过 Key，就不会有这一枚，此时没有密文需要兼容
@@ -208,16 +219,31 @@ async function main(): Promise<void> {
         }
       }
 
+      if (!legacySource) {
+        log('采集参数：legacy 无 settings.source → 跳过，v2 用 env / 默认值');
+      } else if (DRY) {
+        log(`采集参数：将搬入 settings.source（${Object.keys(legacySource).length} 个键）`);
+      } else {
+        await db
+          .insert(settings)
+          .values({ key: 'source', value: legacySource, updatedAt: new Date() })
+          .onConflictDoUpdate({
+            target: settings.key,
+            set: { value: legacySource, updatedAt: new Date() },
+          });
+        log('采集参数：已搬入 settings.source（刷新间隔 / 保留 / 并发 / 超时 / 失败上限 / 代理等）');
+      }
+
       if (others.length) {
-        // 站点级 llm 配置在 v1.4.0 就整层退场了，v2 不认它；其余键也不属于迁移范围
-        log(`站点设置：忽略 ${others.join(', ')}（v2 不读站点级配置）`);
+        // auth / sessionSecret 已由 better-auth 取代；站点级 llm / digest 在 v1.4.0 就整层退场
+        log(`站点设置：忽略 ${others.join(', ')}（auth/sessionSecret 已并入账号体系，站点级 llm/digest 已退场）`);
       }
     }
 
     /* ---------------- 1. 用户 ---------------- */
     if (ONLY.has('users')) {
       const { rows } = await legacyPool.query<Row>(
-        `select id, username, role, prefs, salt, password_hash from ${T('users')} order by id`,
+        `select id, username, role, prefs, salt, password_hash, created_at, updated_at from ${T('users')} order by id`,
       );
       log(`legacy 用户 ${rows.length} 个`);
 
@@ -280,9 +306,16 @@ async function main(): Promise<void> {
           stats.users.passwordsReset += 1;
         }
 
-        if (u.role === 'admin') {
-          await db.update(users).set({ role: 'admin' }).where(eq(users.id, created.id));
-        }
+        // 角色与建号时间以 legacy 为准：signUpEmail 会把 createdAt 写成迁移当天，
+        // 用户列表按 createdAt 排序，不搬的话老账号会被排到新账号后面。
+        await db
+          .update(users)
+          .set({
+            role: u.role === 'admin' ? 'admin' : 'user',
+            createdAt: toDate(u.created_at) ?? undefined,
+            updatedAt: toDate(u.updated_at) ?? undefined,
+          })
+          .where(eq(users.id, created.id));
         userIdMap.set(legacyId, created.id);
         stats.users.created += 1;
       }
