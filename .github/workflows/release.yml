@@ -9,18 +9,19 @@ name: Release
 # 届时「feedlore-v2 继续并存还是改回 feedlore」是那一次切换要一起决定的事。
 #
 # 发布闸门（沿用 1.3.11 起的规则）：tag 推上来不等于对外发布。gate job 按 tag 分三档：
-#   ① 正式版 vX.Y.Z        → 构建镜像，推版本号标签 + latest，并建 GitHub Release
-#   ② 预发布 vX.Y.Z-xxx    → 构建镜像，**只推版本号标签**；latest 不动、不建 Release
+#   ① 正式版 vX.Y.Z        → 构建镜像，推版本号标签，并建 GitHub Release
+#   ② 预发布 vX.Y.Z-xxx    → 构建镜像，**只推版本号标签**
 #   ③ 其它（分支名等）     → 不构建
 # 两种可构建的档位都要求 tag 与 package.json 的 version 一致。v2 的版本号**单一真源就是
 # package.json**（镜像内 APP_VERSION 也读它），不再维护 1.x 的 VERSION 文件。
-# 分档的意义：预发布镜像是给自己或少数人试的，而 latest 一被覆盖，
-# 所有跟着 latest 的部署下次重建容器时就会被动换版本 —— 那才是真正的"发布"。
+# 分档的意义：预发布镜像是给自己或少数人试的，不建 Release 就不算对外发布。
 #
 # 性能：amd64 与 arm64 各用一个「原生架构」runner 平行构建，不跑 QEMU 模拟；
 # 两个 build job 各自 push-by-digest，最后由 merge job 合并 manifest 清单。
 #
-# 镜像标签约定：版本号去掉 v（2.0.0），另打 latest（仅正式版）。
+# 镜像标签约定：**只打版本号标签**（去掉 v），不打 latest。
+# 2.x 的部署按版本号钉死（compose 里的 V2_IMAGE），没有"跟着 latest 漂移"的通道；
+# 将来真要滚动通道就单独定名（如 :2），不要拿 latest 冒充。
 
 on:
   push:
@@ -85,16 +86,15 @@ jobs:
           # 到这里就值得构建镜像了
           echo "build=true" >> "$GITHUB_OUTPUT"
 
-          # 4) 带 -后缀 的是预发布：镜像照建，但只推版本号标签。
-          #    不碰 latest（那是"正式发布"的唯一标记）、不建 Release。
+          # 4) 带 -后缀 的是预发布：镜像照建，只推版本号标签、不建 Release。
           if [[ "$WANT" == *-* ]]; then
-            echo "::notice title=预发布：只推版本号标签::ghcr.io/chensnails/feedlore-v2:$WANT 将可用，latest 保持不变、不建 Release"
+            echo "::notice title=预发布：只推版本号标签::ghcr.io/chensnails/feedlore-v2:$WANT 将可用，不建 Release"
             exit 0
           fi
 
-          # 5) 正式版：latest 指向它，并建 Release
+          # 5) 正式版：建 Release（镜像标签与预发布一样只有版本号）
           echo "publish=true" >> "$GITHUB_OUTPUT"
-          echo "::notice title=正式发布::v$WANT —— feedlore-v2:latest 将指向该镜像，并创建 GitHub Release"
+          echo "::notice title=正式发布::v$WANT —— feedlore-v2:$WANT 将发布并创建 GitHub Release（不打 latest）"
 
   build:
     needs: gate
@@ -166,7 +166,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 合并 manifest（版本号标签 + 正式版才加 latest）
+      - name: 合并 manifest（仅版本号标签）
         id: merge
         working-directory: digests
         run: |
@@ -179,17 +179,13 @@ jobs:
           done
           echo "merging:$refs"
 
-          # 版本号标签一律打。latest 只给正式版：预发布一旦把 latest 挪过去，
-          # 跟着 latest 的部署下次重建容器时就会拿到未经验证的版本。
-          TAGS=(--tag "${{ env.REGISTRY_IMAGE }}:$VERSION")
-          if [[ "$PUBLISH" == "true" ]]; then
-            TAGS+=(--tag "${{ env.REGISTRY_IMAGE }}:latest")
-          fi
-          docker buildx imagetools create $refs "${TAGS[@]}"
+          # 只打版本号标签。v2 不推 latest —— 部署按 V2_IMAGE 钉到具体版本，
+          # 没有跟着 latest 漂移的通道；要滚动标签就单独定名（如 :2）。
+          docker buildx imagetools create $refs --tag "${{ env.REGISTRY_IMAGE }}:$VERSION"
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if [[ "$PUBLISH" != "true" ]]; then
-            echo "::notice title=预发布镜像已就绪::ghcr.io/chensnails/feedlore-v2:$VERSION（latest 未改动、未建 Release）"
+            echo "::notice title=预发布镜像已就绪::ghcr.io/chensnails/feedlore-v2:$VERSION（未建 Release）"
           fi
 
       - name: 创建 GitHub Release（仅正式版）
