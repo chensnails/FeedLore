@@ -1145,6 +1145,9 @@ html {
   .reader-backdrop {
     padding: 0;
     place-items: stretch;
+    /* 手机整屏阅读层后面的遮罩也要实底：半透明的 0.55 黑会在文章末尾边缘
+     * 透出背后的列表，看起来像「文章末端渐隐/透明」。直接压成实色底。 */
+    background: var(--bg);
   }
   .reader-sheet {
     border-radius: 0;
@@ -1155,6 +1158,8 @@ html {
     background: var(--surface);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+    /* 末端留足底部内距（含刘海屏安全区），让「上一条/下一条」不被屏幕底边裁掉 */
+    padding-bottom: max(var(--gap-6), env(safe-area-inset-bottom));
   }
 }
 
@@ -2095,6 +2100,25 @@ html {
   opacity: 1;
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   border-color: var(--line);
+}
+
+/* 等高对齐：同一行里每张卡都撑满行高，标题/描述在上、元信息沉到底，
+ * 不让「两行标题 / 无描述」的卡片把整排放得高低不齐（像没收好的书架）。
+ * 网格项默认 stretch，但子层要显式 height:100% 才会真正填满格子。 */
+.cards.grid-mode .card-row {
+  height: 100%;
+}
+.cards.grid-mode .card {
+  height: 100%;
+}
+.cards.grid-mode .card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.cards.grid-mode .card-meta {
+  margin-top: auto;
 }
 
 /* 列表：一行一条，封面在右。与 v2 原有样式一致，只补上 .list-mode 的前缀约束 */

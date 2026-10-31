@@ -3,10 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { applyAppearance } from '../lib/appearance';
 import { qk } from '../lib/query';
-import { useRefreshAll, useSaveAppearance, useSaveLayout } from '../lib/mutations';
+import { useRefreshAll, useSaveLayout } from '../lib/mutations';
 import { useRouteSync } from '../lib/route';
 import { useUi } from '../store/ui';
-import { Icon, type IconName } from './Icon';
+import { Icon } from './Icon';
 import type { Session } from '../lib/types';
 import { FeedsPanel } from './FeedsPanel';
 import { EntriesPanel } from './EntriesPanel';
@@ -92,7 +92,6 @@ export function Shell({ session }: { session: Session }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [navOpen, closeNav]);
 
-  const saveAppearance = useSaveAppearance();
   const refreshAll = useRefreshAll();
   const saveLayout = useSaveLayout();
 
@@ -117,18 +116,6 @@ export function Shell({ session }: { session: Session }) {
   });
 
   const unread = feedsQuery.data?.flags.unread ?? 0;
-
-  /* 主题三态循环：auto → light → dark → auto。
-   * 'github' 是 v1.x 遗留值，按深色展示，点一次就切到 auto（等价于「用户开始用新主题」）。 */
-  const theme = prefsQuery.data?.appearance.theme ?? 'auto';
-  const THEMES = [
-    { value: 'auto', icon: 'auto', label: '跟随系统' },
-    { value: 'light', icon: 'sun', label: '浅色' },
-    { value: 'dark', icon: 'moon', label: '深色' },
-  ] as const satisfies ReadonlyArray<{ value: string; icon: IconName; label: string }>;
-  const themeIdx = THEMES.findIndex((t) => t.value === theme);
-  const nextTheme = THEMES[(themeIdx + 1) % THEMES.length] ?? THEMES[0];
-  const themeIcon: IconName = theme === 'light' ? 'sun' : theme === 'dark' ? 'moon' : 'auto';
 
   return (
     <div className="app">
@@ -194,15 +181,6 @@ export function Shell({ session }: { session: Session }) {
             aria-label="打开设置"
           >
             <Icon name="settings" size={17} />
-          </button>
-          <button
-            className="btn ghost icon"
-            onClick={() => saveAppearance.mutate({ theme: nextTheme.value })}
-            disabled={saveAppearance.isPending || prefsQuery.isPending}
-            title={`主题：${theme}（点击切换到 ${nextTheme.label}）`}
-            aria-label="切换主题"
-          >
-            <Icon name={themeIcon} size={16} />
           </button>
           {session.role === 'admin' && (
             <button
