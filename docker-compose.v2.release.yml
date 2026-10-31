@@ -1,5 +1,7 @@
 # FeedLore 2.0 —— 从 1.x 升级的发布态 Compose（镜像模式）
 #
+# 完整升级步骤、验证与回滚见仓库根 **UPGRADE-v2.md**（本文件头部只列大致流程）。
+#
 # 全新安装也能用同一份文件（upgrade 会按「空站点」跳过数据迁移），
 # 但还需要另外创建管理员：
 #   docker exec -e ADMIN_USER=admin -e 'ADMIN_PASS=<强密码>' feedlore \

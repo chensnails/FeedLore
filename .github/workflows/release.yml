@@ -1,23 +1,26 @@
 name: Release
 
-# tag 发布：构建双架构镜像推 ghcr.io，并自动创建 GitHub Release。
-# 发版 = git tag -a vX.Y.Z && git push origin --tags；本站（Watchtower 模式）
-# 会在几分钟内自动拉到新镜像并重启容器，关于页也可一键触发。
+# 2.x 发布：构建双架构镜像推 ghcr.io/chensnails/feedlore-v2，并自动创建 GitHub Release。
+# 发版 = git tag -a vX.Y.Z && git push origin --tags。
 #
-# 发布闸门（v1.3.11 起）：tag 推上来不等于对外发布。gate job 按 tag 分三档：
+# 与 1.x 的发布**互不干扰**：1.x 镜像仍是 ghcr.io/chensnails/feedlore（由 main 分支上
+# 的同名工作流负责），1.x 用户的 Watchtower 盯的是 feedlore:latest —— 这里推任何标签
+# 都不会把 1.x 站点升上来。合并 v2 → main 时这份文件会覆盖 main 上的同名文件，
+# 届时「feedlore-v2 继续并存还是改回 feedlore」是那一次切换要一起决定的事。
+#
+# 发布闸门（沿用 1.3.11 起的规则）：tag 推上来不等于对外发布。gate job 按 tag 分三档：
 #   ① 正式版 vX.Y.Z        → 构建镜像，推版本号标签 + latest，并建 GitHub Release
 #   ② 预发布 vX.Y.Z-xxx    → 构建镜像，**只推版本号标签**；latest 不动、不建 Release
 #   ③ 其它（分支名等）     → 不构建
-# 任何一档都要求 tag 与 VERSION、package.json 的 version 三者一致。
+# 两种可构建的档位都要求 tag 与 package.json 的 version 一致。v2 的版本号**单一真源就是
+# package.json**（镜像内 APP_VERSION 也读它），不再维护 1.x 的 VERSION 文件。
 # 分档的意义：预发布镜像是给自己或少数人试的，而 latest 一被覆盖，
-# 所有 Watchtower 用户几分钟内就会被动升级 —— 那才是真正的"发布"。
+# 所有跟着 latest 的部署下次重建容器时就会被动换版本 —— 那才是真正的"发布"。
 #
-# 性能（v1.2.0 起）：amd64 与 arm64 各用一个「原生架构」runner 平行构建，不再用
-# QEMU 模拟。此前单 job + QEMU 的方式，arm64 冷构建（层缓存失效时）实测 40 分钟仍未结束；
-# 拆成两个原生 runner 后，两个架构各自原生编译，实测各 35~40 秒完成。
+# 性能：amd64 与 arm64 各用一个「原生架构」runner 平行构建，不跑 QEMU 模拟；
 # 两个 build job 各自 push-by-digest，最后由 merge job 合并 manifest 清单。
 #
-# 镜像标签约定：版本号去掉 v（1.2.0），另打 latest。
+# 镜像标签约定：版本号去掉 v（2.0.0），另打 latest（仅正式版）。
 
 on:
   push:
@@ -28,7 +31,7 @@ permissions:
   packages: write      # 推 ghcr
 
 env:
-  REGISTRY_IMAGE: ghcr.io/chensnails/feedlore
+  REGISTRY_IMAGE: ghcr.io/chensnails/feedlore-v2
 
 jobs:
   # 发布闸门：先判「该不该发布」，再决定要不要花两个 runner 去构建。
@@ -59,29 +62,39 @@ jobs:
             exit 0
           fi
 
-          # 2) tag 必须与仓库里的版本号一致。镜像内的 pkg.version 就是「关于 → 检查更新」
-          #    用来比大小的基准，对不上会让用户侧永远差一版（要么一直提示更新，要么永远看不到）。
           WANT="${TAG#v}"
-          FILE_VERSION="$(tr -d '[:space:]' < VERSION)"
+
+          # 2) 这份工作流只发布 2.x。1.x 的补丁仍由 main 分支发布到 feedlore 镜像；
+          #    万一在 v2 分支的提交上误打了 v1.x tag，这里直接拦下，避免 1.x 的代码
+          #    被当成 2.0 推成 feedlore-v2 —— 那种镜像下载下去是没法用的。
+          MAJOR="${WANT%%.*}"
+          if (( 10#$MAJOR < 2 )); then
+            echo "::error title=版本号不属于 2.x::tag=v$WANT 会被推到 feedlore-v2 —— 1.x 请在 main 分支打 tag"
+            exit 1
+          fi
+
+          # 3) tag 必须与 package.json 的 version 一致。镜像内的 pkg.version 就是
+          #    「关于 → 检查更新」用来比大小的基准，对不上会让用户侧永远差一版
+          #    （要么一直提示更新，要么永远看不到新版本）。
           PKG_VERSION="$(node -p 'require("./package.json").version')"
-          if [[ "$WANT" != "$FILE_VERSION" || "$WANT" != "$PKG_VERSION" ]]; then
-            echo "::error title=版本号不一致::tag=v$WANT / VERSION=$FILE_VERSION / package.json=$PKG_VERSION —— 先改版本号并提交，再打 tag"
+          if [[ "$WANT" != "$PKG_VERSION" ]]; then
+            echo "::error title=版本号不一致::tag=v$WANT / package.json=$PKG_VERSION —— 先改版本号并提交，再打 tag"
             exit 1
           fi
 
           # 到这里就值得构建镜像了
           echo "build=true" >> "$GITHUB_OUTPUT"
 
-          # 3) 带 -后缀 的是预发布：镜像照建，但只推版本号标签。
-          #    不碰 latest（Watchtower 盯的就是它）、不建 Release（关于页看的是它）。
+          # 4) 带 -后缀 的是预发布：镜像照建，但只推版本号标签。
+          #    不碰 latest（那是"正式发布"的唯一标记）、不建 Release。
           if [[ "$WANT" == *-* ]]; then
-            echo "::notice title=预发布：只推版本号标签::ghcr:$WANT 将可用，latest 保持不变、不建 Release"
+            echo "::notice title=预发布：只推版本号标签::ghcr.io/chensnails/feedlore-v2:$WANT 将可用，latest 保持不变、不建 Release"
             exit 0
           fi
 
-          # 4) 正式版：latest 指向它，并建 Release
+          # 5) 正式版：latest 指向它，并建 Release
           echo "publish=true" >> "$GITHUB_OUTPUT"
-          echo "::notice title=正式发布::v$WANT —— latest 将指向该镜像，并创建 GitHub Release"
+          echo "::notice title=正式发布::v$WANT —— feedlore-v2:latest 将指向该镜像，并创建 GitHub Release"
 
   build:
     needs: gate
@@ -166,8 +179,8 @@ jobs:
           done
           echo "merging:$refs"
 
-          # 版本号标签一律打。latest 只给正式版：它是 Watchtower 唯一的触发点，
-          # 预发布一旦把 latest 挪过去，所有已部署实例几分钟内就会被升级。
+          # 版本号标签一律打。latest 只给正式版：预发布一旦把 latest 挪过去，
+          # 跟着 latest 的部署下次重建容器时就会拿到未经验证的版本。
           TAGS=(--tag "${{ env.REGISTRY_IMAGE }}:$VERSION")
           if [[ "$PUBLISH" == "true" ]]; then
             TAGS+=(--tag "${{ env.REGISTRY_IMAGE }}:latest")
@@ -176,7 +189,7 @@ jobs:
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if [[ "$PUBLISH" != "true" ]]; then
-            echo "::notice title=预发布镜像已就绪::ghcr.io/chensnails/feedlore:$VERSION（latest 未改动、未建 Release）"
+            echo "::notice title=预发布镜像已就绪::ghcr.io/chensnails/feedlore-v2:$VERSION（latest 未改动、未建 Release）"
           fi
 
       - name: 创建 GitHub Release（仅正式版）
@@ -189,10 +202,12 @@ jobs:
           set -euo pipefail
           TAG="${{ github.ref_name }}"
           NOTES=$(cat <<'EOT'
-          镜像：`ghcr.io/chensnails/feedlore:${{ steps.merge.outputs.version }}`（amd64 + arm64）
+          镜像：`ghcr.io/chensnails/feedlore-v2:${{ steps.merge.outputs.version }}`（amd64 + arm64）
 
-          Watchtower 模式（docker-compose.release.yml）下，宿主机几分钟内自动拉取重启；
-          关于页「一键更新」可立即触发。详见 [CHANGELOG.md](https://github.com/chensnails/FeedLore/blob/main/CHANGELOG.md)。
+          从 1.x 升级：按 [UPGRADE-v2.md](https://github.com/chensnails/FeedLore/blob/${{ github.ref_name }}/UPGRADE-v2.md)
+          备份 → 在 `.env` 补 `AUTH_SECRET` / `AUTH_BASE_URL` →
+          `docker compose -f docker-compose.v2.release.yml up -d`。
+          2.x 镜像不打 Watchtower 标签，不会被自动升级；换版本请显式改 `V2_IMAGE` 后 `up -d`。
           EOT
           )
           if gh release view "$TAG" >/dev/null 2>&1; then
