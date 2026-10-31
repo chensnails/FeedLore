@@ -6,7 +6,7 @@
 **在线体验**：https://feedlore.669600.xyz · 演示账户 `demo` / `demo`
 （普通用户角色，数据可能随使用变动或重置。想试多用户隔离，请自己部署一份。）
 
-当前版本 **2.0.1** · [更新日志](CHANGELOG.md) · [从 1.x 升级](UPGRADE-v2.md)
+当前版本 **2.0.2** · [更新日志](CHANGELOG.md) · [从 1.x 升级](UPGRADE-v2.md)
 
 ---
 
@@ -74,88 +74,78 @@
   `feedlore-pgdata`；
 - 手机 / 浏览器能访问到这台机器；要装成 App 或走公网，建议再配 HTTPS 反向代理。
 
-部署只需要两个文件：`docker-compose.v2.release.yml` 与 `.env`。**不需要克隆源码。**
+部署只需要一份 compose 文件：`docker-compose.v2.release.yml`（`.env` 是可选的覆盖项）。**不需要克隆源码。**
 
-### 1. 取部署文件
+### 1. 启动
+
+只需要一份 compose 文件，**不需要 `.env`，不需要填任何变量或密码**：
 
 ```bash
 mkdir feedlore && cd feedlore
 curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
-curl -fsSL https://raw.githubusercontent.com/chensnails/FeedLore/main/.env.example -o .env
-```
-
-### 2. 填写 `.env`
-
-至少改这两项（**不要提交 `.env`，也不要使用示例里的弱口令**）：
-
-```bash
-# 数据库密码：32 位随机串
-sed -i "s#^PG_PASSWORD=.*#PG_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)#" .env
-# 更新令牌：Watchtower HTTP API 的共享密钥
-sed -i "s#^WATCHTOWER_HTTP_API_TOKEN=.*#WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 24)#" .env
-```
-
-> macOS 的 `sed -i` 需要写成 `sed -i '' ...`；也可以直接手工编辑 `.env`。
-
-确认写入并妥善保存：
-
-```bash
-grep -E '^(PG_PASSWORD|WATCHTOWER_HTTP_API_TOKEN)=' .env
-```
-
-其余变量通常保持默认即可：
-
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `HOST_PORT` | `3210` | 宿主机端口 |
-| `PG_DB` / `PG_USER` | `feedlore` | 1.x 沿用的库与用户；全新安装也用它 |
-| `PG_PASSWORD` | 必填 | 数据库密码 |
-| `V2_DB_NAME` | `feedlore_v2` | 2.x 实际使用的库；1.x 的库保持只读 |
-| `V2_IMAGE` | `…/feedlore:2.0.1` | 钉版本号；改成 `…:latest` 则跟随 Watchtower 滚动 |
-| `AUTH_SECRET` | 留空 | 留空则首次启动自动生成并存入 v2 库；**一旦有值不要再改** |
-| `AUTH_BASE_URL` | 留空 | 留空按访问 Host 做同源校验；多域名 / 反代改写 Host 时建议填 |
-| `AUTH_TRUSTED_ORIGINS` | 留空 | 额外信任的来源，逗号分隔 |
-| `AUTH_SECURE_COOKIES` | `0` | 纯 HTTP 必须为 `0`；HTTPS 反代下设 `1` |
-| `WATCHTOWER_HTTP_API_TOKEN` | 必填 | 「一键更新」用 |
-| `REFRESH_MINUTES` / `KEEP_PER_FEED` / `KEEP_DAYS` | `30` / `300` / `90` | 采集默认值，仅新库首次落库时生效 |
-| `UPGRADE_SKIP_BACKUP` / `UPGRADE_SKIP_IMAGE_CACHE` | 留空 | 升级时跳过库内快照 / 图片缓存迁移 |
-| `ALLOW_PRIVATE_HOSTS` | 留空 | 订阅内网 RSS、连本机 Ollama 时设 `1` |
-| `TRUST_PROXY` | 留空 | 反代后面要按真实 IP 限流时设 `1` |
-
-### 3. 启动
-
-```bash
 docker compose -f docker-compose.v2.release.yml up -d
-docker compose -f docker-compose.v2.release.yml logs -f upgrade
 ```
 
-`upgrade` 是一次性服务：建库 → 结构迁移 → 迁移 1.x 数据（全新安装则按空站点跳过）→ 校验。
-**它成功退出后**，应用容器 `feedlore` 才会启动；这期间 1.x 站点（如果存在）仍在线。
-
-看到容器健康后打开 `http://<主机>:3210`：
+首次启动会拉取镜像并执行一次性的 `upgrade` 服务：建库 → 建表 → 迁移 1.x 数据
+（全新安装则按空站点跳过）→ 校验。**它成功退出后**应用容器才会启动。
 
 ```bash
+docker compose -f docker-compose.v2.release.yml logs -f upgrade
 curl -s http://127.0.0.1:3210/api/health
 # {"ok":true,"db":{"ready":true}}
 ```
 
-### 4. 创建管理员（全新安装必做）
+### 2. 打开并登录
 
-空站点不会自动生成账号。用环境变量指定用户名与强密码，在应用容器内执行一次播种：
+浏览器访问 `http://<主机>:3210`，初始管理员账号是：
 
-```bash
-docker exec -e ADMIN_USER=admin -e 'ADMIN_PASS=<换成强密码>' feedlore \
-  pnpm --filter @feedlore/server seed
+```
+用户名：admin
+密码：  admin
 ```
 
-然后用这个账号登录。登录后到「设置 → 账号」可以改用户名 / 密码。
+> **登录后请立即到「设置 → 账号」修改密码。** 空站点首次启动才会自动创建这个账号；
+> 已有账号的站点不会被覆盖。
 
-### 5. 第一次使用
+### 3. 第一次使用
 
 1. 管理员在「设置 → 账号 / 用户管理」创建其他成员（没有开放注册）；
 2. 在「设置 → 数据源」粘贴 RSS / Atom 添加频道，或导入 OPML；
 3. 回到「文章」或「卡片」页开始读；
 4. 需要 AI 日报时，各自在「设置 → 模型」填地址 / Key / 模型名。
+
+### 4. 可选配置
+
+默认值已经够用；需要改端口、走 HTTPS 反代、复用 1.x 数据库密码或更换初始账号时，
+复制模板为 `.env` 再修改，然后重新 `up -d`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chensnails/FeedLore/main/.env.example -o .env
+# 编辑 .env 后
+docker compose -f docker-compose.v2.release.yml up -d
+```
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `HOST_PORT` | `3210` | 宿主机端口 |
+| `PG_DB` / `PG_USER` | `feedlore` | 数据库名 / 用户 |
+| `PG_PASSWORD` | `feedlore` | 数据库密码；**已有 1.x 站点升级时必须填原来的值** |
+| `V2_DB_NAME` | `feedlore_v2` | 2.x 实际使用的库；1.x 的库保持只读 |
+| `V2_IMAGE` | `…/feedlore:2.0.2` | 钉版本号；改成 `…:latest` 则跟随 Watchtower 滚动 |
+| `ADMIN_USER` / `ADMIN_PASS` | `admin` / `admin` | 仅空站点首次启动时生效 |
+| `AUTH_SECRET` | 留空 | 自动生成并存入 v2 库；**一旦有值不要再改** |
+| `AUTH_BASE_URL` | 留空 | 留空按访问 Host 做同源校验；多域名 / 反代改写 Host 时建议填 |
+| `AUTH_TRUSTED_ORIGINS` | 留空 | 额外信任的来源，逗号分隔 |
+| `AUTH_SECURE_COOKIES` | `0` | 纯 HTTP 必须为 `0`；HTTPS 反代下设 `1` |
+| `WATCHTOWER_HTTP_API_TOKEN` | `feedlore-update` | 「一键更新」用；只在容器网络内有效 |
+| `REFRESH_MINUTES` / `KEEP_PER_FEED` / `KEEP_DAYS` | `30` / `300` / `90` | 采集默认值，仅新库首次落库时生效 |
+| `UPGRADE_SKIP_BACKUP` / `UPGRADE_SKIP_IMAGE_CACHE` | 留空 | 升级时跳过库内快照 / 图片缓存迁移 |
+| `ALLOW_PRIVATE_HOSTS` | 留空 | 订阅内网 RSS、连本机 Ollama 时设 `1` |
+| `TRUST_PROXY` | 留空 | 反代后面要按真实 IP 限流时设 `1` |
+
+默认数据库密码 `feedlore` 与更新令牌 `feedlore-update` 都只在 Docker 内部网络使用，
+数据库和 Watchtower 端口没有映射到宿主机。若这台机器上还跑着其它容器、或你介意默认值，
+请在首次启动前用 `.env` 覆盖 `PG_PASSWORD` 与 `WATCHTOWER_HTTP_API_TOKEN`。
 
 ### 从 1.x 升级
 
@@ -169,7 +159,7 @@ docker exec -e ADMIN_USER=admin -e 'ADMIN_PASS=<换成强密码>' feedlore \
 
 ### 更新
 
-- **钉版本号（默认，推荐）**：镜像固定为 `feedlore:2.0.1`，不会自己变化。改 `.env` 的
+- **钉版本号（默认，推荐）**：镜像固定为 `feedlore:2.0.2`，不会自己变化。改 `.env` 的
   `V2_IMAGE` 为新版本后重新 `up -d`。
 - **跟随 latest**：把 `V2_IMAGE` 设为 `ghcr.io/chensnails/feedlore:latest`，Watchtower
   每 5 分钟检查并重建；也可以在「设置 → 关于 → 一键更新」立即触发。

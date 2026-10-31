@@ -5,6 +5,28 @@
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
+## 2.0.2 — 2026-10-31
+
+### 新增
+
+- **真正的开箱即用**：全新安装不需要创建 `.env`、不需要填任何变量或密码。
+  `docker compose -f docker-compose.v2.release.yml up -d` 之后站点直接可用。
+- **空站点自动创建初始管理员**：v2 启动时若一个账号都没有，自动建 `admin / admin`
+  （可用 `ADMIN_USER` / `ADMIN_PASS` 覆盖）。已有账号的站点不受影响。
+- 1.x 迁移路径同样受益：源库没有账号时，应用启动后自动补一个 `admin / admin`，
+  不再要求手工执行 seed。
+
+### 变更
+
+- compose 默认值改为容器内自洽：`PG_PASSWORD=feedlore`、`WATCHTOWER_HTTP_API_TOKEN=feedlore-update`
+  （两者都只在 Docker 内部网络使用，端口不映射到宿主机）。已有 1.x 站点升级时仍必须沿用原 `PG_PASSWORD`。
+- `.env.example` 从「必填模板」改为「可选覆盖项」。
+
+### 安全提示
+
+- 默认密码 `admin` 只适合内网首次登录；部署后请立即到「设置 → 账号」修改。
+  公网暴露的实例请用 `ADMIN_PASS` 指定强密码，或登录后第一时间改密。
+
 ## 2.0.1 — 2026-10-31
 
 ### 新增

@@ -8,10 +8,16 @@
 #      （建 feedlore_v2、迁移数据、校验、改成 UTC），用户不用改配置。
 #   B. 想手动/分步升级、或没有 Watchtower → 用本文件：upgrade 一次性服务先迁移，
 #      成功后才替换应用容器（这期间 1.x 仍在线）。
-#   C. 全新安装 → 也用它（upgrade 会按「空站点」跳过数据迁移），再建管理员。
+#   C. 全新安装 → 也用它（upgrade 会按「空站点」跳过数据迁移）。**零配置**：
+#      不需要 .env、不需要填任何变量，直接 up -d；空站点首次启动自动创建
+#      初始管理员 admin/admin（请登录后立即改密）。
+#
+# 零配置默认值（都只在本机容器网络内使用，共享主机/多容器环境建议覆盖）：
+#   PG_PASSWORD=feedlore、WATCHTOWER_HTTP_API_TOKEN=feedlore-update
+#   已有 1.x 站点升级时**必须沿用原来的 PG_PASSWORD**，否则连不上旧库。
 #
 # 与 1.x 的 docker-compose.release.yml **同一个 compose 项目**（name: feedlore），
-# 复用现有的 .env、数据卷（feedlore-pgdata）、网络和端口：
+# 复用现有的数据卷（feedlore-pgdata）、网络和端口：
 # v2 用同一台 Postgres 实例里的**新库**（默认 feedlore_v2），1.x 的库原样保留，
 # 数据迁移只读 1.x、写入新库，随时可以回退。
 #
@@ -24,7 +30,7 @@
 #   3) docker compose -f docker-compose.v2.release.yml logs upgrade    查看迁移结果
 #
 # 升级到 v2 之后怎么更新：
-#   - 镜像默认钉版本号（feedlore:2.0.1），不会自己漂移；换版本改 V2_IMAGE 后 up -d。
+#   - 镜像默认钉版本号（feedlore:2.0.2），不会自己漂移；换版本改 V2_IMAGE 后 up -d。
 #   - 想跟着 latest 滚动：把 V2_IMAGE 设为 ghcr.io/chensnails/feedlore:latest。
 #     app 带 watchtower 标签，Watchtower 会自动重建；设置页「一键更新」也走它。
 #
@@ -57,7 +63,7 @@ services:
       TZ: Asia/Shanghai
       POSTGRES_DB: ${PG_DB:-feedlore}
       POSTGRES_USER: ${PG_USER:-feedlore}
-      POSTGRES_PASSWORD: ${PG_PASSWORD:?请先在 .env 中设置 PG_PASSWORD}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-feedlore}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -84,7 +90,7 @@ services:
   # - 1.x 开着 Watchtower 时不需要它：app 启动自举会做同样的事
   # ---------------------------------------------------------------
   upgrade:
-    image: &v2-image ${V2_IMAGE:-ghcr.io/chensnails/feedlore:2.0.1}
+    image: &v2-image ${V2_IMAGE:-ghcr.io/chensnails/feedlore:2.0.2}
     container_name: feedlore-upgrade
     restart: "no"
     depends_on:
@@ -93,8 +99,8 @@ services:
     environment:
       TZ: UTC
       # 源：1.x 的库（只读）。目标：同一实例里的新库，必须不同名。
-      LEGACY_DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD}@db:5432/${PG_DB:-feedlore}
-      DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD}@db:5432/${V2_DB_NAME:-feedlore_v2}
+      LEGACY_DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD:-feedlore}@db:5432/${PG_DB:-feedlore}
+      DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD:-feedlore}@db:5432/${V2_DB_NAME:-feedlore_v2}
       # 可留空：缺失时 upgrade 会自动生成并写入 v2 库，app 启动时读同一枚
       AUTH_SECRET: ${AUTH_SECRET:-}
       # 图片缓存体积大时可设 1 跳过（v2 会按需重新回源）
@@ -124,7 +130,7 @@ services:
       # ⚠️ 不要改成 Asia/Shanghai：v2 的 timestamp 列按 UTC 壁钟存值
       TZ: UTC
       PORT: "3000"
-      DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD}@db:5432/${V2_DB_NAME:-feedlore_v2}
+      DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD:-feedlore}@db:5432/${V2_DB_NAME:-feedlore_v2}
 
       # ---- better-auth（都可留空）----
       AUTH_SECRET: ${AUTH_SECRET:-}
@@ -134,13 +140,17 @@ services:
       # 纯 HTTP 必须为 0：Secure Cookie 在 HTTP 下不会被浏览器回传，表现为「登录成功但仍未登录」
       AUTH_SECURE_COOKIES: ${AUTH_SECURE_COOKIES:-0}
 
+      # ---- 初始管理员（仅空站点首次启动生效；默认 admin/admin）----
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:-admin}
+
       # ---- 出网安全 / 反代（与 1.x 同名参数，直接沿用）----
       ALLOW_PRIVATE_HOSTS: "${ALLOW_PRIVATE_HOSTS:-}"
       TRUST_PROXY: "${TRUST_PROXY:-}"
 
       # ---- 设置页「一键更新」：转发给同项目的 watchtower ----
       UPDATE_WEBHOOK_URL: http://watchtower:8080/v1/update
-      UPDATE_WEBHOOK_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:?发布态需要 WATCHTOWER_HTTP_API_TOKEN}
+      UPDATE_WEBHOOK_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-feedlore-update}
 
       # ---- 采集默认值（仅新库首次落库时生效；迁移过的站点以 settings.source 为准）----
       REFRESH_MINUTES: ${REFRESH_MINUTES:-30}
@@ -181,7 +191,7 @@ services:
       WATCHTOWER_CLEANUP: "true"
       WATCHTOWER_HTTP_API_UPDATE: "true"
       WATCHTOWER_HTTP_API_PERIODIC_POLLS: "true"
-      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:?发布态需要 WATCHTOWER_HTTP_API_TOKEN}
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-feedlore-update}
     networks:
       - feedlore
     logging:

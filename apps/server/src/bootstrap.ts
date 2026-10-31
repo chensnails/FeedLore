@@ -270,31 +270,43 @@ async function writeMarker(targetUrl: string, counts: Counts): Promise<void> {
   }
 }
 
-/** 空站点播种：1.x 环境里带着 ADMIN_USER / ADMIN_PASS，迁移后照旧建管理员。 */
-async function seedAdminIfEmpty(): Promise<void> {
+/** 空站点播种：没有任何账号时创建初始管理员（默认 admin/admin，可用 ADMIN_USER/ADMIN_PASS 覆盖）。 */
+async function ensureDefaultAdmin(): Promise<void> {
   const db = createDb();
-  const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(users);
-  if ((row?.n ?? 0) > 0) return;
+  let count = 0;
+  try {
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(users);
+    count = row?.n ?? 0;
+  } catch (e) {
+    warn(`数据库尚未就绪（可能还没跑结构迁移），跳过初始管理员：${(e as Error)?.message ?? e}`);
+    return;
+  }
+  if (count > 0) return;
 
   const username = process.env.ADMIN_USER?.trim() || 'admin';
-  const password = process.env.ADMIN_PASS;
-  if (!password) {
-    warn('源库没有账号，也没有 ADMIN_PASS：请手动执行 pnpm --filter @feedlore/server seed 创建管理员');
+  const password = process.env.ADMIN_PASS?.trim() || 'admin';
+  try {
+    const auth = getAuth(db);
+    // 与 seed.ts 一致：better-auth 必须要有 email，登录标识仍是 username
+    await auth.api.signUpEmail({
+      body: {
+        email: `${username.replace(/[^\w.-]/g, '_')}@example.com`,
+        password,
+        name: username,
+        username,
+      } as never,
+    });
+    await db.update(users).set({ role: 'admin' }).where(eq(users.username, username));
+  } catch (e) {
+    warn(`创建初始管理员失败：${(e as Error)?.message ?? e}`);
     return;
   }
 
-  const auth = getAuth(db);
-  // 与 seed.ts 一致：better-auth 必须要有 email，登录标识仍是 username
-  await auth.api.signUpEmail({
-    body: {
-      email: `${username.replace(/[^\w.-]/g, '_')}@example.com`,
-      password,
-      name: username,
-      username,
-    } as never,
-  });
-  await db.update(users).set({ role: 'admin' }).where(eq(users.username, username));
-  log(`空站点：已用 ADMIN_USER=${username} 创建管理员`);
+  if (password === 'admin') {
+    warn(`空站点：已创建初始管理员 ${username}/admin —— 请登录后立即修改密码`);
+  } else {
+    log(`空站点：已用 ADMIN_USER=${username} 创建管理员`);
+  }
 }
 
 /* ============================ 主流程 ============================ */
@@ -306,8 +318,9 @@ export async function bootstrap(): Promise<void> {
   if (!source) return;
 
   if (!(await detectV1(source))) {
-    // 普通 v2 站点（compose 升级路径 / 全新安装）：只需要补上零配置密钥
+    // 普通 v2 站点（compose 升级路径 / 全新安装）：补零配置密钥，空站点再建初始管理员
     await ensureAuthSecret(source);
+    await ensureDefaultAdmin();
     return;
   }
 
@@ -320,6 +333,7 @@ export async function bootstrap(): Promise<void> {
   if (await isUpgraded(target)) {
     process.env.DATABASE_URL = target;
     await ensureAuthSecret(target);
+    await ensureDefaultAdmin();
     log('v2 库已就绪（命中升级标记），直接使用');
     return;
   }
@@ -339,6 +353,6 @@ export async function bootstrap(): Promise<void> {
   await writeMarker(target, counts);
 
   process.env.DATABASE_URL = target;
-  await seedAdminIfEmpty();
+  await ensureDefaultAdmin();
   log(`自举完成（${((Date.now() - started) / 1000).toFixed(0)}s）：v2 使用 ${dbNameOf(target)}`);
 }
