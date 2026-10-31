@@ -3,7 +3,9 @@
 自托管 RSS 阅读器与资源卡片墙：多用户、按账号隔离订阅与偏好，支持采集调度、AI 日报、
 图片缓存与一键更新。数据全部存 PostgreSQL，运行时全链路按 UTC 记录时间。
 
-> 2.x 是 1.x 的单体应用重写为 pnpm monorepo；1.x 已冻结在 tag `v1.7.4`。
+当前版本 **2.0.1**，更新内容见 [CHANGELOG.md](CHANGELOG.md)。
+
+> 2.x 是 1.x 的单体应用重写为 pnpm monorepo；仓库只有 `main` 一条线，1.x 已冻结在 tag `v1.7.4`。
 > 1.x 站点升级见 **[UPGRADE-v2.md](UPGRADE-v2.md)**（开着 Watchtower 的站点无需任何配置）。
 
 ## 架构
@@ -44,6 +46,8 @@ docker exec -e ADMIN_USER=admin -e 'ADMIN_PASS=<强密码>' feedlore \
 「设置 → 关于 → 一键更新」触发。
 
 ## 本地开发
+
+需要 Node ≥ 22（pnpm 由 corepack 按 `packageManager` 提供）。
 
 ```bash
 pnpm install
