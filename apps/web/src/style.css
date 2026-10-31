@@ -1080,6 +1080,76 @@ html {
   gap: var(--gap-2);
 }
 
+/* 复制链接的选择菜单：条目含多个链接时展开，点谁复制谁。
+   开口朝上 —— 按钮在阅读层底部，向下弹会被 sheet 边缘裁掉。 */
+.copy-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.copy-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 35;
+  min-width: min(340px, 78vw);
+  max-height: min(300px, 48vh);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+}
+.copy-menu button {
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-2);
+  min-height: var(--ctl-md);
+  padding: 0 var(--gap-3);
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+.copy-menu button:hover:not(:disabled) {
+  background: var(--glass-2);
+}
+.copy-menu .copy-all {
+  color: var(--accent);
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  margin-bottom: 3px;
+}
+.copy-menu .copy-url {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--fs-xs);
+  /* 单行截断：完整地址挂在 title 上，长路径不能把菜单撑出屏 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 窄屏（≤820px，抽屉同一档）：absolute 贴按钮在 390px 视口上必然溢出，
+   改成贴底 action-sheet；此时 .reader-sheet 的 backdrop-filter 已关（见上档），
+   fixed 不会被模糊祖先劫持包含块。 */
+@media (max-width: 820px) {
+  .copy-menu {
+    position: fixed;
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    min-width: 0;
+    max-height: 50vh;
+  }
+}
+
 /* 正文配图：自适应网格，一张图不会撑成巨幅，多张图自然排开 */
 .reader-gallery {
   margin-top: 16px;

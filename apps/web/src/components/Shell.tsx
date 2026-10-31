@@ -5,6 +5,7 @@ import { applyAppearance } from '../lib/appearance';
 import { qk } from '../lib/query';
 import { useRefreshAll, useSaveLayout } from '../lib/mutations';
 import { useRouteSync } from '../lib/route';
+import { useEdgeSwipeNav } from '../lib/useEdgeSwipeNav';
 import { useUi } from '../store/ui';
 import { Icon } from './Icon';
 import type { Session } from '../lib/types';
@@ -31,6 +32,10 @@ export function Shell({ session }: { session: Session }) {
   const closeNav = useUi((s) => s.closeNav);
   const panel = useUi((s) => s.panel);
   const setPanel = useUi((s) => s.setPanel);
+  /* 移动端边缘手势：左缘右滑打开抽屉、抽屉开着左滑关闭。
+     只补 ☰ 之外的自然路径，开合逻辑仍在 store（openNav/closeNav）。 */
+  const openNav = useUi((s) => s.openNav);
+  useEdgeSwipeNav(navOpen, openNav, closeNav);
 
   /* 地址栏 ↔ 状态 的接线（深链 + 后退）。放在壳里而不是 App：
    * 登录态才有「看的是哪个频道」这回事，登录页不该往地址栏写东西。 */

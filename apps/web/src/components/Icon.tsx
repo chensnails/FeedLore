@@ -48,6 +48,7 @@ export type IconName =
   | 'list'
   | 'external'
   | 'link'
+  | 'copy'
   | 'download'
   | 'upload'
   | 'target'
@@ -265,6 +266,12 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <path d="M10.4 13.6a3.6 3.6 0 0 0 5.1 0l2.4-2.4a3.6 3.6 0 0 0-5.1-5.1l-1.2 1.2" />
       <path d="M13.6 10.4a3.6 3.6 0 0 0-5.1 0l-2.4 2.4a3.6 3.6 0 0 0 5.1 5.1l1.2-1.2" />
+    </>
+  ),
+  copy: (
+    <>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5.5 14.5H5a1.5 1.5 0 0 1-1.5-1.5V5A1.5 1.5 0 0 1 5 3.5h8A1.5 1.5 0 0 1 14.5 5v.5" />
     </>
   ),
   download: (

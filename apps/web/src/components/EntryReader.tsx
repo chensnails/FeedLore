@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { flattenEntries, qk, type EntriesPages } from '../lib/query';
 import { useSaveAppearance, useSetFavorite, useSetRead } from '../lib/mutations';
@@ -54,8 +54,28 @@ export function EntryReader() {
   });
   const fs = prefsQuery.data?.appearance.readerFs ?? 'm';
 
+  /* 可复制的链接清单（主链接 + 正文链接，去重去图片）。
+   * 只有 1 条时「复制链接」直接复制；多条时先弹选择菜单。 */
+  const copyLinks = useMemo(() => (data ? pickLinks(data) : []), [data]);
+
   const { panelRef, handlers } = useSwipeDismiss(close);
   useOverlayFocus(!!readingId, panelRef);
+
+  /* 复制链接的选择菜单：多链接时展开，点谁复制谁。
+   * 切换条目必须重置 —— 上一篇展开的菜单不能「跟」到下一篇。 */
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  useEffect(() => setCopyMenuOpen(false), [readingId]);
+
+  /* 菜单开着时点外面收起（与溢出菜单同一套 contains 判定）。 */
+  useEffect(() => {
+    if (!copyMenuOpen) return;
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest('.copy-wrap')) setCopyMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [copyMenuOpen]);
 
   /* 上一条 / 下一条：按**当前列表的顺序**走（不是按时间重新排）。
    *
@@ -118,6 +138,11 @@ export function EntryReader() {
       if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return;
 
       if (e.key === 'Escape') {
+        /* 复制菜单开着时 Esc 只关菜单 —— 不让路就会「关个菜单把整篇文章也关了」。 */
+        if (document.querySelector('.copy-menu')) {
+          setCopyMenuOpen(false);
+          return;
+        }
         close();
         return;
       }
@@ -248,19 +273,55 @@ export function EntryReader() {
                 <Icon name={data.isFavorite ? 'star-filled' : 'star'} size={14} />
                 {data.isFavorite ? '已收藏' : '收藏'}
               </button>
-              <button
-                className="btn ghost"
-                title="复制链接与提取码"
-                onClick={() => {
-                  const { text, count } = buildCopyText(data);
-                  // 没有提取码时别硬说「与提取码」，提示要跟实际复制到的内容一致
-                  const tail = data.pwd ? '与提取码' : '';
-                  void copy(text, count > 1 ? `已复制 ${count} 个链接${tail}` : `已复制链接${tail}`);
-                }}
-              >
-                <Icon name="link" size={14} />
-                复制链接
-              </button>
+              {/* 多链接不一次性全拷：展开清单点谁复制谁；单链接保持一步到位 */}
+              <span className="copy-wrap">
+                <button
+                  className="btn ghost"
+                  title={copyLinks.length > 1 ? '选择要复制的链接' : '复制链接与提取码'}
+                  onClick={() => {
+                    if (copyLinks.length > 1) {
+                      setCopyMenuOpen((v) => !v);
+                      return;
+                    }
+                    const { text } = buildCopyText(data);
+                    void copy(text, data.pwd ? '已复制链接与提取码' : '已复制链接');
+                  }}
+                >
+                  <Icon name="link" size={14} />
+                  复制链接{copyLinks.length > 1 ? `（${copyLinks.length}）` : ''}
+                </button>
+                {copyMenuOpen && (
+                  <div className="copy-menu" role="menu" aria-label="选择要复制的链接">
+                    <button
+                      className="copy-all"
+                      role="menuitem"
+                      onClick={() => {
+                        setCopyMenuOpen(false);
+                        const { text, count } = buildCopyText(data);
+                        void copy(text, `已复制 ${count} 个链接${data.pwd ? '与提取码' : ''}`);
+                      }}
+                    >
+                      <Icon name="copy" size={14} />
+                      全部复制（{copyLinks.length} 个链接）
+                    </button>
+                    {copyLinks.map((u) => (
+                      <button
+                        key={u}
+                        className="copy-url"
+                        role="menuitem"
+                        title={u}
+                        onClick={() => {
+                          setCopyMenuOpen(false);
+                          void copy(u, '已复制链接');
+                        }}
+                      >
+                        <Icon name="link" size={13} />
+                        {urlLabel(u)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </span>
             </p>
 
             {/* 翻篇放在正文末尾，而不是顶部：读完一篇才需要去下一篇。
@@ -319,19 +380,14 @@ function isImageUrl(u: string): boolean {
 }
 
 /**
- * 复制用的文本：**只要链接 + 提取码，不带标题**。
- *
- * 网盘/资源帖常含多个链接，逐个一行展示（粘到聊天窗口就是一条条可点的地址）；
- * 图片类链接一律排除。`links` 已按「主链接优先、其余按出现顺序」排好，
- * 这里再补一次 sourceUrl/link 兜底（links 可能因上限被截断）。
+ * 复制链接的可选清单：主链接 + 正文里的其它链接，去重、去图片。
+ * 「复制链接」按钮在多个链接时先弹选择菜单（点谁复制谁），单个时直接复制。
  */
-function buildCopyText(d: {
-  name: string;
+function pickLinks(d: {
   link: string | null;
   sourceUrl: string | null;
   links: string[];
-  pwd: string | null;
-}): { text: string; count: number } {
+}): string[] {
   const primary = d.sourceUrl ?? d.link;
   const all = primary ? [primary, ...d.links] : [...d.links];
   const seen = new Set<string>();
@@ -345,12 +401,41 @@ function buildCopyText(d: {
     picked.push(s);
   }
   // 全被过滤掉（极端情况：只有图片链接）时，至少把主链接带上。
-  // ⚠️ 这里必须是 picked 的**副本**：若直接 push 到 picked，下面 count 会把
+  return picked.length ? picked : primary ? [primary] : [];
+}
+
+/**
+ * 复制用的文本：**只要链接 + 提取码，不带标题**。
+ *
+ * 网盘/资源帖常含多个链接，逐个一行展示（粘到聊天窗口就是一条条可点的地址）；
+ * 图片类链接一律排除。`links` 已按「主链接优先、其余按出现顺序」排好，
+ * 这里再补一次 sourceUrl/link 兜底（links 可能因上限被截断）。
+ */
+function buildCopyText(d: {
+  name: string;
+  link: string | null;
+  sourceUrl: string | null;
+  links: string[];
+  pwd: string | null;
+}): { text: string; count: number } {
+  // ⚠️ lines 必须是 picked 的**副本**：若直接 push 到 picked，下面 count 会把
   // 「提取码」那一行也算成链接（曾出现 2 个链接提示「已复制 3 个链接」）。
-  const lines = picked.length ? [...picked] : primary ? [primary] : [];
+  const lines = [...pickLinks(d)];
   const count = lines.length;
   if (d.pwd) lines.push(`提取码：${d.pwd}`);
   return { text: lines.join('\n'), count };
+}
+
+/** 菜单里每条链接的展示文案：host + 路径，截短；完整地址挂在 title 上。 */
+function urlLabel(u: string): string {
+  let s: string;
+  try {
+    const url = new URL(u);
+    s = url.host + url.pathname;
+  } catch {
+    s = u;
+  }
+  return s.length > 46 ? `${s.slice(0, 45)}…` : s;
 }
 
 /** execCommand 兜底：只在非安全上下文（纯 HTTP）下走到这条路，不追求完美，能用就行。 */
