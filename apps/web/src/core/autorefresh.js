@@ -6,8 +6,8 @@
  * ============================================================ */
 
 import { apiFetch, httpError, toast, emitShell, emitOverlays } from './util.js';
-import { state } from './state.js';
-import { render } from './feeds.js';
+import { state, activeScrollTop, scrollActiveTop } from './state.js';
+import { render, loadFeeds } from './feeds.js';
 import { renderReader, readerFilterParams } from './reader.js';
 
 /* ============================================================
@@ -92,17 +92,26 @@ export function applyFresh({ view, data }) {
     state.rdEntries = list;
     state.rdOffset = list.length;
     state.rdHasMore = !!data.hasMore;
+    state.rdTotal = Number(data.total) || state.rdTotal;
+    state.rdLoadMoreErr = false;
     // 展开态与正文缓存留着：条目 id 没变，重绘后会自己恢复展开
     renderReader();
   } else {
     state.entries = list;
     state.offset = list.length;
     state.hasMore = !!data.hasMore && list.length > 0;
+    state.total = Number(data.total) || 0;
     state.tags = data.tags || state.tags;
+    state.loadMoreErr = false;
     render();
   }
   emitShell();
   hideNewPill();
+  // 新条目会改变侧栏的未读计数与频道角标：只换列表不刷频道，数字会停在旧值。
+  // loadFeeds 只发 __cardsTick，阅读页侧栏另需一次 __readerTick 才会重读 state。
+  loadFeeds()
+    .then(() => { if (view === 'reader') renderReader(); })
+    .catch(() => { /* 频道刷新失败不影响列表本身 */ });
 }
 
 export async function checkForNew() {
@@ -117,8 +126,9 @@ export async function checkForNew() {
   const n = countNewHead(data.entries || [], current);
   if (!n) return 0;
 
-  // 停在顶部、也没有展开中的文章时才敢直接换列表；否则挂浮标等用户点
-  const atTop = window.scrollY < 300;
+  // 停在顶部、也没有展开中的文章时才敢直接换列表；否则挂浮标等用户点。
+  // ⚠️ App Shell 的滚动在视图容器上，window.scrollY 恒为 0 —— 必须问当前容器。
+  const atTop = activeScrollTop() < 300;
   const busy = view === 'reader' && state.rdExpanded.size > 0;
   if (atTop && !busy) {
     applyFresh({ view, data });
@@ -136,7 +146,7 @@ export function applyPendingFresh() {
   hideNewPill();
   if (!p) return;
   applyFresh(p);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  scrollActiveTop('smooth');
 }
 
 // 回到前台时如果已经过了间隔就补一次（后台期间定时器被跳过了）

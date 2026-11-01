@@ -6,7 +6,7 @@
  * ============================================================ */
 
 import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, writeHash, parseHash } from './util.js';
-import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
+import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, scrollActiveTop, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
 import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
 import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, focusReaderArt, restoreReaderArt } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
@@ -137,7 +137,8 @@ export function switchView(name) {
     // AI 视图已 React 化：通知 AiView 激活 / 隐去（切到 ai 时由组件自行加载子页数据）
     window.dispatchEvent(new CustomEvent('__viewChanged', { detail: name }));
 
-    window.scrollTo({ top: 0 });
+    // 新视图的容器切完后把它自己的滚动位置归零（window.scrollTo 在这里是空操作）
+    scrollActiveTop('auto');
   };
   // View Transitions API：视图切换时整页交叉淡入（渐进增强，减少动态效果时跳过）
   if (document.startViewTransition && !prefersReducedMotion()) {
@@ -368,6 +369,18 @@ export function focusSearchBox() {
   if (state.tab !== 'reader') switchView('reader');
   if (window.__readerFocusSearch) window.__readerFocusSearch();
 }
+
+// 「/」聚焦搜索：命令面板里一直写着这个提示，之前却没有对应的按键处理。
+// 正在输入框里打字时不抢（用户可能真的要打斜杠），任何弹层开着时也不抢。
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  const t = ev.target;
+  if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
+  if (window.__settingsOpen || window.__cmdkOpen || window.__confirmOpen) return;
+  if (document.querySelector('.lightbox, .modal-mask, .dd-mask:not([hidden])')) return;
+  ev.preventDefault();
+  focusSearchBox();
+});
 
 
 /* 卡片页条目收藏/已读：复用与阅读页相同的 /api/entries PATCH，但作用于卡片列表 state.entries。

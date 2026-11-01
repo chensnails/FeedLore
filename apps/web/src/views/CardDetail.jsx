@@ -29,6 +29,19 @@ const Icon = ({ n }) => (
   <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
 );
 
+/** 把 Tab / Shift+Tab 圈在弹窗内：背景卡片仍在 DOM 里，不拦的话键盘会跑到弹层后面 */
+function trapTab(panel, ev) {
+  if (!panel) return;
+  const nodes = Array.from(panel.querySelectorAll(
+    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+  )).filter((el) => el.offsetParent !== null || el === document.activeElement);
+  if (!nodes.length) return;
+  const first = nodes[0];
+  const last = nodes[nodes.length - 1];
+  if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
+  else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+}
+
 /** 有没有正文可展示：图文块、正文文本、正文图片三者有其一即可 */
 function hasBody(f) {
   if (!f) return false;
@@ -47,34 +60,45 @@ export function CardDetail({ e, onClose, onTag }) {
   const s = S();
   const [full, setFull] = useState(null);
   const [err, setErr] = useState(false);
+  // 正文重试计数：+1 就重跑拉取 effect，其余（锁滚动 / 记已读 / 焦点）不重复执行
+  const [reloadKey, setReloadKey] = useState(0);
   // 打开瞬间定格形态（与 Dropdown 同一约定），避免开合途中换布局
   const [mobile] = useState(isMobileMq());
   const closeRef = useRef(null);
+  const dialogRef = useRef(null);
   // CardsView 每次重绘都会传新的 onClose；存进 ref，避免它进入 effect 依赖导致重复拉正文 / 重复锁滚动
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    let dead = false;
     const c = S();
     if (c.cardsDetailRead) c.cardsDetailRead(e.id);
     if (c.lockPageScroll) c.lockPageScroll();
-    const onKey = (ev) => { if (ev.key === 'Escape') onCloseRef.current(); };
+    const onKey = (ev) => {
+      if (ev.key === 'Escape') { onCloseRef.current(); return; }
+      if (ev.key === 'Tab') trapTab(mobile ? sheetRef.current : dialogRef.current, ev);
+    };
     document.addEventListener('keydown', onKey);
     if (closeRef.current) closeRef.current.focus();
-    c.apiFetch('/api/entries/' + encodeURIComponent(e.id))
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (c.unlockPageScroll) c.unlockPageScroll();
+    };
+  }, [e.id, mobile]);
+
+  useEffect(() => {
+    let dead = false;
+    setErr(false);
+    setFull(null);
+    S().apiFetch('/api/entries/' + encodeURIComponent(e.id))
       .then((res) => {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
       })
       .then((d) => { if (!dead) setFull(d); })
       .catch(() => { if (!dead) setErr(true); });
-    return () => {
-      dead = true;
-      document.removeEventListener('keydown', onKey);
-      if (c.unlockPageScroll) c.unlockPageScroll();
-    };
-  }, [e.id]);
+    return () => { dead = true; };
+  }, [e.id, reloadKey]);
 
   const fav = !!e.isFavorite;
   const toggleFav = () => {
@@ -122,7 +146,14 @@ export function CardDetail({ e, onClose, onTag }) {
   const dialogLabel = e.name || '条目详情';
 
   let inner = null;
-  if (err) inner = <div className="hint">正文加载失败，刷新页面重试</div>;
+  if (err) {
+    inner = (
+      <div className="hint">
+        正文加载失败
+        <button type="button" className="btn btn-sm" onClick={() => setReloadKey((k) => k + 1)}>重试</button>
+      </div>
+    );
+  }
   else if (!full) inner = <div className="art-loading"><i /><i /><i /></div>;
   else if (showBody) inner = <div className="art-body cd-art"><ArtBody e={full} onTag={onTag} extraActions={extraActions} /></div>;
   else inner = (
@@ -151,7 +182,7 @@ export function CardDetail({ e, onClose, onTag }) {
 
   return (
     <div className="modal-mask" onClick={(ev) => { if (ev.target === ev.currentTarget) onClose(); }}>
-      <div className="modal cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel}>
+      <div className="modal cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel} ref={dialogRef}>
         {closeBtn}
         <div className="modal-body">
           <div className="cd-scroll">

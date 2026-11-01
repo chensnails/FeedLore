@@ -3165,10 +3165,23 @@ const withEFP = (el, fn) => {
   // 空态
   w.feedlore.state.feedList = []; w.feedlore.state.entries = []; cardsTick();
   await sleep(30);
-  t('空态：无订阅源提示', () => {
+  t('空态：无订阅源提示 + 直达数据源的按钮', () => {
     if (!C('#empty')) throw new Error('无空态');
     if (C('#empty').textContent.indexOf('还没有订阅源') < 0) throw new Error('文案: ' + C('#empty').textContent);
+    const btn = C('#empty .empty-action');
+    if (!btn) throw new Error('空态缺动作按钮');
+    if (btn.textContent.trim() !== '添加订阅源') throw new Error('按钮文案: ' + btn.textContent);
   });
+  // 翻页失败：列表底部留住错误与重试，而不是只闪一下 toast
+  w.feedlore.state.loadMoreErr = true; cardsTick();
+  await sleep(30);
+  t('翻页失败：列表底部出现重试', () => {
+    const box = C('.loadmore-wrap .load-retry');
+    if (!box) throw new Error('缺重试块');
+    if (!box.querySelector('button')) throw new Error('缺重试按钮');
+  });
+  w.feedlore.state.loadMoreErr = false; cardsTick();
+  await sleep(30);
 
   // ---- 窄屏频道抽屉（v1.3.10）：卡片页改成与文章页同一套「标题栏 + 抽屉」----
   w.feedlore.state.feedList = [
@@ -3285,6 +3298,11 @@ const withEFP = (el, fn) => {
     if (it1.querySelector('.src-pill').textContent !== '例子星球') throw new Error('来源短名: ' + it1.querySelector('.src-pill').textContent);
     const it2 = R('#readerList .art-item[data-id="r2"]');
     if (!it2.classList.contains('is-read') || !it2.classList.contains('is-fav')) throw new Error('r2 状态类不符');
+  });
+  // 已读回退：只有已读条目出现「标为未读」，未读条目不重复给入口
+  t('标为未读入口只出现在已读条目', () => {
+    if (!R('#readerList .art-item[data-id="r2"] .art-unread')) throw new Error('已读条目缺「标为未读」');
+    if (R('#readerList .art-item[data-id="r1"] .art-unread')) throw new Error('未读条目不该有「标为未读」');
   });
 
   // 卡片页跳过来的那条：高亮类只跟着 state.rdFlashId 走（React 每帧重写 className）
@@ -3409,6 +3427,9 @@ const withEFP = (el, fn) => {
 
   // 搜索（去抖）
   setVal(R('#readerSearch'), '关键词');
+  t('搜索清除按钮随输入即时出现（不等防抖返回）', () => {
+    if (R('#readerSearchClear').hidden) throw new Error('应立刻显示');
+  });
   await sleep(360);
   t('搜索：去抖后 readerSearch(q)', () => {
     if (!callsOf('readerSearch').some((c) => c[1] === '关键词')) throw new Error('未触发: ' + JSON.stringify(callsOf('readerSearch')));
@@ -3431,8 +3452,11 @@ const withEFP = (el, fn) => {
   w.feedlore.state.rdReadError = true; w.feedlore.state.rdReadErrorMsg = '加载失败：HTTP 500';
   readerSetEntries([]);
   await sleep(30);
-  t('空态文案（读取失败）', () => {
+  t('空态文案（读取失败）+ 重试按钮', () => {
     if (R('#readerEmpty').textContent.indexOf('加载失败：HTTP 500') < 0) throw new Error(R('#readerEmpty').textContent);
+    const btn = R('#readerEmpty .empty-action');
+    if (!btn) throw new Error('错误空态缺重试按钮');
+    if (btn.textContent.trim() !== '重试') throw new Error('按钮文案: ' + btn.textContent);
   });
   w.feedlore.state.rdReadError = false;
 
@@ -3942,8 +3966,9 @@ const withEFP = (el, fn) => {
     });
     // 关掉日报后，所有入口都靠 switchView 这一道守卫回落（#digest 深链、命令面板遗留项
     // 走的都是它）；假 core 桩测的是组件，这里验真实 core 的判定本身。
-    // 快捷键已彻底移除：j/k/o/s/u/? 与 / 都不再触发任何行为（文章切换 / 帮助浮层 / 聚焦搜索）
-    t('冒烟：快捷键已移除 —— j/k/o/s/u/? 不触发任何行为', () => {
+    // 旧快捷键已移除：j/k/o/s/u/? 不触发任何行为；`/` 是唯一保留的页面级快捷键（聚焦搜索），
+    // 单独在下面一条里验。
+    t('冒烟：旧快捷键已移除 —— j/k/o/s/u/? 不触发任何行为', () => {
       const c2 = sw.__coreForTest;
       c2.state.rdEntries = [{ id: 'a1', isRead: false, isFavorite: false }, { id: 'a2', isRead: false, isFavorite: false }];
       c2.state.rdExpanded = new Set();
@@ -3952,13 +3977,25 @@ const withEFP = (el, fn) => {
         sw.document.dispatchEvent(ev);
         return ev.defaultPrevented;   // 被拦截 = 仍被当成快捷键
       };
-      for (const k of ['j', 'k', 'o', 's', 'u', '?', '/']) {
+      for (const k of ['j', 'k', 'o', 's', 'u', '?']) {
         if (press(k)) throw new Error(`按键 "${k}" 仍被当作快捷键拦截（preventDefault）`);
       }
       if (c2.state.rdExpanded.size !== 0) throw new Error('按键不应展开任何条目：' + c2.state.rdExpanded.size);
       if ('rdCursor' in c2.state) throw new Error('state 不应再有 rdCursor 字段');
       if (c2.getKbdHelpState !== undefined) throw new Error('core 不应再导出 getKbdHelpState');
       if (c2.toggleKbdHelp !== undefined) throw new Error('core 不应再导出 toggleKbdHelp');
+    });
+    t('冒烟：`/` 聚焦搜索（命令面板里一直写着这个提示）', () => {
+      const ev = new sw.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+      sw.document.dispatchEvent(ev);
+      if (!ev.defaultPrevented) throw new Error('`/` 未被拦截，浏览器会往页面里打一个斜杠');
+      // 输入框里打字时不能抢：在 input 上派发同一个键，不应被拦截
+      const input = sw.document.createElement('input');
+      sw.document.body.appendChild(input);
+      const ev2 = new sw.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
+      input.dispatchEvent(ev2);
+      input.remove();
+      if (ev2.defaultPrevented) throw new Error('输入框里的 `/` 被全局快捷键抢走了');
     });
     t('冒烟：⌘K 保留 —— 命令面板仍监听 ⌘K / Ctrl+K（源码级）', () => {
       // 命令面板没有其它入口（无按钮可点），⌘K / Ctrl+K 是它唯一的开关，按用户要求保留。
@@ -3967,6 +4004,18 @@ const withEFP = (el, fn) => {
       const p = fs.readFileSync(path.join(root, 'src', 'cmdk', 'CommandPalette.jsx'), 'utf8');
       if (!/ev\.key === 'k' \|\| ev\.key === 'K'/.test(p)) throw new Error('CommandPalette 不再监听 ⌘K / Ctrl+K');
       if (!/ev\.metaKey \|\| ev\.ctrlKey/.test(p)) throw new Error('⌘K 应同时接受 metaKey(mac) 与 ctrlKey(win)');
+      if (!/在文章中搜索/.test(p) || !/readerSearch/.test(p)) throw new Error('命令面板丢了「输入词转全文搜索」');
+    });
+    t('冒烟：滚动判断落到当前视图容器（App Shell 下 window.scrollY 恒为 0）', () => {
+      const root = path.join(__dirname, '..', '..');
+      const ar = fs.readFileSync(path.join(root, 'src', 'core', 'autorefresh.js'), 'utf8');
+      const st = fs.readFileSync(path.join(root, 'src', 'core', 'state.js'), 'utf8');
+      if (/window\.scrollY\s*<\s*300/.test(ar)) throw new Error('自动刷新又按 window.scrollY 判顶了');
+      if (!/activeScrollTop/.test(ar)) throw new Error('自动刷新没用当前容器的高度');
+      if (!/export function activeScrollEl/.test(st)) throw new Error('state 缺 activeScrollEl 滚动桥');
+      if (!/export function scrollActiveTop/.test(st)) throw new Error('state 缺 scrollActiveTop 滚动桥');
+      // 自动刷新后频道计数要重读一遍；阅读页只认 __readerTick，loadFeeds 那一次不够
+      if (!/loadFeeds\(\)[\s\S]{0,200}renderReader\(\)/.test(ar)) throw new Error('自动刷新后阅读页侧栏计数不会刷新');
     });
     t('冒烟：日报关掉时 switchView(ai) 回落文章页，重开后能进', () => {
       const c2 = sw.__coreForTest;

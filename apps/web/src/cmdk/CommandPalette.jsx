@@ -53,7 +53,19 @@ export function CommandPalette() {
   }, [active]);
 
   const close = useCallback(() => setOpen(false), []);
-  const items = open ? cmdkFilter(buildCommands(BRIDGE()), q) : [];
+  const matched = open ? cmdkFilter(buildCommands(BRIDGE()), q) : [];
+  // 输入词同时当「全文搜索」用：命令都不匹配时它就是唯一一条，回车直接搜；
+  // 有命令匹配时排在最后，回车仍先执行命令，想搜再按 ↓ 选它。
+  const query = q.trim();
+  const searchCmd = (open && query) ? {
+    group: '搜索', icon: 'search', label: `在文章中搜索「${query}」`, hint: 'Enter',
+    run: () => {
+      const c = BRIDGE();
+      if (c.state.tab !== 'reader') c.switchView('reader');
+      if (c.readerSearch) c.readerSearch(query);
+    },
+  } : null;
+  const items = searchCmd ? matched.concat([searchCmd]) : matched;
 
   const runCmdk = useCallback((idx) => {
     const c = items[idx];

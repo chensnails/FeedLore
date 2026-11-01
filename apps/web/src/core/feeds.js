@@ -105,7 +105,8 @@ export async function loadPage(reset = false) {
   }
   state.loading = true;
 
-  if (reset) { state.offset = 0; state.hasMore = true; state.entries = []; }
+  if (reset) { state.offset = 0; state.hasMore = true; state.entries = []; state.loadMoreErr = false; }
+  if (!reset) state.loadMoreErr = false;
 
   const first = state.entries.length === 0;
   render();   // 立刻反映骨架 / 加载态（渲染归 React 卡片视图）
@@ -137,10 +138,12 @@ export async function loadPage(reset = false) {
 
     state.offset += list.length;
     state.hasMore = !!data.hasMore && list.length > 0;
+    state.total = Number(data.total) || 0;
     state.loadError = false;
+    state.loadMoreErr = false;
   } catch (err) {
     if (first) state.loadError = true;   // 首屏失败 → React 显示错误空态
-    else toast('加载失败：' + (err.message || err), false);
+    else state.loadMoreErr = true;       // 翻页失败 → 列表底部给「重试」，不再只弹一下 toast
   } finally {
     state.loading = false;
     render();

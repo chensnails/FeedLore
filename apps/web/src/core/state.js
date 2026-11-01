@@ -18,8 +18,10 @@ export const state = {
   entries: [],
   offset: 0,
   hasMore: true,
+  total: 0,           // 服务端返回的命中总数（工具栏「共 N 篇」与搜索反馈用）
   loading: false,
   loadError: false,   // 首屏加载失败（React 卡片视图据此显示错误空态）
+  loadMoreErr: false, // 翻页失败（列表底部给重试按钮，并暂停自动加载）
   q: '',
   sort: 'new',        // 阅读页排序：new 最新 / old 最早 / name 名称（按账号持久化）
   tag: null,
@@ -51,7 +53,9 @@ export const state = {
   rdEntries: [],
   rdOffset: 0,
   rdHasMore: true,
+  rdTotal: 0,          // 当前筛选条件下的命中总数（搜索反馈 / 空态文案用）
   rdLoading: false,
+  rdLoadMoreErr: false, // 翻页失败（列表底部给重试按钮，并暂停自动加载）
   /* 频道栏里收起的分组名（数组，与 layout.rdCollapsedGroups 同源）。
    * ⚠️ 必须挂到 state 上：React 侧（ReaderView）用它当 useMemo 的 key，
    * 只读 layoutPref 的话外部拿不到变化信号，折叠点击会「写进去了但界面不动」。
@@ -66,6 +70,30 @@ export const state = {
      只活一瞬（core/reader.js 的 focusReaderArt 设、定时器清），不落任何持久化。 */
   rdFlashId: null,
 };
+
+/* ---------------- 当前视图的滚动容器 ----------------
+ * App Shell 把 body 锁在视口内，三个视图各自是独立滚动容器，window.scrollY 永远是 0。
+ * 自动刷新判「是否停在顶部」、浮标回顶、切页回顶、滚动到顶命令都必须落到容器上，
+ * 否则要么误判（列表在眼皮底下被换掉），要么点了没反应。
+ * 放在 state 是因为 autorefresh 与 ui 都要用，而两边不能互相依赖。 */
+export function activeScrollEl() {
+  if (state.tab === 'cards') return document.querySelector('#cardsRoot > main.wrap');
+  if (state.tab === 'ai') return document.getElementById('aiView');
+  return document.querySelector('#readerView .reader-main');
+}
+
+export function activeScrollTop() {
+  const el = activeScrollEl();
+  return el ? el.scrollTop : (window.scrollY || 0);
+}
+
+export function scrollActiveTop(behavior = 'auto') {
+  const el = activeScrollEl();
+  if (!el) { window.scrollTo({ top: 0, behavior }); return; }
+  // jsdom / 老浏览器没有 Element.scrollTo，退回直接写 scrollTop
+  if (typeof el.scrollTo === 'function') el.scrollTo({ top: 0, behavior });
+  else el.scrollTop = 0;
+}
 
 /* ---------------- 频道栏宽度 ----------------
  * 实际生效的是 :root 上的 --reader-side-w（.reader 网格第一列引用它）。

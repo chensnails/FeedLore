@@ -25,7 +25,7 @@ export const core = {
   THEME_MODES: S.THEME_MODES, THEME_META: S.THEME_META,
   refresh: UI.refreshFeeds,
   cycleTheme: S.cycleTheme,
-  scrollTop: () => window.scrollTo({ top: 0, behavior: U.prefersReducedMotion() ? 'auto' : 'smooth' }),
+  scrollTop: () => S.scrollActiveTop(U.prefersReducedMotion() ? 'auto' : 'smooth'),
   // —— 设置弹层 / 外观 / 关于（v1.3.0 起 React 化） ——
   apiFetch: U.apiFetch, httpError: U.httpError, isAdmin: S.isAdmin, toast: U.toast, confirm: U.confirm,
   // —— 覆盖层（v2.1.0 起 React 化，组件 src/ui/Overlays.jsx） ——
@@ -53,8 +53,9 @@ export const core = {
   cardsFilterFeed: (v) => { S.state.feedFilter = v ? v : null; S.state.tag = null; return F.loadPage(true); },
   cardsSort: (v) => { S.state.sort = v; S.setLayout('sort', v); F.render(); },
   cardsView: (m) => F.setViewMode(m),
-  cardsTag: (t) => { S.state.tag = t || null; F.render(); window.scrollTo({ top: 0, behavior: U.prefersReducedMotion() ? 'auto' : 'smooth' }); },
+  cardsTag: (t) => { S.state.tag = t || null; F.render(); S.scrollActiveTop(U.prefersReducedMotion() ? 'auto' : 'smooth'); },
   cardsLoadMore: () => F.loadPage(false),
+  cardsRetryMore: () => { S.state.loadMoreErr = false; return F.loadPage(false); },
   // 窄屏频道抽屉（与文章页同一套交互，v1.3.10）
   cardsToggleDrawer: F.cardsToggleDrawer, cardsCloseDrawer: F.cardsCloseDrawer,
   cardsSetFlag: (id, patch) => UI.cardSetFlag(id, patch),
@@ -71,7 +72,9 @@ export const core = {
   readerOpenSource: R.readerOpenSource,
   readerSearch: R.readerSearch, readerToggleArt: R.readerToggleArt, readerCollapseAll: R.readerCollapseAll,
   readerReadAll: R.readerReadAll,
-  readerToggleFav: R.readerToggleFav, readerTagToCards: UI.readerTagToCards,
+  readerToggleFav: R.readerToggleFav, readerMarkUnread: R.readerMarkUnread,
+  readerReload: R.readerReload, readerRetryBody: R.readerRetryBody, readerRetryMore: R.readerRetryMore,
+  readerTagToCards: UI.readerTagToCards,
   restoreReaderArt: R.restoreReaderArt,
   readerToggleAccordion: R.readerToggleAccordion, readerAccordionOn: R.readerAccordionOn,
   readerToggleDrawer: R.readerToggleDrawer, readerCloseDrawer: R.readerCloseDrawer,

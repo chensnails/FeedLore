@@ -289,7 +289,7 @@ export function CardsView() {
   useEffect(() => {
     if (!st.hasMore) return undefined;
     const check = () => {
-      if (st.loading || !st.hasMore) return;
+      if (st.loading || !st.hasMore || st.loadMoreErr) return;
       const el = document.getElementById('cardsSentinel');
       if (el && el.getBoundingClientRect().top < window.innerHeight + 480) {
         if (s.cardsLoadMore) s.cardsLoadMore();
@@ -301,7 +301,7 @@ export function CardsView() {
       document.removeEventListener('scroll', check, { capture: true });
       clearTimeout(t);
     };
-  }, [st.hasMore, st.loading]);
+  }, [st.hasMore, st.loading, st.loadMoreErr]);
 
   // 合并头部：本视图第一行即吸顶条，实测高度写入 --topbar-h（隐藏视图测得 0 高不写，避免覆盖）
   useTopbarHeight(headRef);
@@ -327,12 +327,32 @@ export function CardsView() {
   const noFeeds = !feeds.length;
   const noCards = !st.feedFilter && !feeds.some((f) => f.cardEnabled);
 
+  // 空态不只说「为什么空」，还要给一条出路：每个分支都配一个能立刻点的动作，
+  // 否则用户只能自己去猜该去哪个页面、点哪个开关。
   let emptyMsg = null;
-  if (st.loadError) emptyMsg = '数据加载失败，请稍后点击「刷新」重试';
-  else if (noFeeds) emptyMsg = '还没有订阅源，点右上角「设置 → 数据源」添加 RSS 地址';
-  else if (noCards) emptyMsg = '所有频道的「卡片」开关都关掉了。去「设置 → 数据源」打开，或切到「文章」页阅读';
-  else if (!list.length) {
-    emptyMsg = st.q ? '没有找到匹配的资源' : (st.tag ? '该标签下暂无内容' : '所选频道暂无内容');
+  let emptyAction = null;
+  if (st.loadError) {
+    emptyMsg = '数据加载失败，请稍后重试';
+    emptyAction = { label: '重试', run: () => s.loadPage(true) };
+  } else if (noFeeds) {
+    emptyMsg = '还没有订阅源，点右上角「设置 → 数据源」添加 RSS 地址';
+    emptyAction = { label: '添加订阅源', run: () => s.readerOpenSource() };
+  } else if (noCards) {
+    emptyMsg = '所有频道的「卡片」开关都关掉了。去「设置 → 数据源」打开，或切到「文章」页阅读';
+    emptyAction = { label: '去数据源设置', run: () => s.readerOpenSource() };
+  } else if (!list.length) {
+    if (st.q) {
+      emptyMsg = '没有找到匹配的资源';
+      emptyAction = { label: '清除搜索', run: () => onSearchClear() };
+    } else if (st.tag) {
+      emptyMsg = '该标签下暂无内容';
+      emptyAction = { label: '清除标签', run: () => s.cardsTag(null) };
+    } else {
+      emptyMsg = st.feedFilter == null ? '所选频道暂无内容' : '这个频道还没有内容';
+      emptyAction = st.feedFilter == null
+        ? { label: '重新抓取', run: () => s.refresh() }
+        : { label: '查看全部频道', run: () => s.cardsFilterFeed('') };
+    }
   }
 
   const hasMeta = !!st.feedMeta;
@@ -488,6 +508,9 @@ export function CardsView() {
       </div>
 
       <main className="wrap">
+        {st.q && !showSkeleton && !showEmpty ? (
+          <div className="list-count" role="status">「{st.q}」找到 {st.total} 条结果</div>
+        ) : null}
         {showSkeleton ? (
           <div id="skeleton" className={'grid' + (view === 'list' ? ' list-mode' : '')}><Skeletons view={view} /></div>
         ) : null}
@@ -506,15 +529,27 @@ export function CardsView() {
           <div id="empty" className="empty">
             <div className="empty-ico"><svg className="ico" aria-hidden="true" focusable="false"><use href="#i-inbox" /></svg></div>
             <p>{emptyMsg}</p>
+            {emptyAction ? (
+              <button type="button" className="btn btn-primary empty-action" onClick={emptyAction.run}>{emptyAction.label}</button>
+            ) : null}
           </div>
         ) : <div id="empty" className="empty" hidden><div className="empty-ico"><svg className="ico" aria-hidden="true" focusable="false"><use href="#i-inbox" /></svg></div><p /></div>}
 
         <div className="loadmore-wrap">
           {/* 「加载更多」按钮已移除（v1.6.0-test5）：滚动到底自动加载是唯一入口，
               这里只剩加载态圆点与滚动哨兵（几何判定用的隐形 1px 锚点）。 */}
+          {st.loadMoreErr ? (
+            <div className="load-retry" role="alert">
+              <span>加载失败</span>
+              <button type="button" className="btn" onClick={() => s.cardsRetryMore()}>重试</button>
+            </div>
+          ) : null}
           <div className="loading-dots" id="loadingMore" hidden={!showLoadingMore}><i /><i /><i /></div>
           <div className="cards-sentinel" id="cardsSentinel" aria-hidden="true" />
         </div>
+        {!showSkeleton && !showEmpty && list.length > 0 && !st.hasMore && !showLoadingMore ? (
+          <div className="list-end">已经到底了</div>
+        ) : null}
 
         <footer className="foot">
           笺川 · FeedLore · 数据存于 PostgreSQL

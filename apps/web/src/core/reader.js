@@ -71,7 +71,7 @@ export async function loadReader({ reset = false } = {}) {
     if (reset) readerPendingReset = true;
     return;
   }
-  if (!reset && !state.rdHasMore) return;
+  if (!reset && (!state.rdHasMore || state.rdLoadMoreErr)) return;
 
   state.rdLoading = true;
   if (reset) {
@@ -81,7 +81,11 @@ export async function loadReader({ reset = false } = {}) {
     state.rdExpanded.clear();
     state.rdBody.clear();
     state.rdBodyErr.clear();
+    state.rdReadError = false;
+    state.rdLoadMoreErr = false;
     readerPinnedId = null;   // 列表重置 → 旧的置顶目标已不在列表里
+  } else {
+    state.rdLoadMoreErr = false;
   }
   renderReader();
 
@@ -98,13 +102,15 @@ export async function loadReader({ reset = false } = {}) {
     state.rdEntries = reset ? list : state.rdEntries.concat(list);
     state.rdOffset = state.rdEntries.length;
     state.rdHasMore = !!data.hasMore;
+    state.rdTotal = Number(data.total) || 0;
     state.rdReadError = false;
+    state.rdLoadMoreErr = false;
   } catch (err) {
     if (!state.rdEntries.length) {
       state.rdReadError = true;
       state.rdReadErrorMsg = '加载失败：' + String((err && err.message) || err);
     } else {
-      toast('加载失败：' + (err.message || err), false);
+      state.rdLoadMoreErr = true;
     }
   } finally {
     state.rdLoading = false;
@@ -113,8 +119,9 @@ export async function loadReader({ reset = false } = {}) {
     // 置顶位置随之失效 —— 这里是唯一需要重校的另一处（另一处是正文异步到达）。
     // 只在确实偏了的时候才动滚动，不打扰正常阅读。
     if (readerPinnedId != null) scrollReaderToArt(readerPinnedId);
-    // 一屏没装满时哨兵本就贴着视口底 —— 不靠用户滚动也要接着拉，直到装满或没有更多
-    if (state.rdHasMore && readerSentinelNear()) readerAutoLoad();
+    // 一屏没装满时哨兵本就贴着视口底 —— 不靠用户滚动也要接着拉，直到装满或没有更多。
+    // 上一次翻页失败时停下，等用户点「重试」，否则会贴着哨兵反复失败、反复请求。
+    if (state.rdHasMore && !state.rdLoadMoreErr && readerSentinelNear()) readerAutoLoad();
     // 加载途中排队的「重置重载」：补跑一次，让用户的第二次点击真正生效
     if (readerPendingReset) {
       readerPendingReset = false;
@@ -236,17 +243,43 @@ export async function expandReaderArt(id) {
   scrollReaderToArt(id);
 
   if (state.rdBody.has(id) || state.rdBodyErr.has(id)) return;
-  try {
-    const res = await apiFetch('/api/entries/' + encodeURIComponent(id));
-    if (!res.ok) throw await httpError(res);
-    state.rdBody.set(id, await res.json());
-  } catch (_) {
-    state.rdBodyErr.add(id);
-  }
+  await fetchReaderBody(id);
   renderReader();
   // 正文是异步到达的，插入后列表布局会变 —— 再对准一次，避免停在偏移处。
   // 只在真正改变布局的这里做（而不是挂进 renderReader 全局）。
   scrollReaderToArt(id);
+}
+
+async function fetchReaderBody(id) {
+  try {
+    const res = await apiFetch('/api/entries/' + encodeURIComponent(id));
+    if (!res.ok) throw await httpError(res);
+    state.rdBody.set(id, await res.json());
+    state.rdBodyErr.delete(id);
+  } catch (_) {
+    state.rdBodyErr.add(id);
+  }
+}
+
+/** 正文加载失败的「重试」：清掉错误标记再拉一次；成功后会解除展开体里的错误提示 */
+export async function readerRetryBody(id) {
+  if (!state.rdBodyErr.has(id)) return;
+  state.rdBodyErr.delete(id);
+  renderReader();
+  await fetchReaderBody(id);
+  renderReader();
+  scrollReaderToArt(id);
+}
+
+/** 翻页失败后的「重试」：错误标记就是自动加载的刹车，重试前先松开 */
+export function readerRetryMore() {
+  state.rdLoadMoreErr = false;
+  return loadReader();
+}
+
+/** 空态 / 错误态上的「再试一次」：整个列表重置重拉 */
+export function readerReload() {
+  return loadReader({ reset: true });
 }
 
 export function collapseReaderArt(id) {
@@ -423,6 +456,15 @@ export function readerToggleFav(id) {
   const next = !(e && e.isFavorite);
   setEntryFlag(id, { isFavorite: next }).then((ok) => {
     if (ok) toast(next ? '已收藏' : '已取消收藏');
+  });
+}
+
+/** 已读回退成未读：展开即已读之后，误点 / 想稍后再读的常见补救 */
+export function readerMarkUnread(id) {
+  const e = state.rdEntries.find((x) => String(x.id) === String(id));
+  if (!e || !e.isRead) return;
+  setEntryFlag(id, { isRead: false }).then((ok) => {
+    if (ok) toast('已标为未读');
   });
 }
 
@@ -606,13 +648,13 @@ export function readerSentinelNear() {
 
 export async function readerAutoLoad() {
   if (readerAutoBusy) return;
-  if (state.tab !== 'reader' || state.rdLoading || !state.rdHasMore || !state.rdEntries.length) return;
+  if (state.tab !== 'reader' || state.rdLoading || !state.rdHasMore || state.rdLoadMoreErr || !state.rdEntries.length) return;
   readerAutoBusy = true;
   try {
     await loadReader();
   } finally {
     readerAutoBusy = false;
-    if (state.rdHasMore && readerSentinelNear()) setTimeout(readerAutoLoad, 120);
+    if (state.rdHasMore && !state.rdLoadMoreErr && readerSentinelNear()) setTimeout(readerAutoLoad, 120);
   }
 }
 
@@ -623,7 +665,7 @@ export async function readerAutoLoad() {
  * 判定本身用 getBoundingClientRect，天然与「谁在滚」无关。 */
 document.addEventListener('scroll', () => {
   if (state.tab !== 'reader') return;
-  if (state.rdLoading || !state.rdHasMore || !state.rdEntries.length) return;
+  if (state.rdLoading || !state.rdHasMore || state.rdLoadMoreErr || !state.rdEntries.length) return;
   if (readerSentinelNear()) readerAutoLoad();
 }, { capture: true, passive: true });
 

@@ -1130,8 +1130,26 @@ textarea:disabled {
 .empty-ico { font-size: 2.625rem; margin-bottom:var(--sp-3); line-height: 0; }
 .empty-ico .ico, .dg-empty-ico .ico { display: block; margin:0 auto; }
 .empty p { margin:0; font-size: var(--fs-base); }
+/* 空态给一条出路：文案说「为什么空」，按钮直接做下一步 */
+.empty-action { margin-top: var(--sp-4); }
+
+/* 搜索命中数 / 列表到底：轻提示，不抢内容的注意力 */
+.list-count {
+  color: var(--text-faint); font-size: var(--fs-sm);
+  padding: var(--sp-3) var(--sp-1) 0;
+}
+.list-end {
+  text-align: center; color: var(--text-faint); font-size: var(--fs-sm);
+  padding: var(--sp-3) 0 var(--sp-2);
+}
 
 .loadmore-wrap { display: flex; justify-content: center; padding:var(--sp-3) 0 var(--sp-7); }
+/* 翻页失败：不再只闪一下 toast，列表底部留住错误与重试 */
+.load-retry {
+  display: inline-flex; align-items: center; gap: var(--sp-3);
+  color: var(--text-faint); font-size: var(--fs-sm);
+}
+.load-retry .btn { min-height: 32px; padding: 0 var(--sp-3); }
 
 .loading-dots { display: inline-flex; gap:var(--sp-2); padding:var(--sp-3); }
 .loading-dots i {
@@ -2048,6 +2066,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
 .hint { font-size: var(--fs-sm); color: var(--text-faint); }
 .hint strong { color: var(--accent-text); }
+.hint .btn { margin-left: var(--sp-3); }
 
 /* ---------- 响应式 ---------- */
 /* ============================================================
@@ -2815,7 +2834,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 }
 .art-star:hover { background: var(--hover); color: var(--star); }
 .art-star:active { transform: scale(.9); }
-.art-item.is-fav .art-star { color: var(--star); }
+.art-item.is-fav .art-star[data-fav] { color: var(--star); }
+/* 「标为未读」是补救动作，常驻会和收藏星争视觉；给低对比，悬停 / 触屏上仍清晰可点 */
+.art-unread { color: var(--text-faint); opacity: .65; }
+.art-unread:hover { color: var(--accent-text); opacity: 1; }
+.art-unread .ico { width: .95rem; height: .95rem; }
 /* 跨页状态统一（v1.5.2）：收藏态与卡片页同语言——左侧主色竖条 + 星标变色。
    竖条用 inset 阴影，不挤占布局；保留自身拟态表面（hover 升到 neu-3）。 */
 .art-item.is-fav { box-shadow: var(--neu-2), inset 3px 0 0 var(--accent); }
@@ -4512,6 +4535,19 @@ body { overflow: hidden; }
   .reader-side-close { min-width: 40px; min-height: 40px; padding: 0 var(--sp-2); }
   .rd-ch-filter { width: 30px; height: 30px; }
   .overflow-item { min-height: 44px; }
+  /* 文章列表右侧的星标 / 标为未读：真实盒子抬到 44×44，图标视觉尺寸不变 */
+  .art-star { min-width: 44px; min-height: 44px; margin: var(--sp-1) var(--sp-1) 0 0; padding: 0; }
+  .art-star .ico { width: 1.05rem; height: 1.05rem; }
+  .art-actions .btn-copy,
+  .art-actions .btn-open,
+  .art-actions .btn-fav,
+  .art-actions .btn-jump { width: 44px; height: 44px; }
+  /* 卡面浮层按钮：图片上留白有限，40px 已可稳定点中 */
+  .card-media-actions .btn-copy,
+  .card-media-actions .btn-open,
+  .row-actions .btn-copy,
+  .row-actions .btn-open { width: 40px; height: 40px; }
+  .empty-action { min-height: 44px; padding: 0 var(--sp-5); }
 }
 
 /* ---------------- 规则面板（v1.6.0-test5）：关注 / 屏蔽 + webhook ----------------

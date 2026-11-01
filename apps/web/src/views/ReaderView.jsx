@@ -221,7 +221,7 @@ export function ArtBody({ e, onTag, extraActions }) {
  *  做成 memo：每次 __readerTick 都会把整列 entries 重新 map 一遍，而条目对象只在
  *  状态真的变化时才换新（core/reader.js 的 applyEntryFlag / ui.js 的 cardSetFlag 同口径），
  *  所以没变的那几百条不必跟着重新渲染。 */
-const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, onToggle, onFav, onTag }) {
+const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, onToggle, onFav, onTag, onUnread, onRetryBody }) {
   const s = S();
   const src = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
@@ -233,8 +233,16 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, onTog
   let inner = null;
   if (expanded) {
     if (full) inner = <ArtBody e={full} onTag={onTag} />;
-    else if (bodyErr) inner = <div className="art-inner"><div className="hint">正文加载失败，刷新页面重试</div></div>;
-    else inner = <div className="art-inner"><div className="art-loading"><i /><i /><i /></div></div>;
+    else if (bodyErr) {
+      inner = (
+        <div className="art-inner">
+          <div className="hint">
+            正文加载失败
+            <button type="button" className="btn btn-sm" onClick={() => onRetryBody(e.id)}>重试</button>
+          </div>
+        </div>
+      );
+    } else inner = <div className="art-inner"><div className="art-loading"><i /><i /><i /></div></div>;
   }
 
   return (
@@ -255,6 +263,13 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, onTog
           onClick={(ev) => { ev.stopPropagation(); onFav(e.id); }}>
           <Icon n={fav ? 'star' : 'star-o'} />
         </button>
+        {e.isRead ? (
+          <button className="art-star art-unread" type="button" data-unread={e.id}
+            aria-label="标为未读" title="标为未读"
+            onClick={(ev) => { ev.stopPropagation(); onUnread(e.id); }}>
+            <Icon n="circle" />
+          </button>
+        ) : null}
       </div>
       <div className="art-body" hidden={!expanded}>{inner}</div>
     </article>
@@ -389,6 +404,9 @@ export function ReaderView() {
   const hasUnread = entries.some((e) => !e.isRead);
   const anyExpanded = expanded.size > 0;
   const q = st.rdQ || '';
+  // 搜索框本身是非受控的（打字不被抢光标）；草稿只用于「清除」按钮的即时显隐，
+  // 否则要等 280ms 防抖请求回来、q 变了、按钮才出现。
+  const [qDraft, setQDraft] = useState(q);
 
   // 别处带来的搜索词（命令面板 / 卡片页跳转）要让框是展开的，否则关键词在生效、框却收着
   useEffect(() => { if (q) setSearchOpen(true); }, [q]);
@@ -399,45 +417,73 @@ export function ReaderView() {
   // 正在框里打字时不抢：那时 value 是用户刚敲的，比 debounce 后的 state 更新。
   useEffect(() => {
     const el = searchRef.current;
-    if (!el || el === document.activeElement || el.value === q) return;
+    if (!el) return;
+    // 有词时不抢正在输入的框；外部「清空」必须落地，否则跳转路径会把旧词留在框上
+    if (q && el === document.activeElement) return;
+    if (el.value === q && qDraft === q) return;
     el.value = q;
     el.dataset.hasval = q ? '1' : '';
+    setQDraft(q);
   }, [q]);
 
   let emptyMsg = '';
+  let emptyAction = null;
   if (!entries.length) {
-    if (st.rdReadError) emptyMsg = st.rdReadErrorMsg || '加载失败';
-    else emptyMsg = q ? `没有找到匹配「${q}」的文章`
-      : (st.rdWatch === 'watch' ? '还没有命中的文章；在「设置 → 规则」里配置关键字，保存后点「应用到已有文章」'
-        : st.rdWatch === 'block' ? '没有被屏蔽的文章'
-          : st.rdScope === 'unread' ? '没有未读文章了'
-            : st.rdScope === 'favorite' ? '还没有收藏，点文章右侧的星标收藏'
-              : (feeds.length ? '这个频道还没有内容' : '还没有订阅源，去「设置 → 数据源」添加 RSS 地址'));
+    if (st.rdReadError) {
+      emptyMsg = st.rdReadErrorMsg || '加载失败';
+      emptyAction = { label: '重试', run: () => s.readerReload() };
+    } else if (q) {
+      emptyMsg = `没有找到匹配「${q}」的文章`;
+      emptyAction = { label: '清除搜索', run: () => onSearchClear() };
+    } else if (st.rdWatch === 'watch') {
+      emptyMsg = '还没有命中的文章；在「设置 → 规则」里配置关键字，保存后点「应用到已有文章」';
+      emptyAction = { label: '打开规则设置', run: () => s.openSettings('watch') };
+    } else if (st.rdWatch === 'block') {
+      emptyMsg = '没有被屏蔽的文章';
+      emptyAction = { label: '管理屏蔽规则', run: () => s.openSettings('watch') };
+    } else if (st.rdScope === 'unread') {
+      emptyMsg = '没有未读文章了';
+      emptyAction = { label: '查看全部文章', run: () => s.readerSetScope('all') };
+    } else if (st.rdScope === 'favorite') {
+      emptyMsg = '还没有收藏，点文章右侧的星标收藏';
+      emptyAction = { label: '查看全部文章', run: () => s.readerSetScope('all') };
+    } else if (!feeds.length) {
+      emptyMsg = '还没有订阅源，去「设置 → 数据源」添加 RSS 地址';
+      emptyAction = { label: '添加订阅源', run: () => s.readerOpenSource() };
+    } else {
+      emptyMsg = '这个频道还没有内容';
+      emptyAction = { label: '重新抓取', run: () => s.refresh() };
+    }
   }
 
   const onSearchInput = (ev) => {
     const v = ev.target.value;
     const box = searchRef.current;
     if (box) box.dataset.hasval = v ? '1' : '';
+    setQDraft(v);
     bump((x) => x + 1);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { if (s.readerSearch) s.readerSearch(v.trim()); }, 280);
   };
   const onSearchClear = () => {
-    if (searchRef.current) searchRef.current.value = '';
+    if (searchRef.current) {
+      searchRef.current.value = '';
+      searchRef.current.dataset.hasval = '';
+    }
+    setQDraft('');
     if (s.readerSearch) s.readerSearch('');
     bump((x) => x + 1);
   };
   const onSearchKey = (ev) => {
     if (ev.key === 'Enter') { clearTimeout(debounceRef.current); if (s.readerSearch) s.readerSearch(String(ev.target.value).trim()); }
     // Esc 收起搜索（与 iOS 搜索框一致）；有词时先清词再收，避免「看不见却生效」的过滤
-    if (ev.key === 'Escape') { ev.stopPropagation(); if (q) onSearchClear(); setSearchOpen(false); }
+    if (ev.key === 'Escape') { ev.stopPropagation(); if (qDraft) onSearchClear(); setSearchOpen(false); }
   };
   // 标题栏放大镜：展开 / 收起。收起时若有关键词一并清掉 —— 留着一个看不见的过滤条件，
   // 表现成「列表莫名少了一半」，比直接清空更难排查。
   const toggleSearch = () => {
     if (!searchOpen) { setSearchOpen(true); return; }
-    if (q) onSearchClear();
+    if (qDraft || q) onSearchClear();
     setSearchOpen(false);
   };
 
@@ -445,6 +491,8 @@ export function ReaderView() {
   // 几百条一起重渲染，等于把 memo 白加。core 是单例，回调里现取即可。
   const onToggleArt = useCallback((id) => { const c = S(); if (c.readerToggleArt) c.readerToggleArt(id); }, []);
   const onFavArt = useCallback((id) => { const c = S(); if (c.readerToggleFav) c.readerToggleFav(id); }, []);
+  const onUnreadArt = useCallback((id) => { const c = S(); if (c.readerMarkUnread) c.readerMarkUnread(id); }, []);
+  const onRetryBodyArt = useCallback((id) => { const c = S(); if (c.readerRetryBody) c.readerRetryBody(id); }, []);
   const onTagArt = useCallback((t) => { const c = S(); if (c.readerTagToCards) c.readerTagToCards(t); }, []);
   // D：侧栏回调稳定化（memo 的前提是 props 引用稳定），否则每次 tick 都拿到新函数、memo 失效
   const cbScope = useCallback((k) => S().readerSetScope(k), []);
@@ -523,7 +571,7 @@ export function ReaderView() {
               <input id="readerSearch" name="rq" type="search" ref={searchRef} defaultValue={q}
                 placeholder="搜索标题、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索文章"
                 onInput={onSearchInput} onKeyDown={onSearchKey} />
-              <button className="reader-search-clear" id="readerSearchClear" type="button" hidden={!q}
+              <button className="reader-search-clear" id="readerSearchClear" type="button" hidden={!qDraft}
                 aria-label="清除搜索" onClick={onSearchClear}>
                 <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
               </button>
@@ -541,24 +589,40 @@ export function ReaderView() {
           </div>
         </div>
 
+        {q && entries.length > 0 ? (
+          <div className="list-count" role="status">「{q}」找到 {st.rdTotal} 篇文章</div>
+        ) : null}
         <div className="reader-list" id="readerList">
           {entries.map((e) => (
             <ArtItem key={e.id} e={e} expanded={expanded.has(e.id)}
               full={bodyMap.get(e.id)} bodyErr={bodyErrSet.has(e.id)}
               flash={flashId != null && flashId === String(e.id)}
-              onToggle={onToggleArt} onFav={onFavArt} onTag={onTagArt} />
+              onToggle={onToggleArt} onFav={onFavArt} onUnread={onUnreadArt}
+              onRetryBody={onRetryBodyArt} onTag={onTagArt} />
           ))}
         </div>
 
         <div className="empty" id="readerEmpty" hidden={entries.length > 0}>
           <div className="empty-ico"><svg className="ico" aria-hidden="true" focusable="false"><use href="#i-inbox" /></svg></div>
           <p>{emptyMsg}</p>
+          {emptyAction ? (
+            <button type="button" className="btn btn-primary empty-action" onClick={emptyAction.run}>{emptyAction.label}</button>
+          ) : null}
         </div>
 
         <div className="loadmore-wrap">
+          {st.rdLoadMoreErr ? (
+            <div className="load-retry" role="alert">
+              <span>加载失败</span>
+              <button type="button" className="btn" onClick={() => s.readerRetryMore()}>重试</button>
+            </div>
+          ) : null}
           <div className="loading-dots" id="readerMore" hidden={!st.rdLoading}><i /><i /><i /></div>
           <div className="reader-sentinel" id="readerSentinel" aria-hidden="true" />
         </div>
+        {entries.length > 0 && !st.rdHasMore && !st.rdLoading ? (
+          <div className="list-end">已经到底了</div>
+        ) : null}
 
         <footer className="foot">点标题展开全文，再点一次收起</footer>
       </section>
