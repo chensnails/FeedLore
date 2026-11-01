@@ -85,7 +85,7 @@ function OpenButton({ e }) {
  * 首屏那几张真正看得见的图反而排在第 20 位 —— 首屏图不加载，卡片墙就是一片灰骨架。
  * eager + fetchpriority=high 让浏览器先抢这几条连接。
  */
-function LazyImg({ src, alt, fallbackClass, fbIcon, priority }) {
+function LazyImg({ src, alt, fallbackClass, fbIcon, priority, onFail }) {
   const [state, setState] = useState('ok');   // ok | failed
   const triedRef = useRef(false);
   if (!src || state === 'failed') {
@@ -111,6 +111,7 @@ function LazyImg({ src, alt, fallbackClass, fbIcon, priority }) {
           return;
         }
         setState('failed');
+        if (onFail) onFail();
       }}
     />
   );
@@ -123,14 +124,18 @@ const Card = memo(function Card({ e, onOpen, priority }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const hasImg = !!e.image;
+  // 图片彻底拉不到时降级成纯文字卡：卡高本来就固定，少一块空占位比留一张灰图更干净
+  const [imgFailed, setImgFailed] = useState(false);
+  const showMedia = hasImg && !imgFailed;
   const fmtDate = s.fmtDate || ((d) => d || '');
 
   const copyBtn = <CopyButton e={e} />;
   const openBtn = <OpenButton e={e} />;
 
-  const media = hasImg ? (
+  const media = showMedia ? (
     <div className="card-media">
-      <LazyImg src={e.image} alt={e.name} fallbackClass="media-fallback" fbIcon="image" priority={priority} />
+      <LazyImg src={e.image} alt={e.name} fallbackClass="media-fallback" fbIcon="image" priority={priority}
+        onFail={() => setImgFailed(true)} />
       {srcName ? <span className="badge-source" title={e.feedName}>{srcName}</span> : null}
       {e.size ? <span className="badge-size">{e.size}</span> : null}
       {e.date ? <span className="badge-idx">{fmtDate(e.date)}</span> : null}
@@ -138,7 +143,7 @@ const Card = memo(function Card({ e, onOpen, priority }) {
     </div>
   ) : null;
 
-  const metaRow = hasImg ? null : (
+  const metaRow = showMedia ? null : (
     <div className="card-meta">
       {srcName ? <span className="src-pill" title={e.feedName}>{srcName}</span> : null}
       {e.size ? <span className="meta-size">{e.size}</span> : null}
@@ -147,7 +152,7 @@ const Card = memo(function Card({ e, onOpen, priority }) {
   );
 
   return (
-    <article className={'card' + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
+    <article className={'card' + (showMedia ? ' card-has-media' : '') + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
       role="button" tabIndex={0} aria-label={(e.name || '卡片') + '，按 Enter 打开详情'}
       onClick={(ev) => openFromClick(ev, e, onOpen)}
       onKeyDown={(ev) => cardKeyOpen(ev, e, onOpen)}>
@@ -158,7 +163,7 @@ const Card = memo(function Card({ e, onOpen, priority }) {
           <button type="button" className="title-btn" onClick={() => onOpen(e)}>{e.name}</button>
         </h3>
         {e.desc ? <p className="card-desc">{e.desc}</p> : null}
-        {hasImg ? null : <div className="card-foot">{copyBtn}{openBtn}</div>}
+        {showMedia ? null : <div className="card-foot">{copyBtn}{openBtn}</div>}
       </div>
     </article>
   );

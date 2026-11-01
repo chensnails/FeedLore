@@ -882,12 +882,19 @@ textarea:disabled {
   grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
   gap:var(--sp-5);
   padding:var(--sp-6) 0 var(--sp-2);
+  /* 统一卡高：同一屏的卡片不随「有没有图 / 文字多少」伸缩。
+     图片区按 4:3 取高并限在 --card-media-max，正文区吃掉剩余高度，
+     标题固定两行、摘要按剩余空间截断（纯文字卡能多显示几行）。 */
+  --card-h: 340px;
+  --card-media-max: 160px;
 }
 /* 密度偏好：紧凑档收小卡片最小宽度与间距，同屏容纳更多卡片（舒适档=上方默认） */
 :root[data-density="compact"] .grid {
   grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
   gap: var(--sp-4);
   padding: var(--sp-5) 0 var(--sp-2);
+  --card-h: 320px;
+  --card-media-max: 140px;
 }
 
 .card {
@@ -896,12 +903,13 @@ textarea:disabled {
   border-radius: var(--radius);
   overflow: hidden;
   display: flex; flex-direction: column;
+  height: var(--card-h);
   box-shadow: var(--elevation-2);
   transition: transform var(--dur-slow) ease, box-shadow var(--dur-slow) ease, border-color var(--dur-slow);
   cursor: pointer;
   /* 视口外的卡片跳过渲染：长列表滚动更顺滑（contain-intrinsic-size 预留高度避免滚动条抖动） */
   content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
+  contain-intrinsic-size: auto var(--card-h);
 }
 .card:hover {
   transform: translateY(-3px);
@@ -911,7 +919,9 @@ textarea:disabled {
 
 .card-media {
   position: relative;
+  flex: 0 0 auto;
   aspect-ratio: 4 / 3;
+  max-height: var(--card-media-max);
   background: var(--media-bg);
   overflow: hidden;
 }
@@ -985,10 +995,14 @@ textarea:disabled {
 .card-body {
   padding:var(--sp-4) var(--sp-4) var(--sp-4);
   display: flex; flex-direction: column; flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .card-title {
   font-size: var(--fs-lg); font-weight: 650; line-height: 1.45;
+  /* 固定两行高度：标题只有一行时也占满，避免同一排的摘要起点参差 */
+  height: calc(1.45em * 2);
   margin:0 0 var(--sp-2);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1014,12 +1028,15 @@ textarea:disabled {
 .card-desc {
   font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.6;
   margin:0 0 var(--sp-3);
+  /* 占满标题与页脚之间剩余的空间：带图卡显示 3 行，纯文字卡能多显示几行 */
+  flex: 1 1 auto;
+  min-height: 0;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 0;
 }
+.card-has-media .card-desc { -webkit-line-clamp: 3; }
 
 /* v1.6.0：卡片不再有 .card-tags（卡面标签已移除）；.mini-tag 仅供文章正文 .art-tags 使用 */
 .mini-tag {
@@ -1051,10 +1068,13 @@ textarea:disabled {
 @media (max-width: 640px) {
   .grid {
     padding:var(--sp-4) 0 var(--sp-1);
+    --card-h: 320px;
+    --card-media-max: 132px;
   }
   .card-body { padding:var(--sp-3) var(--sp-3) var(--sp-3); }
-  .card-title { font-size: var(--fs-md); margin-bottom:var(--sp-1); line-height: 1.4; }
-  .card-desc { font-size: var(--fs-sm); margin-bottom:var(--sp-2); line-height: 1.55; -webkit-line-clamp: 2; }
+  .card-title { font-size: var(--fs-md); margin-bottom:var(--sp-1); line-height: 1.4; height: calc(1.4em * 2); }
+  .card-desc { font-size: var(--fs-sm); margin-bottom:var(--sp-2); line-height: 1.55; -webkit-line-clamp: 5; }
+  .card-has-media .card-desc { -webkit-line-clamp: 2; }
   .card-media-actions { right: 8px; bottom: 8px; gap:var(--sp-2); }
 }
 
@@ -1116,8 +1136,9 @@ textarea:disabled {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  height: var(--card-h);
 }
-.sk-media { aspect-ratio: 16/10; background: linear-gradient(90deg, var(--sk-a) 25%, var(--sk-b) 37%, var(--sk-a) 63%); background-size: 400% 100%; animation: sk 1.4s ease infinite; }
+.sk-media { aspect-ratio: 4/3; max-height: var(--card-media-max); background: linear-gradient(90deg, var(--sk-a) 25%, var(--sk-b) 37%, var(--sk-a) 63%); background-size: 400% 100%; animation: sk 1.4s ease infinite; }
 .sk-line { height: 12px; border-radius: var(--radius-xs); margin:var(--sp-3) var(--sp-4); background: linear-gradient(90deg, var(--sk-a) 25%, var(--sk-b) 37%, var(--sk-a) 63%); background-size: 400% 100%; animation: sk 1.4s ease infinite; }
 .sk-line.w60 { width: 60%; }
 .sk-line.w85 { width: 85%; }

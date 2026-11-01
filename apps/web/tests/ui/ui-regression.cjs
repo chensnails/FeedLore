@@ -2930,6 +2930,22 @@ const withEFP = (el, fn) => {
     // v2.2.4：无原文地址不再渲染置灰「打开」按钮（曾被误读为「上锁」）
     if (c2.querySelector('.btn-open')) throw new Error('无原文地址不应渲染打开按钮');
   });
+  t('统一卡高：有图卡带 card-has-media，无图卡不带', () => {
+    if (!C('#grid .card[data-id="e1"]').classList.contains('card-has-media')) throw new Error('有图卡缺 card-has-media');
+    if (C('#grid .card[data-id="e2"]').classList.contains('card-has-media')) throw new Error('无图卡不该带 card-has-media');
+  });
+  // 图片两次都失败后应降级成纯文字卡：不把一整块灰占位留在卡顶
+  const brokenImg = C('#grid .card[data-id="e1"] .card-media img');
+  brokenImg.dispatchEvent(new w.Event('error'));
+  brokenImg.dispatchEvent(new w.Event('error'));
+  await sleep(40);
+  t('图片彻底失败 → 降级为纯文字卡（媒体区移除、元信息与底部操作回来）', () => {
+    const c1 = C('#grid .card[data-id="e1"]');
+    if (c1.querySelector('.card-media')) throw new Error('失败图仍占着媒体区');
+    if (c1.classList.contains('card-has-media')) throw new Error('降级后不该再算有图卡');
+    if (!c1.querySelector('.card-meta .src-pill')) throw new Error('降级后应补回来源行');
+    if (!c1.querySelector('.card-foot .btn-copy')) throw new Error('降级后复制按钮应在底部操作条');
+  });
 
   // 卡片详情弹窗（桌面形态：居中模态）
   C('#grid .card[data-id="e1"] .card-desc').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
@@ -3702,6 +3718,27 @@ const withEFP = (el, fn) => {
     }
     if (/\.grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(css)) {
       throw new Error('卡片网格不要再写死两栏（宽屏应自适应更多栏）');
+    }
+  });
+  t('style.css：卡片统一卡高（固定高度 + 图片区限高 + 标题固定两行）', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    if (!/--card-h:\s*340px/.test(css) || !/--card-media-max:\s*160px/.test(css)) {
+      throw new Error('卡片网格缺统一卡高 / 图片区限高变量');
+    }
+    if (!/\.card \{[^}]*height:\s*var\(--card-h\)/.test(css)) {
+      throw new Error('.card 必须按 --card-h 固定高度，否则行高仍随内容伸缩');
+    }
+    if (!/\.card-media \{[^}]*max-height:\s*var\(--card-media-max\)/.test(css)) {
+      throw new Error('图片区要限高，否则 4:3 大图会把整排撑高');
+    }
+    if (!/\.card-title \{[^}]*height:\s*calc\(1\.45em \* 2\)/.test(css)) {
+      throw new Error('标题要预留两行高度，单行标题不能把摘要起点顶上去');
+    }
+    if (!/\.card-has-media \.card-desc \{[^}]*-webkit-line-clamp:\s*3/.test(css)) {
+      throw new Error('带图卡的摘要应收在 3 行，剩余空间留给纯文字卡');
+    }
+    if (!/contain-intrinsic-size:\s*auto var\(--card-h\)/.test(css)) {
+      throw new Error('离屏占位高度要跟卡高同一变量，避免滚动条抖动');
     }
   });
   // 目录树层级：组头贴左，频道行缩进到组名起线（折叠键 18 + 间隙 4 = 22px）。
