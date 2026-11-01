@@ -3722,8 +3722,12 @@ const withEFP = (el, fn) => {
   });
   t('style.css：卡片统一卡高（固定高度 + 图片区限高 + 标题固定两行）', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
-    if (!/--card-h:\s*340px/.test(css) || !/--card-media-max:\s*160px/.test(css)) {
+    if (!/--card-h:\s*21\.25rem/.test(css) || !/--card-media-max:\s*10rem/.test(css)) {
       throw new Error('卡片网格缺统一卡高 / 图片区限高变量');
+    }
+    // 字号偏好（html 上的 s/m/l）按 rem 缩放，卡高若写 px 会在「大」字号下裁掉末行
+    if (/--card-h:\s*\d+px|--card-media-max:\s*\d+px/.test(css)) {
+      throw new Error('卡高 / 图片区限高必须用 rem，不能退回 px（字号档会裁字）');
     }
     if (!/\.card \{[^}]*height:\s*var\(--card-h\)/.test(css)) {
       throw new Error('.card 必须按 --card-h 固定高度，否则行高仍随内容伸缩');
@@ -3741,21 +3745,41 @@ const withEFP = (el, fn) => {
       throw new Error('离屏占位高度要跟卡高同一变量，避免滚动条抖动');
     }
   });
-  // 窄屏是 2–3 栏、卡宽只有 165–175px，沿用桌面 340px 会把卡片拉成近 1:2 的长条。
+  // 窄屏是 2–3 栏、卡宽只有 165–175px，沿用桌面 21.25rem 会把卡片拉成近 1:2 的长条。
   // 卡高、图片区限高与摘要行数必须在同一个 720 断点里一起收紧，且紧凑密度档也要覆盖。
-  t('style.css：窄屏卡片卡高收到 240px（含紧凑密度档）', () => {
+  t('style.css：窄屏卡片卡高收到 15.75rem（含紧凑密度档与 ≤360 兜底）', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
-    if (!/@media \(max-width: 720px\) \{[\s\S]{0,400}?--card-h:\s*240px/.test(css)) {
-      throw new Error('窄屏没有覆盖 --card-h: 240px，手机会沿用桌面 340px');
+    if (!/@media \(max-width: 720px\) \{[\s\S]{0,400}?--card-h:\s*15\.75rem/.test(css)) {
+      throw new Error('窄屏没有覆盖 --card-h: 15.75rem，手机会沿用桌面 21.25rem');
     }
-    if (!/@media \(max-width: 720px\) \{[\s\S]{0,500}?--card-media-max:\s*124px/.test(css)) {
-      throw new Error('窄屏图片区没有跟着限高到 124px');
+    if (!/@media \(max-width: 720px\) \{[\s\S]{0,500}?--card-media-max:\s*7\.75rem/.test(css)) {
+      throw new Error('窄屏图片区没有跟着限高到 7.75rem');
     }
-    if (!/:root\[data-density="compact"\] \.grid \{[\s\S]{0,160}?--card-h:\s*232px/.test(css)) {
-      throw new Error('紧凑密度在基础层写着 320px，窄屏必须按同一口径覆盖');
+    if (!/:root\[data-density="compact"\] \.grid \{[\s\S]{0,160}?--card-h:\s*15\.75rem/.test(css)) {
+      throw new Error('紧凑密度在基础层写着 20rem，窄屏必须按同一口径覆盖');
     }
     if (!/@media \(max-width: 720px\) \{[\s\S]{0,600}?\.card-desc \{[^}]*-webkit-line-clamp:\s*5/.test(css)) {
-      throw new Error('窄屏文字卡摘要行数应与 240px 卡高配套（5 行）');
+      throw new Error('窄屏文字卡摘要行数应与窄屏卡高配套（5 行）');
+    }
+    // 320–360px 的卡宽只有 140px 左右，需要再降一档，否则带图卡下半截空一片
+    if (!/@media \(max-width: 360px\) \{[\s\S]{0,400}?--card-h:\s*14\.75rem/.test(css)) {
+      throw new Error('≤360px 没有单独降卡高');
+    }
+  });
+  // 有图但没摘要的卡：剩余高度应留给图片，不能只挂一行标题、下半截全空
+  t('style.css：有图无摘要的卡把剩余高度让给图片', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    if (!/\.card-has-media:not\(:has\(\.card-desc\)\) \.card-media \{[^}]*flex:\s*1 1 auto/.test(css)) {
+      throw new Error('缺「有图无摘要」的卡片余高处理');
+    }
+  });
+  // 触屏上卡片的两组操作按钮尺寸要一致（浮层 40px，底部操作条不能还是 32px）
+  t('style.css：触屏卡片底部操作条与浮层按钮同为 40px', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const block = css.match(/@media \(pointer: coarse\), \(max-width: 720px\) \{([\s\S]*?)\n\}/);
+    if (!block) throw new Error('缺触屏命中区媒体段');
+    if (!/\.card-foot \.btn-copy[\s\S]{0,200}width:\s*40px;\s*height:\s*40px/.test(block[1])) {
+      throw new Error('文字卡底部操作条没有跟着抬到 40px');
     }
   });
   // 目录树层级：组头贴左，频道行缩进到组名起线（折叠键 18 + 间隙 4 = 22px）。

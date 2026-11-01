@@ -884,17 +884,19 @@ textarea:disabled {
   padding:var(--sp-6) 0 var(--sp-2);
   /* 统一卡高：同一屏的卡片不随「有没有图 / 文字多少」伸缩。
      图片区按 4:3 取高并限在 --card-media-max，正文区吃掉剩余高度，
-     标题固定两行、摘要按剩余空间截断（纯文字卡能多显示几行）。 */
-  --card-h: 340px;
-  --card-media-max: 160px;
+     标题固定两行、摘要按剩余空间截断（纯文字卡能多显示几行）。
+     卡高用 rem 而不是 px：设置里的「字号 小/中/大」改的是 html font-size，
+     文字整体缩放；卡高若钉死 px，大字号下最后一行会被卡底裁掉。 */
+  --card-h: 21.25rem;      /* 340px @16px */
+  --card-media-max: 10rem; /* 160px @16px */
 }
 /* 密度偏好：紧凑档收小卡片最小宽度与间距，同屏容纳更多卡片（舒适档=上方默认） */
 :root[data-density="compact"] .grid {
   grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
   gap: var(--sp-4);
   padding: var(--sp-5) 0 var(--sp-2);
-  --card-h: 320px;
-  --card-media-max: 140px;
+  --card-h: 20rem;          /* 320px @16px */
+  --card-media-max: 8.75rem; /* 140px @16px */
 }
 
 .card {
@@ -1037,6 +1039,14 @@ textarea:disabled {
   overflow: hidden;
 }
 .card-has-media .card-desc { -webkit-line-clamp: 3; }
+/* 有图但没有摘要：正文只剩一行标题，固定卡高会在下半截留一大块空白。
+   这时把剩余高度让给图片（放开 4:3 与限高），图片一直铺到标题上方。 */
+.card-has-media:not(:has(.card-desc)) .card-media {
+  flex: 1 1 auto;
+  aspect-ratio: auto;
+  max-height: none;
+}
+.card-has-media:not(:has(.card-desc)) .card-body { flex: 0 0 auto; }
 
 /* v1.6.0：卡片不再有 .card-tags（卡面标签已移除）；.mini-tag 仅供文章正文 .art-tags 使用 */
 .mini-tag {
@@ -1066,24 +1076,43 @@ textarea:disabled {
 /* 移动端 / 窄屏适配：收紧内边距与字号、浮层按钮贴边
    （卡片网格的栏数在 ≤720px 那一段统一给，见「最少两栏」的说明）
    卡高也在这里按窄卡重算：手机上是 2–3 栏、卡宽只有 165–175px，
-   沿用桌面的 340px 会拉成接近 1:2 的长条。240px ≈ 卡宽的 1.4 倍，
-   图片区 4:3 取高并限在 124px，标题两行、文字卡摘要 5 行。 */
+   沿用桌面的 340px 会拉成接近 1:2 的长条。15.75rem = 252px（@16px），
+   约为卡宽的 1.5 倍；图片区 4:3 取高并限在 7.75rem，标题两行、文字卡摘要 5 行。
+   用 rem 是为了跟「字号 小/中/大」一起缩放。留到 15.75 而不是 15，
+   是因为内边距 / 按钮等间距是 px、不随字号缩放：「小」字号下 15rem 会把第 5 行裁掉一截。 */
 @media (max-width: 720px) {
   .grid {
     padding:var(--sp-4) 0 var(--sp-1);
-    --card-h: 240px;
-    --card-media-max: 124px;
+    --card-h: 15.75rem;
+    --card-media-max: 7.75rem;
   }
-  /* 紧凑密度在基础层把卡高写成 320px，特异度更高，这里按同一口径覆盖 */
+  /* 紧凑密度在基础层写着 20rem，特异度更高；窄屏下两种密度共用同一卡高
+     （310px 级小屏再降一档见下方 ≤360 段），密度差只体现在栏宽与间距 */
   :root[data-density="compact"] .grid {
-    --card-h: 232px;
-    --card-media-max: 116px;
+    --card-h: 15.75rem;
+    --card-media-max: 7.75rem;
   }
   .card-body { padding:var(--sp-3) var(--sp-3) var(--sp-3); }
   .card-title { font-size: var(--fs-md); margin-bottom:var(--sp-1); line-height: 1.4; height: calc(1.4em * 2); }
   .card-desc { font-size: var(--fs-sm); margin-bottom:var(--sp-2); line-height: 1.55; -webkit-line-clamp: 5; }
   .card-has-media .card-desc { -webkit-line-clamp: 2; }
   .card-media-actions { right: 8px; bottom: 8px; gap:var(--sp-2); }
+}
+
+/* 小屏手机（320–360px）：卡宽掉到 140px 左右，4:3 图片只有约 105px。
+   沿用 252px 卡高时带图卡底部会空出二十多像素，这里整体再降一档，
+   文字卡摘要也少一行（4 行在 140px 宽下已经够读）。 */
+@media (max-width: 360px) {
+  .grid {
+    --card-h: 14.75rem;      /* 236px @16px */
+    --card-media-max: 6.75rem; /* 108px @16px */
+  }
+  :root[data-density="compact"] .grid {
+    --card-h: 14.75rem;
+    --card-media-max: 6.75rem;
+  }
+  .card-desc { -webkit-line-clamp: 4; }
+  .card-has-media .card-desc { -webkit-line-clamp: 2; }
 }
 
 /* 复制按钮：与其他动作按钮同族的紧凑方块（v1.7.0）。
@@ -4572,9 +4601,12 @@ body { overflow: hidden; }
   .art-actions .btn-open,
   .art-actions .btn-fav,
   .art-actions .btn-jump { width: 44px; height: 44px; }
-  /* 卡面浮层按钮：图片上留白有限，40px 已可稳定点中 */
+  /* 卡面浮层按钮：图片上留白有限，40px 已可稳定点中。
+     文字卡底部操作条同样抬到 40px —— 同一张卡上的复制/打开不该大小不一。 */
   .card-media-actions .btn-copy,
   .card-media-actions .btn-open,
+  .card-foot .btn-copy,
+  .card-foot .btn-open,
   .row-actions .btn-copy,
   .row-actions .btn-open { width: 40px; height: 40px; }
   .empty-action { min-height: 44px; padding: 0 var(--sp-5); }
