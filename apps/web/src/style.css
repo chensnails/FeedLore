@@ -1064,12 +1064,20 @@ textarea:disabled {
 }
 
 /* 移动端 / 窄屏适配：收紧内边距与字号、浮层按钮贴边
-   （卡片网格的栏数在 ≤720px 那一段统一给，见「最少两栏」的说明） */
-@media (max-width: 640px) {
+   （卡片网格的栏数在 ≤720px 那一段统一给，见「最少两栏」的说明）
+   卡高也在这里按窄卡重算：手机上是 2–3 栏、卡宽只有 165–175px，
+   沿用桌面的 340px 会拉成接近 1:2 的长条。240px ≈ 卡宽的 1.4 倍，
+   图片区 4:3 取高并限在 124px，标题两行、文字卡摘要 5 行。 */
+@media (max-width: 720px) {
   .grid {
     padding:var(--sp-4) 0 var(--sp-1);
-    --card-h: 320px;
-    --card-media-max: 132px;
+    --card-h: 240px;
+    --card-media-max: 124px;
+  }
+  /* 紧凑密度在基础层把卡高写成 320px，特异度更高，这里按同一口径覆盖 */
+  :root[data-density="compact"] .grid {
+    --card-h: 232px;
+    --card-media-max: 116px;
   }
   .card-body { padding:var(--sp-3) var(--sp-3) var(--sp-3); }
   .card-title { font-size: var(--fs-md); margin-bottom:var(--sp-1); line-height: 1.4; height: calc(1.4em * 2); }
@@ -3162,7 +3170,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
      用来把视图切换推到右边的。现在工具栏打平成一行、靠 order 排位，标题已经吃掉剩余宽度，
      再留这条 auto 外边距就会在「排序」与「视图切换」之间拉开一道几十像素的空隙
      （实测 680px 下 153px），右簇被撕成两段。 */
-  .card-desc { -webkit-line-clamp: 2; }
+  /* 卡片摘要的行数不在这里定：卡高与行数在 ≤720px 的「窄屏卡片」段统一给，
+     这里再写一条会在源码顺序上压过它（同为 720 断点）。 */
 
   /* 列表视图：操作按钮换到第二行，标题/描述各留一行 */
   .row-item { flex-wrap: wrap; padding:var(--sp-3) var(--sp-3); gap:var(--sp-3); }

@@ -3741,6 +3741,23 @@ const withEFP = (el, fn) => {
       throw new Error('离屏占位高度要跟卡高同一变量，避免滚动条抖动');
     }
   });
+  // 窄屏是 2–3 栏、卡宽只有 165–175px，沿用桌面 340px 会把卡片拉成近 1:2 的长条。
+  // 卡高、图片区限高与摘要行数必须在同一个 720 断点里一起收紧，且紧凑密度档也要覆盖。
+  t('style.css：窄屏卡片卡高收到 240px（含紧凑密度档）', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    if (!/@media \(max-width: 720px\) \{[\s\S]{0,400}?--card-h:\s*240px/.test(css)) {
+      throw new Error('窄屏没有覆盖 --card-h: 240px，手机会沿用桌面 340px');
+    }
+    if (!/@media \(max-width: 720px\) \{[\s\S]{0,500}?--card-media-max:\s*124px/.test(css)) {
+      throw new Error('窄屏图片区没有跟着限高到 124px');
+    }
+    if (!/:root\[data-density="compact"\] \.grid \{[\s\S]{0,160}?--card-h:\s*232px/.test(css)) {
+      throw new Error('紧凑密度在基础层写着 320px，窄屏必须按同一口径覆盖');
+    }
+    if (!/@media \(max-width: 720px\) \{[\s\S]{0,600}?\.card-desc \{[^}]*-webkit-line-clamp:\s*5/.test(css)) {
+      throw new Error('窄屏文字卡摘要行数应与 240px 卡高配套（5 行）');
+    }
+  });
   // 目录树层级：组头贴左，频道行缩进到组名起线（折叠键 18 + 间隙 4 = 22px）。
   // 层级只靠这条起线表达，所以组名左侧那条 3px 色块不能长回来，
   // 且缩进只能落在 data-feed 上 —— 顶部三个固定入口不属于任何分组。
