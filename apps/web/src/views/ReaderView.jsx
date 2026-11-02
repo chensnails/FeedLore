@@ -590,9 +590,13 @@ export function ReaderView() {
     setQDraft(q);
   }, [q]);
 
+  // 切频道 / 分组 / 范围会先把列表清空再请求，此刻的空列表不是「真没有内容」。
+  // 加载中先按住空态，等这次请求落地仍为空再提示，否则每次切换都闪一下假空态。
+  const firstLoad = !!st.rdLoading && !entries.length;
+
   let emptyMsg = '';
   let emptyAction = null;
-  if (!entries.length) {
+  if (!entries.length && !firstLoad) {
     if (st.rdReadError) {
       emptyMsg = st.rdReadErrorMsg || '加载失败';
       emptyAction = { label: '重试', run: () => s.readerReload() };
@@ -768,7 +772,7 @@ export function ReaderView() {
           ))}
         </div>
 
-        <div className="empty" id="readerEmpty" hidden={entries.length > 0}>
+        <div className="empty" id="readerEmpty" hidden={entries.length > 0 || firstLoad}>
           <div className="empty-ico"><svg className="ico" aria-hidden="true" focusable="false"><use href="#i-inbox" /></svg></div>
           <p>{emptyMsg}</p>
           {emptyAction ? (

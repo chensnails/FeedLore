@@ -554,7 +554,7 @@ export function readerSetFeed(id) {
   const f = next == null ? null : (state.feedList || []).find((x) => String(x.id) === String(next));
   state.rdFeedId = next;
   state.rdGroup = null;
-  if (f) expandRdGroup(String(f.groupName || '').trim());   // 折叠着就选不到它，选了必须看得见
+  if (f) rdExpandGroup(String(f.groupName || '').trim());   // 折叠着就选不到它，选了必须看得见
   renderReader();
   loadReader({ reset: true });
   emitShell();

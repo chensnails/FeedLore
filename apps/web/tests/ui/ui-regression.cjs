@@ -1262,6 +1262,18 @@ const withEFP = (el, fn) => {
     }
   });
 
+  // 函数改名后核心内部引用必须一起改：expandRdGroup → rdExpandGroup 曾漏掉一处，
+  // 点频道直接抛 ReferenceError（列表不切换），而 UI 测试用的是桩核心，发现不了。
+  t('核心：readerSetFeed 引用 rdExpandGroup，无遗留旧名', () => {
+    const js = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'core', 'reader.js'), 'utf8');
+    if (/(^|[^\w.])expandRdGroup\s*\(/.test(js)) throw new Error('reader.js 仍在调用已改名的 expandRdGroup');
+    const start = js.indexOf('export function readerSetFeed');
+    const end = js.indexOf('export function readerSetWatch');
+    const fn = start >= 0 && end > start ? js.slice(start, end) : '';
+    if (!fn) throw new Error('找不到 readerSetFeed');
+    if (fn.indexOf('rdExpandGroup(') < 0) throw new Error('readerSetFeed 未在选中频道时展开所属分组');
+  });
+
   // ============ 外壳与宿主 ============
   t('初始：遮罩常驻但 hidden', () => { const m = mask(); if (!m) throw new Error('无遮罩'); if (m.hidden !== true) throw new Error('初始应隐藏'); });
   t('初始：__settingsOpen 未定义/false', () => { if (w.__settingsOpen) throw new Error('__settingsOpen=' + w.__settingsOpen); });
@@ -3722,6 +3734,21 @@ const withEFP = (el, fn) => {
     if (btn.textContent.trim() !== '重试') throw new Error('按钮文案: ' + btn.textContent);
   });
   w.feedlore.state.rdReadError = false;
+
+  // 切频道 / 分组时列表先清空、请求还在路上：不能把空态（含「加载失败 · 重试」）提前端出来
+  w.feedlore.state.rdLoading = true;
+  readerSetEntries([]);
+  await sleep(30);
+  t('加载中不出空态提示（等请求落地再判空）', () => {
+    if (!R('#readerEmpty').hidden) throw new Error('加载中就显示了空态: ' + R('#readerEmpty').textContent);
+    if (R('#readerMore').hidden) throw new Error('加载中应显示加载指示');
+  });
+  w.feedlore.state.rdLoading = false;
+  readerSetEntries([]);
+  await sleep(30);
+  t('加载结束仍为空才提示空态', () => {
+    if (R('#readerEmpty').hidden) throw new Error('加载完的空列表应显示空态');
+  });
 
   // ============ 阅读页频道栏：分组折叠 + 拖宽（v1.4.0-test） ============
   w.feedlore.state.rdQ = '';
