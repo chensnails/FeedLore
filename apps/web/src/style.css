@@ -2696,6 +2696,12 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   padding:var(--sp-2) 0;
   max-width: var(--reader-width);
   margin:0 auto;
+  /* 头部工具按「自己实际有多宽」收放：它的宽度 = min(内容列, --reader-width)，
+     视口宽度和侧栏宽度都影响它（频道栏还能拖动改宽）。721–1000px 的窗口里
+     这一条只有 417–700px，带文字的整行工具要 760px —— 只按视口断点会在
+     721–1064 这一段把 ⋮ 推出屏幕（实测 721px 下右边缘在 773）。
+     容器查询尺寸取内容盒宽度，正好是工具可用的那一行。 */
+  container-type: inline-size;
   /* 分组徽标 + 「全部已读 / 全部收起」一起出现时给窄屏留条退路 */
   flex-wrap: wrap;
   /* 整条吸顶（v1.3.7-test4，桌面与移动同一套）：滚到列表中段也认得出「现在在看哪个频道」，
@@ -4378,6 +4384,11 @@ body { overflow: hidden; }
    两边结构因此仍同构：左端「我在看什么」，右端「我能做什么」，搜索永远在最右。 */
 .view-toolbar .vt-channel,
 .view-toolbar .vt-tools { flex: 0 0 auto; }
+/* 右簇必须可收缩：搜索胶囊的 flex-basis 是 560px，整簇若写死 0 0 auto 会按
+   max-content 撑开，搜索就永远缩不到 220px 底线（宽屏下 ⋮ 也会被推出去）。
+   0 1 auto + min-width:0 让搜索先缩；动作按钮在「三枚同时在场」时另有一条
+   flex:0 0 固定，不参与这次收缩。 */
+.view-toolbar .vt-tools { flex: 0 1 auto; min-width: 0; }
 /* 标题：按内容宽度、单行省略 —— 剩余宽度留给搜索，标题不再「吃掉一切」。 */
 .page-title,
 .reader-head h2,
@@ -4642,6 +4653,22 @@ body { overflow: hidden; }
     display: flex; flex: 1 0 100%; order: 9; margin: 0;
     max-width: none;
   }
+  /* 搜索必须能真的换到第二行：它和放大镜 / 视图导航 / ⋮ 一起嵌在右簇里，
+     而右簇是 nowrap 的 flex 盒 —— 只给搜索 flex-basis:100%，撑大的是右簇本身
+     （390px 实测右簇 450px，整条工具栏被推到 left=-190，文字全部出屏）。
+     把右簇打平成头部行的直接 flex item（与上面 .cards-head 打平同一手法），
+     搜索的 order:9 + flex-basis:100% 才落到第二行；其余控件保持 DOM 顺序，
+     标题的 flex:1 负责把它们推到右侧。AI 页的 .head-right 不在 .cards-head 内，
+     且没有搜索，不受影响。 */
+  .reader-head-tools,
+  .cards-head .head-right { display: contents; }
+  /* 卡片页靠 order 排位：右簇控件接在标题（order 2）之后；
+     搜索已由 .page-search.is-open 的 order 9 排到最后一行。 */
+  .cards-head .head-right > * { order: 5; }
+  .cards-head .head-right > .page-search { order: 9; }
+  /* iOS 聚焦小于 16px 的输入框会自动放大整页；搜索是移动端高频入口，抬到 16px。
+     只改展开后的搜索框，不牵动设置表单的字号。 */
+  .page-search input { font-size: 16px; }
   /* 卡片页：整条吸顶栏只有一行 —— [频道][标题][排序][视图][搜索]。
    * 两个 .wrap 与 .page-tools 在这里退化成 display:contents，子元素直接成为这一行的
    * flex item，靠 order 排位；搜索展开时 flex-basis:100% 自动换到第二行。
@@ -4683,6 +4710,86 @@ body { overflow: hidden; }
   #viewMode { order: 4; flex: 0 0 auto; }
   /* v1.6.0：搜索放大镜与 ⋮ 都在 .head-right 内，保持 DOM 顺序（[🔍][⋮]），
      不再给单独 order —— 否则放大镜会被甩到 ⋮ 右侧，溢出菜单不在最右。 */
+}
+
+/* ---------- 阅读页头部按「自身宽度」收放（容器查询） ----------
+ * 带文字的整行工具（标题 + 三枚动作 + 搜索 220 + 视图导航 + ⋮）需要约 760px；
+ * 而头部宽度 = min(内容列, --reader-width)，721–1064px 的窗口里只有 417–760px。
+ * ≤759 收掉按钮文字（title / aria 仍有语义），≤560 再把常驻搜索收成放大镜 ——
+ * 与手机上同一套交互。不支持容器查询的浏览器按旧规则渲染（仍会溢出，但不会更差）。 */
+@container (max-width: 759px) {
+  .reader-head .btn-label { display: none; }
+  .reader-head .btn:has(> .ico + .btn-label) {
+    width: var(--head-ctl); height: var(--head-ctl);
+    padding: 0; justify-content: center; gap: 0;
+  }
+  .reader-head .viewnav {
+    flex: 0 0 auto; min-width: 0;
+    padding: 0; gap: var(--sp-2);
+    background: none; box-shadow: none; border: 0; border-radius: 0;
+    margin-right: auto;
+  }
+  .reader-head .viewnav-btn {
+    flex: 0 0 auto;
+    width: var(--head-ctl); height: var(--head-ctl);
+    padding: 0; border-radius: var(--radius-sm); gap: 0;
+  }
+  .reader-head .viewnav-btn.active {
+    background: var(--accent-soft); color: var(--accent-text); box-shadow: none;
+  }
+  /* 动作按钮收进 ⋮：这一列放不下「单篇 / 全部已读 / 全部收起」三枚带字按钮。
+     .is-narrow-only 菜单项只存在于阅读页的 ⋮ 里，打开不会影响卡片 / AI 页。 */
+  .reader-head-tools .vt-action { display: none; }
+  .overflow-item.is-narrow-only { display: flex; }
+  .overflow-sep.is-narrow-only { display: block; }
+}
+
+@container (max-width: 560px) {
+  /* 搜索退到放大镜；展开时独占第二行（换行由 .reader-head:has(.is-open) 打开） */
+  .reader-head .reader-search-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--head-ctl); height: var(--head-ctl); padding: 0;
+  }
+  .reader-head .reader-search-toggle.is-on {
+    color: var(--accent-text); background: var(--accent-soft);
+  }
+  .reader-head-tools { display: contents; }
+  .reader-head-text { flex: 1 1 0; max-width: none; }
+  .reader-head .page-search { display: none; }
+  .reader-head .page-search.is-open {
+    display: flex; flex: 1 0 100%; order: 9; margin: 0; max-width: none;
+  }
+  .reader-head .page-search input { font-size: 16px; }
+}
+
+/* 搜索展开时头部换行：搜索独占第二行。条件挂在 .is-open 上而不是断点上 ——
+   放大镜可能出现在 560px 以下的列里，也可能在更宽的窗口（拖动侧栏后）。 */
+.reader-head:has(.page-search.is-open) {
+  flex-wrap: wrap; padding: 4px 0; row-gap: var(--sp-2);
+}
+.reader-head:has(.page-search.is-open) .reader-head-tools { display: contents; }
+.reader-head:has(.page-search.is-open) .reader-head-text { flex: 1 1 0; max-width: none; }
+.reader-head:has(.page-search.is-open) .page-search.is-open {
+  flex: 1 0 100%; order: 9; margin: 0; max-width: none;
+}
+/* 展开态就是「可以收起」这个状态：窗口从窄屏拉宽后放大镜会按桌面规则隐去，
+   若不给它出场，搜索会永远占着第二行收不回去。 */
+.reader-head:has(.page-search.is-open) .reader-search-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--head-ctl); height: var(--head-ctl); padding: 0;
+}
+
+/* 三枚动作同时在场的极端情况：带文字时整行约 848px，比默认 760px 的阅读宽度
+   还宽 88px，⋮ 会被挤出头部（「全部已读」+「全部收起」可同时成立）。
+   这时动作只留图标：⋮ 菜单里有同名带文字的项，语义不丢。 */
+.reader-head:has(#readerReadAllBtn:not([hidden])):has(#readerCollapseAll:not([hidden])) .vt-action .btn-label {
+  display: none;
+}
+.reader-head:has(#readerReadAllBtn:not([hidden])):has(#readerCollapseAll:not([hidden])) .vt-action {
+  /* 文字收掉后按钮的 min-content 只剩图标，会把收缩全吃在自己身上（实测 36→19）；
+     固定住，剩余宽度交给搜索去缩（它自己有 220px 底线）。 */
+  flex: 0 0 var(--head-ctl);
+  width: var(--head-ctl); padding: 0; justify-content: center; gap: 0;
 }
 
 /* 更窄一档（≤480）：.wrap 的左右内距在「手机」段收到 12px，吸顶外壳必须跟着收 ——
