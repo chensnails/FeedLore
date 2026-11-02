@@ -7,11 +7,13 @@
 
 import type { MiddlewareHandler } from 'hono';
 import type { AuthInstance } from '@feedlore/auth';
+import type { Role } from '@feedlore/contract';
+import { normalizeRole } from '../lib/roles';
 
 export interface SessionUser {
   id: string;
   username: string;
-  role: 'admin' | 'user';
+  role: Role;
 }
 
 export type AppEnv = {
@@ -43,7 +45,7 @@ export function requireAuth(
     if (!session) return c.json({ error: '未登录' }, 401);
 
     const u = session.user as unknown as AuthUserLike;
-    const role: 'admin' | 'user' = u.role === 'admin' ? 'admin' : 'user';
+    const role = normalizeRole(u.role);
     if (level === 'admin' && role !== 'admin') {
       return c.json({ error: '需要管理员权限' }, 403);
     }

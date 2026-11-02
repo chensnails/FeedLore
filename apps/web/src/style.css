@@ -2784,6 +2784,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   background: var(--accent-soft); color: var(--accent-text);
 }
 .user-row .u-badge.role-user { background: var(--chip-solid); color: var(--text-muted); }
+.user-row .u-badge.role-readonly { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+.user-row .u-role { flex: 0 0 auto; font-size: var(--fs-sm); padding:var(--sp-1) var(--sp-2); }
 .user-row .u-self { font-size: var(--fs-2xs); color: var(--text-faint); }
 .user-row .u-btn {
   flex: 0 0 auto; border: none; background: none; cursor: pointer; font-family: inherit;

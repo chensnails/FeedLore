@@ -448,7 +448,7 @@ w.feedlore = {
       if (!un) return bad('用户名不能为空');
       if (String((body && body.password) || '').length < 4) return bad('密码至少 4 位');
       if (miniUsers.some((u) => u.username === un)) return bad('用户名已存在');
-      const nu = { id: String(100 + miniUsers.length), username: un, role: body.role === 'admin' ? 'admin' : 'user', createdAt: null, feedCount: 0, isSelf: false };
+      const nu = { id: String(100 + miniUsers.length), username: un, role: body.role === 'admin' || body.role === 'readonly' ? body.role : 'user', createdAt: null, feedCount: 0, isSelf: false };
       miniUsers.push(nu);
       return ok({ ok: true, user: { id: nu.id, username: nu.username, role: nu.role } });
     }
@@ -458,7 +458,7 @@ w.feedlore = {
       const u = miniUsers.find((x) => x.id === uid);
       if (!u) return bad('用户不存在', 404);
       if (method === 'PATCH') {
-        if (body && body.role !== undefined) u.role = body.role === 'admin' ? 'admin' : 'user';
+        if (body && body.role !== undefined) u.role = body.role === 'admin' || body.role === 'readonly' ? body.role : 'user';
         if (body && typeof body.password === 'string') {
           if (body.password.length < 4) return bad('密码至少 4 位');
         }
@@ -2405,6 +2405,7 @@ const withEFP = (el, fn) => {
     const r = document.querySelector('#userResult');
     if (!r.classList.contains('ok') || r.textContent.indexOf('已创建用户 bob') < 0) throw new Error(r.className + '/' + r.textContent);
     if (document.querySelector('#newUserName').value !== '' || document.querySelector('#newUserPass').value !== '') throw new Error('表单未清空');
+    if (!document.querySelector('#newUserRole option[value="readonly"]')) throw new Error('角色下拉缺少只读');
     if (document.querySelectorAll('#userList .user-row').length !== 3) throw new Error('未重拉列表');
   });
 
@@ -2420,14 +2421,24 @@ const withEFP = (el, fn) => {
     if (!r.classList.contains('err') || r.textContent.indexOf('请填写用户名') < 0) throw new Error(r.className + '/' + r.textContent);
   });
 
-  // 改角色（alice → admin）
-  document.querySelector('#userList .user-row[data-id="2"] [data-act="role"]').click();
+  // 改角色（alice → 只读 → admin）
+  const aliceRoleSel = document.querySelector('#userList .user-row[data-id="2"] [data-act="role"]');
+  aliceRoleSel.value = 'readonly';
+  aliceRoleSel.dispatchEvent(new w.Event('change', { bubbles: true }));
   await sleep(80);
-  t('改角色：PATCH /api/users/2 {role:admin}', () => {
+  t('改角色：PATCH /api/users/2 {role:readonly}', () => {
     const p = patchesTo('/api/users/2');
     if (!p.length) throw new Error('未 PATCH');
-    if (JSON.parse(p[p.length - 1][3]).role !== 'admin') throw new Error('body 不符');
-    if (!document.querySelector('#userList .user-row[data-id="2"] .u-badge:not(.role-user)')) throw new Error('徽章未更新为管理员');
+    if (JSON.parse(p[p.length - 1][3]).role !== 'readonly') throw new Error('body 不符');
+    if (!document.querySelector('#userList .user-row[data-id="2"] .u-badge.role-readonly')) throw new Error('徽章未更新为只读');
+  });
+  const aliceRoleSel2 = document.querySelector('#userList .user-row[data-id="2"] [data-act="role"]');
+  aliceRoleSel2.value = 'admin';
+  aliceRoleSel2.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await sleep(80);
+  t('改角色：PATCH /api/users/2 {role:admin}', () => {
+    if (JSON.parse(patchesTo('/api/users/2').pop()[3]).role !== 'admin') throw new Error('body 不符');
+    if (document.querySelector('#userList .user-row[data-id="2"] .u-badge.role-user')) throw new Error('徽章仍为普通');
   });
 
   // 改密码（bob）
@@ -2581,6 +2592,20 @@ const withEFP = (el, fn) => {
     if (document.querySelector('#accUsersSec')) throw new Error('不应渲染用户管理区');
     if (countApi('/api/users') !== usersGetsBeforeUser) throw new Error('不应 GET /api/users');
   });
+
+  // 只读账户：权限与普通用户一致，但用户名/密码不能自助修改
+  w.feedlore.state.role = 'readonly';
+  clickTab('数据源'); await sleep(40);
+  clickTab('账号'); await sleep(60);
+  t('只读账户：用户名只读、无密码输入与保存按钮', () => {
+    const name = document.querySelector('#accUsername');
+    if (!name || name.disabled !== true) throw new Error('用户名应禁用');
+    if (document.querySelector('#accCurrent') || document.querySelector('#accNew')) throw new Error('不应渲染密码输入');
+    if (document.querySelector('#saveAccBtn')) throw new Error('不应渲染保存按钮');
+    if (!document.querySelector('[data-sec="acc-login"] .hint')) throw new Error('缺少只读说明');
+    if (!document.querySelector('#logoutBtn')) throw new Error('仍应能退出登录');
+  });
+  w.feedlore.state.role = 'admin';
   clickTab('数据源'); await sleep(40);
 
   w.__settingsHost.setAdminFlag(true);

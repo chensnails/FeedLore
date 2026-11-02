@@ -25,7 +25,15 @@ export const ApiErrorSchema = z.object({
 });
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 
-export const RoleSchema = z.enum(['admin', 'user']);
+/**
+ * 账号角色。
+ *
+ * - `admin`：站点级设置 + 用户管理；
+ * - `user`：自己的订阅源 / 偏好 / 模型 / 日报；
+ * - `readonly`：与 `user` 权限一致，唯一区别是**不能自助修改用户名和密码**，
+ *   适合把账号借给别人阅读，登录凭据始终由管理员掌握。
+ */
+export const RoleSchema = z.enum(['admin', 'user', 'readonly']);
 export type Role = z.infer<typeof RoleSchema>;
 
 /** 探活响应。`db.ready=false` 时 HTTP 为 503，但结构不变。 */

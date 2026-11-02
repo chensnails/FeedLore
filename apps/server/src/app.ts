@@ -22,6 +22,7 @@ import type { AuthInstance } from '@feedlore/auth';
 import type { AppEnv } from './middleware/auth';
 import { WEB_ROOT } from './env';
 import { userAppearance, userLayout } from './lib/prefs';
+import { normalizeRole } from './lib/roles';
 import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
 import { feedsRoutes } from './routes/feeds';
@@ -37,6 +38,18 @@ import {
   adminUserRoutes,
   adminVersionRoutes,
 } from './routes/admin';
+
+/**
+ * 只读账户禁止直连的 better-auth 端点：改用户名 / 改密码 / 改邮箱 / 找回密码。
+ * 业务路由 `/api/account` 里的限制只挡得住自己的入口，这些是直通的，必须一起拦。
+ */
+const READONLY_BLOCKED_AUTH_PATHS = [
+  '/api/auth/update-user',
+  '/api/auth/change-password',
+  '/api/auth/change-email',
+  '/api/auth/request-password-reset',
+  '/api/auth/reset-password',
+];
 
 export interface AppDeps {
   db: Db | null;
@@ -185,6 +198,15 @@ export function createApp({ db, auth }: AppDeps) {
     if (path.startsWith('/api/auth/sign-up') && process.env.ALLOW_SIGNUP !== '1') {
       return c.json({ error: '未开放注册' }, 403);
     }
+
+    // 只读账户的登录凭据由管理员掌握：自助改用户名/密码一律拒绝
+    if (READONLY_BLOCKED_AUTH_PATHS.some((p) => path === p || path.startsWith(p + '/'))) {
+      const session = await auth.api.getSession({ headers: c.req.raw.headers });
+      if (session && normalizeRole(session.user.role) === 'readonly') {
+        return c.json({ error: '只读账户不能修改用户名或密码，请联系管理员' }, 403);
+      }
+    }
+
     return auth.handler(c.req.raw);
   });
 

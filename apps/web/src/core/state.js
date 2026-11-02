@@ -36,7 +36,7 @@ export const state = {
   collapsedGroups: new Set(),  // 分组折叠状态（折叠的分组名集合，按账号持久化）
   tags: [],           // 服务端返回的标签计数
   username: null,
-  role: null,         // 'admin' | 'user' —— 决定设置里哪些 tab / 分组可见
+  role: null,         // 'admin' | 'user' | 'readonly' —— 决定设置里哪些 tab / 分组可见
 
   /* ---- 阅读页（文章）----
    * 跟卡片页各自持有自己的一份列表，互不干扰：阅读页按「当前选中的频道」拉，

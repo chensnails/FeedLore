@@ -15,6 +15,8 @@ import React, { useEffect, useRef, useState } from 'react';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
+const ROLE_LABEL = { admin: '管理员', user: '普通', readonly: '只读' };
+
 /** test-result 提示：ok 时 4s 后自动清除，err 常驻（与旧 showResult 语义一致） */
 function useResult(state) {
   const [result, setResult] = useState(state || null);
@@ -42,6 +44,8 @@ const Result = ({ id, result }) => (
 export function AccountPane() {
   const s = S();
   const admin = !!(s && s.isAdmin && s.isAdmin());
+  // 只读账户：权限与普通用户一致，但用户名/密码由管理员掌握，不能自助修改
+  const readonly = !!(s && s.state && s.state.role === 'readonly');
   const paneRef = useRef(null);
 
   // 登录信息
@@ -188,7 +192,7 @@ export function AccountPane() {
   }
 
   // 用户行操作：删除 / 改角色 / 改密码（与旧 userList 事件委托逐分支一致）
-  async function userAction(act, u) {
+  async function userAction(act, u, nextRole) {
     try {
       if (act === 'del') {
         const ok = await s.confirm({
@@ -205,14 +209,14 @@ export function AccountPane() {
         s.toast(`已删除用户 ${u.username}`);
         await loadUsers();
       } else if (act === 'role') {
-        const next = u.role === 'admin' ? 'user' : 'admin';
+        const next = nextRole || (u.role === 'admin' ? 'user' : 'admin');
         const res = await s.apiFetch('/api/users/' + u.id, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ role: next }),
         });
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
-        showUserResult(true, `已将 ${u.username} 设为${next === 'admin' ? '管理员' : '普通用户'}`);
+        showUserResult(true, `已将 ${u.username} 设为${ROLE_LABEL[next] || next}`);
         await loadUsers();
       } else if (act === 'pass') {
         const np = await s.confirm({
@@ -280,23 +284,35 @@ export function AccountPane() {
             <span className="sec-sub">{savedName ? `当前用户 ${savedName}` : ''}</span>
           </summary>
           <div className="sec-body">
-            <div className="form-row">
-              <label htmlFor="accUsername">用户名</label>
-              <input id="accUsername" type="text" spellCheck="false" value={username}
-                onChange={(e) => setUsername(e.target.value)} />
-            </div>
-            <div className="form-row">
-              <label htmlFor="accCurrent">当前密码 <span className="req">*</span></label>
-              <input id="accCurrent" type="password" placeholder="修改前需验证当前密码"
-                autoComplete="current-password" value={current}
-                onChange={(e) => setCurrent(e.target.value)} />
-            </div>
-            <div className="form-row">
-              <label htmlFor="accNew">新密码</label>
-              <input id="accNew" type="password" placeholder="留空则不修改，至少 4 位"
-                autoComplete="new-password" value={newPass}
-                onChange={(e) => setNewPass(e.target.value)} />
-            </div>
+            {readonly ? (
+              <>
+                <div className="form-row">
+                  <label htmlFor="accUsername">用户名</label>
+                  <input id="accUsername" type="text" value={username} disabled />
+                </div>
+                <div className="hint">只读账户：用户名和密码由管理员维护，不能自行修改。</div>
+              </>
+            ) : (
+              <>
+                <div className="form-row">
+                  <label htmlFor="accUsername">用户名</label>
+                  <input id="accUsername" type="text" spellCheck="false" value={username}
+                    onChange={(e) => setUsername(e.target.value)} />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="accCurrent">当前密码 <span className="req">*</span></label>
+                  <input id="accCurrent" type="password" placeholder="修改前需验证当前密码"
+                    autoComplete="current-password" value={current}
+                    onChange={(e) => setCurrent(e.target.value)} />
+                </div>
+                <div className="form-row">
+                  <label htmlFor="accNew">新密码</label>
+                  <input id="accNew" type="password" placeholder="留空则不修改，至少 4 位"
+                    autoComplete="new-password" value={newPass}
+                    onChange={(e) => setNewPass(e.target.value)} />
+                </div>
+              </>
+            )}
           </div>
         </details>
 
@@ -375,17 +391,20 @@ export function AccountPane() {
                       : users.map((u) => (
                         <div className="user-row" data-id={u.id} key={u.id}>
                           <span className="u-name">{u.username}</span>
-                          {u.role === 'admin'
-                            ? <span className="u-badge">管理员</span>
-                            : <span className="u-badge role-user">普通</span>}
+                          <span className={'u-badge' + (u.role === 'admin' ? '' : ' role-' + u.role)}>
+                            {ROLE_LABEL[u.role] || u.role}
+                          </span>
                           <span className="u-meta">{Number(u.feedCount) || 0} 个源</span>
                           {u.isSelf ? <span className="u-self">当前</span> : null}
                           <span className="u-spacer" />
                           {!u.isSelf && (
-                            <button className="u-btn" data-act="role" data-id={u.id}
-                              onClick={() => userAction('role', u)}>
-                              {u.role === 'admin' ? '降为普通' : '设为管理员'}
-                            </button>
+                            <select className="select u-role" data-act="role" data-id={u.id}
+                              title="角色" aria-label={`${u.username} 的角色`} value={u.role}
+                              onChange={(e) => userAction('role', u, e.target.value)}>
+                              <option value="user">普通</option>
+                              <option value="readonly">只读</option>
+                              <option value="admin">管理员</option>
+                            </select>
                           )}
                           <button className="u-btn" data-act="pass" data-id={u.id}
                             onClick={() => userAction('pass', u)}>改密码</button>
@@ -404,13 +423,14 @@ export function AccountPane() {
                 <select id="newUserRole" className="select" title="角色" value={newUserRole}
                   onChange={(e) => setNewUserRole(e.target.value)}>
                   <option value="user">普通用户</option>
+                  <option value="readonly">只读用户</option>
                   <option value="admin">管理员</option>
                 </select>
                 <button className="btn btn-primary btn-sm" id="addUserBtn" type="button"
                   disabled={addingUser} onClick={addUser}>添加</button>
               </div>
               <small className="form-tip">
-                每个用户拥有<b>自己独立</b>的订阅源、已读/收藏、日报与模型配置。普通用户可配置自己的模型并阅读，但看不到「状态 / 采集参数 / 用户管理」等站点级设置；管理员额外可管理用户与全局设置。
+                每个用户拥有<b>自己独立</b>的订阅源、已读/收藏、日报与模型配置。普通用户可配置自己的模型并阅读，但看不到「状态 / 采集参数 / 用户管理」等站点级设置；管理员额外可管理用户与全局设置。只读用户与普通用户权限一致，但不能自行修改用户名和密码，适合把账号借给别人阅读。
                 删除用户会一并删除其订阅源、条目与日报，且不可恢复。
               </small>
               <Result id="userResult" result={userResult} />
@@ -439,11 +459,13 @@ export function AccountPane() {
 
       <div className="pane-foot">
         <button className="btn btn-danger btn-sm" id="logoutBtn" onClick={logout}>退出登录</button>
-        <div className="pane-foot-btns">
-          <button className="btn btn-primary" id="saveAccBtn" disabled={saving} onClick={saveAccount}>
-            {saving ? '保存中…' : '保存账号'}
-          </button>
-        </div>
+        {!readonly && (
+          <div className="pane-foot-btns">
+            <button className="btn btn-primary" id="saveAccBtn" disabled={saving} onClick={saveAccount}>
+              {saving ? '保存中…' : '保存账号'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

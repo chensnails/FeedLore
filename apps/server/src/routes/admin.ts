@@ -31,6 +31,7 @@ import {
   type VersionCheck,
 } from '@feedlore/contract';
 import { assertResponse, BadRequest } from '../lib/validate';
+import { normalizeRole } from '../lib/roles';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 import { getSource, saveSource } from '../lib/settings';
 import { GITHUB_REPO, VERSION_TTL_MS, buildStatus, compareVersion } from '../lib/status';
@@ -186,7 +187,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
       const list = rows.map((u) => ({
         id: String(u.id),
         username: u.username || u.name || '',
-        role: u.role === 'admin' ? ('admin' as const) : ('user' as const),
+        role: normalizeRole(u.role),
         createdAt: u.createdAt ? u.createdAt.toISOString() : null,
         feedCount: perOwner.get(String(u.id)) ?? 0,
         isSelf: String(u.id) === me.id,
@@ -204,7 +205,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!db || !auth) return c.json({ error: '服务未就绪' }, 503);
         const body = c.req.valid('json');
         const username = body.username.trim();
-        const role = body.role === 'admin' ? 'admin' : 'user';
+        const role = normalizeRole(body.role);
 
         const dup = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
         if (dup.length) return c.json({ error: '用户名已存在' }, 409);
@@ -231,8 +232,8 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
         const row = created[0];
         if (!row) return c.json({ error: '创建失败：用户未落库' }, 500);
 
-        if (role === 'admin') {
-          await db.update(users).set({ role: 'admin' }).where(eq(users.id, row.id));
+        if (role !== 'user') {
+          await db.update(users).set({ role }).where(eq(users.id, row.id));
         }
 
         return c.json(
@@ -264,7 +265,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!row) return c.json({ error: '用户不存在' }, 404);
 
         if (body.role !== undefined) {
-          const nextRole = body.role === 'admin' ? 'admin' : 'user';
+          const nextRole = normalizeRole(body.role);
           if (row.role === 'admin' && nextRole !== 'admin') {
             const admins = await db
               .select({ id: users.id })
@@ -299,7 +300,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
             adminSpec.userPatch.response,
             {
               ok: true,
-              user: { id: String(f.id), username: f.username ?? '', role: f.role === 'admin' ? 'admin' : 'user' },
+              user: { id: String(f.id), username: f.username ?? '', role: normalizeRole(f.role) },
             },
             'PATCH /api/users/:id',
           ),
@@ -345,6 +346,10 @@ export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!db || !auth) return c.json({ error: '服务未就绪' }, 503);
         const me = c.get('user');
         const body = c.req.valid('json');
+        // 只读账户的登录凭据由管理员掌握：用户名与密码都不允许自助修改
+        if (me.role === 'readonly') {
+          return c.json({ error: '只读账户不能修改用户名或密码，请联系管理员' }, 403);
+        }
         const newUser = (body.username ?? '').trim();
 
         if (!newUser && !body.newPassword) {

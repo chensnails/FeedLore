@@ -17,6 +17,7 @@ import type { AuthInstance } from '@feedlore/auth';
 import type { Db } from '@feedlore/db';
 import { auth as authSpec, loginBody } from '@feedlore/contract';
 import { assertResponse, BadRequest } from '../lib/validate';
+import { normalizeRole } from '../lib/roles';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /** Node 22 的 Headers 支持 getSetCookie；这里做一次安全取用，兼容类型差异。 */
@@ -91,7 +92,7 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
         const data = (await res.json().catch(() => ({}))) as {
           user?: { username?: string; role?: string };
         };
-        const role = data.user?.role === 'admin' ? 'admin' : 'user';
+        const role = normalizeRole(data.user?.role);
 
         const payload = assertResponse(
           authSpec.login.response,
@@ -154,7 +155,7 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
         {
           authenticated: Boolean(session),
           username: u?.username ?? null,
-          role: u?.role === 'admin' ? 'admin' : u ? 'user' : null,
+          role: u ? normalizeRole(u.role) : null,
           id: u?.id ?? null,
           dbReady,
         },
