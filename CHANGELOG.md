@@ -5,6 +5,26 @@
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
+## 2.0.6 — 2026-11-02
+
+### 修复
+
+- **升级到 2.0.5 后页面报「加载失败：服务器内部错误」**：2.0.5 引入了
+  `entries.body_version` 列与 `feeds.full_text`、`article_cache`，但只有
+  `docker compose up` 才会执行 compose 里的 `upgrade` 服务；Watchtower、
+  设置页一键更新、`up -d --no-deps app` 都只重建 app 容器，库仍是旧结构。
+- v2 站点（含 1.x 已升级站点）现在**每次启动都补跑一次结构迁移**，迁移幂等，
+  结构已是最新时只多几秒启动时间。
+
+### 部署
+
+- 镜像：`ghcr.io/chensnails/feedlore:2.0.6`（amd64 + arm64），`latest` 指向同一 digest。
+- **从 2.0.5 升级**：直接更新镜像并重启即可，启动时会自动补上缺失的列和表，
+  不再需要手动 `docker exec feedlore pnpm --filter @feedlore/db migrate`。
+- 若数据库账号没有建表/改表权限（外部托管库常见），启动日志会提示
+  `结构迁移失败`，需用有权限的账号手动执行
+  `pnpm --filter @feedlore/db migrate` 后重启。迁移失败不会阻断应用启动。
+
 ## 2.0.5 — 2026-11-02
 
 ### 新增

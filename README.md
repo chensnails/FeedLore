@@ -6,7 +6,7 @@
 **在线体验**：https://feedlore.669600.xyz · 演示账户 `demo` / `demo`
 （普通用户角色，数据可能随使用变动或重置。想试多用户隔离，请自己部署一份。）
 
-当前版本 **2.0.5** · [更新日志](CHANGELOG.md) · [从 1.x 升级](UPGRADE-v2.md)
+当前版本 **2.0.6** · [更新日志](CHANGELOG.md) · [从 1.x 升级](UPGRADE-v2.md)
 
 ---
 
@@ -131,7 +131,7 @@ docker compose -f docker-compose.v2.release.yml up -d
 | `PG_DB` / `PG_USER` | `feedlore` | 数据库名 / 用户 |
 | `PG_PASSWORD` | `feedlore` | 数据库密码；**已有 1.x 站点升级时必须填原来的值** |
 | `V2_DB_NAME` | `feedlore_v2` | 2.x 实际使用的库；1.x 的库保持只读 |
-| `V2_IMAGE` | `…/feedlore:2.0.5` | 钉版本号；改成 `…:latest` 则跟随 Watchtower 滚动 |
+| `V2_IMAGE` | `…/feedlore:2.0.6` | 钉版本号；改成 `…:latest` 则跟随 Watchtower 滚动 |
 | `ADMIN_USER` / `ADMIN_PASS` | `admin` / `admin` | 仅空站点首次启动时生效 |
 | `AUTH_SECRET` | 留空 | 自动生成并存入 v2 库；**一旦有值不要再改** |
 | `AUTH_BASE_URL` | 留空 | 留空按访问 Host 做同源校验；多域名 / 反代改写 Host 时建议填 |
@@ -159,7 +159,7 @@ docker compose -f docker-compose.v2.release.yml up -d
 
 ### 更新
 
-- **钉版本号（默认，推荐）**：镜像固定为 `feedlore:2.0.5`，不会自己变化。改 `.env` 的
+- **钉版本号（默认，推荐）**：镜像固定为 `feedlore:2.0.6`，不会自己变化。改 `.env` 的
   `V2_IMAGE` 为新版本后重新 `up -d`。
 - **跟随 latest**：把 `V2_IMAGE` 设为 `ghcr.io/chensnails/feedlore:latest`，Watchtower
   每 5 分钟检查并重建；也可以在「设置 → 关于 → 一键更新」立即触发。
