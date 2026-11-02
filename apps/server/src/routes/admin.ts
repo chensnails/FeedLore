@@ -264,6 +264,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
         const row = target[0];
         if (!row) return c.json({ error: '用户不存在' }, 404);
 
+        let roleChanged = false;
         if (body.role !== undefined) {
           const nextRole = normalizeRole(body.role);
           if (row.role === 'admin' && nextRole !== 'admin') {
@@ -273,9 +274,11 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
               .where(eq(users.role, 'admin'));
             if (admins.length <= 1) return c.json({ error: '至少要保留一个管理员' }, 400);
           }
+          if (nextRole !== normalizeRole(row.role)) roleChanged = true;
           await db.update(users).set({ role: nextRole, updatedAt: new Date() }).where(eq(users.id, id));
         }
 
+        let passwordChanged = false;
         if (body.password) {
           if (body.password.length < 4) return c.json({ error: '密码至少 4 位' }, 400);
           try {
@@ -284,8 +287,22 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
               body: { userId: id, newPassword: body.password },
               headers: c.req.raw.headers,
             });
+            passwordChanged = true;
           } catch (e) {
             return c.json({ error: `改密失败：${(e as Error)?.message ?? e}` }, 400);
+          }
+        }
+
+        /* 改密或改角色后作废该用户的所有会话：已泄露的会话不能继续用旧凭据/旧权限。
+         * 失败只记日志 —— 密码与角色已经落库，不该因为清理会话失败而回滚。 */
+        if (roleChanged || passwordChanged) {
+          try {
+            await auth.api.revokeUserSessions({
+              body: { userId: id },
+              headers: c.req.raw.headers,
+            });
+          } catch (e) {
+            console.warn('[admin] 作废用户会话失败：', (e as Error)?.message ?? e);
           }
         }
 
@@ -371,7 +388,8 @@ export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
           if (body.newPassword.length < 4) return c.json({ error: '新密码至少 4 位' }, 400);
           try {
             await auth.api.changePassword({
-              body: { currentPassword: body.currentPassword, newPassword: body.newPassword, revokeOtherSessions: false },
+              // 保留当前会话、作废其它设备：改密后旧设备不应继续有效
+              body: { currentPassword: body.currentPassword, newPassword: body.newPassword, revokeOtherSessions: true },
               headers: c.req.raw.headers,
             });
           } catch (e) {

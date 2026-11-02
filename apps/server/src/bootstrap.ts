@@ -28,6 +28,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq, sql } from 'drizzle-orm';
@@ -302,7 +303,7 @@ async function writeMarker(targetUrl: string, counts: Counts): Promise<void> {
   }
 }
 
-/** 空站点播种：没有任何账号时创建初始管理员（默认 admin/admin，可用 ADMIN_USER/ADMIN_PASS 覆盖）。 */
+/** 空站点播种：没有任何账号时创建初始管理员（ADMIN_USER/ADMIN_PASS 可覆盖）。 */
 async function ensureDefaultAdmin(): Promise<void> {
   const db = createDb();
   let count = 0;
@@ -316,7 +317,10 @@ async function ensureDefaultAdmin(): Promise<void> {
   if (count > 0) return;
 
   const username = process.env.ADMIN_USER?.trim() || 'admin';
-  const password = process.env.ADMIN_PASS?.trim() || 'admin';
+  /* 不再回落到 admin/admin：默认口令等于把刚部署、还没来得及改密的实例直接送人。
+   * 没设 ADMIN_PASS 时生成一次性随机密码，只在本次启动日志里打印一次。 */
+  const configuredPassword = process.env.ADMIN_PASS?.trim();
+  const password = configuredPassword || randomBytes(12).toString('base64url');
   try {
     const auth = getAuth(db);
     // 与 seed.ts 一致：better-auth 必须要有 email，登录标识仍是 username
@@ -334,8 +338,9 @@ async function ensureDefaultAdmin(): Promise<void> {
     return;
   }
 
-  if (password === 'admin') {
-    warn(`空站点：已创建初始管理员 ${username}/admin —— 请登录后立即修改密码`);
+  if (!configuredPassword) {
+    warn(`空站点：已创建初始管理员 ${username}，一次性密码：${password}`);
+    warn('该密码只在本次启动日志中出现一次，请立即登录并修改；下次部署可用 ADMIN_PASS 指定。');
   } else {
     log(`空站点：已用 ADMIN_USER=${username} 创建管理员`);
   }

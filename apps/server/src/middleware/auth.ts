@@ -19,6 +19,8 @@ export interface SessionUser {
 export type AppEnv = {
   Variables: {
     user: SessionUser;
+    /** 每次请求生成的 CSP nonce，HTML 内的内联脚本必须带同一个值。 */
+    cspNonce: string;
   };
 };
 

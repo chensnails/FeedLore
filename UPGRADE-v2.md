@@ -7,7 +7,7 @@
 | --- | --- |
 | 1.x + Watchtower（1.x 默认部署方式） | **什么都不用做**，等它自动升级（见 A） |
 | 想手动/分步升级 | 用 `docker-compose.v2.release.yml`（见 B） |
-| 全新安装 | 同一份 compose，零配置直接起（见 C），自动创建 `admin/admin` |
+| 全新安装 | 同一份 compose，零配置直接起（见 C），自动创建管理员并打印一次性随机密码 |
 
 ---
 
@@ -90,7 +90,7 @@ curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-co
 | `V2_IMAGE` | 否 | 默认 `ghcr.io/chensnails/feedlore:2.0.7`；想跟 latest 滚动就写 `:latest` |
 | `UPGRADE_SKIP_IMAGE_CACHE` | 否 | 设 `1` 跳过图片缓存拷贝（v2 会按需回源） |
 | `UPGRADE_SKIP_BACKUP` | 否 | 仅自举路径：设 `1` 跳过 `<库名>_backup` 快照 |
-| `ADMIN_USER` / `ADMIN_PASS` | 否 | 空站点首次启动自动建 `admin/admin`；想换初始账号才填 |
+| `ADMIN_USER` / `ADMIN_PASS` | 否 | 空站点首次启动的初始管理员；不填密码则生成一次性随机口令（只在启动日志出现一次） |
 
 `PG_PASSWORD`、`WATCHTOWER_HTTP_API_TOKEN`、`ALLOW_PRIVATE_HOSTS`、`TRUST_PROXY` 沿用 1.x。
 
@@ -125,8 +125,14 @@ docker compose -f docker-compose.v2.release.yml up -d
 ```
 
 `upgrade` 检测不到 1.x 数据会跳过迁移，只建表；应用启动后若站点没有任何账号，
-会自动创建初始管理员 **`admin` / `admin`**。登录后请立即到「设置 → 账号」修改密码
-（也可以在首次启动前用 `ADMIN_USER` / `ADMIN_PASS` 换掉初始账号）。
+会自动创建初始管理员 `admin`，并生成一次性随机密码，**只在当次启动日志中打印一次**：
+
+```bash
+docker compose -f docker-compose.v2.release.yml logs app | grep 一次性密码
+```
+
+登录后请立即到「设置 → 账号」修改密码。想自己指定初始口令，就在首次启动前设
+`ADMIN_USER` / `ADMIN_PASS`。
 
 默认数据库密码是 `feedlore`、更新令牌是 `feedlore-update`，都只在容器网络内使用；
 共享主机或同网络还有其它容器时，建议在 `.env` 里覆盖（见 `.env.example`）。

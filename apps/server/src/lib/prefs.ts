@@ -8,6 +8,8 @@
  * 契约负责「拒绝不符合契约的响应」，本文件负责「把脏数据洗成符合契约的形状」。
  */
 
+import { isSafeRegex } from './regex-safety';
+
 export const APPEARANCE_DEFAULTS = {
   theme: 'auto',
   accent: 'blue',
@@ -150,6 +152,7 @@ export function sanitizeFilters(raw: unknown, maxPattern = 200): FilterRule[] {
       } catch {
         continue; // 非法正则直接丢，别让它每轮抓取都抛一次
       }
+      if (!isSafeRegex(pattern)) continue; // 灾难性回溯风险（如 (a+)+$）
     }
     let id = typeof r.id === 'string' ? r.id.trim().slice(0, 40) : '';
     if (!id || seen.has(id)) id = 'f' + (out.length + 1);

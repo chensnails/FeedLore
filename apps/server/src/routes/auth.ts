@@ -18,6 +18,7 @@ import type { Db } from '@feedlore/db';
 import { auth as authSpec, loginBody } from '@feedlore/contract';
 import { assertResponse, BadRequest } from '../lib/validate';
 import { normalizeRole } from '../lib/roles';
+import { clientIpOf, takeLoginAttempt } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /** Node 22 的 Headers 支持 getSetCookie；这里做一次安全取用，兼容类型差异。 */
@@ -74,6 +75,15 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!auth) return c.json({ error: '鉴权服务未就绪' }, 503);
 
         const body = c.req.valid('json');
+
+        /* 按真实客户端 IP 计桶。不能依赖 better-auth 的默认限流：内部请求
+         * 没有可信 IP 时它会退化成全站共享的 3 次/10 秒桶，等于给了一个
+         * 低成本的登录拒绝服务入口。 */
+        const limit = takeLoginAttempt('login:' + clientIpOf(c));
+        if (!limit.allowed) {
+          c.header('Retry-After', String(limit.retryAfter));
+          return c.json({ error: `登录尝试过于频繁，请 ${limit.retryAfter} 秒后再试` }, 429);
+        }
 
         // 交给 better-auth 的 username 登录端点（真正校验密码并签发会话）
         const res = await auth.handler(

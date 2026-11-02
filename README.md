@@ -132,7 +132,7 @@ docker compose -f docker-compose.v2.release.yml up -d
 | `PG_PASSWORD` | `feedlore` | 数据库密码；**已有 1.x 站点升级时必须填原来的值** |
 | `V2_DB_NAME` | `feedlore_v2` | 2.x 实际使用的库；1.x 的库保持只读 |
 | `V2_IMAGE` | `…/feedlore:2.0.7` | 钉版本号；改成 `…:latest` 则跟随 Watchtower 滚动 |
-| `ADMIN_USER` / `ADMIN_PASS` | `admin` / `admin` | 仅空站点首次启动时生效 |
+| `ADMIN_USER` / `ADMIN_PASS` | `admin` / 随机 | 仅空站点首次启动时生效；不填密码则生成一次性随机口令，只在启动日志打印一次 |
 | `AUTH_SECRET` | 留空 | 自动生成并存入 v2 库；**一旦有值不要再改** |
 | `AUTH_BASE_URL` | 留空 | 留空按访问 Host 做同源校验；多域名 / 反代改写 Host 时建议填 |
 | `AUTH_TRUSTED_ORIGINS` | 留空 | 额外信任的来源，逗号分隔 |

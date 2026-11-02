@@ -125,6 +125,15 @@ export function createAuth(opts: CreateAuthOptions) {
       // 只替换 verify：新密码仍用 better-auth 默认 scrypt(r=16) 生成
       password: { verify: verifyPasswordHash },
     },
+    /* 登录统一走 /api/login（外层已按客户端 IP 限流），直连 /api/auth/sign-in/*
+     * 在 app.ts 被拒。这里关掉 better-auth 的登录桶：它拿不到可信 IP 时会退化成
+     * 全站共享的 3 次/10 秒桶，让一个人就能把所有人锁在门外。 */
+    rateLimit: {
+      customRules: {
+        '/sign-in/email': false,
+        '/sign-in/username': false,
+      },
+    },
     // username：保持 legacy「用户名即登录标识」的体验（better-auth 默认走 email）。
     // 默认插件只收 [A-Za-z0-9_.] 且强制小写；v1 的规则是 [\w.\-@]{1,40} 且区分大小写，
     // 不放宽的话，带 `-`/`@` 或大写的存量用户名迁移后根本登不进来。

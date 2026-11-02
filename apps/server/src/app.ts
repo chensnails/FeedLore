@@ -22,6 +22,7 @@ import type { AuthInstance } from '@feedlore/auth';
 import type { AppEnv } from './middleware/auth';
 import { WEB_ROOT } from './env';
 import { sameOriginCandidates } from './auth';
+import { applyCspNonce, securityHeaders } from './lib/security-headers';
 import { userAppearance, userLayout } from './lib/prefs';
 import { normalizeRole } from './lib/roles';
 import { healthRoutes } from './routes/health';
@@ -96,13 +97,18 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
   app.get('/', async (c) => {
     const html = await readFile(join(root, 'index.html'), 'utf8').catch(() => null);
     if (html === null) return c.text('Not found', 404);
-    return c.html(await injectBootPrefs(html, c, deps));
+    return c.html(applyCspNonce(await injectBootPrefs(html, c, deps), c.get('cspNonce')));
   });
 
   /* 登录页是独立文档（v1 的 MPA 入口）。同样 no-cache：它是版本的另一个入口，
-   * 缓存住会让改过的登录逻辑在用户机器上「永远不生效」。 */
+   * 缓存住会让改过的登录逻辑在用户机器上「永远不生效」。
+   * 不再用 serveStatic：需要在响应前给内联脚本注入 CSP nonce。 */
   app.use('/login.html', cache('no-cache'));
-  app.get('/login.html', serveStatic({ root }));
+  app.get('/login.html', async (c) => {
+    const html = await readFile(join(root, 'login.html'), 'utf8').catch(() => null);
+    if (html === null) return c.text('Not found', 404);
+    return c.html(applyCspNonce(html, c.get('cspNonce')));
+  });
 
   /* 根级静态文件（PWA 的 manifest / service worker / 图标）。
    *
@@ -170,6 +176,17 @@ export function createApp({ db, auth }: AppDeps) {
    * CSS / JS / HTML 在弱网下是最大的一笔首屏成本：不压缩等于把 100KB+ 原样发出去。
    * compress 只对文本型 content-type 生效，图片（/api/img）本身已压缩会被跳过。 */
   app.use(compress());
+
+  /* 安全响应头（CSP / 防嵌套 / Permissions-Policy / HSTS）。
+   * 必须早于所有路由注册，HTML 处理函数要读取本次请求的 nonce。 */
+  app.use('*', securityHeaders());
+
+  /* 认证类 JSON 不落盘：共享电脑退出后，浏览器缓存里不该还留着订阅与偏好。
+   * 图片代理是例外，它有自己的长缓存策略。 */
+  app.use('/api/*', async (c, next) => {
+    if (!c.req.path.startsWith('/api/img')) c.header('Cache-Control', 'no-store');
+    await next();
+  });
 
   /* ==========================================================================
    * CSRF：所有业务写接口都要求 Origin/Referer 属于本站。
@@ -246,6 +263,12 @@ export function createApp({ db, auth }: AppDeps) {
      */
     if (path.startsWith('/api/auth/sign-up') && process.env.ALLOW_SIGNUP !== '1') {
       return c.json({ error: '未开放注册' }, 403);
+    }
+
+    /* 登录只认 /api/login：它在外层按客户端 IP 限流。放开直连 sign-in 等于
+     * 绕过限流，而 better-auth 在拿不到可信 IP 时会退化成全站共享桶。 */
+    if (path === '/api/auth/sign-in' || path.startsWith('/api/auth/sign-in/')) {
+      return c.json({ error: '请通过 /api/login 登录' }, 403);
     }
 
     // 只读账户的登录凭据由管理员掌握：自助改用户名/密码一律拒绝

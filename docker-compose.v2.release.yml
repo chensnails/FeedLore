@@ -140,9 +140,9 @@ services:
       # 纯 HTTP 必须为 0：Secure Cookie 在 HTTP 下不会被浏览器回传，表现为「登录成功但仍未登录」
       AUTH_SECURE_COOKIES: ${AUTH_SECURE_COOKIES:-0}
 
-      # ---- 初始管理员（仅空站点首次启动生效；默认 admin/admin）----
+      # ---- 初始管理员（仅空站点首次启动生效；不填密码则生成一次性随机口令）----
       ADMIN_USER: ${ADMIN_USER:-admin}
-      ADMIN_PASS: ${ADMIN_PASS:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:-}
 
       # ---- 出网安全 / 反代（与 1.x 同名参数，直接沿用）----
       ALLOW_PRIVATE_HOSTS: "${ALLOW_PRIVATE_HOSTS:-}"

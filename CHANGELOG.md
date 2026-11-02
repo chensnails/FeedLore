@@ -22,6 +22,20 @@
   为 Lax，浏览器不再随跨站 POST 携带登录态。
 - **登录开放重定向**：登录页的 `next` 参数只接受站内路径，`//evil.com`、
   `/\evil.com` 及跨源绝对地址都会落回首页。
+- **登录限流**：`/api/login` 按客户端 IP 限制为每分钟 10 次，超限返回 429 并带
+  `Retry-After`；better-auth 自带的登录端点不再直接对外，避免绕过限流。反向代理
+  后部署时设 `TRUST_PROXY=1`，才会从 `X-Forwarded-For` / `X-Real-IP` 取真实 IP。
+- **初始口令不再固定**：空站点首次启动时，未设置 `ADMIN_PASS` 就生成一次性随机
+  密码，只在当次启动日志里打印一次；不再默认创建 `admin/admin`。
+- **改密即失效会话**：管理员重置用户密码或调整角色后，该用户已有的登录会话立即
+  作废；用户自助改密时也会作废其他设备上的会话。
+- **安全响应头**：页面下发 CSP（脚本按请求 nonce 放行）、`X-Frame-Options: DENY`、
+  `frame-ancestors 'none'`、`X-Content-Type-Options: nosniff`、`Referrer-Policy` 与
+  `Permissions-Policy`；HTTPS 下附带 HSTS 与 `Cross-Origin-Opener-Policy`。
+  鉴权接口统一 `Cache-Control: no-store`，图片代理保留独立的长缓存策略。
+- **正则过滤器 ReDoS 防护**：保存过滤 / 关注规则时拒绝高回溯风险的正则，历史遗留
+  的危险规则在匹配时直接跳过；单条文本最多匹配前 8000 字符。
+- **依赖升级**：`drizzle-orm`、`zod`、`@hono/node-server` 升级到修复版本。
 
 ## 2.0.7 — 2026-11-02
 

@@ -132,7 +132,7 @@ html.boot-lock { overflow: hidden; }
     <div class="boot-tip">正在准备你的阅读空间</div>
     <div class="boot-err">
       <div class="boot-tip boot-err-text">加载遇到问题</div>
-      <button class="boot-retry" type="button" onclick="location.reload()">重新加载</button>
+      <button class="boot-retry" type="button">重新加载</button>
     </div>
   </div>
 </div>
@@ -142,6 +142,9 @@ html.boot-lock { overflow: hidden; }
   if (!el) return;
   var tip = el.querySelector('.boot-tip');
   var errText = el.querySelector('.boot-err-text');
+  /* 不用 onclick 内联属性：CSP 只放行带 nonce 的 <script>，内联事件处理器会被拦掉 */
+  var retry = el.querySelector('.boot-retry');
+  if (retry) retry.addEventListener('click', function () { location.reload(); });
   var t0 = performance.now();
   var done = false;
   var timer;

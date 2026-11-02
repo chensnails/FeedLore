@@ -106,6 +106,19 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     return res;
   }
 
+  /** 单独登录一个账号并返回它自己的 Cookie 串（不污染主 jar）。 */
+  async function loginAs(u: string, p: string): Promise<string> {
+    const res = await app.request('/api/login', {
+      method: 'POST',
+      headers: { origin: ORIGIN, 'content-type': 'application/json' },
+      body: JSON.stringify({ username: u, password: p }),
+    });
+    assert.equal(res.status, 200, `${u} 登录应成功`);
+    const setCookies =
+      (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
+    return setCookies.map((s) => s.split(';')[0]).join('; ');
+  }
+
   const username = `itest_${Date.now().toString(36)}`;
   const email = `${username}@example.test`;
   const password = 'itest-pass-1234';
@@ -142,6 +155,25 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       const res = await call('/api/auth/get-session');
       assert.equal(res.status, 200, 'get-session 应为 200；404 说明 /api/auth/* 又被路由吞了');
       assert.notDeepEqual(await res.json(), { error: '接口不存在' });
+    });
+
+    await t.test('直连 better-auth 登录端点被拒（登录只能走 /api/login 的限流入口）', async () => {
+      const res = await call('/api/auth/sign-in/username', {
+        method: 'POST',
+        json: { username, password },
+      });
+      assert.equal(res.status, 403);
+    });
+
+    await t.test('安全响应头与 API 不落盘', async () => {
+      const res = await call('/api/session');
+      const csp = res.headers.get('content-security-policy') ?? '';
+      assert.match(csp, /script-src 'self' 'nonce-[^']+'/, 'CSP 必须用 nonce 放行内联脚本');
+      assert.match(csp, /frame-ancestors 'none'/);
+      assert.equal(res.headers.get('x-frame-options'), 'DENY');
+      assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+      assert.ok(res.headers.get('permissions-policy'));
+      assert.equal(res.headers.get('cache-control'), 'no-store');
     });
 
     await t.test('公开注册默认关闭（修通路由不能顺手把注册口开出去）', async () => {
@@ -297,6 +329,35 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       const me = body.users.find((u) => u.username === username);
       assert.ok(me, '管理员列表里应能看到自己');
       assert.equal(typeof me.id, 'string');
+    });
+
+    /* ---------------------------------------------------------------- 会话吊销 */
+    await t.test('管理员重置密码后，目标用户的旧会话立即失效', async () => {
+      const victim = `itest_v_${Date.now().toString(36)}`;
+      const created = await call('/api/users', {
+        method: 'POST',
+        json: { username: victim, password: 'victim-pass-1234', role: 'user' },
+      });
+      assert.equal(created.status, 200);
+      const victimId = ((await created.json()) as { user: { id: string } }).user.id;
+
+      const victimJar = await loginAs(victim, 'victim-pass-1234');
+      assert.equal(
+        (await app.request('/api/feeds', { headers: { cookie: victimJar } })).status,
+        200,
+      );
+
+      const reset = await call(`/api/users/${victimId}`, {
+        method: 'PATCH',
+        json: { password: 'victim-pass-5678' },
+      });
+      assert.equal(reset.status, 200);
+
+      assert.equal(
+        (await app.request('/api/feeds', { headers: { cookie: victimJar } })).status,
+        401,
+        '改密后旧 Cookie 必须失效',
+      );
     });
 
     /* ---------------------------------------------------------------- CSRF */

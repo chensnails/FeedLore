@@ -12,6 +12,7 @@
  */
 
 import type { FilterRule } from './prefs';
+import { FILTER_MAX_TEXT, isSafeRegex } from './regex-safety';
 
 /** 规则匹配的文本域 */
 function fieldText(rule: FilterRule, item: Matchable): string {
@@ -45,8 +46,11 @@ export function ruleHit(rule: FilterRule, item: Matchable): boolean {
   const text = fieldText(rule, item);
   if (!text) return false;
   if (rule.kind === 're') {
+    /* 存量规则可能是在加闸门前保存的：不安全的一律当不命中，
+     * 不能为了「尊重用户配置」把整个进程交给一条正则。 */
+    if (!isSafeRegex(rule.pattern)) return false;
     try {
-      return new RegExp(rule.pattern, 'i').test(text);
+      return new RegExp(rule.pattern, 'i').test(text.slice(0, FILTER_MAX_TEXT));
     } catch {
       return false; // 非法正则（sanitizeFilters 已拦）视为不命中
     }
