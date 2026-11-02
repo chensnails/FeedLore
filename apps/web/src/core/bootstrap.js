@@ -26,6 +26,47 @@ requestAnimationFrame(() => requestAnimationFrame(bootThemeAndView));
 /* ============================================================
  * 启动
  * ============================================================ */
+/* 启动层收口：ready 只在首个视图真正渲染后调用；fail 让启动层原地给出错误与「重新加载」，
+   而不是留一片白屏 + 一条很快消失的 toast。 */
+function bootReady() {
+  if (window.__boot) requestAnimationFrame(() => window.__boot.ready());
+}
+function bootFail(message) {
+  if (window.__boot) window.__boot.fail(message);
+}
+/* switchView 在支持 View Transitions 时是异步落地的（apply 回调在旧画面快照后才执行），
+   文章列表又是在 apply 里才发起请求；启动层如果立刻退，会先看到空头部，再等列表补进来。
+   这里等到「目标视图已显示 + 首屏数据请求结束 + 列表 DOM 出现」再淡出，
+   失败态也放行，让用户在应用内看到错误提示而不是一直卡在启动层。 */
+async function waitViewFirstPaint(tab) {
+  const viewId = { reader: 'readerView', cards: 'cardsView', ai: 'aiView' }[tab] || 'readerView';
+  const t0 = Date.now();
+  while (Date.now() - t0 < 12000) {
+    const el = document.getElementById(viewId);
+    if (el && !el.hidden) break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  if (tab === 'reader') {
+    while (state.rdLoading && Date.now() - t0 < 12000) await new Promise((r) => setTimeout(r, 50));
+    if (state.rdEntries.length && !state.rdReadError) {
+      const t = Date.now();
+      while (!document.querySelector('#readerList .art-item') && Date.now() - t < 3000) {
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    }
+  } else if (tab === 'cards') {
+    while (state.loading && Date.now() - t0 < 12000) await new Promise((r) => setTimeout(r, 50));
+    if ((state.entries || []).length && !state.loadError) {
+      const t = Date.now();
+      while (!document.querySelector('#grid .card, #grid .row-item') && Date.now() - t < 3000) {
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    }
+  }
+  // React 提交后再等两帧，确保首屏内容真正画出来
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+}
+
 (async function init() {
   // 校验登录态（未登录由 apiFetch 自动跳转）
   try {
@@ -37,13 +78,18 @@ requestAnimationFrame(() => requestAnimationFrame(bootThemeAndView));
     }
     state.username = s.username;
     state.role = s.role || 'user';
-  } catch (_) { /* 忽略 */ }
+  } catch (_) {
+    bootFail('无法连接服务器，请检查网络后重试');
+    return;
+  }
   applyRoleUI();
 
   try {
     await loadFeeds();
   } catch (err) {
+    bootFail('频道列表加载失败，请重试');
     toast('频道列表加载失败：' + (err.message || err), false);
+    return;
   }
   // 频道接口顺带带回了「页面自动刷新」间隔，据此起定时器
   scheduleAutoRefresh();
@@ -70,10 +116,19 @@ requestAnimationFrame(() => requestAnimationFrame(bootThemeAndView));
   // #digest 是老深链，那个页面已经升级成「AI」了，仍然认
   else if (location.hash.startsWith('#digest')) tab = 'ai';
   else if (location.hash.startsWith('#ai')) tab = 'ai';
-  switchView(tab);
+  await switchView(tab);
 
   if (location.hash.startsWith('#settings')) openSettings();
 
   // 条目级深链：列表落地后展开那一篇并置顶（与「点下一篇进入」同一策略）
-  if (deepArtId) restoreReaderArt(deepArtId);
-})();
+  if (deepArtId) {
+    await waitViewFirstPaint('reader');
+    await restoreReaderArt(deepArtId);
+  } else {
+    await waitViewFirstPaint(tab);
+  }
+
+  bootReady();
+})().catch((err) => {
+  bootFail('加载失败：' + (err && err.message ? err.message : '未知错误'));
+});

@@ -142,10 +142,24 @@ export function switchView(name) {
   };
   // View Transitions API：视图切换时整页交叉淡入（渐进增强，减少动态效果时跳过）
   if (document.startViewTransition && !prefersReducedMotion()) {
-    document.startViewTransition(apply);
-  } else {
-    apply();
+    let started = false;
+    try {
+      const transition = document.startViewTransition(apply);
+      started = true;
+      // 快速连续切页时浏览器会跳过上一段过渡并抛 AbortError；
+      // 视图已经切过去了，这里只需吞掉悬空的 rejection，避免控制台噪声。
+      if (transition && transition.finished && transition.finished.catch) transition.finished.catch(() => {});
+      if (transition && transition.ready && transition.ready.catch) transition.ready.catch(() => {});
+      // apply 是异步落地的（旧画面快照后才执行）；返回 updateCallbackDone，
+      // 让启动流程能等到「视图已切、首屏请求已发出」再做后续判断。
+      if (transition && transition.updateCallbackDone) return transition.updateCallbackDone.catch(() => {});
+      return Promise.resolve();
+    } catch (_) { /* 老实现同步抛错 → 走无动画路径 */ }
+    if (!started) apply();
+    return Promise.resolve();
   }
+  apply();
+  return Promise.resolve();
 }
 
 /* 浏览器前进 / 后退：按地址栏 hash 恢复视图与文章。

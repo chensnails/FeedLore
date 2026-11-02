@@ -122,6 +122,7 @@
     errBox.classList.remove('show');
     btn.disabled = true;
     btn.textContent = '登录中…';
+    let entering = false;
 
     try {
       const res = await fetch('/api/login', {
@@ -134,6 +135,9 @@
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        // 跳转是整文档导航：按钮文字先切过去，主站的启动层会接住下一段空白
+        entering = true;
+        btn.textContent = '正在进入…';
         const next = new URLSearchParams(location.search).get('next');
         location.replace(next && next.startsWith('/') ? next : '/');
         return;
@@ -142,8 +146,10 @@
     } catch (_) {
       showError('网络异常，请重试');
     } finally {
-      btn.disabled = false;
-      btn.textContent = '登 录';
+      if (!entering) {
+        btn.disabled = false;
+        btn.textContent = '登 录';
+      }
     }
   });
 </script>

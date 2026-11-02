@@ -41,6 +41,16 @@
   var accent = (sa && typeof sa.accent === 'string') ? sa.accent : (lsGet('feedlore.appearance.accent.v1') || 'blue');
   el.setAttribute('data-accent', mode === 'github' ? 'github' : pick(accent, ACCENTS, 'blue'));
 
+  /* 启动层的主色：样式表此时还没加载，只能在这里按主题取一份十六进制值，
+     让 logo 在冷启动第一帧就是用户选中的主色，而不是先蓝一下再跳。 */
+  var ACCENT_HEX = {
+    blue: ['#1f5ce8', '#7aa2ff'], violet: ['#6a3fe0', '#a68bff'],
+    teal: ['#0b6f74', '#4fd1c5'], green: ['#0e7440', '#5ed68f'],
+    amber: ['#9a4a06', '#f0b45f'], rose: ['#c0255c', '#ff8fb1']
+  };
+  var pair = ACCENT_HEX[el.getAttribute('data-accent')] || ACCENT_HEX.blue;
+  el.style.setProperty('--boot-accent', mode === 'github' ? '#1f6feb' : (dark ? pair[1] : pair[0]));
+
   var ap = sa || {};
   el.setAttribute('data-font-size', pick(ap.fontSize, ['s', 'm', 'l'], 'm'));
   el.setAttribute('data-reader-font', pick(ap.readerFont, ['sans', 'serif'], 'sans'));
@@ -57,8 +67,111 @@
      Vite 注入的 <link rel=stylesheet> 本身已是最高优先级（渲染阻塞），
      这里不再手写 preload —— 手写 /src/main.jsx 会被 Vite 当成入口直接内联整段代码，
      反而把 HTML 撑大。 -->
+<style>
+/* 启动层：必须内联在这里。样式表与入口模块都要等网络，冷启动（尤其 ARM 测试机）
+   会先白屏几秒；这段 CSS 与下面的标记随 HTML 一起到达，第一帧就有东西可看。
+   主题/主色由 head 里的内联脚本预先写到 <html> 与 --boot-accent，
+   READY 由 bootstrap.js 在首个视图渲染完成后调用 window.__boot.ready()。 */
+#appBoot {
+  position: fixed; inset: 0; z-index: 9999;
+  display: grid; place-items: center;
+  background: #f4f5f7; color: #1b1f26;
+  --boot-track: rgba(27, 31, 38, .12);
+  --boot-glow: rgba(27, 31, 38, .10);
+  --boot-accent: #1f5ce8;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  transition: opacity .26s ease;
+}
+html[data-theme="dark"] #appBoot {
+  background: #242424; color: #c9c9c9;
+  --boot-track: rgba(255, 255, 255, .14); --boot-glow: rgba(0, 0, 0, .5);
+}
+html[data-theme="github"] #appBoot {
+  background: #0d1117; color: #f0f6fc;
+  --boot-track: rgba(255, 255, 255, .14); --boot-glow: rgba(0, 0, 0, .55);
+}
+#appBoot.is-done { opacity: 0; pointer-events: none; }
+html.boot-lock { overflow: hidden; }
+.boot-inner { display: flex; flex-direction: column; align-items: center; gap: 14px; transform: translateY(-2vh); }
+.boot-mark { width: 64px; height: 64px; border-radius: 15px; box-shadow: 0 10px 30px var(--boot-glow); animation: bootPulse 1.8s ease-in-out infinite; }
+.boot-mark svg { display: block; width: 100%; height: 100%; }
+.boot-name { font-size: 13px; letter-spacing: .24em; padding-left: .24em; opacity: .72; }
+.boot-bar { width: 92px; height: 3px; border-radius: 3px; background: var(--boot-track); overflow: hidden; }
+.boot-bar i { display: block; width: 42%; height: 100%; border-radius: inherit; background: var(--boot-accent); animation: bootSlide 1.15s cubic-bezier(.4, 0, .2, 1) infinite; }
+.boot-tip { min-height: 18px; font-size: 12px; opacity: .62; text-align: center; }
+.boot-err { display: none; flex-direction: column; align-items: center; gap: 10px; margin-top: 2px; }
+#appBoot.is-error .boot-err { display: flex; }
+#appBoot.is-error .boot-bar, #appBoot.is-error > .boot-inner > .boot-tip { display: none; }
+.boot-retry { font: inherit; font-size: 13px; padding: 7px 16px; border-radius: 8px; border: 1px solid var(--boot-track); background: transparent; color: inherit; cursor: pointer; }
+.boot-retry:hover { background: var(--boot-track); }
+@keyframes bootPulse { 0%, 100% { transform: scale(1); opacity: .95; } 50% { transform: scale(1.045); opacity: 1; } }
+@keyframes bootSlide { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+@media (prefers-reduced-motion: reduce) {
+  .boot-mark, .boot-bar i { animation: none; }
+  .boot-bar i { width: 100%; opacity: .5; }
+  #appBoot { transition: none; }
+}
+</style>
 </head>
 <body>
+<!-- 冷启动加载层（详见 <head> 内的注释与脚本）。ready / fail 由 src/core/bootstrap.js 调用 -->
+<div id="appBoot" role="status" aria-live="polite" aria-label="正在加载">
+  <div class="boot-inner">
+    <div class="boot-mark" aria-hidden="true">
+      <svg viewBox="0 0 64 64">
+        <rect width="64" height="64" rx="15" fill="var(--boot-accent)" />
+        <rect x="8" y="17" width="33" height="37" rx="6" fill="#ffffff" />
+        <rect x="15" y="25" width="19" height="5" rx="2.5" fill="var(--boot-accent)" />
+        <rect x="15" y="35" width="12" height="5" rx="2.5" fill="var(--boot-accent)" />
+        <rect x="15" y="45" width="16" height="5" rx="2.5" fill="var(--boot-accent)" />
+        <path d="M51.5 6l2.9 7.1 7.1 2.9-7.1 2.9-2.9 7.1-2.9-7.1-7.1-2.9 7.1-2.9z" fill="#ffffff" />
+      </svg>
+    </div>
+    <div class="boot-name">笺川</div>
+    <div class="boot-bar" aria-hidden="true"><i></i></div>
+    <div class="boot-tip">正在准备你的阅读空间</div>
+    <div class="boot-err">
+      <div class="boot-tip boot-err-text">加载遇到问题</div>
+      <button class="boot-retry" type="button" onclick="location.reload()">重新加载</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var el = document.getElementById('appBoot');
+  if (!el) return;
+  var tip = el.querySelector('.boot-tip');
+  var errText = el.querySelector('.boot-err-text');
+  var t0 = performance.now();
+  var done = false;
+  var timer;
+  document.documentElement.classList.add('boot-lock');
+  function dismiss() {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    document.documentElement.classList.remove('boot-lock');
+    /* 至少显示 350ms：接口很快时也不至于闪一下白/闪一下 logo */
+    var wait = Math.max(0, 350 - (performance.now() - t0));
+    setTimeout(function () {
+      el.classList.add('is-done');
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
+    }, wait);
+  }
+  window.__boot = {
+    ready: dismiss,
+    tip: function (text) { if (text && !done) tip.textContent = text; },
+    fail: function (text) {
+      if (done) return;
+      clearTimeout(timer);
+      el.classList.add('is-error');
+      errText.textContent = text || '加载遇到问题';
+    }
+  };
+  timer = setTimeout(function () { window.__boot.fail('加载时间超出预期，请检查网络后重试'); }, 12000);
+})();
+</script>
+
 <svg class="sprite" aria-hidden="true" focusable="false" width="0" height="0" style="position:absolute">
   <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.9-6.4"/><path d="M20.5 3.5v5h-5"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5v11"/><path d="M7.5 10 12 14.5 16.5 10"/><path d="M4.5 16.5v2A2.5 2.5 0 0 0 7 21h10a2.5 2.5 0 0 0 2.5-2.5v-2"/></symbol>
