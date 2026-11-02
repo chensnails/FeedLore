@@ -360,6 +360,41 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       );
     });
 
+    await t.test('自助改密：当前设备保持登录，其它设备立即失效', async () => {
+      const name = `itest_self_${Date.now().toString(36)}`;
+      const created = await call('/api/users', {
+        method: 'POST',
+        json: { username: name, password: 'self-pass-1234', role: 'user' },
+      });
+      assert.equal(created.status, 200);
+
+      const first = await loginAs(name, 'self-pass-1234');
+      const second = await loginAs(name, 'self-pass-1234');
+      assert.equal((await app.request('/api/feeds', { headers: { cookie: first } })).status, 200);
+      assert.equal((await app.request('/api/feeds', { headers: { cookie: second } })).status, 200);
+
+      const changed = await app.request('/api/account', {
+        method: 'POST',
+        headers: { origin: ORIGIN, cookie: first, 'content-type': 'application/json' },
+        body: JSON.stringify({ currentPassword: 'self-pass-1234', newPassword: 'self-pass-5678' }),
+      });
+      assert.equal(changed.status, 200);
+
+      /* changePassword 内部会删掉全部会话；这里必须显式只清「其它」会话，
+       * 否则当前设备也会被踢下线（浏览器拿不到直调 API 产生的新 Cookie）。 */
+      assert.equal(
+        (await app.request('/api/feeds', { headers: { cookie: first } })).status,
+        200,
+        '当前设备应保持登录',
+      );
+      assert.equal(
+        (await app.request('/api/feeds', { headers: { cookie: second } })).status,
+        401,
+        '其它设备应被踢下线',
+      );
+      await loginAs(name, 'self-pass-5678');
+    });
+
     /* ---------------------------------------------------------------- CSRF */
     await t.test('写接口必须带本站 Origin/Referer（缺失或外站都 403）', async () => {
       const body = JSON.stringify({ layout: { view: 'list' } });

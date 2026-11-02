@@ -388,10 +388,17 @@ export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
           if (body.newPassword.length < 4) return c.json({ error: '新密码至少 4 位' }, 400);
           try {
             await auth.api.changePassword({
-              // 保留当前会话、作废其它设备：改密后旧设备不应继续有效
-              body: { currentPassword: body.currentPassword, newPassword: body.newPassword, revokeOtherSessions: true },
+              body: { currentPassword: body.currentPassword, newPassword: body.newPassword, revokeOtherSessions: false },
               headers: c.req.raw.headers,
             });
+            /* 不能用 changePassword 的 revokeOtherSessions：它会连当前会话一起删掉、
+             * 再签一枚新 token 放进 Set-Cookie；而我们是通过 auth.api 直调，拿不到
+             * 那个 Set-Cookie，浏览器里的当前会话就会被误踢。这里显式只清其它会话。 */
+            try {
+              await auth.api.revokeOtherSessions({ headers: c.req.raw.headers });
+            } catch (e) {
+              console.warn('[account] 清理其它会话失败：', (e as Error)?.message ?? e);
+            }
           } catch (e) {
             return c.json({ error: `改密失败：${(e as Error)?.message ?? e}` }, 400);
           }

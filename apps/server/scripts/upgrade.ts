@@ -295,7 +295,7 @@ async function main(): Promise<void> {
     return;
   }
   if (legacyUsers === 0) {
-    warn('源库没有账号：按空站点继续。应用启动时会自动创建初始管理员 admin/admin');
+    warn('源库没有账号：按空站点继续。应用启动时会自动创建初始管理员，并打印一次性随机密码');
     return;
   }
 
