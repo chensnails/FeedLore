@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildBlocks, decodeEntities, parseFeed, plainText } from './rss';
+import { decodeEntities, normalizeItem, parseFeed, plainText } from './rss';
 
 /**
- * RSS 解析与正文结构化。
+ * RSS 解析与条目归一化。
  *
- * `buildBlocks` 是阅读页能不能好好排版的前提：它把源站那段乱七八糟的 HTML
- * 拆成「有序图文块」存进 `entries.body_json`。前端的 `ArticleBody` 完全信任
- * 这个结构 —— 这里少一个图、段落粘成一坨，阅读页就直接塌。
+ * 正文结构化本身在 article.test.ts 里测；这里守的是「条目字段」：
+ * 标题 / 链接 / 抓取码 / 图片列表 / bodyVersion 的落库口径。
  */
 
 test('实体解码：数字实体、十六进制、nbsp', () => {
@@ -19,45 +18,41 @@ test('实体解码：数字实体、十六进制、nbsp', () => {
   assert.equal(decodeEntities(null), '');
 });
 
-test('buildBlocks：段落与图片保持原文顺序', () => {
-  const blocks = buildBlocks('<p>第一段</p><img src="https://a.com/1.jpg"><p>第二段</p>');
-  assert.deepEqual(blocks, [
-    { t: 'p', text: '第一段' },
-    { t: 'img', src: 'https://a.com/1.jpg' },
-    { t: 'p', text: '第二段' },
-  ]);
-});
-
-test('buildBlocks：懒加载图片（data-src）也能取到', () => {
-  const blocks = buildBlocks('<p>x</p><img data-src="https://a.com/lazy.jpg">');
-  assert.deepEqual(blocks[1], { t: 'img', src: 'https://a.com/lazy.jpg' });
-});
-
-test('buildBlocks：只收 http(s)、去重、内联标签压平成文字', () => {
-  const blocks = buildBlocks(
-    '<p>看 <a href="https://x.com">这里</a> <b>加粗</b></p>' +
-      '<img src="data:image/png;base64,AAA">' +
-      '<img src="https://a.com/same.jpg">' +
-      '<img src="https://a.com/same.jpg">',
+test('normalizeItem：产出 v2 正文块，图片按正文顺序且相对地址补全', () => {
+  const it = normalizeItem(
+    {
+      guid: 'g-1',
+      title: '一篇',
+      url: 'https://example.com/p/1',
+      content: '<p>第一段</p><img src="/a.jpg"><p>第二段</p>',
+      enclosure: null,
+      dateStr: 'Wed, 29 Oct 2026 10:00:00 GMT',
+    },
+    '源',
+    { siteUrl: 'https://example.com' },
   );
-  // 段落里的标签被压平，文字还在
-  assert.deepEqual(blocks[0], { t: 'p', text: '看 这里 加粗' });
-  // data: 被丢、重复图只留一张
-  assert.deepEqual(
-    blocks.filter((b) => b.t === 'img'),
-    [{ t: 'img', src: 'https://a.com/same.jpg' }],
+  assert.equal(it.bodyVersion, 2);
+  assert.deepEqual(it.images, ['https://example.com/a.jpg']);
+  const blocks = JSON.parse(it.bodyJson ?? '[]');
+  assert.deepEqual(blocks.map((b: { t: string }) => b.t), ['p', 'img', 'p']);
+  assert.equal(blocks[1].src, 'https://example.com/a.jpg');
+});
+
+test('normalizeItem：纯文本帖子的换行仍是独立段落', () => {
+  const it = normalizeItem(
+    {
+      guid: 'g-2',
+      title: '资源',
+      url: 'https://example.com/p/2',
+      content: '名称：资源\n描述：说明\n链接：https://pan.baidu.com/s/abc',
+      enclosure: null,
+      dateStr: '',
+    },
+    '源',
   );
-});
-
-test('buildBlocks：图片上限 12 张（防超长图集把库撑爆）', () => {
-  const html = Array.from({ length: 20 }, (_, i) => `<img src="https://a.com/${i}.jpg">`).join('');
-  const imgs = buildBlocks(html).filter((b) => b.t === 'img');
-  assert.equal(imgs.length, 12);
-});
-
-test('buildBlocks：空正文返回空数组（前端据此走兜底分层）', () => {
-  assert.deepEqual(buildBlocks(''), []);
-  assert.deepEqual(buildBlocks('<div>   </div>'), []);
+  const blocks = JSON.parse(it.bodyJson ?? '[]');
+  assert.equal(blocks.length, 3);
+  assert.equal(blocks[0].v[0].v, '名称：资源');
 });
 
 test('plainText：<br> 变换行，其余标签去掉', () => {

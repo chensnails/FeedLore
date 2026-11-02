@@ -180,6 +180,8 @@ const miniEntriesAll = () => [
  * detailBodyMode 切换 e1 的正文形态（text 有文字 / images 纯图块 / no-text 老数据无文字），
  * 用来验证「摘要不会和正文重复出现两遍」。 */
 let detailBodyMode = 'text';
+/** 阅读页展开正文的形态：v1（纯文本）/ rich（bodyVersion 2 结构化块） */
+let readerBodyMode = 'v1';
 const miniEntryDetail = (id) => {
   const base = miniEntriesAll().find((x) => x.id === id);
   if (!base) return null;
@@ -192,6 +194,14 @@ const miniEntryDetail = (id) => {
   if (id === 'e1' && detailBodyMode === 'images') {
     d.content = '';
     d.bodyJson = JSON.stringify([{ t: 'img', src: 'https://img.example/1.png' }]);
+  } else if (id === 'e1' && detailBodyMode === 'rich') {
+    d.content = '';
+    d.bodyVersion = 2;
+    d.bodyJson = JSON.stringify([
+      { t: 'h', level: 3, v: [{ t: 'text', v: '小节' }] },
+      { t: 'p', v: [{ t: 'text', v: '图文正文' }] },
+      { t: 'img', src: 'https://img.example/1.png' },
+    ]);
   } else if (id === 'e1' && detailBodyMode === 'no-text') {
     d.content = '';
   }
@@ -654,11 +664,28 @@ w.feedlore = {
     else {
       st.rdExpanded.add(id);
       if (!st.rdBody.has(id)) {
-        st.rdBody.set(id, {
-          id, name: '条目一', tags: ['标签A'], content: '第一段正文。\n第二段正文。',
+        const base = {
+          id, name: '条目一', tags: ['标签A'],
           link: 'https://pan.quark.cn/s/abc', links: ['https://pan.quark.cn/s/abc'],
           sourceUrl: 'https://example.com/a', date: '2026-10-15T10:00:00Z',
-        });
+        };
+        st.rdBody.set(id, readerBodyMode === 'rich'
+          ? Object.assign(base, {
+            bodyVersion: 2,
+            content: '',
+            bodyJson: JSON.stringify([
+              { t: 'h', level: 2, v: [{ t: 'text', v: '小节标题' }] },
+              { t: 'p', v: [{ t: 'text', v: '正文 ' }, { t: 'a', href: 'https://example.com/x', v: [{ t: 'text', v: '链接' }] }] },
+              { t: 'list', ordered: false, items: [[{ t: 'p', v: [{ t: 'text', v: '甲' }] }]] },
+              { t: 'quote', blocks: [{ t: 'p', v: [{ t: 'text', v: '引用' }] }] },
+              { t: 'pre', code: 'const a = 1;', lang: 'js' },
+              { t: 'img', src: 'https://img.example/b.png' },
+            ]),
+          })
+          : Object.assign(base, {
+            bodyVersion: 1,
+            content: '第一段正文。\n第二段正文。',
+          }));
       }
     }
     readerTick();
@@ -3028,6 +3055,16 @@ const withEFP = (el, fn) => {
   });
   C('.modal-close').click();
   await sleep(40);
+  detailBodyMode = 'rich';
+  C('#grid .card[data-id="e1"] .title-btn').click();
+  await sleep(60);
+  t('v2 正文有文字 → 不再列摘要，标题 / 图片块都渲染', () => {
+    if (C('.cd-desc')) throw new Error('v2 正文已含文字，不该再列一行摘要');
+    if (!C('.cd-art .art-rich .art-h3')) throw new Error('v2 标题块未渲染');
+    if (!C('.cd-art .art-rich .art-img')) throw new Error('v2 图片块未渲染');
+  });
+  C('.modal-close').click();
+  await sleep(40);
   detailBodyMode = 'images';
   C('#grid .card[data-id="e1"] .title-btn').click();
   await sleep(60);
@@ -3402,6 +3439,33 @@ const withEFP = (el, fn) => {
     if (it1.classList.contains('open')) throw new Error('仍 open');
     if (!it1.querySelector('.art-body').hidden) throw new Error('正文应隐藏');
   });
+
+  // bodyVersion 2：结构化正文（标题 / 链接 / 列表 / 引用 / 代码 / 图片）
+  readerBodyMode = 'rich';
+  w.feedlore.state.rdBody.delete('r1');
+  R('#readerList .art-item[data-id="r1"] .art-head').click();
+  await sleep(40);
+  t('v2 正文：标题 / 链接 / 列表 / 引用 / 代码 / 图片都按语义渲染', () => {
+    const body = R('#readerList .art-item[data-id="r1"] .art-body');
+    if (!body.querySelector('.art-rich')) throw new Error('未走 v2 渲染路径');
+    const h2 = body.querySelector('.art-rich .art-h2');
+    if (!h2 || h2.textContent !== '小节标题') throw new Error('标题未渲染');
+    const a = body.querySelector('.art-link');
+    if (!a || a.getAttribute('href') !== 'https://example.com/x') throw new Error('正文链接未渲染');
+    if (a.getAttribute('target') !== '_blank' || !a.getAttribute('rel').includes('noopener')) throw new Error('正文链接缺新窗口 / rel');
+    if (!body.querySelector('.art-rich ul.art-list > li')) throw new Error('列表未渲染');
+    const quote = body.querySelector('.art-rich blockquote.art-quote');
+    if (!quote || quote.textContent !== '引用') throw new Error('引用未渲染');
+    const code = body.querySelector('.art-rich pre.art-pre code');
+    if (!code || code.textContent !== 'const a = 1;') throw new Error('代码块未渲染');
+    const img = body.querySelector('.art-rich .art-img');
+    if (!img || img.getAttribute('src') !== '/api/img?u=' + encodeURIComponent('https://img.example/b.png')) throw new Error('图片未走代理');
+    if (body.querySelector('.art-rich script, .art-rich iframe')) throw new Error('不应出现 HTML 注入节点');
+  });
+  R('#readerList .art-item[data-id="r1"] .art-head').click();
+  await sleep(30);
+  readerBodyMode = 'v1';
+  w.feedlore.state.rdBody.delete('r1');
 
   // 范围切换
   RA('#readerChannels .rd-ch')[1].click();

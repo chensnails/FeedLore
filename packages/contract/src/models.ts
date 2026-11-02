@@ -38,6 +38,74 @@ export const FeedSchema = z.object({
 });
 export type Feed = z.infer<typeof FeedSchema>;
 
+/* ============================ 正文块（Article v2） ============================ */
+
+/**
+ * 阅读页正文的结构化块（bodyVersion = 2）。
+ *
+ * 为什么不是 HTML：v1 把正文压成「纯文本段落 + 图片」，标题 / 列表 / 引用 / 代码 /
+ * 正文链接全丢；直接存原文 HTML 又会把 XSS 面重新打开。这里只保留**语义**，
+ * 前端用 React 组件渲染，样式仍由本站主题控制（暗色、字号、行宽都能统一）。
+ *
+ * 约束：内联节点只允许文本与语义标签，不携带 style / class / on* 属性；
+ * 链接只接受服务端解析过的 http(s) / mailto 绝对地址。
+ */
+export type ArticleInline =
+  | { t: 'text'; v: string }
+  | { t: 'a'; href: string; v: ArticleInline[] }
+  | { t: 'strong'; v: ArticleInline[] }
+  | { t: 'em'; v: ArticleInline[] }
+  | { t: 'code'; v: string }
+  | { t: 'del'; v: ArticleInline[] }
+  | { t: 'br' };
+
+export type ArticleBlock =
+  | { t: 'p'; v: ArticleInline[] }
+  | { t: 'h'; level: 2 | 3; v: ArticleInline[] }
+  | { t: 'list'; ordered: boolean; items: ArticleBlock[][] }
+  | { t: 'quote'; blocks: ArticleBlock[] }
+  | { t: 'pre'; code: string; lang?: string }
+  | { t: 'img'; src: string; alt?: string; w?: number; h?: number }
+  | { t: 'hr' };
+
+export const ArticleInlineSchema: z.ZodType<ArticleInline> = z.lazy(() =>
+  z.discriminatedUnion('t', [
+    z.object({ t: z.literal('text'), v: z.string() }),
+    z.object({ t: z.literal('a'), href: z.string(), v: z.array(ArticleInlineSchema) }),
+    z.object({ t: z.literal('strong'), v: z.array(ArticleInlineSchema) }),
+    z.object({ t: z.literal('em'), v: z.array(ArticleInlineSchema) }),
+    z.object({ t: z.literal('code'), v: z.string() }),
+    z.object({ t: z.literal('del'), v: z.array(ArticleInlineSchema) }),
+    z.object({ t: z.literal('br') }),
+  ]),
+);
+
+export const ArticleBlockSchema: z.ZodType<ArticleBlock> = z.lazy(() =>
+  z.discriminatedUnion('t', [
+    z.object({ t: z.literal('p'), v: z.array(ArticleInlineSchema) }),
+    z.object({
+      t: z.literal('h'),
+      level: z.union([z.literal(2), z.literal(3)]),
+      v: z.array(ArticleInlineSchema),
+    }),
+    z.object({
+      t: z.literal('list'),
+      ordered: z.boolean(),
+      items: z.array(z.array(ArticleBlockSchema)),
+    }),
+    z.object({ t: z.literal('quote'), blocks: z.array(ArticleBlockSchema) }),
+    z.object({ t: z.literal('pre'), code: z.string(), lang: z.string().optional() }),
+    z.object({
+      t: z.literal('img'),
+      src: z.string(),
+      alt: z.string().optional(),
+      w: z.number().int().positive().optional(),
+      h: z.number().int().positive().optional(),
+    }),
+    z.object({ t: z.literal('hr') }),
+  ]),
+);
+
 /* ============================ 条目（Entry / Card） ============================ */
 
 export const CardSchema = z.object({
@@ -56,6 +124,8 @@ export const CardSchema = z.object({
   images: z.array(z.string()),
   /** 图文顺序块 JSON，图片块已走代理；无则 null */
   bodyJson: z.string().nullable(),
+  /** 正文块格式：1 = v1 纯文本块；2 = 结构化块（见 ArticleBlockSchema） */
+  bodyVersion: z.union([z.literal(1), z.literal(2)]),
   sourceUrl: z.string().nullable(),
   date: IsoDateTime.nullable(),
   feedId: IdSchema,

@@ -193,7 +193,7 @@ export async function loadFeed(
     iconUrl: parsed.iconUrl || null,
     etag: res.etag ?? null,
     lastModified: res.lastModified ?? null,
-    items: parsed.items.map((it) => normalizeItem(it, parsed.title)),
+    items: parsed.items.map((it) => normalizeItem(it, parsed.title, { siteUrl: parsed.siteUrl })),
   };
 }
 
@@ -289,6 +289,7 @@ export async function upsertEntries(db: Db, feedId: number, items: NormalizedIte
         links: it.links,
         sourceUrl: it.sourceUrl,
         bodyJson: it.bodyJson,
+        bodyVersion: it.bodyVersion,
         publishedAt: it.publishedAt,
       })),
     )
@@ -306,6 +307,9 @@ export async function upsertEntries(db: Db, feedId: number, items: NormalizedIte
         image: sql`excluded.image`,
         images: sql`excluded.images`,
         bodyJson: sql`coalesce(excluded.body_json, ${entries.bodyJson})`,
+        // 只有真的写入了新块才升级格式版本：某轮抓不到正文时保留老 bodyJson，
+        // 不能把它的版本号改成 2（否则前端会拿 v1 块按 v2 渲染）。
+        bodyVersion: sql`case when excluded.body_json is not null then excluded.body_version else ${entries.bodyVersion} end`,
         links: sql`excluded.links`,
         sourceUrl: sql`excluded.source_url`,
         publishedAt: sql`excluded.published_at`,

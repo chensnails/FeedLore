@@ -77,6 +77,40 @@ function parseBlocks(json) {
   } catch (_) { return null; }
 }
 
+/* ---------- 结构化正文（bodyVersion 2）的纯函数 ---------- */
+function inlineText(nodes) {
+  if (!Array.isArray(nodes)) return '';
+  let s = '';
+  for (const n of nodes) {
+    if (!n) continue;
+    if (n.t === 'text' || n.t === 'code') s += n.v || '';
+    else if (n.t === 'br') s += '\n';
+    else if (Array.isArray(n.v)) s += inlineText(n.v);
+  }
+  return s;
+}
+
+function blockText(b) {
+  if (!b) return '';
+  if (b.t === 'p' || b.t === 'h') return inlineText(b.v);
+  if (b.t === 'pre') return String(b.code || '');
+  if (b.t === 'list') return (b.items || []).map((it) => it.map(blockText).join('\n')).join('\n');
+  if (b.t === 'quote') return (b.blocks || []).map(blockText).join('\n');
+  return '';
+}
+
+function blockHasText(b) {
+  return blockText(b).trim().length > 0;
+}
+
+/** 正文块是不是 v2（结构化）格式。服务端总会带 bodyVersion；
+ *  形状再兜一层，避免老缓存 / 手写 mock 少了字段时把 v2 块当 v1 渲染。 */
+function isRichBody(e, blocks) {
+  if (Number(e && e.bodyVersion) === 2) return true;
+  return !!blocks && blocks.some((b) => b && (b.t === 'h' || b.t === 'list' || b.t === 'quote'
+    || b.t === 'pre' || b.t === 'hr' || Array.isArray(b.v)));
+}
+
 function isDuplicateTitleLine(txt, name) {
   const m = String(txt).match(TITLE_LINE_RE);
   return !!(m && m[1].trim() === String(name || '').trim());
@@ -99,23 +133,117 @@ export function bodyShowsText(e) {
   if (!e) return false;
   const blocks = parseBlocks(e.bodyJson);
   if (blocks) {
+    if (isRichBody(e, blocks)) return blocks.some(blockHasText);
     return blocks.some((b, i) => b && b.t !== 'img' && String(b.text || '').trim()
       && !(i === 0 && isDuplicateTitleLine(b.text, e.name)));
   }
   return !!readerBodyText(e);
 }
 
-const proxied = (u) => (/^https?:\/\//i.test(u) ? '/api/img?u=' + encodeURIComponent(u) : u);
+const proxied = (u) => {
+  const s = String(u || '');
+  if (/^https?:\/\//i.test(s)) return '/api/img?u=' + encodeURIComponent(s);
+  // 服务端已改写成代理地址的、以及内嵌图片直接放行；其它协议（javascript: / file: …）一律丢掉
+  if (s.startsWith('/api/img?') || /^data:image\//i.test(s)) return s;
+  return '';
+};
 
-/** 正文图片：加载失败直接移除（旧行为）；点开走全局灯箱（app.js 的 document 委托） */
-function ArtImg({ src }) {
+/** 正文链接只放行 http(s) / mailto（服务端已清洗，这里再兜一层，防历史数据或回归） */
+const safeHref = (h) => {
+  const s = String(h || '');
+  return /^(https?:|mailto:)/i.test(s) ? s : '';
+};
+
+/** 正文图片：加载失败直接移除（旧行为）；点开走全局灯箱（app.js 的 document 委托）。
+ *  v2 块会带 alt 与原始宽高，宽高只用于预留比例，最终尺寸仍由 CSS 决定。 */
+function ArtImg({ src, alt, w, h }) {
   const [failed, setFailed] = useState(false);
-  if (failed) return null;
+  const url = proxied(src);
+  if (failed || !url) return null;
   return (
-    <img className="art-img" src={proxied(src)} alt="" loading="lazy" decoding="async" title="点击查看大图"
+    <img className="art-img" src={url} alt={alt || ''}
+      width={w || undefined} height={h || undefined}
+      loading="lazy" decoding="async" title="点击查看大图"
       onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}
       onError={() => setFailed(true)} />
   );
+}
+
+/** 内联节点：只输出文本与语义标签，不接收 HTML 字符串。 */
+function Inline({ nodes }) {
+  return (nodes || []).map((n, i) => {
+    if (!n) return null;
+    switch (n.t) {
+      case 'text': return n.v;
+      case 'code': return <code className="art-code" key={i}>{n.v}</code>;
+      case 'br': return <br key={i} />;
+      case 'a':
+        return safeHref(n.href) ? (
+          <a className="art-link" href={safeHref(n.href)} target="_blank" rel="noopener noreferrer" key={i}>
+            <Inline nodes={n.v} />
+          </a>
+        ) : <Inline nodes={n.v} key={i} />;
+      case 'strong': return <strong key={i}><Inline nodes={n.v} /></strong>;
+      case 'em': return <em key={i}><Inline nodes={n.v} /></em>;
+      case 'del': return <del key={i}><Inline nodes={n.v} /></del>;
+      default: return null;
+    }
+  });
+}
+
+/** 块级节点。列表 / 引用内部递归复用；连续图片合并成图集（与 v1 一致）。 */
+function RichBlocks({ blocks }) {
+  const out = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (b && b.t === 'img') {
+      const grp = [];
+      while (i < blocks.length && blocks[i] && blocks[i].t === 'img') { grp.push(blocks[i]); i++; }
+      i--;
+      out.push(grp.length === 1
+        ? <ArtImg src={grp[0].src} alt={grp[0].alt} w={grp[0].w} h={grp[0].h} key={'r' + i} />
+        : <div className="art-imgs" key={'r' + i}>{grp.map((im, k) => (
+          <ArtImg src={im.src} alt={im.alt} w={im.w} h={im.h} key={k} />
+        ))}</div>);
+      continue;
+    }
+    if (!b) continue;
+    switch (b.t) {
+      case 'p':
+        out.push(<p key={'r' + i}><Inline nodes={b.v} /></p>);
+        break;
+      case 'h':
+        out.push(b.level === 3
+          ? <h3 className="art-h3" key={'r' + i}><Inline nodes={b.v} /></h3>
+          : <h2 className="art-h2" key={'r' + i}><Inline nodes={b.v} /></h2>);
+        break;
+      case 'list': {
+        const Tag = b.ordered ? 'ol' : 'ul';
+        out.push(
+          <Tag className="art-list" key={'r' + i}>
+            {(b.items || []).map((item, k) => <li key={k}><RichBlocks blocks={item} /></li>)}
+          </Tag>
+        );
+        break;
+      }
+      case 'quote':
+        out.push(<blockquote className="art-quote" key={'r' + i}><RichBlocks blocks={b.blocks || []} /></blockquote>);
+        break;
+      case 'pre':
+        out.push(
+          <pre className="art-pre" key={'r' + i}>
+            <code data-lang={b.lang || undefined}>{b.code}</code>
+          </pre>
+        );
+        break;
+      case 'hr':
+        out.push(<hr className="art-hr" key={'r' + i} />);
+        break;
+      default:
+        break;
+    }
+  }
+  return out;
 }
 
 /** 复制链接（多条时弹选择菜单）。导出给卡片详情弹窗复用。 */
@@ -165,23 +293,27 @@ export function ArtBody({ e, onTag, extraActions }) {
   const blocks = parseBlocks(e.bodyJson);
 
   if (blocks) {
-    let i = 0;
-    while (i < blocks.length) {
-      const b = blocks[i];
-      if (b.t === 'img') {
-        const grp = [];
-        while (i < blocks.length && blocks[i].t === 'img') { grp.push(blocks[i].src); i++; }
-        parts.push(grp.length === 1
-          ? <ArtImg src={grp[0]} key={'b' + i} />
-          : <div className="art-imgs" key={'b' + i}>{grp.map((src, k) => <ArtImg src={src} key={k} />)}</div>);
-      } else {
-        if (i === 0 && isDuplicateTitleLine(b.text, e.name)) { i++; continue; }
-        parts.push(
-          <div className="art-text" key={'b' + i}>
-            {bodyParagraphs(b.text).map((p, k) => <p className={p.cls || undefined} key={k}>{p.text}</p>)}
-          </div>
-        );
-        i++;
+    if (isRichBody(e, blocks)) {
+      parts.push(<div className="art-text art-rich" key="rich"><RichBlocks blocks={blocks} /></div>);
+    } else {
+      let i = 0;
+      while (i < blocks.length) {
+        const b = blocks[i];
+        if (b.t === 'img') {
+          const grp = [];
+          while (i < blocks.length && blocks[i].t === 'img') { grp.push(blocks[i].src); i++; }
+          parts.push(grp.length === 1
+            ? <ArtImg src={grp[0]} key={'b' + i} />
+            : <div className="art-imgs" key={'b' + i}>{grp.map((src, k) => <ArtImg src={src} key={k} />)}</div>);
+        } else {
+          if (i === 0 && isDuplicateTitleLine(b.text, e.name)) { i++; continue; }
+          parts.push(
+            <div className="art-text" key={'b' + i}>
+              {bodyParagraphs(b.text).map((p, k) => <p className={p.cls || undefined} key={k}>{p.text}</p>)}
+            </div>
+          );
+          i++;
+        }
       }
     }
     if (!parts.length) parts.push(<div className="art-text art-text-empty" key="empty">这条没有正文，点「打开」看原文</div>);

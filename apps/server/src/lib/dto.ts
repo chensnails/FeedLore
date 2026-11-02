@@ -48,6 +48,9 @@ export function imgUrl(u: string | null | undefined, base?: string | null): stri
  *
  * 只在**确实改到东西**时重新序列化：绝大多数条目的块里没有 http 图片，
  * 原样返回字符串可以省掉一次 JSON.parse→stringify 的开销（列表 50 条会放大成 50 次）。
+ *
+ * v2 的图片可能藏在引用 / 列表项里，因此递归遍历；v1 的 `{t:'img'}` 是顶层块，
+ * 同一套递归也能处理。
  */
 export function bodyJsonUrl(json: string | null | undefined): string | null {
   if (typeof json !== 'string' || !json) return null;
@@ -55,14 +58,26 @@ export function bodyJsonUrl(json: string | null | undefined): string | null {
     const blocks: unknown = JSON.parse(json);
     if (!Array.isArray(blocks)) return json;
 
-    let changed = false;
-    for (const b of blocks as Array<Record<string, unknown>>) {
-      if (b && b.t === 'img' && typeof b.src === 'string' && /^https?:\/\//i.test(b.src)) {
-        b.src = proxied(b.src);
-        changed = true;
+    const walk = (arr: unknown[]): boolean => {
+      let changed = false;
+      for (const raw of arr) {
+        if (!raw || typeof raw !== 'object') continue;
+        const b = raw as Record<string, unknown>;
+        if (b.t === 'img' && typeof b.src === 'string' && /^https?:\/\//i.test(b.src)) {
+          b.src = proxied(b.src);
+          changed = true;
+        }
+        if (b.t === 'list' && Array.isArray(b.items)) {
+          for (const item of b.items) {
+            if (Array.isArray(item) && walk(item)) changed = true;
+          }
+        }
+        if (b.t === 'quote' && Array.isArray(b.blocks) && walk(b.blocks)) changed = true;
       }
-    }
-    return changed ? JSON.stringify(blocks) : json;
+      return changed;
+    };
+
+    return walk(blocks) ? JSON.stringify(blocks) : json;
   } catch {
     return json; // 解析不了就原样给，前端按自己的容错处理
   }
@@ -87,6 +102,7 @@ export interface CardRow {
   isFavorite: boolean;
   favoritedAt: Date | null;
   bodyJson: string | null;
+  bodyVersion: number | null;
   feedName: string | null;
 }
 
@@ -108,6 +124,7 @@ export function toCard(row: CardRow): Card {
     image: imgUrl(row.image, base),
     images: images.map((u) => imgUrl(u, base)).filter((u): u is string => u !== null),
     bodyJson: bodyJsonUrl(row.bodyJson),
+    bodyVersion: row.bodyVersion === 2 ? 2 : 1,
     sourceUrl: row.sourceUrl ?? null,
     date: iso(row.publishedAt),
     feedId: String(row.feedId),

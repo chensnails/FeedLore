@@ -29,6 +29,13 @@
       "when": 1793332973104,
       "tag": "0003_even_white_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793579563169,
+      "tag": "0004_bizarre_ted_forrester",
+      "breakpoints": true
     }
   ]
 }

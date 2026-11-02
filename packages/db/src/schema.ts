@@ -169,6 +169,8 @@ export const entries = pgTable(
     isFavorite: boolean('is_favorite').notNull().default(false),
     favoritedAt: timestamp('favorited_at', { mode: 'date' }),
     bodyJson: text('body_json'), // 图文块 JSON（v16）
+    // 正文块格式：1 = v1 纯文本段落（老数据），2 = 结构化块（标题/列表/引用/代码/链接）
+    bodyVersion: smallint('body_version').notNull().default(1),
     links: text('links').array(), // 可复制链接（v17）
     watchState: text('watch_state'), // null|'watch'|'block'（v21）
     watchRule: text('watch_rule'),

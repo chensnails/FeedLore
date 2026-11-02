@@ -1,0 +1,1 @@
+ALTER TABLE "entries" ADD COLUMN "body_version" smallint DEFAULT 1 NOT NULL;

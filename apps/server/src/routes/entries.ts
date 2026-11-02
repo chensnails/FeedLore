@@ -52,6 +52,7 @@ const CARD_COLUMNS = {
   isFavorite: entriesTable.isFavorite,
   favoritedAt: entriesTable.favoritedAt,
   bodyJson: entriesTable.bodyJson,
+  bodyVersion: entriesTable.bodyVersion,
   feedName: feeds.title,
 };
 

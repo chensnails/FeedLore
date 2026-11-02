@@ -11,6 +11,8 @@
  * 纯函数才可能被单元测试覆盖，也才能在「同一 URL 多用户订阅」时安全复用同一份解析结果。
  */
 
+import { parseArticleHtml } from './article';
+
 /* ============================================================================
  * 1. XML 解析
  * ==========================================================================*/
@@ -302,68 +304,6 @@ export function plainText(html: string): string {
   return decodeEntities(String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ''));
 }
 
-export type BodyBlock =
-  | { t: 'p'; text: string }
-  | { t: 'img'; src: string };
-
-/**
- * 把正文 HTML 按「图文原始顺序」拆成有序块，供阅读页内联渲染。
- *  - 块级标签（p/div/br/li/h1-6…）当作段落分隔，保留「名称：/描述：」逐行结构
- *  - `<img>` 落在它原本出现的位置（支持 src / data-src / data-original 懒加载写法）
- *  - 内联标签（a/b/i/span…）只保留文字，格式化被压平，安全且无 XSS（前端再 escape）
- *  - 只收 http(s)，去重，最多 12 张；总块数上限 120，防个别超长正文把库撑爆
- */
-export function buildBlocks(html: string): BodyBlock[] {
-  const blocks: BodyBlock[] = [];
-  const IMG_CAP = 12;
-  const seenImg = new Set<string>();
-  const BLOCK_TAGS = new Set(['br', 'p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'blockquote', 'pre', 'tr', 'table', 'ul', 'ol', 'section', 'article', 'header', 'footer']);
-  let buf = '';
-
-  const imgCount = (): number => blocks.filter((b) => b.t === 'img').length;
-  const flush = (): void => {
-    const t = buf.replace(/\s+/g, ' ').trim();
-    if (t) blocks.push({ t: 'p', text: t });
-    buf = '';
-  };
-
-  const re = /<[^>]*>|[^<]+/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(String(html)))) {
-    const tk = m[0];
-    if (tk.startsWith('<')) {
-      const tag = tk.match(/^<\s*\/?\s*([a-zA-Z0-9]+)/i);
-      const name = tag ? (tag[1] ?? '').toLowerCase() : '';
-      if (name === 'img') {
-        const srcM = tk.match(/\bsrc\s*=\s*["']([^"']+)["']/i)
-          ?? tk.match(/\bdata-src\s*=\s*["']([^"']+)["']/i)
-          ?? tk.match(/\bdata-original\s*=\s*["']([^"']+)["']/i);
-        const raw = srcM?.[1];
-        if (raw) {
-          const u = decodeEntities(raw.trim());
-          if (/^https?:\/\//i.test(u) && imgCount() < IMG_CAP && !seenImg.has(u)) {
-            seenImg.add(u);
-            flush();
-            blocks.push({ t: 'img', src: u });
-          }
-        }
-      } else if (BLOCK_TAGS.has(name)) {
-        flush(); // 块级边界：段落分隔（开/闭标签都算）
-      }
-      // 其它标签忽略，其内文作为后续文本 token 被捕获
-    } else {
-      const lines = tk.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        buf += lines[i] ?? '';
-        if (i < lines.length - 1) flush();
-      }
-    }
-  }
-  flush();
-  return blocks.slice(0, 120);
-}
-
 function field(txt: string, label: string): string {
   const pat = label.split('').join('\\s*');
   const m = txt.match(new RegExp(pat + '\\s*[：:]\\s*([^\\n]*)'));
@@ -409,6 +349,8 @@ export interface NormalizedItem {
   description: string | null;
   content: string | null;
   bodyJson: string | null;
+  /** 正文块格式：1 = v1 纯文本段落；2 = 结构化块 */
+  bodyVersion: 1 | 2;
   size: string | null;
   tags: string[];
   image: string | null;
@@ -419,20 +361,13 @@ export interface NormalizedItem {
 }
 
 /** 把原始 feed item 转成卡片条目（字段语义与 legacy 完全一致） */
-export function normalizeItem(raw: RawItem, feedTitle: string): NormalizedItem {
+export function normalizeItem(
+  raw: RawItem,
+  feedTitle: string,
+  opts: { siteUrl?: string | null } = {},
+): NormalizedItem {
   void feedTitle; // 保留签名对齐 legacy：条目不再冗余存频道名（靠 feed_id join）
   const content = String(raw.content || '');
-
-  // 配图：正文里的「所有」<img> 都收进来（多图文章需要），其次 enclosure。
-  // 去重 + 只留 http(s)，最多 12 张，避免追踪像素之类把库撑爆。
-  const imgSet = new Set<string>();
-  for (const m of content.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)) {
-    const u = (m[1] ?? '').trim();
-    if (/^https?:\/\//i.test(u)) imgSet.add(u);
-  }
-  if (raw.enclosure && /^https?:\/\//i.test(raw.enclosure)) imgSet.add(raw.enclosure);
-  const images = [...imgSet].slice(0, 12);
-  const image = images[0] ?? null; // 单图（卡片/缩略图）沿用第一张
 
   // 链接：网盘直链 > 正文详情页 > **条目自身 URL** > 正文第一个外链
   //
@@ -452,6 +387,20 @@ export function normalizeItem(raw: RawItem, feedTitle: string): NormalizedItem {
     if (!link) link = hrefs[0] ?? null;
   }
   if (!link && validUrl(raw.url ?? '')) link = raw.url;
+
+  // 结构化正文：块 / 图片都在这一步拿到。相对地址优先按条目落地页补全，
+  // 落地页缺失时退回主链接 / 频道 siteUrl（不少源在 item 里不给 link）。
+  const article = parseArticleHtml(content, {
+    baseUrl: raw.url ?? link ?? null,
+    siteUrl: opts.siteUrl ?? null,
+  });
+
+  // 配图：正文里的所有图片（多图文章需要）按出现顺序，其次 enclosure。
+  // 最多 12 张，避免图集 / 追踪像素把卡片撑爆。
+  const imgSet = new Set<string>(article.images);
+  if (raw.enclosure && /^https?:\/\//i.test(raw.enclosure)) imgSet.add(raw.enclosure);
+  const images = [...imgSet].slice(0, 12);
+  const image = images[0] ?? null; // 单图（卡片/缩略图）沿用第一张
 
   // 文章内所有可复制的链接：主链接排第一，其余按出现顺序（href → 网盘直链 → 正文里的纯文本 URL）
   const links = ((): string[] => {
@@ -538,8 +487,10 @@ export function normalizeItem(raw: RawItem, feedTitle: string): NormalizedItem {
     pwd,
     description: desc ? desc.slice(0, 2000) : null,
     content: body ? body.slice(0, 8000) : null,
-    // 图文顺序块：阅读页内联渲染用；无块（纯文本）时前端退回纯文本路径
-    bodyJson: JSON.stringify(buildBlocks(content)).slice(0, 20000),
+    // 结构化块（bodyVersion 2）：阅读页按标题 / 列表 / 引用 / 代码 / 链接渲染。
+    // 没有块时置 null，前端退回 content 的纯文本路径。
+    bodyJson: article.bodyJson,
+    bodyVersion: 2,
     size: size ? size.slice(0, 40) : null,
     tags,
     image: image ? image.slice(0, 1000) : null,

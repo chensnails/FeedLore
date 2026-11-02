@@ -33,13 +33,13 @@ console.log(`站点：${parsed.siteUrl ?? '-'}`);
 console.log(`图标：${parsed.iconUrl ?? '-'}`);
 console.log(`条目：${parsed.items.length} 条\n`);
 
-const items = parsed.items.slice(0, 5).map((it) => normalizeItem(it, parsed.title));
+const items = parsed.items.slice(0, 5).map((it) => normalizeItem(it, parsed.title, { siteUrl: parsed.siteUrl }));
 for (const [i, it] of items.entries()) {
   console.log(`── #${i + 1} ${it.title}`);
   console.log(`   guid    ${it.guid.slice(0, 90)}`);
   console.log(`   link    ${it.link ?? '-'}`);
   console.log(`   pwd     ${it.pwd ?? '-'}   size ${it.size || '-'}   tags ${it.tags.join(',') || '-'}`);
   console.log(`   images  ${it.images.length} 张   links ${it.links.length} 条`);
-  console.log(`   正文    ${it.content ? it.content.length : 0} 字   ${it.content?.slice(0, 80).replace(/\n/g, ' ⏎ ') ?? '-'}`);
+  console.log(`   正文    v${it.bodyVersion}  ${it.content ? it.content.length : 0} 字   ${it.content?.slice(0, 80).replace(/\n/g, ' ⏎ ') ?? '-'}`);
   console.log(`   时间    ${it.publishedAt.toISOString()}`);
 }

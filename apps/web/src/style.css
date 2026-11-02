@@ -3052,6 +3052,95 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-text p.is-prose { text-indent: 2em; }
 .art-text-empty { color: var(--text-faint); font-style: italic; }
 
+/* ---------- 结构化正文（bodyVersion 2） ----------
+   段落 / 标题 / 列表 / 引用 / 代码 / 链接都由服务端解析成语义块，这里只负责排版。
+   字号、行高、字体仍走上面的 --reader-* / --font-read 偏好 token，用户改外观时整篇跟着变。 */
+.art-rich { white-space: normal; }        /* 块级元素自己管空白；纯文本段仍是 pre-wrap 外的普通流 */
+.art-rich > :first-child { margin-top: 0; }
+.art-rich p { margin: 0; }
+.art-rich p + p { margin-top: 1.05em; }
+
+.art-h2,
+.art-h3 {
+  line-height: 1.35;
+  font-weight: 700;
+  letter-spacing: .01em;
+  color: var(--text);
+  text-wrap: balance;
+}
+.art-h2 { margin: 1.7em 0 .65em; font-size: 1.35em; }
+.art-h3 { margin: 1.35em 0 .5em; font-size: 1.14em; }
+.art-h2 + p,
+.art-h3 + p { margin-top: 0; }
+
+.art-list { margin: .85em 0; padding-left: 1.55em; }
+.art-list li { margin: .35em 0; }
+.art-list li > p { margin: 0; }
+.art-list li > p + p { margin-top: .5em; }
+.art-list .art-list { margin: .3em 0 .1em; }
+
+.art-quote {
+  margin: 1.1em 0;
+  padding: .2em 0 .2em 1em;
+  border-left: 3px solid var(--accent);
+  color: var(--text-muted);
+}
+.art-quote > :first-child { margin-top: 0; }
+.art-quote > :last-child { margin-bottom: 0; }
+.art-quote p + p { margin-top: .6em; }
+
+.art-pre {
+  margin: 1.1em 0;
+  padding: var(--sp-3) var(--sp-4);
+  overflow-x: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  -webkit-overflow-scrolling: touch;
+}
+.art-pre code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: .86em;
+  line-height: 1.6;
+  letter-spacing: 0;
+  color: var(--text);
+  white-space: pre;
+  tab-size: 2;
+}
+
+.art-code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: .88em;
+  letter-spacing: 0;
+  padding: .08em .34em;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.art-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: .16em;
+  word-break: break-word;
+}
+.art-link:hover { text-decoration-thickness: 2px; }
+
+.art-hr {
+  margin: 1.6em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 720px) {
+  .art-h2 { font-size: 1.24em; margin-top: 1.45em; }
+  .art-h3 { font-size: 1.08em; margin-top: 1.2em; }
+  .art-list { padding-left: 1.35em; }
+  .art-pre { padding: var(--sp-3); }
+}
+
 .art-tags { display: flex; align-items: center; flex-wrap: wrap; gap:var(--sp-2); }
 /* 动作键靠右下：正文读完后视线落在末尾，复制 / 打开就在落点处等着，不用再扫回左边。
    卡片详情弹窗复用同一族 .art-* 样式，所以一处改动两处生效。 */
