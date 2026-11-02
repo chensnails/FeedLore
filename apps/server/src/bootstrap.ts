@@ -20,7 +20,11 @@
  * 所以这里第一时间固化成 UTC，且建库时把库级时区也钉成 UTC 兜住 defaultNow()。
  *
  * 已经升级过的站点（含 compose 里 upgrade 一次性任务跑过的）会命中 v1Upgrade
- * 标记，只做探测 + 切连接串，不重复迁移。
+ * 标记，只做探测 + 切连接串，然后补一次结构迁移（幂等），不重复迁移数据。
+ *
+ * 普通 v2 站点每次启动也会跑一次结构迁移：compose 的 upgrade 服务只在
+ * `docker compose up` 时执行，Watchtower / 一键更新 / `--no-deps app` 都绕过它，
+ * 2.0.5 就是因此带着旧库结构上线的。迁移失败只告警，不阻断启动。
  */
 
 import { spawnSync } from 'node:child_process';
@@ -183,6 +187,34 @@ function runStep(title: string, args: string[], extraEnv: Record<string, string>
   if (r.status !== 0) throw new Error(`${title} 失败（退出码 ${r.status}）`);
 }
 
+/**
+ * 普通 v2 站点启动时补跑结构迁移。
+ *
+ * 2.0.5 的教训：compose 里的 upgrade 服务只有 `docker compose up` 才会跑，
+ * Watchtower、设置页一键更新、`up -d --no-deps app` 都只重建 app 容器 ——
+ * 代码升上去了、库还是旧结构，接口 500。所以把迁移挪进启动流程，幂等，慢一次。
+ *
+ * 失败**不退出**：DB 账号可能没有 DDL 权限（外部托管库常见），直接崩会把
+ * 本来还能跑的站点弄成起不来。只把后果和手工命令喊进日志。
+ */
+function migrateV2(url: string): void {
+  log('数据库结构迁移（drizzle，幂等）');
+  const r = spawnSync('pnpm', ['--filter', '@feedlore/db', 'migrate'], {
+    cwd: REPO_ROOT,
+    stdio: 'inherit',
+    env: { ...process.env, TZ: 'UTC', DATABASE_URL: url },
+  });
+  if (r.error) {
+    warn(`结构迁移无法启动（${r.error.message}）：请手动执行 pnpm --filter @feedlore/db migrate 后重启`);
+    return;
+  }
+  if (r.status !== 0) {
+    warn(`结构迁移失败（退出码 ${r.status}）：缺新列时接口会报错，请手动执行 pnpm --filter @feedlore/db migrate 后重启`);
+    return;
+  }
+  log('数据库结构已是最新');
+}
+
 /* ============================ 4. 校验 ============================ */
 
 interface Counts {
@@ -318,7 +350,8 @@ export async function bootstrap(): Promise<void> {
   if (!source) return;
 
   if (!(await detectV1(source))) {
-    // 普通 v2 站点（compose 升级路径 / 全新安装）：补零配置密钥，空站点再建初始管理员
+    // 普通 v2 站点（compose 升级路径 / 全新安装）：先补结构迁移，再补零配置密钥，空站点再建初始管理员
+    migrateV2(source);
     await ensureAuthSecret(source);
     await ensureDefaultAdmin();
     return;
@@ -332,6 +365,7 @@ export async function bootstrap(): Promise<void> {
 
   if (await isUpgraded(target)) {
     process.env.DATABASE_URL = target;
+    migrateV2(target);
     await ensureAuthSecret(target);
     await ensureDefaultAdmin();
     log('v2 库已就绪（命中升级标记），直接使用');
