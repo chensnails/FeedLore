@@ -5,6 +5,31 @@
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
+## 2.0.5 — 2026-11-02
+
+### 新增
+
+- **正文按原帖结构排版**：阅读页不再把整篇正文当纯文本，标题、列表、引用、代码块、
+  图片与链接按来源结构渲染；旧条目保持原样，刷新后自动升级。
+- **表格与图注**：`<table>` 按表头 / 数据行展示，窄屏可横向滑动；`<figure>` 保留
+  图片与图注，图片统一走本站代理。
+- **频道「全文」抓取**：摘要型订阅可在「设置 → 源」按频道开启。抓取原文页并提取
+  完整正文与配图，结果缓存 7 天、30 天自动清理；抽取失败或内容不比订阅正文更长时
+  保持原样。原文抓取沿用订阅抓取的出网校验，内网地址一律拒绝。
+
+### 修复
+
+- 正文中的相对链接与图片按条目落地页补全，不再出现点不开的相对路径。
+
+### 部署
+
+- 镜像：`ghcr.io/chensnails/feedlore:2.0.5`（amd64 + arm64），`latest` 指向同一 digest。
+- **本次包含数据库迁移**（`feeds.full_text` 列、`article_cache` 表）：
+  - 发布版 compose 的 `upgrade` 服务会执行迁移；1.x 首次升级由启动自举执行。
+  - 只重建 app（`docker compose up -d --no-deps app`）时需手动执行
+    `docker exec feedlore pnpm --filter @feedlore/db migrate`。
+- 旧条目的正文仍是 v1 纯文本，刷新该频道后新抓取的条目才会使用 v2 结构化排版。
+
 ## 2.0.4 — 2026-11-01
 
 ### 变更

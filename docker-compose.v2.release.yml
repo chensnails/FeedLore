@@ -30,7 +30,7 @@
 #   3) docker compose -f docker-compose.v2.release.yml logs upgrade    查看迁移结果
 #
 # 升级到 v2 之后怎么更新：
-#   - 镜像默认钉版本号（feedlore:2.0.4），不会自己漂移；换版本改 V2_IMAGE 后 up -d。
+#   - 镜像默认钉版本号（feedlore:2.0.5），不会自己漂移；换版本改 V2_IMAGE 后 up -d。
 #   - 想跟着 latest 滚动：把 V2_IMAGE 设为 ghcr.io/chensnails/feedlore:latest。
 #     app 带 watchtower 标签，Watchtower 会自动重建；设置页「一键更新」也走它。
 #
@@ -90,7 +90,7 @@ services:
   # - 1.x 开着 Watchtower 时不需要它：app 启动自举会做同样的事
   # ---------------------------------------------------------------
   upgrade:
-    image: &v2-image ${V2_IMAGE:-ghcr.io/chensnails/feedlore:2.0.4}
+    image: &v2-image ${V2_IMAGE:-ghcr.io/chensnails/feedlore:2.0.5}
     container_name: feedlore-upgrade
     restart: "no"
     depends_on:
