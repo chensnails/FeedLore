@@ -268,6 +268,16 @@ export const WatchRuleSchema = z.object({
 });
 export type WatchRule = z.infer<typeof WatchRuleSchema>;
 
+/**
+ * 写入用的规则：keywords 允许直接提交多行文本。
+ * 表单一直是「一行一个关键字」的 textarea，服务端 sanitizeWatchRules 也按字符串兼容，
+ * 但响应侧仍统一返回数组，所以只在请求体里放宽。
+ */
+export const WatchRuleInputSchema = WatchRuleSchema.extend({
+  keywords: z.union([z.string(), z.array(z.string())]),
+});
+export type WatchRuleInput = z.infer<typeof WatchRuleInputSchema>;
+
 /** 日报配置（按账号）。 */
 export const DigestConfigSchema = z.object({
   auto: z.boolean(),

@@ -462,7 +462,7 @@ export const prefsPatchBody = z.object({
   appearance: M.AppearanceSchema.partial().optional(),
   layout: M.LayoutSchema.partial().optional(),
   filters: z.array(M.FilterRuleSchema).optional(),
-  watchRules: z.array(M.WatchRuleSchema).optional(),
+  watchRules: z.array(M.WatchRuleInputSchema).optional(),
   webhookUrl: z.string().optional(),
   digest: M.DigestConfigSchema.partial().optional(),
   llm: M.LlmConfigSchema.partial().optional(),

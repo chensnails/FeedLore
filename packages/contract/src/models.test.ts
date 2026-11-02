@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ArticleBlockSchema, ArticleInlineSchema, CardSchema } from './models';
+import { ArticleBlockSchema, ArticleInlineSchema, CardSchema, WatchRuleInputSchema } from './models';
 
 /**
  * 正文块契约自检。
@@ -71,4 +71,11 @@ test('bodyVersion 只接受 1 / 2', () => {
   assert.equal(schema.safeParse(2).success, true);
   assert.equal(schema.safeParse(3).success, false);
   assert.equal(schema.safeParse('2').success, false);
+});
+
+test('关注规则写入：keywords 兼容多行文本与数组', () => {
+  const base = { id: 'w1', name: 'AI', act: 'watch', notify: false, on: true };
+  assert.equal(WatchRuleInputSchema.safeParse({ ...base, keywords: 'OpenAI\nGPT-5' }).success, true);
+  assert.equal(WatchRuleInputSchema.safeParse({ ...base, keywords: ['OpenAI', 'GPT-5'] }).success, true);
+  assert.equal(WatchRuleInputSchema.safeParse({ ...base, keywords: 42 }).success, false);
 });
