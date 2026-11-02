@@ -5,7 +5,8 @@
  * - 移动（≤720px）：遮罩 + 整屏面板 + 标题栏 + 大触控选项，打开期间锁页面滚动，支持底部安全区。
  *   往下拖就能收起（useSwipeDismiss），手势条是这枚提示。
  * - 传 collapsible 时分组标题变成整行折叠开关（卡片页频道筛选，与文章页侧栏共用同一份偏好）；
- *   不传就还是纯文本分组标题，排序那种下拉不受影响。
+ *   再传 onGroupFilter 时组头右端多一枚「只看这组」漏斗，行为与文章页侧栏一致。
+ *   不传 collapsible 就还是纯文本分组标题，排序那种下拉不受影响。
  * 触发按钮沿用 .select 外观；传 icon 时按钮里多一枚图标，窄屏（≤720px）只留图标、文字与箭头隐藏，
  * 变成一个方形的图标按钮（卡片页「排序」用这个形态）。弹层均为静态覆盖层（absolute/fixed），
  * 符合「弹层才用模糊」铁律。 */
@@ -21,7 +22,7 @@ export function isMobileMq() {
   catch (_) { return false; }
 }
 
-export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, options, onChange, collapsible, collapsedGroups, onToggleGroup }) {
+export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel, options, onChange, collapsible, collapsedGroups, onToggleGroup, activeGroup, onGroupFilter }) {
   // options: [{ value, label, group }]；group 为分组名（'' / undefined 表示无分组）
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);   // 打开瞬间定格，本次开合内不切换形态
@@ -139,7 +140,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, options, o
 
   // 高亮项（hi）对应的 option / 所属分组：用于给 listbox 设 aria-activedescendant
   const activeOpt = hi >= 0 ? visible[hi] : null;
-  const activeGroup = activeOpt ? (activeOpt.group || '') : null;
+  const activeOptGroup = activeOpt ? (activeOpt.group || '') : null;
 
   let rows;
   if (collapsible) {
@@ -151,18 +152,29 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, options, o
       const opts = byGroup.get(g);
       const folded = foldSet.has(g);
       if (g) {
+        const filtered = activeGroup != null && activeGroup === g;
         rows.push(
-          <button type="button" key={'g:' + g} data-group-fold={g}
-            className={'dd-group dd-group-fold' + (folded ? ' is-collapsed' : '')}
-            aria-expanded={folded ? 'false' : 'true'}
-            title={(folded ? '展开' : '收起') + `分组「${g}」`}
-            onClick={() => { setHi(-1); if (onToggleGroup) onToggleGroup(g); }}>
-            <svg className="ico dd-group-caret" aria-hidden="true" focusable="false">
-              <use href={folded ? '#i-chevron-right' : '#i-chevron-down'} />
-            </svg>
-            <span className="dd-group-name">{g}</span>
-            {folded ? <span className="dd-group-n" title={`该分组 ${groupTotal[g] || 0} 个频道`}>{groupTotal[g] || 0}</span> : null}
-          </button>
+          <div key={'g:' + g} className={'dd-group-row' + (filtered ? ' is-filtered' : '')}>
+            <button type="button" data-group-fold={g}
+              className={'dd-group dd-group-fold' + (folded ? ' is-collapsed' : '')}
+              aria-expanded={folded ? 'false' : 'true'}
+              title={(folded ? '展开' : '收起') + `分组「${g}」`}
+              onClick={() => { setHi(-1); if (onToggleGroup) onToggleGroup(g); }}>
+              <svg className="ico dd-group-caret" aria-hidden="true" focusable="false">
+                <use href={folded ? '#i-chevron-right' : '#i-chevron-down'} />
+              </svg>
+              <span className="dd-group-name">{g}</span>
+              {folded ? <span className="dd-group-n" title={`该分组 ${groupTotal[g] || 0} 个频道`}>{groupTotal[g] || 0}</span> : null}
+            </button>
+            {onGroupFilter ? (
+              <button type="button" className={'dd-group-filter' + (filtered ? ' is-active' : '')}
+                data-group-filter={g} aria-pressed={filtered ? 'true' : 'false'}
+                title={`只看「${g}」分组`}
+                onClick={() => { close(); onGroupFilter(g); }}>
+                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-filter" /></svg>
+              </button>
+            ) : null}
+          </div>
         );
       }
       const groupItems = opts.filter(isVisible);
@@ -198,7 +210,8 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, options, o
         {icon ? (
           <svg className="ico dd-icon" aria-hidden="true" focusable="false"><use href={'#' + icon} /></svg>
         ) : null}
-        <span className="dd-label">{cur ? cur.label : ''}</span>
+        {/* 分组筛选不是 options 里的一项（组头是折叠开关），由调用方给 valueLabel 顶上文案 */}
+        <span className="dd-label">{cur ? cur.label : (valueLabel || '')}</span>
         <svg className="ico dd-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-down" /></svg>
       </button>
 

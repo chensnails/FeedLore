@@ -7,7 +7,7 @@
 
 import { apiFetch, httpError, toast, emitShell, emitOverlays } from './util.js';
 import { state, activeScrollTop, scrollActiveTop } from './state.js';
-import { render, loadFeeds } from './feeds.js';
+import { render, loadFeeds, cardGroupFeedIds } from './feeds.js';
 import { renderReader, readerFilterParams } from './reader.js';
 
 /* ============================================================
@@ -59,7 +59,9 @@ export async function fetchHead(view) {
     // 和 loadReader 用同一套条件，否则「新内容」会按错误的范围去数
     for (const [k, v] of readerFilterParams()) params.set(k, v);
   } else {
-    if (state.feedFilter) params.set('feeds', String(state.feedFilter));
+    // 与 loadPage 用同一套条件，否则分组筛选下的「新内容」会按错误的范围去数
+    if (state.cardGroup != null) params.set('feeds', cardGroupFeedIds().join(','));
+    else if (state.feedFilter) params.set('feeds', String(state.feedFilter));
     else params.set('scope', 'cards');
     if (state.q) params.set('q', state.q);
   }

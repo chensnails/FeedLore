@@ -7,7 +7,7 @@
  *
  * 这里合成一份，差异收敛成一个 variant：
  *   reader —— 三个范围行 + 分组未读数 + 分组漏斗（只看这组）
- *   cards  —— 单行「全部频道」+ 每频道总条数
+ *   cards  —— 单行「全部频道」+ 每频道总条数（分组漏斗同样可用，只是计数口径换成总条数）
  *
  * DOM 结构、类名、data-* 属性与合并前逐字一致（样式与旧逻辑零改动）。
  */
@@ -42,7 +42,8 @@ export const ChannelList = memo(function ChannelList({
   const s = S();
   const isReader = variant === 'reader';
   const writable = !(s && s.state && s.state.role === 'readonly');
-  const atAll = activeFeedId == null;
+  // 「全部」高亮的判据两页一致：既没挑频道、也没锁分组
+  const atAll = activeFeedId == null && activeGroup == null;
 
   // 频道内搜索（本地态，两页抽屉共用）：按频道名过滤，命中即展开分组
   const [q, setQ] = useState('');
@@ -126,9 +127,9 @@ export const ChannelList = memo(function ChannelList({
           <div key={'g:' + gname}>
             {hasGroups ? (
               <div className={'rd-ch-group-row' + (isCollapsed ? ' is-collapsed' : '')
-                + (isReader && activeGroup === gname ? ' is-filtered' : '')}>
+                + (activeGroup === gname ? ' is-filtered' : '')}>
                 {/* 整行就是折叠开关：收起/展开是高频动作，命中区不该只有左侧那 18px 箭头。
-                    箭头降成状态指示，「只看这组」让位给右侧的漏斗按钮（仅文章页）。 */}
+                    箭头降成状态指示，「只看这组」让位给右侧的漏斗按钮（两页一致）。 */}
                 <button type="button" className={'rd-ch-group' + (gname ? '' : ' muted')}
                   data-group={gname} data-group-fold={gname}
                   aria-expanded={isCollapsed ? 'false' : 'true'}
@@ -148,12 +149,13 @@ export const ChannelList = memo(function ChannelList({
                     <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道`}>{g.feeds.length}</span>
                   )}
                 </button>
-                {isReader ? (
+                {onGroup ? (
                   /* 低频动作平时隐身，悬停 / 键盘聚焦 / 正在筛选该组时才现身（触屏常显在 CSS 里） */
-                  <button type="button" className="rd-ch-filter" data-group-filter={gname}
+                  <button type="button" className={'rd-ch-filter' + (activeGroup === gname ? ' is-active' : '')}
+                    data-group-filter={gname}
                     aria-pressed={activeGroup === gname ? 'true' : 'false'}
-                    title={`只看「${gname || '未分组'}」分组下的文章`}
-                    onClick={() => onGroup && onGroup(gname)}>
+                    title={`只看「${gname || '未分组'}」分组下的${isReader ? '文章' : '卡片'}`}
+                    onClick={() => onGroup(gname)}>
                     <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-filter" /></svg>
                   </button>
                 ) : null}

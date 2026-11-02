@@ -322,16 +322,22 @@ export function CardsView() {
   // 只有「分了组」才画组头（和文章页侧栏同一判据）
   const hasGroups = groups.length > 1 || !!(groups[0] && groups[0].name);
   const collapsedGroups = (s && s.readerCollapsedGroups) ? s.readerCollapsedGroups() : new Set();
-  const feedValue = st.feedFilter == null ? '' : String(st.feedFilter);
+  const groupFilter = st.cardGroup != null;
+  const curGroup = groupFilter ? (groups.find((g) => g.name === st.cardGroup) || null) : null;
+  // 分组筛选不是下拉里的选项（组头是折叠开关），触发器文案走 valueLabel
+  const groupLabel = groupFilter
+    ? `分组 · ${st.cardGroup || '未分组'}${curGroup ? `（${curGroup.feeds.length}）` : ''}`
+    : '';
+  const feedValue = groupFilter ? 'g:' + st.cardGroup : (st.feedFilter == null ? '' : String(st.feedFilter));
 
-  // 「固定频道标题栏」的标题：当前频道 + 当前标签，滚到列表中段也知道自己在看哪一档
+  // 「固定频道标题栏」的标题：当前频道 / 分组 + 当前标签，滚到列表中段也知道自己在看哪一档
   const curCardFeed = st.feedFilter == null ? null : feeds.find((f) => String(f.id) === String(st.feedFilter));
   const headTitle = (curCardFeed
     ? (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(curCardFeed) : curCardFeed.title) : curCardFeed.title)
-    : '全部频道') + (st.tag ? ` · ${st.tag}` : '');
+    : (groupLabel || '全部频道')) + (st.tag ? ` · ${st.tag}` : '');
 
   const noFeeds = !feeds.length;
-  const noCards = !st.feedFilter && !feeds.some((f) => f.cardEnabled);
+  const noCards = !st.feedFilter && !groupFilter && !feeds.some((f) => f.cardEnabled);
 
   // 空态不只说「为什么空」，还要给一条出路：每个分支都配一个能立刻点的动作，
   // 否则用户只能自己去猜该去哪个页面、点哪个开关。
@@ -356,10 +362,13 @@ export function CardsView() {
       emptyMsg = '该标签下暂无内容';
       emptyAction = { label: '清除标签', run: () => s.cardsTag(null) };
     } else {
-      emptyMsg = st.feedFilter == null ? '所选频道暂无内容' : '这个频道还没有内容';
-      emptyAction = st.feedFilter == null
-        ? (writable ? { label: '重新抓取', run: () => s.refresh() } : null)
-        : { label: '查看全部频道', run: () => s.cardsFilterFeed('') };
+      emptyMsg = groupFilter ? '该分组暂无内容'
+        : st.feedFilter == null ? '所选频道暂无内容' : '这个频道还没有内容';
+      emptyAction = groupFilter
+        ? { label: '查看全部频道', run: () => s.cardsFilterFeed('') }
+        : st.feedFilter == null
+          ? (writable ? { label: '重新抓取', run: () => s.refresh() } : null)
+          : { label: '查看全部频道', run: () => s.cardsFilterFeed('') };
     }
   }
 
@@ -415,6 +424,11 @@ export function CardsView() {
     if (s.cardsFilterFeed) s.cardsFilterFeed(id == null ? '' : id);
     if (s.cardsCloseDrawer) s.cardsCloseDrawer();
   };
+  // 「只看这组」：与文章页同一套交互（再点同一个组 = 取消）。抽屉里点完同样收起。
+  const pickGroup = (g) => {
+    if (s.cardsFilterGroup) s.cardsFilterGroup(g);
+    if (s.cardsCloseDrawer) s.cardsCloseDrawer();
+  };
   const addChannel = () => {
     if (s.cardsCloseDrawer) s.cardsCloseDrawer();
     if (s.readerOpenSource) s.readerOpenSource();
@@ -462,7 +476,8 @@ export function CardsView() {
         </div>
         <nav className="cards-channels" id="cardsChannels">
           <ChannelList variant="cards" groups={groups} hasGroups={hasGroups} collapsed={collapsedGroups}
-            activeFeedId={st.feedFilter} onFeed={pickFeed} onFold={toggleGroupFold} onAdd={addChannel} />
+            activeFeedId={st.feedFilter} activeGroup={st.cardGroup} onFeed={pickFeed} onGroup={pickGroup}
+            onFold={toggleGroupFold} onAdd={addChannel} />
         </nav>
       </aside>
 
@@ -483,9 +498,10 @@ export function CardsView() {
           <h2 className="cards-title page-title vt-title" title={headTitle}>{headTitle}</h2>
           {/* 中部：频道下拉选择器（同时承担标题职责，显示当前频道+条数）。窄屏退场。 */}
           <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选"
-            ariaLabel={'频道筛选，当前：' + headTitle} value={feedValue}
+            ariaLabel={'频道筛选，当前：' + headTitle} value={feedValue} valueLabel={groupLabel}
             options={feedOpts} onChange={(v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }}
-            collapsible collapsedGroups={collapsedGroups}             onToggleGroup={toggleGroupFold} />
+            collapsible collapsedGroups={collapsedGroups} onToggleGroup={toggleGroupFold}
+            activeGroup={st.cardGroup} onGroupFilter={pickGroup} />
           {/* 右簇：搜索（桌面常驻胶囊 / 窄屏收进放大镜）+ 常驻视图导航 + ⋮ 菜单（排序 / 视图 / 主题 / 设置）。 */}
           <div className="head-right vt-tools">
             <div className={'search-box page-search vt-search' + (searchOpen ? ' is-open' : '')}>

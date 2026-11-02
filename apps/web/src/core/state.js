@@ -30,6 +30,7 @@ export const state = {
   readerPageSize: DEFAULT_READER_PAGE,
   tagline: '拾取值得读的',
   feedFilter: null,   // 列表页的频道筛选：null = 全部已开启卡片开关的频道
+  cardGroup: null,    // 卡片页的分组筛选：null = 不限分组；'' 表示「未分组」
   feedList: null,     // /api/feeds 的 feeds 数组
   feedMeta: null,     // /api/feeds 的整体信息（total / enabled / cardEnabled / groups）
   groupOrder: [],     // 分组顺序（显式保存的串名数组，未分组不计入）

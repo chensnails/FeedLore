@@ -51,7 +51,24 @@ export const core = {
   // —— 卡片视图（P3b） ——
   filterEntries: () => F.applyFilters(),
   cardsSearch: (v) => { S.state.q = v; S.state.tag = null; return F.loadPage(true); },
-  cardsFilterFeed: (v) => { S.state.feedFilter = v ? v : null; S.state.tag = null; return F.loadPage(true); },
+  cardsFilterFeed: (v) => {
+    S.state.feedFilter = v ? v : null;
+    S.state.cardGroup = null;
+    S.state.tag = null;
+    return F.loadPage(true);
+  },
+  /* 卡片页「只看这组」：与文章页 readerSetGroup 同一套交互 ——
+   * 再点同一个组取消筛选；选中分组时清掉频道筛选、展开该组（否则点了却看不见）。 */
+  cardsFilterGroup: (g) => {
+    const next = g === S.state.cardGroup ? null : g;
+    S.state.cardGroup = next;
+    if (next != null) {
+      S.state.feedFilter = null;
+      S.state.tag = null;
+      R.rdExpandGroup(next);
+    }
+    return F.loadPage(true);
+  },
   cardsSort: (v) => { S.state.sort = v; S.setLayout('sort', v); F.render(); },
   cardsView: (m) => F.setViewMode(m),
   cardsTag: (t) => { S.state.tag = t || null; F.render(); S.scrollActiveTop(U.prefersReducedMotion() ? 'auto' : 'smooth'); },

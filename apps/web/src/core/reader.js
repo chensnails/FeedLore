@@ -502,8 +502,9 @@ export function readerToggleAllGroups() {
   toast(allCollapsed ? '已展开全部分组' : '已收起全部分组');
 }
 
-/** 展开某个分组（选中组内频道 / 组名时调用，避免「点了却看不见」） */
-function expandRdGroup(name) {
+/** 展开某个分组（选中组内频道 / 组名时调用，避免「点了却看不见」）。
+ *  卡片页的分组筛选也复用这一份，保证两页的折叠偏好不会一边展开一边收着。 */
+export function rdExpandGroup(name) {
   const g = String(name || '');
   const set = rdCollapsedGroups();
   if (!set.has(g)) return;
@@ -531,7 +532,7 @@ export function readerSetGroup(g) {
   state.rdScope = 'all';   // 看某个分组 = 回到「全部」范围
   state.rdWatch = null;
   if (g === state.rdGroup) state.rdGroup = null;
-  else { state.rdGroup = g; state.rdFeedId = null; expandRdGroup(g); }
+  else { state.rdGroup = g; state.rdFeedId = null; rdExpandGroup(g); }
   renderReader();
   loadReader({ reset: true });
   emitShell();

@@ -37,6 +37,15 @@ export function currentViewMode() {
   return VIEW_MODES.indexOf(layoutPref.view) >= 0 ? layoutPref.view : 'grid';
 }
 
+/** 卡片页分组筛选对应的频道 id：只算「卡片开关」打开的频道。
+ *  组内一个能展示的频道都没有时返回空数组 —— 调用方传 `feeds=` 空值，
+ *  服务端会返回空列表（别退化成「不过滤」，那会看到别的分组的内容）。 */
+export function cardGroupFeedIds() {
+  return (state.feedList || [])
+    .filter((f) => f.cardEnabled && String(f.groupName || '').trim() === state.cardGroup)
+    .map((f) => f.id);
+}
+
 /* 分组折叠状态：按账号持久化（users.prefs.layout.collapsedGroups），不再落浏览器 */
 export function loadCollapsedGroups() {
   const arr = Array.isArray(layoutPref.collapsedGroups) ? layoutPref.collapsedGroups : [];
@@ -86,6 +95,11 @@ export async function loadFeeds() {
     && !(state.feedList || []).some((f) => String(f.id) === String(state.feedFilter) && f.cardEnabled)) {
     state.feedFilter = null;
   }
+  // 分组本身没了（改名 / 删频道 / 卡片开关全关）→ 回落到全部，别把一个空分组锁在标题上
+  if (state.cardGroup != null
+    && !(state.feedList || []).some((f) => f.cardEnabled && String(f.groupName || '').trim() === state.cardGroup)) {
+    state.cardGroup = null;
+  }
   render();
   return data;
 }
@@ -122,8 +136,10 @@ export async function loadPage(reset = false) {
       offset: String(state.offset),
     });
     if (state.q) qs.set('q', state.q);
+    // 分组筛选优先于频道：与文章页同一口径（传该组频道的 id 清单）
+    if (state.cardGroup != null) qs.set('feeds', cardGroupFeedIds().join(','));
     // 没指定具体频道时，卡片页只取「卡片开关」打开的频道
-    if (state.feedFilter) qs.set('feeds', String(state.feedFilter));
+    else if (state.feedFilter) qs.set('feeds', String(state.feedFilter));
     else qs.set('scope', 'cards');
 
     const res = await apiFetch('/api/entries?' + qs.toString());

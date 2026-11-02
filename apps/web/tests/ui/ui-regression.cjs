@@ -495,6 +495,12 @@ w.feedlore = {
       const params = new URLSearchParams(url.split('?')[1]);
       const q = params.get('q') || '';
       let list = miniEntriesAll();
+      // 分组 / 频道筛选：feeds= 是显式白名单（空串 = 什么都不返回，与服务端一致）
+      const feedsParam = params.get('feeds');
+      if (feedsParam !== null) {
+        const ids = feedsParam.split(',').filter(Boolean);
+        list = list.filter((e) => ids.indexOf(String(e.feedId)) >= 0);
+      }
       if (q) list = list.filter((e) => (e.name + e.desc + (e.tags || []).join('')).indexOf(q) >= 0);
       return ok({ entries: list, tags: [{ tag: '标签A', n: 2 }, { tag: '标签B', n: 1 }], hasMore: false });
     }
@@ -525,7 +531,7 @@ w.feedlore = {
   /* ---- 数据源面板桥（P2c，对齐 app.js 语义） ---- */
   state: {
     feedList: [], feedMeta: {}, groupOrder: [], collapsedGroups: new Set(), tag: null, username: 'tester', role: 'admin',
-    entries: [], tags: [], q: '', feedFilter: null, sort: 'new', size: 'all', view: 'grid', tab: 'reader',
+    entries: [], tags: [], q: '', feedFilter: null, cardGroup: null, sort: 'new', size: 'all', view: 'grid', tab: 'reader',
     hasMore: false, loading: false, loadError: false, offset: 0, pageSize: 24,
     rdEntries: [], rdExpanded: new Set(), rdBody: new Map(), rdBodyErr: new Set(),
     rdScope: 'all', rdFeedId: null, rdGroup: null, rdQ: '',
@@ -610,7 +616,20 @@ w.feedlore = {
     return list;
   },
   cardsSearch: (v) => { w.feedlore.state.q = v; w.feedlore.state.tag = null; return cardsLoad(true); },
-  cardsFilterFeed: (v) => { w.feedlore.state.feedFilter = v ? v : null; w.feedlore.state.tag = null; return cardsLoad(true); },
+  cardsFilterFeed: (v) => {
+    w.feedlore.state.feedFilter = v ? v : null;
+    w.feedlore.state.cardGroup = null;
+    w.feedlore.state.tag = null;
+    return cardsLoad(true);
+  },
+  // 与 core/index.js 同口径：再点同一个组 = 取消；选中分组时清掉频道筛选
+  cardsFilterGroup: (g) => {
+    calls.push(['cardsFilterGroup', g]);
+    const st = w.feedlore.state;
+    st.cardGroup = (g === st.cardGroup) ? null : g;
+    if (st.cardGroup != null) { st.feedFilter = null; st.tag = null; }
+    return cardsLoad(true);
+  },
   cardsSort: (v) => { w.feedlore.state.sort = v; cardsTick(); },
   cardsView: (m) => { w.feedlore.state.view = m; cardsTick(); },
   cardsTag: (t) => { w.feedlore.state.tag = t || null; cardsTick(); },
@@ -796,7 +815,14 @@ async function cardsLoad(reset) {
   try {
     const qs = new URLSearchParams({ limit: String(s.state.pageSize || 24), offset: String(s.state.offset || 0) });
     if (s.state.q) qs.set('q', s.state.q);
-    if (s.state.feedFilter) qs.set('feeds', String(s.state.feedFilter)); else qs.set('scope', 'cards');
+    // 与 core/feeds.js 的 loadPage 同口径：分组优先于频道
+    if (s.state.cardGroup != null) {
+      const ids = (s.state.feedList || [])
+        .filter((f) => f.cardEnabled && String(f.groupName || '').trim() === s.state.cardGroup)
+        .map((f) => f.id);
+      qs.set('feeds', ids.join(','));
+    } else if (s.state.feedFilter) qs.set('feeds', String(s.state.feedFilter));
+    else qs.set('scope', 'cards');
     const res = await s.apiFetch('/api/entries?' + qs.toString());
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -2883,6 +2909,95 @@ const withEFP = (el, fn) => {
   CA('#feedDD .dd-item')[0].click();
   await sleep(40);
 
+  // ---- 卡片页「只看这组」：与文章页同一套交互（频道栏漏斗 + 桌面下拉组头漏斗） ----
+  const cardFunnel = (g) => C(`#cardsChannels .rd-ch-filter[data-group-filter="${g}"]`);
+  const lastEntriesUrl = () => callsOf('apiFetch').filter((c) => c[1].indexOf('/api/entries?') === 0).pop()[1];
+  t('卡片页频道栏：分组行带「只看这组」漏斗（与文章页一致）', () => {
+    if (!cardFunnel('科技')) throw new Error('缺漏斗');
+    if (!cardFunnel('')) throw new Error('未分组也应有漏斗');
+    if (CA('#cardsChannels .rd-ch-filter').length !== 2) throw new Error('漏斗数 ' + CA('#cardsChannels .rd-ch-filter').length);
+  });
+  cardFunnel('科技').click();
+  await sleep(80);
+  t('点漏斗：只取该组频道 + 标题/触发器写分组 + 全部频道不再高亮', () => {
+    if (!callsOf('cardsFilterGroup').some((c) => c[1] === '科技')) throw new Error('未调用桥');
+    if (w.feedlore.state.cardGroup !== '科技') throw new Error('cardGroup: ' + w.feedlore.state.cardGroup);
+    if (lastEntriesUrl().indexOf('feeds=1') < 0) throw new Error('请求未带分组频道: ' + lastEntriesUrl());
+    if (cardIds().join(',') !== 'e1') throw new Error('卡片 ' + cardIds().join(','));
+    if (C('.cards-title').textContent.indexOf('分组 · 科技') < 0) throw new Error('标题: ' + C('.cards-title').textContent);
+    if (C('#feedSelect .dd-label').textContent.indexOf('分组 · 科技') < 0) throw new Error('触发器: ' + C('#feedSelect .dd-label').textContent);
+    if (C('#cardsChannels .rd-ch[data-feed=""]').classList.contains('active')) throw new Error('全部频道不该高亮');
+    if (!C('#cardsChannels .rd-ch-group-row.is-filtered')) throw new Error('组行缺 is-filtered');
+    if (cardFunnel('科技').getAttribute('aria-pressed') !== 'true') throw new Error('aria-pressed 未跟上');
+  });
+  cardFunnel('科技').click();
+  await sleep(80);
+  t('再点同一个漏斗：取消分组筛选，回到全部频道', () => {
+    if (w.feedlore.state.cardGroup !== null) throw new Error('仍锁在 ' + w.feedlore.state.cardGroup);
+    if (cardIds().join(',') !== 'e1,e2') throw new Error('卡片 ' + cardIds().join(','));
+    if (C('.cards-title').textContent.indexOf('全部频道') < 0) throw new Error('标题: ' + C('.cards-title').textContent);
+    if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('触发器: ' + C('#feedSelect .dd-label').textContent);
+    if (!C('#cardsChannels .rd-ch[data-feed=""]').classList.contains('active')) throw new Error('全部频道未恢复高亮');
+  });
+
+  // 桌面下拉的组头同样带漏斗（宽屏没有抽屉，分组阅读只能从这里进）
+  C('#feedSelect').click();
+  await sleep(20);
+  t('桌面下拉：组头也有「只看这组」漏斗', () => {
+    const f = C('#feedDD .dd-group-row .dd-group-filter');
+    if (!f) throw new Error('缺漏斗');
+    if (f.getAttribute('data-group-filter') !== '科技') throw new Error('漏斗组名: ' + f.getAttribute('data-group-filter'));
+  });
+  C('#feedDD .dd-group-row .dd-group-filter').click();
+  await sleep(80);
+  t('下拉漏斗：筛选该组并收起弹层，触发器显示分组', () => {
+    if (w.feedlore.state.cardGroup !== '科技') throw new Error('cardGroup: ' + w.feedlore.state.cardGroup);
+    if (C('#feedDD .dd-panel')) throw new Error('弹层未收起');
+    if (C('#feedSelect .dd-label').textContent.indexOf('分组 · 科技') < 0) throw new Error('触发器: ' + C('#feedSelect .dd-label').textContent);
+  });
+  C('#feedSelect').click();
+  await sleep(20);
+  t('分组筛选时下拉没有选中项（分组不是频道选项）', () => {
+    if (C('#feedDD .dd-item.active')) throw new Error('不该有选中项');
+    if (!CA('#feedDD .dd-item').some((el) => el.textContent.indexOf('全部频道') >= 0)) throw new Error('缺「全部频道」出口');
+  });
+  CA('#feedDD .dd-item')[0].click();
+  await sleep(80);
+  t('选「全部频道」：清掉分组筛选', () => {
+    if (w.feedlore.state.cardGroup !== null) throw new Error('cardGroup 未清: ' + w.feedlore.state.cardGroup);
+    if (cardIds().join(',') !== 'e1,e2') throw new Error('卡片 ' + cardIds().join(','));
+    if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('触发器: ' + C('#feedSelect .dd-label').textContent);
+  });
+
+  // 空分组：feeds= 空串（不是「不过滤」），空态给出回全部的出路
+  w.feedlore.state.feedList = w.feedlore.state.feedList.concat([{
+    id: '3', title: '空组频道', customTitle: null, cardEnabled: true, enabled: true, entryCount: 0, groupName: '空组',
+  }]);
+  cardsTick();
+  await sleep(40);
+  t('空分组也会出现在频道栏（卡片开关开着）', () => {
+    if (!cardFunnel('空组')) throw new Error('缺空组漏斗');
+  });
+  cardFunnel('空组').click();
+  await sleep(80);
+  t('空分组：按组内频道取数（没有内容就是空列表）+ 空态文案 + 一键回全部', () => {
+    const u = lastEntriesUrl();
+    if (u.indexOf('feeds=3') < 0) throw new Error('未按分组频道取数: ' + u);
+    if (cardIds().length) throw new Error('空分组不该有卡片: ' + cardIds().join(','));
+    if (C('#empty').hidden) throw new Error('空态未显示');
+    if (C('#empty').textContent.indexOf('该分组暂无内容') < 0) throw new Error('空态文案: ' + C('#empty').textContent);
+    if (!C('#empty .empty-action')) throw new Error('空态缺出路');
+  });
+  C('#empty .empty-action').click();
+  await sleep(80);
+  t('空态按钮：回到全部频道', () => {
+    if (w.feedlore.state.cardGroup !== null) throw new Error('cardGroup 未清');
+    if (cardIds().join(',') !== 'e1,e2') throw new Error('卡片 ' + cardIds().join(','));
+  });
+  w.feedlore.state.feedList = w.feedlore.state.feedList.filter((f) => String(f.id) !== '3');
+  cardsTick();
+  await sleep(20);
+
   // 移动端（≤720px）：频道下拉改为底部弹窗（v1.1.10）
   const realMM = w.matchMedia;
   w.matchMedia = (q) => ({ matches: String(q).indexOf('max-width: 720px') >= 0, media: String(q),
@@ -4163,7 +4278,7 @@ const withEFP = (el, fn) => {
         'readerToggleAccordion', 'readerAccordionOn', 'readerToggleDrawer', 'readerCloseDrawer', 'fmtFull',
         'readerCollapsedGroups', 'readerToggleGroupCollapse', 'readerToggleAllGroups',
         'getReaderSideWidth', 'setReaderSideWidth', 'applyReaderSideWidth', 'readerSideCap',
-        'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsView', 'cardsTag',
+        'cardsSearch', 'cardsFilterFeed', 'cardsFilterGroup', 'cardsSort', 'cardsView', 'cardsTag',
         'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'promptInstall',
         'cardsToggleDrawer', 'cardsCloseDrawer',
         'openSettings', 'toast', 'apiFetch', 'isAdmin', 'isReadonly', 'isWritable', 'exportOpml', 'bindSections', 'groupFeeds',

@@ -761,6 +761,33 @@ textarea:disabled {
   font-size: var(--fs-2xs); font-weight: 600; color: var(--text-faint);
   font-variant-numeric: tabular-nums; width: 18px; text-align: center; flex: 0 0 auto;
 }
+/* 分组行：折叠开关 + 「只看这组」漏斗（与文章页侧栏同一套动作）。
+   漏斗平时隐身，悬停 / 键盘聚焦 / 正在筛选该组时现身；触屏常显。 */
+.dd-group-row {
+  display: flex; align-items: center;
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast);
+}
+.dd-group-row:hover { background: var(--hover); }
+.dd-group-row .dd-group-fold { flex: 1; min-width: 0; width: auto; }
+.dd-group-row:hover .dd-group-fold { background: none; }
+.dd-group-row.is-filtered .dd-group-fold { color: var(--accent-text); }
+.dd-group-filter {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: 0 0 auto;
+  border: none; background: transparent; border-radius: var(--radius-xs); cursor: pointer;
+  color: var(--text-faint);
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-fast) ease, color var(--dur-base) ease;
+}
+.dd-group-row:is(:hover, :focus-within) .dd-group-filter { opacity: 1; pointer-events: auto; }
+.dd-group-row.is-filtered .dd-group-filter { opacity: 1; pointer-events: auto; color: var(--accent-text); background: var(--hover); }
+.dd-group-filter:hover { color: var(--text); }
+.dd-group-filter:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+@media (hover: none) {
+  .dd-group-filter { opacity: 1; pointer-events: auto; }
+  .dd-sheet-body .dd-group-filter { width: 30px; height: 30px; }
+}
 .dd-item {
   display: flex; align-items: center; justify-content: space-between; gap:var(--sp-3);
   width: 100%; padding:var(--sp-2) var(--sp-3);
