@@ -5,6 +5,26 @@
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
+## 2.0.7 — 2026-11-02
+
+### 新增
+
+- **只读账户**：「账号 → 用户管理」新增角色「只读」。只读账户与普通用户一样可以
+  浏览频道、条目、搜索和 AI 日报，但不能自助修改用户名或密码——账号面板里用户名
+  只读、改密区不显示。
+- 管理员可以照常为只读账户重置密码，或在 普通 / 只读 / 管理员 之间调整角色。
+
+### 安全
+
+- 只读账户直接请求 `/api/account`，或绕过界面调用 better-auth 的 `update-user`、
+  `change-password`、`change-email`、密码重置端点，一律返回 403。
+
+### 部署
+
+- 镜像：`ghcr.io/chensnails/feedlore:2.0.7`（amd64 + arm64），`latest` 指向同一 digest。
+- **从 2.0.6 升级**：直接更新镜像并重启即可。本次没有数据库结构变更，
+  启动时的结构迁移照常幂等执行。
+
 ## 2.0.6 — 2026-11-02
 
 ### 修复
