@@ -118,7 +118,7 @@ export function AboutPane() {
         </div>
         <div className="about-kv-row">
           <dt>开源许可</dt>
-          <dd>MIT</dd>
+          <dd><a href={GH_REPO + '/blob/main/LICENSE'} target="_blank" rel="noopener">GPL-3.0</a></dd>
         </div>
       </dl>
       <div className="about-check">

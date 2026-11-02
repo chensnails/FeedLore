@@ -262,4 +262,8 @@ pnpm --filter @feedlore/web build && node scripts/verify-dist.mjs
 
 ## 许可
 
-[MIT](LICENSE)
+[GPL-3.0](LICENSE)（GNU General Public License v3.0）。
+
+本仓库当前版本按 GPL-3.0 发布；此前已发布的版本（2.0.7 及更早）仍按当时的 MIT 许可授权。
+分发本项目的修改版或二进制（含 Docker 镜像）时，请按 GPL-3.0 提供对应源代码：
+<https://github.com/chensnails/feedlore>。

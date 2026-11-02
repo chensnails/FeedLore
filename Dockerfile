@@ -26,11 +26,15 @@ RUN pnpm --filter @feedlore/web build
 # ---------------- 阶段 2：运行时 ----------------
 FROM node:22-slim
 
+# GPL-3.0：分发镜像即分发二进制，许可证文本要随镜像一起分发
+LABEL org.opencontainers.image.licenses="GPL-3.0-only"
+
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@12.16.1 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json turbo.json .npmrc ./
+COPY LICENSE ./
 COPY packages ./packages
 COPY apps/server ./apps/server
 # 同上：lockfile 里的 apps/web importer 必须存在，否则 --frozen-lockfile 会判定不一致
