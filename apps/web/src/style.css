@@ -3134,11 +3134,52 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   border-top: 1px solid var(--border);
 }
 
+/* 表格：窄屏横向滚动，不压缩字号；单元格内允许换行 */
+.art-table-wrap {
+  margin: 1.2em 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.art-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .94em;
+  line-height: 1.5;
+}
+.art-table th,
+.art-table td {
+  padding: .5em .7em;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  word-break: break-word;
+}
+.art-table th {
+  background: var(--panel-2);
+  font-weight: 650;
+}
+
+/* 图注：图与说明成组，说明比正文小一号、居中 */
+.art-figure {
+  margin: 1.2em 0;
+  text-align: center;
+}
+.art-figure .art-img { margin: 0; }
+.art-caption {
+  margin-top: .5em;
+  color: var(--text-muted);
+  font-size: .84em;
+  line-height: 1.5;
+  text-align: center;
+}
+
 @media (max-width: 720px) {
   .art-h2 { font-size: 1.24em; margin-top: 1.45em; }
   .art-h3 { font-size: 1.08em; margin-top: 1.2em; }
   .art-list { padding-left: 1.35em; }
   .art-pre { padding: var(--sp-3); }
+  .art-table th,
+  .art-table td { padding: .42em .55em; }
 }
 
 .art-tags { display: flex; align-items: center; flex-wrap: wrap; gap:var(--sp-2); }
@@ -3323,11 +3364,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .source-add { padding:var(--sp-4) var(--sp-4) var(--sp-3); }
   .source-opts { gap:var(--sp-2) var(--sp-4); }
   .source-opts input[type="number"] { width: 68px; }
-  /* 两个开关 + 两个图标按钮挤不进一行，整块换到第二行 */
+  /* 开关与图标按钮挤不进一行，整块换到第二行；再窄时允许操作组内部换行 */
   .feed-row { flex-wrap: wrap; padding:var(--sp-2) var(--sp-2); gap:var(--sp-2) var(--sp-2); }
   .feed-avatar { width: 30px; height: 30px; flex-basis: 30px; }
   .feed-group input { width: 100%; }
-  .feed-actions { flex: 1 0 100%; justify-content: flex-end; gap:var(--sp-4); }
+  .feed-actions { flex: 1 0 100%; flex-wrap: wrap; justify-content: flex-end; gap:var(--sp-2) var(--sp-4); }
   .feed-icon-btn { width: 26px; height: 26px; }
   .feed-group-head { padding:var(--sp-3) var(--sp-2) var(--sp-1); }
 

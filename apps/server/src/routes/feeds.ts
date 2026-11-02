@@ -369,6 +369,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           if (body.refreshMinutes !== undefined) {
             set.refreshMinutes = normalizeRefreshMinutes(body.refreshMinutes);
           }
+          if (body.fullText !== undefined) set.fullText = body.fullText;
 
           let urlChanged = false;
           if (body.url !== undefined) {

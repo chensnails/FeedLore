@@ -1025,6 +1025,19 @@ export function SourcePane({ admin }) {
               <span className="switch-slider"></span>
             </span>
           </label>
+          <label className="feed-sw" title="全文：订阅只给摘要时，抓取原文页面并提取完整正文（会增加抓取耗时）">
+            <span className="feed-sw-label">全文</span>
+            <span className="switch">
+              <input
+                type="checkbox"
+                data-fulltext-toggle={f.id}
+                checked={f.fullText}
+                disabled={pend}
+                onChange={(ev) => onToggle(f, 'fullText', ev.target.checked, ev.target.checked ? '已开启全文抓取（下轮抓取生效）' : '已关闭全文抓取')}
+              />
+              <span className="switch-slider"></span>
+            </span>
+          </label>
           <button className="feed-icon-btn" data-rename={f.id} title="重命名" type="button" disabled={pend} onClick={() => startRename(f.id)}>
             <Ico name="edit" />
           </button>

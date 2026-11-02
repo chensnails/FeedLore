@@ -211,6 +211,8 @@ export const feedPatchBody = z.object({
   sortOrder: z.number().int().optional(),
   /** 空 / 'global' / null 表示「跟随全局」；否则为 5~1440 的整数（服务端夹取） */
   refreshMinutes: z.union([z.number().int(), z.literal('global'), z.literal(''), z.null()]).optional(),
+  /** 摘要型订阅：抓原文页提取全文 */
+  fullText: z.boolean().optional(),
   url: z.string().url().max(2000).optional(),
 });
 export type FeedPatchBody = z.infer<typeof feedPatchBody>;

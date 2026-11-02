@@ -96,6 +96,8 @@ function blockText(b) {
   if (b.t === 'pre') return String(b.code || '');
   if (b.t === 'list') return (b.items || []).map((it) => it.map(blockText).join('\n')).join('\n');
   if (b.t === 'quote') return (b.blocks || []).map(blockText).join('\n');
+  if (b.t === 'table') return [...(b.head || []), ...(b.rows || []).flat()].map(inlineText).join('\n');
+  if (b.t === 'figure') return inlineText(b.caption || []);
   return '';
 }
 
@@ -108,7 +110,7 @@ function blockHasText(b) {
 function isRichBody(e, blocks) {
   if (Number(e && e.bodyVersion) === 2) return true;
   return !!blocks && blocks.some((b) => b && (b.t === 'h' || b.t === 'list' || b.t === 'quote'
-    || b.t === 'pre' || b.t === 'hr' || Array.isArray(b.v)));
+    || b.t === 'pre' || b.t === 'table' || b.t === 'figure' || b.t === 'hr' || Array.isArray(b.v)));
 }
 
 function isDuplicateTitleLine(txt, name) {
@@ -234,6 +236,35 @@ function RichBlocks({ blocks }) {
           <pre className="art-pre" key={'r' + i}>
             <code data-lang={b.lang || undefined}>{b.code}</code>
           </pre>
+        );
+        break;
+      case 'table': {
+        const head = b.head || [];
+        const rows = b.rows || [];
+        out.push(
+          <div className="art-table-wrap" key={'r' + i}>
+            <table className="art-table">
+              {head.length ? (
+                <thead><tr>{head.map((cell, k) => <th key={k}><Inline nodes={cell} /></th>)}</tr></thead>
+              ) : null}
+              <tbody>
+                {rows.map((row, ri) => (
+                  <tr key={ri}>{row.map((cell, ci) => <td key={ci}><Inline nodes={cell} /></td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        break;
+      }
+      case 'figure':
+        out.push(
+          <figure className="art-figure" key={'r' + i}>
+            <ArtImg src={b.img && b.img.src} alt={b.img && b.img.alt} w={b.img && b.img.w} h={b.img && b.img.h} />
+            {b.caption && b.caption.length ? (
+              <figcaption className="art-caption"><Inline nodes={b.caption} /></figcaption>
+            ) : null}
+          </figure>
         );
         break;
       case 'hr':

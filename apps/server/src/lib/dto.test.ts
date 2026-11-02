@@ -8,16 +8,19 @@ import { bodyJsonUrl, toCard, type CardRow } from './dto';
  *  2. bodyVersion 没带出去，前端把 v2 块按 v1 渲染（整篇变成一个空 div）。
  */
 
-test('bodyJsonUrl：引用 / 列表里的图片也改写成代理地址', () => {
+test('bodyJsonUrl：引用 / 列表 / 图注里的图片也改写成代理地址', () => {
   const json = JSON.stringify([
     { t: 'p', v: [{ t: 'text', v: '正文' }] },
     { t: 'quote', blocks: [{ t: 'img', src: 'https://a.com/q.jpg' }] },
     { t: 'list', ordered: false, items: [[{ t: 'img', src: 'https://a.com/l.jpg' }]] },
+    { t: 'figure', img: { src: 'https://a.com/f.jpg' }, caption: [{ t: 'text', v: '图注' }] },
   ]);
   const out = JSON.parse(bodyJsonUrl(json) ?? '[]');
   const proxied = (u: string) => '/api/img?u=' + encodeURIComponent(u);
   assert.equal(out[1].blocks[0].src, proxied('https://a.com/q.jpg'));
   assert.equal(out[2].items[0][0].src, proxied('https://a.com/l.jpg'));
+  assert.equal(out[3].img.src, proxied('https://a.com/f.jpg'));
+  assert.deepEqual(out[3].caption, [{ t: 'text', v: '图注' }]);
 });
 
 test('bodyJsonUrl：没有可改写图片时原样返回（省一次序列化）', () => {

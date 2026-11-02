@@ -129,13 +129,61 @@ test('纯文本：换行拆成独立段落，单行内空白折叠', () => {
   assert.equal(text((blocks[1] as { t: 'p'; v: ArticleInline[] }).v), '描述： 多个空格');
 });
 
-test('容器透明：div/section/figure 展开，figcaption 暂不收', () => {
+test('容器透明：div/section 展开，figure 收成图注块', () => {
   const blocks = B(
-    '<div><section><p>一</p><figure><img src="https://a.com/1.jpg"><figcaption>图注</figcaption></figure>'
-      + '<p>二</p></section></div>',
+    '<div><section><p>一</p><figure><img src="https://a.com/1.jpg" alt="图">'
+      + '<figcaption>图注 <a href="/more">来源</a></figcaption></figure><p>二</p></section></div>',
+    { baseUrl: 'https://a.com/post/1' },
   );
-  assert.deepEqual(blocks.map((b) => b.t), ['p', 'img', 'p']);
-  assert.ok(!JSON.stringify(blocks).includes('图注'));
+  assert.deepEqual(blocks.map((b) => b.t), ['p', 'figure', 'p']);
+  const fig = blocks[1];
+  assert.ok(fig?.t === 'figure');
+  assert.equal(fig.img.src, 'https://a.com/1.jpg');
+  assert.equal(fig.img.alt, '图');
+  assert.equal(text(fig.caption ?? []), '图注 来源');
+  const link = (fig.caption ?? []).find((n) => n.t === 'a');
+  assert.equal(link?.t === 'a' ? link.href : null, 'https://a.com/more');
+});
+
+test('figure：没有图片时按普通容器展开，图注丢弃', () => {
+  const blocks = B('<figure><figcaption>说明</figcaption><p>正文</p></figure>');
+  assert.deepEqual(blocks.map((b) => b.t), ['p']);
+  assert.equal(text((blocks[0] as { t: 'p'; v: ArticleInline[] }).v), '正文');
+});
+
+test('表格：thead 作表头、tbody 作数据行，单元格保留链接与加粗', () => {
+  const [table] = B(
+    '<table><thead><tr><th>名称</th><th>说明</th></tr></thead>'
+      + '<tbody><tr><td><a href="https://x.com">甲</a></td><td><strong>乙</strong></td></tr>'
+      + '<tr><td>丙</td><td></td></tr></tbody></table>',
+  );
+  assert.equal(table?.t, 'table');
+  if (table?.t !== 'table') return;
+  assert.equal(table.head.length, 2);
+  assert.equal(text(table.head[0] ?? []), '名称');
+  assert.equal(table.rows.length, 2);
+  const a = (table.rows[0]?.[0] ?? []).find((n) => n.t === 'a');
+  assert.equal(a?.t === 'a' ? a.href : null, 'https://x.com/');
+  assert.equal(text(table.rows[0]?.[1] ?? []), '乙');
+});
+
+test('表格：没有 thead 时，首行全是 th 才当表头', () => {
+  const withHead = B('<table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>')[0];
+  assert.ok(withHead?.t === 'table' && withHead.head.length === 2 && withHead.rows.length === 1);
+
+  const noHead = B('<table><tr><td>1</td><td>2</td></tr></table>')[0];
+  assert.ok(noHead?.t === 'table' && noHead.head.length === 0 && noHead.rows.length === 1);
+});
+
+test('表格：单元格里的块按换行摊平，colspan/rowspan 不展开', () => {
+  const [table] = B(
+    '<table><tr><td rowspan="2" colspan="2"><p>第一行</p><ul><li>项</li></ul></td>'
+      + '<td>尾</td></tr></table>',
+  );
+  assert.ok(table?.t === 'table');
+  assert.equal(table.rows.length, 1);
+  assert.equal(table.rows[0]?.length, 2); // colspan 不重复生成格子
+  assert.equal(text(table.rows[0]?.[0] ?? []), '第一行\n项');
 });
 
 test('上限：图片最多 20 张，块最多 300，超出后仍是合法 JSON', () => {

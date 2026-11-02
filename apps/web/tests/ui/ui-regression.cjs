@@ -81,9 +81,9 @@ const clampInt = (v, d, lo, hi) => {
   return Math.min(Math.max(x, lo), hi);
 };
 const miniFeeds = [
-  { id: '1', url: 'https://example.com/feed.xml', title: '例子星球', customTitle: null, groupName: '科技', enabled: true, cardEnabled: true, refreshMinutes: null, sortOrder: 0, entryCount: 12, lastFetchedAt: Date.now(), status: null, error: '' },
-  { id: '2', url: 'https://tg.example/rss/channel/demo', title: 'demo - Telegram Channel', customTitle: null, groupName: '科技', enabled: true, cardEnabled: false, refreshMinutes: 60, sortOrder: 1, entryCount: 4, lastFetchedAt: Date.now() - 7200000, status: 'error', error: '502 Bad Gateway' },
-  { id: '3', url: 'https://blog.example.org/atom.xml', title: '某人的博客', customTitle: null, groupName: '', enabled: false, cardEnabled: true, refreshMinutes: null, sortOrder: 2, entryCount: 88, lastFetchedAt: null, status: null, error: '' },
+  { id: '1', url: 'https://example.com/feed.xml', title: '例子星球', customTitle: null, groupName: '科技', enabled: true, cardEnabled: true, fullText: true, refreshMinutes: null, sortOrder: 0, entryCount: 12, lastFetchedAt: Date.now(), status: null, error: '' },
+  { id: '2', url: 'https://tg.example/rss/channel/demo', title: 'demo - Telegram Channel', customTitle: null, groupName: '科技', enabled: true, cardEnabled: false, fullText: false, refreshMinutes: 60, sortOrder: 1, entryCount: 4, lastFetchedAt: Date.now() - 7200000, status: 'error', error: '502 Bad Gateway' },
+  { id: '3', url: 'https://blog.example.org/atom.xml', title: '某人的博客', customTitle: null, groupName: '', enabled: false, cardEnabled: true, fullText: false, refreshMinutes: null, sortOrder: 2, entryCount: 88, lastFetchedAt: null, status: null, error: '' },
 ];
 let miniGroupOrder = ['科技'];
 // 条目过滤规则（v2.7.0）：AccountPane 读 /api/prefs 的 filters，保存后由 mock 的 sanitize 回填
@@ -211,7 +211,7 @@ const miniEntryDetail = (id) => {
 const toDto = (f) => ({
   id: String(f.id), url: f.url, title: f.title || f.url,
   customTitle: f.customTitle || null, siteUrl: null, description: '', icon: null,
-  enabled: !!f.enabled, cardEnabled: !!f.cardEnabled,
+  enabled: !!f.enabled, cardEnabled: !!f.cardEnabled, fullText: !!f.fullText,
   groupName: f.groupName || '', sortOrder: Number(f.sortOrder || 0),
   entryCount: Number(f.entryCount || 0), unreadCount: 0,
   lastFetchedAt: f.lastFetchedAt || null,
@@ -384,6 +384,7 @@ w.feedlore = {
         if (patchFailNext) { patchFailNext = false; return bad('boom', 500); }
         if (body.enabled !== undefined) f.enabled = !!body.enabled;
         if (body.cardEnabled !== undefined) f.cardEnabled = !!body.cardEnabled;
+        if (body.fullText !== undefined) f.fullText = !!body.fullText;
         if (body.groupName !== undefined) f.groupName = String(body.groupName).trim().slice(0, 40) || '';
         if (body.title !== undefined) f.customTitle = String(body.title).trim().slice(0, 200) || null;
         if (body.sortOrder !== undefined) f.sortOrder = clampInt(body.sortOrder, f.sortOrder, 0, 100000);
@@ -680,6 +681,16 @@ w.feedlore = {
               { t: 'quote', blocks: [{ t: 'p', v: [{ t: 'text', v: '引用' }] }] },
               { t: 'pre', code: 'const a = 1;', lang: 'js' },
               { t: 'img', src: 'https://img.example/b.png' },
+              {
+                t: 'table',
+                head: [[{ t: 'text', v: '名称' }], [{ t: 'text', v: '说明' }]],
+                rows: [[[{ t: 'text', v: '甲' }], [{ t: 'text', v: '乙' }]]],
+              },
+              {
+                t: 'figure',
+                img: { src: 'https://img.example/fig.png', alt: '示意' },
+                caption: [{ t: 'text', v: '图注文字' }],
+              },
             ]),
           })
           : Object.assign(base, {
@@ -1297,6 +1308,8 @@ const withEFP = (el, fn) => {
     if (!rowOf('1').querySelector('[data-toggle="1"]').checked) throw new Error('f1 采集应开');
     if (!rowOf('1').querySelector('[data-card-toggle="1"]').checked) throw new Error('f1 卡片应开');
     if (rowOf('2').querySelector('[data-card-toggle="2"]').checked) throw new Error('f2 卡片应关');
+    if (!rowOf('1').querySelector('[data-fulltext-toggle="1"]').checked) throw new Error('f1 全文应开');
+    if (rowOf('2').querySelector('[data-fulltext-toggle="2"]').checked) throw new Error('f2 全文应关');
     if (rowOf('3').querySelector('[data-toggle="3"]').checked) throw new Error('f3 采集应关');
     if (!rowOf('3').classList.contains('off')) throw new Error('f3 行应 off');
     if (!rowOf('2').classList.contains('no-card')) throw new Error('f2 行应 no-card');
@@ -1413,6 +1426,14 @@ const withEFP = (el, fn) => {
     if (!body || body.cardEnabled !== true) throw new Error(JSON.stringify(body));
     if (rowOf('2').classList.contains('no-card')) throw new Error('仍 no-card');
     if (!callsOf('toast').some((c) => c[1] === '已在卡片页展示')) throw new Error('无 toast');
+  });
+  rowOf('2').querySelector('[data-fulltext-toggle="2"]').click();
+  await sleep(80);
+  t('全文开关：PATCH fullText + toast', () => {
+    const body = lastPatchBody('/api/feeds/2');
+    if (!body || body.fullText !== true) throw new Error(JSON.stringify(body));
+    if (!rowOf('2').querySelector('[data-fulltext-toggle="2"]').checked) throw new Error('回滚了');
+    if (!callsOf('toast').some((c) => String(c[1]).startsWith('已开启全文抓取'))) throw new Error('无 toast');
   });
 
   // ---- 保存期间禁用 + 失败回滚 ----
@@ -3460,6 +3481,14 @@ const withEFP = (el, fn) => {
     if (!code || code.textContent !== 'const a = 1;') throw new Error('代码块未渲染');
     const img = body.querySelector('.art-rich .art-img');
     if (!img || img.getAttribute('src') !== '/api/img?u=' + encodeURIComponent('https://img.example/b.png')) throw new Error('图片未走代理');
+    const th = body.querySelector('.art-rich .art-table-wrap table.art-table thead th');
+    if (!th || th.textContent !== '名称') throw new Error('表格表头未渲染');
+    if (!body.querySelector('.art-rich .art-table tbody td')) throw new Error('表格数据行未渲染');
+    const fig = body.querySelector('.art-rich figure.art-figure');
+    if (!fig) throw new Error('图注块未渲染');
+    const figImg = fig.querySelector('.art-img');
+    if (!figImg || figImg.getAttribute('src') !== '/api/img?u=' + encodeURIComponent('https://img.example/fig.png')) throw new Error('图注图片未走代理');
+    if (!fig.querySelector('figcaption.art-caption') || !fig.textContent.includes('图注文字')) throw new Error('图注文字未渲染');
     if (body.querySelector('.art-rich script, .art-rich iframe')) throw new Error('不应出现 HTML 注入节点');
   });
   R('#readerList .art-item[data-id="r1"] .art-head').click();

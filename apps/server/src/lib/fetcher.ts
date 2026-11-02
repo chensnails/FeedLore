@@ -23,6 +23,7 @@ import { normalizeItem, parseFeed, type NormalizedItem } from './rss';
 import { applyFilters } from './filter';
 import { classify, notifyRuleNames, type WatchVerdict } from './watch';
 import { userFilters, userWatchRules, userWebhook } from './prefs';
+import { enhanceWithFullText, pruneArticleCache } from './fulltext';
 import {
   DEFAULT_KEEP_DAYS,
   DEFAULT_REFRESH_MINUTES,
@@ -499,7 +500,18 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
       const items = applyFilters(r.items, userFilters(memberPrefs));
       filtered += r.items.length - items.length;
 
-      const up = await upsertEntries(db, m.id, items);
+      // 开了「全文」的频道：摘要型正文去原文页补全。失败只保留订阅正文，不能影响入库。
+      const enriched = m.fullText && items.length
+        ? await enhanceWithFullText(db, items, {
+          siteUrl: r.siteUrl,
+          timeoutMs: Math.min(cfg.timeoutSeconds * 1000, 12_000),
+        }).catch((e: unknown) => {
+          console.error('[rss] 全文抓取失败：', (e as Error)?.message ?? e);
+          return items;
+        })
+        : items;
+
+      const up = await upsertEntries(db, m.id, enriched);
       added += up.inserted;
 
       // 新入库的条目立刻跑一遍关注 / 屏蔽规则
@@ -626,6 +638,8 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = '抓取'): P
   await flushWatchNotify(db, prefs);
 
   const pruned = await pruneEntries(db, cfg).catch(() => 0);
+  // 原文缓存只服务于全文抓取，跟条目裁剪分开清理（收藏条目的缓存也跟着过期）
+  await pruneArticleCache(db).catch(() => 0);
 
   const added = results.reduce((n, r) => n + r.added, 0);
   const autoDisabled = results.reduce((n, r) => n + (r.autoDisabled ?? 0), 0);

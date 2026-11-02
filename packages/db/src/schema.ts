@@ -130,6 +130,8 @@ export const feeds = pgTable(
     customTitle: text('custom_title'), // 优先于抓取来的 title
     sortOrder: integer('sort_order').notNull().default(0),
     refreshMinutes: integer('refresh_minutes'), // NULL = 跟随全局
+    // 摘要型订阅：抓原文页面并提取全文（默认关，按频道自愿开启）
+    fullText: boolean('full_text').notNull().default(false),
     etag: text('etag'),
     lastModified: text('last_modified'),
     lastStatus: text('last_status'),
@@ -206,6 +208,15 @@ export const imageCache = pgTable('image_cache', {
   origSize: integer('orig_size'),
   size: integer('size').notNull(),
   createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+});
+
+/** 摘要型订阅的全文抓取缓存：同一篇原文只解析一次，失败不落库（下次重试） */
+export const articleCache = pgTable('article_cache', {
+  url: text('url').primaryKey(),
+  content: text('content'),
+  bodyJson: text('body_json'),
+  images: text('images').array().notNull().default([]),
+  fetchedAt: timestamp('fetched_at', { mode: 'date' }).notNull().defaultNow(),
 });
 
 export const settings = pgTable('settings', {

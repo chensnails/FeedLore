@@ -29,6 +29,9 @@ const MAX_JSON = 64 * 1024;
 /** 单个文本 / 代码块长度上限 */
 const MAX_TEXT = 12_000;
 const MAX_CODE = 24_000;
+/** 表格上限：行 / 列（合并单元格不展开，按 1 格算） */
+const MAX_TABLE_ROWS = 80;
+const MAX_TABLE_COLS = 12;
 /** 原始 HTML 上限：再长也只解析前 2MB（防止异常源把内存打满） */
 const MAX_HTML = 2_000_000;
 
@@ -263,8 +266,15 @@ class Parser {
         if (inner.length) out.push({ t: 'quote', blocks: inner });
       } else if (b.t === 'pre') {
         if (b.code.trim()) out.push(b);
-      } else if (b.t === 'img') {
-        out.push(b);
+      } else if (b.t === 'table') {
+        const head = b.head.map((cell) => normalizeInline(cell)).filter((cell) => cell.length);
+        const rows = b.rows
+          .map((row) => row.map((cell) => normalizeInline(cell)))
+          .filter((row) => row.some((cell) => cell.length));
+        if (head.length || rows.length) out.push({ t: 'table', head, rows });
+      } else if (b.t === 'figure') {
+        const caption = b.caption ? normalizeInline(b.caption) : [];
+        out.push(caption.length ? { ...b, caption } : { t: 'figure', img: b.img });
       } else {
         out.push(b);
       }
@@ -296,7 +306,7 @@ class Parser {
 
       const name = tagName(node);
       if (SKIP_TAGS.has(name)) continue;
-      if (name === 'figcaption') continue; // P0 不收图注
+      if (name === 'figcaption') continue; // 图注只在 <figure> 内收，散落的忽略
 
       if (name === 'br') {
         if (inline.length) inline.push({ t: 'br' });
@@ -304,7 +314,18 @@ class Parser {
       }
       if (name === 'img') {
         flush();
-        this.addImage(node);
+        const img = this.imageBlock(node);
+        if (img) this.push(img);
+        continue;
+      }
+      if (name === 'table') {
+        flush();
+        this.pushTable(node);
+        continue;
+      }
+      if (name === 'figure') {
+        flush();
+        this.pushFigure(node, depth);
         continue;
       }
       if (name === 'hr') {
@@ -493,8 +514,9 @@ class Parser {
     this.push({ t: 'pre', code: clip(code, MAX_CODE), ...(lang ? { lang } : {}) });
   }
 
-  private addImage(node: DomNode): void {
-    if (this.images.length >= MAX_IMAGES) return;
+  /** 图片块（同时登记到 images）；重复图 / data: / 跟踪像素返回 null */
+  private imageBlock(node: DomNode): ArticleBlock | null {
+    if (this.images.length >= MAX_IMAGES) return null;
     const attrs = node.attribs ?? {};
     const raw = attrs.src || null;
     const lazy = attrs['data-src'] || attrs['data-original'] || attrs['data-lazy-src']
@@ -505,17 +527,134 @@ class Parser {
       ?? pickSrcset(attrs.srcset)
       ?? pickSrcset(attrs['data-srcset']);
     const src = this.abs(candidate ?? undefined);
-    if (!src || !/^https?:/i.test(src)) return;
-    if (this.imgSeen.has(src)) return;
+    if (!src || !/^https?:/i.test(src)) return null;
+    if (this.imgSeen.has(src)) return null;
 
     const w = intAttr(attrs.width);
     const h = intAttr(attrs.height);
-    if (w !== undefined && h !== undefined && w <= 2 && h <= 2) return; // 跟踪像素
+    if (w !== undefined && h !== undefined && w <= 2 && h <= 2) return null; // 跟踪像素
 
     this.imgSeen.add(src);
     this.images.push(src);
     const alt = String(attrs.alt ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
-    this.push({ t: 'img', src, ...(alt ? { alt } : {}), ...(w ? { w } : {}), ...(h ? { h } : {}) });
+    return { t: 'img', src, ...(alt ? { alt } : {}), ...(w ? { w } : {}), ...(h ? { h } : {}) };
+  }
+
+  /** <figure>：第一张图 + figcaption；没有图就按普通容器展开（不丢正文） */
+  private pushFigure(node: DomNode, depth: number): void {
+    if (depth > MAX_NEST) {
+      this.walk(node.children ?? [], depth + 1);
+      return;
+    }
+    const found: { img: DomNode | null; caption: DomNode | null } = { img: null, caption: null };
+    const scan = (n: DomNode, d = 0): void => {
+      if (d > 4 || (found.img && found.caption)) return;
+      for (const c of n.children ?? []) {
+        if (!isTag(c)) continue;
+        const name = tagName(c);
+        if (name === 'img' && !found.img) found.img = c;
+        if (name === 'figcaption' && !found.caption) found.caption = c;
+        scan(c, d + 1);
+      }
+    };
+    scan(node);
+
+    const block = found.img ? this.imageBlock(found.img) : null;
+    if (block && block.t === 'img') {
+      const cap = found.caption
+        ? normalizeInline(this.inlineNodes(found.caption.children ?? [], depth + 1))
+        : [];
+      const captionText = clip(cap.map((n) => (n.t === 'text' ? n.v : '')).join(' ').trim(), MAX_TEXT);
+      this.push({
+        t: 'figure',
+        img: {
+          src: block.src,
+          ...(block.alt ? { alt: block.alt } : {}),
+          ...(block.w ? { w: block.w } : {}),
+          ...(block.h ? { h: block.h } : {}),
+        },
+        ...(captionText ? { caption: cap } : {}),
+      });
+      return;
+    }
+    // 没有可用图片：图注以外的内容照常展开
+    this.walk((node.children ?? []).filter((c) => !isTag(c) || tagName(c) !== 'figcaption'), depth + 1);
+  }
+
+  /** <table>：thead 作表头，tbody/tfoot 作数据行；colspan/rowspan 不展开 */
+  private pushTable(node: DomNode): void {
+    const headRows: DomNode[] = [];
+    const bodyRows: DomNode[] = [];
+
+    const collectRows = (n: DomNode, inHead: boolean, d = 0): void => {
+      if (d > 4) return;
+      for (const c of n.children ?? []) {
+        if (!isTag(c)) continue;
+        const name = tagName(c);
+        if (name === 'tr') {
+          (inHead ? headRows : bodyRows).push(c);
+          continue;
+        }
+        if (name === 'table') continue; // 嵌套表格不并入外层
+        collectRows(c, inHead || name === 'thead', d + 1);
+      }
+    };
+    collectRows(node, false);
+
+    let head: ArticleInline[][] = [];
+    let dataRows = bodyRows;
+    const firstHead = headRows[0];
+    if (firstHead) {
+      head = this.cellRow(firstHead);
+      dataRows = [...headRows.slice(1), ...bodyRows];
+    } else if (bodyRows[0] && this.looksLikeHeader(bodyRows[0])) {
+      head = this.cellRow(bodyRows[0]);
+      dataRows = bodyRows.slice(1);
+    }
+
+    const rows: ArticleInline[][][] = [];
+    for (const tr of dataRows.slice(0, MAX_TABLE_ROWS)) {
+      const row = this.cellRow(tr);
+      if (row.some((cell) => cell.length)) rows.push(row);
+      if (rows.length >= MAX_TABLE_ROWS) break;
+    }
+    if (!head.length && !rows.length) return;
+    this.push({ t: 'table', head, rows });
+  }
+
+  private looksLikeHeader(tr: DomNode): boolean {
+    const cells = (tr.children ?? []).filter((c) => isTag(c) && /^(td|th)$/.test(tagName(c)));
+    return cells.length > 0 && cells.every((c) => tagName(c) === 'th');
+  }
+
+  /** 一行：每个单元格是一组内联节点（colspan/rowspan 忽略，按 1 格算） */
+  private cellRow(tr: DomNode): ArticleInline[][] {
+    const out: ArticleInline[][] = [];
+    for (const c of tr.children ?? []) {
+      if (out.length >= MAX_TABLE_COLS) break;
+      if (!isTag(c)) continue;
+      const name = tagName(c);
+      if (name !== 'td' && name !== 'th') continue;
+      out.push(this.cellInline(c, 0));
+    }
+    return out;
+  }
+
+  /** 单元格内容：块级子元素之间用换行分隔（嵌套列表不会粘成一串） */
+  private cellInline(node: DomNode, depth: number): ArticleInline[] {
+    if (depth > MAX_DEPTH) return [];
+    const out: ArticleInline[] = [];
+    for (const c of node.children ?? []) {
+      if (isTag(c) && (BLOCK_TAGS.has(tagName(c)) || tagName(c) === 'figure')) {
+        const inner = this.cellInline(c, depth + 1);
+        if (!inner.length) continue;
+        if (out.length && out[out.length - 1]?.t !== 'br') out.push({ t: 'br' });
+        out.push(...inner);
+      } else {
+        out.push(...this.inlineNodes([c], depth + 1));
+      }
+    }
+    return normalizeInline(out);
   }
 }
 

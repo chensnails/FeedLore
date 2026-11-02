@@ -67,6 +67,13 @@ export function bodyJsonUrl(json: string | null | undefined): string | null {
           b.src = proxied(b.src);
           changed = true;
         }
+        if (b.t === 'figure' && b.img && typeof b.img === 'object') {
+          const img = b.img as Record<string, unknown>;
+          if (typeof img.src === 'string' && /^https?:\/\//i.test(img.src)) {
+            img.src = proxied(img.src);
+            changed = true;
+          }
+        }
         if (b.t === 'list' && Array.isArray(b.items)) {
           for (const item of b.items) {
             if (Array.isArray(item) && walk(item)) changed = true;
@@ -153,6 +160,7 @@ export interface FeedRow {
   customTitle: string | null;
   sortOrder: number;
   refreshMinutes: number | null;
+  fullText: boolean;
   lastStatus: string | null;
   lastError: string | null;
   lastFetchedAt: Date | null;
@@ -189,6 +197,7 @@ export function toFeed(
     entryCount: counts.entryCount ?? 0,
     unreadCount: counts.unreadCount ?? 0,
     refreshMinutes: row.refreshMinutes ?? null,
+    fullText: row.fullText,
     effectiveRefreshMinutes: row.refreshMinutes ?? globalRefreshMinutes,
     // 下次抓取时间 = 上次抓取 + 本频道频率（从未抓过 → 立刻该抓）。停用采集的返回 null。
     nextRefreshAt: row.enabled

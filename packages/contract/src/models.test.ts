@@ -26,6 +26,16 @@ test('块节点：标题 / 列表 / 引用 / 代码 / 图片 / 分隔线都能�
     { t: 'quote', blocks: [p, { t: 'hr' }] },
     { t: 'pre', code: 'const a = 1;', lang: 'ts' },
     { t: 'img', src: 'https://example.com/a.jpg', alt: '图', w: 640, h: 480 },
+    {
+      t: 'table',
+      head: [[{ t: 'text', v: '名称' }], [{ t: 'text', v: '说明' }]],
+      rows: [[[link], [{ t: 'text', v: '值' }]], [[{ t: 'text', v: '空' }]]],
+    },
+    {
+      t: 'figure',
+      img: { src: 'https://example.com/f.jpg', alt: '图注图', w: 800 },
+      caption: [{ t: 'text', v: '图注' }, link],
+    },
     { t: 'hr' },
   ];
   for (const b of blocks) {
@@ -42,6 +52,17 @@ test('块节点：非法层级 / 空图片地址 / 错误嵌套会被拒绝', ()
     false,
   );
   assert.equal(ArticleBlockSchema.safeParse({ t: 'unknown' }).success, false);
+  // 表格的 head / rows 漏一层数组，前端 map 时就会拿到 undefined
+  assert.equal(
+    ArticleBlockSchema.safeParse({ t: 'table', head: [p], rows: [] }).success,
+    false,
+  );
+  // figure 必须有图片；图注只能是内联节点
+  assert.equal(ArticleBlockSchema.safeParse({ t: 'figure', caption: [] }).success, false);
+  assert.equal(
+    ArticleBlockSchema.safeParse({ t: 'figure', img: { src: 'https://e.com/a.jpg' }, caption: [p] }).success,
+    false,
+  );
 });
 
 test('bodyVersion 只接受 1 / 2', () => {

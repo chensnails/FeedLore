@@ -27,6 +27,8 @@ export const FeedSchema = z.object({
   unreadCount: z.number().int(),
   /** 该频道单独设置的频率；null = 跟随全局 */
   refreshMinutes: z.number().int().nullable(),
+  /** 摘要型订阅：抓原文页提取全文（按频道自愿开启） */
+  fullText: z.boolean(),
   /** 实际生效频率（own 优先，否则全局） */
   effectiveRefreshMinutes: z.number().int(),
   nextRefreshAt: IsoDateTime.nullable(),
@@ -59,6 +61,9 @@ export type ArticleInline =
   | { t: 'del'; v: ArticleInline[] }
   | { t: 'br' };
 
+/** 正文图片：地址必须是服务端补全过的 http(s) 绝对地址 */
+export type ArticleImage = { src: string; alt?: string; w?: number; h?: number };
+
 export type ArticleBlock =
   | { t: 'p'; v: ArticleInline[] }
   | { t: 'h'; level: 2 | 3; v: ArticleInline[] }
@@ -66,6 +71,9 @@ export type ArticleBlock =
   | { t: 'quote'; blocks: ArticleBlock[] }
   | { t: 'pre'; code: string; lang?: string }
   | { t: 'img'; src: string; alt?: string; w?: number; h?: number }
+  /** head 最多一行表头；rows 里的单元格数量允许不齐（colspan/rowspan 已降级） */
+  | { t: 'table'; head: ArticleInline[][]; rows: ArticleInline[][][] }
+  | { t: 'figure'; img: ArticleImage; caption?: ArticleInline[] }
   | { t: 'hr' };
 
 export const ArticleInlineSchema: z.ZodType<ArticleInline> = z.lazy(() =>
@@ -79,6 +87,13 @@ export const ArticleInlineSchema: z.ZodType<ArticleInline> = z.lazy(() =>
     z.object({ t: z.literal('br') }),
   ]),
 );
+
+export const ArticleImageSchema = z.object({
+  src: z.string(),
+  alt: z.string().optional(),
+  w: z.number().int().positive().optional(),
+  h: z.number().int().positive().optional(),
+});
 
 export const ArticleBlockSchema: z.ZodType<ArticleBlock> = z.lazy(() =>
   z.discriminatedUnion('t', [
@@ -95,12 +110,16 @@ export const ArticleBlockSchema: z.ZodType<ArticleBlock> = z.lazy(() =>
     }),
     z.object({ t: z.literal('quote'), blocks: z.array(ArticleBlockSchema) }),
     z.object({ t: z.literal('pre'), code: z.string(), lang: z.string().optional() }),
+    ArticleImageSchema.extend({ t: z.literal('img') }),
     z.object({
-      t: z.literal('img'),
-      src: z.string(),
-      alt: z.string().optional(),
-      w: z.number().int().positive().optional(),
-      h: z.number().int().positive().optional(),
+      t: z.literal('table'),
+      head: z.array(z.array(ArticleInlineSchema)),
+      rows: z.array(z.array(z.array(ArticleInlineSchema))),
+    }),
+    z.object({
+      t: z.literal('figure'),
+      img: ArticleImageSchema,
+      caption: z.array(ArticleInlineSchema).optional(),
     }),
     z.object({ t: z.literal('hr') }),
   ]),
