@@ -129,6 +129,16 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         const uid = c.get('user').id;
         const body: PrefsPatchBody = c.req.valid('json');
 
+        /* 只读账户仍可调整「怎么看」（外观 / 布局 / 分组顺序），
+         * 但不能再改「抓什么、怎么处理」：过滤规则、关注屏蔽、Webhook、日报、模型全部拒绝。 */
+        if (c.get('user').role === 'readonly') {
+          const blocked = (['filters', 'watchRules', 'webhookUrl', 'digest', 'llm'] as const)
+            .filter((k) => body[k] !== undefined);
+          if (blocked.length) {
+            throw new HTTPException(403, { message: '只读账户不能修改订阅规则、模型或日报配置' });
+          }
+        }
+
         const [userRow] = await db
           .select({ prefs: users.prefs })
           .from(users)

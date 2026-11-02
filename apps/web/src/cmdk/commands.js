@@ -9,6 +9,7 @@ import { cjkPinyin } from './pinyin.js';
  * shortFeedName / feedTitle / THEME_MODES / THEME_META */
 export function buildCommands(S) {
   if (!S || typeof S.switchView !== 'function') return [];
+  const readonly = !!(S.isReadonly && S.isReadonly());
   const cmds = [];
   [['reader', '文章'], ['cards', '卡片'], ['ai', '日报']].forEach((v) => {
     // 日报关掉后连命令都不该出现（真按到也进不去：switchView 那侧有守卫）
@@ -27,6 +28,8 @@ export function buildCommands(S) {
     });
   });
   [['source', '数据源'], ['model', '模型'], ['digest', '日报'], ['account', '账号'], ['appearance', '外观'], ['status', '状态'], ['about', '关于']].forEach((t) => {
+    // 只读账户只能进阅读体验 / 账号信息 / 关于；其余配置分区不出现
+    if (readonly && ['account', 'appearance', 'about'].indexOf(t[0]) < 0) return;
     cmds.push({
       group: '设置', icon: 'settings', label: '打开设置 · ' + t[1], hint: t[1], keywords: 'settings ' + t[1],
       run: () => S.openSettings(t[0]),
@@ -39,7 +42,9 @@ export function buildCommands(S) {
       run: () => S.selectScope(s[0]),
     });
   });
-  cmds.push({ group: '操作', icon: 'refresh', label: '重新拉取', hint: '刷新', keywords: 'refresh 刷新 同步', run: () => S.refresh() });
+  if (!readonly) {
+    cmds.push({ group: '操作', icon: 'refresh', label: '重新拉取', hint: '刷新', keywords: 'refresh 刷新 同步', run: () => S.refresh() });
+  }
   cmds.push({ group: '操作', icon: 'search', label: '聚焦搜索', hint: '/', keywords: 'search 搜索 查找', run: () => S.focusSearchBox() });
   cmds.push({ group: '操作', icon: 'arrow-up', label: '回到顶部', hint: 'Top', keywords: 'top 顶部', run: () => S.scrollTop() });
   cmds.push({ group: '操作', icon: 'download', label: '导出 OPML', hint: '备份', keywords: 'opml export 导出 备份 订阅源 频道', run: () => S.exportOpml() });

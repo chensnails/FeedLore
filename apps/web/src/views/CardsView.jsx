@@ -253,6 +253,7 @@ export function CardsView() {
   const searchRef = useRef(null);
   const debounceRef = useRef(null);
   const st = (s && s.state) || {};
+  const writable = !!(s && s.isWritable ? s.isWritable() : true);
 
   const [qDraft, setQDraft] = useState(st.q || '');
   const [detailId, setDetailId] = useState(null);
@@ -340,11 +341,13 @@ export function CardsView() {
     emptyMsg = '数据加载失败，请稍后重试';
     emptyAction = { label: '重试', run: () => s.loadPage(true) };
   } else if (noFeeds) {
-    emptyMsg = '还没有订阅源，点右上角「设置 → 数据源」添加 RSS 地址';
-    emptyAction = { label: '添加订阅源', run: () => s.readerOpenSource() };
+    emptyMsg = writable ? '还没有订阅源，点右上角「设置 → 数据源」添加 RSS 地址' : '还没有订阅源；只读账户不能自行添加';
+    emptyAction = writable ? { label: '添加订阅源', run: () => s.readerOpenSource() } : null;
   } else if (noCards) {
-    emptyMsg = '所有频道的「卡片」开关都关掉了。去「设置 → 数据源」打开，或切到「文章」页阅读';
-    emptyAction = { label: '去数据源设置', run: () => s.readerOpenSource() };
+    emptyMsg = writable
+      ? '所有频道的「卡片」开关都关掉了。去「设置 → 数据源」打开，或切到「文章」页阅读'
+      : '所有频道的「卡片」开关都关掉了，可切到「文章」页阅读';
+    emptyAction = writable ? { label: '去数据源设置', run: () => s.readerOpenSource() } : null;
   } else if (!list.length) {
     if (st.q) {
       emptyMsg = '没有找到匹配的资源';
@@ -355,7 +358,7 @@ export function CardsView() {
     } else {
       emptyMsg = st.feedFilter == null ? '所选频道暂无内容' : '这个频道还没有内容';
       emptyAction = st.feedFilter == null
-        ? { label: '重新抓取', run: () => s.refresh() }
+        ? (writable ? { label: '重新抓取', run: () => s.refresh() } : null)
         : { label: '查看全部频道', run: () => s.cardsFilterFeed('') };
     }
   }

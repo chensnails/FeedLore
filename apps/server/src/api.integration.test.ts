@@ -299,6 +299,73 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal(typeof me.id, 'string');
     });
 
+    /* ---------------------------------------------------------------- CSRF */
+    await t.test('写接口必须带本站 Origin/Referer（缺失或外站都 403）', async () => {
+      const body = JSON.stringify({ layout: { view: 'list' } });
+      const post = (headers: Record<string, string>) =>
+        app.request('/api/prefs', {
+          method: 'POST',
+          headers: { cookie: jar, 'content-type': 'application/json', ...headers },
+          body,
+        });
+
+      assert.equal((await post({})).status, 403, '没有 Origin/Referer 时应拒绝');
+      assert.equal((await post({ origin: 'https://evil.example' })).status, 403, '外站 Origin 应拒绝');
+      assert.equal(
+        (await post({ referer: 'https://evil.example/phish.html' })).status,
+        403,
+        '外站 Referer 也应拒绝',
+      );
+      assert.equal(
+        (await post({ referer: `${ORIGIN}/settings` })).status,
+        200,
+        '本站 Referer（没有 Origin 的旧浏览器）应放行',
+      );
+      // 读取不受影响：无 Origin 的普通 GET 仍可用
+      assert.equal((await app.request('/api/feeds', { headers: { cookie: jar } })).status, 200);
+    });
+
+    /* ---------------------------------------------------------------- 只读角色 */
+    await t.test('只读：读接口照常，配置写接口一律 403', async () => {
+      await db.execute(sql`update users set role = 'readonly' where id = ${userId}`);
+
+      const s = parse(SessionSchema, await (await call('/api/session')).json(), 'GET /api/session');
+      assert.equal(s.role, 'readonly');
+
+      // 阅读类 GET 不受影响
+      assert.equal((await call('/api/feeds')).status, 200);
+      assert.equal((await call('/api/prefs')).status, 200);
+      assert.equal((await call('/api/entries/flags')).status, 200);
+
+      // 阅读体验偏好（外观 / 布局）仍可写
+      assert.equal((await call('/api/prefs', { method: 'POST', json: { layout: { view: 'list' } } })).status, 200);
+
+      // 配置写接口被服务端拒绝（不能只靠前端隐藏按钮）
+      const denied: Array<[string, string, unknown]> = [
+        ['POST', '/api/feeds', { url: 'https://example.com/feed.xml' }],
+        ['POST', '/api/feeds/refresh', undefined],
+        ['POST', '/api/feeds/reorder', { feeds: [] }],
+        ['POST', '/api/feeds/import', { opml: '<opml></opml>' }],
+        ['POST', '/api/watch/apply', undefined],
+        ['POST', '/api/digest/generate', {}],
+        ['POST', '/api/digest/test-llm', {}],
+        ['POST', '/api/prefs', { filters: [] }],
+        ['POST', '/api/prefs', { watchRules: [] }],
+        ['POST', '/api/prefs', { digest: { auto: true } }],
+        ['POST', '/api/account', { currentPassword: password, username }],
+      ];
+      for (const [method, path, json] of denied) {
+        const res = await call(path, { method, json });
+        assert.equal(res.status, 403, `${method} ${path} 应被 403，实际 ${res.status}`);
+      }
+
+      // 阅读动作（标已读 / 收藏）仍然允许：空数组明确表示「什么都不标」
+      const readAll = await call('/api/entries/read-all', { method: 'POST', json: { feeds: [] } });
+      assert.equal(readAll.status, 200);
+      const patch = await call('/api/entries/999999', { method: 'PATCH', json: { isRead: true } });
+      assert.equal(patch.status, 404, '鉴权应通过，只是条目不存在');
+    });
+
     /* ---------------------------------------------------------------- 登出 */
     await t.test('登出后会话失效（不是「返回 ok 但 Cookie 还有效」）', async () => {
       const out = await call('/api/logout', { method: 'POST' });

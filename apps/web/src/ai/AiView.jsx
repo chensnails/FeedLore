@@ -139,6 +139,7 @@ function DigestView({ digest }) {
 
 export function AiView() {
   const s = S();
+  const writable = !!(s && s.isWritable ? s.isWritable() : true);
   const [active, setActive] = useState(() => !!(s && s.state && s.state.tab === 'ai'));
   // 合并后第一行（标题 + ⋮）即吸顶条，由其写入 --topbar-h
   const headRef = useRef(null);
@@ -267,7 +268,7 @@ export function AiView() {
       <div className="dg-empty">
         <div className="dg-empty-ico"><Icon n="calendar" /></div>
         <p><strong>{view.date}</strong> 还没有摘要</p>
-        <p className="hint">点击右上角「生成摘要」，把所选频道过去 24 小时的新内容整理成简报</p>
+        <p className="hint">{writable ? '点击右上角「生成摘要」，把所选频道过去 24 小时的新内容整理成简报' : '只读账户不能手动生成摘要'}</p>
       </div>
     );
   } else if (view.kind === 'ready') {
@@ -293,10 +294,14 @@ export function AiView() {
               onChange={(e) => showDigest(e.target.value)}>
               {dateOptions.map((d) => <option key={d} value={d}>{d === today ? '今天 · ' : ''}{d}</option>)}
             </select>
-            <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"
-              disabled={generating} onClick={() => generate(true)}>重新生成</button>
-            <button className="btn btn-primary" id="genDigestBtn" type="button"
-              disabled={generating} onClick={() => generate(false)}>生成摘要</button>
+            {writable ? (
+              <>
+                <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"
+                  disabled={generating} onClick={() => generate(true)}>重新生成</button>
+                <button className="btn btn-primary" id="genDigestBtn" type="button"
+                  disabled={generating} onClick={() => generate(false)}>生成摘要</button>
+              </>
+            ) : null}
           </div>
         </div>
         <div id="digestBody">{body}</div>

@@ -122,11 +122,15 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
       </button>
       {open && (
         <div className="overflow-menu" role="menu" ref={menuRef} onKeyDown={onMenuKey}>
-          <div className="overflow-sep" role="separator" />
-          <button type="button" role="menuitem" className="overflow-item" onClick={onRefresh} disabled={busy}>
-            <svg className={'ico' + (busy ? ' spin' : '')} aria-hidden="true" focusable="false"><use href="#i-refresh" /></svg>
-            <span>刷新</span>
-          </button>
+          {S().isWritable && S().isWritable() ? (
+            <>
+              <div className="overflow-sep" role="separator" />
+              <button type="button" role="menuitem" className="overflow-item" onClick={onRefresh} disabled={busy}>
+                <svg className={'ico' + (busy ? ' spin' : '')} aria-hidden="true" focusable="false"><use href="#i-refresh" /></svg>
+                <span>刷新</span>
+              </button>
+            </>
+          ) : null}
           <button type="button" role="menuitem" className="overflow-item" onClick={() => { S().cycleTheme(); }}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + (snap.themeIco || 'theme-auto')} /></svg>
             <span>夜间模式</span>

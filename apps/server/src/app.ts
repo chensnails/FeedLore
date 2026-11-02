@@ -21,6 +21,7 @@ import { users } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import type { AppEnv } from './middleware/auth';
 import { WEB_ROOT } from './env';
+import { sameOriginCandidates } from './auth';
 import { userAppearance, userLayout } from './lib/prefs';
 import { normalizeRole } from './lib/roles';
 import { healthRoutes } from './routes/health';
@@ -50,6 +51,15 @@ const READONLY_BLOCKED_AUTH_PATHS = [
   '/api/auth/request-password-reset',
   '/api/auth/reset-password',
 ];
+
+/** 把配置值或请求头里的来源归一化成 `scheme://host`；不合法时返回 null。 */
+function toOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
 
 export interface AppDeps {
   db: Db | null;
@@ -160,6 +170,45 @@ export function createApp({ db, auth }: AppDeps) {
    * CSS / JS / HTML 在弱网下是最大的一笔首屏成本：不压缩等于把 100KB+ 原样发出去。
    * compress 只对文本型 content-type 生效，图片（/api/img）本身已压缩会被跳过。 */
   app.use(compress());
+
+  /* ==========================================================================
+   * CSRF：所有业务写接口都要求 Origin/Referer 属于本站。
+   *
+   * Cookie 是 SameSite=Lax，但「同站不同源」的页面（子域被入侵、反代配置错误）
+   * 仍可能带 Cookie 发起写请求；而 better-auth 只校验它自己的 /api/auth/**。
+   * 这里给业务路由补上同一道校验，且**不依赖前端**——直接用表单/脚本打接口同样被拒。
+   *
+   * 可信来源与 better-auth 保持同一套规则：配了 AUTH_TRUSTED_ORIGINS 就用它，
+   * 否则按请求 Host 推导同源候选（见 auth.ts 的 sameOriginCandidates）。
+   * ========================================================================== */
+  const configuredOrigins = (process.env.AUTH_TRUSTED_ORIGINS ?? '')
+    .split(',')
+    .map((s) => toOrigin(s.trim()))
+    .filter((s): s is string => !!s);
+
+  app.use('/api/*', async (c, next) => {
+    const method = c.req.method.toUpperCase();
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return next();
+
+    // better-auth 自带 Origin 校验，再拦一次会把它的协议流程挡在门外
+    const path = c.req.path;
+    if (path === '/api/auth' || path.startsWith('/api/auth/')) return next();
+
+    const raw = c.req.header('origin') ?? c.req.header('referer') ?? '';
+    const origin = raw ? toOrigin(raw) : null;
+    if (!origin) return c.json({ error: '缺少合法的 Origin/Referer，已拒绝写入' }, 403);
+
+    const allowed = configuredOrigins.length
+      ? configuredOrigins
+      : sameOriginCandidates(c.req.raw)
+          .map((s) => toOrigin(s))
+          .filter((s): s is string => !!s);
+    if (!allowed.includes(origin)) {
+      return c.json({ error: '来源不受信任，已拒绝跨站写入' }, 403);
+    }
+
+    return next();
+  });
 
   /* ==========================================================================
    * better-auth 直通挂载（sign-in/username、sign-out、get-session、admin/* …）

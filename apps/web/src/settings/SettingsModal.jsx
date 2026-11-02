@@ -32,15 +32,19 @@ const TABS = [
 ];
 // 管理员专属 tab（与管理端约定一致；模型配置每用户独立，普通用户也能配）
 const ADMIN_TABS = ['status'];
+// 只读账户只保留「阅读体验 / 账号信息 / 关于」；数据源、规则、模型、日报配置一律不展示
+const READONLY_TABS = ['account', 'appearance', 'about'];
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 const isAdminNow = () => !!(S() && S().isAdmin && S().isAdmin());
+const isReadonlyNow = () => !!(S() && S().isReadonly && S().isReadonly());
 
 export function SettingsModal() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('source');
   const [summary, setSummary] = useState('');
   const [admin, setAdmin] = useState(isAdminNow);
+  const [role, setRole] = useState(() => (S().state && S().state.role) || '');
   // 移动端（≤820）用「首页列表 → 分区内容」的两级下钻；桌面端忽略这两个状态
   const [isMobile, setIsMobile] = useState(false);
   const [mobilePane, setMobilePane] = useState(false);
@@ -98,9 +102,13 @@ export function SettingsModal() {
     const host = {
       open(t) {
         const adm = isAdminNow();
+        const ro = isReadonlyNow();
         setAdmin(adm);
-        let next = t || 'source';
-        if (ADMIN_TABS.indexOf(next) >= 0 && !adm) next = 'source';   // 普通用户看不到管理 tab
+        setRole((S().state && S().state.role) || '');
+        let next = t || (ro ? 'appearance' : 'source');
+        // 角色没有权限进入的分区一律回落到该角色可见的默认页
+        if (ADMIN_TABS.indexOf(next) >= 0 && !adm) next = ro ? 'appearance' : 'source';
+        if (ro && READONLY_TABS.indexOf(next) < 0) next = 'appearance';
         setSummary((S() && S().getSettingsSummary && S().getSettingsSummary()) || '');
         setTab(next);
         // 指定了目标分区（深链 / 关于页）就直接进内容；否则移动端先停在首页列表
@@ -117,6 +125,7 @@ export function SettingsModal() {
       },
       setSummary,
       setAdminFlag(a) { setAdmin(!!a); },
+      setRoleFlag(r) { setRole(r || ''); },
     };
     window.__settingsHost = host;
     return () => { delete window.__settingsHost; };
@@ -178,7 +187,17 @@ export function SettingsModal() {
   const close = () => setOpen(false);
   const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) close(); };
 
-  const tabs = TABS.filter(([name]) => !(ADMIN_TABS.indexOf(name) >= 0 && !admin));
+  const readonly = role === 'readonly';
+  const tabs = TABS.filter(([name]) => {
+    if (ADMIN_TABS.indexOf(name) >= 0 && !admin) return false;
+    if (readonly && READONLY_TABS.indexOf(name) < 0) return false;
+    return true;
+  });
+
+  // 角色在弹层打开期间被改成只读（或反过来）时，把停在不允许分区上的用户带回可见页
+  useEffect(() => {
+    if (readonly && READONLY_TABS.indexOf(tab) < 0) setTab('appearance');
+  }, [readonly, tab]);
 
   // tablist 的键盘约定：↑↓（竖排）或 ←→ 移动并选中，Home/End 跳首尾；
   // 焦点跟着走，避免「按了方向键但焦点还在原处」。
@@ -243,11 +262,11 @@ export function SettingsModal() {
         </div>
 
         <div className="modal-body" id="settingsPanel" role="tabpanel" aria-labelledby={'settingsTab-' + tab}>
-          {tab === 'source' && open && <SourcePane admin={admin} />}
-          {tab === 'watch' && open && <WatchPane />}
+          {tab === 'source' && open && !readonly && <SourcePane admin={admin} />}
+          {tab === 'watch' && open && !readonly && <WatchPane />}
           {tab === 'appearance' && open && <AppearancePane />}
-          {tab === 'model' && open && <ModelPane />}
-          {tab === 'digest' && open && <DigestPane />}
+          {tab === 'model' && open && !readonly && <ModelPane />}
+          {tab === 'digest' && open && !readonly && <DigestPane />}
           {tab === 'account' && open && <AccountPane />}
           {tab === 'status' && open && <StatusPane />}
           {tab === 'about' && open && <AboutPane />}

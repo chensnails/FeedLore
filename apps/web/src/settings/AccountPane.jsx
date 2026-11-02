@@ -44,7 +44,7 @@ const Result = ({ id, result }) => (
 export function AccountPane() {
   const s = S();
   const admin = !!(s && s.isAdmin && s.isAdmin());
-  // 只读账户：权限与普通用户一致，但用户名/密码由管理员掌握，不能自助修改
+  // 只读账户：只能阅读；配置项全部由服务端拒绝，账号凭据由管理员掌握
   const readonly = !!(s && s.state && s.state.role === 'readonly');
   const paneRef = useRef(null);
 
@@ -78,7 +78,7 @@ export function AccountPane() {
     const name = st.username || '';
     setUsername(name);
     setSavedName(name);
-    loadFilters();
+    if (!readonly) loadFilters();
     if (admin) loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -290,7 +290,7 @@ export function AccountPane() {
                   <label htmlFor="accUsername">用户名</label>
                   <input id="accUsername" type="text" value={username} disabled />
                 </div>
-                <div className="hint">只读账户：用户名和密码由管理员维护，不能自行修改。</div>
+                <div className="hint">只读账户：只能阅读，不能修改订阅源、规则、模型或日报配置；用户名和密码由管理员维护。</div>
               </>
             ) : (
               <>
@@ -317,6 +317,7 @@ export function AccountPane() {
         </details>
 
         {/* 条目过滤规则（v2.7.0）：所有用户独立配置，只在抓取写库前对新条目生效 */}
+        {!readonly && (
         <details className="sec" data-sec="acc-filters">
           <summary className="sec-head">
             <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
@@ -374,6 +375,7 @@ export function AccountPane() {
             </div>
           </div>
         </details>
+        )}
 
         {/* 用户管理：仅管理员可见 */}
         {admin && (
@@ -430,7 +432,7 @@ export function AccountPane() {
                   disabled={addingUser} onClick={addUser}>添加</button>
               </div>
               <small className="form-tip">
-                每个用户拥有<b>自己独立</b>的订阅源、已读/收藏、日报与模型配置。普通用户可配置自己的模型并阅读，但看不到「状态 / 采集参数 / 用户管理」等站点级设置；管理员额外可管理用户与全局设置。只读用户与普通用户权限一致，但不能自行修改用户名和密码，适合把账号借给别人阅读。
+                每个用户拥有<b>自己独立</b>的订阅源、已读/收藏、日报与模型配置。普通用户可配置自己的订阅源、模型与日报，但看不到「状态 / 采集参数 / 用户管理」等站点级设置；管理员额外可管理用户与全局设置。只读用户只能阅读，不能修改订阅源、规则、模型、日报等配置，也不能自行修改用户名和密码，适合把账号借给别人阅读。
                 删除用户会一并删除其订阅源、条目与日报，且不可恢复。
               </small>
               <Result id="userResult" result={userResult} />

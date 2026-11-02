@@ -33,7 +33,7 @@ interface AuthUserLike {
 
 export function requireAuth(
   auth: AuthInstance | null,
-  level: 'user' | 'admin',
+  level: 'user' | 'write' | 'admin',
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     if (!auth) {
@@ -48,6 +48,11 @@ export function requireAuth(
     const role = normalizeRole(u.role);
     if (level === 'admin' && role !== 'admin') {
       return c.json({ error: '需要管理员权限' }, 403);
+    }
+    // 'write'：登录即可，但只读账户只能阅读。配置类写接口一律用它，
+    // 不靠前端隐藏按钮兜底（直接调接口也必须被拦）。
+    if (level === 'write' && role === 'readonly') {
+      return c.json({ error: '只读账户不能修改配置，请联系管理员' }, 403);
     }
 
     c.set('user', {

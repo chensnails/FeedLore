@@ -117,6 +117,18 @@
     errBox.classList.add('show');
   }
 
+  /* 只允许回到本站路径：`//evil.com`、`/\evil.com`、跨源绝对地址一律落回首页。
+   * 用 URL 归一化后再比 origin，比手写 startsWith('/') 更难绕过。 */
+  function safeNext(raw) {
+    if (!raw || raw[0] !== '/' || raw[1] === '/' || raw[1] === '\\') return '/';
+    try {
+      const u = new URL(raw, location.origin);
+      return u.origin === location.origin ? u.pathname + u.search + u.hash : '/';
+    } catch (_) {
+      return '/';
+    }
+  }
+
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     errBox.classList.remove('show');
@@ -139,7 +151,7 @@
         entering = true;
         btn.textContent = '正在进入…';
         const next = new URLSearchParams(location.search).get('next');
-        location.replace(next && next.startsWith('/') ? next : '/');
+        location.replace(safeNext(next));
         return;
       }
       showError(data.error || '登录失败');

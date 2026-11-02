@@ -185,6 +185,10 @@ state.rdCollapsedGroups = layoutPref.rdCollapsedGroups;
 // DOM 已移除；openSettings / closeSettings 委托给 React 宿主 window.__settingsHost。
 
 export const isAdmin = () => state.role === 'admin';
+/** 只读账户只能阅读：配置类入口在前端隐藏，服务端另有 403 兜底。 */
+export const isReadonly = () => state.role === 'readonly';
+/** 可执行配置写操作（管理员 / 普通用户）；会话未加载时按可写处理，交给服务端判定。 */
+export const isWritable = () => state.role !== 'readonly';
 
 /** 按角色显隐：设置弹层的管理员专属 tab 由 React 外壳过滤；
  *  采集参数 / 用户管理 分别在各自 React 面板内按 admin 显隐（P3a 起 AI 视图亦 React 化） */
@@ -193,6 +197,7 @@ export function applyRoleUI() {
   // 设置弹层 tab 已 React 化：按角色过滤交给宿主（管理员专属 tab 由外壳不再渲染）
   const host = window.__settingsHost;
   if (host && host.setAdminFlag) host.setAdminFlag(admin);
+  if (host && host.setRoleFlag) host.setRoleFlag(state.role || '');
 }
 
 /* ---------- 弹层打开时锁住背景页面 ----------

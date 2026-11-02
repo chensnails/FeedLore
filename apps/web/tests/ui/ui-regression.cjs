@@ -507,6 +507,8 @@ w.feedlore = {
     return bad('未实现的路由：' + method + ' ' + url, 404);
   },
   isAdmin: () => adminFlag,
+  isReadonly: () => !!(w.feedlore && w.feedlore.state && w.feedlore.state.role === 'readonly'),
+  isWritable: () => !(w.feedlore && w.feedlore.state && w.feedlore.state.role === 'readonly'),
   toast: noop('toast'),
   lockPageScroll: noop('lockPageScroll'), unlockPageScroll: noop('unlockPageScroll'),
   getSettingsSummary: () => '共 12 个订阅源 · 采集开启 10 个 · 卡片展示 8 个',
@@ -2593,24 +2595,36 @@ const withEFP = (el, fn) => {
     if (countApi('/api/users') !== usersGetsBeforeUser) throw new Error('不应 GET /api/users');
   });
 
-  // 只读账户：权限与普通用户一致，但用户名/密码不能自助修改
+  // 只读账户：只保留阅读类权限；配置分区、账号凭据、过滤规则全部不可用
   w.feedlore.state.role = 'readonly';
-  clickTab('数据源'); await sleep(40);
+  w.__settingsHost.setRoleFlag('readonly');
+  w.__settingsHost.open('source');
+  await sleep(80);
+  t('只读账户：open(source) 回落外观，只剩 3 个阅读相关 tab', () => {
+    if (document.querySelectorAll('.tabs .tab').length !== 3) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length);
+    if (!tabBtn('外观') || !tabBtn('账号') || !tabBtn('关于')) throw new Error('缺少阅读相关 tab');
+    if (tabBtn('数据源') || tabBtn('规则') || tabBtn('模型') || tabBtn('日报') || tabBtn('状态')) throw new Error('配置 tab 仍渲染');
+    if (!tabBtn('外观').classList.contains('active')) throw new Error('未回落外观');
+    if (document.querySelector('.tab-pane[data-pane="source"]')) throw new Error('数据源面板仍渲染');
+  });
   clickTab('账号'); await sleep(60);
-  t('只读账户：用户名只读、无密码输入与保存按钮', () => {
+  t('只读账户：用户名只读、无密码输入与保存按钮、无过滤规则', () => {
     const name = document.querySelector('#accUsername');
     if (!name || name.disabled !== true) throw new Error('用户名应禁用');
     if (document.querySelector('#accCurrent') || document.querySelector('#accNew')) throw new Error('不应渲染密码输入');
     if (document.querySelector('#saveAccBtn')) throw new Error('不应渲染保存按钮');
+    if (document.querySelector('[data-sec="acc-filters"]')) throw new Error('过滤规则配置不应渲染');
     if (!document.querySelector('[data-sec="acc-login"] .hint')) throw new Error('缺少只读说明');
     if (!document.querySelector('#logoutBtn')) throw new Error('仍应能退出登录');
   });
   w.feedlore.state.role = 'admin';
-  clickTab('数据源'); await sleep(40);
+  w.__settingsHost.setRoleFlag('admin');
+  clickTab('外观'); await sleep(40);
 
   w.__settingsHost.setAdminFlag(true);
   await sleep(80);
   t('setAdminFlag(true) 恢复 8 tab', () => { if (document.querySelectorAll('.tabs .tab').length !== 8) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
+  clickTab('数据源'); await sleep(40);
   t('恢复管理员：采集参数区出现并拉配置', () => {
     if (!document.querySelector('[data-sec="src-params"]')) throw new Error('采集参数区未出现');
     if (document.querySelector('#saveSourceBtn').hidden !== false) throw new Error('保存按钮应可见');
@@ -4152,7 +4166,7 @@ const withEFP = (el, fn) => {
         'cardsSearch', 'cardsFilterFeed', 'cardsSort', 'cardsView', 'cardsTag',
         'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'promptInstall',
         'cardsToggleDrawer', 'cardsCloseDrawer',
-        'openSettings', 'toast', 'apiFetch', 'isAdmin', 'exportOpml', 'bindSections', 'groupFeeds',
+        'openSettings', 'toast', 'apiFetch', 'isAdmin', 'isReadonly', 'isWritable', 'exportOpml', 'bindSections', 'groupFeeds',
         'getToastState', 'getNewPillState', 'getLightboxState', 'applyPendingFresh',
         'getConfirmState', 'confirm', 'settleConfirm', 'cancelConfirm',
         'closeLightbox',
@@ -4485,6 +4499,27 @@ const withEFP = (el, fn) => {
     if (!/import\s+['"]\.\/style\.css['"]/.test(main)) throw new Error('src/main.jsx 未 import ./style.css');
     const lmain = fs.readFileSync(path.join(root, 'src', 'login-main.js'), 'utf8');
     if (!/import\s+['"]\.\/login\.css['"]/.test(lmain)) throw new Error('src/login-main.js 未 import ./login.css');
+  });
+
+  t('登录页 next 只允许站内路径（拒绝 //evil、/\\evil 与跨源绝对地址）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const html = fs.readFileSync(path.join(root, 'login.html'), 'utf8');
+    const m = html.match(/function safeNext\(raw\) \{[\s\S]*?\n  \}/);
+    if (!m) throw new Error('login.html 缺少 safeNext()：next 跳转又退回只判断 startsWith("/") 的写法');
+    const safeNext = new Function('location', m[0] + '\nreturn safeNext;')({ origin: 'http://localhost:3000' });
+    const cases = [
+      ['/', '/'],
+      ['/reader?x=1#a', '/reader?x=1#a'],
+      ['//evil.example', '/'],
+      ['/\\evil.example', '/'],
+      ['https://evil.example', '/'],
+      ['javascript:alert(1)', '/'],
+      [null, '/'],
+    ];
+    for (const [input, want] of cases) {
+      const got = safeNext(input);
+      if (got !== want) throw new Error(`safeNext(${JSON.stringify(input)}) = ${JSON.stringify(got)}，应为 ${JSON.stringify(want)}`);
+    }
   });
 
   t('CDN：构建产物带内容哈希，且服务器按哈希分档设缓存', () => {

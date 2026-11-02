@@ -41,6 +41,7 @@ export const ChannelList = memo(function ChannelList({
 }) {
   const s = S();
   const isReader = variant === 'reader';
+  const writable = !(s && s.state && s.state.role === 'readonly');
   const atAll = activeFeedId == null;
 
   // 频道内搜索（本地态，两页抽屉共用）：按频道名过滤，命中即展开分组
@@ -197,10 +198,12 @@ export const ChannelList = memo(function ChannelList({
         </>
       ) : null}
 
-      <button type="button" className="rd-ch-add" data-action="open-source" onClick={() => onAdd && onAdd()}>
-        <svg className="rd-ch-add-ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
-        <span>添加频道</span>
-      </button>
+      {writable ? (
+        <button type="button" className="rd-ch-add" data-action="open-source" onClick={() => onAdd && onAdd()}>
+          <svg className="rd-ch-add-ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
+          <span>添加频道</span>
+        </button>
+      ) : null}
     </>
   );
 });

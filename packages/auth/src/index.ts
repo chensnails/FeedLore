@@ -164,7 +164,9 @@ export function createAuth(opts: CreateAuthOptions) {
       defaultCookieAttributes: {
         secure: opts.secureCookies ?? true,
         httpOnly: true,
-        sameSite: (opts.secureCookies ?? true) ? 'none' : 'lax',
+        // 本站与 API 同源部署：Lax 足以保持登录态，同时让浏览器不随跨站 POST 带 Cookie。
+        // （None 只适用于真正的跨站前端；这里用了反而把 CSRF 防线全押在 Origin 校验上。）
+        sameSite: 'lax',
       },
       // 反代后面才信任 XFF：见 CreateAuthOptions.trustProxy 注释
       ...(opts.trustProxy

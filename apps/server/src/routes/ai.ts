@@ -65,7 +65,7 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
     /* ---------------- POST /api/digest/test-llm ---------------- */
     .post(
       aiSpec.testLlm.path,
-      requireAuth(auth, 'user'),
+      requireAuth(auth, 'write'),
       zValidator('json', aiSpec.testLlm.body, (r) => {
         if (!r.success) throw new BadRequest('POST /api/digest/test-llm', r.error.issues);
       }),
@@ -125,7 +125,7 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
     /* ---------------- POST /api/digest/generate ---------------- */
     .post(
       aiSpec.generate.path,
-      requireAuth(auth, 'user'),
+      requireAuth(auth, 'write'),
       zValidator('json', aiSpec.generate.body, (r) => {
         if (!r.success) throw new BadRequest('POST /api/digest/generate', r.error.issues);
       }),

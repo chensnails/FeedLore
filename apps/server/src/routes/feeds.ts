@@ -218,7 +218,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
       /* ---------------- POST /api/feeds ---------------- */
       .post(
         feedsSpec.create.path,
-        requireAuth(auth, 'user'),
+        requireAuth(auth, 'write'),
         zValidator('json', feedCreateBody, (result) => {
           if (!result.success) throw new BadRequest('POST /api/feeds', result.error.issues);
         }),
@@ -297,7 +297,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
        * 批量重排 + 跨组移动：sort_order 是「本用户内」的排序轴。 */
       .post(
         feedsSpec.reorder.path,
-        requireAuth(auth, 'user'),
+        requireAuth(auth, 'write'),
         zValidator('json', feedReorderBody, (result) => {
           if (!result.success) throw new BadRequest('POST /api/feeds/reorder', result.error.issues);
         }),
@@ -336,7 +336,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
       /* ---------------- PATCH /api/feeds/:id ---------------- */
       .patch(
         feedsSpec.patchOne.path,
-        requireAuth(auth, 'user'),
+        requireAuth(auth, 'write'),
         zValidator('param', idParam, (result) => {
           if (!result.success) throw new BadRequest('PATCH /api/feeds/:id', result.error.issues);
         }),
@@ -459,7 +459,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
        * entries 有 onDelete: 'cascade' 外键，条目随频道一起删。 */
       .delete(
         feedsSpec.deleteOne.path,
-        requireAuth(auth, 'user'),
+        requireAuth(auth, 'write'),
         zValidator('param', idParam, (result) => {
           if (!result.success) throw new BadRequest('DELETE /api/feeds/:id', result.error.issues);
         }),
@@ -483,7 +483,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
        * 单频道手动刷新：用户看到「这个源没更新」时最常按的按钮。 */
       .post(
         feedsSpec.refreshOne.path,
-        requireAuth(auth, 'user'),
+        requireAuth(auth, 'write'),
         zValidator('param', idParam, (result) => {
           if (!result.success) throw new BadRequest('POST /api/feeds/:id/refresh', result.error.issues);
         }),
@@ -528,7 +528,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
       /* ---------------- POST /api/feeds/refresh ----------------
        * 刷新全部（只抓本用户「开启采集」的频道）。禁用采集的不抓 —— 用户关掉它
        * 就是因为不想再回源，手动刷新也不该绕过去。 */
-      .post(feedsSpec.refresh.path, requireAuth(auth, 'user'), async (c) => {
+      .post(feedsSpec.refresh.path, requireAuth(auth, 'write'), async (c) => {
         if (!db) return c.json({ error: '数据库未就绪' }, 503);
 
         const uid = c.get('user').id;
@@ -562,7 +562,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
        * 一个指向 169.254.169.254 的 opml 就是批量 SSRF。 */
       .post(
         feedsSpec.import.path,
-        requireAuth(auth, 'user'),
+        requireAuth(auth, 'write'),
         zValidator('json', importBody, (result) => {
           if (!result.success) throw new BadRequest('POST /api/feeds/import', result.error.issues);
         }),

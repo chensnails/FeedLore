@@ -30,7 +30,8 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
  *
  * - `admin`：站点级设置 + 用户管理；
  * - `user`：自己的订阅源 / 偏好 / 模型 / 日报；
- * - `readonly`：与 `user` 权限一致，唯一区别是**不能自助修改用户名和密码**，
+ * - `readonly`：只能阅读。保留文章 / 频道的查看、已读、收藏、外观与布局偏好；
+ *   订阅源增删改、过滤与关注规则、Webhook、模型、日报生成、账号凭据修改全部由服务端拒绝，
  *   适合把账号借给别人阅读，登录凭据始终由管理员掌握。
  */
 export const RoleSchema = z.enum(['admin', 'user', 'readonly']);

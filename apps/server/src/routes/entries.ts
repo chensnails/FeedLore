@@ -294,7 +294,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
      * 复用 `classify()` 而不是另写一份 SQL 匹配：匹配规则一旦有两份实现，
      * 「新条目」和「重算」迟早判得不一样，而这种不一致极难被发现。
      */
-    .post(entriesSpec.watchApply.path, requireAuth(auth, 'user'), async (c) => {
+    .post(entriesSpec.watchApply.path, requireAuth(auth, 'write'), async (c) => {
       if (!db) return c.json({ error: '数据库未就绪' }, 503);
 
       const uid = c.get('user').id;

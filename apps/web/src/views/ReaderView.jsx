@@ -534,6 +534,7 @@ export function ReaderView() {
   useTopbarHeight(headRef);
 
   const st = (s && s.state) || {};
+  const writable = !!(s && s.isWritable ? s.isWritable() : true);
   const feeds = st.feedList || [];
   const entries = st.rdEntries || [];
   const rawFlags = st.rdFlags || { total: 0, unread: 0, favorite: 0 };
@@ -599,11 +600,13 @@ export function ReaderView() {
       emptyMsg = `没有找到匹配「${q}」的文章`;
       emptyAction = { label: '清除搜索', run: () => onSearchClear() };
     } else if (st.rdWatch === 'watch') {
-      emptyMsg = '还没有命中的文章；在「设置 → 规则」里配置关键字，保存后点「应用到已有文章」';
-      emptyAction = { label: '打开规则设置', run: () => s.openSettings('watch') };
+      emptyMsg = writable
+        ? '还没有命中的文章；在「设置 → 规则」里配置关键字，保存后点「应用到已有文章」'
+        : '还没有命中的文章';
+      emptyAction = writable ? { label: '打开规则设置', run: () => s.openSettings('watch') } : null;
     } else if (st.rdWatch === 'block') {
       emptyMsg = '没有被屏蔽的文章';
-      emptyAction = { label: '管理屏蔽规则', run: () => s.openSettings('watch') };
+      emptyAction = writable ? { label: '管理屏蔽规则', run: () => s.openSettings('watch') } : null;
     } else if (st.rdScope === 'unread') {
       emptyMsg = '没有未读文章了';
       emptyAction = { label: '查看全部文章', run: () => s.readerSetScope('all') };
@@ -611,11 +614,11 @@ export function ReaderView() {
       emptyMsg = '还没有收藏，点文章右侧的星标收藏';
       emptyAction = { label: '查看全部文章', run: () => s.readerSetScope('all') };
     } else if (!feeds.length) {
-      emptyMsg = '还没有订阅源，去「设置 → 数据源」添加 RSS 地址';
-      emptyAction = { label: '添加订阅源', run: () => s.readerOpenSource() };
+      emptyMsg = writable ? '还没有订阅源，去「设置 → 数据源」添加 RSS 地址' : '还没有订阅源；只读账户不能自行添加';
+      emptyAction = writable ? { label: '添加订阅源', run: () => s.readerOpenSource() } : null;
     } else {
       emptyMsg = '这个频道还没有内容';
-      emptyAction = { label: '重新抓取', run: () => s.refresh() };
+      emptyAction = writable ? { label: '重新抓取', run: () => s.refresh() } : null;
     }
   }
 
