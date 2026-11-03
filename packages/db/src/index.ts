@@ -39,7 +39,7 @@ export function createPool(connectionString: string): pg.Pool {
 
 export function createDb(connectionString?: string): Db {
   const cs = connectionString ?? process.env.DATABASE_URL;
-  if (!cs) throw new Error('DATABASE_URL 未设置：请提供连接串或环境变量');
+  if (!cs) throw new Error('DATABASE_URL is not set — provide a connection string or the environment variable');
   // 简单复用：同一进程内同一连接串复用 pool（Hono 服务常驻单例）
   if (!_pool || _pool.options.connectionString !== cs) {
     _pool = createPool(cs);
