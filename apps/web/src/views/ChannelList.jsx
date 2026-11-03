@@ -69,7 +69,7 @@ export const ChannelList = memo(function ChannelList({
       onClick={() => onScope && onScope(key)}>
       <span className={'rd-ch-avatar ' + cls}><Icon n={ico} /></span>
       <span className="rd-ch-name">{name}</span>
-      {n > 0 ? <span className="rd-ch-n">{s.fmtBadge(n, 9999)}</span> : null}
+      {n > 0 ? <span className="rd-ch-n">{s.fmtBadge(n)}</span> : null}
     </button>
   );
 
@@ -82,7 +82,7 @@ export const ChannelList = memo(function ChannelList({
       onClick={() => onWatch && onWatch(key)}>
       <span className={'rd-ch-avatar ' + cls}><Icon n={ico} /></span>
       <span className="rd-ch-name">{name}</span>
-      {n > 0 ? <span className="rd-ch-n">{s.fmtBadge(n, 9999)}</span> : null}
+      {n > 0 ? <span className="rd-ch-n">{s.fmtBadge(n)}</span> : null}
     </button>
   );
 
@@ -110,7 +110,7 @@ export const ChannelList = memo(function ChannelList({
           aria-pressed={atAll ? 'true' : 'false'} onClick={() => onFeed && onFeed(null)}>
           <span className="rd-ch-avatar rd-ch-avatar-all"><Icon n="grid" /></span>
           <span className="rd-ch-name">全部频道</span>
-          {total > 0 ? <span className="rd-ch-n" title={`共 ${total} 条资源`}>{s.fmtBadge(total, 9999)}</span> : null}
+          {total > 0 ? <span className="rd-ch-n" title={`共 ${total} 条资源`}>{s.fmtBadge(total)}</span> : null}
         </button>
       )}
       <div className="rd-ch-sep" aria-hidden="true" />
@@ -142,12 +142,12 @@ export const ChannelList = memo(function ChannelList({
                   <span className="rd-ch-group-name">{gname || '未分组'}</span>
                   {isReader ? (
                     gUnread > 0
-                      ? <span className="rd-ch-n hot" title={`${gUnread} 条未读`}>{s.fmtBadge(gUnread, 9999)}</span>
+                      ? <span className="rd-ch-n hot" title={`${gUnread} 条未读`}>{s.fmtBadge(gUnread)}</span>
                       : isCollapsed
-                        ? <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道，全部已读`}>{s.fmtBadge(g.feeds.length, 9999)}</span>
+                        ? <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道，全部已读`}>{s.fmtBadge(g.feeds.length)}</span>
                         : <span className="rd-ch-group-empty" aria-hidden="true"><svg className="ico" focusable="false"><use href="#i-check" /></svg></span>
                   ) : (
-                    <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道`}>{s.fmtBadge(g.feeds.length, 9999)}</span>
+                    <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道`}>{s.fmtBadge(g.feeds.length)}</span>
                   )}
                 </button>
                 {onGroup ? (
@@ -177,7 +177,7 @@ export const ChannelList = memo(function ChannelList({
                   {count > 0 ? (
                     <span className={'rd-ch-n' + (isReader ? ' hot' : '')}
                       title={isReader ? `${count} 条未读 / 共 ${Number(f.entryCount || 0)} 条` : `${count} 条资源`}>
-                      {s.fmtBadge(count, 999)}
+                      {s.fmtBadge(count)}
                     </span>
                   ) : null}
                 </button>

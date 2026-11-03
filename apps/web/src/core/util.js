@@ -40,16 +40,24 @@ export async function httpError(res) {
   return err;
 }
 
-/** 侧栏计数徽标：超过上限显示「上限+」。
+/** 侧栏计数徽标：用 k / w / 亿 压缩，不封顶。
  *
- *  计数会随文章无限增长（关注 213、频道 1245…），不封顶会把频道行挤变形、
- *  徽标越撑越宽。文章口径（范围行 / 关注 / 屏蔽 / 分组未读 / 全部频道总数）封顶 9999，
- *  单个频道的条数封顶 999；tooltip 仍显示精确值。
+ *  计数会随文章无限增长，直接显示会把频道行撑变形。不足 1000 原样显示；
+ *  之后按量级换单位，并保留一位小数（四舍五入；到 10 个单位以上只用整数），
+ *  例如 1234 → 1.2k、9999 → 10k、12345 → 1.2w。精确值仍放在 tooltip 里。
  */
-export function fmtBadge(n, max = 999) {
-  const v = Number(n) || 0;
-  const cap = Number(max) || 999;
-  return v > cap ? cap + '+' : String(v);
+function compactUnit(v, unit) {
+  const tenths = Math.round(v / (unit / 10));
+  if (tenths >= 100) return String(Math.round(tenths / 10));
+  return (tenths / 10).toFixed(1).replace(/\.0$/, '');
+}
+
+export function fmtBadge(n) {
+  const v = Math.max(0, Math.floor(Number(n) || 0));
+  if (v < 1000) return String(v);
+  if (v >= 100000000) return compactUnit(v, 100000000) + '亿';
+  if (v >= 10000) return compactUnit(v, 10000) + 'w';
+  return compactUnit(v, 1000) + 'k';
 }
 
 /** 完整时间戳，用于 title 提示与展开体的发布时间 */

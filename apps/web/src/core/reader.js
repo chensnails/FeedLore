@@ -515,6 +515,8 @@ export function rdExpandGroup(name) {
 }
 
 /* ---------- 频道 / 范围 / 分组切换（ReaderView 经桥调用） ---------- */
+let watchPrevScope = null;   // 进入关注/屏蔽视图前的范围，退出时还原
+
 export function readerSetScope(scope) {
   // rdWatch 也算「已经偏离了默认范围」：在关注/屏蔽视图里整篇文章仍属于 rdScope='all'，
   // 少这一项会让点「全部文章」直接短路，看起来像按钮坏了。
@@ -524,6 +526,7 @@ export function readerSetScope(scope) {
   state.rdFeedId = null;
   state.rdGroup = null;
   state.rdWatch = null;
+  watchPrevScope = null;
   renderReader();
   loadReader({ reset: true });
   emitShell();
@@ -533,6 +536,7 @@ export function readerSetScope(scope) {
 export function readerSetGroup(g) {
   state.rdScope = 'all';   // 看某个分组 = 回到「全部」范围
   state.rdWatch = null;
+  watchPrevScope = null;
   if (g === state.rdGroup) state.rdGroup = null;
   else { state.rdGroup = g; state.rdFeedId = null; rdExpandGroup(g); }
   renderReader();
@@ -549,6 +553,7 @@ export function readerSetFeed(id) {
   const sameFeed = next === state.rdFeedId && state.rdGroup == null;
   state.rdScope = 'all';
   state.rdWatch = null;
+  watchPrevScope = null;
   if (sameFeed) {
     reloadReaderFeed();
     return;
@@ -565,13 +570,24 @@ export function readerSetFeed(id) {
 }
 /**
  * 关注 / 屏蔽虚拟视图（v21）：「再次点击同一行 = 退出该视图」，
- * 与分组漏斗的手感一致。视图是全局聚合，进入时清掉频道与分组选中；
- * 未读 / 收藏范围保留不动（服务端 WHERE 可叠加）。
+ * 与分组漏斗的手感一致。视图是全局聚合，进入时清掉频道与分组选中。
+ *
+ * 进入时强制忽略未读 / 收藏范围：这两个范围是持久化的，用户上次停在「收藏」
+ * 再点关注就会看到空列表（关注里的文章未必已收藏），像是功能坏了。
+ * 原范围记在 watchPrevScope，退出时还原；不写回 layout，刷新仍按用户原选择。
  */
 export function readerSetWatch(w) {
   let v = w === 'watch' || w === 'block' ? w : null;
   if (v && v === state.rdWatch) v = null;   // 再点一次退出
   if (!v && !state.rdWatch) return;
+  if (v) {
+    // 只在从常规视图首次进入时记录，watch ↔ block 互切不覆盖
+    if (!state.rdWatch) watchPrevScope = state.rdScope !== 'all' ? state.rdScope : null;
+    state.rdScope = 'all';
+  } else {
+    state.rdScope = watchPrevScope || 'all';
+    watchPrevScope = null;
+  }
   state.rdWatch = v;
   state.rdFeedId = null;
   state.rdGroup = null;

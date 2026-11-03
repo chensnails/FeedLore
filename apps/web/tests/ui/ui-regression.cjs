@@ -672,14 +672,39 @@ w.feedlore = {
   jumpToFeed: (id, focusId) => { calls.push(['jumpToFeed', id, focusId]); },
   // v1.9.0：阅读页桥（P3c，对齐 app.js 语义）
   fmtFull: (d) => (d ? String(d).slice(0, 16).replace('T', ' ') : ''),
-  fmtBadge: (n, max) => {
-    const v = Number(n) || 0;
-    const cap = Number(max) || 999;
-    return v > cap ? cap + '+' : String(v);
+  fmtBadge: (n) => {
+    const v = Math.max(0, Math.floor(Number(n) || 0));
+    if (v < 1000) return String(v);
+    const compact = (unit) => {
+      const tenths = Math.round(v / (unit / 10));
+      if (tenths >= 100) return String(Math.round(tenths / 10));
+      return (tenths / 10).toFixed(1).replace(/\.0$/, '');
+    };
+    if (v >= 100000000) return compact(100000000) + '亿';
+    if (v >= 10000) return compact(10000) + 'w';
+    return compact(1000) + 'k';
   },
   readerAccordionOn: () => true,
-  readerSetScope: (scope) => { calls.push(['readerSetScope', scope]); w.feedlore.state.rdScope = scope; w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null; w.feedlore.state.rdWatch = null; readerTick(); },
-  readerSetWatch: (key) => { calls.push(['readerSetWatch', key]); const v = (key === 'watch' || key === 'block') ? key : null; w.feedlore.state.rdWatch = (v && w.feedlore.state.rdWatch === v) ? null : v; w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null; readerTick(); },
+  readerSetScope: (scope) => { calls.push(['readerSetScope', scope]); const st = w.feedlore.state; st.rdScope = scope; st.rdFeedId = null; st.rdGroup = null; st.rdWatch = null; st.__watchPrevScope = null; readerTick(); },
+  // 与 core/reader.js 同口径：进入关注/屏蔽强制忽略范围，退出还原
+  readerSetWatch: (key) => {
+    calls.push(['readerSetWatch', key]);
+    const st = w.feedlore.state;
+    let v = (key === 'watch' || key === 'block') ? key : null;
+    if (v && st.rdWatch === v) v = null;
+    if (!v && !st.rdWatch) return;
+    if (v) {
+      if (!st.rdWatch) st.__watchPrevScope = st.rdScope !== 'all' ? st.rdScope : null;
+      st.rdScope = 'all';
+    } else {
+      st.rdScope = st.__watchPrevScope || 'all';
+      st.__watchPrevScope = null;
+    }
+    st.rdWatch = v;
+    st.rdFeedId = null;
+    st.rdGroup = null;
+    readerTick();
+  },
   readerSetFeed: (id) => { calls.push(['readerSetFeed', id]); w.feedlore.state.rdFeedId = Number(id); w.feedlore.state.rdGroup = null; w.feedlore.state.rdScope = 'all'; w.feedlore.state.rdWatch = null; readerTick(); },
   readerSetGroup: (g) => {
     calls.push(['readerSetGroup', g]);
@@ -3743,13 +3768,17 @@ const withEFP = (el, fn) => {
       throw new Error('关注视图下范围行仍高亮（两行同时 active 会误导）');
     }
   });
+  t('关注视图强制忽略未读范围（rdScope → all）', () => {
+    if (w.feedlore.state.rdScope !== 'all') throw new Error('rdScope: ' + w.feedlore.state.rdScope);
+  });
   R('#readerChannels .rd-ch[data-watch="watch"]').click();
   await sleep(30);
-  t('再点关注行 → 退出聚合视图', () => {
+  t('再点关注行 → 退出聚合视图并还原进入前的未读范围', () => {
     if (R('#readerChannels .rd-ch[data-watch="watch"]').classList.contains('active')) throw new Error('仍高亮');
+    if (w.feedlore.state.rdScope !== 'unread') throw new Error('rdScope 未还原: ' + w.feedlore.state.rdScope);
   });
 
-  // 计数封顶：文章 / 分组 9999，单频道 999；tooltip 保留精确值
+  // 计数单位：不封顶，k / w 压缩（超过 1 万走 w）；tooltip 保留精确值
   {
     const st = w.feedlore.state;
     const oldFlags = st.rdFlags;
@@ -3761,14 +3790,14 @@ const withEFP = (el, fn) => {
     ];
     readerTick();
     await sleep(30);
-    t('侧栏计数封顶：文章/分组 9999+，频道 999+，tooltip 精确', () => {
+    t('侧栏计数按单位压缩（12000 → 1.2w，1200 → 1.2k），tooltip 精确', () => {
       const txt = (sel) => { const el = R(sel); return el ? el.textContent : null; };
-      if (txt('#readerChannels .rd-ch[data-scope="all"] .rd-ch-n') !== '9999+') throw new Error('全部文章未封顶: ' + txt('#readerChannels .rd-ch[data-scope="all"] .rd-ch-n'));
-      if (txt('#readerChannels .rd-ch[data-watch="watch"] .rd-ch-n') !== '9999+') throw new Error('关注未封顶');
-      if (txt('#readerChannels .rd-ch[data-watch="block"] .rd-ch-n') !== '9999+') throw new Error('屏蔽未封顶');
-      if (txt('#readerChannels .rd-ch-group[data-group="大组"] .rd-ch-n.hot') !== '9999+') throw new Error('分组未封顶: ' + txt('#readerChannels .rd-ch-group[data-group="大组"] .rd-ch-n.hot'));
+      if (txt('#readerChannels .rd-ch[data-scope="all"] .rd-ch-n') !== '1.2w') throw new Error('全部文章: ' + txt('#readerChannels .rd-ch[data-scope="all"] .rd-ch-n'));
+      if (txt('#readerChannels .rd-ch[data-watch="watch"] .rd-ch-n') !== '1.2w') throw new Error('关注: ' + txt('#readerChannels .rd-ch[data-watch="watch"] .rd-ch-n'));
+      if (txt('#readerChannels .rd-ch[data-watch="block"] .rd-ch-n') !== '1.2w') throw new Error('屏蔽: ' + txt('#readerChannels .rd-ch[data-watch="block"] .rd-ch-n'));
+      if (txt('#readerChannels .rd-ch-group[data-group="大组"] .rd-ch-n.hot') !== '1.2w') throw new Error('分组: ' + txt('#readerChannels .rd-ch-group[data-group="大组"] .rd-ch-n.hot'));
       const feedBadge = R('#readerChannels .rd-ch[data-feed="9001"] .rd-ch-n');
-      if (!feedBadge || feedBadge.textContent !== '999+') throw new Error('频道未封顶: ' + (feedBadge && feedBadge.textContent));
+      if (!feedBadge || feedBadge.textContent !== '1.2k') throw new Error('频道: ' + (feedBadge && feedBadge.textContent));
       if (!(feedBadge.getAttribute('title') || '').includes('1200')) throw new Error('频道 tooltip 丢失精确值');
     });
     st.rdFlags = oldFlags;
@@ -4401,12 +4430,12 @@ const withEFP = (el, fn) => {
       ];
       for (const k of need) if (c2[k] === undefined) throw new Error('core 缺 ' + k);
     });
-    t('冒烟：fmtBadge 按上限封顶（频道 999 / 分组与文章 9999）', () => {
+    t('冒烟：fmtBadge 用 k / w 单位压缩，不封顶、不带 +', () => {
       const f = sw.__coreForTest.fmtBadge;
-      const cases = [[0, 999, '0'], [999, 999, '999'], [1000, 999, '999+'], [12000, 9999, '9999+'], [9999, 9999, '9999']];
-      for (const [n, max, want] of cases) {
-        const got = f(n, max);
-        if (got !== want) throw new Error(`fmtBadge(${n}, ${max}) = ${got}，期望 ${want}`);
+      const cases = [[0, '0'], [999, '999'], [1000, '1k'], [1234, '1.2k'], [9999, '10k'], [12000, '1.2w'], [123456, '12w']];
+      for (const [n, want] of cases) {
+        const got = f(n);
+        if (got !== want) throw new Error(`fmtBadge(${n}) = ${got}，期望 ${want}`);
       }
     });
     // 关掉日报后，所有入口都靠 switchView 这一道守卫回落（#digest 深链、命令面板遗留项

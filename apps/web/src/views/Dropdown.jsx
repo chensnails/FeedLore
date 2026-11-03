@@ -174,7 +174,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
                 <use href={folded ? '#i-chevron-right' : '#i-chevron-down'} />
               </svg>
               <span className="dd-group-name">{g}</span>
-              {folded ? <span className="dd-group-n" title={`该分组 ${groupTotal[g] || 0} 个频道`}>{core.fmtBadge(groupTotal[g] || 0, 9999)}</span> : null}
+              {folded ? <span className="dd-group-n" title={`该分组 ${groupTotal[g] || 0} 个频道`}>{core.fmtBadge(groupTotal[g] || 0)}</span> : null}
             </button>
             {onGroupFilter ? (
               <button type="button" className={'dd-group-filter' + (filtered ? ' is-active' : '')}
