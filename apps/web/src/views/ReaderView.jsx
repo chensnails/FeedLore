@@ -612,7 +612,7 @@ export function ReaderView() {
       emptyAction = { label: '清除搜索', run: () => onSearchClear() };
     } else if (st.rdWatch === 'watch') {
       emptyMsg = writable
-        ? '还没有命中的文章；在「设置 → 规则」里配置关键字，保存后点「应用到已有文章」'
+        ? '还没有命中的文章；在「设置 → 规则」里配置关键词，保存后点「应用到已有文章」'
         : '还没有命中的文章';
       emptyAction = writable ? { label: '打开规则设置', run: () => s.openSettings('watch') } : null;
     } else if (st.rdWatch === 'block') {

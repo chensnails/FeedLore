@@ -2,12 +2,12 @@ import { core } from '@core';
 import { useState, useEffect, useRef } from 'react';
 
 /**
- * 规则面板（v1.6.0-test5）：关注 / 屏蔽规则 + webhook 通知 + 条目过滤规则。
+ * 规则面板（v1.6.0-test5）：关注 / 屏蔽规则 + webhook 通知 + 入库前过滤。
  *
- * 关注 / 屏蔽规则存 users.prefs.watchRules（整组替换），关键字一行一个、子串匹配不分大小写；
+ * 关注 / 屏蔽规则存 users.prefs.watchRules（整组替换），关键词一行一个、子串匹配不分大小写；
  * 保存只影响「以后新抓的文章」，点「应用到已有文章」才回溯存量条目（/api/watch/apply）。
  * webhook 一条全局地址，每条关注规则单独决定要不要推送（屏蔽规则没有通知的意义）。
- * 条目过滤规则存 users.prefs.filters（v2.7.0，原在账号面板），在抓取写库前生效。
+ * 入库前过滤存 users.prefs.filters（v2.7.0，原在账号面板），在抓取写库前生效。
  */
 
 const S = () => core;
@@ -51,7 +51,7 @@ export function WatchPane() {
   const [busy, setBusy] = useState('');               // save | apply | webhook | ''
   const [result, setResult] = useState(null);         // { ok, msg } | null
 
-  // 条目过滤规则（原在账号面板，v2.8.0 起归入「规则」）
+  // 入库前过滤（原在账号面板，v2.8.0 起归入「规则」）
   const [filters, setFilters] = useState([]);
   const [filtersLoaded, setFiltersLoaded] = useState(false);
   const [savingFilter, setSavingFilter] = useState(false);
@@ -128,7 +128,7 @@ export function WatchPane() {
       // 服务端清洗会丢掉非法规则，数量对不上要如实说
       const dropped = rules.length - next.length;
       setResult({ ok: true, msg: dropped > 0
-        ? `已保存 ${next.length} 条规则（${dropped} 条因没有有效关键字被忽略）。只对之后新抓取的文章生效。`
+        ? `已保存 ${next.length} 条规则（${dropped} 条因没有有效关键词被忽略）。只对之后新抓取的文章生效。`
         : '规则已保存，只对之后新抓取的文章生效；已有文章用下方「应用到已有文章」回溯。' });
     } catch (err) {
       setResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
@@ -142,7 +142,7 @@ export function WatchPane() {
     if (rulesDirty) { setResult({ ok: false, msg: '规则有未保存的改动，请先保存再应用。' }); return; }
     const okGo = await s.confirm({
       title: '把规则应用到已有文章？',
-      desc: '会按当前规则重新判定全部文章：命中的打上关注 / 屏蔽标记，屏蔽的自动标为已读。',
+      desc: '会按当前规则重新判定全部已有文章：命中关注规则的加入「关注」，命中屏蔽规则的标为「屏蔽」并自动标为已读。',
       confirmText: '应用',
     });
     if (!okGo) return;
@@ -185,7 +185,7 @@ export function WatchPane() {
   const addRule = () => setRules((rs) => rs.concat([blankRule()]));
   const delRule = (id) => setRules((rs) => rs.filter((r) => r.id !== id));
 
-  /* ---------- 条目过滤规则：按账号独立保存，抓取写库前对新条目生效 ---------- */
+  /* ---------- 入库前过滤：按账号独立保存，抓取写库前对新条目生效 ---------- */
 
   const onSaveFilters = async () => {
     setSavingFilter(true);
@@ -249,21 +249,21 @@ export function WatchPane() {
             </button>
           </div>
           <small className="form-tip">
-            关注规则命中「新抓取的文章」时向该地址 POST 一条 JSON（同一轮抓取的多条合并成一条消息）；留空 = 不推送。
+            新抓取的文章命中关注规则时，向该地址 POST 一条 JSON；同一轮多条合并成一条。留空则不推送。
           </small>
         </div>
 
         <div className="form-row form-row-inline">
-          <label htmlFor="watchExpireDays">关注自动退出</label>
+          <label htmlFor="watchExpireDays">关注保留天数</label>
           <input
             id="watchExpireDays" type="number" inputMode="numeric" min="0" max="3650" step="1"
             style={{ width: '6.5em', flex: '0 0 auto' }}
             value={expireDays}
             onChange={(ev) => setExpireDays(ev.target.value)}
           />
-          <span className="muted">天后自动移除关注（0 = 永不；默认 90 天）</span>
+          <span className="muted">天后自动取消关注（0 表示永久保留，默认 90 天）</span>
           <small className="form-tip">
-            只清「关注」标记，文章仍留在原频道；已读 / 收藏状态不变，屏蔽不受影响。到期清理在下一轮刷新时执行。
+            只取消「关注」标记，文章仍留在原频道，已读 / 收藏状态不变；屏蔽不受影响。清理在下一轮刷新时执行。
           </small>
         </div>
 
@@ -276,7 +276,8 @@ export function WatchPane() {
             </button>
           </label>
           <small className="form-tip">
-            关键字一行一个，出现在标题、摘要或正文里即命中（不分大小写）；一条文章同时命中关注与屏蔽时按屏蔽处理。
+            每行一个关键词，标题、摘要或正文中出现即命中（不区分大小写）。同一篇文章同时命中关注和屏蔽规则时，以「屏蔽」为准。
+            「关注」和「屏蔽」是智能分组：只给文章打标记，不改变它所在的频道。
           </small>
         </div>
 
@@ -292,13 +293,13 @@ export function WatchPane() {
               <div className="seg" role="radiogroup" aria-label="规则动作">
                 <button type="button" className={'seg-btn' + (r.act === 'watch' ? ' active' : '')}
                   aria-pressed={r.act === 'watch' ? 'true' : 'false'}
-                  title="命中后收进「关注」视图"
+                  title="命中后加入「关注」"
                   onClick={() => patchRule(r.id, { act: 'watch' })}>
                   <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-eye" /></svg>关注
                 </button>
                 <button type="button" className={'seg-btn is-block' + (r.act === 'block' ? ' active' : '')}
                   aria-pressed={r.act === 'block' ? 'true' : 'false'}
-                  title="命中后收进「屏蔽」视图并自动标为已读"
+                  title="命中后标为「屏蔽」，并自动标为已读"
                   onClick={() => patchRule(r.id, { act: 'block', notify: false })}>
                   <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-block" /></svg>屏蔽
                 </button>
@@ -306,8 +307,8 @@ export function WatchPane() {
             </div>
             <textarea
               className="watch-rule-kw" rows="3" spellCheck="false"
-              placeholder={'关键字，一行一个，例如：\nOpenAI\nGPT-5'}
-              aria-label="关键字（每行一个）"
+              placeholder={'关键词，一行一个，例如：\nOpenAI\nGPT-5'}
+              aria-label="关键词（每行一个）"
               value={r.keywords}
               onChange={(ev) => patchRule(r.id, { keywords: ev.target.value })}
             />
@@ -319,7 +320,7 @@ export function WatchPane() {
                   命中新文章时推送 Webhook
                 </label>
               ) : (
-                <span className="watch-check muted">屏蔽的文章会自动标为已读</span>
+                <span className="watch-check muted">命中后自动标为已读</span>
               )}
               <label className="watch-check">
                 <input type="checkbox" checked={r.on}
@@ -336,7 +337,7 @@ export function WatchPane() {
         ))}
 
         {rules.length === 0 ? (
-          <div className="watch-empty">还没有规则。点上方「添加规则」创建第一条。</div>
+          <div className="watch-empty">还没有规则。点「添加规则」新建一条，比如把标题含「OpenAI」的文章加入关注。</div>
         ) : null}
 
         <div className="watch-actions">
@@ -362,12 +363,12 @@ export function WatchPane() {
         <details className="sec" data-sec="watch-filters">
           <summary className="sec-head">
             <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-            <span className="sec-title">条目过滤规则</span>
+            <span className="sec-title">入库前过滤</span>
             <span className="sec-sub">{!filtersLoaded ? '读取中…' : (filters.length ? `${filters.length} 条` : '未配置')}</span>
           </summary>
           <div className="sec-body">
             {!filtersLoaded ? <div className="hint">正在读取规则…</div>
-              : !filters.length ? <div className="hint">还没有规则。添加一条试试，比如屏蔽标题含「广告」的条目。</div>
+              : !filters.length ? <div className="hint">还没有规则。点「添加过滤规则」试试，比如丢弃标题含「广告」的文章。</div>
                 : filters.map((f) => (
                   <div className="filter-row" key={f.id} data-fid={f.id}>
                     <input className="filter-on" type="checkbox" checked={f.on !== false} title="启用该规则"
@@ -375,7 +376,7 @@ export function WatchPane() {
                       onChange={(e) => patchFilter(f.id, { on: e.target.checked })} />
                     <select className="select filter-act" title="动作" aria-label="动作"
                       value={f.act} onChange={(e) => patchFilter(f.id, { act: e.target.value })}>
-                      <option value="block">屏蔽</option>
+                      <option value="block">丢弃</option>
                       <option value="allow">只收</option>
                     </select>
                     <select className="select filter-field" title="匹配范围" aria-label="匹配范围"
@@ -400,12 +401,12 @@ export function WatchPane() {
                 ))}
             <div className="filter-actions">
               <button className="btn btn-ghost btn-sm" id="addFilterBtn" type="button"
-                onClick={addFilter}>添加规则</button>
+                onClick={addFilter}>添加过滤规则</button>
             </div>
             <small className="form-tip">
-              在抓取写入数据库<b>之前</b>按规则过滤，只影响之后新抓的条目，已入库的历史文章不动。<br />
-              <b>屏蔽</b>：命中即丢弃；<b>只收</b>：仅保留命中的（白名单）。两者同存时先按屏蔽拉黑、再按只收拉白。<br />
-              关键词不区分大小写；匹配范围「全部」= 标题 + 摘要 + 正文。非法正则在保存时会被丢弃。
+              在写入数据库之前过滤，只影响之后新抓的文章，已入库的历史文章不动。<br />
+              <b>丢弃</b>：命中即不入库；<b>只收</b>：只保留命中的文章（白名单）。两者同时存在时，先丢弃、再只收。<br />
+              关键词不区分大小写；范围「全部」= 标题 + 摘要 + 正文；非法正则在保存时会被忽略。
             </small>
             <div id="filterResult" role="status" aria-live="polite"
               className={'test-result' + (filterResult ? ' show ' + (filterResult.ok ? 'ok' : 'err') : '')}>
