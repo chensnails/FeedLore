@@ -270,7 +270,7 @@ export function SourcePane({ admin }) {
       // 注意合并顺序：jsonPost 自带 method:'POST'，必须后覆盖回 PATCH
       const res = await s.apiFetch('/api/feeds/' + id, Object.assign(jsonPost(patch), { method: 'PATCH' }));
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+      if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
       if (okMsg && s.toast) s.toast(okMsg);
       await reloadFeeds();
       s.state.tag = null;
@@ -558,7 +558,7 @@ export function SourcePane({ admin }) {
       // 按钮永远停在「添加中…」，用户既不知道还要等多久也不知道是不是卡了。
       const res = await s.apiFetch('/api/feeds', Object.assign(jsonPost({ url: u }), { signal: AbortSignal.timeout(30000) }));
       const data = await res.json();
-      if (!res.ok) { setResult({ ok: false, msg: data.error || '添加失败' }); return; }
+      if (!res.ok) { setResult({ ok: false, msg: s.errText(data, '添加失败') }); return; }
       setUrl('');
       setResult({ ok: true, msg: `已添加「${s.shortFeedName(s.feedTitle(data.feed))}」，新增 ${data.added} 条` });
       s.toast('订阅已添加');
@@ -583,7 +583,7 @@ export function SourcePane({ admin }) {
       const text = await file.text();
       const res = await s.apiFetch('/api/feeds/import', jsonPost({ opml: text }));
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '导入失败');
+      if (!res.ok) throw new Error(s.errText(data, '导入失败'));
       const parts = [`已导入 ${data.added} 个新频道`];
       if (data.duplicated) parts.push(`跳过 ${data.duplicated} 个重复`);
       if (data.groups && data.groups.length) parts.push(`${data.groups.length} 个分组`);
@@ -626,7 +626,7 @@ export function SourcePane({ admin }) {
     try {
       const res = await s.apiFetch('/api/feeds/' + id + '/refresh', { method: 'POST' });
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error((data.result && data.result.error) || '抓取失败');
+      if (!res.ok || !data.ok) throw new Error(s.errText((data.result && data.result.error) || data.error, '抓取失败'));
       s.toast(data.result.added ? `新增 ${data.result.added} 条` : '没有新内容');
       await reloadFeeds();
       if (s.loadPage) await s.loadPage(true);
@@ -683,7 +683,7 @@ export function SourcePane({ admin }) {
         },
       }));
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: data.error || '保存失败' }); return; }
+      if (!res.ok) { setResult({ ok: false, msg: s.errText(data, '保存失败') }); return; }
       // 表单保存只用内联结果，不再叠一层 toast（列表级动作才用 toast）
       setResult({ ok: true, msg: '抓取设置已保存' });
       if (s.scheduleAutoRefresh) s.scheduleAutoRefresh();   // 立刻按新的「页面自动刷新」间隔重排
@@ -709,7 +709,7 @@ export function SourcePane({ admin }) {
     try {
       const res = await s.apiFetch('/api/image-cache/clear', { method: 'POST' });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+      if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
       setImgStats({ count: 0, bytes: 0 });
       s.toast(`已清空 ${data.removed} 张缓存图片`);
     } catch (err) {
@@ -847,7 +847,7 @@ export function SourcePane({ admin }) {
     patchFeed(f.id, { url: val }, '订阅地址已更新').then((data) => {
       const probe = data && data.probe;
       if (!probe) return;
-      if (!probe.ok) s.toast('新地址抓取失败：' + (probe.error || '未知错误') + '（地址已保存，下个周期自动重试）', false);
+      if (!probe.ok) s.toast('新地址抓取失败：' + s.errText(probe, '未知错误') + '（地址已保存，下个周期自动重试）', false);
       else if (probe.added) s.toast('新地址可用：本次新增 ' + probe.added + ' 条');
     }).catch((err) => {
       s.toast('地址未更新：' + (err.message || err), false);
@@ -957,7 +957,7 @@ export function SourcePane({ admin }) {
           <div className="feed-stat">
             {feedStatusText(f)}{' '}
             {f.status === 'error' ? (
-              <span className="err" title={f.error || ''}><Ico name="alert" /> 抓取失败</span>
+              <span className="err" title={s.errText(f.error)}><Ico name="alert" /> 抓取失败</span>
             ) : null}
           </div>
           <div className="feed-metas">

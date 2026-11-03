@@ -192,7 +192,7 @@ export async function buildStatus(
       }
     }
   } else {
-    dbInfo.error = 'DATABASE_URL 未配置';
+    dbInfo.error = 'E_DB_URL_UNSET';
   }
 
   /* ---------------- 采集 ---------------- */
@@ -229,7 +229,7 @@ export async function buildStatus(
         .map((f) => ({
           feedId: String(f.id),
           title: f.customTitle || f.title || f.url,
-          error: f.lastError || '抓取失败',
+          error: f.lastError || 'E_FETCH_FAILED',
           lastFetchedAt: f.lastFetchedAt ? f.lastFetchedAt.toISOString() : null,
           groupName: f.groupName ?? '',
           enabled: f.enabled,
@@ -263,7 +263,7 @@ export async function buildStatus(
       entryInfo.oldest = e.oldest ? new Date(e.oldest as string).toISOString() : null;
       entryInfo.newest = e.newest ? new Date(e.newest as string).toISOString() : null;
     } catch (e) {
-      console.warn('[status] 采集统计失败：', (e as Error)?.message ?? e);
+      console.warn('[status] failed to collect refresh stats:', (e as Error)?.message ?? e);
     }
   }
 

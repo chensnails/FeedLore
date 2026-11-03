@@ -13,7 +13,7 @@ import { fetchFeedRaw } from '../src/lib/fetcher';
 
 const target = process.argv[2];
 if (!target) {
-  console.error('用法：tsx scripts/inspect-feed.ts <URL 或 .xml 路径>');
+  console.error('Usage: tsx scripts/inspect-feed.ts <URL or .xml path>');
   process.exit(1);
 }
 
@@ -22,16 +22,16 @@ const xml = isUrl
   ? await (async () => {
       const t0 = Date.now();
       const res = await fetchFeedRaw(target);
-      console.log(`HTTP ${res.status ?? '?'} · ${Date.now() - t0}ms · ${(res.body ?? '').length} 字节`);
+      console.log(`HTTP ${res.status ?? '?'} · ${Date.now() - t0}ms · ${(res.body ?? '').length} bytes`);
       return res.body ?? '';
     })()
   : readFileSync(target, 'utf8');
 
 const parsed = parseFeed(xml);
-console.log(`\n频道：${parsed.title || '(无标题)'}`);
-console.log(`站点：${parsed.siteUrl ?? '-'}`);
-console.log(`图标：${parsed.iconUrl ?? '-'}`);
-console.log(`条目：${parsed.items.length} 条\n`);
+console.log(`\nFeed: ${parsed.title || '(untitled)'}`);
+console.log(`Site: ${parsed.siteUrl ?? '-'}`);
+console.log(`Icon: ${parsed.iconUrl ?? '-'}`);
+console.log(`Entries: ${parsed.items.length}\n`);
 
 const items = parsed.items.slice(0, 5).map((it) => normalizeItem(it, parsed.title, { siteUrl: parsed.siteUrl }));
 for (const [i, it] of items.entries()) {
@@ -39,7 +39,7 @@ for (const [i, it] of items.entries()) {
   console.log(`   guid    ${it.guid.slice(0, 90)}`);
   console.log(`   link    ${it.link ?? '-'}`);
   console.log(`   pwd     ${it.pwd ?? '-'}   size ${it.size || '-'}   tags ${it.tags.join(',') || '-'}`);
-  console.log(`   images  ${it.images.length} 张   links ${it.links.length} 条`);
-  console.log(`   正文    v${it.bodyVersion}  ${it.content ? it.content.length : 0} 字   ${it.content?.slice(0, 80).replace(/\n/g, ' ⏎ ') ?? '-'}`);
-  console.log(`   时间    ${it.publishedAt.toISOString()}`);
+  console.log(`   images  ${it.images.length}   links ${it.links.length}`);
+  console.log(`   body    v${it.bodyVersion}  ${it.content ? it.content.length : 0} chars   ${it.content?.slice(0, 80).replace(/\n/g, ' ⏎ ') ?? '-'}`);
+  console.log(`   time    ${it.publishedAt.toISOString()}`);
 }

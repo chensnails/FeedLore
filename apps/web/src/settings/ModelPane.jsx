@@ -90,7 +90,7 @@ export function ModelPane() {
       });
       const data = await res.json().catch(() => ({}));
       if (data.ok) setResult({ ok: true, msg: `模型可用：${data.reply || '连接正常'}` });
-      else setResult({ ok: false, msg: '调用失败：' + (data.error || '未知错误') });
+      else setResult({ ok: false, msg: '调用失败：' + S().errText(data, '未知错误') });
     } catch (err) {
       setResult({ ok: false, msg: '调用失败：' + String((err && err.message) || err) });
     } finally {
@@ -117,7 +117,7 @@ export function ModelPane() {
         body: JSON.stringify({ llm: llmPatch(typedKey ? { apiKey: typedKey } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: data.error || '保存失败' }); return; }
+      if (!res.ok) { setResult({ ok: false, msg: S().errText(data, '保存失败') }); return; }
       const msg = typedKey ? '模型配置与 API Key 已保存' : '模型配置已保存';
       // 表单保存只用内联结果，不再叠一层 toast（列表级动作才用 toast）
       setResult({ ok: true, msg });
@@ -145,7 +145,7 @@ export function ModelPane() {
         body: JSON.stringify({ llm: llmPatch({ clearApiKey: true }) }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: data.error || '清除失败' }); return; }
+      if (!res.ok) { setResult({ ok: false, msg: S().errText(data, '清除失败') }); return; }
       setResult({ ok: true, msg: 'API Key 已清除' });
       await load();
     } catch (err) {

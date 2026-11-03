@@ -14,6 +14,9 @@
 const { JSDOM, VirtualConsole } = require('jsdom');
 const fs = require('fs');
 const path = require('path');
+// 服务端错误体现在只回「码 + 英文说明」，中文由前端词典产出（src/core/errorText.js）。
+// 这里直接引真词典，面板断言才能验证 code → 中文这条链路，而不是测一个桩。
+const { errorText } = require('../../src/core/errorText.js');
 
 const dom = new JSDOM('<!DOCTYPE html><html><body>' +
   '<div id="settingsRoot"></div>' +
@@ -270,6 +273,7 @@ const pushFeed = (url, groupName) => {
 };
 
 w.feedlore = {
+  errText: errorText,
   apiFetch: (url, opts) => {
     calls.push(['apiFetch', url, opts && opts.method, opts && opts.body]);
     const method = (opts && opts.method) || 'GET';
@@ -381,10 +385,10 @@ w.feedlore = {
       return ok({ ok: true, updated: items.length });
     }
     if (url === '/api/feeds' && method === 'POST') {
-      if (addShouldFail) { addShouldFail = false; return bad('抓取失败：连接超时'); }
+      if (addShouldFail) { addShouldFail = false; return bad('E_FETCH_FAILED'); }
       const u = String((body && body.url) || '').trim();
-      if (!/^https?:\/\//i.test(u)) return bad('RSS 地址需以 http:// 或 https:// 开头');
-      if (miniFeeds.some((f) => f.url === u)) return bad('该订阅已存在');
+      if (!/^https?:\/\//i.test(u)) return bad('E_RSS_URL_SCHEME_UNSUPPORTED');
+      if (miniFeeds.some((f) => f.url === u)) return bad('E_FEED_URL_DUPLICATE');
       pushFeed(u, body && body.groupName);
       const nf = miniFeeds[miniFeeds.length - 1];
       return ok({ ok: true, existed: false, feed: toDto(nf), added: 3 });
@@ -396,9 +400,9 @@ w.feedlore = {
       });
     }
     if (url === '/api/feeds/import' && method === 'POST') {
-      if (importShouldFail) { importShouldFail = false; return bad('OPML 解析失败：格式不正确'); }
+      if (importShouldFail) { importShouldFail = false; return bad('E_UNEXPECTED_OPML'); }
       const text = String((body && body.opml) || '');
-      if (!text.trim()) return bad('未收到 OPML 内容');
+      if (!text.trim()) return bad('E_EMPTY_OPML');
       const urls = [...text.matchAll(/xmlUrl="([^"]+)"/g)].map((m) => m[1]).filter(Boolean);
       const existing = new Set(miniFeeds.map((f) => normUrl(f.url)));
       const seen = new Set();
@@ -419,7 +423,7 @@ w.feedlore = {
     if (feedRoute) {
       const id = feedRoute[1];
       const f = miniFeeds.find((x) => String(x.id) === String(id));
-      if (!f) return bad('频道不存在', 404);
+      if (!f) return bad('E_FEED_NOT_FOUND', 404);
       if (feedRoute[2] && method === 'POST') {
         f.entryCount += 3;
         f.lastFetchedAt = Date.now();
@@ -444,9 +448,9 @@ w.feedlore = {
         let urlChanged = false;
         if (body.url !== undefined) {
           const nu = String(body.url).trim();
-          if (!/^https?:\/\//i.test(nu)) return bad('RSS 地址需以 http:// 或 https:// 开头');
+          if (!/^https?:\/\//i.test(nu)) return bad('E_RSS_URL_SCHEME_UNSUPPORTED');
           if (miniFeeds.some((x) => x.id !== f.id && normUrl(x.url) === normUrl(nu))) {
-            return bad('这个地址已经是你的另一个频道', 409);
+            return bad('E_FEED_URL_DUPLICATE', 409);
           }
           if (normUrl(nu) !== normUrl(f.url)) { f.url = nu; urlChanged = true; }
         }
@@ -467,7 +471,7 @@ w.feedlore = {
     }
     if (url === '/api/config' && method === 'GET') {
       if (cfgHold) return cfgHold;
-      if (!adminFlag) return bad('需要管理员权限', 403);
+      if (!adminFlag) return bad('E_ADMIN_ONLY', 403);
       // 站点级只剩采集参数：模型与日报都改走 /api/prefs（账号级）
       return ok({ username: 'tester', role: 'admin', source: Object.assign({}, miniSettingsSource) });
     }
@@ -491,9 +495,9 @@ w.feedlore = {
     }
     if (url === '/api/users' && method === 'POST') {
       const un = String((body && body.username) || '').trim();
-      if (!un) return bad('用户名不能为空');
-      if (String((body && body.password) || '').length < 4) return bad('密码至少 4 位');
-      if (miniUsers.some((u) => u.username === un)) return bad('用户名已存在');
+      if (!un) return bad('E_BAD_REQUEST');
+      if (String((body && body.password) || '').length < 4) return bad('E_PASSWORD_TOO_SHORT');
+      if (miniUsers.some((u) => u.username === un)) return bad('E_USERNAME_TAKEN');
       const nu = { id: String(100 + miniUsers.length), username: un, role: body.role === 'admin' || body.role === 'readonly' ? body.role : 'user', createdAt: null, feedCount: 0, isSelf: false };
       miniUsers.push(nu);
       return ok({ ok: true, user: { id: nu.id, username: nu.username, role: nu.role } });
@@ -502,20 +506,20 @@ w.feedlore = {
     if (userRoute) {
       const uid = userRoute[1];
       const u = miniUsers.find((x) => x.id === uid);
-      if (!u) return bad('用户不存在', 404);
+      if (!u) return bad('E_USER_NOT_FOUND', 404);
       if (method === 'PATCH') {
         if (body && body.role !== undefined) u.role = body.role === 'admin' || body.role === 'readonly' ? body.role : 'user';
         if (body && typeof body.password === 'string') {
-          if (body.password.length < 4) return bad('密码至少 4 位');
+          if (body.password.length < 4) return bad('E_PASSWORD_TOO_SHORT');
         }
         return ok({ ok: true, user: { id: u.id, username: u.username, role: u.role } });
       }
       if (method === 'DELETE') { miniUsers = miniUsers.filter((x) => x.id !== uid); return ok({ ok: true }); }
     }
     if (url === '/api/account' && method === 'POST') {
-      if (!accountPostOk) return bad('当前密码不正确');
-      if (!body || (!String(body.username || '').trim() && !String(body.newPassword || ''))) return bad('用户名和新密码至少填一项');
-      if (body.newPassword && String(body.newPassword).length < 4) return bad('新密码至少 4 位');
+      if (!accountPostOk) return bad('E_CURRENT_PASSWORD_WRONG');
+      if (!body || (!String(body.username || '').trim() && !String(body.newPassword || ''))) return bad('E_NOTHING_TO_UPDATE');
+      if (body.newPassword && String(body.newPassword).length < 4) return bad('E_NEW_PASSWORD_TOO_SHORT');
       return ok({ ok: true, username: String(body.username || '').trim() || 'tester', role: 'admin' });
     }
     if (url === '/api/logout' && method === 'POST') return ok({ ok: true });
@@ -530,7 +534,7 @@ w.feedlore = {
       return ok({ date, digest: miniDigestFor(date) });
     }
     if (url === '/api/digest/generate' && method === 'POST') {
-      if (genFailNext) { genFailNext = false; return bad('模型调用失败：401', 502); }
+      if (genFailNext) { genFailNext = false; return bad('E_MODEL_URL_UNREACHABLE', 502); }
       const date = todayStr();
       const d = Object.assign(miniDigestFor('2026-10-15'), { date });
       if (!miniDigestDates.includes(date)) miniDigestDates.unshift(date);
@@ -554,7 +558,7 @@ w.feedlore = {
     if (entryRoute && method === 'PATCH') return ok({ ok: true });
     if (entryRoute && method === 'GET') {
       const d = miniEntryDetail(decodeURIComponent(entryRoute[1]));
-      return d ? ok(d) : bad('条目不存在', 404);
+      return d ? ok(d) : bad('E_ENTRY_NOT_FOUND', 404);
     }
     return bad('未实现的路由：' + method + ' ' + url, 404);
   },
@@ -1554,7 +1558,7 @@ const withEFP = (el, fn) => {
   await sleep(80);
   t('添加失败：显示服务端错误', () => {
     const r = document.querySelector('#feedResult');
-    if (!r.classList.contains('err') || r.textContent.indexOf('连接超时') < 0) throw new Error(r.className + '/' + r.textContent);
+    if (!r.classList.contains('err') || r.textContent.indexOf('抓取失败') < 0) throw new Error(r.className + '/' + r.textContent);
   });
 
   // ---- OPML 导入 / 导出 ----
@@ -1591,7 +1595,7 @@ const withEFP = (el, fn) => {
   await sleep(80);
   t('导入失败：err 提示', () => {
     const r = document.querySelector('#feedResult');
-    if (!r.classList.contains('err') || r.textContent.indexOf('OPML 解析失败') < 0) throw new Error(r.className + '/' + r.textContent);
+    if (!r.classList.contains('err') || r.textContent.indexOf('文件看起来不是 OPML') < 0) throw new Error(r.className + '/' + r.textContent);
     if (rowOf('13')) throw new Error('不应添加');
   });
 

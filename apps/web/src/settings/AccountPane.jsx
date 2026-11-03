@@ -113,7 +113,7 @@ export function AccountPane() {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { showAccResult(false, data.error || '保存失败'); return; }
+      if (!res.ok) { showAccResult(false, s.errText(data, '保存失败')); return; }
       showAccResult(true, '账号已更新');
       setCurrent('');
       setNewPass('');
@@ -145,7 +145,7 @@ export function AccountPane() {
         if (!ok) return;
         const res = await s.apiFetch('/api/users/' + u.id, { method: 'DELETE' });
         const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+        if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
         showUserResult(true, `已删除 ${u.username}`);
         s.toast(`已删除用户 ${u.username}`);
         await loadUsers();
@@ -156,7 +156,7 @@ export function AccountPane() {
           body: JSON.stringify({ role: next }),
         });
         const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+        if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
         showUserResult(true, `已将 ${u.username} 设为${ROLE_LABEL[next] || next}`);
         await loadUsers();
       } else if (act === 'pass') {
@@ -173,7 +173,7 @@ export function AccountPane() {
           body: JSON.stringify({ password: np }),
         });
         const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+        if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
         showUserResult(true, `已重置 ${u.username} 的密码`);
       }
     } catch (err) {
@@ -192,7 +192,7 @@ export function AccountPane() {
         body: JSON.stringify({ username: name, password: newUserPass, role: newUserRole }),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+      if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
       showUserResult(true, `已创建用户 ${name}`);
       s.toast(`已创建用户 ${name}`);
       setNewUserName('');

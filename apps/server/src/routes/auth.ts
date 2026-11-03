@@ -17,6 +17,7 @@ import type { AuthInstance } from '@feedlore/auth';
 import type { Db } from '@feedlore/db';
 import { auth as authSpec, loginBody } from '@feedlore/contract';
 import { assertResponse, BadRequest } from '../lib/validate';
+import { apiError } from '../lib/apiError';
 import { normalizeRole } from '../lib/roles';
 import { clientIpOf, takeLoginAttempt } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
@@ -72,7 +73,7 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
         }
       }),
       async (c) => {
-        if (!auth) return c.json({ error: '鉴权服务未就绪' }, 503);
+        if (!auth) return apiError(c, 'E_AUTH_NOT_READY');
 
         const body = c.req.valid('json');
 
@@ -82,7 +83,7 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
         const limit = takeLoginAttempt('login:' + clientIpOf(c));
         if (!limit.allowed) {
           c.header('Retry-After', String(limit.retryAfter));
-          return c.json({ error: `登录尝试过于频繁，请 ${limit.retryAfter} 秒后再试` }, 429);
+          return apiError(c, 'E_RATE_LIMITED', { params: { retryAfter: limit.retryAfter } });
         }
 
         // 交给 better-auth 的 username 登录端点（真正校验密码并签发会话）
@@ -96,7 +97,7 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
 
         if (!res.ok) {
           // 不区分「用户不存在」与「密码错误」，避免账号枚举
-          return c.json({ error: '用户名或密码错误' }, 401);
+          return apiError(c, 'E_BAD_CREDENTIALS');
         }
 
         const data = (await res.json().catch(() => ({}))) as {
@@ -116,7 +117,7 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
 
     /* ---------------- POST /api/logout ---------------- */
     .post(authSpec.logout.path, requireAuth(auth, 'user'), async (c) => {
-      if (!auth) return c.json({ error: '鉴权服务未就绪' }, 503);
+      if (!auth) return apiError(c, 'E_AUTH_NOT_READY');
 
       // ⚠️ 只透传 Cookie，不要原样转发 c.req.raw.headers：
       // 原请求带 content-length 而这里新构造的 Request 若不带 body，会让 better-auth

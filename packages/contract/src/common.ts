@@ -9,19 +9,25 @@ import { z } from 'zod';
 export const IsoDateTime = z
   .string()
   .min(1)
-  .refine((s) => !Number.isNaN(Date.parse(s)), { message: '必须是合法 ISO 时间字符串' });
+  .refine((s) => !Number.isNaN(Date.parse(s)), { message: 'Not a valid ISO time string' });
 export type IsoDateTime = z.infer<typeof IsoDateTime>;
 
 /** 资源 ID：响应里一律以字符串形态下发的数字 ID。 */
-export const IdSchema = z.string().regex(/^\d+$/, 'ID 必须为纯数字字符串');
+export const IdSchema = z.string().regex(/^\d+$/, 'ID must be a numeric string');
 export type Id = z.infer<typeof IdSchema>;
 
-/** 统一错误响应（服务端 `classifyError` 输出）。 */
+/**
+ * 统一错误响应。
+ *
+ * - `error`：稳定错误码（见 `errors.ts`），前端按码查词典；透传上游异常时也允许直接放英文原文。
+ * - `message`：英文说明，服务端日志与调试用，界面不直接依赖它。
+ * - `params`：词典插值需要的结构化数据（如 `retryAfter`、冲突频道名）。
+ */
 export const ApiErrorSchema = z.object({
   error: z.string(),
   message: z.string().optional(),
   status: z.number().int(),
-  code: z.string().optional(),
+  params: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
 });
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 

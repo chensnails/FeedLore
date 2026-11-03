@@ -44,7 +44,7 @@ export function AboutPane() {
     try {
       const res = await S().apiFetch('/api/version/check', { method: 'POST' });
       const d = await res.json().catch(() => ({}));
-      if (!d.ok) throw new Error(d.error || ('HTTP ' + res.status));
+      if (!d.ok) throw new Error(S().errText(d, 'HTTP ' + res.status));
       if (d.hasUpdate) {
         setResult({ kind: 'upd', latest: d.latest, current: d.current, releaseUrl: d.releaseUrl || '' });
       } else {
@@ -70,7 +70,7 @@ export function AboutPane() {
     try {
       const res = await S().apiFetch('/api/update', { method: 'POST' });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok || d.ok === false) throw new Error(d.error || ('HTTP ' + res.status));
+      if (!res.ok || d.ok === false) throw new Error(S().errText(d, 'HTTP ' + res.status));
     } catch (err) {
       setUpdating(false);
       S().toast('更新失败：' + String((err && err.message) || err), false);

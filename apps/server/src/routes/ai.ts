@@ -13,7 +13,6 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import { and, eq } from 'drizzle-orm';
 import { feeds, userLlm, users, type Db } from '@feedlore/db';
@@ -30,6 +29,7 @@ import {
   type ResolvedLlm,
 } from '@feedlore/ai';
 import { assertResponse, BadRequest } from '../lib/validate';
+import { apiError, ApiException, apiErrorBody, apiErrorKey } from '../lib/apiError';
 import { assertPublicHost, safeFetch } from '../lib/net';
 import { userDigest, userLayout } from '../lib/prefs';
 import { resolveDigestScope } from '../lib/digest';
@@ -70,7 +70,7 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!r.success) throw new BadRequest('POST /api/digest/test-llm', r.error.issues);
       }),
       async (c) => {
-        if (!db) return c.json({ ok: false, error: '数据库未就绪' });
+        if (!db) return c.json({ ok: false, error: apiErrorBody('E_DB_NOT_READY').error });
         const uid = c.get('user').id;
         const body = c.req.valid('json') as { llm?: Partial<LlmConfig> };
 
@@ -84,7 +84,7 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
         if (typeof body.llm?.thinking === 'boolean') llm.thinking = body.llm.thinking;
 
         if (!llm.baseUrl || !llm.apiKey || !llm.model) {
-          return c.json({ ok: false, error: '模型未配置完整：地址、API Key、模型名都要在本账号填写后才能测试' });
+          return c.json({ ok: false, error: apiErrorBody('E_MODEL_INCOMPLETE').error });
         }
 
         /* 「测试连接」曾是这个项目最直接的 SSRF 证据：把地址填成本站的 /api/session，
@@ -92,7 +92,12 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
         try {
           await assertPublicHost(llm.baseUrl);
         } catch (e) {
-          return c.json({ ok: false, error: '模型地址不可用：' + ((e as Error)?.message ?? String(e)) });
+          return c.json({
+            ok: false,
+            error: apiErrorKey(
+              new ApiException('E_MODEL_URL_UNREACHABLE', { detail: (e as Error)?.message ?? String(e) }),
+            ),
+          });
         }
 
         const payload = assertResponse(
@@ -115,7 +120,7 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
     .get(aiSpec.get.path, requireAuth(auth, 'user'), async (c) => {
       const raw = c.req.query('date') ?? '';
       const date = raw || shanghaiDate();
-      if (!isRealDate(date)) throw new HTTPException(400, { message: '日期不合法，应为 YYYY-MM-DD 的真实日期' });
+      if (!isRealDate(date)) throw new ApiException('E_DATE_INVALID');
       if (!db) return c.json({ date, digest: null });
 
       const digest = await readDigest(db, c.get('user').id, date);
@@ -130,20 +135,20 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!r.success) throw new BadRequest('POST /api/digest/generate', r.error.issues);
       }),
       async (c) => {
-        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
         const uid = c.get('user').id;
         const body = c.req.valid('json');
 
         const [userRow] = await db.select({ prefs: users.prefs }).from(users).where(eq(users.id, uid)).limit(1);
-        if (!userRow) return c.json({ error: '用户不存在' }, 401);
+        if (!userRow) return apiError(c, 'E_USER_NOT_FOUND', { status: 401 });
 
         // 账号自己关掉了日报：手动生成也一并挡掉，别留一条绕过开关烧额度的路
         if (userLayout(userRow.prefs).digestEnabled === false) {
-          throw new HTTPException(400, { message: '日报已在本账号关闭。要在「设置 · 日报」里重新开启才能生成。' });
+          throw new ApiException('E_DIGEST_DISABLED');
         }
 
         const date = (body.date ?? '').trim() || shanghaiDate();
-        if (!isRealDate(date)) throw new HTTPException(400, { message: '日期不合法，应为 YYYY-MM-DD 的真实日期' });
+        if (!isRealDate(date)) throw new ApiException('E_DATE_INVALID');
 
         const cfg = userDigest(userRow.prefs);
         const secret = await getCryptoSecret(db);
@@ -154,7 +159,7 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
           try {
             await assertPublicHost(llm.baseUrl);
           } catch (e) {
-            throw new HTTPException(400, { message: '模型地址不可用：' + ((e as Error)?.message ?? String(e)) });
+            throw new ApiException('E_MODEL_URL_UNREACHABLE', { detail: (e as Error)?.message ?? String(e) });
           }
         }
 

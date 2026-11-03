@@ -27,7 +27,7 @@ export const core = {
   cycleTheme: S.cycleTheme,
   scrollTop: () => S.scrollActiveTop(U.prefersReducedMotion() ? 'auto' : 'smooth'),
   // —— 设置弹层 / 外观 / 关于（v1.3.0 起 React 化） ——
-  apiFetch: U.apiFetch, httpError: U.httpError, isAdmin: S.isAdmin, isReadonly: S.isReadonly, isWritable: S.isWritable,
+  apiFetch: U.apiFetch, httpError: U.httpError, errText: U.errText, isAdmin: S.isAdmin, isReadonly: S.isReadonly, isWritable: S.isWritable,
   toast: U.toast, confirm: U.confirm,
   // —— 覆盖层（v2.1.0 起 React 化，组件 src/ui/Overlays.jsx） ——
   getToastState: () => U.toastState,

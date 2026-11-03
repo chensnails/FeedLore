@@ -81,7 +81,7 @@ async function detectV1(url: string): Promise<boolean> {
     return await isV1Schema(pool);
   } catch (e) {
     // 连不上时保持原有行为：进程照常启动，健康检查报 db.ready=false
-    warn(`探测 ${dbNameOf(url)} 失败（${(e as Error).message}）：按普通 v2 站点启动`);
+    warn(`Probe of ${dbNameOf(url)} failed (${(e as Error).message}): starting as a plain v2 site`);
     return false;
   } finally {
     await pool.end().catch(() => {});
@@ -99,13 +99,13 @@ async function detectV1(url: string): Promise<boolean> {
  */
 async function snapshotSource(src: string): Promise<void> {
   if (process.env.UPGRADE_SKIP_BACKUP === '1') {
-    log('已跳过 1.x 库快照（UPGRADE_SKIP_BACKUP=1）');
+    log('Skipped the 1.x database snapshot (UPGRADE_SKIP_BACKUP=1)');
     return;
   }
   const source = dbNameOf(src);
   const backup = `${source}_backup`;
   if (!isIdentifier(source) || !isIdentifier(backup)) {
-    warn(`库名 ${source} 含特殊字符，跳过快照；回滚前请自行 pg_dump`);
+    warn(`Database name ${source} contains special characters, skipping the snapshot; run pg_dump yourself before rolling back`);
     return;
   }
 
@@ -113,17 +113,17 @@ async function snapshotSource(src: string): Promise<void> {
   try {
     const found = await admin.query('select 1 from pg_database where datname = $1', [backup]);
     if (found.rowCount) {
-      log(`快照库 ${backup} 已存在，跳过`);
+      log(`Snapshot database ${backup} already exists, skipping`);
       return;
     }
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         await admin.query(`create database "${backup}" template "${source}"`);
-        log(`已创建 1.x 库快照 ${backup}（原库只读拷贝，回退时数据不丢）`);
+        log(`Created 1.x snapshot ${backup} (read-only copy of the source; a rollback loses no data)`);
         return;
       } catch (e) {
         if (attempt === 3) {
-          warn(`快照创建失败（${(e as Error).message}）：继续升级，建议随后自行 pg_dump 备份 ${source}`);
+          warn(`Snapshot failed (${(e as Error).message}): continuing the upgrade; run pg_dump to back up ${source} afterwards`);
           return;
         }
         await new Promise((r) => setTimeout(r, 2000));
@@ -146,19 +146,19 @@ function resolveTargetUrl(src: string): string {
 
 async function prepareTarget(targetUrl: string): Promise<void> {
   if (process.env.V2_DATABASE_URL?.trim()) {
-    log('使用 V2_DATABASE_URL 指定的目标库，跳过自动建库');
+    log('Using the target database from V2_DATABASE_URL, skipping automatic creation');
     return;
   }
   const name = dbNameOf(targetUrl);
   if (!isIdentifier(name)) {
-    throw new Error(`目标库名不合法：${name}（只允许字母、数字、下划线；可用 V2_DB_NAME 改名）`);
+    throw new Error(`Invalid target database name: ${name} (letters, digits and underscores only; rename it with V2_DB_NAME)`);
   }
 
   const admin = createPool(withDb(targetUrl, 'postgres'));
   try {
     const found = await admin.query('select 1 from pg_database where datname = $1', [name]);
     if (!found.rowCount) {
-      log(`创建数据库 ${name}`);
+      log(`Creating database ${name}`);
       await admin.query(`create database "${name}"`);
     }
     // 1.x 的 Postgres 容器时区是 Asia/Shanghai；库级时区不钉住，
@@ -166,9 +166,9 @@ async function prepareTarget(targetUrl: string): Promise<void> {
     await admin.query(`alter database "${name}" set timezone to 'UTC'`);
   } catch (e) {
     throw new Error(
-      `准备目标库 ${name} 失败：${(e as Error).message}\n`
-        + '  → 数据库账号需要 CREATEDB 权限；外部托管数据库请先手动建库并授权，'
-        + '或在环境变量里用 V2_DATABASE_URL 直接指定目标库',
+      `Failed to prepare target database ${name}: ${(e as Error).message}\n`
+        + '  → the database account needs CREATEDB privileges; for a managed database, create it manually and grant access first, '
+        + 'or point V2_DATABASE_URL at the target database',
     );
   } finally {
     await admin.end().catch(() => {});
@@ -184,8 +184,8 @@ function runStep(title: string, args: string[], extraEnv: Record<string, string>
     stdio: 'inherit',
     env: { ...process.env, TZ: 'UTC', ...extraEnv },
   });
-  if (r.error) throw new Error(`${title} 无法启动：${r.error.message}`);
-  if (r.status !== 0) throw new Error(`${title} 失败（退出码 ${r.status}）`);
+  if (r.error) throw new Error(`${title} could not start: ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`${title} failed (exit code ${r.status})`);
 }
 
 /**
@@ -199,21 +199,21 @@ function runStep(title: string, args: string[], extraEnv: Record<string, string>
  * 本来还能跑的站点弄成起不来。只把后果和手工命令喊进日志。
  */
 function migrateV2(url: string): void {
-  log('数据库结构迁移（drizzle，幂等）');
+  log('Database schema migration (drizzle, idempotent)');
   const r = spawnSync('pnpm', ['--filter', '@feedlore/db', 'migrate'], {
     cwd: REPO_ROOT,
     stdio: 'inherit',
     env: { ...process.env, TZ: 'UTC', DATABASE_URL: url },
   });
   if (r.error) {
-    warn(`结构迁移无法启动（${r.error.message}）：请手动执行 pnpm --filter @feedlore/db migrate 后重启`);
+    warn(`Schema migration could not start (${r.error.message}): run pnpm --filter @feedlore/db migrate manually, then restart`);
     return;
   }
   if (r.status !== 0) {
-    warn(`结构迁移失败（退出码 ${r.status}）：缺新列时接口会报错，请手动执行 pnpm --filter @feedlore/db migrate 后重启`);
+    warn(`Schema migration failed (exit code ${r.status}): endpoints will break on missing columns, run pnpm --filter @feedlore/db migrate manually, then restart`);
     return;
   }
-  log('数据库结构已是最新');
+  log('Database schema is up to date');
 }
 
 /* ============================ 4. 校验 ============================ */
@@ -243,11 +243,11 @@ async function verify(legacyUrl: string, targetUrl: string): Promise<Counts> {
       feeds: await countOf(target, 'feeds'),
       entries: await countOf(target, 'entries'),
     };
-    log(`用户 ${l.users}→${v.users} / 频道 ${l.feeds}→${v.feeds} / 条目 ${l.entries}→${v.entries}`);
+    log(`users ${l.users}→${v.users} / feeds ${l.feeds}→${v.feeds} / entries ${l.entries}→${v.entries}`);
 
-    if (v.users < l.users) throw new Error(`用户数少于 1.x（${v.users} < ${l.users}）：迁移不完整`);
-    if (v.feeds < l.feeds) throw new Error(`频道数少于 1.x（${v.feeds} < ${l.feeds}）：迁移不完整`);
-    if (v.entries < l.entries) throw new Error(`条目数少于 1.x（${v.entries} < ${l.entries}）：迁移不完整`);
+    if (v.users < l.users) throw new Error(`Fewer users than in 1.x (${v.users} < ${l.users}): migration is incomplete`);
+    if (v.feeds < l.feeds) throw new Error(`Fewer feeds than in 1.x (${v.feeds} < ${l.feeds}): migration is incomplete`);
+    if (v.entries < l.entries) throw new Error(`Fewer entries than in 1.x (${v.entries} < ${l.entries}): migration is incomplete`);
 
     const cred = (await target.query<{ n: number }>(
       `select count(*)::int as n from accounts where provider_id = 'credential' and coalesce(password, '') <> ''`,
@@ -255,8 +255,8 @@ async function verify(legacyUrl: string, targetUrl: string): Promise<Counts> {
     const legacyPw = (await legacy.query<{ n: number }>(
       `select count(*)::int as n from users where password_hash is not null and password_hash <> ''`,
     )).rows[0]?.n ?? 0;
-    if (cred < legacyPw) throw new Error(`有 1.x 账号没有写入登录凭据（${cred} < ${legacyPw}）：升级后会登不进来`);
-    log(`凭据齐全：${cred} 个（1.x 密码原样可登录，首次登录自动升级哈希）`);
+    if (cred < legacyPw) throw new Error(`Some 1.x accounts have no login credential (${cred} < ${legacyPw}): they would not be able to sign in after the upgrade`);
+    log(`Credentials complete: ${cred} accounts (1.x passwords still work as-is; hashes upgrade on first sign-in)`);
 
     const [ls] = (await legacy.query<{ v: string | null }>(
       `select value::text as v from settings where key = 'cryptoSecret'`,
@@ -264,8 +264,8 @@ async function verify(legacyUrl: string, targetUrl: string): Promise<Counts> {
     const [vs] = (await target.query<{ v: string | null }>(
       `select value::text as v from settings where key = 'cryptoSecret'`,
     )).rows;
-    if (ls?.v && ls.v !== vs?.v) throw new Error('站点主密钥 cryptoSecret 未正确迁移：模型 Key 会解不开');
-    if (ls?.v) log('站点主密钥：一致（模型 Key 可继续解密）');
+    if (ls?.v && ls.v !== vs?.v) throw new Error('Site master key cryptoSecret was not migrated correctly: model keys cannot be decrypted');
+    if (ls?.v) log('Site master key: consistent (model keys still decrypt)');
 
     return v;
   } finally {
@@ -311,7 +311,7 @@ async function ensureDefaultAdmin(): Promise<void> {
     const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(users);
     count = row?.n ?? 0;
   } catch (e) {
-    warn(`数据库尚未就绪（可能还没跑结构迁移），跳过初始管理员：${(e as Error)?.message ?? e}`);
+    warn(`Database is not ready yet (the schema migration may not have run), skipping the initial admin: ${(e as Error)?.message ?? e}`);
     return;
   }
   if (count > 0) return;
@@ -334,15 +334,15 @@ async function ensureDefaultAdmin(): Promise<void> {
     });
     await db.update(users).set({ role: 'admin' }).where(eq(users.username, username));
   } catch (e) {
-    warn(`创建初始管理员失败：${(e as Error)?.message ?? e}`);
+    warn(`Failed to create the initial admin: ${(e as Error)?.message ?? e}`);
     return;
   }
 
   if (!configuredPassword) {
-    warn(`空站点：已创建初始管理员 ${username}，一次性密码：${password}`);
-    warn('该密码只在本次启动日志中出现一次，请立即登录并修改；下次部署可用 ADMIN_PASS 指定。');
+    warn(`Empty site: created initial admin ${username}, one-time password: ${password}`);
+    warn('This password appears in this startup log only once; sign in and change it now. Set ADMIN_PASS for the next deployment.');
   } else {
-    log(`空站点：已用 ADMIN_USER=${username} 创建管理员`);
+    log(`Empty site: created the admin with ADMIN_USER=${username}`);
   }
 }
 
@@ -364,27 +364,27 @@ export async function bootstrap(): Promise<void> {
 
   const target = resolveTargetUrl(source);
   if (target === source) {
-    throw new Error('V2_DATABASE_URL / V2_DB_NAME 指向了 1.x 库本身：v2 必须写到新库');
+    throw new Error('V2_DATABASE_URL / V2_DB_NAME points at the 1.x database itself: v2 must write to a new database');
   }
-  log(`检测到 1.x 数据库 ${dbNameOf(source)} → 目标库 ${dbNameOf(target)}`);
+  log(`Detected 1.x database ${dbNameOf(source)} → target database ${dbNameOf(target)}`);
 
   if (await isUpgraded(target)) {
     process.env.DATABASE_URL = target;
     migrateV2(target);
     await ensureAuthSecret(target);
     await ensureDefaultAdmin();
-    log('v2 库已就绪（命中升级标记），直接使用');
+    log('v2 database is ready (upgrade marker found), using it directly');
     return;
   }
 
   const started = Date.now();
   await snapshotSource(source);
   await prepareTarget(target);
-  runStep('① 数据库结构迁移（drizzle，幂等）', ['--filter', '@feedlore/db', 'migrate'], {
+  runStep('① database schema migration (drizzle, idempotent)', ['--filter', '@feedlore/db', 'migrate'], {
     DATABASE_URL: target,
   });
   await ensureAuthSecret(target);
-  runStep('② 1.x 数据迁移（migrate:legacy，幂等）', ['--filter', '@feedlore/server', 'migrate:legacy'], {
+  runStep('② 1.x data migration (migrate:legacy, idempotent)', ['--filter', '@feedlore/server', 'migrate:legacy'], {
     LEGACY_DATABASE_URL: source,
     DATABASE_URL: target,
   });
@@ -393,5 +393,5 @@ export async function bootstrap(): Promise<void> {
 
   process.env.DATABASE_URL = target;
   await ensureDefaultAdmin();
-  log(`自举完成（${((Date.now() - started) / 1000).toFixed(0)}s）：v2 使用 ${dbNameOf(target)}`);
+  log(`Bootstrap complete (${((Date.now() - started) / 1000).toFixed(0)}s): v2 uses ${dbNameOf(target)}`);
 }

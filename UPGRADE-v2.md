@@ -27,10 +27,10 @@ Watchtower 会：
 
 **要等多久 / 期间能访问吗**：不能。Watchtower 先停旧容器再起新容器，从开始重建到自举结束
 （通常几十秒到几分钟，取决于文章数）站点是打不开的，之后自动恢复。容器日志里看到
-`自举完成` 就是好了：
+`Bootstrap complete` 就是好了：
 
 ```bash
-docker logs -f feedlore        # 看到 "[bootstrap] 自举完成" 即可
+docker logs -f feedlore        # 看到 "[bootstrap] Bootstrap complete" 即可
 docker logs feedlore-watchtower | tail -20
 ```
 
@@ -107,7 +107,7 @@ docker compose -f docker-compose.v2.release.yml logs -f upgrade
 3. `upgrade` 退出码 0 之后，`app` 才替换 1.x 的应用容器。
 
 **这期间 1.x 一直在线**，停机只有最后重建应用容器的几秒。成功日志：
-`升级完成：v2 数据已就绪，应用容器可以启动`（全新安装是 `按全新安装处理，跳过数据迁移`）。
+`Upgrade complete: v2 data is ready, the app container can start`（全新安装是 `treating it as a fresh install, skipping the data migration`）。
 
 ### 5. 验证
 
@@ -128,7 +128,7 @@ docker compose -f docker-compose.v2.release.yml up -d
 会自动创建初始管理员 `admin`，并生成一次性随机密码，**只在当次启动日志中打印一次**：
 
 ```bash
-docker compose -f docker-compose.v2.release.yml logs app | grep 一次性密码
+docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time password'
 ```
 
 登录后请立即到「设置 → 账号」修改密码。想自己指定初始口令，就在首次启动前设
@@ -155,7 +155,7 @@ docker compose -f docker-compose.v2.release.yml logs app | grep 一次性密码
 
 | 现象 | 原因与处理 |
 | --- | --- |
-| 自动升级后站点打不开 | 自举还在跑（大库要几分钟），`docker logs -f feedlore` 等 `自举完成`；若反复重启，日志里会有具体失败原因 |
+| 自动升级后站点打不开 | 自举还在跑（大库要几分钟），`docker logs -f feedlore` 等 `Bootstrap complete`；若反复重启，日志里会有具体失败原因 |
 | 登录后马上又回到未登录 / 403 | 反代改写了 Host：补 `AUTH_BASE_URL`；HTTPS 下没设 `AUTH_SECURE_COOKIES=1` 或纯 HTTP 反而设了 `1` |
 | `upgrade` 失败退出 | `logs upgrade` 看原因。失败时 `app` 不会启动，1.x 继续服务；修好后重新 `up -d`（幂等） |
 | 建库报权限错误 | 数据库用户需要 `CREATEDB` 权限（官方镜像的 `feedlore` 用户有）；外部托管库请先手动建库，或用 `V2_DATABASE_URL` 指定目标库 |

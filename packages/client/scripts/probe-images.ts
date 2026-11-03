@@ -22,7 +22,7 @@ const LIMIT = Math.max(1, Number(process.env.LIMIT) || 30);
 const CONCURRENCY = Math.min(10, Math.max(1, Number(process.env.CONCURRENCY) || 4));
 
 if (!PASS) {
-  console.error('缺少 ADMIN_PASS');
+  console.error('Missing ADMIN_PASS');
   process.exit(2);
 }
 

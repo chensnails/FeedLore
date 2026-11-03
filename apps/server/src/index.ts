@@ -31,7 +31,7 @@ function scheduleImagePrune(database: Db): void {
   const run = (): void => {
     void pruneImageCache(database)
       .then((n) => {
-        if (n > 0) console.log(`[img] 清理超期图片缓存 ${n} 条`);
+        if (n > 0) console.log(`[img] pruned ${n} expired image cache rows`);
       })
       .catch(() => { /* pruneImageCache 内部已记录 */ });
   };
@@ -49,22 +49,22 @@ async function main(): Promise<void> {
   if (databaseUrl) {
     try {
       db = createDb(databaseUrl);
-      console.log('[db] 已初始化连接池');
+      console.log('[db] connection pool initialized');
     } catch (e) {
-      console.error('[db] 初始化失败：', (e as Error)?.message ?? e);
+      console.error('[db] initialization failed:', (e as Error)?.message ?? e);
     }
   } else {
-    console.warn('[boot] 未设置 DATABASE_URL —— 数据类端点将返回 503');
+    console.warn('[boot] DATABASE_URL is not set — data endpoints will return 503');
   }
 
   if (db) {
     try {
       auth = getAuth(db);
     } catch (e) {
-      console.error('[auth] better-auth 初始化失败：', (e as Error)?.message ?? e);
+      console.error('[auth] better-auth initialization failed:', (e as Error)?.message ?? e);
     }
   } else {
-    console.warn('[boot] 数据库未就绪 —— better-auth 未启动，鉴权端点返回 503');
+    console.warn('[boot] database not ready — better-auth is not running, auth endpoints return 503');
   }
 
   const app = createApp({ db, auth });
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
    * 否则进程刚起的几分钟里会静默用 env 默认值（管理员改过的配置看起来没生效）。 */
   if (db) {
     void reloadSource(db).then((s) => {
-      if (s) console.log(`[settings] 采集参数：刷新 ${s.refreshMinutes} 分钟 / 并发 ${s.concurrency} / 保留 ${s.keepPerFeed} 条`);
+      if (s) console.log(`[settings] fetch parameters: refresh ${s.refreshMinutes} min / concurrency ${s.concurrency} / keep ${s.keepPerFeed} entries per feed`);
     });
   }
 
@@ -95,23 +95,23 @@ async function main(): Promise<void> {
   if (undiciVersionMismatch()) {
     const v = undiciVersions();
     console.warn(
-      `[net] ⚠️ undici 版本不匹配（内置 ${v.builtin} / 依赖 ${v.installed}）：`
-      + 'IP 钉定会失效，请把 apps/server 的 undici 锁到与 Node 内置一致的大版本',
+      `[net] ⚠️ undici version mismatch (built-in ${v.builtin} / dependency ${v.installed}): `
+      + 'IP pinning will break, pin undici in apps/server to the same major version as the Node built-in',
     );
   } else {
     const v = undiciVersions();
-    console.log(`[net] undici 对齐：内置 ${v.builtin} / 依赖 ${v.installed}`);
+    console.log(`[net] undici aligned: built-in ${v.builtin} / dependency ${v.installed}`);
   }
 
   serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
-    console.log(`[v2] FeedLore ${APP_VERSION} 已启动 → http://${HOST}:${info.port}`);
+    console.log(`[v2] FeedLore ${APP_VERSION} started → http://${HOST}:${info.port}`);
     console.log(
-      `[v2] 端点：GET /api/health、GET /api/session、POST /api/login、POST /api/logout、GET /api/feeds(user)`,
+      `[v2] endpoints: GET /api/health, GET /api/session, POST /api/login, POST /api/logout, GET /api/feeds(user)`,
     );
   });
 }
 
 main().catch((e) => {
-  console.error('[v2] 启动失败：', (e as Error)?.stack ?? e);
+  console.error('[v2] startup failed:', (e as Error)?.stack ?? e);
   process.exit(1);
 });

@@ -140,10 +140,25 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       }
     });
 
-    await t.test('未知路径：404 + 统一错误体', async () => {
+    await t.test('未知路径：404 + 错误码（不是中文文案）', async () => {
       const res = await call('/api/does-not-exist');
       assert.equal(res.status, 404);
-      assert.deepEqual(await res.json(), { error: '接口不存在' });
+      assert.deepEqual(await res.json(), {
+        error: 'E_ROUTE_NOT_FOUND',
+        message: 'Endpoint not found',
+        status: 404,
+      });
+    });
+
+    await t.test('错误体一律是「码 + 英文说明」，界面语言由前端词典负责', async () => {
+      /* 这一条守的是整个 i18n 边界：服务端任何形式的失败都不许把中文塞进响应，
+       * 否则前端词典就失去了唯一入口，同一句话会在两处各自演化。 */
+      const res = await call('/api/entries'); // 未登录 → 中间件拒绝
+      assert.equal(res.status, 401);
+      const body = (await res.json()) as { error: string; message: string };
+      assert.equal(body.error, 'E_UNAUTHORIZED');
+      assert.equal(body.message, 'Not signed in');
+      assert.doesNotMatch(`${body.error} ${body.message}`, /[一-鿿]/, '响应里不应出现中文');
     });
 
     /* ---------------------------------------------------------------- 鉴权链路 */
@@ -154,7 +169,7 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
        * 但 /api/login 走的是进程内 auth.handler，所以「登录能用」完全掩盖了它。 */
       const res = await call('/api/auth/get-session');
       assert.equal(res.status, 200, 'get-session 应为 200；404 说明 /api/auth/* 又被路由吞了');
-      assert.notDeepEqual(await res.json(), { error: '接口不存在' });
+      assert.notEqual((await res.json() as { error?: string }).error, 'E_ROUTE_NOT_FOUND');
     });
 
     await t.test('直连 better-auth 登录端点被拒（登录只能走 /api/login 的限流入口）', async () => {
@@ -182,7 +197,11 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         json: { email, password, name: username, username },
       });
       assert.equal(res.status, 403);
-      assert.deepEqual(await res.json(), { error: '未开放注册' });
+      assert.deepEqual(await res.json(), {
+        error: 'E_SIGNUP_DISABLED',
+        message: 'Sign-up is disabled',
+        status: 403,
+      });
     });
 
     await t.test('注册 → 登录 → 会话（better-auth 适配器真的对得上）', async () => {
@@ -477,7 +496,7 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     try {
       await db.execute(sql`delete from users where username like 'itest\_%' or username = ${username}`);
     } catch (e) {
-      console.error('[itest] 清理失败（不影响测试结论，但请手工检查测试库）：', (e as Error).message);
+      console.error('[itest] cleanup failed (test verdict is unaffected, but check the test database manually):', (e as Error).message);
     }
   }
 });

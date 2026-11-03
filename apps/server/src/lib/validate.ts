@@ -8,24 +8,23 @@
  */
 
 import type { z } from 'zod';
+import { ApiException } from './apiError';
 
 /** 契约违规（响应侧）= 服务端缺陷。 */
-export class ContractViolation extends Error {
-  readonly status = 500;
+export class ContractViolation extends ApiException {
   readonly issues: unknown;
   constructor(what: string, issues: unknown) {
-    super(`响应不符合契约：${what}`);
+    super('E_CONTRACT_VIOLATION', { detail: what });
     this.name = 'ContractViolation';
     this.issues = issues;
   }
 }
 
 /** 请求不符合契约 = 客户端问题。 */
-export class BadRequest extends Error {
-  readonly status = 400;
+export class BadRequest extends ApiException {
   readonly issues: unknown;
   constructor(what: string, issues: unknown) {
-    super(`请求不符合契约：${what}`);
+    super('E_BAD_REQUEST', { detail: what });
     this.name = 'BadRequest';
     this.issues = issues;
   }
@@ -44,7 +43,7 @@ export function assertResponse<S extends z.ZodType>(
   const r = schema.safeParse(data);
   if (!r.success) {
     const issues = issuesOf(r.error);
-    console.error('[contract] 响应校验失败', what, JSON.stringify(issues));
+    console.error('[contract] response validation failed', what, JSON.stringify(issues));
     throw new ContractViolation(what, issues);
   }
   return r.data as z.infer<S>;

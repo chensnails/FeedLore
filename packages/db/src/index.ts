@@ -33,7 +33,7 @@ export function createPool(connectionString: string): pg.Pool {
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 8000,
   });
-  pool.on('error', (e) => console.error('[db] 空闲连接异常：', e?.message ?? e));
+  pool.on('error', (e) => console.error('[db] idle connection error:', e?.message ?? e));
   return pool;
 }
 

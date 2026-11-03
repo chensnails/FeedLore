@@ -372,7 +372,7 @@ export async function readDigest(db: Db, ownerId: string, date: string): Promise
   if (!row) return null;
   const parsed = DigestSchema.safeParse(row.payload);
   if (!parsed.success) {
-    console.error('[digest] 库里的日报格式不合法，按缺失处理：', parsed.error.issues[0]?.message);
+    console.error('[digest] the stored digest does not match the contract, treating it as missing:', parsed.error.issues[0]?.message);
     return null;
   }
   return parsed.data;

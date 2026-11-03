@@ -149,7 +149,7 @@ export function userLlmForStore(
 /** 模型地址补全到 `/chat/completions`（用户填 base 或完整路径都认）。 */
 export function llmEndpoint(baseUrl: string): string {
   const base = String(baseUrl || '').trim().replace(/\/+$/, '');
-  if (!base) throw new Error('未配置模型地址');
+  if (!base) throw new Error('Model base URL is not configured');
   if (/\/chat\/completions$/i.test(base)) return base;
   if (/\/v\d+$/i.test(base)) return base + '/chat/completions';
   return base + '/v1/chat/completions';
@@ -171,10 +171,10 @@ const clamp = (s: string, n: number): string => {
  */
 function cleanUpstreamError(text: string): string {
   const t = String(text ?? '').trim();
-  if (!t) return '上游返回空响应';
+  if (!t) return 'The upstream returned an empty response';
   if (/^<(!doctype|html|\?xml)/i.test(t)) {
     const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(t)?.[1]?.replace(/\s+/g, ' ').trim();
-    return title ? `返回 HTML 页面（${clamp(title, 60)}）` : '返回了 HTML 页面而不是 JSON';
+    return title ? `The upstream returned an HTML page (${clamp(title, 60)})` : 'The upstream returned an HTML page instead of JSON';
   }
   return clamp(t, 160);
 }
@@ -197,7 +197,7 @@ export const LLM_TIMEOUT_MS = 180_000;
  * 调一次 OpenAI 兼容接口，只取 `choices[0].message.content`。
  *
  * 思考链（`reasoning_content`）是过程产物，日报不需要留档，所以丢掉。
- * 失败信息统一收敛成中文短句：上游的错误体常常是一大坨 HTML 或 JSON，
+ * 失败信息统一收敛成英文短句：上游的错误体常常是一大坨 HTML 或 JSON，
  * 原样抛给用户只会让人更困惑。
  */
 export async function chat(
@@ -207,7 +207,7 @@ export async function chat(
 ): Promise<string> {
   const { baseUrl, apiKey, model } = llm;
   if (!baseUrl || !apiKey || !model) {
-    throw new Error('模型未配置完整（地址 / Key / 模型名）——到「设置 · 模型」补齐');
+    throw new Error('Model is not configured: base URL, API key and model name are all required — complete them in Settings · Model');
   }
 
   const temperature =
@@ -241,22 +241,22 @@ export async function chat(
     if (!resp.ok) {
       // 401/403 单独说清楚：这类错误 90% 是 Key 失效，让用户去改 Key 而不是查网络
       if (resp.status === 401 || resp.status === 403) {
-        throw new Error(`模型拒绝鉴权（${resp.status}）：Key 无效或无权限`);
+        throw new Error(`The model rejected authentication (${resp.status}): the API key is invalid or lacks permission`);
       }
-      throw new Error(`模型返回 ${resp.status}：${cleanUpstreamError(text)}`);
+      throw new Error(`The model returned ${resp.status}: ${cleanUpstreamError(text)}`);
     }
 
     let data: { choices?: Array<{ message?: { content?: string } }> };
     try {
       data = JSON.parse(text) as typeof data;
     } catch {
-      throw new Error('模型响应不是合法 JSON');
+      throw new Error('The model response is not valid JSON');
     }
     const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error('模型响应缺少 content');
+    if (!content) throw new Error('The model response has no content');
     return content;
   } catch (e) {
-    if ((e as Error)?.name === 'AbortError') throw new Error('模型请求超时');
+    if ((e as Error)?.name === 'AbortError') throw new Error('The model request timed out');
     throw e;
   } finally {
     clearTimeout(timer);
@@ -273,7 +273,7 @@ export function extractJson(text: string): Record<string, unknown> {
     .trim();
   const start = t.indexOf('{');
   const end = t.lastIndexOf('}');
-  if (start < 0 || end <= start) throw new Error('模型未返回 JSON');
+  if (start < 0 || end <= start) throw new Error('The model returned no JSON');
   return JSON.parse(t.slice(start, end + 1)) as Record<string, unknown>;
 }
 

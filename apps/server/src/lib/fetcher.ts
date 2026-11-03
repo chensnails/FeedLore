@@ -19,6 +19,8 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { entries, feeds, users, type Db } from '@feedlore/db';
 import { safeFetch } from './net';
+import { apiErrorBody, apiErrorKey } from './apiError';
+import { API_ERROR_DEFAULTS, type ApiErrorCode } from '@feedlore/contract';
 import { normalizeItem, parseFeed, type NormalizedItem } from './rss';
 import { applyFilters } from './filter';
 import { classify, notifyRuleNames, type WatchVerdict } from './watch';
@@ -56,11 +58,22 @@ function retryableStatus(status: number): boolean {
   return status >= 500 || status === 408 || status === 425 || status === 429;
 }
 
+/**
+ * 抓取失败。`code` 是对外稳定标识，`message` 由码表给出（英文，只在日志里出现），
+ * 落库与下发一律用 `apiErrorKey(e)`：`E_CODE` 或 `E_CODE:补充信息`。
+ */
 class FeedError extends Error {
+  readonly code: ApiErrorCode;
+  readonly detail?: string;
   status?: number;
   permanent?: boolean;
-  constructor(message: string, opts: { status?: number; permanent?: boolean } = {}) {
-    super(message);
+  constructor(
+    code: ApiErrorCode,
+    opts: { detail?: string | number; status?: number; permanent?: boolean } = {},
+  ) {
+    super(apiErrorBody(code, { detail: opts.detail }).message);
+    this.code = code;
+    this.detail = opts.detail === undefined || opts.detail === null ? undefined : String(opts.detail);
     this.status = opts.status;
     this.permanent = opts.permanent;
   }
@@ -102,14 +115,14 @@ export async function fetchFeedRaw(
 
       if (!resp.ok) {
         const status = resp.status;
-        throw new FeedError(`HTTP ${status}`, { status, permanent: !retryableStatus(status) });
+        throw new FeedError('E_FETCH_HTTP_STATUS', { detail: status, status, permanent: !retryableStatus(status) });
       }
 
       const len = Number(resp.headers.get('content-length') ?? 0);
-      if (len && len > MAX_BYTES) throw new FeedError('响应体过大', { permanent: false });
+      if (len && len > MAX_BYTES) throw new FeedError('E_FETCH_TOO_LARGE', { permanent: false });
 
       const buf = Buffer.from(await resp.arrayBuffer());
-      if (buf.length > MAX_BYTES) throw new FeedError('响应体过大', { permanent: false });
+      if (buf.length > MAX_BYTES) throw new FeedError('E_FETCH_TOO_LARGE', { permanent: false });
 
       // 统一按 UTF-8 解码；声明了 charset 的按声明来（不少中文源仍是 GBK）
       const ct = resp.headers.get('content-type') ?? '';
@@ -136,7 +149,7 @@ export async function fetchFeedRaw(
     } catch (e) {
       lastErr = e;
       if ((e as Error)?.name === 'AbortError') {
-        lastErr = new FeedError('抓取超时', { permanent: false });
+        lastErr = new FeedError('E_FETCH_TIMEOUT', { permanent: false });
       }
       const err = lastErr as FeedError;
       // 出网校验拒绝（内网地址 / 地址非法）属于配置错误，重试多少次都一样
@@ -145,14 +158,16 @@ export async function fetchFeedRaw(
       const permanent = err?.permanent === true;
       const msg = String(err?.message ?? err);
       const maybeTransient = err?.permanent === false
-        || /ECONN|EAI_|fetch failed|socket hang up|network|抓取超时|响应体过大/i.test(msg);
+        || err?.code === 'E_FETCH_TIMEOUT'
+        || err?.code === 'E_FETCH_TOO_LARGE'
+        || /ECONN|EAI_|fetch failed|socket hang up|network/i.test(msg);
       if (permanent || attempt >= RETRY_MAX || !maybeTransient) throw lastErr;
       await sleep(Math.round(RETRY_BASE_MS * RETRY_FACTOR ** (attempt - 1)));
     } finally {
       clearTimeout(timer);
     }
   }
-  throw lastErr ?? new FeedError('抓取失败');
+  throw lastErr ?? new FeedError('E_FETCH_FAILED');
 }
 
 export interface LoadedFeed {
@@ -186,7 +201,7 @@ export async function loadFeed(
   }
   const parsed = parseFeed(res.body ?? '');
   if (!parsed.items.length && !parsed.title) {
-    throw new FeedError('不是可识别的 RSS / Atom 内容', { permanent: true });
+    throw new FeedError('E_FETCH_NOT_FEED', { permanent: true });
   }
   return {
     notModified: false,
@@ -445,9 +460,9 @@ async function flushWatchNotify(db: Db, prefs: Map<string, Record<string, unknow
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(10000),
       });
-      if (!res.ok) console.error('[watch] webhook 返回', res.status);
+      if (!res.ok) console.error('[watch] webhook returned', res.status);
     } catch (e) {
-      console.error('[watch] webhook 失败：', (e as Error)?.message ?? e);
+      console.error('[watch] webhook delivery failed:', (e as Error)?.message ?? e);
     }
   }
 }
@@ -509,7 +524,7 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
           siteUrl: r.siteUrl,
           timeoutMs: Math.min(cfg.timeoutSeconds * 1000, 12_000),
         }).catch((e: unknown) => {
-          console.error('[rss] 全文抓取失败：', (e as Error)?.message ?? e);
+          console.error('[rss] full-text fetch failed:', (e as Error)?.message ?? e);
           return items;
         })
         : items;
@@ -523,7 +538,7 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
         const verdicts = classify(wRules, up.fresh);
         if (verdicts.length) {
           await markWatch(db, m.id, verdicts).catch((e: unknown) =>
-            console.error('[watch] 打标失败：', (e as Error)?.message ?? e),
+            console.error('[watch] failed to tag entries:', (e as Error)?.message ?? e),
           );
           const names = notifyRuleNames(wRules);
           for (const v of verdicts) {
@@ -557,7 +572,7 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
 
     return { url: key, notModified: false, added, total: r.items.length, filtered, feeds: members.length };
   } catch (e) {
-    const msg = String((e as Error)?.message ?? e).slice(0, 300);
+    const msg = apiErrorKey(e);
     const autoOff: Array<{ id: number; title: string }> = [];
 
     for (const m of members) {
@@ -567,7 +582,7 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
     }
     for (const f of autoOff) {
       await db.update(feeds).set({ enabled: false, updatedAt: new Date() }).where(eq(feeds.id, f.id)).catch(() => {});
-      console.log(`[rss] 频道连续失败 ${cfg.feedFailLimit} 次，已自动停用采集：${f.title}`);
+      console.log(`[rss] feed failed ${cfg.feedFailLimit} times in a row, collection auto-disabled: ${f.title}`);
     }
 
     return { url: key, error: msg, added: 0, feeds: members.length, autoDisabled: autoOff.length };
@@ -610,7 +625,7 @@ export async function pruneEntries(db: Db, cfg?: SourceConfig): Promise<number> 
 }
 
 /** 并发抓一批频道，抓完清理并汇总。手动「刷新全部」与定时 tick 都走这里。 */
-export async function refreshFeeds(db: Db, rows: FeedRow[], label = '抓取'): Promise<RefreshSummary> {
+export async function refreshFeeds(db: Db, rows: FeedRow[], label = 'manual'): Promise<RefreshSummary> {
   const startedAt = Date.now();
   // 站点参数每轮读一次快照（保存配置后立即失效，不需要重启进程）
   const cfg = await getSource(db);
@@ -665,14 +680,14 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = '抓取'): P
   };
 
   console.log(
-    `[rss] ${label}完成：${groups.size} 个 URL 组 / ${rows.length} 个订阅，新增 ${added} 条`
-    + (skipped ? `，跳过 ${skipped} 个` : '')
-    + (failed.length ? `，失败 ${failed.length} 个` : '')
-    + (autoDisabled ? `，连续失败自动停用 ${autoDisabled} 个` : '')
-    + (filtered ? `，按过滤规则丢弃 ${filtered} 条` : '')
-    + (watchExpired ? `，关注到期 ${watchExpired} 条` : '')
-    + (pruned ? `，清理 ${pruned} 条` : '')
-    + `，耗时 ${Date.now() - startedAt}ms`,
+    `[rss] refresh (${label}) done: ${groups.size} URL groups / ${rows.length} feeds, ${added} new entries`
+    + (skipped ? `, ${skipped} skipped` : '')
+    + (failed.length ? `, ${failed.length} failed` : '')
+    + (autoDisabled ? `, ${autoDisabled} auto-disabled after repeated failures` : '')
+    + (filtered ? `, ${filtered} dropped by filter rules` : '')
+    + (watchExpired ? `, ${watchExpired} watch tags expired` : '')
+    + (pruned ? `, ${pruned} pruned` : '')
+    + `, took ${Date.now() - startedAt}ms`,
   );
 
   return { at: lastRefreshAt, added, failed, skipped, autoDisabled, filtered, pruned, results };
@@ -742,7 +757,7 @@ export async function tickRefresh(db: Db): Promise<RefreshSummary | null> {
     const all = await db.select().from(feeds).where(eq(feeds.enabled, true));
     const due = dueFeeds(all);
     if (!due.length) return null;
-    return await refreshFeeds(db, due, '定时抓取');
+    return await refreshFeeds(db, due, 'scheduled');
   } finally {
     ticking = false;
   }
@@ -750,17 +765,17 @@ export async function tickRefresh(db: Db): Promise<RefreshSummary | null> {
 
 export function startScheduler(db: Db): void {
   if (!SCHEDULER_ENABLED) {
-    console.log('[rss] 定时抓取已禁用（REFRESH_DISABLED=1），只接受手动刷新');
+    console.log('[rss] scheduled refresh disabled (REFRESH_DISABLED=1), manual refresh only');
     return;
   }
   if (timer) clearInterval(timer);
   // 预热快照：首个 tick 不该因为「还没读过库」而用 env 默认值算间隔
   void getSource(db)
-    .then((cfg) => console.log(`[rss] 调度就绪：全局 ${cfg.refreshMinutes} 分钟，每分钟检查一次到期频道`))
-    .catch((e: unknown) => console.error('[rss] 读取采集参数失败：', (e as Error)?.message ?? e));
+    .then((cfg) => console.log(`[rss] scheduler ready: global interval ${cfg.refreshMinutes} min, due feeds checked every minute`))
+    .catch((e: unknown) => console.error('[rss] failed to read collection settings:', (e as Error)?.message ?? e));
   timer = setInterval(() => {
     void tickRefresh(db).catch((e: unknown) =>
-      console.error('[rss] 定时抓取失败：', (e as Error)?.message ?? e),
+      console.error('[rss] scheduled refresh failed:', (e as Error)?.message ?? e),
     );
   }, TICK_MS);
 }

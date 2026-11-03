@@ -12,7 +12,6 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import { and, asc, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
@@ -27,6 +26,7 @@ import {
   EntryDetailSchema,
   EntryFlagsSchema,
 } from '@feedlore/contract';
+import { apiError, ApiException } from '../lib/apiError';
 import { assertResponse, BadRequest } from '../lib/validate';
 import { toCard, toEntryDetail } from '../lib/dto';
 import { classify } from '../lib/watch';
@@ -121,7 +121,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!result.success) throw new BadRequest('GET /api/entries', result.error.issues);
       }),
       async (c) => {
-        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
 
         const uid = c.get('user').id;
         const q: Query = c.req.valid('query');
@@ -214,7 +214,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
 
     /* ---------------- GET /api/entries/flags ---------------- */
     .get(entriesSpec.flags.path, requireAuth(auth, 'user'), async (c) => {
-      if (!db) return c.json({ error: '数据库未就绪' }, 503);
+      if (!db) return apiError(c, 'E_DB_NOT_READY');
 
       const uid = c.get('user').id;
       const rows = await db
@@ -243,7 +243,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!result.success) throw new BadRequest('POST /api/entries/read-all', result.error.issues);
       }),
       async (c) => {
-        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
 
         const uid = c.get('user').id;
         const body: ReadAll = c.req.valid('json');
@@ -296,7 +296,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
      * 「新条目」和「重算」迟早判得不一样，而这种不一致极难被发现。
      */
     .post(entriesSpec.watchApply.path, requireAuth(auth, 'write'), async (c) => {
-      if (!db) return c.json({ error: '数据库未就绪' }, 503);
+      if (!db) return apiError(c, 'E_DB_NOT_READY');
 
       const uid = c.get('user').id;
 
@@ -407,7 +407,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!result.success) throw new BadRequest('GET /api/entries/:id', result.error.issues);
       }),
       async (c) => {
-        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
 
         const uid = c.get('user').id;
         const { id } = c.req.valid('param');
@@ -421,7 +421,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
           .limit(1);
 
         const row = rows[0];
-        if (!row) return c.json({ error: '条目不存在' }, 404);
+        if (!row) return apiError(c, 'E_ENTRY_NOT_FOUND');
 
         return c.json(assertResponse(EntryDetailSchema, toEntryDetail(row), 'GET /api/entries/:id'));
       },
@@ -440,7 +440,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!result.success) throw new BadRequest('PATCH /api/entries/:id', result.error.issues);
       }),
       async (c) => {
-        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
 
         const uid = c.get('user').id;
         const { id } = c.req.valid('param');
@@ -461,7 +461,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
           set.favoritedAt = body.isFavorite ? sql`now()` : null;
         }
         if (!Object.keys(set).length) {
-          throw new HTTPException(400, { message: '没有要修改的标记（isRead / isFavorite 至少给一个）' });
+          throw new ApiException('E_NO_FLAGS_TO_UPDATE');
         }
 
         const rows = await db
@@ -484,7 +484,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
           });
 
         const row = rows[0];
-        if (!row) return c.json({ error: '条目不存在' }, 404);
+        if (!row) return apiError(c, 'E_ENTRY_NOT_FOUND');
 
         return c.json(
           assertResponse(

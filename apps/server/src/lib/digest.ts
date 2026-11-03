@@ -126,7 +126,7 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
       const llm = resolveUserLlm(llmRow ?? null, secret);
 
       if (!llmComplete(llm)) {
-        console.log(`[digest] 用户 ${u.id} 到点但模型没配齐，跳过（今天不再重试）`);
+        console.log(`[digest] user ${u.id}: scheduled time reached but LLM config is incomplete, skipping (no retry today)`);
         continue;
       }
 
@@ -144,12 +144,12 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
 
       done += 1;
       console.log(
-        `[digest] 用户 ${u.id} 已生成 ${r.digest.date} 摘要：` +
-          `${r.digest.stats.kept}/${r.digest.stats.collected} 条，${r.digest.stats.feeds} 个频道` +
-          (r.digest.fallback ? '（规则降级）' : `（${r.digest.model}）`),
+        `[digest] user ${u.id} generated digest for ${r.digest.date}: ` +
+          `${r.digest.stats.kept}/${r.digest.stats.collected} items, ${r.digest.stats.feeds} feeds` +
+          (r.digest.fallback ? ' (rule fallback)' : ` (${r.digest.model})`),
       );
     } catch (e) {
-      console.error(`[digest] 用户 ${u.id} 自动生成失败：` + ((e as Error)?.message ?? e));
+      console.error(`[digest] auto-generation failed for user ${u.id}: ` + ((e as Error)?.message ?? e));
     }
   }
 
@@ -162,12 +162,12 @@ export function startDigestScheduler(db: Db): void {
   if (timer) clearInterval(timer);
   timer = setInterval(() => {
     void runDigestTick(db).catch((e: unknown) =>
-      console.error('[digest] 定时检查失败：', (e as Error)?.message ?? e),
+      console.error('[digest] scheduler tick failed: ', (e as Error)?.message ?? e),
     );
   }, TICK_MS);
   // 不阻止进程退出（测试 / 优雅停机时不用特意 clear）
   timer.unref?.();
-  console.log('[digest] 自动生成按账号调度中：每分钟检查一次各自的开关与时间');
+  console.log('[digest] auto-generation scheduled per account: each account toggle and time checked every minute');
 }
 
 export function stopDigestScheduler(): void {

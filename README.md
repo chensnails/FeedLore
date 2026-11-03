@@ -56,7 +56,7 @@ docker compose -f docker-compose.v2.release.yml up -d
 全新站点会创建管理员 `admin`，并生成一次性随机密码，只在启动日志里打印一次：
 
 ```bash
-docker compose -f docker-compose.v2.release.yml logs app | grep '一次性密码'
+docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time password'
 ```
 
 拿到密码后访问 `http://<主机>:3210` 登录，并立即在「设置 → 账号」修改。随后在

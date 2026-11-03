@@ -20,7 +20,7 @@
 import dns from 'node:dns';
 import { createRequire } from 'node:module';
 import { Agent, ProxyAgent } from 'undici';
-import { HTTPException } from 'hono/http-exception';
+import { ApiException } from './apiError';
 
 /** 读 npm undici 的实际版本（ESM 里 import JSON 还要 import assertion，不如 createRequire 稳）。 */
 const nodeRequire = createRequire(import.meta.url);
@@ -76,9 +76,6 @@ export function isBlockedIp(ip: string): boolean {
   return false;
 }
 
-const PRIVATE_MSG =
-  '不允许访问内网 / 回环地址（确需访问请给服务端设 ALLOW_PRIVATE_HOSTS=1）';
-
 export interface PublicHostInfo {
   /** 规范化后的 URL（`new URL().toString()`） */
   url: string;
@@ -105,18 +102,18 @@ export async function assertPublicHost(
   try {
     u = new URL(String(urlStr || '').trim());
   } catch {
-    throw new HTTPException(400, { message: '地址格式不正确' });
+    throw new ApiException('E_URL_INVALID');
   }
   if (!/^https?:$/.test(u.protocol)) {
-    throw new HTTPException(400, { message: '只支持 http:// 或 https:// 地址' });
+    throw new ApiException('E_URL_SCHEME_UNSUPPORTED');
   }
   const host = stripBrackets(u.hostname);
-  if (!host) throw new HTTPException(400, { message: '地址缺少主机名' });
+  if (!host) throw new ApiException('E_URL_MISSING_HOST');
 
   // 逃生口：整体放行（不解析），交给系统 DNS
   if (allowPrivate()) return { url: u.toString(), host, ips: [] };
 
-  if (isBlockedIp(host)) throw new HTTPException(400, { message: PRIVATE_MSG });
+  if (isBlockedIp(host)) throw new ApiException('E_PRIVATE_HOST_BLOCKED');
   if (!resolve) return { url: u.toString(), host, ips: [] };
 
   const doLookup = lookup
@@ -127,12 +124,12 @@ export async function assertPublicHost(
   try {
     rows = await doLookup(host, { all: true });
   } catch {
-    throw new HTTPException(400, { message: '域名解析失败，请检查地址拼写' });
+    throw new ApiException('E_DNS_FAILED');
   }
   const list = (Array.isArray(rows) ? rows : [rows]).filter(Boolean);
-  if (!list.length) throw new HTTPException(400, { message: '域名解析失败，请检查地址拼写' });
+  if (!list.length) throw new ApiException('E_DNS_FAILED');
   if (list.some((r) => isBlockedIp(r.address))) {
-    throw new HTTPException(400, { message: PRIVATE_MSG });
+    throw new ApiException('E_PRIVATE_HOST_BLOCKED');
   }
   return { url: u.toString(), host, ips: list.map((r) => r.address) };
 }
@@ -278,12 +275,12 @@ function normalizeProxy(raw: unknown): string {
   try {
     const u = new URL(t);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-      console.warn(`[net] ⚠️ 出网代理协议不受支持（${u.protocol}），已忽略：${t.slice(0, 80)}`);
+      console.warn(`[net] unsupported egress proxy scheme (${u.protocol}), ignored: ${t.slice(0, 80)}`);
       return '';
     }
     return u.toString();
   } catch {
-    console.warn(`[net] ⚠️ 出网代理地址无法解析，已忽略：${t.slice(0, 80)}`);
+    console.warn(`[net] cannot parse egress proxy address, ignored: ${t.slice(0, 80)}`);
     return '';
   }
 }
@@ -382,9 +379,9 @@ export async function safeFetch(
       if (!warnedPinFallback) {
         warnedPinFallback = true;
         console.warn(
-          `[net] ⚠️ IP 钉定失效（内置 undici ${process.versions.undici ?? '?'} / 依赖 ${
+          `[net] IP pinning unavailable (bundled undici ${process.versions.undici ?? '?'} / dependency ${
             (undiciPkg as { version?: string }).version ?? '?'
-          }），已降级为普通出网请求：${String((e as Error).message ?? e)}`,
+          }), falling back to plain egress: ${String((e as Error).message ?? e)}`,
         );
       }
       resp = await fetch(cur, { ...init, redirect: 'manual' } as RequestInit);
@@ -399,7 +396,7 @@ export async function safeFetch(
     } catch {
       /* noop */
     }
-    if (hop >= maxHops) throw new HTTPException(502, { message: '重定向层数过多' });
+    if (hop >= maxHops) throw new ApiException('E_TOO_MANY_REDIRECTS');
     cur = new URL(loc, cur).toString();
   }
 }
@@ -416,13 +413,13 @@ export function assertFeedUrl(raw: unknown): string {
   try {
     u = new URL(String(raw ?? '').trim());
   } catch {
-    throw new HTTPException(400, { message: 'RSS 地址格式不正确' });
+    throw new ApiException('E_RSS_URL_INVALID');
   }
   if (!/^https?:$/.test(u.protocol)) {
-    throw new HTTPException(400, { message: 'RSS 地址需以 http:// 或 https:// 开头' });
+    throw new ApiException('E_RSS_URL_SCHEME_UNSUPPORTED');
   }
   if (!u.hostname.includes('.')) {
-    throw new HTTPException(400, { message: 'RSS 地址的主机名看起来不合法' });
+    throw new ApiException('E_RSS_URL_HOST_INVALID');
   }
   return u.toString();
 }

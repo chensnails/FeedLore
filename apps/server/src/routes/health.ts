@@ -27,7 +27,7 @@ export function healthRoutes(db: Db | null) {
         latencyMs = Date.now() - t0;
       } catch (e) {
         // 健康检查本身不抛给客户端，只落日志；db.ready=false 已足够表达
-        console.error('[health] 数据库探测失败：', (e as Error)?.message ?? e);
+        console.error('[health] database probe failed:', (e as Error)?.message ?? e);
       }
     }
 

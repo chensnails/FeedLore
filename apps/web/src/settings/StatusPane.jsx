@@ -222,7 +222,7 @@ export function StatusPane() {
       const res = await s.apiFetch('/api/feeds/' + id + '/refresh', { method: 'POST' });
       const d = await res.json().catch(() => ({}));
       const er = (d.result && d.result.error) || d.error;
-      if (!res.ok || er) throw new Error(er || 'HTTP ' + res.status);
+      if (!res.ok || er) throw new Error(s.errText(er, 'HTTP ' + res.status));
       s.toast('抓取成功，新增 ' + ((d.result && d.result.added) || 0) + ' 条');
       if (s.loadFeeds) await s.loadFeeds();
       await load();
@@ -283,7 +283,7 @@ export function StatusPane() {
   const hasErr = (f.error || 0) > 0;
   const rssState = !dbOk ? 'bad' : (hasErr ? 'warn' : 'ok');
   const headline = !dbOk
-    ? '数据库未就绪' + (db.error ? '：' + db.error : '')
+    ? '数据库未就绪' + (db.error ? '：' + s.errText(db.error) : '')
     : (hasErr ? `${f.error} 个频道抓取失败` : '运行正常');
 
   const uptime = baseRef.current
@@ -305,7 +305,7 @@ export function StatusPane() {
   const latestLine = latest
     ? `${latest.date} · ${latest.fallback ? '规则降级' : (latest.model || '未配置模型')}`
       + (latest.stats ? ` · 采集 ${latest.stats.collected} → 保留 ${latest.stats.kept} · ${latest.stats.feeds} 频道` : '')
-      + (latest.error ? `（大模型失败：${latest.error}）` : '')
+      + (latest.error ? `（大模型失败：${s.errText(latest.error)}）` : '')
     : '还没有生成过';
 
   return (
@@ -337,7 +337,7 @@ export function StatusPane() {
           <h3 className="stat-h">数据库</h3>
           <div className="stat-grid">
             <StatCard label="状态" value={dbOk ? '已连接' : '未就绪'}
-              sub={dbOk ? `往返 ${db.latencyMs} ms` : (db.error || '')} />
+              sub={dbOk ? `往返 ${db.latencyMs} ms` : s.errText(db.error)} />
             <StatCard label="连接池" value={db.pool ? `${db.pool.total} / ${db.pool.max}` : '—'}
               sub={db.pool ? `空闲 ${db.pool.idle} · 等待 ${db.pool.waiting}` : ''} />
             <StatCard label="条目总数" value={fmtNum(db.tables && db.tables.entries)}
@@ -377,7 +377,7 @@ export function StatusPane() {
                   <i className="stat-dot bad" />
                   <span className="stat-problem-name" title={p.title}>{p.title}</span>
                   {p.enabled === false && <span className="stat-problem-off" title={`连续失败已达上限，已自动停止采集；重试成功会自动恢复`}>已自动停用</span>}
-                  <span className="stat-problem-err" title={p.error}>{p.error}</span>
+                  <span className="stat-problem-err" title={s.errText(p.error)}>{s.errText(p.error)}</span>
                   <button className="btn btn-ghost btn-sm" data-retry={p.feedId}
                     disabled={!!retrying[p.feedId]} onClick={() => retry(p.feedId)}>
                     {retrying[p.feedId] ? '抓取中…' : (p.enabled === false ? '重试并恢复' : '重试')}

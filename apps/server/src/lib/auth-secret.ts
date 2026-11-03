@@ -22,7 +22,7 @@ export async function ensureAuthSecret(targetUrl: string): Promise<void> {
       `select 1 from information_schema.tables where table_schema = 'public' and table_name = 'settings'`,
     );
     if (!t.rowCount) {
-      console.warn('[auth] AUTH_SECRET 未设置，目标库还没有 settings 表：跳过自动生成');
+      console.warn('[auth] AUTH_SECRET not set and the settings table does not exist in the target database yet: skipping auto-generation');
       return;
     }
 
@@ -34,7 +34,7 @@ export async function ensureAuthSecret(targetUrl: string): Promise<void> {
 
     let secret = await read();
     if (secret) {
-      console.log('[auth] AUTH_SECRET：未配置环境变量，沿用库中已保存的那一枚');
+      console.log('[auth] AUTH_SECRET: env var not set, reusing the secret already stored in the database');
     } else {
       const candidate = randomBytes(32).toString('hex');
       await pool.query(
@@ -44,7 +44,7 @@ export async function ensureAuthSecret(targetUrl: string): Promise<void> {
       );
       // 并发启动时另一实例可能先写入：以库里最终那枚为准
       secret = (await read()) || candidate;
-      console.log('[auth] AUTH_SECRET：未配置环境变量，已自动生成并保存到 v2 库（settings.authSecret）');
+      console.log('[auth] AUTH_SECRET: env var not set, generated a new secret and saved it to the v2 database (settings.authSecret)');
     }
     process.env.AUTH_SECRET = secret;
   } finally {

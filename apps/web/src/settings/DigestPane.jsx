@@ -102,7 +102,7 @@ export function DigestPane() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: data.error || '保存失败' }); return; }
+      if (!res.ok) { setResult({ ok: false, msg: S().errText(data, '保存失败') }); return; }
       // 用服务端回包重建表单：脏值被 clamp 后界面要显示的是真正落库的值
       const d = (data.digest) || {};
       const next = {

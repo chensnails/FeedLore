@@ -288,7 +288,7 @@ export async function enhanceWithFullText(
     const rows = await db.select().from(articleCache).where(inArray(articleCache.url, urls));
     for (const row of rows) cached.set(row.url, row);
   } catch (e) {
-    console.error('[fulltext] 读取缓存失败：', (e as Error)?.message ?? e);
+    console.error('[fulltext] failed to read article cache: ', (e as Error)?.message ?? e);
   }
 
   const missing: Array<{ item: NormalizedItem; index: number; url: string }> = [];
@@ -336,7 +336,7 @@ export async function enhanceWithFullText(
           },
         })
         .catch((e: unknown) => {
-          console.error('[fulltext] 写缓存失败：', (e as Error)?.message ?? e);
+          console.error('[fulltext] failed to write article cache: ', (e as Error)?.message ?? e);
         });
 
       if (got.bodyJson && shouldApplyFullText(c.item.content, got.text)) {

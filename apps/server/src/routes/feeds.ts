@@ -14,7 +14,6 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -28,6 +27,7 @@ import {
   feedReorderBody,
   importBody,
 } from '@feedlore/contract';
+import { apiError, ApiException } from '../lib/apiError';
 import { assertResponse, BadRequest } from '../lib/validate';
 import { toFeed, type FeedCounts, type FeedRow } from '../lib/dto';
 import { assertFeedUrl, assertPublicHost } from '../lib/net';
@@ -103,7 +103,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
     new Hono<AppEnv>()
       /* ---------------- GET /api/feeds ---------------- */
       .get(feedsSpec.list.path, requireAuth(auth, 'user'), async (c) => {
-        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
 
         // ⚠️ 必须按 owner 过滤：feeds 是多用户表，漏了 owner 就是把所有人的订阅一起返回
         const uid = c.get('user').id;
@@ -192,7 +192,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
        * 只导出**本用户**的频道（owner 过滤），且不导出运行期字段（nextRefreshAt 之类）——
        * 导出文件是给「换台服务器继续用」的，带一堆本机状态只会在导入时制造无意义的差异。 */
       .get(feedsSpec.exportOpml.path, requireAuth(auth, 'user'), async (c) => {
-        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
 
         const uid = c.get('user').id;
         const rows = await db
@@ -223,7 +223,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           if (!result.success) throw new BadRequest('POST /api/feeds', result.error.issues);
         }),
         async (c) => {
-          if (!db) return c.json({ error: '数据库未就绪' }, 503);
+          if (!db) return apiError(c, 'E_DB_NOT_READY');
 
           const uid = c.get('user').id;
           const body: FeedCreate = c.req.valid('json');
@@ -258,10 +258,10 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             })
             .returning({ id: feeds.id });
 
-          if (!inserted) return c.json({ error: '频道创建失败' }, 500);
+          if (!inserted) return apiError(c, 'E_FEED_CREATE_FAILED');
 
           const got = await readFeed(db, uid, inserted.id, await globalMinutes(db));
-          if (!got) return c.json({ error: '频道创建失败' }, 500);
+          if (!got) return apiError(c, 'E_FEED_CREATE_FAILED');
 
           /* 立即抓一次：让「添加频道」不是空壳。
            * 已存在的频道（existed）不重复抓 —— 那是用户重输了一遍，内容早就有了。
@@ -270,7 +270,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           let added = 0;
           if (!dup) {
             const probe = await refreshOneFeed(db, got.row).catch((e: unknown) => {
-              console.error('[feeds] 新频道首抓失败：', (e as Error)?.message ?? e);
+              console.error('[feeds] first fetch of new feed failed:', (e as Error)?.message ?? e);
               return null;
             });
             added = probe?.added ?? 0;
@@ -302,7 +302,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           if (!result.success) throw new BadRequest('POST /api/feeds/reorder', result.error.issues);
         }),
         async (c) => {
-          if (!db) return c.json({ error: '数据库未就绪' }, 503);
+          if (!db) return apiError(c, 'E_DB_NOT_READY');
 
           const uid = c.get('user').id;
           const body: FeedReorder = c.req.valid('json');
@@ -344,7 +344,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           if (!result.success) throw new BadRequest('PATCH /api/feeds/:id', result.error.issues);
         }),
         async (c) => {
-          if (!db) return c.json({ error: '数据库未就绪' }, 503);
+          if (!db) return apiError(c, 'E_DB_NOT_READY');
 
           const uid = c.get('user').id;
           const { id } = c.req.valid('param');
@@ -355,7 +355,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             .from(feeds)
             .where(and(eq(feeds.id, id), eq(feeds.ownerId, uid)))
             .limit(1);
-          if (!current) return c.json({ error: '频道不存在' }, 404);
+          if (!current) return apiError(c, 'E_FEED_NOT_FOUND');
 
           /* 用 Partial<typeof feeds.$inferInsert> 而不是 Record<string, unknown>：
            * 后者能编过任何列名，`groupName` 手滑写成 `groupname` 会在运行期静默不生效。 */
@@ -383,7 +383,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
                 .limit(1);
               if (dup) {
                 const name = dup.customTitle || dup.title || nextUrl;
-                throw new HTTPException(409, { message: `这个地址已经是你的另一个频道：${name}` });
+                throw new ApiException('E_FEED_URL_DUPLICATE', { detail: name, params: { name } });
               }
               set.url = nextUrl;
               urlChanged = true;
@@ -402,7 +402,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
 
           if (!Object.keys(set).length) {
             const got = await readFeed(db, uid, id, await globalMinutes(db));
-            if (!got) return c.json({ error: '频道不存在' }, 404);
+            if (!got) return apiError(c, 'E_FEED_NOT_FOUND');
             return c.json(
               assertResponse(
                 feedsSpec.patchOne.response,
@@ -438,7 +438,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           }
 
           const got = await readFeed(db, uid, id, await globalMinutes(db));
-          if (!got) return c.json({ error: '频道不存在' }, 404);
+          if (!got) return apiError(c, 'E_FEED_NOT_FOUND');
 
           return c.json(
             assertResponse(
@@ -464,7 +464,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           if (!result.success) throw new BadRequest('DELETE /api/feeds/:id', result.error.issues);
         }),
         async (c) => {
-          if (!db) return c.json({ error: '数据库未就绪' }, 503);
+          if (!db) return apiError(c, 'E_DB_NOT_READY');
 
           const uid = c.get('user').id;
           const { id } = c.req.valid('param');
@@ -475,7 +475,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             .returning({ id: feeds.id });
 
           // 删不到就是不存在（或不属于你）—— 统一 404，不泄露「存在但不是你的」
-          if (!rows.length) return c.json({ error: '频道不存在' }, 404);
+          if (!rows.length) return apiError(c, 'E_FEED_NOT_FOUND');
           return c.json({ ok: true });
         },
       )
@@ -488,7 +488,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           if (!result.success) throw new BadRequest('POST /api/feeds/:id/refresh', result.error.issues);
         }),
         async (c) => {
-          if (!db) return c.json({ error: '数据库未就绪' }, 503);
+          if (!db) return apiError(c, 'E_DB_NOT_READY');
 
           const uid = c.get('user').id;
           const { id } = c.req.valid('param');
@@ -498,12 +498,12 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             .from(feeds)
             .where(and(eq(feeds.id, id), eq(feeds.ownerId, uid)))
             .limit(1);
-          if (!row) return c.json({ error: '频道不存在' }, 404);
+          if (!row) return apiError(c, 'E_FEED_NOT_FOUND');
 
           const result = await refreshOneFeed(db, row);
 
           const got = await readFeed(db, uid, id, await globalMinutes(db));
-          if (!got) return c.json({ error: '频道不存在' }, 404);
+          if (!got) return apiError(c, 'E_FEED_NOT_FOUND');
 
           return c.json(
             assertResponse(
@@ -529,7 +529,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
        * 刷新全部（只抓本用户「开启采集」的频道）。禁用采集的不抓 —— 用户关掉它
        * 就是因为不想再回源，手动刷新也不该绕过去。 */
       .post(feedsSpec.refresh.path, requireAuth(auth, 'write'), async (c) => {
-        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
 
         const uid = c.get('user').id;
         const rows = await db
@@ -538,7 +538,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           .where(and(eq(feeds.ownerId, uid), eq(feeds.enabled, true)))
           .orderBy(feeds.sortOrder, feeds.id);
 
-        const summary = await refreshFeeds(db, rows, '手动刷新');
+        const summary = await refreshFeeds(db, rows, 'manual refresh');
 
         return c.json(
           assertResponse(
@@ -567,22 +567,22 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           if (!result.success) throw new BadRequest('POST /api/feeds/import', result.error.issues);
         }),
         async (c) => {
-          if (!db) return c.json({ error: '数据库未就绪' }, 503);
+          if (!db) return apiError(c, 'E_DB_NOT_READY');
 
           const uid = c.get('user').id;
           const text = c.req.valid('json').opml;
-          if (!text.trim()) throw new BadRequest('POST /api/feeds/import', '未收到 OPML 内容');
+          if (!text.trim()) throw new ApiException('E_EMPTY_OPML');
 
           const parsed = parseOpml(text);
           if (!parsed.length) {
             // 空结果有两种：真 OPML 但没有 xmlUrl，和压根不是 OPML。分开说才定位得了问题。
             const looksOpml = /<\s*(opml|outline)\b/i.test(text);
-            throw new BadRequest(
-              'POST /api/feeds/import',
-              looksOpml
-                ? '文件中没有找到任何订阅源（xmlUrl）'
-                : '这不像是 OPML 文件：没找到 <opml> / <outline> 结构，请确认选对了导出文件',
-            );
+            if (looksOpml) {
+              throw new ApiException('E_OPML_NO_FEEDS');
+            }
+            throw new ApiException('E_UNEXPECTED_OPML', {
+              detail: 'no <opml> / <outline> structure found, check the exported file',
+            });
           }
 
           const existing = await db
@@ -652,8 +652,8 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
               .select()
               .from(feeds)
               .where(and(eq(feeds.ownerId, uid), sql`${feeds.id} = any(${addedIds})`))
-              .then((rows) => refreshFeeds(db, rows, '导入刷新'))
-              .catch((e: unknown) => console.error('[opml] 导入后刷新失败：', (e as Error)?.message ?? e));
+              .then((rows) => refreshFeeds(db, rows, 'import refresh'))
+              .catch((e: unknown) => console.error('[opml] post-import refresh failed:', (e as Error)?.message ?? e));
           }
 
           const all = await db.select().from(feeds).where(eq(feeds.ownerId, uid)).orderBy(feeds.sortOrder, feeds.id);

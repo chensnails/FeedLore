@@ -21,7 +21,7 @@ async function main(): Promise<void> {
   const username = process.env.ADMIN_USER ?? 'admin';
   const password = process.env.ADMIN_PASS;
   if (!password) {
-    console.error('[seed] 缺少环境变量 ADMIN_PASS');
+    console.error('[seed] missing ADMIN_PASS environment variable');
     process.exit(1);
   }
 
@@ -43,24 +43,24 @@ async function main(): Promise<void> {
         username,
       } as never, // username 字段由 username 插件扩展，类型未覆盖
     });
-    console.log(`[seed] 已创建用户 ${username}`);
+    console.log(`[seed] created user ${username}`);
   } else {
-    console.log(`[seed] 用户 ${username} 已存在，跳过创建`);
+    console.log(`[seed] user ${username} already exists, skipping creation`);
   }
 
   await db.update(schema.users).set({ role: 'admin' }).where(eq(schema.users.username, username));
-  console.log(`[seed] 已将 ${username} 提升为 admin`);
+  console.log(`[seed] promoted ${username} to admin`);
 
   const row = await db
     .select({ id: schema.users.id, role: schema.users.role })
     .from(schema.users)
     .where(eq(schema.users.username, username))
     .limit(1);
-  console.log('[seed] 校验：', JSON.stringify(row[0]));
+  console.log('[seed] verification:', JSON.stringify(row[0]));
   process.exit(0);
 }
 
 main().catch((e) => {
-  console.error('[seed] 失败：', (e as Error)?.message ?? e);
+  console.error('[seed] failed:', (e as Error)?.message ?? e);
   process.exit(1);
 });

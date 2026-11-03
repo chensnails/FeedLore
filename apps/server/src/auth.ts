@@ -10,7 +10,7 @@ import type { Db } from '@feedlore/db';
 
 function required(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`缺少环境变量 ${name}`);
+  if (!v) throw new Error(`Missing required environment variable ${name}`);
   return v;
 }
 
@@ -69,8 +69,8 @@ export function getAuth(db: Db): AuthInstance {
   });
 
   console.log(
-    `[auth] better-auth 就绪 | baseURL=${trimmed(process.env.AUTH_BASE_URL) || '(按请求)'}`
-      + ` | origins=${configuredOrigins.length || '同源动态'} | secureCookies=${secureCookies}`
+    `[auth] better-auth ready | baseURL=${trimmed(process.env.AUTH_BASE_URL) || '(from request Host)'}`
+      + ` | origins=${configuredOrigins.length || 'same-origin (dynamic)'} | secureCookies=${secureCookies}`
       + ` | trustProxy=${process.env.TRUST_PROXY === '1'}`,
   );
   return _auth;

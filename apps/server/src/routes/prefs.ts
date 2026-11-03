@@ -18,7 +18,6 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import { eq, sql } from 'drizzle-orm';
 import { users, userLlm, type Db } from '@feedlore/db';
@@ -29,6 +28,7 @@ import {
   prefsPatchBody,
   type PrefsPatchBody,
 } from '@feedlore/contract';
+import { apiError, ApiException } from '../lib/apiError';
 import { assertResponse, BadRequest } from '../lib/validate';
 import {
   getCryptoSecret,
@@ -75,7 +75,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
   return new Hono<AppEnv>()
     /* ---------------- GET /api/prefs ---------------- */
     .get(prefsSpec.get.path, requireAuth(auth, 'user'), async (c) => {
-      if (!db) return c.json({ error: '数据库未就绪' }, 503);
+      if (!db) return apiError(c, 'E_DB_NOT_READY');
 
       const uid = c.get('user').id;
 
@@ -84,7 +84,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         .from(users)
         .where(eq(users.id, uid))
         .limit(1);
-      if (!userRow) return c.json({ error: '用户不存在' }, 401);
+      if (!userRow) return apiError(c, 'E_USER_NOT_FOUND', { status: 401 });
 
       const [llmRow] = await db
         .select({
@@ -128,7 +128,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!result.success) throw new BadRequest('POST /api/prefs', result.error.issues);
       }),
       async (c) => {
-        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
 
         const uid = c.get('user').id;
         const body: PrefsPatchBody = c.req.valid('json');
@@ -139,7 +139,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           const blocked = (['filters', 'watchRules', 'watchExpireDays', 'webhookUrl', 'digest', 'llm'] as const)
             .filter((k) => body[k] !== undefined);
           if (blocked.length) {
-            throw new HTTPException(403, { message: '只读账户不能修改订阅规则、模型或日报配置' });
+            throw new ApiException('E_READONLY_RULES');
           }
         }
 
@@ -148,7 +148,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           .from(users)
           .where(eq(users.id, uid))
           .limit(1);
-        if (!userRow) return c.json({ error: '用户不存在' }, 401);
+        if (!userRow) return apiError(c, 'E_USER_NOT_FOUND', { status: 401 });
 
         const prev = (userRow.prefs ?? {}) as PrefsBag;
         const next: PrefsBag = { ...prev };
@@ -187,7 +187,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
               await assertPublicHost(hook);
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);
-              throw new HTTPException(400, { message: `Webhook 地址不可用：${msg}` });
+              throw new ApiException('E_WEBHOOK_URL_UNREACHABLE', { detail: msg });
             }
           }
           next.webhookUrl = hook;
@@ -223,7 +223,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
               await assertPublicHost(nextBase);
             } catch (e) {
               const msg = e instanceof Error ? e.message : String(e);
-              throw new HTTPException(400, { message: `模型地址不可用：${msg}` });
+              throw new ApiException('E_MODEL_URL_UNREACHABLE', { detail: msg });
             }
           }
 

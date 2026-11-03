@@ -23,6 +23,7 @@ import type { AppEnv } from './middleware/auth';
 import { WEB_ROOT } from './env';
 import { sameOriginCandidates } from './auth';
 import { applyCspNonce, securityHeaders } from './lib/security-headers';
+import { apiError, apiErrorBody, isApiErrorCode } from './lib/apiError';
 import { userAppearance, userLayout } from './lib/prefs';
 import { normalizeRole } from './lib/roles';
 import { healthRoutes } from './routes/health';
@@ -213,7 +214,7 @@ export function createApp({ db, auth }: AppDeps) {
 
     const raw = c.req.header('origin') ?? c.req.header('referer') ?? '';
     const origin = raw ? toOrigin(raw) : null;
-    if (!origin) return c.json({ error: '缺少合法的 Origin/Referer，已拒绝写入' }, 403);
+    if (!origin) return apiError(c, 'E_CSRF_ORIGIN_MISSING');
 
     const allowed = configuredOrigins.length
       ? configuredOrigins
@@ -221,7 +222,7 @@ export function createApp({ db, auth }: AppDeps) {
           .map((s) => toOrigin(s))
           .filter((s): s is string => !!s);
     if (!allowed.includes(origin)) {
-      return c.json({ error: '来源不受信任，已拒绝跨站写入' }, 403);
+      return apiError(c, 'E_CSRF_UNTRUSTED_ORIGIN');
     }
 
     return next();
@@ -249,7 +250,7 @@ export function createApp({ db, auth }: AppDeps) {
   app.use('*', async (c, next) => {
     const path = c.req.path;
     if (path !== '/api/auth' && !path.startsWith('/api/auth/')) return next();
-    if (!auth) return c.json({ error: '鉴权服务未就绪' }, 503);
+    if (!auth) return apiError(c, 'E_AUTH_NOT_READY');
 
     /* 公开注册**默认关闭**。
      *
@@ -262,20 +263,20 @@ export function createApp({ db, auth }: AppDeps) {
      * `auth.api.signUpEmail`），不需要 HTTP 注册口。确实要开放时置 `ALLOW_SIGNUP=1`。
      */
     if (path.startsWith('/api/auth/sign-up') && process.env.ALLOW_SIGNUP !== '1') {
-      return c.json({ error: '未开放注册' }, 403);
+      return apiError(c, 'E_SIGNUP_DISABLED');
     }
 
     /* 登录只认 /api/login：它在外层按客户端 IP 限流。放开直连 sign-in 等于
      * 绕过限流，而 better-auth 在拿不到可信 IP 时会退化成全站共享桶。 */
     if (path === '/api/auth/sign-in' || path.startsWith('/api/auth/sign-in/')) {
-      return c.json({ error: '请通过 /api/login 登录' }, 403);
+      return apiError(c, 'E_LOGIN_VIA_API');
     }
 
     // 只读账户的登录凭据由管理员掌握：自助改用户名/密码一律拒绝
     if (READONLY_BLOCKED_AUTH_PATHS.some((p) => path === p || path.startsWith(p + '/'))) {
       const session = await auth.api.getSession({ headers: c.req.raw.headers });
       if (session && normalizeRole(session.user.role) === 'readonly') {
-        return c.json({ error: '只读账户不能修改用户名或密码，请联系管理员' }, 403);
+        return apiError(c, 'E_READONLY_CREDENTIAL');
       }
     }
 
@@ -284,19 +285,35 @@ export function createApp({ db, auth }: AppDeps) {
 
   const routed = app
     .onError((err, c) => {
-      // 自定义错误（ContractViolation/BadRequest）与 Hono 的 HTTPException 都带 status
-      const raw = err as unknown as { status?: unknown };
+      // 自定义错误（ApiException/ContractViolation/BadRequest）与 Hono 的 HTTPException 都带 status
+      const raw = err as unknown as { status?: unknown; code?: unknown; apiParams?: unknown };
       const declared = typeof raw.status === 'number' ? raw.status : 500;
       const s = declared >= 400 && declared <= 599 ? declared : 500;
       if (s >= 500) console.error('[error]', err);
 
       /* ⚠️ 这里曾经是 `if (s===400) ... if (s===401) ...` 的穷举链，结果 HTTPException(409)
        * 无处可去、被静默降级成 500（频道地址撞车的提示还在，但状态码错了，前端判不出冲突）。
-       * 现在按声明值透传，只强制两件事：5xx 不吐内部 message、非 4xx/5xx 一律 500。 */
-      const body = { error: s >= 500 ? '服务器内部错误' : err.message };
+       * 现在按声明值透传，只强制两件事：5xx 不吐内部 message、非 4xx/5xx 一律 500。
+       * 带错误码的（ApiException 及子类）走码表；没有码的 4xx 仍透传 message，5xx 统一 E_INTERNAL。 */
+      const params =
+        raw.apiParams && typeof raw.apiParams === 'object'
+          ? (raw.apiParams as Record<string, string | number>)
+          : undefined;
+      const body = isApiErrorCode(raw.code)
+        ? apiErrorBody(raw.code, {
+            status: s,
+            // 5xx 只回码表默认文案，避免把内部细节（异常原文、契约字段名）带到响应里
+            message: s >= 500 ? undefined : err.message,
+            params,
+          })
+        : apiErrorBody(s >= 500 ? 'E_INTERNAL' : 'E_BAD_REQUEST', {
+            status: s,
+            // 没有码的 4xx：原文（英文）当补充信息带出去，界面仍是中文 + 详情
+            detail: s >= 500 ? undefined : err.message,
+          });
       return c.json(body, s as ContentfulStatusCode);
     })
-    .notFound((c) => c.json({ error: '接口不存在' }, 404))
+    .notFound((c) => apiError(c, 'E_ROUTE_NOT_FOUND'))
     .route('/', healthRoutes(db))
     .route('/', authRoutes(db, auth))
     .route('/', feedsRoutes(db, auth))

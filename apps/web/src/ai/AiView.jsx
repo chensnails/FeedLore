@@ -100,7 +100,7 @@ function DigestView({ digest }) {
         </div>
         {d.error ? (
           <div className="dg-meta is-plain">
-            <span className="dg-warn">模型调用失败，已降级为规则摘要：{d.error}</span>
+            <span className="dg-warn">模型调用失败，已降级为规则摘要：{S().errText(d.error)}</span>
           </div>
         ) : null}
       </div>
@@ -229,7 +229,7 @@ export function AiView() {
         body: JSON.stringify({ force: !!force }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '生成失败');
+      if (!res.ok) throw new Error(s.errText(data, '生成失败'));
       const d = data.digest;
       setDates((prev) => (prev.includes(d.date) ? prev : [d.date, ...prev]));
       setSelected(d.date);

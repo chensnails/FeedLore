@@ -28,14 +28,13 @@
  */
 
 import { Hono } from 'hono';
-import { HTTPException } from 'hono/http-exception';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { zValidator } from '@hono/zod-validator';
 import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { imageCache, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import { img as imgSpec } from '@feedlore/contract';
+import { ApiException } from '../lib/apiError';
 import { assertPublicHost, safeFetch } from '../lib/net';
 import { compressImage, imageCacheKey, isImageType, IMG_MAX_BYTES } from '../lib/image';
 import { requireAuth, type AppEnv } from '../middleware/auth';
@@ -213,7 +212,7 @@ async function fetchAndCache(db: Db | null, key: string, url: string): Promise<C
           });
       } catch (e) {
         // 落库失败不致命：图已经拿到，L1 还能用，用户这次不该看到错误
-        console.warn('[img] 写入缓存表失败：', (e as Error)?.message ?? e);
+        console.warn('[img] image cache table write failed:', (e as Error)?.message ?? e);
       }
     }
 
@@ -268,7 +267,7 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
 
       if (/^data:/i.test(cleaned)) {
         // data URI 本身是完整资源，不需要也没有意义过代理；前端应当直通。
-        throw new HTTPException(400, { message: 'data: 地址无需经过图片代理' });
+        throw new ApiException('E_IMAGE_DATA_URI_REJECTED');
       }
 
       // ① 出网判定（含 DNS 解析，内网/回环直接 400）
@@ -296,7 +295,7 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
           }
         } catch (e) {
           // 库抖一下不该让图片全挂：当作未命中，直接回源
-          console.warn('[img] 读缓存表失败：', (e as Error)?.message ?? e);
+          console.warn('[img] image cache table read failed:', (e as Error)?.message ?? e);
         }
       }
 
@@ -328,10 +327,9 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
       } catch (e) {
         // 上游给了明确状态码就透传（403/404 让前端一眼看出是谁的问题），否则 504
         const st = Number((e as UpstreamError)?.status);
-        const code = (st >= 400 && st <= 599 ? st : 504) as unknown as ContentfulStatusCode;
-        throw new HTTPException(code, { message: '图片源返回错误' });
+        throw new ApiException('E_IMAGE_UPSTREAM_ERROR', { status: st >= 400 && st <= 599 ? st : 504 });
       }
-      if (!out) throw new HTTPException(502, { message: '图片获取失败' });
+      if (!out) throw new ApiException('E_IMAGE_FETCH_FAILED');
 
       return imageResponse(out);
     },
@@ -354,7 +352,7 @@ export async function pruneImageCache(db: Db | null): Promise<number> {
     `);
     return Number((res as unknown as { rowCount?: number | null }).rowCount ?? 0);
   } catch (e) {
-    console.warn('[img] 清理图片缓存失败：', (e as Error)?.message ?? e);
+    console.warn('[img] image cache prune failed:', (e as Error)?.message ?? e);
     return 0;
   }
 }

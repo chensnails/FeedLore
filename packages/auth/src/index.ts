@@ -164,7 +164,7 @@ export function createAuth(opts: CreateAuthOptions) {
           const upgraded = await ctx.context.password.hash(body.password);
           await ctx.context.internalAdapter.updatePassword(user.id, upgraded);
         } catch (err) {
-          ctx.context.logger.error('legacy 密码升级失败（本次登录不受影响）', err);
+          ctx.context.logger.error('failed to upgrade the legacy password hash (this sign-in still succeeds)', err);
         }
       }),
     },

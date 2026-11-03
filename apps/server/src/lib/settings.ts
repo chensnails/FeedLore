@@ -130,7 +130,7 @@ export async function reloadSource(db: Db | null): Promise<SourceConfig | null> 
     return snapshot;
   } catch (e) {
     // 数据库不可用不能让抓取器一起死：用上一次快照（或默认值）继续
-    console.warn('[settings] 读取采集参数失败，沿用上次值：', (e as Error)?.message ?? e);
+    console.warn('[settings] failed to read source config, keeping the last snapshot: ', (e as Error)?.message ?? e);
     return snapshot;
   }
 }

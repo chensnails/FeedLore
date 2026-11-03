@@ -43,7 +43,7 @@ export function encryptSecret(plain: string, cryptoSecret: string): string {
       [iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), body.toString('base64url')].join('.')
     );
   } catch (e) {
-    console.error('[crypto] 加密失败：' + ((e as Error)?.message ?? e));
+    console.error('[crypto] encryption failed: ' + ((e as Error)?.message ?? e));
     return '';
   }
 }
@@ -68,7 +68,7 @@ export function decryptSecret(enc: string | null | undefined, cryptoSecret: stri
     d.setAuthTag(Buffer.from(parts[1] as string, 'base64url'));
     return Buffer.concat([d.update(Buffer.from(parts[2] as string, 'base64url')), d.final()]).toString('utf8');
   } catch (e) {
-    console.error('[crypto] 解密失败（cryptoSecret 是否变过？）：' + ((e as Error)?.message ?? e));
+    console.error('[crypto] decryption failed (did cryptoSecret change?): ' + ((e as Error)?.message ?? e));
     return '';
   }
 }

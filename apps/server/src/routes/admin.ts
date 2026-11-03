@@ -31,6 +31,7 @@ import {
   type VersionCheck,
 } from '@feedlore/contract';
 import { assertResponse, BadRequest } from '../lib/validate';
+import { apiError, apiErrorKey, ApiException } from '../lib/apiError';
 import { normalizeRole } from '../lib/roles';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 import { getSource, saveSource } from '../lib/settings';
@@ -87,7 +88,7 @@ async function fetchGithubLatest(): Promise<VersionCheck> {
       };
     }
   }
-  throw new Error('GitHub 上还没有任何发布');
+  throw new ApiException('E_UPDATE_NO_RELEASE');
 }
 
 /* ============================================================================
@@ -118,20 +119,20 @@ export function adminConfigRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!result.success) throw new BadRequest('POST /api/config', result.error.issues);
       }),
       async (c) => {
-        if (!db) return c.json({ error: '数据库未就绪' }, 503);
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
         const body = c.req.valid('json');
         if (!body.source || !Object.keys(body.source).length) {
-          throw new BadRequest('POST /api/config', [{ path: ['source'], message: '没有可保存的字段' }]);
+          return apiError(c, 'E_NO_FIELDS_TO_SAVE');
         }
         // 保存即刷新快照：抓取器下一轮、图片代理下一次请求就用新值（不用重启进程）
         const next = await saveSource(db, body.source);
         console.log(
-          `[settings] 采集参数已更新：刷新 ${next.refreshMinutes} 分钟 / 并发 ${next.concurrency} / 保留 ${next.keepPerFeed} 条`,
+          `[settings] fetch settings updated: refresh ${next.refreshMinutes} min / concurrency ${next.concurrency} / keep ${next.keepPerFeed} entries per feed`,
         );
         if (next.proxyUrl) {
           // 生效是即时的（saveSource → setOutboundProxy），这里只留一行审计线索：
           // 代理一旦配错，表现是「全站抓取超时」，事后要知道是什么时候改的。
-          console.log(`[settings] 出网代理已生效：${next.proxyUrl}`);
+          console.log(`[settings] outbound proxy enabled: ${next.proxyUrl}`);
         }
         return c.json(assertResponse(adminSpec.configPost.response, { ok: true }, 'POST /api/config'));
       },
@@ -142,7 +143,7 @@ export function adminImageCacheRoutes(db: Db | null, auth: AuthInstance | null) 
   return new Hono<AppEnv>()
     /* ---------------- 图片缓存 ---------------- */
     .get(adminSpec.imageCacheGet.path, requireAuth(auth, 'admin'), async (c) => {
-      if (!db) return c.json({ error: '数据库未就绪' }, 503);
+      if (!db) return apiError(c, 'E_DB_NOT_READY');
       const res = await db.execute(sql`select count(*)::int as n, coalesce(sum(size), 0) as bytes from image_cache`);
       const r = ((res.rows as unknown as Row[])[0] ?? {}) as Row;
       return c.json(
@@ -154,13 +155,13 @@ export function adminImageCacheRoutes(db: Db | null, auth: AuthInstance | null) 
       );
     })
     .post(adminSpec.imageCacheClear.path, requireAuth(auth, 'admin'), async (c) => {
-      if (!db) return c.json({ error: '数据库未就绪' }, 503);
+      if (!db) return apiError(c, 'E_DB_NOT_READY');
       const before = await db.execute(sql`select count(*)::int as n from image_cache`);
       const n = Number((((before.rows as unknown as Row[])[0] ?? {}) as Row).n ?? 0);
       await db.execute(sql`delete from image_cache`);
       // ⚠️ L1 必须一起清：只删库的话，刚删掉的图还会从内存里命中，管理员以为没删掉
       resetImageCache();
-      console.log(`[img] 图片缓存已手动清空：${n} 条`);
+      console.log(`[img] image cache manually cleared: ${n} entries`);
       return c.json(
         assertResponse(adminSpec.imageCacheClear.response, { ok: true, removed: n }, 'POST /api/image-cache/clear'),
       );
@@ -171,7 +172,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
   return new Hono<AppEnv>()
     /* ---------------- 用户管理 ---------------- */
     .get(adminSpec.usersList.path, requireAuth(auth, 'admin'), async (c) => {
-      if (!db) return c.json({ error: '数据库未就绪' }, 503);
+      if (!db) return apiError(c, 'E_DB_NOT_READY');
       const me = c.get('user');
       const rows = await db
         .select({ id: users.id, username: users.username, name: users.name, role: users.role, createdAt: users.createdAt })
@@ -202,13 +203,13 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!result.success) throw new BadRequest('POST /api/users', result.error.issues);
       }),
       async (c) => {
-        if (!db || !auth) return c.json({ error: '服务未就绪' }, 503);
+        if (!db || !auth) return apiError(c, 'E_SERVICE_NOT_READY');
         const body = c.req.valid('json');
         const username = body.username.trim();
         const role = normalizeRole(body.role);
 
         const dup = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
-        if (dup.length) return c.json({ error: '用户名已存在' }, 409);
+        if (dup.length) return apiError(c, 'E_USERNAME_TAKEN');
 
         // 走 better-auth 注册（密码哈希由库负责）；username 插件允许 signUpEmail 带 username
         try {
@@ -221,7 +222,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
             } as never,
           });
         } catch (e) {
-          return c.json({ error: `创建失败：${(e as Error)?.message ?? e}` }, 400);
+          return apiError(c, 'E_USER_CREATE_FAILED', { detail: (e as Error)?.message ?? e });
         }
 
         const created = await db
@@ -230,7 +231,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
           .where(eq(users.username, username))
           .limit(1);
         const row = created[0];
-        if (!row) return c.json({ error: '创建失败：用户未落库' }, 500);
+        if (!row) return apiError(c, 'E_USER_NOT_PERSISTED');
 
         if (role !== 'user') {
           await db.update(users).set({ role }).where(eq(users.id, row.id));
@@ -252,7 +253,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!result.success) throw new BadRequest('PATCH /api/users/:id', result.error.issues);
       }),
       async (c) => {
-        if (!db || !auth) return c.json({ error: '服务未就绪' }, 503);
+        if (!db || !auth) return apiError(c, 'E_SERVICE_NOT_READY');
         const id = c.req.param('id');
         const body = c.req.valid('json');
 
@@ -262,7 +263,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
           .where(eq(users.id, id))
           .limit(1);
         const row = target[0];
-        if (!row) return c.json({ error: '用户不存在' }, 404);
+        if (!row) return apiError(c, 'E_USER_NOT_FOUND');
 
         let roleChanged = false;
         if (body.role !== undefined) {
@@ -272,7 +273,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
               .select({ id: users.id })
               .from(users)
               .where(eq(users.role, 'admin'));
-            if (admins.length <= 1) return c.json({ error: '至少要保留一个管理员' }, 400);
+            if (admins.length <= 1) return apiError(c, 'E_LAST_ADMIN');
           }
           if (nextRole !== normalizeRole(row.role)) roleChanged = true;
           await db.update(users).set({ role: nextRole, updatedAt: new Date() }).where(eq(users.id, id));
@@ -280,7 +281,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
 
         let passwordChanged = false;
         if (body.password) {
-          if (body.password.length < 4) return c.json({ error: '密码至少 4 位' }, 400);
+          if (body.password.length < 4) return apiError(c, 'E_PASSWORD_TOO_SHORT');
           try {
             // 交给 better-auth：它自己取盐、算哈希，并处理「原本没有 credential 账号」的情况
             await auth.api.setUserPassword({
@@ -289,7 +290,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
             });
             passwordChanged = true;
           } catch (e) {
-            return c.json({ error: `改密失败：${(e as Error)?.message ?? e}` }, 400);
+            return apiError(c, 'E_PASSWORD_UPDATE_FAILED', { detail: (e as Error)?.message ?? e });
           }
         }
 
@@ -302,7 +303,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
               headers: c.req.raw.headers,
             });
           } catch (e) {
-            console.warn('[admin] 作废用户会话失败：', (e as Error)?.message ?? e);
+            console.warn('[admin] failed to revoke user sessions:', (e as Error)?.message ?? e);
           }
         }
 
@@ -325,10 +326,10 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
       },
     )
     .delete(adminSpec.userDelete.path, requireAuth(auth, 'admin'), async (c) => {
-      if (!db) return c.json({ error: '数据库未就绪' }, 503);
+      if (!db) return apiError(c, 'E_DB_NOT_READY');
       const id = c.req.param('id');
       const me = c.get('user');
-      if (id === me.id) return c.json({ error: '不能删除当前登录的账号' }, 400);
+      if (id === me.id) return apiError(c, 'E_CANNOT_DELETE_SELF');
 
       const target = await db
         .select({ id: users.id, role: users.role })
@@ -336,11 +337,11 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
         .where(eq(users.id, id))
         .limit(1);
       const row = target[0];
-      if (!row) return c.json({ error: '用户不存在' }, 404);
+      if (!row) return apiError(c, 'E_USER_NOT_FOUND');
 
       if (row.role === 'admin') {
         const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, 'admin'));
-        if (admins.length <= 1) return c.json({ error: '至少要保留一个管理员' }, 400);
+        if (admins.length <= 1) return apiError(c, 'E_LAST_ADMIN');
       }
 
       // 外键链：feeds/digests/sessions/accounts/user_llm 全部 onDelete cascade，
@@ -360,17 +361,17 @@ export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!result.success) throw new BadRequest('POST /api/account', result.error.issues);
       }),
       async (c) => {
-        if (!db || !auth) return c.json({ error: '服务未就绪' }, 503);
+        if (!db || !auth) return apiError(c, 'E_SERVICE_NOT_READY');
         const me = c.get('user');
         const body = c.req.valid('json');
         // 只读账户的登录凭据由管理员掌握：用户名与密码都不允许自助修改
         if (me.role === 'readonly') {
-          return c.json({ error: '只读账户不能修改用户名或密码，请联系管理员' }, 403);
+          return apiError(c, 'E_READONLY_CREDENTIAL');
         }
         const newUser = (body.username ?? '').trim();
 
         if (!newUser && !body.newPassword) {
-          return c.json({ error: '用户名和新密码至少填一项' }, 400);
+          return apiError(c, 'E_NOTHING_TO_UPDATE');
         }
 
         // 当前密码校验：用 better-auth 自己的 verifyPassword（不手写哈希比较），
@@ -381,11 +382,11 @@ export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
             headers: c.req.raw.headers,
           });
         } catch {
-          return c.json({ error: '当前密码不正确' }, 400);
+          return apiError(c, 'E_CURRENT_PASSWORD_WRONG');
         }
 
         if (body.newPassword) {
-          if (body.newPassword.length < 4) return c.json({ error: '新密码至少 4 位' }, 400);
+          if (body.newPassword.length < 4) return apiError(c, 'E_NEW_PASSWORD_TOO_SHORT');
           try {
             await auth.api.changePassword({
               body: { currentPassword: body.currentPassword, newPassword: body.newPassword, revokeOtherSessions: false },
@@ -397,17 +398,17 @@ export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
             try {
               await auth.api.revokeOtherSessions({ headers: c.req.raw.headers });
             } catch (e) {
-              console.warn('[account] 清理其它会话失败：', (e as Error)?.message ?? e);
+              console.warn('[account] failed to revoke other sessions:', (e as Error)?.message ?? e);
             }
           } catch (e) {
-            return c.json({ error: `改密失败：${(e as Error)?.message ?? e}` }, 400);
+            return apiError(c, 'E_PASSWORD_UPDATE_FAILED', { detail: (e as Error)?.message ?? e });
           }
         }
 
         let username = me.username;
         if (newUser && newUser !== me.username) {
           const dup = await db.select({ id: users.id }).from(users).where(eq(users.username, newUser)).limit(1);
-          if (dup.length) return c.json({ error: '用户名已被占用' }, 400);
+          if (dup.length) return apiError(c, 'E_USERNAME_TAKEN', { status: 400 });
           // username 插件按 username 列登录；display_username 只影响展示，两个一起改
           await db
             .update(users)
@@ -466,7 +467,7 @@ export function adminVersionRoutes(db: Db | null, auth: AuthInstance | null) {
         return c.json(
           assertResponse(
             authSpec.versionCheck.response,
-            { ok: false, error: String((e as Error)?.message ?? e) },
+            { ok: false, error: apiErrorKey(e) },
             'POST /api/version/check',
           ),
         );
@@ -476,7 +477,7 @@ export function adminVersionRoutes(db: Db | null, auth: AuthInstance | null) {
       const hookUrl = process.env.UPDATE_WEBHOOK_URL ?? '';
       const hookToken = process.env.UPDATE_WEBHOOK_TOKEN ?? '';
       if (!hookUrl || !hookToken) {
-        return c.json({ error: '未配置更新通道（UPDATE_WEBHOOK_URL / UPDATE_WEBHOOK_TOKEN）' }, 501);
+        return apiError(c, 'E_UPDATE_CHANNEL_UNSET');
       }
 
       // ⚠️ 这里**刻意不用 safeFetch**：watchtower 基本都跑在同一台机器的内网网络里
@@ -484,7 +485,7 @@ export function adminVersionRoutes(db: Db | null, auth: AuthInstance | null) {
       // 这个地址来自**部署者写的环境变量**，不是用户输入，不构成 SSRF 面。
       const u = new URL(hookUrl);
       if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        return c.json({ error: '更新通道地址协议非法' }, 400);
+        return apiError(c, 'E_UPDATE_CHANNEL_URL_BAD');
       }
 
       try {
@@ -495,10 +496,10 @@ export function adminVersionRoutes(db: Db | null, auth: AuthInstance | null) {
           signal: AbortSignal.timeout(15_000),
         });
         if (!resp.ok) throw new Error(`watchtower HTTP ${resp.status}`);
-        console.log('[update] 已触发 watchtower 更新');
+        console.log('[update] watchtower update triggered');
         return c.json(assertResponse(authSpec.update.response, { ok: true }, 'POST /api/update'));
       } catch (e) {
-        return c.json({ error: `触发更新失败：${(e as Error)?.message ?? e}` }, 502);
+        return apiError(c, 'E_UPDATE_TRIGGER_FAILED', { detail: (e as Error)?.message ?? e });
       }
     });
 }

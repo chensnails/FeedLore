@@ -54,11 +54,11 @@ const V2_URL = process.env.DATABASE_URL ?? '';
 const LEGACY_SCHEMA = /^[a-z_][a-z0-9_]*$/.test(process.env.LEGACY_SCHEMA ?? '') ? (process.env.LEGACY_SCHEMA as string) : 'public';
 
 if (!LEGACY_URL) {
-  console.error('[migrate] 缺少 LEGACY_DATABASE_URL（1.7.x 的库）');
+  console.error('[migrate] missing LEGACY_DATABASE_URL (the 1.7.x database)');
   process.exit(1);
 }
 if (!V2_URL) {
-  console.error('[migrate] 缺少 DATABASE_URL（v2 的库）');
+  console.error('[migrate] missing DATABASE_URL (the v2 database)');
   process.exit(1);
 }
 /*
@@ -67,13 +67,13 @@ if (!V2_URL) {
  * 读起来像是「跑错了脚本」。在这里提前拦一道，把「为什么迁移需要它」说清楚。
  */
 if (!process.env.AUTH_SECRET) {
-  console.error('[migrate] 缺少 AUTH_SECRET —— 迁移只借它创建账号（与目标 v2 服务同一个值即可）');
+  console.error('[migrate] missing AUTH_SECRET — the migration only borrows it to create accounts (use the same value as the target v2 service)');
   process.exit(1);
 }
 if (LEGACY_URL === V2_URL && LEGACY_SCHEMA === 'public') {
   // 同库同 schema 迁移会把 v2 的表当 legacy 读（users 表名相同但列不同），结果一定是错的。
   // 但「同库不同 schema」是合法的：演练时就在同一个实例的 legacy schema 里造数据。
-  console.error('[migrate] 源库与目标库是同一个连接串且 schema=public —— 拒绝执行');
+  console.error('[migrate] source and target are the same connection string with schema=public — refusing to run');
   process.exit(1);
 }
 
@@ -140,7 +140,7 @@ interface Stats {
 }
 
 async function main(): Promise<void> {
-  log(`模式：${DRY ? '干跑（不写库）' : '写入'}　legacy schema=${LEGACY_SCHEMA}`);
+  log(`Mode: ${DRY ? 'dry run (no writes)' : 'write'}  legacy schema=${LEGACY_SCHEMA}`);
 
   const legacyPool = createPool(LEGACY_URL);
   const db = createDb(V2_URL);
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
 
       if (!legacySecret) {
         // legacy 老版本若从未存过 Key，就不会有这一枚，此时没有密文需要兼容
-        log(`站点主密钥：legacy 无 ${CRYPTO_SECRET_KEY}（未存过模型 Key）→ 跳过，v2 首次使用时会自行生成`);
+        log(`Site master key: legacy has no ${CRYPTO_SECRET_KEY} (no model key was ever stored) → skipping, v2 will generate one on first use`);
       } else {
         const [existing] = await db
           .select({ value: settings.value })
@@ -198,15 +198,15 @@ async function main(): Promise<void> {
 
         if (DRY) {
           if (v2Secret && v2Secret !== legacySecret) {
-            log('站点主密钥：⚠️ 目标库已有一枚**不同**的主密钥 —— 真跑时将以 legacy 覆盖（迁移密文依赖它）');
+            log('Site master key: ⚠️ the target database already has a DIFFERENT master key — a real run overwrites it with the legacy one (the migrated ciphertext depends on it)');
           } else {
-            log(`站点主密钥：将搬入 legacy 的那一枚（${legacySecret.slice(0, 6)}…，长度 ${legacySecret.length}）`);
+            log(`Site master key: will copy the legacy one (${legacySecret.slice(0, 6)}…, length ${legacySecret.length})`);
           }
         } else {
           if (v2Secret && v2Secret !== legacySecret) {
             // 取舍：迁移过来的密文是存量主体，v2 预存的那枚只可能是切换前的零星试玩，
             // 让存量大的一方赢，并把代价说清楚（不静默）
-            log('站点主密钥：⚠️ 目标库已有不同主密钥，以 legacy 覆盖 —— 切换前在 v2 里存的少数 Key 需重填');
+            log('Site master key: ⚠️ the target database had a different master key, overwriting it with the legacy one — the few keys stored in v2 before the switch must be re-entered');
           }
           await db
             .insert(settings)
@@ -215,14 +215,14 @@ async function main(): Promise<void> {
               target: settings.key,
               set: { value: legacySecret as unknown as Record<string, unknown>, updatedAt: new Date() },
             });
-          log('站点主密钥：已搬入（与 legacy 同一枚，老密文可直接解）');
+          log('Site master key: copied (the same key as legacy, existing ciphertext still decrypts)');
         }
       }
 
       if (!legacySource) {
-        log('采集参数：legacy 无 settings.source → 跳过，v2 用 env / 默认值');
+        log('Fetch settings: legacy has no settings.source → skipping, v2 uses env / defaults');
       } else if (DRY) {
-        log(`采集参数：将搬入 settings.source（${Object.keys(legacySource).length} 个键）`);
+        log(`Fetch settings: will copy settings.source (${Object.keys(legacySource).length} keys)`);
       } else {
         await db
           .insert(settings)
@@ -231,12 +231,12 @@ async function main(): Promise<void> {
             target: settings.key,
             set: { value: legacySource, updatedAt: new Date() },
           });
-        log('采集参数：已搬入 settings.source（刷新间隔 / 保留 / 并发 / 超时 / 失败上限 / 代理等）');
+        log('Fetch settings: settings.source copied (refresh interval / retention / concurrency / timeout / failure limit / proxy, etc.)');
       }
 
       if (others.length) {
         // auth / sessionSecret 已由 better-auth 取代；站点级 llm / digest 在 v1.4.0 就整层退场
-        log(`站点设置：忽略 ${others.join(', ')}（auth/sessionSecret 已并入账号体系，站点级 llm/digest 已退场）`);
+        log(`Site settings: ignoring ${others.join(', ')} (auth/sessionSecret moved into the account system, site-level llm/digest are retired)`);
       }
     }
 
@@ -245,7 +245,7 @@ async function main(): Promise<void> {
       const { rows } = await legacyPool.query<Row>(
         `select id, username, role, prefs, salt, password_hash, created_at, updated_at from ${T('users')} order by id`,
       );
-      log(`legacy 用户 ${rows.length} 个`);
+      log(`Legacy users: ${rows.length}`);
 
       for (const u of rows) {
         const legacyId = Number(u.id);
@@ -291,7 +291,7 @@ async function main(): Promise<void> {
           body: { email: `u${legacyId}@legacy.invalid`, password, name: username, username } as never,
         });
         const [created] = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
-        if (!created) throw new Error(`创建 v2 用户失败：${username}`);
+        if (!created) throw new Error(`Failed to create the v2 user: ${username}`);
 
         if (keepLegacy && legacySalt && legacyHash) {
           const updated = await db
@@ -299,7 +299,7 @@ async function main(): Promise<void> {
             .set({ password: formatLegacyPasswordHash(legacySalt, legacyHash), updatedAt: new Date() })
             .where(and(eq(accounts.userId, created.id), eq(accounts.providerId, 'credential')))
             .returning({ id: accounts.id });
-          if (!updated.length) throw new Error(`写入 legacy 密码失败：${username}`);
+          if (!updated.length) throw new Error(`Failed to write the legacy password: ${username}`);
           stats.users.passwordsKept += 1;
         } else {
           newCredentials.push({ username, password });
@@ -320,15 +320,15 @@ async function main(): Promise<void> {
         stats.users.created += 1;
       }
 
-      log(`用户：复用 ${stats.users.reused} / 新建 ${stats.users.created} / 跳过 ${stats.users.skipped}`);
+      log(`Users: reused ${stats.users.reused} / created ${stats.users.created} / skipped ${stats.users.skipped}`);
       log(
-        `密码：沿用 v1 ${stats.users.passwordsKept} 个（原密码可登录，成功后自动升级哈希） / 随机重置 ${stats.users.passwordsReset} 个`,
+        `Passwords: kept v1 ${stats.users.passwordsKept} (original password still works, hash upgrades on first sign-in) / randomly reset ${stats.users.passwordsReset}`,
       );
       if (newCredentials.length) {
         // 只有 legacy 行缺 salt/password_hash 才会走到这里。密码只打印这一次。
-        console.log('\n===== 无法沿用 v1 密码的账号（登录后请立即修改） =====');
+        console.log('\n===== Accounts whose v1 password could not be kept (change it right after signing in) =====');
         for (const c of newCredentials) console.log(`  ${c.username}\t${c.password}`);
-        console.log('======================================================\n');
+        console.log('===========================================================================================\n');
       }
     } else {
       // 只跑部分段时必须先拿到映射，否则所有 owner_id 都会丢
@@ -337,13 +337,13 @@ async function main(): Promise<void> {
         const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.username, String(u.username))).limit(1);
         if (existing) userIdMap.set(Number(u.id), existing.id);
       }
-      log(`用户段已跳过，仅读取映射 ${userIdMap.size} 条`);
+      log(`User section skipped, read ${userIdMap.size} id mappings only`);
     }
 
     /* ---------------- 2. 频道 ---------------- */
     if (ONLY.has('feeds')) {
       const { rows } = await legacyPool.query<Row>(`select * from ${T('feeds')} order by id`);
-      log(`legacy 频道 ${rows.length} 个`);
+      log(`Legacy feeds: ${rows.length}`);
 
       for (const f of rows) {
         const ownerId = userIdMap.get(Number(f.owner_id));
@@ -396,12 +396,12 @@ async function main(): Promise<void> {
             updatedAt: toDate(f.updated_at) ?? new Date(),
           })
           .returning({ id: feeds.id });
-        if (!created) throw new Error(`插入频道失败：${url}`);
+        if (!created) throw new Error(`Failed to insert the feed: ${url}`);
         feedIdMap.set(Number(f.id), created.id);
         stats.feeds.inserted += 1;
       }
 
-      log(`频道：新建 ${stats.feeds.inserted} / 复用 ${stats.feeds.reused} / 跳过 ${stats.feeds.skipped}`);
+      log(`Feeds: inserted ${stats.feeds.inserted} / reused ${stats.feeds.reused} / skipped ${stats.feeds.skipped}`);
     } else {
       const { rows } = await legacyPool.query<Row>(`select id, owner_id, url from ${T('feeds')}`);
       for (const f of rows) {
@@ -414,7 +414,7 @@ async function main(): Promise<void> {
           .limit(1);
         if (existing) feedIdMap.set(Number(f.id), existing.id);
       }
-      log(`频道段已跳过，仅读取映射 ${feedIdMap.size} 条`);
+      log(`Feed section skipped, read ${feedIdMap.size} id mappings only`);
     }
 
     /* ---------------- 3. 条目 ---------------- */
@@ -485,18 +485,18 @@ async function main(): Promise<void> {
           .returning({ id: entries.id });
         stats.entries.inserted += inserted.length;
         stats.entries.existed += values.length - inserted.length;
-        process.stdout.write(`\r  条目已处理 id≤${lastId}　新增 ${stats.entries.inserted}`);
+        process.stdout.write(`\r  entries processed up to id≤${lastId}  inserted ${stats.entries.inserted}`);
       }
       process.stdout.write('\n');
       log(
-        `条目：新增 ${stats.entries.inserted} / 已存在 ${stats.entries.existed} / 跳过（频道缺失）${stats.entries.skipped}`,
+        `Entries: inserted ${stats.entries.inserted} / already existed ${stats.entries.existed} / skipped (missing feed) ${stats.entries.skipped}`,
       );
     }
 
     /* ---------------- 4. 日报 ---------------- */
     if (ONLY.has('digests')) {
       const { rows } = await legacyPool.query<Row>(`select date::text as date, owner_id, payload, model, fallback, created_at from ${T('digests')} order by date`);
-      log(`legacy 日报 ${rows.length} 份`);
+      log(`Legacy digests: ${rows.length}`);
 
       for (const d of rows) {
         const ownerId = userIdMap.get(Number(d.owner_id));
@@ -530,7 +530,7 @@ async function main(): Promise<void> {
           });
         stats.digests.upserted += 1;
       }
-      log(`日报：写入 ${stats.digests.upserted} / 跳过 ${stats.digests.skipped}`);
+      log(`Digests: written ${stats.digests.upserted} / skipped ${stats.digests.skipped}`);
     }
 
     /* ---------------- 5. 偏好与模型配置 ---------------- */
@@ -573,20 +573,20 @@ async function main(): Promise<void> {
           stats.prefs.llm += 1;
         }
       }
-      log(`偏好：写入 ${stats.prefs.updated} 个账号，其中模型配置 ${stats.prefs.llm} 份`);
+      log(`Prefs: written for ${stats.prefs.updated} accounts, of which ${stats.prefs.llm} model configurations`);
     }
 
     /* ---------------- 汇总 ---------------- */
-    console.log('\n===== 迁移汇总 =====');
-    console.log(`用户   复用 ${stats.users.reused} / 新建 ${stats.users.created} / 跳过 ${stats.users.skipped}`);
-    console.log(`频道   新建 ${stats.feeds.inserted} / 复用 ${stats.feeds.reused} / 跳过 ${stats.feeds.skipped}`);
-    console.log(`条目   新增 ${stats.entries.inserted} / 已存在 ${stats.entries.existed} / 跳过 ${stats.entries.skipped}`);
-    console.log(`日报   写入 ${stats.digests.upserted} / 跳过 ${stats.digests.skipped}`);
-    console.log(`偏好   账号 ${stats.prefs.updated} / 模型 ${stats.prefs.llm}`);
-    if (DRY) console.log('\n（干跑：以上数字均为预计值，未写入任何数据）');
-    console.log('\n⚠️ 切换自检：用户能登录后，去看「日报设置」里的 Key 是否仍显示掩码。');
-    console.log('   解不开（显示「请重填」）= settings.cryptoSecret 没搬成功，回到第 0 段查。');
-    console.log('⚠️ 图片缓存（image_cache）不在迁移范围内：要保留请单独 pg_dump 这两张表。');
+    console.log('\n===== Migration summary =====');
+    console.log(`Users    reused ${stats.users.reused} / created ${stats.users.created} / skipped ${stats.users.skipped}`);
+    console.log(`Feeds    inserted ${stats.feeds.inserted} / reused ${stats.feeds.reused} / skipped ${stats.feeds.skipped}`);
+    console.log(`Entries  inserted ${stats.entries.inserted} / existing ${stats.entries.existed} / skipped ${stats.entries.skipped}`);
+    console.log(`Digests  written ${stats.digests.upserted} / skipped ${stats.digests.skipped}`);
+    console.log(`Prefs    accounts ${stats.prefs.updated} / models ${stats.prefs.llm}`);
+    if (DRY) console.log('\n(Dry run: the numbers above are estimates, nothing was written)');
+    console.log('\n⚠️ Post-switch check: once a user can sign in, open the digest settings and confirm the key still shows a mask.');
+    console.log('   If it does not decrypt (it asks to re-enter the key), settings.cryptoSecret did not migrate — go back to step 0.');
+    console.log('⚠️ The image cache (image_cache) is outside the migration scope: pg_dump those tables separately to keep them.');
   } finally {
     await legacyPool.end().catch(() => {});
     // drizzle 的连接池由 createDb 内部持有，进程退出时自然关闭
@@ -594,6 +594,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  console.error('[migrate] 失败：', (e as Error)?.message ?? e);
+  console.error('[migrate] failed:', (e as Error)?.message ?? e);
   process.exit(1);
 });

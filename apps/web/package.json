@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/ui/build.mjs && node tests/ui/ui-regression.cjs",
+    "test": "node --test \"tests/**/*.test.mjs\" && node tests/ui/build.mjs && node tests/ui/ui-regression.cjs",
     "test:ui": "node tests/ui/build.mjs && node tests/ui/ui-regression.cjs"
   },
   "dependencies": {

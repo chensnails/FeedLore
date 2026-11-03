@@ -70,14 +70,14 @@ async function count(pool: Pool, table: string): Promise<number> {
 async function ensureTargetDatabase(): Promise<void> {
   const name = dbNameOf(V2_URL);
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-    fail(`目标库名不合法：${name}（只允许字母、数字、下划线）`);
+    fail(`Invalid target database name: ${name} (letters, digits and underscores only)`);
   }
 
   const admin = createPool(withDb(V2_URL, 'postgres'));
   try {
     const found = await admin.query('select 1 from pg_database where datname = $1', [name]);
     if (!found.rowCount) {
-      log(`创建数据库 ${name}`);
+      log(`Creating database ${name}`);
       await admin.query(`create database "${name}"`);
     }
     /* 关键：v1 的 Postgres 容器时区是 Asia/Shanghai。库级时区不钉住，v2 里
@@ -85,9 +85,9 @@ async function ensureTargetDatabase(): Promise<void> {
     await admin.query(`alter database "${name}" set timezone to 'UTC'`);
   } catch (e) {
     fail(
-      `准备目标库 ${name} 失败：${(e as Error).message}\n`
-        + '  → 需要数据库账号有 CREATEDB 权限（官方 postgres 镜像的 POSTGRES_USER 即有）；\n'
-        + '     外部托管数据库请先手动 create database 并授予 owner 后重试',
+      `Failed to prepare target database ${name}: ${(e as Error).message}\n`
+        + '  → the database account needs CREATEDB privileges (the official postgres image grants it to POSTGRES_USER);\n'
+        + '     for a managed database, run create database manually and grant owner, then retry',
     );
   } finally {
     await admin.end().catch(() => {});
@@ -103,15 +103,15 @@ function runStep(title: string, args: string[], cwd: string): void {
     stdio: 'inherit',
     env: { ...process.env, TZ: 'UTC' },
   });
-  if (r.error) fail(`${title} 无法启动：${r.error.message}`);
-  if (r.status !== 0) fail(`${title} 失败（退出码 ${r.status}）`);
+  if (r.error) fail(`${title} could not start: ${r.error.message}`);
+  if (r.status !== 0) fail(`${title} failed (exit code ${r.status})`);
 }
 
 /* ============================ 3. 图片缓存 ============================ */
 
 async function copyImageCache(): Promise<void> {
   if (SKIP_IMAGE_CACHE) {
-    log('已跳过图片缓存搬运（UPGRADE_SKIP_IMAGE_CACHE=1）');
+    log('Skipped the image cache copy (UPGRADE_SKIP_IMAGE_CACHE=1)');
     return;
   }
 
@@ -122,23 +122,23 @@ async function copyImageCache(): Promise<void> {
       `select 1 from information_schema.tables where table_schema = 'public' and table_name = 'image_cache'`,
     );
     if (!has.rowCount) {
-      log('v1 没有 image_cache 表，跳过图片缓存');
+      log('v1 has no image_cache table, skipping the image cache');
       return;
     }
 
     const existing = (await target.query<{ n: number }>('select count(*)::int as n from image_cache')).rows[0]?.n ?? 0;
     if (existing > 0) {
-      log(`v2 已有 ${existing} 条图片缓存，跳过搬运（避免覆盖新站点自己抓的图）`);
+      log(`v2 already has ${existing} image cache rows, skipping the copy (would overwrite images the new site fetched itself)`);
       return;
     }
 
     const total = await count(legacy, 'image_cache');
     if (total === 0) {
-      log('v1 图片缓存为空，跳过');
+      log('v1 image cache is empty, skipping');
       return;
     }
 
-    log(`搬运 ${total} 条图片缓存…`);
+    log(`Copying ${total} image cache rows…`);
     let lastKey = '';
     let copied = 0;
     for (;;) {
@@ -173,9 +173,9 @@ async function copyImageCache(): Promise<void> {
         params,
       );
       copied += rows.length;
-      if (copied % (IMAGE_BATCH * 5) === 0) log(`  图片缓存 ${copied}/${total}`);
+      if (copied % (IMAGE_BATCH * 5) === 0) log(`  image cache ${copied}/${total}`);
     }
-    log(`图片缓存完成：${copied} 条`);
+    log(`Image cache done: ${copied} rows`);
   } finally {
     await legacy.end().catch(() => {});
     await target.end().catch(() => {});
@@ -204,11 +204,11 @@ async function verify(): Promise<Counts> {
       feeds: await count(target, 'feeds'),
       entries: await count(target, 'entries'),
     };
-    log(`用户 ${l.users}→${v.users} / 频道 ${l.feeds}→${v.feeds} / 条目 ${l.entries}→${v.entries}`);
+    log(`users ${l.users}→${v.users} / feeds ${l.feeds}→${v.feeds} / entries ${l.entries}→${v.entries}`);
 
-    if (v.users < l.users) fail(`用户数少于 v1（${v.users} < ${l.users}）：迁移不完整，v2 不会启动`);
-    if (v.feeds < l.feeds) fail(`频道数少于 v1（${v.feeds} < ${l.feeds}）：迁移不完整，v2 不会启动`);
-    if (v.entries < l.entries) fail(`条目数少于 v1（${v.entries} < ${l.entries}）：迁移不完整，v2 不会启动`);
+    if (v.users < l.users) fail(`Fewer users than in v1 (${v.users} < ${l.users}): migration incomplete, v2 will not start`);
+    if (v.feeds < l.feeds) fail(`Fewer feeds than in v1 (${v.feeds} < ${l.feeds}): migration incomplete, v2 will not start`);
+    if (v.entries < l.entries) fail(`Fewer entries than in v1 (${v.entries} < ${l.entries}): migration incomplete, v2 will not start`);
 
     const cred = (await target.query<{ n: number }>(
       `select count(*)::int as n from accounts where provider_id = 'credential' and coalesce(password, '') <> ''`,
@@ -216,8 +216,8 @@ async function verify(): Promise<Counts> {
     const legacyPw = (await legacy.query<{ n: number }>(
       `select count(*)::int as n from users where password_hash is not null and password_hash <> ''`,
     )).rows[0]?.n ?? 0;
-    if (cred < legacyPw) fail(`有 v1 账号没有写入登录凭据（${cred} < ${legacyPw}）：升级后会登不进来`);
-    log(`凭据齐全：${cred} 个（v1 密码原样可登录，首次登录自动升级哈希）`);
+    if (cred < legacyPw) fail(`Some v1 accounts have no login credential (${cred} < ${legacyPw}): they would not be able to sign in after the upgrade`);
+    log(`Credentials complete: ${cred} accounts (v1 passwords still work as-is; hashes upgrade on first sign-in)`);
 
     const [ls] = (await legacy.query<{ v: string | null }>(
       `select value::text as v from settings where key = 'cryptoSecret'`,
@@ -225,8 +225,8 @@ async function verify(): Promise<Counts> {
     const [vs] = (await target.query<{ v: string | null }>(
       `select value::text as v from settings where key = 'cryptoSecret'`,
     )).rows;
-    if (ls?.v && ls.v !== vs?.v) fail('站点主密钥 cryptoSecret 未正确迁移：模型 Key 会解不开');
-    if (ls?.v) log('站点主密钥：一致（模型 Key 可继续解密）');
+    if (ls?.v && ls.v !== vs?.v) fail('Site master key cryptoSecret was not migrated correctly: model keys cannot be decrypted');
+    if (ls?.v) log('Site master key: consistent (model keys still decrypt)');
 
     return v;
   } finally {
@@ -251,26 +251,26 @@ async function writeMarker(db: Db, c: Counts): Promise<void> {
 /* ============================ 主流程 ============================ */
 
 async function main(): Promise<void> {
-  if (!LEGACY_URL) fail('缺少 LEGACY_DATABASE_URL（v1 的库）');
-  if (!V2_URL) fail('缺少 DATABASE_URL（v2 的新库，不能与 LEGACY_DATABASE_URL 相同）');
-  if (LEGACY_URL === V2_URL) fail('LEGACY_DATABASE_URL 与 DATABASE_URL 相同：v2 必须写到新库（如 feedlore_v2）');
+  if (!LEGACY_URL) fail('Missing LEGACY_DATABASE_URL (the v1 database)');
+  if (!V2_URL) fail('Missing DATABASE_URL (the new v2 database; it must differ from LEGACY_DATABASE_URL)');
+  if (LEGACY_URL === V2_URL) fail('LEGACY_DATABASE_URL and DATABASE_URL are the same: v2 must write to a new database (e.g. feedlore_v2)');
 
   /* 时区不对会**静默**写偏历史时间，宁可在这里停下。 */
   const offsetHours = -new Date().getTimezoneOffset() / 60;
   if (offsetHours !== 0) {
-    fail(`进程时区不是 UTC（当前偏移 ${offsetHours} 小时）：历史时间会整体偏移。请在 compose 里设 TZ: UTC`);
+    fail(`Process timezone is not UTC (current offset ${offsetHours}h): historical timestamps would all shift. Set TZ: UTC in compose`);
   }
 
   const legacyName = dbNameOf(LEGACY_URL);
   const v2Name = dbNameOf(V2_URL);
-  log(`源库 ${legacyName} → 目标库 ${v2Name}`);
+  log(`Source database ${legacyName} → target database ${v2Name}`);
 
   await ensureTargetDatabase();
-  runStep('数据库结构迁移（drizzle，幂等）', ['migrate'], DB_PKG);
+  runStep('database schema migration (drizzle, idempotent)', ['migrate'], DB_PKG);
 
   const db = createDb(V2_URL);
   if (await hasMarker(db)) {
-    log('检测到已完成的 v1 迁移标记，跳过数据迁移（结构迁移已执行）');
+    log('Completed v1 migration marker found, skipping the data migration (schema migration already ran)');
     return;
   }
 
@@ -285,28 +285,28 @@ async function main(): Promise<void> {
     isV1 = Boolean(col.rowCount);
     if (isV1) legacyUsers = await count(legacy, 'users');
   } catch (e) {
-    fail(`读取源库失败：${(e as Error).message}`);
+    fail(`Failed to read the source database: ${(e as Error).message}`);
   } finally {
     await legacy.end().catch(() => {});
   }
 
   if (!isV1) {
-    log('源库不是 v1（users.password_hash 不存在）→ 按全新安装处理，跳过数据迁移');
+    log('Source database is not v1 (users.password_hash is missing) → treating it as a fresh install, skipping the data migration');
     return;
   }
   if (legacyUsers === 0) {
-    warn('源库没有账号：按空站点继续。应用启动时会自动创建初始管理员，并打印一次性随机密码');
+    warn('Source database has no accounts: continuing as an empty site. The app will create the initial admin at startup and print a one-time random password');
     return;
   }
 
   /* AUTH_SECRET 只被 migrate:legacy 用来建账号；没配就自动生成并持久化到 v2 库，
    * app 启动时读同一枚（见 src/lib/auth-secret.ts），用户不必先编辑 .env。 */
   await ensureAuthSecret(V2_URL);
-  runStep('v1 数据迁移（migrate:legacy，幂等）', ['--filter', '@feedlore/server', 'migrate:legacy'], REPO_ROOT);
+  runStep('v1 data migration (migrate:legacy, idempotent)', ['--filter', '@feedlore/server', 'migrate:legacy'], REPO_ROOT);
   await copyImageCache();
   const counts = await verify();
   await writeMarker(db, counts);
-  log('升级完成：v2 数据已就绪，应用容器可以启动');
+  log('Upgrade complete: v2 data is ready, the app container can start');
 }
 
 main()
@@ -314,7 +314,7 @@ main()
     await getPool()?.end().catch(() => {});
   })
   .catch(async (e) => {
-    console.error('[upgrade] 未捕获异常：', (e as Error)?.stack ?? e);
+    console.error('[upgrade] uncaught exception:', (e as Error)?.stack ?? e);
     await getPool()?.end().catch(() => {});
     process.exit(1);
   });

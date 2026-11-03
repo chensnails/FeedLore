@@ -27,7 +27,7 @@ function bad(label: string, err: unknown): void {
 
 async function main(): Promise<void> {
   if (!PASS) {
-    console.error('缺少 ADMIN_PASS 环境变量');
+    console.error('Missing ADMIN_PASS environment variable');
     process.exit(2);
   }
 

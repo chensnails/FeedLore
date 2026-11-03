@@ -138,7 +138,7 @@ export function WatchPane() {
         body: JSON.stringify({ watchRules: toServer(rules), watchExpireDays: days }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: data.error || '保存失败' }); return; }
+      if (!res.ok) { setResult({ ok: false, msg: s.errText(data, '保存失败') }); return; }
       const next = fromServer(data.watchRules);
       const nextDays = Number.isFinite(Number(data.watchExpireDays)) ? String(Number(data.watchExpireDays)) : String(days);
       setRules(next);
@@ -170,7 +170,7 @@ export function WatchPane() {
     try {
       const res = await s.apiFetch('/api/watch/apply', { method: 'POST' });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: d.error || '应用失败' }); return; }
+      if (!res.ok) { setResult({ ok: false, msg: s.errText(d, '应用失败') }); return; }
       setResult({ ok: true, msg: `已回溯：重新判定 ${d.tagged} 篇，关注命中 ${d.watching} 篇、屏蔽命中 ${d.blocked} 篇（清除旧标记 ${d.cleared} 条）。` });
       // 侧栏的关注 / 屏蔽计数变了，让频道栏重新拉一遍
       if (s.loadFeeds) await s.loadFeeds();
@@ -190,7 +190,7 @@ export function WatchPane() {
         body: JSON.stringify({ webhookUrl: webhook }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: data.error || '保存失败' }); return; }
+      if (!res.ok) { setResult({ ok: false, msg: s.errText(data, '保存失败') }); return; }
       const w = typeof data.webhookUrl === 'string' ? data.webhookUrl : '';
       setWebhook(w);
       setSavedWebhook(w);
@@ -216,7 +216,7 @@ export function WatchPane() {
         body: JSON.stringify({ filters }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setFilterResult({ ok: false, msg: data.error || '保存失败' }); return; }
+      if (!res.ok) { setFilterResult({ ok: false, msg: s.errText(data, '保存失败') }); return; }
       // 服务端会重新清洗：空模式 / 非法正则 / 超长 都被丢弃，用回填结果告知差量
       const saved = (Array.isArray(data.filters) ? data.filters : [])
         .map((f) => Object.assign({}, f, { scope: normalizeScope(f.scope) }));

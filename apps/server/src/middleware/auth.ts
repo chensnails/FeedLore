@@ -8,6 +8,7 @@
 import type { MiddlewareHandler } from 'hono';
 import type { AuthInstance } from '@feedlore/auth';
 import type { Role } from '@feedlore/contract';
+import { apiError } from '../lib/apiError';
 import { normalizeRole } from '../lib/roles';
 
 export interface SessionUser {
@@ -39,22 +40,22 @@ export function requireAuth(
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     if (!auth) {
-      console.error('[auth] better-auth 未初始化（缺少 AUTH_SECRET 或数据库未就绪）');
-      return c.json({ error: '鉴权服务未就绪' }, 503);
+      console.error('[auth] better-auth not initialized (missing AUTH_SECRET or database not ready)');
+      return apiError(c, 'E_AUTH_NOT_READY');
     }
 
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    if (!session) return c.json({ error: '未登录' }, 401);
+    if (!session) return apiError(c, 'E_UNAUTHORIZED');
 
     const u = session.user as unknown as AuthUserLike;
     const role = normalizeRole(u.role);
     if (level === 'admin' && role !== 'admin') {
-      return c.json({ error: '需要管理员权限' }, 403);
+      return apiError(c, 'E_ADMIN_ONLY');
     }
     // 'write'：登录即可，但只读账户只能阅读。配置类写接口一律用它，
     // 不靠前端隐藏按钮兜底（直接调接口也必须被拦）。
     if (level === 'write' && role === 'readonly') {
-      return c.json({ error: '只读账户不能修改配置，请联系管理员' }, 403);
+      return apiError(c, 'E_READONLY_CONFIG');
     }
 
     c.set('user', {

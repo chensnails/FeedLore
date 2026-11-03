@@ -7,6 +7,8 @@
 
 /* ---------------- DOM ---------------- */
 export const $ = (s) => document.querySelector(s);
+import { errorText } from './errorText.js';
+export { errorText as errText };
 /* ---------------- 工具 ---------------- */
 /** 带登录态处理的 fetch：401 时跳登录页 */
 export async function apiFetch(url, opts) {
@@ -21,8 +23,11 @@ export async function apiFetch(url, opts) {
 /** 非 2xx 时构造带「服务端原因」的 Error，调用方一律 `throw await httpError(res)`。
  *
  *  以前各处写的是 `throw new Error('HTTP ' + res.status)`，用户只会看到
- *  「操作失败：HTTP 500」—— 而服务端其实已经回了「服务器开小差了」这类可读原因，
- *  白白丢掉，出问题时既没法自助也没法反馈。
+ *  「操作失败：HTTP 500」—— 而服务端其实已经回了可读原因，白白丢掉，
+ *  出问题时既没法自助也没法反馈。
+ *
+ *  服务端现在回的是错误码（`{ error: 'E_XXX', message: '<英文>' }`），
+ *  中文文案由 src/core/errorText.js 的词典负责；没命中码表时退回英文原文。
  *
  *  ⚠️ 会消费 res 的 body，只能在失败分支调用；成功分支的 `res.json()` 各走各的，
  *  互斥分支不受影响（各处本来就是这个结构）。 */
@@ -30,8 +35,7 @@ export async function httpError(res) {
   let msg = '';
   try {
     const d = await res.json();
-    if (d && typeof d.error === 'string' && d.error) msg = d.error;
-    else if (d && typeof d.message === 'string' && d.message) msg = d.message;
+    msg = errorText(d);
   } catch (e) {
     /* 非 JSON（网关 HTML、空 body、被截断）→ 退回状态码 */
   }
