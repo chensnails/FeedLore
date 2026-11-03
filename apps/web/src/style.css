@@ -1841,6 +1841,38 @@ textarea:disabled {
 .form-row .select { width: 100%; }
 .form-row input:focus,
 .form-row textarea:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
+/* 设置面板里的文本类控件统一走同一套外观（v2.10.0）。
+   此前只有 .form-row 内的控件有完整样式，数据源「添加订阅」、用户添加、规则卡片
+   等位置落到浏览器默认控件 —— 同一面板里高度、圆角、底色、焦点环各不相同。
+   排除：搜索框（自己的胶囊造型）、勾选 / 文件控件、行内微编辑（序号 / 分组 / 标题 / 地址）。 */
+.settings-modal :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="search"]):not(.feed-order):not(.feed-group-edit):not(.feed-title-edit):not(.feed-url-edit)),
+.settings-modal :where(textarea) {
+  width: 100%;
+  padding: var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-md); font-family: inherit; color: var(--text);
+  outline: none; background: var(--panel-2);
+  transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
+}
+.settings-modal :where(textarea) { line-height: 1.6; }
+.settings-modal :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="search"]):not(.feed-order):not(.feed-group-edit):not(.feed-title-edit):not(.feed-url-edit)):focus,
+.settings-modal :where(textarea):focus {
+  border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.settings-modal :where(input, textarea)::placeholder { color: var(--text-faint); }
+
+/* 原生下拉与文本控件同一套外观；频道行里的紧凑下拉（频率 / 用户角色）保留小尺寸。 */
+.settings-modal .select:not(.feed-freq):not(.u-role) {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-2) var(--select-arrow) no-repeat right 12px center;
+  box-shadow: none;
+}
+.settings-modal .select:not(.feed-freq):not(.u-role):focus {
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
 .form-tip { display: block; margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-faint); }
 /* 表单错误态：:user-invalid 只在用户交互过之后才标红（不会一进页面就满屏红框），无需任何 JS 参与 */
 input:user-invalid,
@@ -1897,41 +1929,17 @@ textarea:user-invalid {
   font-size: var(--fs-sm); color: var(--text-muted);
   white-space: nowrap;
 }
-.source-opts input[type="number"] {
-  width: 78px;
-  padding:var(--sp-2) var(--sp-3);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  font-size: var(--fs-md); font-family: inherit; color: var(--text);
-  background: var(--panel-2);
-  outline: none;
-  transition: border-color var(--dur-base), box-shadow var(--dur-base);
-}
-.source-opts input[type="number"]:focus {
-  border-color: var(--accent-text);
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-/* 「出网代理」是文本输入：占整行，避免把长 URL 挤在 78px 数字框里 */
+/* 数字框只定宽度，外观统一交给 .settings-modal 的控件规则 */
+.source-opts input[type="number"] { width: 84px; }
+/* 「出网代理」是文本输入：占整行，避免把长 URL 挤在窄数字框里 */
 .source-opts .src-proxy-row {
   flex-basis: 100%;
   flex-wrap: wrap;
 }
 .source-opts .src-proxy-row input {
   flex: 1; min-width: 220px;
-  padding:var(--sp-2) var(--sp-3);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  font-size: var(--fs-md); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--text);
-  background: var(--panel-2);
-  outline: none;
-  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.source-opts .src-proxy-row input:focus {
-  border-color: var(--accent-text);
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-.source-opts .src-proxy-row input::placeholder { color: var(--text-faint); }
 /* 图片缓存行（v2.4.0）：统计文字 + 清空按钮，占整行与代理行一致 */
 .source-opts .src-img-cache {
   flex-basis: 100%;
@@ -2838,12 +2846,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 }
 .filter-row .filter-on { flex: 0 0 auto; accent-color: var(--accent); }
 .filter-row .filter-act, .filter-row .filter-field, .filter-row .filter-kind { flex: 0 0 auto; }
-.filter-row .filter-pattern {
-  flex: 1 1 160px; min-width: 0;
-  padding:var(--sp-2) var(--sp-2); border: 1px solid var(--border); border-radius: var(--radius-xs);
-  background: var(--bg); color: var(--text); font-family: inherit; font-size: var(--fs-md);
-}
-.filter-row .filter-pattern:focus { outline: none; border-color: var(--accent); }
+.filter-row .filter-pattern { flex: 1 1 160px; min-width: 0; }
 .filter-row .filter-del { flex: 0 0 auto; }
 .filter-row .filter-del:hover { color: var(--danger); }
 .filter-actions { margin:2px 0 var(--sp-2); }
@@ -3401,7 +3404,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
   .source-add { padding:var(--sp-4) var(--sp-4) var(--sp-3); }
   .source-opts { gap:var(--sp-2) var(--sp-4); }
-  .source-opts input[type="number"] { width: 68px; }
+  .source-opts input[type="number"] { width: 76px; }
   /* 开关与图标按钮挤不进一行，整块换到第二行；再窄时允许操作组内部换行 */
   .feed-row { flex-wrap: wrap; padding:var(--sp-2) var(--sp-2); gap:var(--sp-2) var(--sp-2); }
   .feed-avatar { width: 30px; height: 30px; flex-basis: 30px; }
@@ -4204,12 +4207,7 @@ textarea:focus-visible { outline: none; }
 /* 6) 弹窗关闭键：统一 30×30 / 圆角 8（位置语义各自保留：设置在内联标题栏，详情悬浮） */
 .cd-close { width: 30px; height: 30px; font-size: var(--fs-md); border-radius: var(--radius-sm); }
 
-/* 7) 补上过滤规则的聚焦光环（此前只有边框变色，其余输入框都有光环） */
-.filter-row .filter-pattern { border-radius: var(--radius-sm); }
-.filter-row .filter-pattern:focus {
-  border-color: var(--accent-text);
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
+/* 7) 过滤规则输入框的聚焦光环已并入设置面板统一控件规则 */
 
 /* 8) 卡片内标签与筛选 chip 同属「标签」，字号并到同一档 */
 .mini-tag { font-size: var(--fs-2xs); border-radius: var(--radius-xs); }

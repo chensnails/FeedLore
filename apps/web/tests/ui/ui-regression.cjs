@@ -1214,6 +1214,58 @@ const withEFP = (el, fn) => {
     }
   });
 
+  // 设置面板控件统一（v2.10.0）：文本 / 文本域 / 下拉共用一套外观。
+  // 之前只有 .form-row 里的控件有完整样式，「添加订阅」、用户添加、规则卡片等
+  // 落到浏览器默认控件，同一面板里高度、圆角、底色、焦点环各不相同。
+  t('style.css：设置面板的输入框 / 文本域 / 下拉统一外观', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const rules = [...css.matchAll(/(\.settings-modal[^{}]*)\{([^}]*)\}/g)]
+      .map((m) => ({ sel: m[1].trim(), body: m[2] }));
+    const ctl = rules.find((r) => /:where\(input:not\(\[type="checkbox"\]\)/.test(r.sel)
+      && /padding:\s*var\(--sp-3\)/.test(r.body));
+    if (!ctl) throw new Error('缺设置面板统一控件规则（文本类输入框）');
+    for (const token of ['border: 1px solid var(--border-strong)', 'border-radius: var(--radius-md)',
+      'background: var(--panel-2)', 'font-size: var(--fs-md)']) {
+      if (!ctl.body.includes(token)) throw new Error(`统一控件规则缺 ${token}`);
+    }
+    // 必须排除：搜索胶囊、勾选 / 文件控件、行内微编辑（序号 / 分组 / 标题 / 地址）
+    for (const sel of ['[type="search"]', '[type="checkbox"]', '[type="radio"]', '[type="file"]',
+      '.feed-order', '.feed-group-edit', '.feed-title-edit', '.feed-url-edit']) {
+      if (!ctl.sel.includes(sel)) throw new Error(`统一控件规则应排除 ${sel}`);
+    }
+    if (!rules.some((r) => r.sel === '.settings-modal :where(textarea)')) {
+      throw new Error('文本域也要纳入统一外观');
+    }
+    if (!rules.some((r) => /:where\(input/.test(r.sel) && /:focus/.test(r.sel)
+      && /var\(--focus-ring\)/.test(r.body))) {
+      throw new Error('设置面板控件应有统一焦点环');
+    }
+    if (!rules.some((r) => /:where\(input, textarea\)::placeholder/.test(r.sel))) {
+      throw new Error('占位符颜色应统一');
+    }
+
+    // 下拉：同底色 / 同圆角 / 同焦点环；紧凑下拉（频率 / 用户角色）保留小尺寸
+    const sel = rules.find((r) => /\.select:not\(\.feed-freq\):not\(\.u-role\)/.test(r.sel)
+      && !/:focus/.test(r.sel));
+    if (!sel) throw new Error('设置面板下拉需与文本控件同一套外观');
+    if (!/border-radius:\s*var\(--radius-md\)/.test(sel.body) || !/background:\s*var\(--panel-2\)/.test(sel.body)) {
+      throw new Error('设置面板下拉应沿用输入框的圆角和底色');
+    }
+    if (!/box-shadow:\s*none/.test(sel.body)) throw new Error('设置面板下拉应压掉拟物投影');
+    if (!rules.some((r) => /\.select:not\(\.feed-freq\):not\(\.u-role\):focus/.test(r.sel)
+      && /var\(--focus-ring\)/.test(r.body))) {
+      throw new Error('设置面板下拉也要有统一焦点环');
+    }
+
+    // 特例只许改布局，不许再各自长出一套皮
+    const num = css.match(/\.source-opts input\[type="number"\] \{([^}]*)\}/);
+    if (!num || !/width:\s*84px/.test(num[1])) throw new Error('数据源数字框应只定宽度');
+    if (/border|background|padding/.test(num[1])) throw new Error('数据源数字框不该再自带外观覆盖');
+    const pat = css.match(/\.filter-row \.filter-pattern \{([^}]*)\}/);
+    if (!pat) throw new Error('缺过滤规则输入框规则');
+    if (/border|background|padding/.test(pat[1])) throw new Error('过滤规则输入框只该定布局');
+  });
+
   // 视图导航与页面头部的工具图标同尺寸；吸顶偏移量取头部实测高度（含 1px 底边线），
   // 否则吸顶条的顶端会被头部压住一条缝。
   t('style.css + 头部：工具图标同一尺寸，吸顶偏移量取自实测高度', () => {

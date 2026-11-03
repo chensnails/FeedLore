@@ -243,7 +243,7 @@ export function WatchPane() {
               value={webhook}
               onChange={(ev) => setWebhook(ev.target.value)}
             />
-            <button className="btn btn-ghost btn-sm" type="button" disabled={busy === 'webhook'}
+            <button className="btn btn-ghost" type="button" disabled={busy === 'webhook'}
               onClick={onSaveWebhook}>
               {busy === 'webhook' ? '保存中…' : '保存'}
             </button>

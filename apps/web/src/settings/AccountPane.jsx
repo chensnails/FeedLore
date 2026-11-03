@@ -308,7 +308,7 @@ export function AccountPane() {
                   <option value="readonly">只读用户</option>
                   <option value="admin">管理员</option>
                 </select>
-                <button className="btn btn-primary btn-sm" id="addUserBtn" type="button"
+                <button className="btn btn-primary" id="addUserBtn" type="button"
                   disabled={addingUser} onClick={addUser}>添加</button>
               </div>
               <small className="form-tip">
