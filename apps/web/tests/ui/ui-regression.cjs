@@ -86,7 +86,7 @@ const miniFeeds = [
   { id: '3', url: 'https://blog.example.org/atom.xml', title: '某人的博客', customTitle: null, groupName: '', enabled: false, cardEnabled: true, fullText: false, refreshMinutes: null, sortOrder: 2, entryCount: 88, lastFetchedAt: null, status: null, error: '' },
 ];
 let miniGroupOrder = ['科技'];
-// 条目过滤规则（v2.7.0）：AccountPane 读 /api/prefs 的 filters，保存后由 mock 的 sanitize 回填
+// 条目过滤规则（v2.7.0）：WatchPane（规则 tab）读 /api/prefs 的 filters，保存后由 mock 的 sanitize 回填
 let miniFilters = [
   { id: 'f1', on: true, act: 'block', field: 'title', kind: 'kw', pattern: '广告' },
   { id: 'f2', on: true, act: 'allow', field: 'desc', kind: 're', pattern: 'sk-' },
@@ -2341,9 +2341,11 @@ const withEFP = (el, fn) => {
   });
   t('安装指引显示当前域名', () => { if (document.querySelector('#installHost').textContent !== 'localhost:3000') throw new Error(document.querySelector('#installHost').textContent); });
 
-  // 条目过滤规则（v2.7.0）
+  // 条目过滤规则（v2.7.0）：现位于「规则」tab 的独立分组（WatchPane 读 /api/prefs 的 filters）
+  clickTab('规则');
+  await sleep(120);
   t('过滤规则区渲染：从 /api/prefs 回填', () => {
-    const rows = document.querySelectorAll('[data-sec="acc-filters"] .filter-row');
+    const rows = document.querySelectorAll('[data-sec="watch-filters"] .filter-row');
     if (rows.length !== 2) throw new Error('行数 ' + rows.length);
     const r1 = rows[0], r2 = rows[1];
     if (r1.querySelector('.filter-act').value !== 'block') throw new Error('r1 act');
@@ -2354,14 +2356,14 @@ const withEFP = (el, fn) => {
     if (r2.querySelector('.filter-act').value !== 'allow') throw new Error('r2 act');
     if (r2.querySelector('.filter-kind').value !== 're') throw new Error('r2 kind');
     if (r2.querySelector('.filter-field').value !== 'desc') throw new Error('r2 field');
-    const sub = document.querySelector('[data-sec="acc-filters"] .sec-sub').textContent;
+    const sub = document.querySelector('[data-sec="watch-filters"] .sec-sub').textContent;
     if (sub !== '2 条') throw new Error('sub: ' + sub);
   });
   // 添加一条规则（React 18：click 后 DOM 重绘在微任务，须移出 t() 再断言）
   document.querySelector('#addFilterBtn').click();
   await sleep(40);
   t('添加规则：行数 +1，默认屏蔽/标题/关键词', () => {
-    const rows = document.querySelectorAll('[data-sec="acc-filters"] .filter-row');
+    const rows = document.querySelectorAll('[data-sec="watch-filters"] .filter-row');
     if (rows.length !== 3) throw new Error('行数 ' + rows.length);
     const r = rows[2];
     if (r.querySelector('.filter-act').value !== 'block') throw new Error('默认 act');
@@ -2371,23 +2373,23 @@ const withEFP = (el, fn) => {
     if (!r.querySelector('.filter-on').checked) throw new Error('默认应启用');
   });
   // 改新行的动作/范围/方式/模式（受控更新同样需等微任务）
-  setSelEl(document.querySelectorAll('[data-sec="acc-filters"] .filter-row')[2].querySelector('.filter-act'), 'allow');
-  setSelEl(document.querySelectorAll('[data-sec="acc-filters"] .filter-row')[2].querySelector('.filter-field'), 'content');
-  setSelEl(document.querySelectorAll('[data-sec="acc-filters"] .filter-row')[2].querySelector('.filter-kind'), 're');
-  setVal(document.querySelectorAll('[data-sec="acc-filters"] .filter-row')[2].querySelector('.filter-pattern'), 'v\\d+');
+  setSelEl(document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2].querySelector('.filter-act'), 'allow');
+  setSelEl(document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2].querySelector('.filter-field'), 'content');
+  setSelEl(document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2].querySelector('.filter-kind'), 're');
+  setVal(document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2].querySelector('.filter-pattern'), 'v\\d+');
   await sleep(40);
   t('改字段：动作/范围/方式/模式都走受控更新', () => {
-    const r2 = document.querySelectorAll('[data-sec="acc-filters"] .filter-row')[2];
+    const r2 = document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2];
     if (r2.querySelector('.filter-act').value !== 'allow') throw new Error('act 未更新');
     if (r2.querySelector('.filter-field').value !== 'content') throw new Error('field 未更新');
     if (r2.querySelector('.filter-kind').value !== 're') throw new Error('kind 未更新');
     if (r2.querySelector('.filter-pattern').value !== 'v\\d+') throw new Error('pattern 未更新');
   });
   // 删掉第一条（f1 屏蔽「广告」）
-  document.querySelector('[data-sec="acc-filters"] .filter-row .filter-del').click();
+  document.querySelector('[data-sec="watch-filters"] .filter-row .filter-del').click();
   await sleep(40);
   t('删除规则：行数 -1', () => {
-    if (document.querySelectorAll('[data-sec="acc-filters"] .filter-row').length !== 2) throw new Error('删除后行数');
+    if (document.querySelectorAll('[data-sec="watch-filters"] .filter-row').length !== 2) throw new Error('删除后行数');
   });
   // 保存：提交剩余 2 条 → mock 按内容定位校验新规则
   document.querySelector('#saveFilterBtn').click();
@@ -2411,11 +2413,15 @@ const withEFP = (el, fn) => {
     const body = lastPostBody('/api/prefs');
     if (!Array.isArray(body.filters) || body.filters.length !== 3) throw new Error('提交 3 条');
     // mock 的 sanitize 丢掉空模式 → 回填 2 条 → 提示差量
-    const rows = document.querySelectorAll('[data-sec="acc-filters"] .filter-row');
+    const rows = document.querySelectorAll('[data-sec="watch-filters"] .filter-row');
     if (rows.length !== 2) throw new Error('回填后行数 ' + rows.length);
     const res = document.querySelector('#filterResult');
     if (res.textContent.indexOf('1 条为空或非法，已丢弃') < 0) throw new Error('差量提示: ' + res.textContent);
   });
+
+  // 回到账号面板继续后面的账号保存用例
+  clickTab('账号');
+  await sleep(60);
 
   // 保存账号（改用户名 + 密码）
   setInput('#accUsername', 'tester2');
@@ -2664,7 +2670,7 @@ const withEFP = (el, fn) => {
     if (!name || name.disabled !== true) throw new Error('用户名应禁用');
     if (document.querySelector('#accCurrent') || document.querySelector('#accNew')) throw new Error('不应渲染密码输入');
     if (document.querySelector('#saveAccBtn')) throw new Error('不应渲染保存按钮');
-    if (document.querySelector('[data-sec="acc-filters"]')) throw new Error('过滤规则配置不应渲染');
+    if (document.querySelector('[data-sec="watch-filters"]')) throw new Error('过滤规则配置不应渲染');
     if (!document.querySelector('[data-sec="acc-login"] .hint')) throw new Error('缺少只读说明');
     if (!document.querySelector('#logoutBtn')) throw new Error('仍应能退出登录');
   });

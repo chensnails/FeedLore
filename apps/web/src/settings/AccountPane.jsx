@@ -66,19 +66,12 @@ export function AccountPane() {
   const [addingUser, setAddingUser] = useState(false);
   const [userResult, showUserResult] = useResult();
 
-  // 条目过滤规则（v2.7.0）：按账号独立保存，抓取写库前对新条目生效
-  const [filters, setFilters] = useState([]);
-  const [filtersLoaded, setFiltersLoaded] = useState(false);
-  const [savingFilter, setSavingFilter] = useState(false);
-  const [filterResult, showFilterResult] = useResult();
-
   // 进入面板：回填登录信息（旧 loadAccountForm），管理员再拉一次用户列表
   useEffect(() => {
     const st = (s && s.state) || {};
     const name = st.username || '';
     setUsername(name);
     setSavedName(name);
-    if (!readonly) loadFilters();
     if (admin) loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -103,59 +96,7 @@ export function AccountPane() {
     }
   }
 
-  /* ---------- 条目过滤规则（v2.7.0） ---------- */
-
-  async function loadFilters() {
-    try {
-      const res = await s.apiFetch('/api/prefs');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      setFilters(Array.isArray(data.filters) ? data.filters : []);
-    } catch (err) {
-      showFilterResult(false, '读取过滤规则失败：' + String((err && err.message) || err));
-    } finally {
-      setFiltersLoaded(true);
-    }
-  }
-
-  async function saveFilters() {
-    setSavingFilter(true);
-    try {
-      const res = await s.apiFetch('/api/prefs', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filters }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
-      // 服务端会重新清洗：空模式 / 非法正则 / 超长 都被丢弃，用回填结果告知差量
-      const saved = Array.isArray(data.filters) ? data.filters : [];
-      setFilters(saved);
-      const dropped = filters.length - saved.length;
-      showFilterResult(true, dropped > 0
-        ? `已保存 ${saved.length} 条规则（${dropped} 条为空或非法，已丢弃）`
-        : `已保存 ${saved.length} 条规则`);
-    } catch (err) {
-      showFilterResult(false, '保存失败：' + String((err && err.message) || err));
-    } finally {
-      setSavingFilter(false);
-    }
-  }
-
-  const filterUid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-
-  function addFilter() {
-    setFilters((list) => [...list,
-      { id: filterUid(), on: true, act: 'block', field: 'title', kind: 'kw', pattern: '' }]);
-  }
-
-  /** 本地改一条规则的某个字段（不动其它字段） */
-  function patchFilter(id, patch) {
-    setFilters((list) => list.map((f) => (f.id === id ? Object.assign({}, f, patch) : f)));
-  }
-
-  function removeFilter(id) {
-    setFilters((list) => list.filter((f) => f.id !== id));
-  }
+  /* ---------- 条目过滤规则已迁至「规则」tab（WatchPane） ---------- */
 
   async function saveAccount() {
     setSaving(true);
@@ -315,67 +256,6 @@ export function AccountPane() {
             )}
           </div>
         </details>
-
-        {/* 条目过滤规则（v2.7.0）：所有用户独立配置，只在抓取写库前对新条目生效 */}
-        {!readonly && (
-        <details className="sec" data-sec="acc-filters">
-          <summary className="sec-head">
-            <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-            <span className="sec-title">条目过滤规则</span>
-            <span className="sec-sub">{filters.length ? `${filters.length} 条` : '未配置'}</span>
-          </summary>
-          <div className="sec-body">
-            {!filtersLoaded ? <div className="hint">正在读取规则…</div>
-              : !filters.length ? <div className="hint">还没有规则。添加一条试试，比如屏蔽标题含「广告」的条目。</div>
-                : filters.map((f) => (
-                  <div className="filter-row" key={f.id} data-fid={f.id}>
-                    <input className="filter-on" type="checkbox" checked={f.on !== false} title="启用该规则"
-                      aria-label="启用该规则"
-                      onChange={(e) => patchFilter(f.id, { on: e.target.checked })} />
-                    <select className="select filter-act" title="动作" aria-label="动作"
-                      value={f.act} onChange={(e) => patchFilter(f.id, { act: e.target.value })}>
-                      <option value="block">屏蔽</option>
-                      <option value="allow">只收</option>
-                    </select>
-                    <select className="select filter-field" title="匹配范围" aria-label="匹配范围"
-                      value={f.field} onChange={(e) => patchFilter(f.id, { field: e.target.value })}>
-                      <option value="title">标题</option>
-                      <option value="desc">摘要</option>
-                      <option value="content">正文</option>
-                      <option value="all">全部</option>
-                    </select>
-                    <select className="select filter-kind" title="匹配方式" aria-label="匹配方式"
-                      value={f.kind} onChange={(e) => patchFilter(f.id, { kind: e.target.value })}>
-                      <option value="kw">关键词</option>
-                      <option value="re">正则</option>
-                    </select>
-                    <input className="filter-pattern" type="text" spellCheck="false" autoComplete="off"
-                      placeholder={f.kind === 're' ? '如：v\\d+\\.\\d+' : '关键词，不区分大小写'}
-                      value={f.pattern}
-                      onChange={(e) => patchFilter(f.id, { pattern: e.target.value })} />
-                    <button className="btn btn-ghost btn-sm filter-del" type="button"
-                      onClick={() => removeFilter(f.id)}>删除</button>
-                  </div>
-                ))}
-            <div className="filter-actions">
-              <button className="btn btn-ghost btn-sm" id="addFilterBtn" type="button"
-                onClick={addFilter}>添加规则</button>
-            </div>
-            <small className="form-tip">
-              在抓取写入数据库<b>之前</b>按规则过滤，只影响之后新抓的条目，已入库的历史文章不动。<br />
-              <b>屏蔽</b>：命中即丢弃；<b>只收</b>：仅保留命中的（白名单）。两者同存时先按屏蔽拉黑、再按只收拉白。<br />
-              关键词不区分大小写；匹配范围「全部」= 标题 + 摘要 + 正文。非法正则在保存时会被丢弃。
-            </small>
-            <Result id="filterResult" result={filterResult} />
-            <div className="filter-save">
-              <button className="btn btn-primary btn-sm" id="saveFilterBtn" type="button"
-                disabled={savingFilter} onClick={saveFilters}>
-                {savingFilter ? '保存中…' : '保存规则'}
-              </button>
-            </div>
-          </div>
-        </details>
-        )}
 
         {/* 用户管理：仅管理员可见 */}
         {admin && (

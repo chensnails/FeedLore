@@ -1,12 +1,13 @@
 import { core } from '@core';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 /**
- * 规则面板（v1.6.0-test5）：关注 / 屏蔽规则 + webhook 通知。
+ * 规则面板（v1.6.0-test5）：关注 / 屏蔽规则 + webhook 通知 + 条目过滤规则。
  *
- * 规则存 users.prefs.watchRules（整组替换），关键字一行一个、子串匹配不分大小写；
+ * 关注 / 屏蔽规则存 users.prefs.watchRules（整组替换），关键字一行一个、子串匹配不分大小写；
  * 保存只影响「以后新抓的文章」，点「应用到已有文章」才回溯存量条目（/api/watch/apply）。
  * webhook 一条全局地址，每条关注规则单独决定要不要推送（屏蔽规则没有通知的意义）。
+ * 条目过滤规则存 users.prefs.filters（v2.7.0，原在账号面板），在抓取写库前生效。
  */
 
 const S = () => core;
@@ -48,6 +49,13 @@ export function WatchPane() {
   const [busy, setBusy] = useState('');               // save | apply | webhook | ''
   const [result, setResult] = useState(null);         // { ok, msg } | null
 
+  // 条目过滤规则（原在账号面板，v2.8.0 起归入「规则」）
+  const [filters, setFilters] = useState([]);
+  const [filtersLoaded, setFiltersLoaded] = useState(false);
+  const [savingFilter, setSavingFilter] = useState(false);
+  const [filterResult, setFilterResult] = useState(null);
+  const paneRef = useRef(null);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -61,13 +69,29 @@ export function WatchPane() {
         setWebhook(w);
         setSavedRules(JSON.stringify(r));
         setSavedWebhook(w);
+        setFilters(Array.isArray(d.filters) ? d.filters : []);
       } catch (err) {
         if (alive) setResult({ ok: false, msg: '读取失败：' + String((err && err.message) || err) });
+      } finally {
+        if (alive) setFiltersLoaded(true);
       }
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 可折叠分组的开合按账号持久化（与账号面板同一机制）
+  useEffect(() => {
+    if (s && s.bindSections && paneRef.current) s.bindSections(paneRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 过滤规则的成功提示 4s 后自动清除（与账号面板旧行为一致），失败常驻
+  useEffect(() => {
+    if (!filterResult || !filterResult.ok) return undefined;
+    const t = setTimeout(() => setFilterResult(null), 4000);
+    return () => clearTimeout(t);
+  }, [filterResult]);
 
   const rulesDirty = JSON.stringify(rules) !== savedRules;
   const webhookDirty = webhook !== savedWebhook;
@@ -149,9 +173,54 @@ export function WatchPane() {
   const addRule = () => setRules((rs) => rs.concat([blankRule()]));
   const delRule = (id) => setRules((rs) => rs.filter((r) => r.id !== id));
 
+  /* ---------- 条目过滤规则：按账号独立保存，抓取写库前对新条目生效 ---------- */
+
+  const onSaveFilters = async () => {
+    setSavingFilter(true);
+    try {
+      const res = await s.apiFetch('/api/prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filters }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setFilterResult({ ok: false, msg: data.error || '保存失败' }); return; }
+      // 服务端会重新清洗：空模式 / 非法正则 / 超长 都被丢弃，用回填结果告知差量
+      const saved = Array.isArray(data.filters) ? data.filters : [];
+      setFilters(saved);
+      const dropped = filters.length - saved.length;
+      setFilterResult({ ok: true, msg: dropped > 0
+        ? `已保存 ${saved.length} 条规则（${dropped} 条为空或非法，已丢弃）`
+        : `已保存 ${saved.length} 条规则` });
+    } catch (err) {
+      setFilterResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
+    } finally {
+      setSavingFilter(false);
+    }
+  };
+
+  const filterUid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  const addFilter = () => setFilters((list) => [...list,
+    { id: filterUid(), on: true, act: 'block', field: 'title', kind: 'kw', pattern: '' }]);
+
+  /** 本地改一条规则的某个字段（不动其它字段） */
+  const patchFilter = (id, patch) => {
+    setFilters((list) => list.map((f) => (f.id === id ? Object.assign({}, f, patch) : f)));
+  };
+
+  const removeFilter = (id) => setFilters((list) => list.filter((f) => f.id !== id));
+
   return (
-    <div className="tab-pane" data-pane="watch">
-      <div className="form">
+    <div className="tab-pane" data-pane="watch" ref={paneRef}>
+      <div className="pane-scroll">
+        <details className="sec" data-sec="watch-rules" open>
+          <summary className="sec-head">
+            <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+            <span className="sec-title">关注 / 屏蔽规则</span>
+            <span className="sec-sub">{rules.length ? `${rules.length} 条` : '未配置'}</span>
+          </summary>
+          <div className="sec-body">
         <div className="form-row">
           <label htmlFor="watchWebhook">Webhook 通知地址（可选）</label>
           <div className="input-with-btn">
@@ -256,11 +325,74 @@ export function WatchPane() {
           </button>
         </div>
 
-        {result && (
-          <div className={'test-result show ' + (result.ok ? 'ok' : 'err')} id="watchResult" role="status">
-            {result.msg}
+            {result && (
+              <div className={'test-result show ' + (result.ok ? 'ok' : 'err')} id="watchResult" role="status">
+                {result.msg}
+              </div>
+            )}
           </div>
-        )}
+        </details>
+
+        <details className="sec" data-sec="watch-filters">
+          <summary className="sec-head">
+            <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+            <span className="sec-title">条目过滤规则</span>
+            <span className="sec-sub">{!filtersLoaded ? '读取中…' : (filters.length ? `${filters.length} 条` : '未配置')}</span>
+          </summary>
+          <div className="sec-body">
+            {!filtersLoaded ? <div className="hint">正在读取规则…</div>
+              : !filters.length ? <div className="hint">还没有规则。添加一条试试，比如屏蔽标题含「广告」的条目。</div>
+                : filters.map((f) => (
+                  <div className="filter-row" key={f.id} data-fid={f.id}>
+                    <input className="filter-on" type="checkbox" checked={f.on !== false} title="启用该规则"
+                      aria-label="启用该规则"
+                      onChange={(e) => patchFilter(f.id, { on: e.target.checked })} />
+                    <select className="select filter-act" title="动作" aria-label="动作"
+                      value={f.act} onChange={(e) => patchFilter(f.id, { act: e.target.value })}>
+                      <option value="block">屏蔽</option>
+                      <option value="allow">只收</option>
+                    </select>
+                    <select className="select filter-field" title="匹配范围" aria-label="匹配范围"
+                      value={f.field} onChange={(e) => patchFilter(f.id, { field: e.target.value })}>
+                      <option value="title">标题</option>
+                      <option value="desc">摘要</option>
+                      <option value="content">正文</option>
+                      <option value="all">全部</option>
+                    </select>
+                    <select className="select filter-kind" title="匹配方式" aria-label="匹配方式"
+                      value={f.kind} onChange={(e) => patchFilter(f.id, { kind: e.target.value })}>
+                      <option value="kw">关键词</option>
+                      <option value="re">正则</option>
+                    </select>
+                    <input className="filter-pattern" type="text" spellCheck="false" autoComplete="off"
+                      placeholder={f.kind === 're' ? '如：v\\d+\\.\\d+' : '关键词，不区分大小写'}
+                      value={f.pattern}
+                      onChange={(e) => patchFilter(f.id, { pattern: e.target.value })} />
+                    <button className="btn btn-ghost btn-sm filter-del" type="button"
+                      onClick={() => removeFilter(f.id)}>删除</button>
+                  </div>
+                ))}
+            <div className="filter-actions">
+              <button className="btn btn-ghost btn-sm" id="addFilterBtn" type="button"
+                onClick={addFilter}>添加规则</button>
+            </div>
+            <small className="form-tip">
+              在抓取写入数据库<b>之前</b>按规则过滤，只影响之后新抓的条目，已入库的历史文章不动。<br />
+              <b>屏蔽</b>：命中即丢弃；<b>只收</b>：仅保留命中的（白名单）。两者同存时先按屏蔽拉黑、再按只收拉白。<br />
+              关键词不区分大小写；匹配范围「全部」= 标题 + 摘要 + 正文。非法正则在保存时会被丢弃。
+            </small>
+            <div id="filterResult" role="status" aria-live="polite"
+              className={'test-result' + (filterResult ? ' show ' + (filterResult.ok ? 'ok' : 'err') : '')}>
+              {filterResult ? filterResult.msg : ''}
+            </div>
+            <div className="filter-save">
+              <button className="btn btn-primary btn-sm" id="saveFilterBtn" type="button"
+                disabled={savingFilter} onClick={onSaveFilters}>
+                {savingFilter ? '保存中…' : '保存规则'}
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   );
