@@ -9,7 +9,21 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ## Unreleased
 
-(nothing yet)
+### Added
+
+- **Read state is synced between the article and card views**: expanding an article,
+  opening a card detail or marking an item unread on either page immediately updates the
+  other page's list, dots and counts — no refresh or reload needed.
+- **Unread dots on the card view**: on the image's top-left corner for media cards, in the
+  metadata row for text cards, and on the thumbnail in list view. Read items only hide the
+  dot and do not dim the card; screen readers announce "unread".
+- **Card view channel / group / all-channels counts now show unread**: same meaning as the
+  article view; a fully read group shows a check mark, a collapsed group reports its channel
+  count, and totals stay in the hover title.
+
+### Changed
+
+- After "mark all as read", the card list is fetched once more so dots and counts stay in sync.
 
 ## 2.2.0-rc.2 — 2026-11-03
 

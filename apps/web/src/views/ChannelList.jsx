@@ -7,7 +7,8 @@
  *
  * 这里合成一份，差异收敛成一个 variant：
  *   reader —— 三个范围行 + 分组未读数 + 分组漏斗（只看这组）
- *   cards  —— 单行「全部频道」+ 每频道总条数（分组漏斗同样可用，只是计数口径换成总条数）
+ *   cards  —— 单行「全部频道」+ 每频道未读数（分组漏斗同样可用）
+ * 两页的频道 / 分组计数统一按未读算（与文章页一致）；总条数退到悬停提示里。
  *
  * DOM 结构、类名、data-* 属性与合并前逐字一致（样式与旧逻辑零改动）。
  */
@@ -60,7 +61,9 @@ export const ChannelList = memo(function ChannelList({
   const nameOf = (f) => (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(f) : f.title) : f.title);
   const titleOf = (f) => (s.feedTitle ? s.feedTitle(f) : f.title);
 
-  const total = groups.reduce((n, g) => n + g.feeds.reduce((m, f) => m + Number(f.entryCount || 0), 0), 0);
+  // 卡片页「全部频道」：徽标是未读总数，总量留到悬停提示（与单频道徽标同口径）
+  const cardUnread = groups.reduce((n, g) => n + g.feeds.reduce((m, f) => m + Number(f.unreadCount || 0), 0), 0);
+  const cardTotal = groups.reduce((n, g) => n + g.feeds.reduce((m, f) => m + Number(f.entryCount || 0), 0), 0);
 
   // 关注/屏蔽视图下 rdScope 仍是 'all'，范围行不能跟着高亮（两行同时 active 会误导）
   const scopeBtn = (key, ico, name, n, cls) => (
@@ -110,7 +113,9 @@ export const ChannelList = memo(function ChannelList({
           aria-pressed={atAll ? 'true' : 'false'} onClick={() => onFeed && onFeed(null)}>
           <span className="rd-ch-avatar rd-ch-avatar-all"><Icon n="grid" /></span>
           <span className="rd-ch-name">全部频道</span>
-          {total > 0 ? <span className="rd-ch-n" title={`共 ${total} 条资源`}>{s.fmtBadge(total)}</span> : null}
+          {cardUnread > 0 ? (
+            <span className="rd-ch-n hot" title={`${cardUnread} 条未读 / 共 ${cardTotal} 条资源`}>{s.fmtBadge(cardUnread)}</span>
+          ) : null}
         </button>
       )}
       <div className="rd-ch-sep" aria-hidden="true" />
@@ -140,15 +145,11 @@ export const ChannelList = memo(function ChannelList({
                     <use href={isCollapsed ? '#i-chevron-right' : '#i-chevron-down'} />
                   </svg>
                   <span className="rd-ch-group-name">{gname || '未分组'}</span>
-                  {isReader ? (
-                    gUnread > 0
-                      ? <span className="rd-ch-n hot" title={`${gUnread} 条未读`}>{s.fmtBadge(gUnread)}</span>
-                      : isCollapsed
-                        ? <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道，全部已读`}>{s.fmtBadge(g.feeds.length)}</span>
-                        : <span className="rd-ch-group-empty" aria-hidden="true"><svg className="ico" focusable="false"><use href="#i-check" /></svg></span>
-                  ) : (
-                    <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道`}>{s.fmtBadge(g.feeds.length)}</span>
-                  )}
+                  {gUnread > 0
+                    ? <span className="rd-ch-n hot" title={`${gUnread} 条未读`}>{s.fmtBadge(gUnread)}</span>
+                    : isCollapsed
+                      ? <span className="rd-ch-group-n" title={`该分组 ${g.feeds.length} 个频道，全部已读`}>{s.fmtBadge(g.feeds.length)}</span>
+                      : <span className="rd-ch-group-empty" aria-hidden="true"><svg className="ico" focusable="false"><use href="#i-check" /></svg></span>}
                 </button>
                 {onGroup ? (
                   /* 低频动作平时隐身，悬停 / 键盘聚焦 / 正在筛选该组时才现身（触屏常显在 CSS 里） */
@@ -166,7 +167,8 @@ export const ChannelList = memo(function ChannelList({
               const title = titleOf(f);
               const name = nameOf(f);
               const tip = f.enabled ? title : `${title}（已停止采集）`;
-              const count = isReader ? Number(f.unreadCount || 0) : Number(f.entryCount || 0);
+              // 两页同口径：徽标只报未读，总条数放在悬停提示里
+              const count = Number(f.unreadCount || 0);
               const active = activeFeedId != null && String(activeFeedId) === String(f.id);
               return (
                 <button key={f.id} className={'rd-ch' + (f.enabled ? '' : ' off') + (active ? ' active' : '')}
@@ -175,8 +177,8 @@ export const ChannelList = memo(function ChannelList({
                   <ChannelAvatar icon={f.icon} name={name} />
                   <span className="rd-ch-name" title={tip}>{name}</span>
                   {count > 0 ? (
-                    <span className={'rd-ch-n' + (isReader ? ' hot' : '')}
-                      title={isReader ? `${count} 条未读 / 共 ${Number(f.entryCount || 0)} 条` : `${count} 条资源`}>
+                    <span className="rd-ch-n hot"
+                      title={`${count} 条未读 / 共 ${Number(f.entryCount || 0)} 条`}>
                       {s.fmtBadge(count)}
                     </span>
                   ) : null}

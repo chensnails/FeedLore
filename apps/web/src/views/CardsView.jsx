@@ -11,8 +11,8 @@
  * 收藏 PATCH（cardSetFlag）、
  * 「/」聚焦搜索（经 window.__cardsFocusSearch 委托到本组件的输入框）。
  *
- * 卡面不再有已读 / 未读态（v1.2.x 起）：点卡片打开详情弹窗（src/views/CardDetail.jsx）即记为已读，
- * 该状态只在文章页显示，卡片页只保留收藏 ★。
+ * 卡面标记（v2.2.0）：收藏 ★ + 未读圆点。点卡片打开详情弹窗（src/views/CardDetail.jsx）
+ * 即记为已读，状态与文章页内存同步；已读只收掉圆点，卡面本身不变淡。
  */
 
 import { core } from '@core';
@@ -118,7 +118,7 @@ function LazyImg({ src, alt, fallbackClass, fbIcon, priority, onFail }) {
 }
 
 /* 卡片与列表行都做成 memo：一次 __cardsTick 会把整列重新 map，
- * 而条目对象只在状态真的变化时换新（core/ui.js 的 cardSetFlag），没变的卡面不必重渲染。
+ * 而条目对象只在状态真的变化时换新（core/reader.js 的 applyEntryFlag），没变的卡面不必重渲染。
  * v1.6.0：卡片 / 列表项不再展示标签（标签栏与卡面标签整体下线），仅文章正文保留标签。 */
 const Card = memo(function Card({ e, onOpen, priority }) {
   const s = S();
@@ -128,6 +128,9 @@ const Card = memo(function Card({ e, onOpen, priority }) {
   const [imgFailed, setImgFailed] = useState(false);
   const showMedia = hasImg && !imgFailed;
   const fmtDate = s.fmtDate || ((d) => d || '');
+  const unread = !e.isRead;
+  // 已读时圆点只隐身、卡面不变淡：两页的「未读」是同一个概念，只是标记密度不同
+  const dot = <span className={'card-dot' + (unread ? '' : ' is-read')} aria-hidden="true" />;
 
   const copyBtn = <CopyButton e={e} />;
   const openBtn = <OpenButton e={e} />;
@@ -136,6 +139,7 @@ const Card = memo(function Card({ e, onOpen, priority }) {
     <div className="card-media">
       <LazyImg src={e.image} alt={e.name} fallbackClass="media-fallback" fbIcon="image" priority={priority}
         onFail={() => setImgFailed(true)} />
+      {dot}
       {srcName ? <span className="badge-source" title={e.feedName}>{srcName}</span> : null}
       {e.size ? <span className="badge-size">{e.size}</span> : null}
       {e.date ? <span className="badge-idx">{fmtDate(e.date)}</span> : null}
@@ -145,6 +149,7 @@ const Card = memo(function Card({ e, onOpen, priority }) {
 
   const metaRow = showMedia ? null : (
     <div className="card-meta">
+      {dot}
       {srcName ? <span className="src-pill" title={e.feedName}>{srcName}</span> : null}
       {e.size ? <span className="meta-size">{e.size}</span> : null}
       <span className="meta-date">{fmtDate(e.date)}</span>
@@ -153,7 +158,7 @@ const Card = memo(function Card({ e, onOpen, priority }) {
 
   return (
     <article className={'card' + (showMedia ? ' card-has-media' : '') + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
-      role="button" tabIndex={0} aria-label={(e.name || '卡片') + '，按 Enter 打开详情'}
+      role="button" tabIndex={0} aria-label={(unread ? '未读，' : '') + (e.name || '卡片') + '，按 Enter 打开详情'}
       onClick={(ev) => openFromClick(ev, e, onOpen)}
       onKeyDown={(ev) => cardKeyOpen(ev, e, onOpen)}>
       {media}
@@ -174,12 +179,14 @@ const Row = memo(function Row({ e, onOpen }) {
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtDate = s.fmtDate || ((d) => d || '');
   const metaHas = !!srcName;
+  const unread = !e.isRead;
   return (
     <article className={'row-item' + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
-      role="button" tabIndex={0} aria-label={(e.name || '卡片') + '，按 Enter 打开详情'}
+      role="button" tabIndex={0} aria-label={(unread ? '未读，' : '') + (e.name || '卡片') + '，按 Enter 打开详情'}
       onClick={(ev) => openFromClick(ev, e, onOpen)}
       onKeyDown={(ev) => cardKeyOpen(ev, e, onOpen)}>
       <div className="row-thumb">
+        <span className={'card-dot row-dot' + (unread ? '' : ' is-read')} aria-hidden="true" />
         {e.image
           ? <LazyImg src={e.image} alt={e.name} fallbackClass="row-thumb-fb" fbIcon="image" />
           : <span className="row-thumb-fb"><Icon n="image" /></span>}
@@ -340,9 +347,10 @@ export function CardsView() {
   const collapsedGroups = (s && s.readerCollapsedGroups) ? s.readerCollapsedGroups() : new Set();
   const groupFilter = st.cardGroup != null;
   const curGroup = groupFilter ? (groups.find((g) => g.name === st.cardGroup) || null) : null;
-  // 分组筛选不是下拉里的选项（组头是折叠开关），触发器文案走 valueLabel
+  // 分组筛选不是下拉里的选项（组头是折叠开关），触发器文案走 valueLabel；
+  // 括号里是未读数，与侧栏 / 卡面圆点同一口径
   const groupLabel = groupFilter
-    ? `分组 · ${st.cardGroup || '未分组'}${curGroup ? `（${curGroup.feeds.length}）` : ''}`
+    ? `分组 · ${st.cardGroup || '未分组'}${curGroup ? `（${curGroup.feeds.reduce((n, f) => n + Number(f.unreadCount || 0), 0)}）` : ''}`
     : '';
   const feedValue = groupFilter ? 'g:' + st.cardGroup : (st.feedFilter == null ? '' : String(st.feedFilter));
 
@@ -463,10 +471,12 @@ export function CardsView() {
   const feedLabel = (f) => {
     const title = s.feedTitle ? s.feedTitle(f) : f.title;
     const name = s.shortFeedName ? s.shortFeedName(title) : title;
-    return `${name}（${s.fmtBadge(f.entryCount)}）`;
+    return `${name}（${s.fmtBadge(Number(f.unreadCount || 0))}）`;
   };
   // 频道 / 排序下拉选项（v1.1.9 起用自定义弹层 Dropdown 渲染，替代原生 select 的系统弹窗）
-  const feedOpts = [{ value: '', label: `全部频道（${s.fmtBadge(cardFeeds.length)}）` }];
+  // 「全部频道」的括号与侧栏一致：卡片频道里的未读总数
+  const cardUnread = cardFeeds.reduce((n, f) => n + Number(f.unreadCount || 0), 0);
+  const feedOpts = [{ value: '', label: `全部频道（${s.fmtBadge(cardUnread)}）` }];
   for (const g of groups) {
     for (const f of g.feeds) feedOpts.push({ value: String(f.id), label: feedLabel(f), group: g.name || '' });
   }

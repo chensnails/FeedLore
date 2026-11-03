@@ -8,7 +8,7 @@
 import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, writeHash, parseHash } from './util.js';
 import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, scrollActiveTop, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
 import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
-import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, focusReaderArt, restoreReaderArt } from './reader.js';
+import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, setEntryFlag, focusReaderArt, restoreReaderArt } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
 
 /* ============================================================
@@ -134,6 +134,8 @@ export function switchView(name) {
       if (!state.rdEntries.length) loadReader({ reset: true });
       else renderReader();
     }
+    // 卡片页同理：文章页里点掉的未读要在这里立刻反映（圆点 / 计数），已有数据不重拉
+    if (name === 'cards') render();
     // AI 视图已 React 化：通知 AiView 激活 / 隐去（切到 ai 时由组件自行加载子页数据）
     window.dispatchEvent(new CustomEvent('__viewChanged', { detail: name }));
 
@@ -398,49 +400,16 @@ document.addEventListener('keydown', (ev) => {
 });
 
 
-/* 卡片页条目收藏/已读：复用与阅读页相同的 /api/entries PATCH，但作用于卡片列表 state.entries。
- * 条目对象按「换一个新的」处理，不原地改字段：卡片是 React.memo 组件，引用不变就不会重绘。 */
-export async function cardSetFlag(id, patch) {
-  const list = state.entries || [];
-  const idx = list.findIndex((x) => String(x.id) === String(id));
-  if (idx < 0) return false;
-  const before = list[idx];
-  const applied = Object.assign({}, before, patch);
-  const withPatch = (entry) => {
-    const arr = state.entries.slice();
-    const i = arr.findIndex((x) => String(x.id) === String(id));
-    if (i >= 0) arr[i] = entry;
-    state.entries = arr;
-  };
-  withPatch(applied);
-  render();   // 卡片由 React 渲染：改共享 state 后 tick 重绘（旧 paintCardFlag 就地改 DOM 移除）
-  try {
-    const res = await apiFetch('/api/entries/' + encodeURIComponent(id), {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
-    });
-    if (!res.ok) throw await httpError(res);
-    return true;
-  } catch (err) {
-    withPatch(before); render();
-    toast('标记失败：' + (err.message || err), false);
-    return false;
-  }
+/* 卡片页条目收藏/已读：与阅读页走同一套标记逻辑（reader.js 的 setEntryFlag）——
+ * 两页列表各持一份条目对象，统一入口才能保证改一处、两边同时换新对象并同步计数。 */
+export function cardSetFlag(id, patch) {
+  return setEntryFlag(id, patch);
 }
 
-/* 卡片详情弹窗打开即算读过：卡片页本身不显示已读态，只把状态写回条目（文章页共享同一行）。
+/* 卡片详情弹窗打开即算读过：与文章页展开同样走 markEntryRead（状态同步到两页列表）。
  * 同一条只发一次 PATCH —— 已读过就直接跳过，避免每次点开都打一次请求。 */
 export function cardDetailRead(id) {
-  const c = (state.entries || []).find((x) => String(x.id) === String(id));
-  if (c && c.isRead) return;
-  if ((state.rdEntries || []).some((x) => String(x.id) === String(id))) {
-    // PATCH 与文章页列表同步交给 markEntryRead，卡片侧只落标记
-    if (c) {
-      state.entries = (state.entries || []).map((x) => (String(x.id) === String(id) ? Object.assign({}, x, { isRead: true }) : x));
-    }
-    markEntryRead(id);
-    return;
-  }
-  cardSetFlag(id, { isRead: true });
+  markEntryRead(id);
 }
 
 /** 日报对本账号是否开启（顶栏入口、命令面板项、设置面板的开关都读这一个判据） */

@@ -1303,6 +1303,27 @@ textarea:disabled {
 }
 .meta-date { margin-left:auto; color: var(--text-faint); flex: 0 0 auto; }
 
+/* 未读圆点（v2.2.0）：与文章页 .art-dot 同一语义。已读只把圆点藏掉、卡面不变淡；
+   圆点始终占位，来源行 / 角标不会因为已读与否左右跳。 */
+.card-dot {
+  flex: 0 0 auto;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: opacity var(--dur-slow);
+}
+.card-dot.is-read { opacity: 0; }
+/* 压在图上的圆点：加一圈底色，深浅图片上都看得清（媒体区 / 列表缩略图共用） */
+.card-media .card-dot,
+.row-dot {
+  position: absolute; left: 10px; top: 10px;
+  width: 8px; height: 8px;
+  z-index: 2;
+  box-shadow: 0 0 0 2px var(--panel);
+}
+/* 有图卡的来源角标给圆点让位；已读时圆点隐身，角标也不回跳 */
+.card-has-media .badge-source { left: 24px; }
+
 /* ---------- 卡片来源角标 ---------- */
 .badge-source {
   position: absolute; left: 10px; top: 10px;
@@ -1360,6 +1381,7 @@ textarea:disabled {
 }
 
 .row-thumb {
+  position: relative;
   flex: 0 0 104px;
   width: 104px; height: 66px;
   border-radius: var(--radius-md);
@@ -3962,8 +3984,8 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
   .cmdk-foot, .cmdk-kbd { display: none; }
 }
 
-/* 收藏是卡片页唯一的标记态：已读 / 未读不再在卡片上体现（点开详情即算读过，
-   状态只在文章页显示），所以这里只留 .is-fav 的强调条。 */
+/* 卡片页的两种标记：收藏强调条 + 未读圆点。已读只收掉圆点，卡面照常显示
+   （点开详情即算读过，状态与文章页同步，见 src/views/CardsView.jsx）。 */
 .card.is-fav,
 .row-item.is-fav { box-shadow: inset 3px 0 0 var(--accent); }
 

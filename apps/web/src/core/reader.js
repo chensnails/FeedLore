@@ -7,7 +7,7 @@
 
 import { apiFetch, httpError, toast, emitShell, confirm, writeHash } from './util.js';
 import { state, layoutPref, setLayout, openSettings, lockPageScroll, unlockPageScroll } from './state.js';
-import { loadFeeds, groupFeeds } from './feeds.js';
+import { loadFeeds, groupFeeds, loadPage } from './feeds.js';
 
 /* ============================================================
  * 阅读页（文章）：左频道 / 右文章，点标题展开全文
@@ -389,32 +389,49 @@ function bumpFeedUnread(feedId, delta) {
   state.feedList = arr;
 }
 
-/** 就地改一条的状态：内存 + 侧栏计数 + 重绘（原 paintEntryFlag 的就地 DOM 改类名移除） */
+/** 文章页与卡片页各持一份条目列表（state.rdEntries / state.entries），同一行在两边
+ *  是两个不同对象。状态变化要两边一起换新对象，任一视图切回来时读到的才是同一状态。 */
+function findEntry(id) {
+  const key = String(id);
+  return (state.rdEntries || []).find((x) => String(x.id) === key)
+    || (state.entries || []).find((x) => String(x.id) === key)
+    || null;
+}
+
+/** 就地改一条的状态：内存（两页列表）+ 侧栏计数 + 重绘（原 paintEntryFlag 的就地 DOM 改类名移除） */
 export function applyEntryFlag(id, patch) {
-  const idx = state.rdEntries.findIndex((x) => String(x.id) === String(id));
-  if (idx < 0) return;
-  const e = state.rdEntries[idx];
+  const key = String(id);
+  const rdIdx = (state.rdEntries || []).findIndex((x) => String(x.id) === key);
+  const cardIdx = (state.entries || []).findIndex((x) => String(x.id) === key);
+  if (rdIdx < 0 && cardIdx < 0) return;
+  const e = rdIdx >= 0 ? state.rdEntries[rdIdx] : state.entries[cardIdx];
   const wasRead = !!e.isRead;
   const wasFav = !!e.isFavorite;
   const next = {};
   if (patch.isRead !== undefined) next.isRead = !!patch.isRead;
   if (patch.isFavorite !== undefined) next.isFavorite = !!patch.isFavorite;
-  state.rdEntries = replaceEntry(state.rdEntries, idx, next);
-  const now = state.rdEntries[idx];
+  if (rdIdx >= 0) state.rdEntries = replaceEntry(state.rdEntries, rdIdx, next);
+  if (cardIdx >= 0) state.entries = replaceEntry(state.entries, cardIdx, next);
+  const now = Object.assign({}, e, next);
+  const inReader = rdIdx >= 0;
+  const inCards = cardIdx >= 0;
 
   if (wasRead !== now.isRead) {
     state.rdFlags.unread = Math.max(0, (state.rdFlags.unread || 0) + (now.isRead ? -1 : 1));
-    // 同步所属频道的未读计数：侧栏频道徽标与分组计数都从 feedList 实时重算，否则
-    // 把一组文章全点完已读，分组 / 频道栏的未读数还停在旧值（本页不重新拉订阅源）。
+    // 同步所属频道的未读计数：两页侧栏的频道徽标与分组计数都从 feedList 实时重算，
+    // 否则把一组文章全点完已读，分组 / 频道栏的未读数还停在旧值（本页不重新拉订阅源）。
     bumpFeedUnread(now.feedId, now.isRead ? -1 : 1);
   }
   if (wasFav !== now.isFavorite) {
     state.rdFlags.favorite = Math.max(0, (state.rdFlags.favorite || 0) + (now.isFavorite ? 1 : -1));
   }
-  renderReader();
+
+  if (inReader) renderReader();
+  // 卡片列表只在可见时重绘：隐藏时重排整墙卡片没有意义，切回卡片页时 switchView 会再刷一次
+  if (inCards && state.tab === 'cards') window.dispatchEvent(new Event('__cardsTick'));
 
   // 在「收藏」范围里取消收藏 = 明确的「移出这里」，立刻从列表拿掉。
-  if (state.rdScope === 'favorite' && !now.isFavorite) {
+  if (inReader && state.rdScope === 'favorite' && !now.isFavorite) {
     state.rdEntries = state.rdEntries.filter((x) => String(x.id) !== String(id));
     state.rdOffset = Math.max(0, state.rdOffset - 1);
     renderReader();
@@ -423,7 +440,7 @@ export function applyEntryFlag(id, patch) {
 
 /** 打标记：先乐观更新界面，再发请求；失败回滚并提示 */
 export async function setEntryFlag(id, patch) {
-  const e = state.rdEntries.find((x) => String(x.id) === String(id));
+  const e = findEntry(id);
   const before = e ? { isRead: !!e.isRead, isFavorite: !!e.isFavorite } : null;
   if (e) applyEntryFlag(id, patch);
   try {
@@ -443,9 +460,10 @@ export async function setEntryFlag(id, patch) {
   }
 }
 
-/** 展开全文即视为已读（只在还没读过时发请求） */
+/** 展开全文 / 打开卡片详情即视为已读（只在还没读过时发请求）。
+ *  两页共用：不论条目此刻在哪个列表里，状态都同步到两边。 */
 export function markEntryRead(id) {
-  const e = state.rdEntries.find((x) => String(x.id) === String(id));
+  const e = findEntry(id);
   if (!e || e.isRead) return;
   setEntryFlag(id, { isRead: true });
 }
@@ -744,6 +762,8 @@ export async function readerReadAll() {
     await loadFeeds();
     renderReader();
     loadReader({ reset: true });
+    // 批量操作无法逐条同步到卡片列表：已拉过的卡片重新取一遍，圆点与计数才对得上
+    if ((state.entries || []).length) loadPage(true);
   } catch (err) {
     toast('操作失败：' + (err.message || err), false);
   }

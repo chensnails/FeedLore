@@ -253,7 +253,7 @@ const toDto = (f) => ({
   customTitle: f.customTitle || null, siteUrl: null, description: '', icon: null,
   enabled: !!f.enabled, cardEnabled: !!f.cardEnabled, fullText: !!f.fullText,
   groupName: f.groupName || '', sortOrder: Number(f.sortOrder || 0),
-  entryCount: Number(f.entryCount || 0), unreadCount: 0,
+  entryCount: Number(f.entryCount || 0), unreadCount: Number(f.unreadCount || 0),
   lastFetchedAt: f.lastFetchedAt || null,
   refreshMinutes: f.refreshMinutes == null ? null : Number(f.refreshMinutes),
   effectiveRefreshMinutes: f.refreshMinutes == null ? miniSettingsSource.refreshMinutes : Number(f.refreshMinutes),
@@ -288,6 +288,42 @@ const pushFeed = (url, groupName) => {
     sortOrder: Math.max(...miniFeeds.map((f) => f.sortOrder), -1) + 1,
     entryCount: 0, lastFetchedAt: null, status: null, error: '',
   });
+};
+
+// 与核心 reader.js applyEntryFlag 同口径：文章 / 卡片两份列表同步换新对象，
+// 未读计数与收藏计数只按「前后态真的变了」调整一次（走 stub 的用例据此断言两页同步）。
+const applyFlagEverywhere = (id, patch) => {
+  const st = w.feedlore.state;
+  const key = String(id);
+  const rdIdx = (st.rdEntries || []).findIndex((x) => String(x.id) === key);
+  const cIdx = (st.entries || []).findIndex((x) => String(x.id) === key);
+  if (rdIdx < 0 && cIdx < 0) return null;
+  const before = rdIdx >= 0 ? st.rdEntries[rdIdx] : st.entries[cIdx];
+  if (rdIdx >= 0) {
+    const arr = st.rdEntries.slice();
+    arr[rdIdx] = Object.assign({}, arr[rdIdx], patch);
+    st.rdEntries = arr;
+  }
+  if (cIdx >= 0) {
+    const arr = st.entries.slice();
+    arr[cIdx] = Object.assign({}, arr[cIdx], patch);
+    st.entries = arr;
+  }
+  st.rdFlags = st.rdFlags || { total: 0, unread: 0, favorite: 0 };
+  if (patch.isRead !== undefined && !!patch.isRead !== !!before.isRead) {
+    const d = patch.isRead ? -1 : 1;
+    st.rdFlags.unread = Math.max(0, Number(st.rdFlags.unread || 0) + d);
+    const fi = (st.feedList || []).findIndex((f) => String(f.id) === String(before.feedId));
+    if (fi >= 0) {
+      const arr = st.feedList.slice();
+      arr[fi] = Object.assign({}, arr[fi], { unreadCount: Math.max(0, Number(arr[fi].unreadCount || 0) + d) });
+      st.feedList = arr;
+    }
+  }
+  if (patch.isFavorite !== undefined && !!patch.isFavorite !== !!before.isFavorite) {
+    st.rdFlags.favorite = Math.max(0, Number(st.rdFlags.favorite || 0) + (patch.isFavorite ? 1 : -1));
+  }
+  return before;
 };
 
 w.feedlore = {
@@ -712,23 +748,20 @@ w.feedlore = {
     w.document.body.classList.remove('cards-drawer-open');
     calls.push(['cardsCloseDrawer']);
   },
-  // 条目状态改动一律「换新对象」，与 core 同口径（列表项是 React.memo 的，引用不变不重绘）
+  // 条目状态改动一律「换新对象」，与 core 同口径（列表项是 React.memo 的，引用不变不重绘）；
+  // 文章页与卡片页两份列表一起换，谁切回来看到的都是同一状态
   cardsSetFlag: async (id, patch) => {
-    const st = w.feedlore.state;
-    const idx = (st.entries || []).findIndex((x) => String(x.id) === String(id));
-    if (idx >= 0) {
-      const arr = st.entries.slice();
-      arr[idx] = Object.assign({}, arr[idx], patch);
-      st.entries = arr;
-    }
+    applyFlagEverywhere(id, patch);
     cardsTick();
+    readerTick();
     return true;
   },
-  // 打开卡片详情即记为已读（真实实现见 core/ui.js cardDetailRead：卡片页不显示已读态）
+  // 打开卡片详情即记为已读（真实实现见 core/ui.js cardDetailRead → reader.js markEntryRead）
   cardsDetailRead: (id) => {
     calls.push(['cardsDetailRead', id]);
-    const st = w.feedlore.state;
-    st.entries = (st.entries || []).map((x) => (String(x.id) === String(id) ? Object.assign({}, x, { isRead: true }) : x));
+    applyFlagEverywhere(id, { isRead: true });
+    cardsTick();
+    readerTick();
   },
   jumpToFeed: (id, focusId) => { calls.push(['jumpToFeed', id, focusId]); },
   // v1.9.0：阅读页桥（P3c，对齐 app.js 语义）
@@ -3119,8 +3152,8 @@ const withEFP = (el, fn) => {
   // ============ 卡片视图（P3b React 化） ============
   w.feedlore.state.tab = 'cards';
   w.feedlore.state.feedList = [
-    { id: '1', title: '例子星球', customTitle: null, cardEnabled: true, enabled: true, entryCount: 12, groupName: '科技' },
-    { id: '2', title: 'demo', customTitle: null, cardEnabled: true, enabled: true, entryCount: 4, groupName: '' },
+    { id: '1', title: '例子星球', customTitle: null, cardEnabled: true, enabled: true, entryCount: 12, unreadCount: 5, groupName: '科技' },
+    { id: '2', title: 'demo', customTitle: null, cardEnabled: true, enabled: true, entryCount: 4, unreadCount: 2, groupName: '' },
   ];
   w.feedlore.state.feedMeta = { total: 2, enabled: 2, cardEnabled: 2 };
   w.feedlore.state.groupOrder = ['科技'];
@@ -3474,11 +3507,16 @@ const withEFP = (el, fn) => {
     if (c1.querySelector('.badge-idx').textContent !== '2026-10-15') throw new Error('日期: ' + c1.querySelector('.badge-idx').textContent);
     if (!c1.querySelector('.card-media-actions a.btn-open[href]')) throw new Error('有原文地址应有打开按钮');
   });
-  t('无图卡片状态类（只剩收藏，卡片页不再显示已读）', () => {
+  t('卡面标记：收藏强调条 + 未读圆点（已读只藏圆点，卡面不变淡）', () => {
+    const c1 = C('#grid .card[data-id="e1"]');
     const c2 = C('#grid .card[data-id="e2"]');
+    if (!c1.querySelector('.card-media .card-dot') || c1.querySelector('.card-dot.is-read')) throw new Error('未读有图卡缺圆点');
+    if (!c2.querySelector('.card-meta .card-dot.is-read')) throw new Error('已读无图卡应藏掉圆点');
+    if (c2.classList.contains('is-read') || c2.classList.contains('is-unread')) throw new Error('卡片本身不该带已读 / 未读态');
     if (!c2.classList.contains('is-fav')) throw new Error('缺 is-fav');
-    if (c2.classList.contains('is-read') || c2.classList.contains('is-unread')) throw new Error('卡片页不该再带已读 / 未读态');
-    if (!C('#grid .card[data-id="e1"]').querySelector('.title-btn')) throw new Error('标题应是可聚焦按钮');
+    if (c1.getAttribute('aria-label').indexOf('未读，') !== 0) throw new Error('未读卡未在 aria-label 播报：' + c1.getAttribute('aria-label'));
+    if (c2.getAttribute('aria-label').indexOf('未读') === 0) throw new Error('已读卡不该播报未读');
+    if (!c1.querySelector('.title-btn')) throw new Error('标题应是可聚焦按钮');
     if (!c2.querySelector('.card-foot .btn-copy')) throw new Error('无图卡片复制按钮应在底部操作条');
     // v2.2.4：无原文地址不再渲染置灰「打开」按钮（曾被误读为「上锁」）
     if (c2.querySelector('.btn-open')) throw new Error('无原文地址不应渲染打开按钮');
@@ -3492,23 +3530,37 @@ const withEFP = (el, fn) => {
   brokenImg.dispatchEvent(new w.Event('error'));
   brokenImg.dispatchEvent(new w.Event('error'));
   await sleep(40);
-  t('图片彻底失败 → 降级为纯文字卡（媒体区移除、元信息与底部操作回来）', () => {
+  t('图片彻底失败 → 降级为纯文字卡（媒体区移除、元信息与底部操作回来、圆点不丢）', () => {
     const c1 = C('#grid .card[data-id="e1"]');
     if (c1.querySelector('.card-media')) throw new Error('失败图仍占着媒体区');
     if (c1.classList.contains('card-has-media')) throw new Error('降级后不该再算有图卡');
     if (!c1.querySelector('.card-meta .src-pill')) throw new Error('降级后应补回来源行');
+    if (!c1.querySelector('.card-meta .card-dot:not(.is-read)')) throw new Error('降级后未读圆点应进信息行');
     if (!c1.querySelector('.card-foot .btn-copy')) throw new Error('降级后复制按钮应在底部操作条');
   });
 
   // 卡片详情弹窗（桌面形态：居中模态）
+  // 两页同步：先摆一条同 id 的文章页条目 + 未读计数，打开详情后两边都应变已读且只减一次
+  const rdBefore = { id: 'e1', name: '条目一', feedId: '1', isRead: false, isFavorite: false };
+  w.feedlore.state.rdEntries = [rdBefore];
+  w.feedlore.state.rdFlags = { total: 1, unread: 1, favorite: 0 };
+  w.feedlore.state.feedList = w.feedlore.state.feedList.map((f) => (f.id === '1' ? Object.assign({}, f, { unreadCount: 1 }) : f));
   C('#grid .card[data-id="e1"] .card-desc').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   await sleep(60);
-  t('点卡片空白处 → 打开详情弹窗 + 拉正文 + 记为已读', () => {
+  t('点卡片空白处 → 打开详情弹窗 + 拉正文 + 记为已读（两页同步、计数只减一次）', () => {
     const dlg = C('.modal-mask [role="dialog"][aria-modal="true"]');
     if (!dlg) throw new Error('未弹出模态');
     if (dlg.getAttribute('aria-label') !== '条目一') throw new Error('弹窗缺可读名称：' + dlg.getAttribute('aria-label'));
     if (!callsOf('apiFetch').some((c) => c[1] === '/api/entries/e1')) throw new Error('未按 id 拉正文');
     if (!callsOf('cardsDetailRead').some((c) => c[1] === 'e1')) throw new Error('未记已读');
+    const st = w.feedlore.state;
+    const card = st.entries.find((x) => x.id === 'e1');
+    if (!card || !card.isRead) throw new Error('卡片列表未落已读');
+    if (!st.rdEntries[0].isRead || st.rdEntries[0] === rdBefore) throw new Error('文章页列表未同步已读（或原地改对象）');
+    if (st.rdFlags.unread !== 0) throw new Error('未读角标应减 1：' + st.rdFlags.unread);
+    if (Number(st.feedList.find((f) => f.id === '1').unreadCount) !== 0) throw new Error('频道未读数应减 1');
+    if (!C('#grid .card[data-id="e1"] .card-dot.is-read')) throw new Error('已读后卡片圆点应藏起来');
+    if (C('#grid .card[data-id="e1"]').getAttribute('aria-label').indexOf('未读') === 0) throw new Error('已读后 aria-label 仍在播报未读');
     if (C('.cd-meta') || C('.cd-pwd')) throw new Error('弹窗顶部不该再重复列频道 / 大小 / 日期 / 提取码');
     if (!C('.art-inner')) throw new Error('有正文时应渲染正文区');
     if (!C('.modal-close')) throw new Error('无关闭按钮');
@@ -3665,6 +3717,11 @@ const withEFP = (el, fn) => {
 
   // v1.6.0：顶部标签栏已移除，标签筛选入口下线（标签内容仅保留在文章正文）。
 
+  // 列表行同样有未读圆点：e1 设为已读、e2 留未读用于对照（清搜索框会重新拉列表，读态得在这里重摆）
+  w.feedlore.state.entries = w.feedlore.state.entries.map((x) => Object.assign({}, x, { isRead: String(x.id) === 'e1' }));
+  cardsTick();
+  await sleep(40);
+
   // 视图切换（v1.6.0：从右侧 ⋮ 菜单切换，网格/列表不再是工具栏上的并排按钮）
   C('.overflow-btn').click();
   await sleep(30);
@@ -3674,9 +3731,15 @@ const withEFP = (el, fn) => {
   });
   CA('.overflow-menu .overflow-item').find((b) => b.textContent.indexOf('列表视图') >= 0).click();
   await sleep(40);
-  t('列表视图切换：行渲染', () => {
+  t('列表视图切换：行渲染 + 未读圆点只在未读行可见', () => {
     if (!C('#grid').classList.contains('list-mode')) throw new Error('未 list-mode');
     if (CA('#grid .row-item').length !== 2) throw new Error('行数 ' + CA('#grid .row-item').length);
+    const r1 = C('#grid .row-item[data-id="e1"]');
+    const r2 = C('#grid .row-item[data-id="e2"]');
+    if (!r1.querySelector('.row-thumb .row-dot.is-read')) throw new Error('已读行圆点应藏起来');
+    if (!r2.querySelector('.row-thumb .row-dot:not(.is-read)')) throw new Error('未读行缺圆点');
+    if (r2.getAttribute('aria-label').indexOf('未读，') !== 0) throw new Error('未读行未在 aria-label 播报：' + r2.getAttribute('aria-label'));
+    if (r2.classList.contains('is-read') || r2.classList.contains('is-unread')) throw new Error('行本身不该带已读 / 未读态');
   });
   // v1.7.0：列表行的宽度与按钮尺寸（列表视图溢出的两道防线）
   t('列表视图：行不超出容器 + 复制/打开按钮是同尺寸方块', () => {
@@ -3770,8 +3833,8 @@ const withEFP = (el, fn) => {
 
   // ---- 窄屏频道抽屉（v1.3.10）：卡片页改成与文章页同一套「标题栏 + 抽屉」----
   w.feedlore.state.feedList = [
-    { id: '1', title: '例子星球', customTitle: null, cardEnabled: true, enabled: true, entryCount: 12, groupName: '科技' },
-    { id: '2', title: 'demo', customTitle: null, cardEnabled: true, enabled: true, entryCount: 4, groupName: '' },
+    { id: '1', title: '例子星球', customTitle: null, cardEnabled: true, enabled: true, entryCount: 12, unreadCount: 5, groupName: '科技' },
+    { id: '2', title: 'demo', customTitle: null, cardEnabled: true, enabled: true, entryCount: 4, unreadCount: 2, groupName: '' },
   ];
   w.feedlore.state.feedMeta = { total: 2, enabled: 2, cardEnabled: 2 };
   w.feedlore.state.feedFilter = null;
@@ -3795,17 +3858,24 @@ const withEFP = (el, fn) => {
     if (w.document.body.classList.contains('cards-drawer-open')) throw new Error('再点没收起');
   });
 
-  t('频道抽屉：「全部频道」+ 频道行（含分组与条数）', () => {
+  t('频道抽屉：计数按未读口径（全部 / 频道 / 分组），总量留在悬停提示', () => {
     const rows = CA('#cardsChannels .rd-ch');
     // 全部 + 2 个启用卡片的频道
     if (rows.length !== 3) throw new Error('行数 ' + rows.length + '：' + rows.map((r) => r.getAttribute('data-feed')).join(','));
     const all = rows.find((r) => r.getAttribute('data-feed') === '');
     if (!all || all.textContent.indexOf('全部频道') < 0) throw new Error('缺「全部频道」入口');
     if (!all.classList.contains('active')) throw new Error('未选中时「全部频道」应高亮');
-    if (all.textContent.indexOf('16') < 0) throw new Error('「全部频道」应显示总条数 16：' + all.textContent);
+    const allN = all.querySelector('.rd-ch-n');
+    if (!allN || allN.textContent !== '7') throw new Error('「全部频道」应显示未读总数 7：' + all.textContent);
+    if (allN.getAttribute('title') !== '7 条未读 / 共 16 条资源') throw new Error('总量提示: ' + allN.getAttribute('title'));
     const f1 = rows.find((r) => r.getAttribute('data-feed') === '1');
     if (!f1) throw new Error('缺频道 1');
-    if (f1.textContent.indexOf('12') < 0) throw new Error('频道行应带条数：' + f1.textContent);
+    const f1N = f1.querySelector('.rd-ch-n');
+    if (!f1N || f1N.textContent !== '5') throw new Error('频道行应显示未读 5：' + f1.textContent);
+    if (f1N.getAttribute('title') !== '5 条未读 / 共 12 条') throw new Error('频道总量提示: ' + f1N.getAttribute('title'));
+    const g = CA('#cardsChannels .rd-ch-group').find((el) => el.getAttribute('data-group') === '科技');
+    const gN = g && g.querySelector('.rd-ch-n.hot');
+    if (!gN || gN.textContent !== '5') throw new Error('分组应显示未读汇总 5');
     if (!CA('#cardsChannels .rd-ch-group').length) throw new Error('有分组时应画组头');
   });
 
@@ -4327,8 +4397,13 @@ const withEFP = (el, fn) => {
     if (!fn) throw new Error('找不到 applyEntryFlag');
     if (/e\.isRead = |e\.isFavorite = /.test(fn[0])) throw new Error('applyEntryFlag 仍在原地改条目字段');
     if (rd.indexOf('state.rdEntries = replaceEntry(') < 0) throw new Error('阅读页条目未换新对象');
+    // 两页共享同一状态：文章列表与卡片列表必须一起换新对象，计数只动一次
+    if (!/function findEntry\(/.test(rd)) throw new Error('缺跨两页列表的 findEntry');
+    if (fn[0].indexOf('state.entries = replaceEntry(state.entries') < 0) throw new Error('卡片列表未随文章页一起换新对象');
     const ui = fs.readFileSync(path.join(root, 'src', 'core', 'ui.js'), 'utf8');
     if (ui.indexOf('Object.assign(e, patch)') >= 0) throw new Error('卡片条目仍在原地改对象');
+    const detail = ui.match(/export function cardDetailRead\([\s\S]*?\n\}/);
+    if (!detail || detail[0].indexOf('markEntryRead(') < 0) throw new Error('卡片详情未走 markEntryRead，两页计数会不同步');
   });
   // 两套 sanitizer 必须同构：漏一边的键，刷新后会被另一边的默认值悄悄抹掉
   // （digestEnabled 就是这样——服务端不认这个键，关一次等于没关）
@@ -4776,6 +4851,32 @@ const withEFP = (el, fn) => {
       input.dispatchEvent(ev2);
       input.remove();
       if (ev2.defaultPrevented) throw new Error('输入框里的 `/` 被全局快捷键抢走了');
+    });
+    t('冒烟：打开卡片详情 → 文章 / 卡片两页列表同时已读，计数只减一次', () => {
+      const c2 = sw.__coreForTest;
+      const rdOld = { id: 'sync1', name: '同步一', feedId: '1', isRead: false, isFavorite: false };
+      c2.state.entries = [{ id: 'sync1', name: '同步一', feedId: '1', isRead: false, isFavorite: false }];
+      c2.state.rdEntries = [rdOld];
+      c2.state.feedList = [{ id: '1', entryCount: 10, unreadCount: 4 }];
+      c2.state.rdFlags = { total: 10, unread: 4, favorite: 0, watching: 0, blocked: 0 };
+      c2.state.tab = 'cards';
+      c2.cardsDetailRead('sync1');
+      if (!c2.state.entries[0].isRead) throw new Error('卡片列表未落已读');
+      if (!c2.state.rdEntries[0].isRead) throw new Error('文章页列表未同步已读');
+      if (c2.state.rdEntries[0] === rdOld) throw new Error('条目对象被原地修改，memo 不会重绘');
+      if (c2.state.rdFlags.unread !== 3) throw new Error('未读角标: ' + c2.state.rdFlags.unread);
+      if (Number(c2.state.feedList[0].unreadCount) !== 3) throw new Error('频道未读数: ' + c2.state.feedList[0].unreadCount);
+      // 同一条已读后再打开：不重复扣减（markEntryRead 提前返回）
+      c2.cardsDetailRead('sync1');
+      if (c2.state.rdFlags.unread !== 3 || Number(c2.state.feedList[0].unreadCount) !== 3) throw new Error('重复打开又扣了一次');
+    });
+    t('冒烟：文章页「标为未读」→ 卡片列表同步回未读并加回计数', () => {
+      const c2 = sw.__coreForTest;
+      c2.readerMarkUnread('sync1');
+      if (c2.state.entries[0].isRead) throw new Error('卡片列表没同步回未读');
+      if (c2.state.rdEntries[0].isRead) throw new Error('文章页列表没标回未读');
+      if (c2.state.rdFlags.unread !== 4) throw new Error('未读角标: ' + c2.state.rdFlags.unread);
+      if (Number(c2.state.feedList[0].unreadCount) !== 4) throw new Error('频道未读数: ' + c2.state.feedList[0].unreadCount);
     });
     t('冒烟：⌘K 保留 —— 命令面板仍监听 ⌘K / Ctrl+K（源码级）', () => {
       // 命令面板没有其它入口（无按钮可点），⌘K / Ctrl+K 是它唯一的开关，按用户要求保留。

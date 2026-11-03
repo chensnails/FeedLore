@@ -7,8 +7,8 @@
  * 形态在打开瞬间定格，本次开合内不随窗口变化重排。
  *
  * 正文渲染直接复用文章页的 ArtBody / CopyButton / OpenButton（同一套 .art-* 样式），
- * 两处展示保持一份实现。打开弹窗即把该条记为已读：卡片页不显示已读态，
- * 状态只体现在文章页（同一批 entries 行），逻辑见 core 的 cardsDetailRead。
+ * 两处展示保持一份实现。打开弹窗即把该条记为已读：状态与卡片圆点、文章页列表同步，
+ * 逻辑见 core 的 cardsDetailRead → reader.js markEntryRead。
  *
  * 弹窗只剩正文一种语言（v1.3.3，用户要求）：标题栏和底栏都撤掉，收藏与「在文章页查看」
  * 并进正文底部的动作行，和复制 / 打开并排成四个同尺寸图标按钮。
@@ -173,7 +173,7 @@ export function CardDetail({ e, onClose, onTag }) {
           <div className="dd-sheet-body cd-body">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
-            <p className="cd-read-tip">打开此详情已将它标记为已读（已读态只在文章页显示）</p>
+            <p className="cd-read-tip">打开此详情已将它标记为已读（两页同步）</p>
           </div>
         </div>
       </div>
@@ -188,7 +188,7 @@ export function CardDetail({ e, onClose, onTag }) {
           <div className="cd-scroll">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
-            <p className="cd-read-tip">打开此详情已将它标记为已读（已读态只在文章页显示）</p>
+            <p className="cd-read-tip">打开此详情已将它标记为已读（两页同步）</p>
           </div>
         </div>
       </div>
