@@ -9,6 +9,12 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ## Unreleased
 
+(None)
+
+## 2.2.0-rc.4 — 2026-11-04
+
+> Pre-release for validation: `latest` still points at 2.1.0 and no GitHub Release is created.
+
 ### Changed
 
 - **Lighter first load**: the settings modal and the AI digest view are downloaded only when
@@ -18,6 +24,14 @@ This file records user-visible changes and deployment-related changes for 2.x.
   320 / 640 / 960 width variants, cutting bytes on phones and slow links. The image proxy
   accepts an optional `w` parameter, compresses and caches each variant separately, and keeps
   the default 1280 version unchanged.
+
+### Deployment
+
+- Image: `ghcr.io/chensnails/feedlore:2.2.0-rc.4` (amd64 + arm64); `latest` still points at
+  2.1.0 and no GitHub Release is created.
+- **Upgrading from 2.2.0-rc.3**: change `V2_IMAGE` to `…:2.2.0-rc.4` and run `up -d`. There is
+  no database or breaking API change; the image proxy only gains an optional `w` parameter and
+  older front ends keep requesting the default 1280 version.
 
 ## 2.2.0-rc.3 — 2026-11-04
 
