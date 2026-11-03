@@ -121,11 +121,8 @@ docker compose -f docker-compose.v2.release.yml up -d
 （全新安装按空站点跳过）→ 校验；它也可以充当后续版本的数据库结构迁移。
 **`upgrade` 成功退出后**，应用容器才会启动。
 
-```bash
-docker compose -f docker-compose.v2.release.yml logs -f upgrade
-curl -s http://127.0.0.1:3210/api/health
-# {"ok":true,"db":{"ready":true}}
-```
+首次启动要拉镜像并迁移数据，可能需要几分钟；想看进度或排查失败可执行
+`docker compose -f docker-compose.v2.release.yml logs upgrade`。
 
 ### 2. 获取初始密码并登录
 
