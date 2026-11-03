@@ -169,7 +169,9 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
        * 但 /api/login 走的是进程内 auth.handler，所以「登录能用」完全掩盖了它。 */
       const res = await call('/api/auth/get-session');
       assert.equal(res.status, 200, 'get-session 应为 200；404 说明 /api/auth/* 又被路由吞了');
-      assert.notEqual((await res.json() as { error?: string }).error, 'E_ROUTE_NOT_FOUND');
+      // 未登录时 better-auth 的响应体是字面量 null，所以这里必须按可空处理
+      const j = (await res.json()) as { error?: string } | null;
+      assert.notEqual(j?.error, 'E_ROUTE_NOT_FOUND');
     });
 
     await t.test('直连 better-auth 登录端点被拒（登录只能走 /api/login 的限流入口）', async () => {
