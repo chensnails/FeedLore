@@ -201,27 +201,6 @@ export type AdminUser = z.infer<typeof AdminUserSchema>;
 /* ============================ 偏好（prefs） ============================ */
 
 /**
- * 外观配置。
- *
- * ⚠️ 取值表直接对齐 `apps/legacy/lib/prefs.js` 的 `APPEARANCE_DEFAULTS/APPEARANCE_KEYS`，
- * **不是随手设计的枚举**：这里写成 `theme: 'system' | 'light' | 'dark'` 之类的「更漂亮」版本，
- * 会让老用户真实数据（`theme='auto'`、`fontSize='m'`）在 `assertResponse` 处直接 500。
- * 契约必须描述**实际存在的数据**，而不是我们希望它长什么样。
- */
-export const AppearanceSchema = z.object({
-  theme: z.enum(['auto', 'light', 'dark', 'github']),
-  accent: z.enum(['blue', 'violet', 'teal', 'green', 'amber', 'rose']),
-  fontSize: z.enum(['s', 'm', 'l']),
-  density: z.enum(['cozy', 'compact']),
-  readerFont: z.enum(['sans', 'serif']),
-  readerLh: z.enum(['s', 'm', 'l']),
-  // 2.2 起扩到五档；旧值 s / m / l 含义不变，老账号数据可直接通过校验
-  readerFs: z.enum(['xs', 's', 'm', 'l', 'xl']),
-  readerWidth: z.enum(['s', 'm', 'l', 'full']),
-});
-export type Appearance = z.infer<typeof AppearanceSchema>;
-
-/**
  * 布局偏好（按账号保存）。同样对齐 legacy `LAYOUT_DEFAULTS / LAYOUT_VALUES`。
  * 含 `LAYOUT_MIRROR` 字段（sort / rdScope / rdCollapsedGroups）：1.7.2 的「折叠点不动」
  * 就是因为前端读了 state 上不存在的 `rdCollapsedGroups`，所以这些键必须显式登记。

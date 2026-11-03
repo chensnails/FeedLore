@@ -20,6 +20,11 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Changed
 
+- **Appearance now lives in the browser**: theme / accent / UI font size / card density /
+  article typography are no longer stored in the account. A new device, a different account
+  or a cleared cache falls back to the defaults (all size-related options are "medium");
+  every account on the same browser shares the same appearance. Layout (view / sort /
+  sidebar width / collapsed groups) still follows the account and syncs across devices.
 - **Reader font size now has five levels**: tiny / small / medium / large / extra large
   (14 / 15 / 16 / 18 / 20px). Existing small / medium / large selections keep their values,
   no migration needed.

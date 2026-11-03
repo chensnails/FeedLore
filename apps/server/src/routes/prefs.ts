@@ -2,15 +2,18 @@
  * 偏好接口（契约：contract.prefs.get / update）
  *
  * 数据来源两处：
- * - `users.prefs`（jsonb）：外观 / 布局 / 过滤规则 / 关注屏蔽 / webhook / 日报配置；
+ * - `users.prefs`（jsonb）：布局 / 过滤规则 / 关注屏蔽 / webhook / 日报配置；
  * - `user_llm`（侧表）：模型 baseUrl / model / thinking，以及**只看「有没有 key」**。
  *
- * 读的一律是「清洗后的视图」：库里可能躺着老版本写的脏值（比如 theme='github' 之后
+ * 外观（主题 / 字号 / 正文排版）不在这里：它只存在浏览器本机 localStorage，
+ * 服务端不读不写；账号里遗留的 `prefs.appearance` 已废弃。
+ *
+ * 读的一律是「清洗后的视图」：库里可能躺着老版本写的脏值（比如 view='table' 之后
  * 被删掉的枚举），直接透出会让前端渲染出白屏或让 assertResponse 500。
  * 清洗器在 `lib/prefs.ts`，与 legacy `lib/prefs.js` 行为一致。
  *
  * 写的三条语义（与 legacy 一致，别改成「整份替换」）：
- * 1. appearance / layout 是**按现有值合并后再清洗**：前端只提交改动的键时，
+ * 1. layout 是**按现有值合并后再清洗**：前端只提交改动的键时，
  *    未提交的键必须保持用户原值，不能被 sanitize 的默认值冲掉。
  * 2. filters / watchRules 是**整组替换**：规则是列表，部分合并没有意义。
  * 3. digest 的 `lastAuto` 是服务端调度器独占写入的字段，客户端提交的同名字段一律忽略 ——
@@ -36,14 +39,12 @@ import {
   userLlmForView,
 } from '@feedlore/ai';
 import {
-  sanitizeAppearance,
   sanitizeDigest,
   sanitizeFilters,
   sanitizeLayout,
   sanitizeWatchRules,
   sanitizeWatchExpireDays,
   sanitizeWebhook,
-  userAppearance,
   userDigest,
   userFilters,
   userGroupOrder,
@@ -106,7 +107,6 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         prefsResponse,
         {
           groupOrder: userGroupOrder(prefs),
-          appearance: userAppearance(prefs),
           layout: userLayout(prefs),
           filters: userFilters(prefs),
           watchRules: userWatchRules(prefs),
@@ -133,7 +133,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         const uid = c.get('user').id;
         const body: PrefsPatchBody = c.req.valid('json');
 
-        /* 只读账户仍可调整「怎么看」（外观 / 布局 / 分组顺序），
+        /* 只读账户仍可调整「怎么看」（布局 / 分组顺序；外观已存浏览器本机、不走本接口），
          * 但不能再改「抓什么、怎么处理」：过滤规则、关注屏蔽、Webhook、日报、模型全部拒绝。 */
         if (c.get('user').role === 'readonly') {
           const blocked = (['filters', 'watchRules', 'watchExpireDays', 'webhookUrl', 'digest', 'llm'] as const)
@@ -160,10 +160,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
             .filter(Boolean);
         }
 
-        // 合并后再清洗：只改主题不该把主色重置成默认值
-        if (body.appearance) {
-          next.appearance = sanitizeAppearance({ ...groupOf(prev, 'appearance'), ...body.appearance });
-        }
+        // 合并后再清洗：只改一个布局键不该把其余项重置成默认值
         if (body.layout) {
           next.layout = sanitizeLayout({ ...groupOf(prev, 'layout'), ...body.layout });
         }
@@ -256,7 +253,6 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           {
             ok: true,
             groupOrder: userGroupOrder(next),
-            appearance: userAppearance(next),
             layout: userLayout(next),
             filters: userFilters(next),
             watchRules: userWatchRules(next),

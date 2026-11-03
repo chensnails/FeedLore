@@ -2,50 +2,17 @@
  * 用户偏好清洗与读取（对齐 apps/legacy/lib/prefs.js）。
  *
  * 立场与 legacy 完全一致：**偏好来自浏览器，等同不可信输入**，非法值逐键回落默认，
- * 而不是整体报错——一次脏请求不该让用户丢掉整份外观/布局设置。
+ * 而不是整体报错——一次脏请求不该让用户丢掉整份布局设置。
  *
- * ⚠️ 这里的默认值与取值表必须和 packages/contract 的 Appearance/Layout schema 同步。
+ * ⚠️ 这里的默认值与取值表必须和 packages/contract 的 Layout schema 同步。
  * 契约负责「拒绝不符合契约的响应」，本文件负责「把脏数据洗成符合契约的形状」。
+ *
+ * 外观（主题 / 字号 / 正文排版）不在这里：它只存在浏览器本机 localStorage，
+ * 服务端既不读也不写；账号里遗留的 `prefs.appearance` 已废弃不再使用。
  */
 
 import { isSafeRegex } from './regex-safety';
 import { normalizeScope, type RuleScope } from './scope';
-
-export const APPEARANCE_DEFAULTS = {
-  theme: 'auto',
-  accent: 'blue',
-  fontSize: 'm',
-  density: 'cozy',
-  readerFont: 'sans',
-  readerLh: 'm',
-  readerFs: 'm',
-  readerWidth: 'm',
-} as const;
-
-const APPEARANCE_KEYS: Record<keyof typeof APPEARANCE_DEFAULTS, readonly string[]> = {
-  theme: ['auto', 'light', 'dark', 'github'],
-  accent: ['blue', 'violet', 'teal', 'green', 'amber', 'rose'],
-  fontSize: ['s', 'm', 'l'],
-  density: ['cozy', 'compact'],
-  readerFont: ['sans', 'serif'],
-  readerLh: ['s', 'm', 'l'],
-  readerFs: ['xs', 's', 'm', 'l', 'xl'],
-  readerWidth: ['s', 'm', 'l', 'full'],
-};
-
-export type Appearance = { -readonly [K in keyof typeof APPEARANCE_DEFAULTS]: string };
-
-export function sanitizeAppearance(raw: unknown): Appearance {
-  const out: Appearance = { ...APPEARANCE_DEFAULTS };
-  if (raw && typeof raw === 'object') {
-    const r = raw as Record<string, unknown>;
-    for (const k of Object.keys(APPEARANCE_DEFAULTS) as (keyof Appearance)[]) {
-      const v = r[k];
-      if (typeof v === 'string' && APPEARANCE_KEYS[k].includes(v)) out[k] = v;
-    }
-  }
-  return out;
-}
 
 /* ---------------- 布局 ---------------- */
 
@@ -327,7 +294,6 @@ export type PrefsBag = Record<string, unknown> | null | undefined;
 
 const bag = (prefs: PrefsBag, key: string): unknown => (prefs && typeof prefs === 'object' ? prefs[key] : undefined);
 
-export const userAppearance = (prefs: PrefsBag) => sanitizeAppearance(bag(prefs, 'appearance'));
 export const userLayout = (prefs: PrefsBag) => sanitizeLayout(bag(prefs, 'layout'));
 export const userFilters = (prefs: PrefsBag) => sanitizeFilters(bag(prefs, 'filters'));
 export const userWatchRules = (prefs: PrefsBag) => sanitizeWatchRules(bag(prefs, 'watchRules'));

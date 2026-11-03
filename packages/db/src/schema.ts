@@ -61,7 +61,7 @@ export const users = pgTable('users', {
   banned: boolean('banned').notNull().default(false),
   banReason: text('ban_reason'),
   banExpires: timestamp('ban_expires', { mode: 'date' }),
-  // 业务扩展：外观/布局/过滤/关注屏蔽/日报配置（每用户加密 LLM key 不在此，见 user_llm）
+  // 业务扩展：布局/过滤/关注屏蔽/日报配置（每用户加密 LLM key 不在此，见 user_llm；外观存浏览器本机）
   prefs: jsonb('prefs').$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),

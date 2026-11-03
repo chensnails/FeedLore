@@ -5,7 +5,7 @@
  * 的 Cache-Control 丢掉。用 app.request() 测不出来（不经过 @hono/node-server 的
  * 响应写出），所以这里起一个真端口。
  *
- * 首页带账号外观注入，缓存住就是「A 的偏好发给 B」，必须是 no-cache。 */
+ * 首页带账号布局注入，缓存住就是「A 的偏好发给 B」，必须是 no-cache。 */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

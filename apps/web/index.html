@@ -17,29 +17,25 @@
 <meta name="format-detection" content="telephone=no">
 <script>
 /* 外观偏好：主题模式 + 主色调 + 字号 + 阅读字体 / 行高 / 阅读宽度。
+   只存在本机（feedlore.appearance.v2），不跟账号走；新设备一律用全「中」默认。
    必须在样式表之前把这些属性写到 <html> 上，否则首屏会先按默认值画一遍再跳一下。
    取值合法性也在这里兜一层：localStorage 是用户可改的，脏值不该让页面崩掉。 */
 (function () {
   var el = document.documentElement;
-  // 优先用服务端按账号注入的外观（window.__APPEARANCE__）；登录页等无注入时回退本机旧值，再回退默认
-  var sa = window.__APPEARANCE__ || null;
-  var lsGet = function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } };
   var pick = function (v, list, dflt) { return list.indexOf(v) >= 0 ? v : dflt; };
   var ACCENTS = ['blue', 'violet', 'teal', 'green', 'amber', 'rose'];
+  var ap = {};
+  try { ap = JSON.parse(localStorage.getItem('feedlore.appearance.v2') || 'null') || {}; } catch (e) { ap = {}; }
 
-  var mode = 'auto';
-  if (sa && typeof sa.theme === 'string') mode = sa.theme;
-  else { var lm = lsGet('feedlore.theme.v1'); if (lm) mode = lm; }
-  if (['auto', 'light', 'dark', 'github'].indexOf(mode) < 0) mode = 'auto';
+  var mode = pick(ap.theme, ['auto', 'light', 'dark', 'github'], 'auto');
   el.setAttribute('data-theme-mode', mode);
   // github 是整包主题，不进「跟随系统」；data-theme 直接写 github 走另一套 CSS 变量块
   var mq = window.matchMedia('(prefers-color-scheme: dark)');
   var dark = mode === 'dark' || (mode === 'auto' && mq.matches);
   el.setAttribute('data-theme', mode === 'github' ? 'github' : (dark ? 'dark' : 'light'));
 
-  // 主色调：github 主题写死 GitHub 蓝；其余用账号保存的值（无则用本机旧值）
-  var accent = (sa && typeof sa.accent === 'string') ? sa.accent : (lsGet('feedlore.appearance.accent.v1') || 'blue');
-  el.setAttribute('data-accent', mode === 'github' ? 'github' : pick(accent, ACCENTS, 'blue'));
+  // 主色调：github 主题写死 GitHub 蓝；其余用本机保存的值（无则蓝）
+  el.setAttribute('data-accent', mode === 'github' ? 'github' : pick(ap.accent, ACCENTS, 'blue'));
 
   /* 启动层的主色：样式表此时还没加载，只能在这里按主题取一份十六进制值，
      让 logo 在冷启动第一帧就是用户选中的主色，而不是先蓝一下再跳。 */
@@ -51,7 +47,6 @@
   var pair = ACCENT_HEX[el.getAttribute('data-accent')] || ACCENT_HEX.blue;
   el.style.setProperty('--boot-accent', mode === 'github' ? '#1f6feb' : (dark ? pair[1] : pair[0]));
 
-  var ap = sa || {};
   el.setAttribute('data-font-size', pick(ap.fontSize, ['s', 'm', 'l'], 'm'));
   el.setAttribute('data-reader-font', pick(ap.readerFont, ['sans', 'serif'], 'sans'));
   el.setAttribute('data-reader-lh', pick(ap.readerLh, ['s', 'm', 'l'], 'm'));

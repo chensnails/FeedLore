@@ -128,7 +128,8 @@ const js = jsRef ? readFileSync(join(DIST, jsRef.replace(/^\//, '')), 'utf8') : 
 /* 阅读层正文标签是筛列表的唯一入口（v1.6.0 撤掉顶部标签云后）。
  * core 导出对象的属性名不会被压缩，掉了说明桥接断了。 */
 check(/readerTagToCards/.test(js), 'core 暴露 readerTagToCards（阅读层点标签筛列表的桥）');
-check(/__APPEARANCE__/.test(js), '前端仍在读服务端注入的 __APPEARANCE__（首屏外观）');
+check(/feedlore\.appearance\.v2/.test(js), '外观偏好读写本机 feedlore.appearance.v2');
+check(!/__APPEARANCE__/.test(js), '前端不再读服务端注入的 __APPEARANCE__（外观只存本机）');
 
 /* ---------------- 汇总 ---------------- */
 for (const m of oks) console.log(`✓ ${m}`);

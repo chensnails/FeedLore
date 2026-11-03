@@ -3,8 +3,8 @@
  *
  * 守的是 jsdom 单测与产物校验都看不见的那一层：
  * - 未登录 → /login.html 的真实跳转（服务端没有拦住，是前端 bootstrap 在跳）；
- * - 登录后服务端注入的 window.__APPEARANCE__ / __LAYOUT__（首屏主题与布局靠它，
- *   注入逻辑一旦在 app.ts 里失效，页面照样能开，只是「暗色用户闪一下白」）；
+ * - 登录后服务端注入的 window.__LAYOUT__（布局按账号走，首屏靠它）；
+ *   外观已改存本机 localStorage，服务端不再注入 __APPEARANCE__；
  * - 列表 / 阅读层 / 三视图切换 / 设置页签这些只有真浏览器 + 真接口才跑得通的路。
  *
  * 用法：node scripts/ui-smoke.mjs http://172.26.1.2:3211 admin <密码>
@@ -161,9 +161,13 @@ try {
 
   check(await waitFor("location.pathname === '/'", 20000), '登录成功 → 回到 /');
   check(await waitFor("document.querySelectorAll('.viewnav-btn').length >= 2"), '顶栏视图导航已渲染');
-  /* 服务端注入的首屏偏好：暗色 / 侧栏宽度靠它在首帧生效，失效时页面正常但会闪白 */
-  check(await evalJs("typeof window.__APPEARANCE__ === 'object' && window.__APPEARANCE__ != null"),
-    '服务端注入了 window.__APPEARANCE__');
+  /* 布局仍由服务端按账号注入；外观只存本机，服务端不该再注入 __APPEARANCE__ */
+  check(await evalJs("typeof window.__LAYOUT__ === 'object' && window.__LAYOUT__ != null"),
+    '服务端注入了 window.__LAYOUT__');
+  check(await evalJs("window.__APPEARANCE__ === undefined"),
+    '服务端不再注入 window.__APPEARANCE__（外观只存本机）');
+  check(await evalJs("localStorage.getItem('feedlore.appearance.v2') === null"),
+    '干净 profile 下外观无本机记录（按默认值渲染）');
   /* 首页里带着这个账号的外观/布局；一旦可被缓存，代理就会把 A 的偏好发给 B。
    * Hono 的 compress 在 finalized 后补 Vary 会重建 Response、丢掉 c.res.headers 上的头，
    * 这条断言就是那个坑的哨兵。 */

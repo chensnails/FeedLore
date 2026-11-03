@@ -37,8 +37,10 @@
 
 - 主题：`html[data-theme]` = `light` / `dark` / `github`，另有 `auto` 跟随系统。
 - 强调色：`html[data-accent]`，6 档（默认蓝 / violet / teal / green / amber / rose）。
-- 首屏由服务端注入 `window.__APPEARANCE__` / `__LAYOUT__`，`index.html` 内联脚本在首帧前应用；
-  登录页无注入，回落默认值。**不要把这套改成客户端 GET /api/prefs 再应用** —— 会闪一帧白。
+- 外观（主题 / 强调色 / 字号 / 正文排版）只存本机 `localStorage['feedlore.appearance.v2']`，
+  `index.html` 内联脚本在首帧前应用；登录页读同一键的 `theme` 字段。
+- 布局（视图 / 排序 / 侧栏宽度 / 折叠分组等）按账号保存，由服务端注入 `window.__LAYOUT__`。
+  **不要把这套改成客户端 GET /api/prefs 再应用** —— 会闪一帧白；外观也不放账号，避免跨设备互相干扰。
 
 ## 4. 设置页签
 

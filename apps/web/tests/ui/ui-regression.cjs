@@ -302,7 +302,7 @@ w.feedlore = {
     // ---- 模型 / 关于 / 偏好 ----
     if (url === '/api/prefs' && method === 'GET') {
       return ok({
-        llm: prefsLlm, groupOrder: miniGroupOrder.slice(), appearance: {}, filters: miniFilters.slice(),
+        llm: prefsLlm, groupOrder: miniGroupOrder.slice(), filters: miniFilters.slice(),
         watchRules: miniWatchRules.slice(),
         layout: { digestEnabled: prefsDigestEnabled }, digest: Object.assign({}, prefsDigest),
         watchExpireDays: miniWatchExpireDays,
@@ -380,7 +380,7 @@ w.feedlore = {
         const n = Number(body.watchExpireDays);
         miniWatchExpireDays = Number.isFinite(n) ? Math.min(3650, Math.max(0, Math.round(n))) : 90;
       }
-      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), appearance: {}, layout: {}, filters: miniFilters.slice(), watchRules: miniWatchRules.slice(), digest: Object.assign({}, prefsDigest), watchExpireDays: miniWatchExpireDays });
+      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), layout: {}, filters: miniFilters.slice(), watchRules: miniWatchRules.slice(), digest: Object.assign({}, prefsDigest), watchExpireDays: miniWatchExpireDays });
     }
     if (url === '/api/digest/test-llm') return ok({ ok: true, reply: 'pong' });
     if (url === '/api/version') return ok(versionResponse);
@@ -4660,13 +4660,17 @@ const withEFP = (el, fn) => {
     const coreIife = fs.readFileSync(path.join(__dirname, '.build', 'core-iife.js'), 'utf8')
       .replace(/<\/script/gi, '<\\/script');
     smokeHtml = smokeHtml.replace(/<script type="module"[^>]*><\/script>/, () => '<script>' + coreIife + '</script>');
+    const fetchCalls = [];
     const dom2 = new JSDOM(smokeHtml, {
       url: 'http://localhost:3000/',
       runScripts: 'dangerously',
       pretendToBeVisual: true,
       virtualConsole: vc2,
       beforeParse(win) {
-        win.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ authenticated: true, username: 'tester', role: 'admin' }) });
+        win.fetch = (url, opts) => {
+          fetchCalls.push([String(url), opts]);
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ authenticated: true, username: 'tester', role: 'admin' }) });
+        };
         win.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
         win.IntersectionObserver = class { observe() {} unobserve() {} disconnect() {} };
         win.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
@@ -4705,6 +4709,34 @@ const withEFP = (el, fn) => {
         const got = f(n);
         if (got !== want) throw new Error(`fmtBadge(${n}) = ${got}，期望 ${want}`);
       }
+    });
+    t('外观：默认全「中」，首屏属性一致，且初始不写本机', () => {
+      const got = sw.__coreForTest.getAppearance();
+      const want = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
+      for (const k of Object.keys(want)) if (got[k] !== want[k]) throw new Error(`${k}=${got[k]}`);
+      if (sw.localStorage.getItem('feedlore.appearance.v2') !== null) throw new Error('初始就写了 localStorage');
+      const el = sw.document.documentElement;
+      const attrs = [['data-font-size', 'm'], ['data-reader-font', 'sans'], ['data-reader-lh', 'm'], ['data-reader-fs', 'm'], ['data-reader-width', 'm']];
+      for (const [a, v] of attrs) if (el.getAttribute(a) !== v) throw new Error(`${a}=${el.getAttribute(a)}`);
+    });
+    t('外观：setAppearance 只写本机 feedlore.appearance.v2 并即时生效', () => {
+      const c2 = sw.__coreForTest;
+      c2.setAppearance('readerFs', 'xl');
+      const saved = JSON.parse(sw.localStorage.getItem('feedlore.appearance.v2') || 'null');
+      if (!saved || saved.readerFs !== 'xl') throw new Error('未写入 readerFs');
+      if (saved.fontSize !== 'm' || saved.theme !== 'auto') throw new Error('其余键被冲掉：' + JSON.stringify(saved));
+      if (sw.document.documentElement.getAttribute('data-reader-fs') !== 'xl') throw new Error('data-reader-fs 未更新');
+      const posts = fetchCalls.filter(([u, o]) => u.includes('/api/prefs') && o && o.method === 'POST');
+      if (posts.length) throw new Error('外观改动不该 POST /api/prefs');
+    });
+    sw.__coreForTest.setLayout('sort', 'old');
+    await sleep(250);
+    t('布局：仍按账号 POST /api/prefs，请求体只有 layout', () => {
+      const posts = fetchCalls.filter(([u, o]) => u.includes('/api/prefs') && o && o.method === 'POST');
+      if (!posts.length) throw new Error('布局改动未 POST');
+      const body = JSON.parse(posts[posts.length - 1][1].body);
+      if (!body.layout || body.layout.sort !== 'old') throw new Error(JSON.stringify(body));
+      if ('appearance' in body) throw new Error('请求体仍带 appearance');
     });
     // 关掉日报后，所有入口都靠 switchView 这一道守卫回落（#digest 深链、命令面板遗留项
     // 走的都是它）；假 core 桩测的是组件，这里验真实 core 的判定本身。

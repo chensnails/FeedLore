@@ -294,7 +294,7 @@ export function createApiClient(baseUrl: string, options: ApiClientOptions = {})
         return unwrap(res, prefsResponse, 'GET /api/prefs');
       },
 
-      /** 保存偏好。appearance/layout 按现有值合并，filters/watchRules 整组替换。 */
+      /** 保存偏好。layout 按现有值合并，filters/watchRules 整组替换。 */
       async update(body: PrefsPatchBody) {
         const res = await raw.api.prefs.$post({ json: body });
         return unwrap(res, prefsEndpoints.update.response, 'POST /api/prefs');

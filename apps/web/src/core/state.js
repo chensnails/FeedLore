@@ -324,7 +324,7 @@ export function applyTheme(mode, animate) {
   el.setAttribute('data-fixed-accent', fixed ? 'github' : '');
   applyAppearance(readAppearance());
 
-  // 主题持久化到服务端（按账号维度），与外观配置同一份
+  // 主题与其余外观项同存本机（feedlore.appearance.v2）
   if (m !== (appearancePref && appearancePref.theme)) {
     appearancePref.theme = m;
     saveAppearance(appearancePref);
@@ -353,12 +353,13 @@ try {
 
 /* ============================================================
  * 外观偏好（主题 / 主色调 / 字号 / 阅读字体 / 行高 / 阅读宽度）
- * 按账号维度持久化到服务端（users.prefs.appearance），不再落本机 localStorage，
- * 换设备也一致。
- * 首屏由 index.html <head> 的内联脚本从服务端注入的 window.__APPEARANCE__ 应用
- * （否则会先闪一下默认值），这里负责后续修改、持久化与界面回填。
+ * 只存本机 localStorage：外观是「这台设备看起来怎样」的偏好，不跟账号走。
+ * 不做旧账号值迁移 —— 首次使用按全「中」默认；旧版账号里的 appearance 已停用。
+ * 首屏由 index.html <head> 的内联脚本读同一份数据（否则会先闪一下默认值），
+ * 这里负责后续修改、持久化与界面回填。
  * ============================================================ */
-// 默认值与合法值表（与服务端 APPEARANCE_DEFAULTS / APPEARANCE_KEYS 对齐）
+export const APPR_STORAGE_KEY = 'feedlore.appearance.v2';
+// 默认值：尺寸类一律中间档，主题跟随系统、主色蓝、正文字体无衬线
 export const APPR_DEFAULTS = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
 // 键名 → html 属性名；同时这个属性名就是控件上用来标值的 data 属性名
 export const APPR_ATTR = {
@@ -382,7 +383,7 @@ export const APPR_VALUES = {
 };
 // 注：旧 APPR_GROUP 控件选择器表随外观面板 React 化移除（React 侧自行渲染控件）
 
-// 单一可信源：优先服务端注入的 window.__APPEARANCE__，缺省回落默认（登录页等无注入场景）
+// localStorage 是用户可改的，脏值 / 坏 JSON 一律回落默认，不让页面崩掉
 export function sanitizeAppearanceLocal(raw) {
   const out = Object.assign({}, APPR_DEFAULTS);
   if (raw && typeof raw === 'object') {
@@ -392,13 +393,22 @@ export function sanitizeAppearanceLocal(raw) {
   }
   return out;
 }
-export let appearancePref = sanitizeAppearanceLocal(window.__APPEARANCE__);
+
+function readAppearanceStorage() {
+  try {
+    return sanitizeAppearanceLocal(JSON.parse(localStorage.getItem(APPR_STORAGE_KEY) || 'null'));
+  } catch (_) {
+    return sanitizeAppearanceLocal(null);
+  }
+}
+
+export let appearancePref = readAppearanceStorage();
 
 export function readAppearance() {
   return sanitizeAppearanceLocal(appearancePref);
 }
 
-// 统一按账号持久化：外观与布局共用一次防抖 POST（避免两路并发互相覆盖）
+// 布局仍按账号保存（跨设备一致），外观只落本机，两者不再共用一次写入
 export let prefsSaveTimer = null;
 export function saveUserPrefs() {
   clearTimeout(prefsSaveTimer);
@@ -406,7 +416,7 @@ export function saveUserPrefs() {
     fetch('/api/prefs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ appearance: appearancePref, layout: layoutPref }),
+      body: JSON.stringify({ layout: layoutPref }),
     }).catch(() => { /* 离线 / 网络异常时静默，下次改动再试 */ });
   }, 150);
 }
@@ -426,8 +436,9 @@ export function setLayout(key, value) {
 
 export function saveAppearance(pref) {
   appearancePref = sanitizeAppearanceLocal(pref);
-  // 防抖后写服务端（按账号持久化，不再落本机 localStorage）
-  saveUserPrefs();
+  try {
+    localStorage.setItem(APPR_STORAGE_KEY, JSON.stringify(appearancePref));
+  } catch (_) { /* 隐私模式 / 配额满：本次会话仍生效，只是不持久化 */ }
 }
 
 /** 写进 <html> 属性（样式全挂在属性选择器上）。
@@ -463,22 +474,12 @@ export function resetAppearance() {
 
 applyAppearance(readAppearance());
 
-// 旧版把外观 / 布局偏好存在本机 localStorage：升级后迁移到账号（仅执行一次），随后清掉本机副本
-(function migrateLocalPrefs() {
-  let apref = Object.assign({}, appearancePref);
+// 旧版把布局偏好存在本机 localStorage：升级后迁移到账号（仅执行一次），随后清掉本机副本。
+// 外观不走这条迁移：外观改存本机 feedlore.appearance.v2，旧账号里的 appearance 不再读取。
+(function migrateLegacyLayoutPrefs() {
   let lpref = Object.assign({}, layoutPref);
-  let aChanged = false, lChanged = false;
+  let lChanged = false;
   try {
-    // —— 外观 ——
-    const a = JSON.parse(localStorage.getItem('feedlore.appearance.v1') || '{}');
-    if (a && typeof a === 'object') {
-      ['accent', 'fontSize', 'readerFont', 'readerLh', 'readerFs', 'readerWidth'].forEach((k) => {
-        if (APPR_VALUES[k] && APPR_VALUES[k].indexOf(a[k]) >= 0) { apref[k] = a[k]; aChanged = true; }
-      });
-    }
-    const t = localStorage.getItem('feedlore.theme.v1');
-    if (t && APPR_VALUES.theme.indexOf(t) >= 0 && t !== 'auto') { apref.theme = t; aChanged = true; }
-    // —— 布局 ——
     const v = localStorage.getItem('feedlore.view.v1');
     if (LAYOUT_VALUES.view.indexOf(v) >= 0) { lpref.view = v; lChanged = true; }
     const tb = localStorage.getItem('feedlore.tab.v1');
@@ -493,16 +494,14 @@ applyAppearance(readAppearance());
     const sec = JSON.parse(localStorage.getItem('feedlore.settings.sections.v1') || 'null');
     if (sec && typeof sec === 'object') { lpref.sections = sec; lChanged = true; }
   } catch (_) { return; }
-  if (aChanged) appearancePref = sanitizeAppearanceLocal(apref);
   if (lChanged) {
     layoutPref = sanitizeLayoutLocal(lpref);
     // 迁移是整体替换 layoutPref 的另一条写入路径，镜像字段要一并回填
     LAYOUT_MIRROR.forEach((k) => { state[k] = layoutPref[k]; });
+    saveUserPrefs();
   }
-  if (aChanged || lChanged) saveUserPrefs();   // 一次合并写账号
   try {
-    ['feedlore.appearance.v1', 'feedlore.theme.v1', 'feedlore.appearance.accent.v1',
-     'feedlore.view.v1', 'feedlore.tab.v1', 'feedlore.collapsedGroups.v1',
+    ['feedlore.view.v1', 'feedlore.tab.v1', 'feedlore.collapsedGroups.v1',
      'feedlore.reader.accordion.v1', 'feedlore.settings.sections.v1']
       .forEach((k) => localStorage.removeItem(k));
   } catch (_) { /* 忽略 */ }

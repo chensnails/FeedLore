@@ -193,7 +193,7 @@ async function main(): Promise<void> {
     const p = await api.prefs.get();
     ok(
       'GET /api/prefs',
-      `theme=${p.appearance.theme} view=${p.layout.view} 分组顺序=${p.groupOrder.length} ` +
+      `view=${p.layout.view} 分组顺序=${p.groupOrder.length} ` +
         `过滤=${p.filters.length} 关注=${p.watchRules.length} llm.key=${p.llm.apiKeySet}`,
     );
   } catch (e) {
@@ -388,20 +388,20 @@ async function main(): Promise<void> {
     bad('POST /api/feeds/refresh', e);
   }
 
-  // 15) 偏好保存：改主题必须保留未提交的键（合并语义，不是整份替换）
+  // 15) 偏好保存：改布局必须保留未提交的键（合并语义，不是整份替换）
   try {
     const before = await api.prefs.get();
-    const saved = await api.prefs.update({ appearance: { theme: 'dark' } });
-    if (saved.appearance.theme !== 'dark') throw new Error('主题未保存');
-    if (saved.appearance.accent !== before.appearance.accent) {
-      throw new Error(`未提交的 accent 被冲掉了：${before.appearance.accent} → ${saved.appearance.accent}`);
+    const saved = await api.prefs.update({ layout: { view: 'list' } });
+    if (saved.layout.view !== 'list') throw new Error('布局未保存');
+    if (saved.layout.tab !== before.layout.tab) {
+      throw new Error(`未提交的 tab 被冲掉了：${before.layout.tab} → ${saved.layout.tab}`);
     }
     const reread = await api.prefs.get();
-    if (reread.appearance.theme !== 'dark') throw new Error('重新读取不是已保存的主题');
-    ok('POST /api/prefs 合并语义', `theme=dark，accent 保持 ${saved.appearance.accent}`);
+    if (reread.layout.view !== 'list') throw new Error('重新读取不是已保存的布局');
+    ok('POST /api/prefs 合并语义', `view=list，tab 保持 ${saved.layout.tab}`);
 
-    // 测完还原，别把测试库的主题留在 dark
-    await api.prefs.update({ appearance: { theme: before.appearance.theme } });
+    // 测完还原，别把测试库的视图留在 list
+    await api.prefs.update({ layout: { view: before.layout.view } });
     ok('POST /api/prefs 还原');
   } catch (e) {
     bad('POST /api/prefs', e);

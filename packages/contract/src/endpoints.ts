@@ -446,7 +446,6 @@ export const entries = {
 
 export const prefsResponse = z.object({
   groupOrder: z.array(z.string()),
-  appearance: M.AppearanceSchema,
   layout: M.LayoutSchema,
   filters: z.array(M.FilterRuleSchema),
   watchRules: z.array(M.WatchRuleSchema),
@@ -460,7 +459,6 @@ export type PrefsResponse = z.infer<typeof prefsResponse>;
 export const prefsPatchBody = z.object({
   groupOrder: z.array(z.string()).optional(),
   // 各组都是「部分更新」：前端只提交改动的键，服务端按 legacy 的 sanitize 逐键回落默认
-  appearance: M.AppearanceSchema.partial().optional(),
   layout: M.LayoutSchema.partial().optional(),
   filters: z.array(M.FilterRuleSchema).optional(),
   watchRules: z.array(M.WatchRuleInputSchema).optional(),
@@ -474,7 +472,6 @@ export type PrefsPatchBody = z.infer<typeof prefsPatchBody>;
 export const prefsUpdateResponse = z.object({
   ok: z.boolean(),
   groupOrder: z.array(z.string()),
-  appearance: M.AppearanceSchema,
   layout: M.LayoutSchema,
   filters: z.array(M.FilterRuleSchema),
   watchRules: z.array(M.WatchRuleSchema),

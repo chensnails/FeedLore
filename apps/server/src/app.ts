@@ -24,7 +24,7 @@ import { WEB_ROOT } from './env';
 import { sameOriginCandidates } from './auth';
 import { applyCspNonce, securityHeaders } from './lib/security-headers';
 import { apiError, apiErrorBody, isApiErrorCode } from './lib/apiError';
-import { userAppearance, userLayout } from './lib/prefs';
+import { userLayout } from './lib/prefs';
 import { normalizeRole } from './lib/roles';
 import { healthRoutes } from './routes/health';
 import { authRoutes } from './routes/auth';
@@ -79,7 +79,7 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
   /* ⚠️ 必须在 `await next()` **之前**写：Hono 在 finalized 之后调 `c.header()` 会重建
    *    Response，而重建会把直接写在 `c.res.headers` 上的头丢掉。compress 正是这么干的
    *    （响应 ≥1KB 时它要补 `Vary: Accept-Encoding`），于是「先 next 再补 Cache-Control」
-   *    的写法在挂了 compress 之后静默失效 —— 首页（含账号外观注入）就这样裸发了一轮。
+   *    的写法在挂了 compress 之后静默失效 —— 首页（含账号布局注入）就这样裸发了一轮。
    *    写在待发送头上则会被响应构造带进去；下游显式设置自己的 Cache-Control 仍然覆盖它。 */
   const cache = (value: string) => async (c: Context<AppEnv>, next: () => Promise<void>) => {
     c.header('Cache-Control', value);
@@ -90,15 +90,16 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
   app.use('/assets/*', serveStatic({ root }));
 
   app.use('/', cache('no-cache'));
-  /* 已登录访问首页：把该账号的外观/布局注入 <head>（与 v1 同款）。
+  /* 已登录访问首页：把该账号的布局注入 <head>（与 v1 同款）。
    *
-   * v1 的前端启动只用 `window.__APPEARANCE__` / `window.__LAYOUT__`，从不 GET
-   * /api/prefs 来补首屏值；少了这段注入，换设备登录会先按默认值画一遍（闪一下），
-   * 排序 / 阅读宽度 / 折叠分组这些布局项也要等用户手改一次才会被写进 layoutPref。 */
+   * 外观（主题 / 字号 / 正文排版）只存在浏览器本机，服务端不再注入；
+   * 布局（视图 / 排序 / 侧栏宽度 / 折叠分组）仍按账号走 —— 前端启动只认
+   * `window.__LAYOUT__`，从不 GET /api/prefs 来补首屏值。少了这段注入，
+   * 换设备登录会先按默认值画一遍（闪一下），这些布局项也要等用户手改一次才生效。 */
   app.get('/', async (c) => {
     const html = await readFile(join(root, 'index.html'), 'utf8').catch(() => null);
     if (html === null) return c.text('Not found', 404);
-    return c.html(applyCspNonce(await injectBootPrefs(html, c, deps), c.get('cspNonce')));
+    return c.html(applyCspNonce(await injectBootLayout(html, c, deps), c.get('cspNonce')));
   });
 
   /* 登录页是独立文档（v1 的 MPA 入口）。同样 no-cache：它是版本的另一个入口，
@@ -141,10 +142,11 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
 }
 
 /**
- * 把账号的外观/布局注入首页 <head>（锚点是 v1 index.html 里固定的 theme-color meta）。
- * 未登录 / 没连库时原样返回，交给 index.html 内联脚本用 localStorage 兜底。
+ * 把账号的布局注入首页 <head>（锚点是 index.html 里固定的 theme-color meta）。
+ * 未登录 / 没连库时原样返回，交给前端默认值兜底。
+ * 外观不再注入：它只存在浏览器本机 localStorage。
  */
-async function injectBootPrefs(html: string, c: Context<AppEnv>, deps: AppDeps): Promise<string> {
+async function injectBootLayout(html: string, c: Context<AppEnv>, deps: AppDeps): Promise<string> {
   const anchor = '<meta name="theme-color" content="#ffffff">';
   const at = html.indexOf(anchor);
   if (at < 0 || !deps.auth || !deps.db) return html;
@@ -161,12 +163,7 @@ async function injectBootPrefs(html: string, c: Context<AppEnv>, deps: AppDeps):
 
   /* `<` 转义：分组名是用户输入，直接拼进 <script> 会提前闭合标签。 */
   const json = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
-  const script =
-    '<script>window.__APPEARANCE__=' +
-    json(userAppearance(prefs)) +
-    ';window.__LAYOUT__=' +
-    json(userLayout(prefs)) +
-    ';</script>';
+  const script = '<script>window.__LAYOUT__=' + json(userLayout(prefs)) + ';</script>';
   return html.slice(0, at + anchor.length) + '\n' + script + html.slice(at + anchor.length);
 }
 

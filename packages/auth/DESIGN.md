@@ -56,7 +56,7 @@ better-auth 用自有 schema（`user` / `session` / `account` / `verification`�
 | `id` | better-auth `user.id`（建议保留原值，避免外键重建） |
 | `username` | better-auth `username` 插件列（非 email） |
 | `role` | **admin 插件的 `role` 列**（不再手写）；`isAdmin()` 被 `requireAdmin` 中间件取代 |
-| `prefs` | 保留为 `user.prefs` JSON 列（外观/布局/过滤/关注/屏蔽/日报/llm 配置都在此） |
+| `prefs` | 保留为 `user.prefs` JSON 列（布局/过滤/关注/屏蔽/日报/llm 配置都在此；外观自 2.2 起存浏览器本机） |
 | `password_hash` + `salt` | **迁移难点**，见第 6 节 |
 
 `prefs` 中的 `llm` 字段（每用户加密 API Key）**不进 better-auth**，见第 4 节。

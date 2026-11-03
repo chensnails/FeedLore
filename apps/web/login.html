@@ -7,14 +7,14 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#ffffff">
 <script>
-/* 主题：与主站共用同一份偏好，首屏前定好 data-theme 避免闪白。
-   四档与主站一致：auto / light / dark（CommaFeed 暗色）/ github（GitHub 暗黑）。 */
+/* 主题：与主站共用同一份本机外观偏好（feedlore.appearance.v2 的 theme 字段），
+   首屏前定好 data-theme 避免闪白。四档与主站一致：auto / light / dark / github。 */
 (function () {
-  var KEY = 'feedlore.theme.v1';
+  var KEY = 'feedlore.appearance.v2';
   var MODES = ['auto', 'light', 'dark', 'github'];
-  var mode = 'auto';
-  try { mode = localStorage.getItem(KEY) || 'auto'; } catch (e) { /* 隐私模式 */ }
-  if (MODES.indexOf(mode) < 0) mode = 'auto';
+  var ap = {};
+  try { ap = JSON.parse(localStorage.getItem(KEY) || 'null') || {}; } catch (e) { /* 隐私模式 / 坏 JSON */ }
+  var mode = MODES.indexOf(ap && ap.theme) >= 0 ? ap.theme : 'auto';
   var mq = window.matchMedia('(prefers-color-scheme: dark)');
   var eff = mode === 'auto' ? (mq.matches ? 'dark' : 'light') : mode;
   var el = document.documentElement;
@@ -64,8 +64,8 @@
   const btn = document.getElementById('submitBtn');
   const errBox = document.getElementById('error');
 
-  /* ---------- 主题切换（与主站共用 feedlore.theme.v1，四档一致） ---------- */
-  const THEME_KEY = 'feedlore.theme.v1';
+  /* ---------- 主题切换（与主站共用 feedlore.appearance.v2 的 theme 字段，四档一致） ---------- */
+  const THEME_KEY = 'feedlore.appearance.v2';
   const THEME_MODES = ['auto', 'light', 'dark', 'github'];
   const THEME_META = {
     auto: { ico: 'i-theme-auto', label: '跟随系统' },
@@ -80,11 +80,15 @@
   function prefersDark() {
     return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   }
-  function currentThemeMode() {
+  function readAppearance() {
     try {
-      const m = localStorage.getItem(THEME_KEY);
-      return THEME_MODES.indexOf(m) >= 0 ? m : 'auto';
-    } catch (_) { return 'auto'; }
+      const v = JSON.parse(localStorage.getItem(THEME_KEY) || 'null');
+      return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    } catch (_) { return {}; }
+  }
+  function currentThemeMode() {
+    const m = readAppearance().theme;
+    return THEME_MODES.indexOf(m) >= 0 ? m : 'auto';
   }
   function applyTheme(mode) {
     const m = THEME_MODES.indexOf(mode) >= 0 ? mode : 'auto';
@@ -92,7 +96,11 @@
     const el = document.documentElement;
     el.setAttribute('data-theme', eff);
     el.setAttribute('data-theme-mode', m);
-    try { localStorage.setItem(THEME_KEY, m); } catch (_) { /* 忽略 */ }
+    try {
+      const ap = readAppearance();
+      ap.theme = m;
+      localStorage.setItem(THEME_KEY, JSON.stringify(ap));
+    } catch (_) { /* 忽略 */ }
     if (themeUse) themeUse.setAttribute('href', '#' + THEME_META[m].ico);
     themeBtn.title = '主题：' + THEME_META[m].label + '（点击切换）';
     themeBtn.setAttribute('aria-label', '主题：' + THEME_META[m].label);

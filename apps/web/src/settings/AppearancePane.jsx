@@ -4,7 +4,8 @@
  * - 「GitHub 主题固定主色」不再轮询 <html data-fixed-accent>，由 theme === 'github' 等价推导
  *   （旧 THEME_FIXED_ACCENT 的唯一键就是 github）；
  * - 主题分段控件 / 调板 / 其余分段控件的点击分别走桥的 applyTheme / setAppearance，
- *   外部改动（顶栏主题按钮、恢复默认、迁移）经 window.__appearanceChanged 事件回流同步。
+ *   外部改动（顶栏主题按钮、恢复默认）经 window.__appearanceChanged 事件回流同步。
+ * - 外观偏好只存本机（feedlore.appearance.v2），不随账号跨设备同步。
  * 类名 / data 属性 / aria 与旧 DOM 完全一致，样式零改动。 */
 
 import { core } from '@core';
@@ -88,7 +89,7 @@ export function AppearancePane() {
     return (s && s.getAppearance && s.getAppearance()) || null;
   });
 
-  // 外部改动回流：顶栏主题按钮、恢复默认、localStorage 一次性迁移都会触发 applyAppearance，
+  // 外部改动回流：顶栏主题按钮、恢复默认都会触发 applyAppearance，
   // 桥在该函数末尾派发 __appearanceChanged；这里重新读偏好同步选中态
   useEffect(() => {
     const sync = () => {
@@ -202,7 +203,7 @@ export function AppearancePane() {
 
       <div className="pane-foot">
         <button className="btn btn-ghost btn-sm" id="apprResetBtn" type="button" onClick={onReset}>恢复默认</button>
-        <span className="pane-foot-note">外观已存入你的账号，换设备也一致</span>
+        <span className="pane-foot-note">外观只存这台设备，换设备或清缓存后回到默认</span>
       </div>
     </div>
   );
