@@ -29,7 +29,7 @@ const APPEARANCE_KEYS: Record<keyof typeof APPEARANCE_DEFAULTS, readonly string[
   density: ['cozy', 'compact'],
   readerFont: ['sans', 'serif'],
   readerLh: ['s', 'm', 'l'],
-  readerFs: ['s', 'm', 'l'],
+  readerFs: ['xs', 's', 'm', 'l', 'xl'],
   readerWidth: ['s', 'm', 'l', 'full'],
 };
 

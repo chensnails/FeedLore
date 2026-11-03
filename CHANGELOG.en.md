@@ -7,6 +7,25 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## Unreleased
+
+### Fixed
+
+- **Reader font size had no effect on mobile**: the ≤720px media query forced the body to
+  the UI font size and overrode the appearance setting; the override is gone, so phones now
+  follow "Reader font size".
+- **"Reading width" is no longer clickable on narrow screens**: the row is disabled with
+  the note "fills the width on narrow screens, adjustable on desktop" — all four presets
+  were wider than a phone, so the control changed nothing before.
+
+### Changed
+
+- **Reader font size now has five levels**: tiny / small / medium / large / extra large
+  (14 / 15 / 16 / 18 / 20px). Existing small / medium / large selections keep their values,
+  no migration needed.
+- **"Font size" renamed to "UI font size"** to distinguish it from "Reader font size": the
+  former scales buttons, lists and settings, the latter only the article body.
+
 ## 2.2.0-rc.1 — 2026-11-03
 
 > Pre-release for validation: `latest` still points at 2.1.0 and no GitHub Release is created.

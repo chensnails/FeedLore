@@ -20,8 +20,8 @@ const SEG_ROWS = [
     options: [['auto', '跟随系统'], ['light', '浅色'], ['dark', 'CommaFeed 暗色'], ['github', 'GitHub 暗黑']],
   },
   {
-    key: 'fontSize', label: '字号', attr: 'data-font-size',
-    small: '整站等比缩放，按钮、列表、设置一起变',
+    key: 'fontSize', label: '界面字号', attr: 'data-font-size',
+    small: '按钮、列表、设置一起缩放；文章正文用下面的「正文字号」',
     options: [['s', '小'], ['m', '中'], ['l', '大']],
   },
   {
@@ -42,7 +42,7 @@ const SEG_ROWS = [
   {
     key: 'readerFs', label: '正文字号', attr: 'data-reader-fs',
     small: '只作用于文章正文，界面字号不受影响',
-    options: [['s', '小'], ['m', '中'], ['l', '大']],
+    options: [['xs', '特小'], ['s', '小'], ['m', '中'], ['l', '大'], ['xl', '特大']],
   },
   {
     key: 'readerWidth', label: '阅读宽度', attr: 'data-reader-width',
@@ -59,6 +59,28 @@ const ACCENTS = [
 
 const ACCENT_HINT_DEFAULT = '中性底色只有一套且已校准，这里只换强调色';
 const ACCENT_HINT_FIXED = 'GitHub 暗黑是整套配色包，主色固定为 GitHub 蓝，切换主题后即可调整';
+
+// 与 style.css 的 720px 断点保持一致：窄屏下所有阅读宽度档位都大于屏宽，调了也没区别
+const NARROW_QUERY = '(max-width: 720px)';
+
+function useNarrowViewport() {
+  const [narrow, setNarrow] = useState(() => {
+    try { return !!(window.matchMedia && window.matchMedia(NARROW_QUERY).matches); } catch (_) { return false; }
+  });
+  useEffect(() => {
+    let mq = null;
+    try { mq = window.matchMedia ? window.matchMedia(NARROW_QUERY) : null; } catch (_) { mq = null; }
+    if (!mq) return undefined;
+    const onChange = (e) => setNarrow(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+      else if (mq.removeListener) mq.removeListener(onChange);
+    };
+  }, []);
+  return narrow;
+}
 
 export function AppearancePane() {
   const [pref, setPref] = useState(() => {
@@ -78,6 +100,7 @@ export function AppearancePane() {
     return () => window.removeEventListener('__appearanceChanged', sync);
   }, []);
 
+  const narrow = useNarrowViewport();
   if (!pref) return null;
 
   // GitHub 主题自带主色（旧 THEME_FIXED_ACCENT 唯一键）：整套调板禁用，选中态退还真实主色
@@ -108,33 +131,39 @@ export function AppearancePane() {
     <div className="tab-pane" data-pane="appearance">
       <div className="pane-scroll">
         <div className="appr">
-          {SEG_ROWS.map((row) => (
-            <div className="appr-row" key={row.key}>
-              <div className="appr-label">
-                {row.label}
-                {row.small && <small>{row.small}</small>}
-              </div>
-              <div className="appr-ctl">
-                <div className="seg" id={row.key === 'theme' ? 'apprTheme' : undefined}>
-                  {row.options.map(([value, text]) => {
-                    const on = pref[row.key] === value;
-                    return (
-                      <button
-                        key={value}
-                        className={'seg-btn' + (on ? ' active' : '')}
-                        type="button"
-                        {...{ [row.attr]: value }}
-                        aria-pressed={on ? 'true' : 'false'}
-                        onClick={() => onSeg(row.key, value)}
-                      >
-                        {text}
-                      </button>
-                    );
-                  })}
+          {SEG_ROWS.map((row) => {
+            const widthLocked = row.key === 'readerWidth' && narrow;
+            const hint = widthLocked ? '窄屏下自动铺满整行，桌面端可调' : row.small;
+            return (
+              <div className={'appr-row' + (widthLocked ? ' is-locked' : '')} key={row.key}>
+                <div className="appr-label">
+                  {row.label}
+                  {hint && <small>{hint}</small>}
+                </div>
+                <div className="appr-ctl">
+                  <div className="seg" id={row.key === 'theme' ? 'apprTheme' : undefined}>
+                    {row.options.map(([value, text]) => {
+                      const on = pref[row.key] === value;
+                      return (
+                        <button
+                          key={value}
+                          className={'seg-btn' + (on ? ' active' : '')}
+                          type="button"
+                          {...{ [row.attr]: value }}
+                          aria-pressed={on ? 'true' : 'false'}
+                          disabled={widthLocked}
+                          aria-disabled={widthLocked ? 'true' : undefined}
+                          onClick={() => onSeg(row.key, value)}
+                        >
+                          {text}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           <div className="appr-row">
             <div className="appr-label">

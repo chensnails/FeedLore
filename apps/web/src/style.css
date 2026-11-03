@@ -489,10 +489,11 @@ html.theme-anim, html.theme-anim body {
   transition: background-color var(--dur-med) ease, color var(--dur-med) ease;
 }
 
-/* ---------- 外观偏好的三档 ----------
+/* ---------- 外观偏好的档位 ----------
    属性由 <head> 内联脚本写入；缺省（无属性）等于「中」档，所以只写 s / l。
    font-size 写在 html 上 → 全部 rem 一起缩放；宽度用 rem 也跟着缩放，
-   这样调大字号时每行字数基本不变，不会一行塞太多字。 */
+   这样调大字号时每行字数基本不变，不会一行塞太多字。
+   「界面字号」保持三档：再大容易把窄屏布局撑破。 */
 html[data-font-size="s"] { font-size: 15px; }
 html[data-font-size="m"] { font-size: 16px; }
 html[data-font-size="l"] { font-size: 17.5px; }
@@ -505,10 +506,13 @@ html[data-reader-font="serif"] {
 html[data-reader-lh="s"] { --reader-lh: 1.65; }
 html[data-reader-lh="m"] { --reader-lh: 1.8; }
 html[data-reader-lh="l"] { --reader-lh: 2.1; }
-/* 正文`字号`：与字体 / 行高同一套三档机制，默认 m=16px（受 html 根字号整体缩放） */
+/* 正文`字号`：五档，默认 m=16px（受 html 根字号整体缩放）。
+   xs / xl 是 2.2 新增，旧值 s / m / l 含义不变，老账号无需迁移。 */
+html[data-reader-fs="xs"] { --reader-fs: 0.875rem; }    /* 14px */
 html[data-reader-fs="s"]  { --reader-fs: 0.9375rem; }   /* 15px */
 html[data-reader-fs="m"]  { --reader-fs: 1rem; }        /* 16px */
 html[data-reader-fs="l"]  { --reader-fs: 1.125rem; }    /* 18px */
+html[data-reader-fs="xl"] { --reader-fs: 1.25rem; }     /* 20px */
 
 html[data-reader-width="s"] { --reader-width: 42.5rem; }
 html[data-reader-width="m"] { --reader-width: 47.5rem; }
@@ -1753,6 +1757,8 @@ textarea:disabled {
   background: var(--panel); color: var(--accent-text);
   box-shadow: var(--elevation-1);
 }
+.seg-btn:disabled { cursor: not-allowed; opacity: var(--disabled-opacity); }
+.seg-btn:disabled:hover { color: var(--text-muted); }
 
 /* 主色色块：--sw-* 是 6 套主色各自的代表色，深浅两模式各一档 */
 .swatches { display: flex; gap:var(--sp-2); }
@@ -3444,8 +3450,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .art-meta .src-pill { max-width: none; }
   .art-inner { padding:var(--sp-3) var(--sp-3); gap:var(--sp-3); }
   /* 动作键右对齐在窄屏也生效（基础规则已负责，这里不再回退靠左）：
-     读完正文视线落在末尾，复制 / 打开就该在落点，不用再扫回左边。 */
-  .art-text { font-size: var(--fs-md); }
+     读完正文视线落在末尾，复制 / 打开就该在落点，不用再扫回左边。
+     正文不要在窄屏改字号：--reader-fs 归「正文字号」管，钉死界面字号会让手机上的设置失效。 */
   .art-img { max-height: 72vh; max-height: 72dvh; }
 }
 

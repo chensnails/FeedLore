@@ -215,7 +215,8 @@ export const AppearanceSchema = z.object({
   density: z.enum(['cozy', 'compact']),
   readerFont: z.enum(['sans', 'serif']),
   readerLh: z.enum(['s', 'm', 'l']),
-  readerFs: z.enum(['s', 'm', 'l']),
+  // 2.2 起扩到五档；旧值 s / m / l 含义不变，老账号数据可直接通过校验
+  readerFs: z.enum(['xs', 's', 'm', 'l', 'xl']),
   readerWidth: z.enum(['s', 'm', 'l', 'full']),
 });
 export type Appearance = z.infer<typeof AppearanceSchema>;

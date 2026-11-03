@@ -43,6 +43,24 @@ global.location = w.location;   // AccountPane 读取 location.host 显示安装
 global.requestAnimationFrame = (cb) => w.requestAnimationFrame(cb);
 global.cancelAnimationFrame = (id) => w.cancelAnimationFrame(id);
 global.confirm = () => true;   // SourcePane 删除订阅 / AccountPane 删除用户前的确认
+// matchMedia：jsdom 不实现。外观面板靠它判断窄屏（阅读宽度在 ≤720px 下禁用），
+// 用一个可变开关模拟断点变化，change 监听才测得到。
+let narrowMatches = false;
+const mqListeners = new Set();
+w.matchMedia = (q) => ({
+  matches: narrowMatches && String(q).indexOf('720px') >= 0,
+  media: String(q),
+  onchange: null,
+  addEventListener: (type, fn) => { if (type === 'change') mqListeners.add(fn); },
+  removeEventListener: (type, fn) => { if (type === 'change') mqListeners.delete(fn); },
+  addListener: (fn) => mqListeners.add(fn),
+  removeListener: (fn) => mqListeners.delete(fn),
+  dispatchEvent: () => false,
+});
+const setNarrow = (v) => {
+  narrowMatches = !!v;
+  mqListeners.forEach((fn) => fn({ matches: narrowMatches, media: '(max-width: 720px)' }));
+};
 let promptValue = 'newpass9';
 global.prompt = () => promptValue;   // AccountPane「改密码」弹窗
 // 剪贴板 & 安全上下文（状态面板「复制诊断」依赖）；写入内容记入 clipboardWrites。
@@ -1227,6 +1245,33 @@ const withEFP = (el, fn) => {
     }
   });
 
+  // 正文字号归 --reader-fs 管：任何媒体查询里给 .art-text 重设 font-size 都会让
+  // 手机端的「正文字号」失效（曾被 ≤720px 段钉成 --fs-md 盖掉）。
+  t('style.css：媒体查询不得覆盖 .art-text 的字号，且 xs / xl 两档齐全', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const blocks = [];
+    let i = 0;
+    while ((i = css.indexOf('@media', i)) >= 0) {
+      const brace = css.indexOf('{', i);
+      if (brace < 0) break;
+      let depth = 0, j = brace;
+      for (; j < css.length; j++) {
+        if (css[j] === '{') depth++;
+        else if (css[j] === '}') { depth--; if (!depth) break; }
+      }
+      blocks.push(css.slice(brace, j + 1));
+      i = j + 1;
+    }
+    if (blocks.some((b) => /\.art-text[^{]*\{[^}]*font-size\s*:/.test(b))) {
+      throw new Error('媒体查询里给 .art-text 设了 font-size，会盖掉 --reader-fs');
+    }
+    for (const v of ['xs', 's', 'm', 'l', 'xl']) {
+      if (!new RegExp('html\\[data-reader-fs="' + v + '"\\]\\s*\\{[^}]*--reader-fs').test(css)) {
+        throw new Error('缺少正文字号档位: ' + v);
+      }
+    }
+  });
+
   // 搜索框统一成胶囊 + 去掉头部那条分隔线（v1.3.10）
   // 三处搜索（卡片页 .search-box、文章页 .reader-search、共用 .page-search）必须
   // 共用一条输入框规则，否则又会退化成「两个页面两种搜索框」。
@@ -2297,7 +2342,7 @@ const withEFP = (el, fn) => {
   clickTab('外观');
   await sleep(60);
   t('外观面板渲染', () => { if (!document.querySelector('.appr')) throw new Error('无 .appr'); });
-  t('分段控件总数 21', () => { if (document.querySelectorAll('.seg-btn').length !== 21) throw new Error('实际 ' + document.querySelectorAll('.seg-btn').length); });
+  t('分段控件总数 23（正文字号五档）', () => { if (document.querySelectorAll('.seg-btn').length !== 23) throw new Error('实际 ' + document.querySelectorAll('.seg-btn').length); });
   t('调板 6 色 + 预览 + 重置', () => {
     if (document.querySelectorAll('.swatch').length !== 6) throw new Error('swatch 数不符');
     if (!document.querySelector('.appr-preview-t')) throw new Error('无预览');
@@ -2320,6 +2365,30 @@ const withEFP = (el, fn) => {
   await sleep(40);
   t('点正文字号 → setAppearance(readerFs, l)', () => { const c = callsOf('setAppearance'); if (!c.length || c[c.length - 1][1] !== 'readerFs' || c[c.length - 1][2] !== 'l') throw new Error(JSON.stringify(c)); });
   t('外部改动经事件回流（l 选中）', () => { if (!document.querySelector('[data-reader-fs="l"].active')) throw new Error('l 未选中'); });
+
+  document.querySelector('[data-reader-fs="xl"]').click();
+  await sleep(40);
+  t('正文字号五档：xl 可选', () => {
+    const c = callsOf('setAppearance');
+    if (!c.length || c[c.length - 1][1] !== 'readerFs' || c[c.length - 1][2] !== 'xl') throw new Error(JSON.stringify(c));
+    if (!document.querySelector('[data-reader-fs="xl"].active')) throw new Error('xl 未选中');
+  });
+
+  setNarrow(true);
+  await sleep(40);
+  t('窄屏禁用阅读宽度并说明', () => {
+    const btn = document.querySelector('[data-reader-width="full"]');
+    if (!btn || btn.disabled !== true) throw new Error('阅读宽度未禁用');
+    if (btn.getAttribute('aria-disabled') !== 'true') throw new Error('缺 aria-disabled');
+    const hint = btn.closest('.appr-row').querySelector('.appr-label small');
+    if (!hint || hint.textContent.indexOf('窄屏') < 0) throw new Error('hint 未提示: ' + (hint && hint.textContent));
+  });
+  setNarrow(false);
+  await sleep(40);
+  t('宽屏恢复可调', () => {
+    const btn = document.querySelector('[data-reader-width="full"]');
+    if (!btn || btn.disabled !== false) throw new Error('未恢复');
+  });
 
   document.querySelector('[data-theme-mode="github"]').click();
   await sleep(40);
