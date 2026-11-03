@@ -16,6 +16,7 @@ import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
 import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
+import { widthSrcSet } from '../imgSrc.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -163,7 +164,8 @@ function ArtImg({ src, alt, w, h }) {
   const url = proxied(src);
   if (failed || !url) return null;
   return (
-    <img className="art-img" src={url} alt={alt || ''}
+    <img className="art-img" src={url} srcSet={widthSrcSet(url, [640, 960])}
+      sizes="(max-width: 720px) 92vw, 720px" alt={alt || ''}
       width={w || undefined} height={h || undefined}
       loading="lazy" decoding="async" title="点击查看大图"
       onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}

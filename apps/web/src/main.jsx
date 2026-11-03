@@ -1,8 +1,8 @@
 /* 笺川前端 React 入口（渐进式混合期）。
  * 职责：把 React 组件挂到旧 HTML 的挂载点上。
- * 目前挂命令面板（#cmdkRoot）、设置弹层（#settingsRoot）、AI 视图（#aiRoot）、
- * 卡片视图（#cardsRoot）、文章视图（#readerRoot）、覆盖层（#overlaysRoot）
- * —— 三大视图与覆盖层全部 React 化。
+ * 命令面板（#cmdkRoot）、卡片 / 文章视图（#cardsRoot / #readerRoot）、覆盖层（#overlaysRoot）
+ * 常驻；设置弹层（#settingsRoot）与 AI 视图（#aiRoot）改为**首次使用时按需加载** ——
+ * 七个配置面板和日报界面只在用户真正点开时才下载，首屏少背一截 JS。
  * 核心逻辑（v2.1.0 起拆分在 src/core/*.js）经 @core 别名共享为单例。 */
 
 import '@core';   // 初始化核心逻辑（原 public/app.js）：首屏主题/视图、事件绑定、init()
@@ -14,8 +14,6 @@ import { createRoot } from 'react-dom/client';
  * 旧 CSS 遇上新版频道搜索框，svg 撑成 300×150 的黑色实心圆）。 */
 import './style.css';
 import { CommandPalette } from './cmdk/CommandPalette.jsx';
-import { SettingsModal } from './settings/SettingsModal.jsx';
-import { AiView } from './ai/AiView.jsx';
 import { CardsView } from './views/CardsView.jsx';
 import { ReaderView } from './views/ReaderView.jsx';
 import { Overlays } from './ui/Overlays.jsx';
@@ -32,23 +30,48 @@ if (el) {
   );
 }
 
+/* 设置弹层：第一次 openSettings 时才下载并挂载。
+ * 打开动作可能在挂载完成前到达（动态 import 是异步的），先把目标分区记在
+ * window.__settingsPending，由 SettingsModal 注册宿主时补一次 open。 */
 const settingsRoot = document.getElementById('settingsRoot');
-if (settingsRoot) {
-  createRoot(settingsRoot).render(
-    <React.StrictMode>
-      <SettingsModal />
-    </React.StrictMode>
-  );
-}
+let settingsLoading = null;
+window.__mountSettings = (tab) => {
+  const host = window.__settingsHost;
+  if (host && host.open) {
+    host.open(tab);
+    return Promise.resolve();
+  }
+  window.__settingsPending = { tab };
+  if (!settingsRoot) return Promise.resolve();
+  if (!settingsLoading) {
+    settingsLoading = import('./settings/SettingsModal.jsx').then(({ SettingsModal }) => {
+      createRoot(settingsRoot).render(
+        <React.StrictMode>
+          <SettingsModal />
+        </React.StrictMode>
+      );
+    });
+  }
+  return settingsLoading;
+};
 
+/* AI 视图：切到「AI」页时才下载并挂载；组件初始 activeness 直接读 core.state.tab，
+ * 所以挂载晚于切页也不会漏掉首次加载。 */
 const aiRoot = document.getElementById('aiRoot');
-if (aiRoot) {
-  createRoot(aiRoot).render(
-    <React.StrictMode>
-      <AiView />
-    </React.StrictMode>
-  );
-}
+let aiLoading = null;
+window.__mountAi = () => {
+  if (!aiRoot) return Promise.resolve();
+  if (!aiLoading) {
+    aiLoading = import('./ai/AiView.jsx').then(({ AiView }) => {
+      createRoot(aiRoot).render(
+        <React.StrictMode>
+          <AiView />
+        </React.StrictMode>
+      );
+    });
+  }
+  return aiLoading;
+};
 
 const cardsRoot = document.getElementById('cardsRoot');
 if (cardsRoot) {

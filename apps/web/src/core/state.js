@@ -238,7 +238,13 @@ export function unlockPageScroll() {
  *  桌面端的默认分区由 SettingsModal 自己兜底，语义不变。 */
 export function openSettings(tab) {
   const host = window.__settingsHost;
-  if (host && host.open) host.open(tab);
+  if (host && host.open) { host.open(tab); return; }
+  // 设置弹层自 v2.2.0 起按需加载：宿主还没注册时交给入口去拉 chunk，
+  // 拉完由 SettingsModal 读取 __settingsPending 补上这次打开。
+  if (typeof window.__mountSettings === 'function') {
+    const p = window.__mountSettings(tab);
+    if (p && p.catch) p.catch(() => toast('设置页面加载失败，请检查网络后重试', false));
+  }
 }
 
 export function closeSettings() {

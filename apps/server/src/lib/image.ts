@@ -48,6 +48,22 @@ export function imageCacheKey(u: string): string {
   return crypto.createHash('sha256').update(canonicalImageUrl(u)).digest('hex');
 }
 
+/** 允许的宽度档位：卡片 / 缩略图按屏宽取图，档位固定可枚举 —— 任意数字会把
+ *  image_cache 撑成碎片，且每次请求都要多压一份。 */
+export const IMG_WIDTHS = [320, 640, 960] as const;
+
+/** 只认白名单档位；其余（空、负数、非数字、随意值）一律按「默认图」处理。 */
+export function normalizeImageWidth(v: unknown): number {
+  const n = Number(v);
+  return Number.isInteger(n) && (IMG_WIDTHS as readonly number[]).includes(n) ? n : 0;
+}
+
+/** 宽度变体独立缓存：默认图键保持不变（老缓存继续命中），变体加 `:w<宽>` 后缀。 */
+export function imageVariantKey(u: string, width: number): string {
+  const base = imageCacheKey(u);
+  return width > 0 ? `${base}:w${width}` : base;
+}
+
 export interface CompressResult {
   buf: Buffer;
   contentType: string;

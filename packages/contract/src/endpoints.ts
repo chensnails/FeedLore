@@ -642,7 +642,12 @@ export const img = {
     method: 'get',
     path: '/api/img',
     auth: 'user',
-    query: z.object({ u: z.string().url() }),
+    /** `w` 是卡片 / 缩略图的宽度档位（320/640/960），服务端按档位裁切并独立缓存；
+     *  省略时返回默认长边（1280）版本。 */
+    query: z.object({
+      u: z.string().url(),
+      w: z.coerce.number().int().positive().optional(),
+    }),
     response: z.unknown(),
     binary: true,
   },

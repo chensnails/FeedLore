@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
+import { widthVariant } from '../imgSrc.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -50,7 +51,7 @@ function DgItem({ it }) {
   const e = it.item || {};
   const [imgFailed, setImgFailed] = useState(false);
   const thumb = (e.image && !imgFailed)
-    ? <img className="dg-item-thumb" loading="lazy" src={e.image} alt=""
+    ? <img className="dg-item-thumb" loading="lazy" src={widthVariant(e.image, 320) || e.image} alt=""
       onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}
       onError={() => setImgFailed(true)} />
     : <div className="dg-item-thumb-fb"><Icon n="file" /></div>;

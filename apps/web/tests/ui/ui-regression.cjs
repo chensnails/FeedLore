@@ -3525,6 +3525,16 @@ const withEFP = (el, fn) => {
     if (!C('#grid .card[data-id="e1"]').classList.contains('card-has-media')) throw new Error('有图卡缺 card-has-media');
     if (C('#grid .card[data-id="e2"]').classList.contains('card-has-media')) throw new Error('无图卡不该带 card-has-media');
   });
+  // 弱网：封面按屏宽取 320/640/960 档，别让手机先下 1280 再缩
+  t('卡片封面：srcset 带宽度变体，src 保持原图回落', () => {
+    const img = C('#grid .card[data-id="e1"] .card-media img');
+    const set = img.getAttribute('srcset') || '';
+    if (!/w=320 320w/.test(set) || !/w=640 640w/.test(set) || !/w=960 960w/.test(set)) {
+      throw new Error('srcset 缺宽度档位: ' + set);
+    }
+    if (!img.getAttribute('sizes')) throw new Error('srcset 必须配 sizes');
+    if (img.getAttribute('src') !== 'https://img.example/1.png') throw new Error('src 应保留原图回落: ' + img.getAttribute('src'));
+  });
   // 图片两次都失败后应降级成纯文字卡：不把一整块灰占位留在卡顶
   const brokenImg = C('#grid .card[data-id="e1"] .card-media img');
   brokenImg.dispatchEvent(new w.Event('error'));

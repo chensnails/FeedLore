@@ -24,6 +24,7 @@ import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
 import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
+import { widthSrcSet, widthVariant } from '../imgSrc.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 const SKELETON_N = 8;
@@ -85,7 +86,7 @@ function OpenButton({ e }) {
  * 首屏那几张真正看得见的图反而排在第 20 位 —— 首屏图不加载，卡片墙就是一片灰骨架。
  * eager + fetchpriority=high 让浏览器先抢这几条连接。
  */
-function LazyImg({ src, alt, fallbackClass, fbIcon, priority, onFail }) {
+function LazyImg({ src, srcSet, sizes, alt, fallbackClass, fbIcon, priority, onFail }) {
   const [state, setState] = useState('ok');   // ok | failed
   const triedRef = useRef(false);
   if (!src || state === 'failed') {
@@ -99,6 +100,8 @@ function LazyImg({ src, alt, fallbackClass, fbIcon, priority, onFail }) {
       decoding="async"
       {...(priority ? { fetchPriority: 'high' } : {})}
       src={src}
+      srcSet={srcSet}
+      sizes={srcSet ? sizes : undefined}
       alt={alt}
       onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}
       onError={(ev) => {
@@ -106,6 +109,8 @@ function LazyImg({ src, alt, fallbackClass, fbIcon, priority, onFail }) {
         if (img.complete && img.naturalWidth > 0) return;
         if (!triedRef.current) {
           triedRef.current = true;
+          // 重试走不带变体的 src：srcset 还在的话浏览器会继续挑变体地址，重试等于没换地址
+          img.removeAttribute('srcset');
           const u = src.split('#')[0] + (src.includes('?') ? '&' : '?') + 'r=1';
           img.src = u;
           return;
@@ -137,7 +142,9 @@ const Card = memo(function Card({ e, onOpen, priority }) {
 
   const media = showMedia ? (
     <div className="card-media">
-      <LazyImg src={e.image} alt={e.name} fallbackClass="media-fallback" fbIcon="image" priority={priority}
+      <LazyImg src={e.image} srcSet={widthSrcSet(e.image, [320, 640, 960])}
+        sizes="(max-width: 720px) 46vw, 320px"
+        alt={e.name} fallbackClass="media-fallback" fbIcon="image" priority={priority}
         onFail={() => setImgFailed(true)} />
       {dot}
       {srcName ? <span className="badge-source" title={e.feedName}>{srcName}</span> : null}
@@ -188,7 +195,7 @@ const Row = memo(function Row({ e, onOpen }) {
       <div className="row-thumb">
         <span className={'card-dot row-dot' + (unread ? '' : ' is-read')} aria-hidden="true" />
         {e.image
-          ? <LazyImg src={e.image} alt={e.name} fallbackClass="row-thumb-fb" fbIcon="image" />
+          ? <LazyImg src={widthVariant(e.image, 320) || e.image} alt={e.name} fallbackClass="row-thumb-fb" fbIcon="image" />
           : <span className="row-thumb-fb"><Icon n="image" /></span>}
       </div>
       <div className="row-main">

@@ -128,6 +128,13 @@ export function SettingsModal() {
       setRoleFlag(r) { setRole(r || ''); },
     };
     window.__settingsHost = host;
+    // 按需挂载：入口在 chunk 下载前就记下了这次要打开的分区，宿主注册后补开一次。
+    // 只消费一次（StrictMode 会重复跑 effect，开启状态在重复挂载之间保留）。
+    const pending = window.__settingsPending;
+    if (pending) {
+      window.__settingsPending = null;
+      host.open(pending.tab);
+    }
     return () => { delete window.__settingsHost; };
   }, []);
 

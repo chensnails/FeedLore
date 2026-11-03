@@ -68,27 +68,31 @@ async function waitViewFirstPaint(tab) {
 }
 
 (async function init() {
-  // 校验登录态（未登录由 apiFetch 自动跳转）
-  try {
-    const res = await fetch('/api/session');
-    const s = await res.json();
-    if (!s.authenticated) {
-      location.replace('/login.html');
-      return;
-    }
-    state.username = s.username;
-    state.role = s.role || 'user';
-  } catch (_) {
+  // 会话与频道列表互不依赖：并行发出，弱网下省掉一次串行往返。
+  // allSettled 一次等齐两个请求，也避免先失败的一方留下未处理的 rejection。
+  const [sessionRes, feedsRes] = await Promise.allSettled([
+    fetch('/api/session').then((res) => res.json()),
+    loadFeeds(),
+  ]);
+
+  if (sessionRes.status === 'rejected') {
     bootFail('无法连接服务器，请检查网络后重试');
     return;
   }
+  const s = sessionRes.value;
+  if (!s.authenticated) {
+    // 频道请求若已因 401 跳了登录页（apiFetch 会带上 next），这里不要再覆盖它
+    if (feedsRes.status === 'fulfilled') location.replace('/login.html');
+    return;
+  }
+  state.username = s.username;
+  state.role = s.role || 'user';
   applyRoleUI();
 
-  try {
-    await loadFeeds();
-  } catch (err) {
+  if (feedsRes.status === 'rejected') {
+    const err = feedsRes.reason;
     bootFail('频道列表加载失败，请重试');
-    toast('频道列表加载失败：' + (err.message || err), false);
+    toast('频道列表加载失败：' + (err && err.message ? err.message : err), false);
     return;
   }
   // 频道接口顺带带回了「页面自动刷新」间隔，据此起定时器
@@ -102,10 +106,11 @@ async function waitViewFirstPaint(tab) {
   }
 
   emitShell();
-  await loadPage(true);
 
   // 打开哪个页面：hash 优先（可分享深链），其次上次记住的，默认「文章」
   // hash 形如 #cards / #reader / #ai，条目级深链是 #reader/art/<id>（进入某篇）
+  // ⚠️ 先定目标视图再拉列表（v2.2.0）：以前无条件加载卡片列表，从文章页启动时
+  //    白拉一整页用户看不到的卡片和图片请求。
   let tab = currentTab();
   let deepArtId = null;
   if (location.hash.startsWith('#reader/art/')) { tab = 'reader'; deepArtId = location.hash.slice('#reader/art/'.length); }
@@ -116,6 +121,9 @@ async function waitViewFirstPaint(tab) {
   // #digest 是老深链，那个页面已经升级成「AI」了，仍然认
   else if (location.hash.startsWith('#digest')) tab = 'ai';
   else if (location.hash.startsWith('#ai')) tab = 'ai';
+
+  // 文章页的列表由 switchView 内的 loadReader 拉；卡片页没有自加载，这里补首屏
+  if (tab === 'cards') await loadPage(true);
   await switchView(tab);
 
   if (location.hash.startsWith('#settings')) openSettings();

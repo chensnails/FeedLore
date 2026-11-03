@@ -110,6 +110,11 @@ export function switchView(name) {
   // 日报关掉后这里兜一道：#digest 深链、命令面板遗留项、外部调用都从同一个口子回落，
   // 不用在每个入口各写一遍判断（顶栏按钮的隐藏只是让它平时看不见）
   if (name === 'ai' && layoutPref.digestEnabled === false) name = 'reader';
+  // AI 视图按需加载（v2.2.0）：切过去之前先发起 chunk 下载，别等视图切完才开始。
+  if (name === 'ai' && typeof window.__mountAi === 'function') {
+    const p = window.__mountAi();
+    if (p && p.catch) p.catch(() => toast('AI 页面加载失败，请检查网络后重试', false));
+  }
   const apply = () => {
     state.tab = name;
     setLayout('tab', name);   // 按账号持久化当前页面，刷新后保持一致
@@ -135,7 +140,11 @@ export function switchView(name) {
       else renderReader();
     }
     // 卡片页同理：文章页里点掉的未读要在这里立刻反映（圆点 / 计数），已有数据不重拉
-    if (name === 'cards') render();
+    if (name === 'cards') {
+      render();
+      // 启动时只加载当前页的列表（v2.2.0）；第一次切到卡片页再拉首屏，别留空白
+      if (!state.entries.length && !state.loading) loadPage(true);
+    }
     // AI 视图已 React 化：通知 AiView 激活 / 隐去（切到 ai 时由组件自行加载子页数据）
     window.dispatchEvent(new CustomEvent('__viewChanged', { detail: name }));
 

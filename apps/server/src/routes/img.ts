@@ -36,7 +36,7 @@ import type { AuthInstance } from '@feedlore/auth';
 import { img as imgSpec } from '@feedlore/contract';
 import { ApiException } from '../lib/apiError';
 import { assertPublicHost, safeFetch } from '../lib/net';
-import { compressImage, imageCacheKey, isImageType, IMG_MAX_BYTES } from '../lib/image';
+import { compressImage, imageVariantKey, normalizeImageWidth, isImageType, IMG_MAX_BYTES } from '../lib/image';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 import { APP_VERSION } from '../env';
 import { sourceSnapshot } from '../lib/settings';
@@ -169,16 +169,19 @@ async function fetchUpstream(url: string, signal: AbortSignal): Promise<{ buf: B
   return { buf, type, origSize: buf.length };
 }
 
-/** 回源 → 压缩 → 写 L2/L1。失败抛带 status 的错误，调用方决定怎么回。 */
-async function fetchAndCache(db: Db | null, key: string, url: string): Promise<Cached> {
+/** 回源 → 压缩 → 写 L2/L1。失败抛带 status 的错误，调用方决定怎么回。
+ *  `width` 是前端指定的变体宽度（0 = 默认长边），压缩上限取它与站点设置里较小者。 */
+async function fetchAndCache(db: Db | null, key: string, url: string, width: number): Promise<Cached> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), UPSTREAM_TIMEOUT_MS);
   try {
     const { buf: raw, type, origSize } = await fetchUpstream(url, ctl.signal);
 
     const snap = sourceSnapshot();
+    const cap = Number(snap?.imgMaxDim) > 0 ? Number(snap?.imgMaxDim) : 0;
+    const maxDim = width > 0 ? (cap > 0 ? Math.min(width, cap) : width) : (cap || undefined);
     const comp = await compressImage(raw, type, {
-      maxDim: snap?.imgMaxDim,
+      maxDim,
       quality: snap?.imgQuality,
     });
     const out: Cached = comp
@@ -249,8 +252,9 @@ function imageResponse(v: Cached): Response {
  * ==========================================================================*/
 
 /** `u` 用 z.string() 收，URL 合法性交给 assertPublicHost 统一判定：
- *  这里用 z.url() 会先于安全判定返回 400，报错文案也就变成 zod 的英文串。 */
-const imgQuery = z.object({ u: z.string().min(1).max(4000) });
+ *  这里用 z.url() 会先于安全判定返回 400，报错文案也就变成 zod 的英文串。
+ *  `w` 也按字符串收：非法值不该让整张图 400，交给 normalizeImageWidth 回落到默认图。 */
+const imgQuery = z.object({ u: z.string().min(1).max(4000), w: z.string().optional() });
 
 export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
   // ⚠️ 链式返回，否则 hc<AppType> 看不到本路由（见 health.ts 注释）
@@ -259,7 +263,9 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
     requireAuth(auth, 'user'),
     zValidator('query', imgQuery),
     async (c) => {
-      const { u: raw } = c.req.valid('query');
+      const { u: raw, w } = c.req.valid('query');
+      // 只接受白名单档位；其余值忽略（当作默认 1280 长边），不因此报错
+      const width = normalizeImageWidth(w);
 
       /* 重复协议头归一：个别源把图标写成 `https:https://...`，
        * 直接 new URL 会解析出主机名 "https:"，注定抓不到（legacy v2.2.5 修过）。 */
@@ -273,7 +279,7 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
       // ① 出网判定（含 DNS 解析，内网/回环直接 400）
       const info = await assertPublicHost(cleaned);
       const url = info.url;
-      const key = imageCacheKey(url);
+      const key = imageVariantKey(url, width);
 
       // ② L1
       const hot = l1Get(key);
@@ -306,7 +312,7 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
         // 过期：先给旧图（用户不等待），后台静默刷新。
         // 静默刷新也走去重表，避免「十个标签页同时打开过期图」把上游打十次。
         if (!inFlight.has(key)) {
-          const job = fetchAndCache(db, key, url)
+          const job = fetchAndCache(db, key, url, width)
             .catch(() => null)
             .finally(() => inFlight.delete(key));
           inFlight.set(key, job);
@@ -317,7 +323,7 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
       // ④ 未命中：并发去重后再回源
       let job = inFlight.get(key);
       if (!job) {
-        job = fetchAndCache(db, key, url).finally(() => inFlight.delete(key));
+        job = fetchAndCache(db, key, url, width).finally(() => inFlight.delete(key));
         inFlight.set(key, job);
       }
 

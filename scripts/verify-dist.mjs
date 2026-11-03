@@ -36,6 +36,13 @@ const unhashed = assets.filter((a) => /\/assets\/(index|main|style)\.(js|css)$/.
 check(assets.length > 0, `index.html 引用了 ${assets.length} 个带哈希资源`);
 check(unhashed.length === 0, `没有未加哈希的固定资源名${unhashed.length ? `（${unhashed.join(', ')}）` : ''}`);
 
+// 首屏分包：设置弹层与 AI 视图必须落在独立 chunk 里，且入口 HTML 不预加载它们。
+// 否则「按需加载」会被一次 import 失误悄悄退回常驻（体积涨回去但测试全绿）。
+const assetFiles = readdirSync(join(DIST, 'assets'));
+check(assetFiles.some((f) => /^SettingsModal-.+\.js$/.test(f)), '设置弹层单独分包（首屏不下载）');
+check(assetFiles.some((f) => /^AiView-.+\.js$/.test(f)), 'AI 视图单独分包（首屏不下载）');
+check(!/<link[^>]+modulepreload[^>]+(SettingsModal|AiView)-/.test(html), 'index.html 没有预加载按需分包');
+
 /* ---------------- PWA ---------------- */
 const mfPath = join(DIST, 'manifest.json');
 check(existsSync(mfPath), 'manifest.json 进了产物');

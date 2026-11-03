@@ -9,7 +9,15 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ## Unreleased
 
-(None)
+### Changed
+
+- **Lighter first load**: the settings modal and the AI digest view are downloaded only when
+  first opened; the session check and channel list now start in parallel, and only the list
+  needed by the current page is fetched (the card list used to be preloaded on every start).
+- **Responsive images**: card covers, list / digest thumbnails and article images now use
+  320 / 640 / 960 width variants, cutting bytes on phones and slow links. The image proxy
+  accepts an optional `w` parameter, compresses and caches each variant separately, and keeps
+  the default 1280 version unchanged.
 
 ## 2.2.0-rc.3 — 2026-11-04
 
