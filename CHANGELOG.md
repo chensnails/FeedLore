@@ -1,9 +1,41 @@
+English: [CHANGELOG.en.md](CHANGELOG.en.md)
+
 # 更新日志
 
 本文件记录 2.x 的用户可见变化与部署相关变更。
 
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
+
+## 2.2.0-rc.1 — 2026-11-03
+
+> 预发布版本：用于发布前验证，`latest` 仍指向 2.1.0，未创建 GitHub Release。
+
+### 变更
+
+- **服务端日志与 API 错误改说英文**：服务端日志、启动与迁移输出、脚本输出统一为英文；
+  接口错误响应改为稳定错误码 + 英文说明：
+  - `error` 由中文提示改为机器可读码（如 `E_BAD_CREDENTIALS`），码一旦发布不再改名；
+  - 新增 `message`（英文原文）、`status`（HTTP 状态码）与可选的 `params`（插值参数），
+    错误码表在 `packages/contract/src/errors.ts` 维护；
+  - 前端按错误码查中文词典（`apps/web/src/core/errorText.js`）渲染界面文案，界面语言与
+    2.1.0 一致；登录页的失败提示也走同一套词典。
+- **重写 README 简介**：按「自用阅读 + 网盘资源」的实际使用场景说明定位，配置说明保留在
+  `.env.example`。
+- **补齐英文文档**：新增 `README.en.md`、`CHANGELOG.en.md`、`UPGRADE-v2.en.md`，与中文文档一一对应。
+
+### 修复
+
+- 「GitHub 上还没有任何发布」现在返回 `502 E_UPDATE_NO_RELEASE`，此前是未分类的 500。
+
+### 部署
+
+- 镜像：`ghcr.io/chensnails/feedlore:2.2.0-rc.1`（amd64 + arm64）；`latest` 仍指向 2.1.0，
+  未创建 GitHub Release。
+- **从 2.1.0 升级**：把 `V2_IMAGE` 改成 `…:2.2.0-rc.1` 后 `up -d` 即可。本次没有数据库结构
+  变更，启动迁移照常幂等执行。
+- **第三方 API 调用方注意**：原先直接展示 `error` 中文文本的客户端，应改为按 `error` 码
+  处理，或把 `message` 作为英文兜底文案。这是本次唯一的兼容性变化。
 
 ## 2.1.0 — 2026-11-03
 

@@ -1,3 +1,5 @@
+English: [README.en.md](README.en.md)
+
 # 笺川 · FeedLore
 
 > 拾取值得读的 —— 一个干净、顺手的**自托管 RSS 阅读器**，附资源卡片墙。

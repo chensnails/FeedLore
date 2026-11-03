@@ -1,3 +1,5 @@
+English: [UPGRADE-v2.en.md](UPGRADE-v2.en.md)
+
 # 从 1.x 升级到 2.x
 
 2.x 走**旁路升级**：同一台 Postgres 里的新库（默认 `feedlore_v2`），1.x 的库与数据卷
