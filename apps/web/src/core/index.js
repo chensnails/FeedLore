@@ -83,7 +83,7 @@ export const core = {
   getShell: UI.shellSnapshot,
   // —— 日报开关（账号级，关掉即收起三视图导航里的日报入口） ——
   digestIsEnabled: UI.digestIsEnabled, setDigestEnabled: UI.setDigestEnabled,
-  fmtFull: U.fmtFull,
+  fmtFull: U.fmtFull, fmtBadge: U.fmtBadge,
   // —— 文章视图（P3c） ——
   readerSetScope: R.readerSetScope, readerSetFeed: R.readerSetFeed, readerSetGroup: R.readerSetGroup,
   readerSetWatch: R.readerSetWatch,

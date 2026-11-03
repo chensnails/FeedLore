@@ -690,7 +690,7 @@ export function ReaderView() {
         </div>
         <div className="reader-side-head">
           <span>频道</span>
-          <span className="reader-side-n" id="readerSideN">{feeds.length ? `${feeds.length} 个` : ''}</span>
+          <span className="reader-side-n" id="readerSideN">{feeds.length ? `${s.fmtBadge(feeds.length, 999)} 个` : ''}</span>
           <button className="reader-side-fold" id="readerFoldAll" type="button" hidden={!hasGroups}
             title={allCollapsed ? '展开全部分组' : '收起全部分组'}
             aria-label={allCollapsed ? '展开全部分组' : '收起全部分组'}

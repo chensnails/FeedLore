@@ -40,6 +40,18 @@ export async function httpError(res) {
   return err;
 }
 
+/** 侧栏计数徽标：超过上限显示「上限+」。
+ *
+ *  计数会随文章无限增长（关注 213、频道 1245…），不封顶会把频道行挤变形、
+ *  徽标越撑越宽。文章口径（范围行 / 关注 / 屏蔽 / 分组未读 / 全部频道总数）封顶 9999，
+ *  单个频道的条数封顶 999；tooltip 仍显示精确值。
+ */
+export function fmtBadge(n, max = 999) {
+  const v = Number(n) || 0;
+  const cap = Number(max) || 999;
+  return v > cap ? cap + '+' : String(v);
+}
+
 /** 完整时间戳，用于 title 提示与展开体的发布时间 */
 export function fmtFull(ts) {
   if (!ts) return '';

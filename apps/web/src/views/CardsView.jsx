@@ -463,10 +463,10 @@ export function CardsView() {
   const feedLabel = (f) => {
     const title = s.feedTitle ? s.feedTitle(f) : f.title;
     const name = s.shortFeedName ? s.shortFeedName(title) : title;
-    return `${name}（${f.entryCount}）`;
+    return `${name}（${s.fmtBadge(f.entryCount, 999)}）`;
   };
   // 频道 / 排序下拉选项（v1.1.9 起用自定义弹层 Dropdown 渲染，替代原生 select 的系统弹窗）
-  const feedOpts = [{ value: '', label: `全部频道（${cardFeeds.length}）` }];
+  const feedOpts = [{ value: '', label: `全部频道（${s.fmtBadge(cardFeeds.length, 999)}）` }];
   for (const g of groups) {
     for (const f of g.feeds) feedOpts.push({ value: String(f.id), label: feedLabel(f), group: g.name || '' });
   }
@@ -484,7 +484,7 @@ export function CardsView() {
         </div>
         <div className="cards-side-head">
           <span>频道</span>
-          <span className="reader-side-n" id="cardsSideN">{cardFeeds.length ? `${cardFeeds.length} 个` : ''}</span>
+          <span className="reader-side-n" id="cardsSideN">{cardFeeds.length ? `${s.fmtBadge(cardFeeds.length, 999)} 个` : ''}</span>
           <button className="reader-side-close" id="cardsSideClose" type="button" aria-label="收起频道列表"
             onClick={() => { if (s.cardsCloseDrawer) s.cardsCloseDrawer(); }}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
