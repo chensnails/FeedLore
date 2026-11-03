@@ -24,6 +24,7 @@ import { applyFilters } from './filter';
 import { classify, notifyRuleNames, type WatchVerdict } from './watch';
 import { expireWatchTags } from './watch-expire';
 import { userFilters, userWatchRules, userWebhook } from './prefs';
+import { scopeAllows } from './scope';
 import { enhanceWithFullText, pruneArticleCache } from './fulltext';
 import {
   DEFAULT_KEEP_DAYS,
@@ -497,8 +498,9 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
     for (const m of members) {
       const memberPrefs = prefs.get(m.ownerId) ?? null;
 
-      // 条目过滤规则按成员 owner 逐人生效（同一 URL 多用户订阅时各过各的）
-      const items = applyFilters(r.items, userFilters(memberPrefs));
+      // 条目过滤规则按成员 owner 逐人生效（同一 URL 多用户订阅时各过各的）；
+      // 规则自身的适用范围再按这个 feed 的分组 / id 收窄，空选 = 不生效。
+      const items = applyFilters(r.items, userFilters(memberPrefs).filter((rule) => scopeAllows(rule.scope, m)));
       filtered += r.items.length - items.length;
 
       // 开了「全文」的频道：摘要型正文去原文页补全。失败只保留订阅正文，不能影响入库。
@@ -516,7 +518,7 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
       added += up.inserted;
 
       // 新入库的条目立刻跑一遍关注 / 屏蔽规则
-      const wRules = userWatchRules(memberPrefs);
+      const wRules = userWatchRules(memberPrefs).filter((rule) => scopeAllows(rule.scope, m));
       if (wRules.length && up.fresh.length) {
         const verdicts = classify(wRules, up.fresh);
         if (verdicts.length) {

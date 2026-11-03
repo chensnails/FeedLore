@@ -1,5 +1,6 @@
 import { core } from '@core';
 import { useState, useEffect, useRef } from 'react';
+import { RuleScopePicker, emptyScope, normalizeScope } from './RuleScopePicker';
 
 /**
  * 规则面板（v1.6.0-test5）：关注 / 屏蔽规则 + webhook 通知 + 入库前过滤。
@@ -8,13 +9,18 @@ import { useState, useEffect, useRef } from 'react';
  * 保存只影响「以后新抓的文章」，点「应用到已有文章」才回溯存量条目（/api/watch/apply）。
  * webhook 一条全局地址，每条关注规则单独决定要不要推送（屏蔽规则没有通知的意义）。
  * 入库前过滤存 users.prefs.filters（v2.7.0，原在账号面板），在抓取写库前生效。
+ *
+ * 两类规则都带 scope（v2.10.0）：新建时默认一个都不选 = 不生效；老数据缺 scope 视为全部频道。
+ * 分组按名称动态跟随，以后加进该分组的频道自动纳入。
  */
 
 const S = () => core;
 
 let uidSeq = 0;
 const newId = () => 'w' + Date.now().toString(36) + (++uidSeq).toString(36);
-const blankRule = () => ({ id: newId(), name: '', keywords: '', act: 'watch', notify: false, on: true });
+const blankRule = () => ({
+  id: newId(), name: '', keywords: '', act: 'watch', notify: false, on: true, scope: emptyScope(),
+});
 
 /* 服务端数组 → 表单（keywords 摊成多行文本，便于直接编辑） */
 function fromServer(list) {
@@ -25,6 +31,7 @@ function fromServer(list) {
     act: r.act === 'block' ? 'block' : 'watch',
     notify: r.notify === true,
     on: r.on !== false,
+    scope: normalizeScope(r.scope),
   }));
 }
 
@@ -37,6 +44,7 @@ function toServer(rules) {
     act: r.act,
     notify: r.notify,
     on: r.on,
+    scope: r.scope,
   }));
 }
 
@@ -58,6 +66,10 @@ export function WatchPane() {
   const [filterResult, setFilterResult] = useState(null);
   const paneRef = useRef(null);
 
+  // 适用范围选择器要用的频道 / 分组清单
+  const [feedsList, setFeedsList] = useState([]);
+  const [groupOrder, setGroupOrder] = useState([]);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -74,12 +86,20 @@ export function WatchPane() {
         setSavedRules(JSON.stringify(r));
         setSavedWebhook(w);
         setSavedExpireDays(days);
-        setFilters(Array.isArray(d.filters) ? d.filters : []);
+        setFilters((Array.isArray(d.filters) ? d.filters : [])
+          .map((f) => Object.assign({}, f, { scope: normalizeScope(f.scope) })));
       } catch (err) {
         if (alive) setResult({ ok: false, msg: '读取失败：' + String((err && err.message) || err) });
       } finally {
         if (alive) setFiltersLoaded(true);
       }
+      // 频道清单只有适用范围选择器用得到，失败时选择器里只剩「全部频道」
+      try {
+        const data = await s.loadFeeds();
+        if (!alive) return;
+        setFeedsList((data && data.feeds) || []);
+        setGroupOrder((data && Array.isArray(data.groupOrder)) ? data.groupOrder : []);
+      } catch (_) { /* 拿不到频道清单时选择器仍可切「全部频道」 */ }
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -198,7 +218,8 @@ export function WatchPane() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setFilterResult({ ok: false, msg: data.error || '保存失败' }); return; }
       // 服务端会重新清洗：空模式 / 非法正则 / 超长 都被丢弃，用回填结果告知差量
-      const saved = Array.isArray(data.filters) ? data.filters : [];
+      const saved = (Array.isArray(data.filters) ? data.filters : [])
+        .map((f) => Object.assign({}, f, { scope: normalizeScope(f.scope) }));
       setFilters(saved);
       const dropped = filters.length - saved.length;
       setFilterResult({ ok: true, msg: dropped > 0
@@ -214,7 +235,7 @@ export function WatchPane() {
   const filterUid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
   const addFilter = () => setFilters((list) => [...list,
-    { id: filterUid(), on: true, act: 'block', field: 'title', kind: 'kw', pattern: '' }]);
+    { id: filterUid(), on: true, act: 'block', field: 'title', kind: 'kw', pattern: '', scope: emptyScope() }]);
 
   /** 本地改一条规则的某个字段（不动其它字段） */
   const patchFilter = (id, patch) => {
@@ -312,6 +333,14 @@ export function WatchPane() {
               value={r.keywords}
               onChange={(ev) => patchRule(r.id, { keywords: ev.target.value })}
             />
+            <div className="watch-rule-scope">
+              <RuleScopePicker
+                value={r.scope}
+                onChange={(scope) => patchRule(r.id, { scope })}
+                feeds={feedsList}
+                groupOrder={groupOrder}
+              />
+            </div>
             <div className="watch-rule-foot">
               {r.act === 'watch' ? (
                 <label className="watch-check">
@@ -395,6 +424,13 @@ export function WatchPane() {
                       placeholder={f.kind === 're' ? '如：v\\d+\\.\\d+' : '关键词，不区分大小写'}
                       value={f.pattern}
                       onChange={(e) => patchFilter(f.id, { pattern: e.target.value })} />
+                    <RuleScopePicker
+                      compact
+                      value={f.scope}
+                      onChange={(scope) => patchFilter(f.id, { scope })}
+                      feeds={feedsList}
+                      groupOrder={groupOrder}
+                    />
                     <button className="btn btn-ghost btn-sm filter-del" type="button"
                       onClick={() => removeFilter(f.id)}>删除</button>
                   </div>

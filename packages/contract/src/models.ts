@@ -244,6 +244,14 @@ export const LayoutSchema = z
   .passthrough();
 export type Layout = z.infer<typeof LayoutSchema>;
 
+/** 规则适用范围：分组按名称动态跟随，频道按 id。all=true 时两个列表无意义。 */
+export const RuleScopeSchema = z.object({
+  all: z.boolean(),
+  groups: z.array(z.string()),
+  feeds: z.array(z.number().int()),
+});
+export type RuleScope = z.infer<typeof RuleScopeSchema>;
+
 /** 条目过滤规则（入库前生效，命中 block 的条目不会入库）。字段名对齐 legacy。 */
 export const FilterRuleSchema = z.object({
   id: z.string(),
@@ -254,6 +262,8 @@ export const FilterRuleSchema = z.object({
   /** kw = 关键字包含，re = 正则 */
   kind: z.enum(['kw', 're']),
   pattern: z.string(),
+  /** 缺省 = 老规则（全部频道）；空选 = 不生效 */
+  scope: RuleScopeSchema.optional(),
 });
 export type FilterRule = z.infer<typeof FilterRuleSchema>;
 
@@ -265,6 +275,8 @@ export const WatchRuleSchema = z.object({
   act: z.enum(['watch', 'block']),
   notify: z.boolean(),
   on: z.boolean(),
+  /** 缺省 = 老规则（全部频道）；空选 = 不生效 */
+  scope: RuleScopeSchema.optional(),
 });
 export type WatchRule = z.infer<typeof WatchRuleSchema>;
 

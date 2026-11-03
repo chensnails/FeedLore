@@ -32,6 +32,7 @@ test('匹配层兜底：存量不安全规则视为不命中，不执行正则',
     field: 'all',
     kind: 're' as const,
     pattern: '(a+)+$',
+    scope: { all: true, groups: [], feeds: [] },
   };
   // 若真执行这条正则，长串 a 会卡住整个进程；这里必须立即返回 false
   assert.equal(ruleHit(rule, { title: 'a'.repeat(5000) + '!' }), false);

@@ -30,6 +30,7 @@ import {
 import { assertResponse, BadRequest } from '../lib/validate';
 import { toCard, toEntryDetail } from '../lib/dto';
 import { classify } from '../lib/watch';
+import { scopeAllows } from '../lib/scope';
 import { userWatchRules, type PrefsBag } from '../lib/prefs';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
@@ -328,6 +329,8 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
         const rows = await db
           .select({
             id: entriesTable.id,
+            feedId: entriesTable.feedId,
+            groupName: feeds.groupName,
             title: entriesTable.title,
             description: entriesTable.description,
             content: entriesTable.content,
@@ -343,11 +346,26 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
         if (!last) break;
         afterId = last.id;
 
-        // guid 只是 classify 的身份载体：这里用 id 的字符串形式，回写时再映射回真 id。
-        const verdicts = classify(
-          rules,
-          rows.map((r) => ({ guid: String(r.id), title: r.title, description: r.description, content: r.content })),
-        );
+        /* 规则范围按 feed 收窄后再判定：同一页里不同频道可能适用不同规则。
+         * 空选（all=false 且两个列表都空）的规则不覆盖任何频道，自然也不会打标。 */
+        const byFeed = new Map<number, typeof rows>();
+        for (const row of rows) {
+          const list = byFeed.get(row.feedId);
+          if (list) list.push(row);
+          else byFeed.set(row.feedId, [row]);
+        }
+
+        const verdicts: ReturnType<typeof classify> = [];
+        for (const [feedId, group] of byFeed) {
+          const first = group[0]!;
+          const scoped = rules.filter((r) => scopeAllows(r.scope, { id: feedId, groupName: first.groupName }));
+          if (!scoped.length) continue;
+          // guid 只是 classify 的身份载体：这里用 id 的字符串形式，回写时再映射回真 id。
+          verdicts.push(...classify(
+            scoped,
+            group.map((r) => ({ guid: String(r.id), title: r.title, description: r.description, content: r.content })),
+          ));
+        }
         if (!verdicts.length) continue;
 
         const groups = new Map<string, { state: string; rule: string; ids: number[] }>();

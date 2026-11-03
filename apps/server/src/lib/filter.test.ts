@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { FilterRule } from '@feedlore/contract';
+import type { FilterRule } from './prefs';
 import { applyFilters, ruleHit } from './filter';
 
 /**
@@ -11,15 +11,15 @@ import { applyFilters, ruleHit } from './filter';
  */
 
 function rule(p: Partial<FilterRule>): FilterRule {
-  return {
+  return Object.assign({
     id: 'r1',
     on: true,
     act: 'block',
     field: 'all',
     kind: 'kw',
     pattern: '',
-    ...p,
-  };
+    scope: { all: true, groups: [], feeds: [] },
+  } as FilterRule, p);
 }
 
 const item = { title: 'iPhone 17 发布', description: '新一代旗舰', content: '正文正文' };

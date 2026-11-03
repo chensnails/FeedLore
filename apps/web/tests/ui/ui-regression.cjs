@@ -93,6 +93,23 @@ let miniFilters = [
   { id: 'f1', on: true, act: 'block', field: 'title', kind: 'kw', pattern: '广告' },
   { id: 'f2', on: true, act: 'allow', field: 'desc', kind: 're', pattern: 'sk-' },
 ];
+// 关注 / 屏蔽规则（v2.10.0 起带 scope）：w1 是老数据（没有 scope = 全部频道），w2 限定「科技」分组
+let miniWatchRules = [
+  { id: 'w1', name: 'AI 关注', keywords: ['OpenAI'], act: 'watch', notify: false, on: true },
+  { id: 'w2', name: '屏蔽广告', keywords: ['广告'], act: 'block', notify: false, on: true, scope: { all: false, groups: ['科技'], feeds: [] } },
+];
+// 与 server/src/lib/scope.ts 的清洗口径对齐
+const normScope = (s) => {
+  if (!s || typeof s !== 'object' || Array.isArray(s)) return { all: true, groups: [], feeds: [] };
+  if (s.all === true) return { all: true, groups: [], feeds: [] };
+  return {
+    all: false,
+    groups: Array.isArray(s.groups) ? s.groups.filter((g) => typeof g === 'string').map((g) => (g === '' ? '' : g.trim().slice(0, 40))).filter((g, i, a) => a.indexOf(g) === i) : [],
+    feeds: Array.isArray(s.feeds) ? s.feeds.map(Number).filter((n) => Number.isInteger(n) && n > 0).filter((n, i, a) => a.indexOf(n) === i) : [],
+  };
+};
+const normKws = (v) => (Array.isArray(v) ? v : String(v == null ? '' : v).split(/\r?\n/))
+  .map((s) => String(s).trim()).filter(Boolean).filter((s, i, a) => a.indexOf(s) === i).slice(0, 20);
 const miniSettingsSource = {
   refreshMinutes: 30, keepPerFeed: 300, keepDays: 0,
   timeoutSeconds: 25, concurrency: 3, autoRefreshMinutes: 0,
@@ -264,6 +281,7 @@ w.feedlore = {
     if (url === '/api/prefs' && method === 'GET') {
       return ok({
         llm: prefsLlm, groupOrder: miniGroupOrder.slice(), appearance: {}, filters: miniFilters.slice(),
+        watchRules: miniWatchRules.slice(),
         layout: { digestEnabled: prefsDigestEnabled }, digest: Object.assign({}, prefsDigest),
         watchExpireDays: miniWatchExpireDays,
       });
@@ -313,13 +331,34 @@ w.feedlore = {
             field: ['title', 'desc', 'content', 'all'].indexOf(f.field) >= 0 ? f.field : 'all',
             kind: f.kind === 're' ? 're' : 'kw',
             pattern: f.pattern.trim().slice(0, 200),
+            scope: normScope(f.scope),
           }));
+      }
+      // v2.10.0：关注 / 屏蔽规则同样带 scope，空关键字规则被丢弃
+      if (Array.isArray(body && body.watchRules)) {
+        miniWatchRules = body.watchRules
+          .map((r) => {
+            const keywords = normKws(r && r.keywords);
+            if (!r || !keywords.length) return null;
+            const act = r.act === 'block' ? 'block' : 'watch';
+            return {
+              id: typeof r.id === 'string' && r.id.trim() ? r.id.trim().slice(0, 40) : 'w' + (miniWatchRules.length + 1),
+              name: typeof r.name === 'string' ? r.name.trim().slice(0, 40) : '',
+              keywords,
+              act,
+              notify: act === 'watch' && r.notify === true,
+              on: r.on !== false,
+              scope: normScope(r.scope),
+            };
+          })
+          .filter(Boolean)
+          .slice(0, 30);
       }
       if (body && body.watchExpireDays !== undefined) {
         const n = Number(body.watchExpireDays);
         miniWatchExpireDays = Number.isFinite(n) ? Math.min(3650, Math.max(0, Math.round(n))) : 90;
       }
-      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), appearance: {}, layout: {}, filters: miniFilters.slice(), digest: Object.assign({}, prefsDigest), watchExpireDays: miniWatchExpireDays });
+      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), appearance: {}, layout: {}, filters: miniFilters.slice(), watchRules: miniWatchRules.slice(), digest: Object.assign({}, prefsDigest), watchExpireDays: miniWatchExpireDays });
     }
     if (url === '/api/digest/test-llm') return ok({ ok: true, reply: 'pong' });
     if (url === '/api/version') return ok(versionResponse);
@@ -917,6 +956,10 @@ const setArea = (sel, v) => {
 const setVal = (el, v) => {
   const setter = Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set;
   setter.call(el, v);
+  el.dispatchEvent(new w.Event('input', { bubbles: true }));
+};
+const setAreaEl = (el, v) => {
+  Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, 'value').set.call(el, v);
   el.dispatchEvent(new w.Event('input', { bubbles: true }));
 };
 const setSel = (sel, v) => {
@@ -2447,6 +2490,8 @@ const withEFP = (el, fn) => {
     if (r2.querySelector('.filter-field').value !== 'desc') throw new Error('r2 field');
     const sub = document.querySelector('[data-sec="watch-filters"] .sec-sub').textContent;
     if (sub !== '2 条') throw new Error('sub: ' + sub);
+    // v2.10.0：老规则没有 scope，按「全部频道」显示
+    if (r1.querySelector('.rule-scope-btn-value').textContent !== '全部频道') throw new Error('老过滤规则范围: ' + r1.querySelector('.rule-scope-btn-value').textContent);
   });
   // 添加一条规则（React 18：click 后 DOM 重绘在微任务，须移出 t() 再断言）
   document.querySelector('#addFilterBtn').click();
@@ -2460,6 +2505,9 @@ const withEFP = (el, fn) => {
     if (r.querySelector('.filter-kind').value !== 'kw') throw new Error('默认 kind');
     if (r.querySelector('.filter-pattern').value !== '') throw new Error('默认 pattern 应为空');
     if (!r.querySelector('.filter-on').checked) throw new Error('默认应启用');
+    // 新规则默认一个范围都不选 = 不生效
+    if (r.querySelector('.rule-scope-btn-value').textContent !== '未选择（不生效）') throw new Error('默认范围: ' + r.querySelector('.rule-scope-btn-value').textContent);
+    if (!r.querySelector('.rule-scope-btn.is-empty')) throw new Error('缺未选警示样式');
   });
   // 改新行的动作/范围/方式/模式（受控更新同样需等微任务）
   setSelEl(document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2].querySelector('.filter-act'), 'allow');
@@ -2489,6 +2537,9 @@ const withEFP = (el, fn) => {
     const saved = body.filters.find((f) => f.pattern === 'v\\d+');
     if (!saved) throw new Error('未提交新规则: ' + JSON.stringify(body.filters));
     if (saved.act !== 'allow' || saved.field !== 'content' || saved.kind !== 're') throw new Error('保存内容: ' + JSON.stringify(saved));
+    if (!saved.scope || saved.scope.all !== false || saved.scope.groups.length || saved.scope.feeds.length) throw new Error('新规则 scope: ' + JSON.stringify(saved.scope));
+    const legacy = body.filters.find((f) => f.pattern === 'sk-');
+    if (!legacy || legacy.scope.all !== true) throw new Error('老规则 scope 应为全部: ' + JSON.stringify(legacy));
     const res = document.querySelector('#filterResult');
     if (!res.classList.contains('ok') || res.textContent.indexOf('已保存') < 0) throw new Error(res.className + '/' + res.textContent);
     if (!callsOf('toast').length) throw new Error('toast 未调用');
@@ -2507,6 +2558,98 @@ const withEFP = (el, fn) => {
     const res = document.querySelector('#filterResult');
     if (res.textContent.indexOf('1 条为空或非法，已丢弃') < 0) throw new Error('差量提示: ' + res.textContent);
   });
+
+  // 关注 / 屏蔽规则的适用范围（v2.10.0）：老规则 = 全部频道，新规则默认不生效
+  t('关注规则：老规则回填为「全部频道」，带 scope 的按分组显示', () => {
+    const cards = document.querySelectorAll('[data-sec="watch-rules"] .watch-rule');
+    if (cards.length !== 2) throw new Error('规则数 ' + cards.length);
+    const v0 = cards[0].querySelector('.rule-scope-btn-value').textContent;
+    if (v0 !== '全部频道') throw new Error('无 scope 老规则: ' + v0);
+    const v1 = cards[1].querySelector('.rule-scope-btn-value').textContent;
+    if (v1 !== '1 个分组') throw new Error('分组规则: ' + v1);
+  });
+  document.querySelector('[data-sec="watch-rules"] .form-row-head .btn').click();
+  await sleep(40);
+  t('新增关注规则：范围默认未选择（不生效）', () => {
+    const cards = document.querySelectorAll('[data-sec="watch-rules"] .watch-rule');
+    if (cards.length !== 3) throw new Error('规则数 ' + cards.length);
+    const last = cards[2];
+    if (last.querySelector('.rule-scope-btn-value').textContent !== '未选择（不生效）') throw new Error('默认范围');
+    if (!last.querySelector('.rule-scope-btn.is-empty')) throw new Error('缺未选警示样式');
+  });
+  let pickedScopeGroup = '';
+  document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.rule-scope-btn').click();
+  await sleep(40);
+  t('范围浮层树：列出分组 / 未分组，全部频道默认不勾', () => {
+    const pop = document.querySelector('.rule-scope-pop');
+    if (!pop) throw new Error('弹层未打开');
+    if (pop.querySelector('.rule-scope-all input').checked) throw new Error('全部频道不应勾选');
+    const names = Array.from(pop.querySelectorAll('.rule-scope-group-row .rule-scope-name')).map((x) => x.textContent);
+    if (names.length < 2) throw new Error('分组过少: ' + names.join(','));
+    pickedScopeGroup = names[0] === '未分组' ? '' : names[0];
+    if (!pop.querySelector('.rule-scope-warn')) throw new Error('未选时应提示不生效');
+  });
+  document.querySelectorAll('.rule-scope-pop .rule-scope-group-row input[type="checkbox"]')[0].click();
+  await sleep(40);
+  t('勾选分组：摘要 1 个分组，组内频道整组已选', () => {
+    const value = document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.rule-scope-btn-value').textContent;
+    if (value !== '1 个分组') throw new Error('摘要: ' + value);
+    if (document.querySelector('.rule-scope-pop .rule-scope-warn')) throw new Error('已选后不应再警示');
+    document.querySelectorAll('.rule-scope-pop .rule-scope-caret')[0].click();
+  });
+  await sleep(40);
+  t('分组展开：组内频道勾选并禁用（整组已选）', () => {
+    const first = document.querySelectorAll('.rule-scope-pop .rule-scope-group')[0];
+    const feeds = first.querySelectorAll('.rule-scope-feed input');
+    const count = Number(first.querySelector('.rule-scope-count').textContent);
+    if (!feeds.length || feeds.length !== count) throw new Error('组内频道数 ' + feeds.length + '/' + count);
+    for (const el of feeds) {
+      if (!el.checked) throw new Error('组内频道应勾选');
+      if (!el.disabled) throw new Error('组内频道应禁用');
+    }
+  });
+  // 再单勾第二组里的一个频道，验证分组 + 单频道能并存
+  document.querySelectorAll('.rule-scope-pop .rule-scope-caret')[1].click();
+  await sleep(40);
+  document.querySelectorAll('.rule-scope-pop .rule-scope-group')[1].querySelector('.rule-scope-feed input').click();
+  await sleep(40);
+  t('分组 + 单频道：摘要 1 个分组 · 1 个频道', () => {
+    const value = document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.rule-scope-btn-value').textContent;
+    if (value !== '1 个分组 · 1 个频道') throw new Error('摘要: ' + value);
+    document.querySelector('.rule-scope-pop .rule-scope-foot .btn-primary').click();
+  });
+  await sleep(40);
+  setAreaEl(document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.watch-rule-kw'), '测试关键词');
+  await sleep(40);
+  document.querySelector('[data-sec="watch-rules"] .watch-actions .btn-primary').click();
+  await sleep(80);
+  t('保存关注规则：scope 随规则提交并回填', () => {
+    const body = lastPostBody('/api/prefs');
+    const mine = (body.watchRules || []).find((r) => String(r.keywords).indexOf('测试关键词') >= 0);
+    if (!mine) throw new Error('未提交新规则: ' + JSON.stringify(body.watchRules));
+    if (!mine.scope || mine.scope.all !== false) throw new Error('新规则 all: ' + JSON.stringify(mine.scope));
+    if (mine.scope.groups.join(',') !== pickedScopeGroup || mine.scope.feeds.length !== 1) throw new Error('新规则范围: ' + JSON.stringify(mine.scope));
+    const legacy = body.watchRules.find((r) => r.id === 'w1');
+    if (!legacy || legacy.scope.all !== true) throw new Error('老规则应提交为全部: ' + JSON.stringify(legacy));
+    const cards = document.querySelectorAll('[data-sec="watch-rules"] .watch-rule');
+    const value = cards[cards.length - 1].querySelector('.rule-scope-btn-value').textContent;
+    if (value !== '1 个分组 · 1 个频道') throw new Error('回填摘要: ' + value);
+  });
+  // 「全部频道」开关：勾上变全部，取消后回到未选并给出警示
+  document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.rule-scope-btn').click();
+  await sleep(40);
+  document.querySelector('.rule-scope-pop .rule-scope-all input').click();
+  await sleep(40);
+  t('全部频道：勾选后摘要变化，取消后回到未选', () => {
+    const value = () => document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.rule-scope-btn-value').textContent;
+    if (value() !== '全部频道') throw new Error('勾全部: ' + value());
+    document.querySelector('.rule-scope-pop .rule-scope-all input').click();
+    if (value() !== '未选择（不生效）') throw new Error('取消全部: ' + value());
+    if (!document.querySelector('.rule-scope-pop .rule-scope-warn')) throw new Error('缺未选警示');
+    document.querySelector('.rule-scope-pop .rule-scope-foot .btn-ghost').click();
+    document.querySelector('.rule-scope-pop .rule-scope-foot .btn-primary').click();
+  });
+  await sleep(40);
 
   t('关注自动退出：默认 90 天回填', () => {
     const el = document.querySelector('#watchExpireDays');

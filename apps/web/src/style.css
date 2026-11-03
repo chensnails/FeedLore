@@ -2847,6 +2847,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .filter-row .filter-on { flex: 0 0 auto; accent-color: var(--accent); }
 .filter-row .filter-act, .filter-row .filter-field, .filter-row .filter-kind { flex: 0 0 auto; }
 .filter-row .filter-pattern { flex: 1 1 160px; min-width: 0; }
+.filter-row .rule-scope-wrap { flex: 0 1 auto; min-width: 0; }
 .filter-row .filter-del { flex: 0 0 auto; }
 .filter-row .filter-del:hover { color: var(--danger); }
 .filter-actions { margin:2px 0 var(--sp-2); }
@@ -4618,6 +4619,107 @@ body { overflow: hidden; }
 @keyframes headSearchIn { from { opacity: 0; transform: translateY(-6px); } }
 .reader-search.is-open,
 .search-box.is-open { animation: headSearchIn var(--dur-base) var(--ease); }
+
+/* ---------------- 规则适用范围选择器（v2.10.0） ----------------
+   触发器是一枚跟随文本宽度的胶囊；弹层挂在 body 上（设置面板的滚动容器会裁掉子元素），
+   桌面按触发器定位、窄屏整宽贴底。未选任何范围时胶囊用警示色，提醒「这条规则不生效」。 */
+.watch-rule-scope { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.rule-scope-wrap { display: inline-flex; min-width: 0; max-width: 100%; }
+.rule-scope-btn {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0;
+  padding: 4px var(--sp-2); border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  background: var(--panel-2); color: var(--text-muted);
+  font-family: inherit; font-size: var(--fs-sm); line-height: 1.5; cursor: pointer;
+  transition: border-color var(--dur-base), background var(--dur-base), color var(--dur-base), box-shadow var(--dur-base);
+}
+.rule-scope-btn.compact { padding: 2px var(--sp-2); font-size: var(--fs-xs); }
+.rule-scope-btn:hover { border-color: var(--accent-text); color: var(--text); }
+.rule-scope-btn[aria-expanded="true"] {
+  border-color: var(--accent-text); background: var(--panel); color: var(--text);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.rule-scope-btn .ico { width: .85rem; height: .85rem; flex: 0 0 auto; }
+.rule-scope-btn.compact .ico { width: .75rem; height: .75rem; }
+.rule-scope-btn .ico:last-of-type { width: .7rem; height: .7rem; opacity: .65; }
+.rule-scope-btn-label { color: var(--text-faint); }
+.rule-scope-btn-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rule-scope-btn.is-empty { border-color: var(--warn-border); background: var(--warn-bg); color: var(--warn-text); }
+.rule-scope-btn.is-empty .rule-scope-btn-label { color: var(--warn-text); opacity: .75; }
+
+.rule-scope-pop {
+  position: fixed; left: var(--scope-x); top: var(--scope-y);
+  z-index: calc(var(--z-modal) + 1);
+  width: min(320px, calc(100vw - 16px)); max-height: min(420px, 60vh);
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); box-shadow: var(--elevation-3); overflow: hidden;
+}
+.rule-scope-search {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border);
+  color: var(--text-faint); flex: 0 0 auto;
+}
+.rule-scope-search .ico { width: .85rem; height: .85rem; flex: 0 0 auto; }
+.rule-scope-search input {
+  flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent;
+  font-family: inherit; font-size: var(--fs-sm); color: var(--text); padding: 2px 0;
+}
+.rule-scope-search input::-webkit-search-cancel-button { cursor: pointer; }
+.rule-scope-list { flex: 1 1 auto; overflow-y: auto; padding: var(--sp-1) 0; }
+.rule-scope-all,
+.rule-scope-feed,
+.rule-scope-check {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: 6px var(--sp-3); cursor: pointer; min-height: 30px;
+}
+.rule-scope-all { border-bottom: 1px solid var(--border); }
+.rule-scope-all:hover,
+.rule-scope-feed:hover,
+.rule-scope-check:hover { background: var(--hover); }
+.rule-scope-all input,
+.rule-scope-feed input,
+.rule-scope-check input { width: auto; margin: 0; flex: 0 0 auto; accent-color: var(--accent); }
+.rule-scope-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--text); }
+.rule-scope-count { flex: 0 0 auto; font-size: var(--fs-2xs); color: var(--text-faint); }
+.rule-scope-hint { flex: 0 0 auto; font-size: var(--fs-2xs); color: var(--text-faint); }
+.rule-scope-group-row { display: flex; align-items: center; }
+.rule-scope-group-row .rule-scope-check { flex: 1 1 auto; min-width: 0; }
+.rule-scope-caret {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; margin-left: 4px;
+  border: none; border-radius: var(--radius-xs); background: none;
+  color: var(--text-faint); cursor: pointer;
+}
+.rule-scope-caret:hover { background: var(--hover); color: var(--text); }
+.rule-scope-caret .ico { width: .75rem; height: .75rem; }
+.rule-scope-feeds { padding-bottom: 2px; }
+.rule-scope-feeds .rule-scope-feed { padding-left: 38px; min-height: 28px; }
+.rule-scope-feeds .rule-scope-feed:has(input:disabled) { cursor: default; opacity: .6; }
+.rule-scope-none { padding: var(--sp-4) var(--sp-3); text-align: center; color: var(--text-faint); font-size: var(--fs-sm); }
+.rule-scope-warn {
+  flex: 0 0 auto; padding: var(--sp-2) var(--sp-3);
+  background: var(--warn-bg); color: var(--warn-text);
+  border-top: 1px solid var(--warn-border); font-size: var(--fs-xs);
+}
+.rule-scope-foot {
+  flex: 0 0 auto; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  padding: var(--sp-2) var(--sp-3); border-top: 1px solid var(--border); background: var(--panel-2);
+}
+.rule-scope-foot-tip { flex: 1 1 160px; min-width: 0; font-size: var(--fs-2xs); color: var(--text-faint); line-height: 1.45; }
+.rule-scope-foot-actions { flex: 0 0 auto; display: inline-flex; gap: var(--sp-2); margin-left: auto; }
+
+@media (max-width: 720px) {
+  /* 窄屏没有可靠的锚点空间：整宽贴底，像一张小面板 */
+  .rule-scope-pop {
+    left: 0; right: 0; top: auto; bottom: 0;
+    width: auto; max-height: 72vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .rule-scope-foot-tip { flex-basis: 100%; }
+  .rule-scope-foot-actions { margin-left: auto; }
+}
 
 @media (max-width: 720px) {
   /* 密度降级：控件长到 36px（命中高度补到 44），头部一行只留 8px 间距。

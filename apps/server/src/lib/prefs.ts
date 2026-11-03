@@ -9,6 +9,7 @@
  */
 
 import { isSafeRegex } from './regex-safety';
+import { normalizeScope, type RuleScope } from './scope';
 
 export const APPEARANCE_DEFAULTS = {
   theme: 'auto',
@@ -132,6 +133,7 @@ export interface FilterRule {
   field: string;
   kind: 'kw' | 're';
   pattern: string;
+  scope: RuleScope;
 }
 
 export function sanitizeFilters(raw: unknown, maxPattern = 200): FilterRule[] {
@@ -157,7 +159,7 @@ export function sanitizeFilters(raw: unknown, maxPattern = 200): FilterRule[] {
     let id = typeof r.id === 'string' ? r.id.trim().slice(0, 40) : '';
     if (!id || seen.has(id)) id = 'f' + (out.length + 1);
     seen.add(id);
-    out.push({ id, on: r.on !== false, act, field, kind, pattern });
+    out.push({ id, on: r.on !== false, act, field, kind, pattern, scope: normalizeScope(r.scope) });
   }
   return out;
 }
@@ -189,6 +191,7 @@ export interface WatchRule {
   act: string;
   notify: boolean;
   on: boolean;
+  scope: RuleScope;
 }
 
 function normalizeKeywords(raw: unknown): string[] {
@@ -235,6 +238,7 @@ export function sanitizeWatchRules(raw: unknown): WatchRule[] {
       // notify 只对 watch 有意义：「这条被屏蔽了」不值得通知
       notify: act === 'watch' && r.notify === true,
       on: r.on !== false,
+      scope: normalizeScope(r.scope),
     });
   }
   return out;
