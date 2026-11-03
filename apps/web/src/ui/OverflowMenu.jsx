@@ -95,14 +95,21 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
       setSubOpen(false);
       const t = menuRef.current.querySelector('[data-subtrigger]');
       t && t.focus();
-    } else if (ev.key === 'ArrowDown') {
+      return;
+    }
+    // 子菜单内自己漫游；必须 stopPropagation，否则同一击会冒泡到父菜单的
+    // focusWithin，再挪一格——最后两格之间来回跳，中间项永远选不到。
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Home' || ev.key === 'End') {
       ev.preventDefault();
-      const i = subRef.current.querySelectorAll('[role="menuitemradio"]');
-      i.length && i[0].focus();
-    } else if (ev.key === 'ArrowUp') {
-      ev.preventDefault();
-      const i = subRef.current.querySelectorAll('[role="menuitemradio"]');
-      i.length && i[i.length - 1].focus();
+      ev.stopPropagation();
+      const items = subRef.current ? Array.from(subRef.current.querySelectorAll('[role="menuitemradio"]')) : [];
+      if (!items.length) return;
+      const idx = items.indexOf(document.activeElement);
+      let next;
+      if (ev.key === 'Home') next = 0;
+      else if (ev.key === 'End') next = items.length - 1;
+      else next = Math.max(0, Math.min(items.length - 1, (idx < 0 ? 0 : idx) + (ev.key === 'ArrowDown' ? 1 : -1)));
+      items[next].focus();
     }
   };
 

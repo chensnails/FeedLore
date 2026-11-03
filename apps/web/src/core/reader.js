@@ -516,7 +516,9 @@ export function rdExpandGroup(name) {
 
 /* ---------- 频道 / 范围 / 分组切换（ReaderView 经桥调用） ---------- */
 export function readerSetScope(scope) {
-  if (scope === state.rdScope && state.rdFeedId == null && state.rdGroup == null) return;
+  // rdWatch 也算「已经偏离了默认范围」：在关注/屏蔽视图里整篇文章仍属于 rdScope='all'，
+  // 少这一项会让点「全部文章」直接短路，看起来像按钮坏了。
+  if (scope === state.rdScope && state.rdFeedId == null && state.rdGroup == null && state.rdWatch == null) return;
   state.rdScope = scope;
   setLayout('rdScope', scope);   // 默认范围按账号持久化
   state.rdFeedId = null;

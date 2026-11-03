@@ -62,9 +62,10 @@ export const ChannelList = memo(function ChannelList({
 
   const total = groups.reduce((n, g) => n + g.feeds.reduce((m, f) => m + Number(f.entryCount || 0), 0), 0);
 
+  // 关注/屏蔽视图下 rdScope 仍是 'all'，范围行不能跟着高亮（两行同时 active 会误导）
   const scopeBtn = (key, ico, name, n, cls) => (
-    <button className={'rd-ch' + (atAll && activeGroup == null && activeScope === key ? ' active' : '')}
-      type="button" data-scope={key} aria-pressed={activeScope === key && atAll ? 'true' : 'false'}
+    <button className={'rd-ch' + (atAll && activeWatch == null && activeScope === key ? ' active' : '')}
+      type="button" data-scope={key} aria-pressed={activeScope === key && atAll && activeWatch == null ? 'true' : 'false'}
       onClick={() => onScope && onScope(key)}>
       <span className={'rd-ch-avatar ' + cls}><Icon n={ico} /></span>
       <span className="rd-ch-name">{name}</span>

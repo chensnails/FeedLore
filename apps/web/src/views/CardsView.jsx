@@ -272,7 +272,15 @@ export function CardsView() {
   // 「/」聚焦委托：app.js 的全局快捷键经此把焦点交到本组件输入框
   // （窄屏下框是收着的，先展开再聚焦 —— 见下面 searchOpen 的 effect）
   useEffect(() => {
-    window.__cardsFocusSearch = () => { setSearchOpen(true); };
+    /* 直接聚焦而不只依赖 searchOpen 的 effect：框已经展开时 setSearchOpen(true)
+       不会触发状态变化，再按「/」就落到空白处。rAF 等展开的样式切换落地后再聚焦。 */
+    window.__cardsFocusSearch = () => {
+      setSearchOpen(true);
+      requestAnimationFrame(() => {
+        const el = searchRef.current;
+        if (el) { el.focus(); if (typeof el.select === 'function') el.select(); }
+      });
+    };
     return () => { delete window.__cardsFocusSearch; };
   }, []);
 
@@ -296,15 +304,23 @@ export function CardsView() {
     if (!st.hasMore) return undefined;
     const check = () => {
       if (st.loading || !st.hasMore || st.loadMoreErr) return;
+      // 视图隐藏时 measurement 全部归零：哨兵 top 必然 < innerHeight，会被误判成
+      // 「已到底部」而把整个列表在后台分页拉完。只有卡片页可见时才自动加载。
+      const host = document.getElementById('cardsView');
+      if (host && host.hidden) return;
       const el = document.getElementById('cardsSentinel');
       if (el && el.getBoundingClientRect().top < window.innerHeight + 480) {
         if (s.cardsLoadMore) s.cardsLoadMore();
       }
     };
     document.addEventListener('scroll', check, { capture: true, passive: true });
+    // 从别的页面切回来时补一次判定：effect 依赖不变，光等 scroll 事件会漏掉「重新显示」
+    const onView = () => { setTimeout(check, 0); };
+    window.addEventListener('__viewChanged', onView);
     const t = setTimeout(check, 350);
     return () => {
       document.removeEventListener('scroll', check, { capture: true });
+      window.removeEventListener('__viewChanged', onView);
       clearTimeout(t);
     };
   }, [st.hasMore, st.loading, st.loadMoreErr]);
@@ -363,7 +379,7 @@ export function CardsView() {
       emptyAction = { label: '清除标签', run: () => s.cardsTag(null) };
     } else {
       emptyMsg = groupFilter ? '该分组暂无内容'
-        : st.feedFilter == null ? '所选频道暂无内容' : '这个频道还没有内容';
+        : st.feedFilter == null ? '还没有内容' : '这个频道还没有内容';
       emptyAction = groupFilter
         ? { label: '查看全部频道', run: () => s.cardsFilterFeed('') }
         : st.feedFilter == null

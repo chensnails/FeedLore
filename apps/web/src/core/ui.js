@@ -391,7 +391,8 @@ document.addEventListener('keydown', (ev) => {
   const t = ev.target;
   if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
   if (window.__settingsOpen || window.__cmdkOpen || window.__confirmOpen) return;
-  if (document.querySelector('.lightbox, .modal-mask, .dd-mask:not([hidden])')) return;
+  // 设置弹层常驻挂载（关闭时只是 hidden），必须排除隐藏态，否则「/」永远被它吃掉
+  if (document.querySelector('.lightbox, .modal-mask:not([hidden]), .dd-mask:not([hidden])')) return;
   ev.preventDefault();
   focusSearchBox();
 });

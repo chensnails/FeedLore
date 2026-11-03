@@ -19,6 +19,7 @@ const S = () => core;
 function ConfirmDialog({ c }) {
   const valueRef = useRef(null);
   const okRef = useRef(null);
+  const formRef = useRef(null);
   const [value, setValue] = useState('');
 
   // 每次打开重置输入值，并把焦点放到该去的地方（有输入框 → 输入框，否则 → 主按钮）
@@ -33,13 +34,28 @@ function ConfirmDialog({ c }) {
   }, [c.open, c.input]);
 
   // Esc = 取消。用捕获阶段并阻断冒泡，避免同一击把设置弹层 / 命令面板也关掉。
+  // Tab 也一并收在这个对话框里：它是叠在设置弹层之上的独立模态，焦点不能漏到背景。
   useEffect(() => {
     if (!c.open) return undefined;
     const onKey = (ev) => {
-      if (ev.key !== 'Escape') return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      S().cancelConfirm();
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        S().cancelConfirm();
+        return;
+      }
+      if (ev.key !== 'Tab') return;
+      const root = formRef.current;
+      if (!root) return;
+      const items = Array.from(root.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])'))
+        .filter((el) => !el.disabled);
+      if (!items.length) { ev.preventDefault(); return; }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const at = document.activeElement;
+      if (!root.contains(at)) { ev.preventDefault(); first.focus(); return; }
+      if (ev.shiftKey && at === first) { ev.preventDefault(); last.focus(); }
+      else if (!ev.shiftKey && at === last) { ev.preventDefault(); first.focus(); }
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
@@ -64,6 +80,7 @@ function ConfirmDialog({ c }) {
       onMouseDown={(ev) => { if (ev.target === ev.currentTarget) S().cancelConfirm(); }}
     >
       <form
+        ref={formRef}
         className={'modal confirm' + (c.danger ? ' is-danger' : '')}
         role="alertdialog"
         aria-modal="true"
@@ -142,9 +159,13 @@ function Lightbox({ box, close }) {
         ev.stopPropagation();
         close();
       } else if (ev.key === 'Tab') {
+        if (window.__confirmOpen) return;   // 确认框叠在上面时，Tab 归它管
+        // 灯箱里所有按钮（上一张 / 下一张 / 关闭）一起循环，键盘也能切图
+        const f = rootRef.current ? Array.from(rootRef.current.querySelectorAll('button')) : [];
+        if (!f.length) { ev.preventDefault(); if (rootRef.current) rootRef.current.focus(); return; }
         ev.preventDefault();
-        if (closeRef.current) closeRef.current.focus();
-        else if (rootRef.current) rootRef.current.focus();
+        const idx = f.indexOf(document.activeElement);
+        f[(idx + (ev.shiftKey ? -1 : 1) + f.length) % f.length].focus();
       }
     };
     document.addEventListener('keydown', onKey, true);

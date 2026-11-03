@@ -1274,6 +1274,19 @@ const withEFP = (el, fn) => {
     if (fn.indexOf('rdExpandGroup(') < 0) throw new Error('readerSetFeed 未在选中频道时展开所属分组');
   });
 
+  // 关注/屏蔽视图下 rdScope 仍是 'all'：早退条件漏掉 rdWatch 会让「全部文章」变成死按钮
+  t('核心：readerSetScope 早退条件包含 rdWatch', () => {
+    const js = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'core', 'reader.js'), 'utf8');
+    const start = js.indexOf('export function readerSetScope');
+    const end = js.indexOf('export function readerSetGroup');
+    const fn = start >= 0 && end > start ? js.slice(start, end) : '';
+    if (!fn) throw new Error('找不到 readerSetScope');
+    const guard = (fn.match(/if \(scope === state\.rdScope[^\n]*\) return;/) || [])[0] || '';
+    if (!/state\.rdWatch == null/.test(guard)) {
+      throw new Error('readerSetScope 早退条件漏了 rdWatch：关注视图里点「全部文章」会被短路');
+    }
+  });
+
   // ============ 外壳与宿主 ============
   t('初始：遮罩常驻但 hidden', () => { const m = mask(); if (!m) throw new Error('无遮罩'); if (m.hidden !== true) throw new Error('初始应隐藏'); });
   t('初始：__settingsOpen 未定义/false', () => { if (w.__settingsOpen) throw new Error('__settingsOpen=' + w.__settingsOpen); });
@@ -3391,6 +3404,12 @@ const withEFP = (el, fn) => {
     if (!C('#cardsSentinel')) throw new Error('缺滚动哨兵 #cardsSentinel');
     if (!C('.loadmore-wrap #loadingMore')) throw new Error('缺加载圆点');
   });
+  // 隐藏视图里哨兵几何全为 0，会被误判成「到底」而把整个列表后台拉完
+  t('源码守卫：卡片页隐藏时不后台自动翻页，切回可见时补一次判定', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'views', 'CardsView.jsx'), 'utf8');
+    if (!/getElementById\('cardsView'\)[\s\S]{0,80}hidden/.test(src)) throw new Error('自动加载未检查 #cardsView 是否隐藏');
+    if (!/__viewChanged/.test(src)) throw new Error('切回卡片页没有补判定，隐藏期间跳过后会一直不加载');
+  });
 
   // 骨架态
   w.feedlore.state.loading = true; w.feedlore.state.entries = []; cardsTick();
@@ -3685,6 +3704,11 @@ const withEFP = (el, fn) => {
     if (!callsOf('readerSetWatch').some((c) => c[1] === 'watch')) throw new Error('未触发');
     if (!R('#readerChannels .rd-ch[data-watch="watch"]').classList.contains('active')) throw new Error('未高亮');
     if (R('#readerTitle').textContent !== '关注') throw new Error('标题: ' + R('#readerTitle').textContent);
+  });
+  t('标注：关注视图下范围行不再跟着高亮', () => {
+    if (RA('#readerChannels .rd-ch[data-scope]').some((x) => x.classList.contains('active'))) {
+      throw new Error('关注视图下范围行仍高亮（两行同时 active 会误导）');
+    }
   });
   R('#readerChannels .rd-ch[data-watch="watch"]').click();
   await sleep(30);
@@ -4338,9 +4362,15 @@ const withEFP = (el, fn) => {
       if (c2.toggleKbdHelp !== undefined) throw new Error('core 不应再导出 toggleKbdHelp');
     });
     t('冒烟：`/` 聚焦搜索（命令面板里一直写着这个提示）', () => {
+      // 设置弹层常驻挂载、关着时只是 hidden —— 隐藏遮罩不能把「/」吃掉
+      const hiddenMask = sw.document.createElement('div');
+      hiddenMask.className = 'modal-mask';
+      hiddenMask.hidden = true;
+      sw.document.body.appendChild(hiddenMask);
       const ev = new sw.KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true });
       sw.document.dispatchEvent(ev);
-      if (!ev.defaultPrevented) throw new Error('`/` 未被拦截，浏览器会往页面里打一个斜杠');
+      hiddenMask.remove();
+      if (!ev.defaultPrevented) throw new Error('`/` 未被拦截，浏览器会往页面里打一个斜杠（可能被隐藏的 .modal-mask 挡住）');
       // 输入框里打字时不能抢：在 input 上派发同一个键，不应被拦截
       const input = sw.document.createElement('input');
       sw.document.body.appendChild(input);

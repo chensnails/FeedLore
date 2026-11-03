@@ -15,6 +15,7 @@ export function CommandPalette() {
   const [active, setActive] = useState(0);
   const inputRef = useRef(null);
   const listRef = useRef(null);
+  const panelRef = useRef(null);
 
   // ⌘K (mac) / Ctrl+K (win) 开关面板（与原实现一致）
   useEffect(() => {
@@ -83,6 +84,22 @@ export function CommandPalette() {
 
   const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) close(); };
 
+  // Tab 不跑出面板：否则模态对话框会把焦点送到背后的页面上
+  const onPanelKeyDown = (ev) => {
+    if (ev.key !== 'Tab') return;
+    const root = panelRef.current;
+    if (!root) return;
+    const items = Array.from(root.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])'))
+      .filter((el) => !el.disabled);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const at = document.activeElement;
+    if (!root.contains(at)) { ev.preventDefault(); first.focus(); return; }
+    if (ev.shiftKey && at === first) { ev.preventDefault(); last.focus(); }
+    else if (!ev.shiftKey && at === last) { ev.preventDefault(); first.focus(); }
+  };
+
   const isMac = /mac|iphone|ipad|ipod/i.test(
     (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '');
 
@@ -121,7 +138,8 @@ export function CommandPalette() {
 
   return (
     <div className="cmdk-mask" onClick={onMaskClick}>
-      <div className="cmdk" role="dialog" aria-modal="true" aria-label="命令面板">
+      <div className="cmdk" role="dialog" aria-modal="true" aria-label="命令面板"
+        ref={panelRef} onKeyDown={onPanelKeyDown}>
         <div className="cmdk-input-wrap">
           <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
           {/* ↑↓ 只改 active 状态、焦点始终留在输入框，必须靠 aria-activedescendant

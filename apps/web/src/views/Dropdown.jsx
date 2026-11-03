@@ -50,6 +50,16 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     if (triggerRef.current) triggerRef.current.focus();
   };
 
+  // 焦点被 Tab 移出整个下拉时收起。这里不能走 close()——它会把焦点抢回触发键，
+  // 等于把刚 Tab 出去的用户又弹回原地。焦点掉到页面外（relatedTarget 为空）时不动。
+  const onBlur = (ev) => {
+    if (!open) return;
+    const next = ev.relatedTarget;
+    if (!next || (rootRef.current && rootRef.current.contains(next))) return;
+    setOpen(false);
+    setHi(-1);
+  };
+
   // 打开期间：点外面 / Esc 关闭（移动端另有遮罩点击 + 关闭按钮）
   useEffect(() => {
     if (!open) return;
@@ -203,7 +213,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   }
 
   return (
-    <div className={'dd' + (open ? ' open' : '')} id={wrapId} ref={rootRef} onKeyDown={onKeyDown}>
+    <div className={'dd' + (open ? ' open' : '')} id={wrapId} ref={rootRef} onKeyDown={onKeyDown} onBlur={onBlur}>
       <button type="button" id={id} ref={triggerRef} className={'select dd-trigger' + (icon ? ' has-icon' : '')}
         title={title} aria-label={ariaLabel || title} aria-haspopup="listbox" aria-expanded={open}
         onClick={() => { if (open) close(); else openPanel(); }}>

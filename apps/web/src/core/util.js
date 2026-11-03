@@ -197,6 +197,7 @@ export function shortUrl(url) {
 
 /* 链接选择菜单：多条链接时从按钮旁弹出（fixed 定位，自动避让视口边缘） */
 export let linkMenuEl = null;
+let linkMenuReturnFocus = null;
 export function closeLinkMenu() {
   if (!linkMenuEl) return;
   linkMenuEl.remove();
@@ -205,14 +206,40 @@ export function closeLinkMenu() {
   document.removeEventListener('keydown', onLinkMenuKey, true);
   window.removeEventListener('resize', closeLinkMenu);
   window.removeEventListener('scroll', closeLinkMenu, true);
+  // 菜单是键盘可达的：关掉时把焦点还给打开它的按钮，别让用户掉到 body
+  const back = linkMenuReturnFocus;
+  linkMenuReturnFocus = null;
+  if (back && document.contains(back) && typeof back.focus === 'function') back.focus();
 }
 export function onLinkMenuDocClick(ev) {
   if (linkMenuEl && !linkMenuEl.contains(ev.target)) closeLinkMenu();
 }
-export function onLinkMenuKey(ev) { if (ev.key === 'Escape') closeLinkMenu(); }
+export function onLinkMenuKey(ev) {
+  if (!linkMenuEl) return;
+  if (ev.key === 'Escape') {
+    ev.preventDefault();
+    ev.stopPropagation();
+    closeLinkMenu();
+    return;
+  }
+  if (ev.key === 'Tab') { closeLinkMenu(); return; }
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Home' || ev.key === 'End') {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const items = Array.from(linkMenuEl.querySelectorAll('.link-menu-item'));
+    if (!items.length) return;
+    const idx = items.indexOf(document.activeElement);
+    let next;
+    if (ev.key === 'Home') next = 0;
+    else if (ev.key === 'End') next = items.length - 1;
+    else next = Math.max(0, Math.min(items.length - 1, (idx < 0 ? 0 : idx) + (ev.key === 'ArrowDown' ? 1 : -1)));
+    items[next].focus();
+  }
+}
 
 export function openLinkMenu(anchor, urls, onPick) {
   closeLinkMenu();
+  linkMenuReturnFocus = document.activeElement;
   const menu = document.createElement('div');
   menu.className = 'link-menu';
   menu.setAttribute('role', 'menu');
@@ -231,6 +258,10 @@ export function openLinkMenu(anchor, urls, onPick) {
   if (top + menu.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - menu.offsetHeight - gap);
   menu.style.left = left + 'px';
   menu.style.top = top + 'px';
+
+  // 弹出即入焦首项，↑↓ 漫游（见 onLinkMenuKey）
+  const first = menu.querySelector('.link-menu-item');
+  if (first) first.focus();
 
   menu.addEventListener('click', (ev) => {
     const item = ev.target.closest('.link-menu-item');

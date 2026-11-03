@@ -518,8 +518,15 @@ export function ReaderView() {
   }, []);
 
   useEffect(() => {
-    // 命令面板 / 「/」快捷键要求聚焦搜索：窄屏下得先把搜索框展开，否则焦点落到 display:none 上
-    window.__readerFocusSearch = () => { setSearchOpen(true); };
+    // 命令面板 / 「/」快捷键要求聚焦搜索：窄屏下得先把搜索框展开，否则焦点落到 display:none 上。
+    // 已展开时 setSearchOpen(true) 不会触发状态变化，这里直接聚焦，保证再按「/」同样生效。
+    window.__readerFocusSearch = () => {
+      setSearchOpen(true);
+      requestAnimationFrame(() => {
+        const el = searchRef.current;
+        if (el) { el.focus(); if (typeof el.select === 'function') el.select(); }
+      });
+    };
     return () => { delete window.__readerFocusSearch; };
   }, []);
 
