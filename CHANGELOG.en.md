@@ -9,6 +9,12 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ## Unreleased
 
+(None)
+
+## 2.2.0-rc.3 — 2026-11-04
+
+> Pre-release for validation: `latest` still points at 2.1.0 and no GitHub Release is created.
+
 ### Added
 
 - **Read state is synced between the article and card views**: expanding an article,
@@ -24,6 +30,14 @@ This file records user-visible changes and deployment-related changes for 2.x.
 ### Changed
 
 - After "mark all as read", the card list is fetched once more so dots and counts stay in sync.
+
+### Deployment
+
+- Image: `ghcr.io/chensnails/feedlore:2.2.0-rc.3` (amd64 + arm64); `latest` still points at
+  2.1.0 and no GitHub Release is created.
+- **Upgrading from 2.2.0-rc.2**: change `V2_IMAGE` to `…:2.2.0-rc.3` and run `up -d`. There is
+  no database or API change; read state is still stored per entry on the server, and only the
+  way the front end presents and syncs it has changed.
 
 ## 2.2.0-rc.2 — 2026-11-03
 
