@@ -24,7 +24,8 @@ This file records user-visible changes and deployment-related changes for 2.x.
   (14 / 15 / 16 / 18 / 20px). Existing small / medium / large selections keep their values,
   no migration needed.
 - **"Font size" renamed to "UI font size"** to distinguish it from "Reader font size": the
-  former scales buttons, lists and settings, the latter only the article body.
+  former scales the whole site proportionally (including the article body), the latter
+  affects only the article body.
 
 ## 2.2.0-rc.1 — 2026-11-03
 

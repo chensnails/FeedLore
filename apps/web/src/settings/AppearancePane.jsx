@@ -21,7 +21,7 @@ const SEG_ROWS = [
   },
   {
     key: 'fontSize', label: '界面字号', attr: 'data-font-size',
-    small: '按钮、列表、设置一起缩放；文章正文用下面的「正文字号」',
+    small: '整站等比缩放（含正文）；正文大小可再用下面的「正文字号」微调',
     options: [['s', '小'], ['m', '中'], ['l', '大']],
   },
   {
