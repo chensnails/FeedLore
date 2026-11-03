@@ -154,7 +154,7 @@
         location.replace(safeNext(next));
         return;
       }
-      showError(data.error || '登录失败');
+      showError(window.errText(data, '登录失败'));
     } catch (_) {
       showError('网络异常，请重试');
     } finally {

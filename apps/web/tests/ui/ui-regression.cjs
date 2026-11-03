@@ -4991,6 +4991,18 @@ const withEFP = (el, fn) => {
     }
   });
 
+  t('登录页错误走词典（服务端只回错误码，中文由 errText 生成）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const html = fs.readFileSync(path.join(root, 'login.html'), 'utf8');
+    if (!/showError\(window\.errText\(data, '登录失败'\)\)/.test(html)) {
+      throw new Error('login.html 又直接显示 data.error 了：那现在是 E_BAD_CREDENTIALS 这类码，用户看不懂');
+    }
+    const entry = fs.readFileSync(path.join(root, 'src', 'login-main.js'), 'utf8');
+    if (!/window\.errText\s*=\s*errorText/.test(entry)) {
+      throw new Error('login-main.js 没把 errorText 挂到 window，内联脚本会拿到 undefined');
+    }
+  });
+
   t('CDN：构建产物带内容哈希，且服务器按哈希分档设缓存', () => {
     const root = path.join(__dirname, '..', '..');
     const vite = fs.readFileSync(path.join(root, 'vite.config.ts'), 'utf8');
