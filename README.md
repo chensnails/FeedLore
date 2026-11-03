@@ -4,11 +4,8 @@
 > 多用户、无广告、无遥测，所有数据都在你自己的 PostgreSQL 里。
 
 **在线体验**：https://feedlore.669600.xyz · 演示账户 `demo` / `demo`
-（普通用户角色，数据可能随使用变动或重置。想试多用户隔离，请自己部署一份。）
 
-当前版本 **2.1.0** · [更新日志](CHANGELOG.md) · [从 1.x 升级](UPGRADE-v2.md)
-
----
+当前版本 **2.1.0** · [更新日志](CHANGELOG.md) · [升级与部署](UPGRADE-v2.md)
 
 ## 这是什么
 
@@ -16,58 +13,21 @@
 点开就地读全文；值得回头看的资源进卡片墙。文章、图片、已读状态、收藏、规则与模型配置
 全部存在你自己的服务器上，不经过任何第三方。
 
-2.x 是 1.x 的重写：服务端换成 Hono + better-auth + Drizzle，界面与交互沿用 1.x，
-数据仍在 PostgreSQL。**1.x 站点可以零配置升级**，原账号密码直接可登录。
+## 功能
 
-## 功能一览
-
-### 阅读
-
-- **专注阅读**：左频道（按分组）右文章，点标题就地展开全文；已读 / 未读 / 收藏齐全，
-  服务端搜索、页面自动刷新（有新内容时浮标提示）都在。
-- **卡片页按分组阅读**：频道栏与桌面频道下拉的分组行都有「只看这组」，与文章页交互一致；
-  卡片与文章两个视图可以互相跳转并高亮落点。
-- **计数按 k / w 压缩**：侧栏文章、分组与频道计数超过 1k 显示 `1.2k`、超过 1w 显示 `1.5w`，
-  不封顶，也不带 `+`。
-
-### 订阅与采集
-
-- **订阅管理**：OPML 导入 / 导出（含分组、自动去重）、频道重命名、订阅地址可改、
-  分组拖拽排序、单频道抓取频率；连续失败的频道会自动停用并提示。
-- **可选全文抓取**：订阅只给摘要时，可在频道上开启「全文」，由服务端抓原文并提取正文。
-- **图文原样呈现**：图片按原文顺序内联，统一经服务端代理加载，源站防盗链也不会裂图。
-
-### 规则
-
-- **关注 / 屏蔽**：关键词规则给条目打标，命中「关注」的集中在一个智能分组里，不改动原文
-  章位置；关注标记按保留天数自动退出（默认 90 天，可改为 0 = 永久保留），每条关注规则
-  单独决定是否推送 Webhook。
-- **入库前过滤**：按关键词或正则设置「丢弃」或「只收」，可选只匹配标题 / 摘要 / 正文；
-  在写库之前执行，只影响之后新抓的条目。
-- **按范围生效**：两类规则都能限定到指定分组或频道。勾选分组会动态跟随组内以后新增的
-  频道；只勾单个频道则不受分组变动影响。新规则默认一个都不选（不生效），已有规则保持
-  对全部频道生效。
-
-### 卡片墙
-
-- **网格 / 列表**两种排布，按频道、分组筛选与搜索，点卡片直接看全文；点正文里的标签
-  可筛出同标签卡片。
-
-### 账号与外观
-
+- **阅读**：左频道（按分组）右文章，点标题就地展开全文；已读 / 未读 / 收藏、服务端搜索、
+  自动刷新一应俱全。
+- **卡片墙**：网格 / 列表两种排布，按频道、分组筛选与搜索，与文章页互相跳转并高亮落点。
+- **订阅管理**：OPML 导入导出（含分组、自动去重）、频道重命名与改址、分组拖拽排序、
+  单频道抓取频率；可对只给摘要的频道开启全文抓取，连续失败的频道会自动停用。
+- **规则**：关注 / 屏蔽关键词给条目打标，关注条目集中在智能分组中，可设保留天数自动退出；
+  入库前可按关键词或正则「丢弃 / 只收」。两类规则都能限定到指定分组或频道。
 - **多用户与角色**：每人独立订阅源、已读、收藏、规则与模型配置；账号由管理员创建，
-  默认不开放注册。只读账户只能阅读与调整自己的阅读偏好，配置类写操作由服务端拒绝。
-- **外观可定制**：4 套主题、6 套主色，界面字号 / 字体 / 行高 / 阅读宽度 / 卡片密度可调，
-  即时生效并按账号保存。
-- **移动端当 App 用**：整屏弹层、下拉关闭、侧缘滑动手势；HTTPS 下「添加到主屏幕」
-  即可安装，外壳离线可打开。
-
-### 其它
-
-- **可选的 AI 日报**：在「设置 → 模型」填自己的地址 / Key / 模型名，再在「设置 → 日报」
-  设定生成时间与写作风格，即可按账号把过去 24 小时的新条目整理成中文简报；
-  不配 Key 不影响其它功能。
-- **自带更新通道**：「设置 → 关于」检查版本，配合 Watchtower 可一键更新。
+  支持只读账户。默认不开放注册。
+- **外观与移动端**：4 套主题、6 套主色，字号 / 字体 / 行高 / 阅读宽度 / 卡片密度可调；
+  手机端支持整屏弹层、下拉关闭与侧缘手势，HTTPS 下可添加到主屏幕。
+- **AI 日报**：按账号配置模型，把过去 24 小时的新条目整理成中文简报；不配置不影响其它功能。
+- **一键更新**：设置页检查版本，配合 Watchtower 直接更新。
 
 ## 界面截图
 
@@ -75,41 +35,14 @@
 | --- | --- |
 | ![文章阅读页](docs/screenshots/02-reader.png) | ![文章阅读页 · 暗色](docs/screenshots/06-reader-dark.png) |
 
-| 卡片墙（浅色） | 卡片墙（暗色） |
+| 卡片墙 | 手机端 |
 | --- | --- |
-| ![卡片墙](docs/screenshots/03-cards.png) | ![卡片墙 · 暗色](docs/screenshots/07-cards-dark.png) |
+| ![卡片墙](docs/screenshots/03-cards.png) | ![手机端整屏详情](docs/screenshots/10-mobile-detail.png) |
 
-| 卡片详情弹窗 | 数据源管理（分组 / 采集参数） |
-| --- | --- |
-| ![卡片详情弹窗](docs/screenshots/04-card-detail.png) | ![数据源管理](docs/screenshots/05-settings.png) |
+## 快速开始
 
-| 从卡片页跳到文章页：滚到那条并高亮 |
-| --- |
-| ![落点高亮](docs/screenshots/08-jump-flash.png) |
-
-| 手机端 · 卡片墙 | 手机端 · 整屏详情（可下拉关闭） |
-| --- | --- |
-| ![手机端卡片墙](docs/screenshots/09-mobile-cards.png) | ![手机端整屏详情](docs/screenshots/10-mobile-detail.png) |
-
----
-
-## 部署
-
-### 环境要求
-
-- 一台能跑 Docker 的 Linux / NAS / 小主机，**Docker 24+ 与 Compose v2**；
-  镜像同时提供 amd64 与 arm64；
-- 一个空闲端口（默认 `3210`）；
-- 不需要单独安装 PostgreSQL：compose 里自带 `postgres:18.4`，数据放在命名卷
-  `feedlore-pgdata`；
-- 手机 / 浏览器能访问到这台机器；要装成 App 或走公网，建议再配 HTTPS 反向代理。
-
-部署只需要一份 compose 文件：`docker-compose.v2.release.yml`（`.env` 是可选的覆盖项）。
-**不需要克隆源码。**
-
-### 1. 启动
-
-零配置启动，**不需要 `.env`，也不需要预先填任何变量或密码**：
+要求 Docker 24+ 与 Compose v2，一个空闲端口（默认 `3210`）。不需要克隆源码，也不需要
+预先准备 `.env`。
 
 ```bash
 mkdir feedlore && cd feedlore
@@ -117,190 +50,49 @@ curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-co
 docker compose -f docker-compose.v2.release.yml up -d
 ```
 
-每次 `up -d` 都会先跑一遍 `upgrade` 服务（幂等）：建库 → 建表 → 迁移 1.x 数据
-（全新安装按空站点跳过）→ 校验；它也可以充当后续版本的数据库结构迁移。
-**`upgrade` 成功退出后**，应用容器才会启动。
-
-首次启动要拉镜像并迁移数据，可能需要几分钟；想看进度或排查失败可执行
+首次启动会拉取镜像并建库、初始化数据库，可能需要几分钟；想看进度或排查失败可执行
 `docker compose -f docker-compose.v2.release.yml logs upgrade`。
 
-### 2. 获取初始密码并登录
-
-全新站点第一次启动时会自动创建管理员 `admin`，并生成一个**一次性随机密码**，
-只在启动日志里打印一次：
+全新站点会创建管理员 `admin`，并生成一次性随机密码，只在启动日志里打印一次：
 
 ```bash
 docker compose -f docker-compose.v2.release.yml logs app | grep '一次性密码'
 ```
 
-拿到后浏览器访问 `http://<主机>:3210`，用 `admin` + 该密码登录，并**立即到
-「设置 → 账号」修改密码**。
+拿到密码后访问 `http://<主机>:3210` 登录，并立即在「设置 → 账号」修改。随后在
+「设置 → 数据源」添加 RSS / Atom 或导入 OPML，即可开始阅读。
 
-想在首次启动时就指定账号密码，可在启动前创建 `.env` 并设置 `ADMIN_USER` /
-`ADMIN_PASS`；已有账号的站点不会被覆盖，也不会再生成随机密码。如果错过了日志里的
-一次性密码，且站点还没有数据，可以清空数据卷重新部署；已有数据请从备份恢复或由
-管理员重置。
+## 配置与升级
 
-### 3. 第一次使用
+默认值开箱可用。需要改端口、走 HTTPS 反代、复用数据库密码或指定初始账号时，把
+[`.env.example`](.env.example) 复制为 `.env`，每个变量的含义与默认值都写在文件注释里，
+改完重新 `up -d` 即可。
 
-1. 管理员在「设置 → 账号 / 用户管理」创建其他成员（没有开放注册）；
-2. 在「设置 → 数据源」粘贴 RSS / Atom 添加频道，或导入 OPML；
-3. 回到「文章」或「卡片」页开始读；
-4. 需要 AI 日报时，各自在「设置 → 模型」填地址 / Key / 模型名。
-
-### 4. 可选配置
-
-默认值已经够用；需要改端口、走 HTTPS 反代、复用 1.x 数据库密码或指定初始账号时，
-复制模板为 `.env` 再修改，然后重新 `up -d`：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/chensnails/FeedLore/main/.env.example -o .env
-# 编辑 .env 后
-docker compose -f docker-compose.v2.release.yml up -d
-```
-
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `HOST_PORT` | `3210` | 宿主机端口 |
-| `PG_DB` / `PG_USER` | `feedlore` | 1.x 源库的数据库名 / 用户 |
-| `PG_PASSWORD` | `feedlore` | 数据库密码；**已有 1.x 站点升级时必须填原来的值** |
-| `V2_DB_NAME` | `feedlore_v2` | 2.x 实际使用的库；1.x 的库保持只读 |
-| `V2_IMAGE` | `…/feedlore:2.1.0` | 钉版本号；改成 `…:latest` 则跟随 Watchtower 滚动 |
-| `ADMIN_USER` / `ADMIN_PASS` | `admin` / 随机 | 仅空站点首次启动时生效；不填密码则生成一次性随机口令，只在启动日志打印一次 |
-| `AUTH_SECRET` | 留空 | 自动生成并存入 v2 库；**一旦有值不要再改** |
-| `AUTH_BASE_URL` | 留空 | 留空按访问 Host 做同源校验；多域名 / 反代改写 Host 时建议填 |
-| `AUTH_TRUSTED_ORIGINS` | 留空 | 额外信任的来源，逗号分隔 |
-| `AUTH_SECURE_COOKIES` | `0` | 纯 HTTP 必须为 `0`；HTTPS 反代下设 `1` |
-| `WATCHTOWER_HTTP_API_TOKEN` | `feedlore-update` | 「一键更新」用；只在容器网络内有效 |
-| `REFRESH_MINUTES` / `KEEP_PER_FEED` / `KEEP_DAYS` | `30` / `300` / `90` | 采集默认值，仅新库首次落库时生效 |
-| `UPGRADE_SKIP_BACKUP` / `UPGRADE_SKIP_IMAGE_CACHE` | 留空 | 升级时跳过库内快照 / 图片缓存迁移 |
-| `ALLOW_PRIVATE_HOSTS` | 留空 | 订阅内网 RSS、连本机 Ollama 时设 `1` |
-| `TRUST_PROXY` | 留空 | 反代后面要按真实 IP 限流时设 `1` |
-
-默认数据库密码 `feedlore` 与更新令牌 `feedlore-update` 都只在 Docker 内部网络使用，
-数据库和 Watchtower 端口没有映射到宿主机。若这台机器上还跑着其它容器、或你介意默认值，
-请在首次启动前用 `.env` 覆盖 `PG_PASSWORD` 与 `WATCHTOWER_HTTP_API_TOKEN`。
-
-### 从 1.x 升级
-
-| 你的情况 | 做法 |
-| --- | --- |
-| 1.x + Watchtower（默认部署方式） | **什么都不用做**：`latest` 已指向 2.x，Watchtower 会自动换镜像；2.x 启动时自建 `feedlore_v2` 并迁移，日志出现 `自举完成` 后用原账号密码登录 |
-| 想手动 / 分步升级 | 用同一份 `docker-compose.v2.release.yml`：`upgrade` 先迁移，成功后才替换应用 |
-| 回滚 | 用 1.x 的 `docker-compose.release.yml` 重新拉起，并把镜像钉到具体 1.x 版本（如 `feedlore:1.7.4`）——`latest` 已属于 2.x，不能再用来回滚 |
-
-完整步骤、迁移内容与注意事项见 **[UPGRADE-v2.md](UPGRADE-v2.md)**。
-
-### 更新
-
-- **钉版本号（默认，推荐）**：镜像固定为 `feedlore:2.1.0`，不会自己变化。改 `.env` 的
-  `V2_IMAGE` 为新版本后重新 `up -d`。
-- **跟随 latest**：把 `V2_IMAGE` 设为 `ghcr.io/chensnails/feedlore:latest`，Watchtower
-  每 5 分钟检查并重建；也可以在「设置 → 关于 → 一键更新」立即触发。
-- 预发布版本只推版本号标签、不动 `latest`，普通部署不会收到。
-- 跟随 `latest` 时，Watchtower 升级成功后会删掉上一版镜像（compose 里已设
-  `WATCHTOWER_CLEANUP=true`），不必手工 `docker rmi` 清理旧版本。
-- 2.1.0 没有数据库结构变更；从 2.0.x 直接换镜像重启即可。
-
-查看容器内实际版本：
-
-```bash
-docker exec feedlore node -e "console.log(require('/app/package.json').version)"
-```
-
-### 反向代理 / HTTPS
-
-用 Nginx、Caddy、Traefik 等把域名转到 `HOST_PORT`，并注意：
-
-- `AUTH_BASE_URL` 填用户实际访问的地址，例如 `https://feed.example.com`；
-- HTTPS 下 `AUTH_SECURE_COOKIES=1`（纯 HTTP 保持 `0`，否则浏览器不回传 Cookie，
-  表现为「登录成功但仍未登录」）；
-- 反代要转发 `X-Forwarded-For` 时设 `TRUST_PROXY=1`；
-- 若同时用域名和 IP 访问，把另一个来源加进 `AUTH_TRUSTED_ORIGINS`。
-
-### 备份与恢复
-
-2.x 的数据都在 `feedlore_v2` 库（`.env` 的 `V2_DB_NAME`）。以下命令按默认库名 /
-用户给出，改过 `PG_USER`、`PG_PASSWORD`、`V2_DB_NAME` 时替换成自己的值：
-
-```bash
-# 备份
-docker exec feedlore-db pg_dump -U feedlore -d feedlore_v2 -Fc \
-  > feedlore-$(date +%F).dump
-```
-
-恢复时停应用、用 `pg_restore` 导入后重启：
-
-```bash
-# 已部署的站点：恢复前先停应用
-docker compose -f docker-compose.v2.release.yml stop app
-docker exec -i feedlore-db pg_restore -U feedlore -d feedlore_v2 \
-  --clean --if-exists --no-owner < feedlore-2026-11-03.dump
-docker compose -f docker-compose.v2.release.yml start app
-
-# 新机器：先起数据库、建同名空库再导入，最后起全部服务
-docker compose -f docker-compose.v2.release.yml up -d db
-docker exec feedlore-db createdb -U feedlore feedlore_v2
-docker exec -i feedlore-db pg_restore -U feedlore -d feedlore_v2 \
-  --no-owner < feedlore-2026-11-03.dump
-docker compose -f docker-compose.v2.release.yml up -d
-```
-
-迁移到新机器时，除了数据库，还要带走 `.env`（尤其 `PG_PASSWORD`、`AUTH_SECRET`、
-`WATCHTOWER_HTTP_API_TOKEN`）与反代配置。只备份订阅可用「设置 → 数据源 → 导出 OPML」
-（不含已读 / 收藏 / 规则）。
-
-### 常见问题
-
-| 现象 | 原因 / 处理 |
-| --- | --- |
-| 登录成功但马上又变回未登录 | 纯 HTTP 下开了 `AUTH_SECURE_COOKIES=1`；改回 `0` |
-| 登录 / 登出被 Origin 拦截 | 填对 `AUTH_BASE_URL`；多域名时补 `AUTH_TRUSTED_ORIGINS` |
-| 不知道初始密码 | 只在空站点首次启动时打印一次：`docker compose -f docker-compose.v2.release.yml logs app \| grep '一次性密码'`；已有站点请用原密码 |
-| `upgrade` 失败、应用没起来 | `logs upgrade` 看具体错误；磁盘不足或图片缓存过大可先设 `UPGRADE_SKIP_IMAGE_CACHE=1` |
-| 订阅内网 RSS / Ollama 失败 | `ALLOW_PRIVATE_HOSTS=1`（仅在你信任这些地址时） |
-| 更新后版本没变 | 镜像钉了版本号 / Watchtower 还没轮询；查实际版本或用「一键更新」 |
-| 日报不生成 | 模型配置按账号独立，先在该账号「设置 → 模型」填好地址 / Key |
-
----
+- **从 1.x 升级**：开着 Watchtower 的站点无需操作，会自动迁移并保留原账号密码；
+  手动步骤、回滚与备份见 [UPGRADE-v2.md](UPGRADE-v2.md)。
+- **更新**：镜像默认钉版本号，换版本改 `V2_IMAGE`；设为 `:latest` 则跟随 Watchtower
+  滚动升级，也可在「设置 → 关于」一键更新。
 
 ## 本地开发
 
-需要 Node ≥ 22（pnpm 由 corepack 按 `packageManager` 提供）。
+需要 Node ≥ 22。
 
 ```bash
 pnpm install
-
-# 任一 PostgreSQL 18 实例
 export DATABASE_URL=postgres://user:pass@127.0.0.1:5432/feedlore_v2
 pnpm --filter @feedlore/db migrate
-
 pnpm --filter @feedlore/server dev   # http://127.0.0.1:3000
-pnpm --filter @feedlore/web dev      # Vite，5173，/api 代理到 3000
-
-pnpm -r typecheck
-pnpm -r test                          # 单元；接口级测试需要 DATABASE_URL
-pnpm --filter @feedlore/web build && node scripts/verify-dist.mjs
+pnpm --filter @feedlore/web dev      # Vite，5173
 ```
 
-## 技术栈
+接口定义与校验集中在 `packages/contract`，采集、规则、日报与图片缓存位于 `apps/server`，
+前端位于 `apps/web`。测试与类型检查：
 
-| 目录 | 内容 |
-| --- | --- |
-| `apps/server` | Hono + better-auth + Drizzle；采集调度、规则匹配、日报、图片缓存、契约校验 |
-| `apps/web` | React + Vite（PWA），交互沿用 1.x |
-| `packages/contract` | 前后端唯一真相源：端点、DTO 与 Zod 校验 |
-| `packages/db` | Drizzle schema 与迁移 |
-| `packages/auth` | better-auth 实例与用户名登录 |
-| `packages/ai` | 模型调用、加密与日报生成 |
-| `packages/client` | 前端类型安全 API 客户端 |
-
-运行时全链路按 UTC 记录时间；1.x 的源码与 compose 只保留在 tag `v1.7.4`。
+```bash
+pnpm -r typecheck
+pnpm -r test
+```
 
 ## 许可
 
-[GPL-3.0](LICENSE)（GNU General Public License v3.0）。
-
-本仓库当前版本按 GPL-3.0 发布；此前已发布的版本（2.0.7 及更早）仍按当时的 MIT 许可授权。
-分发本项目的修改版或二进制（含 Docker 镜像）时，请按 GPL-3.0 提供对应源代码：
-<https://github.com/chensnails/feedlore>。
+[GPL-3.0](LICENSE)。
