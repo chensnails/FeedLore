@@ -450,6 +450,7 @@ export const prefsResponse = z.object({
   layout: M.LayoutSchema,
   filters: z.array(M.FilterRuleSchema),
   watchRules: z.array(M.WatchRuleSchema),
+  watchExpireDays: z.number().int().min(0).max(3650),
   webhookUrl: z.string(),
   digest: M.DigestConfigSchema,
   llm: M.LlmViewSchema,
@@ -463,6 +464,7 @@ export const prefsPatchBody = z.object({
   layout: M.LayoutSchema.partial().optional(),
   filters: z.array(M.FilterRuleSchema).optional(),
   watchRules: z.array(M.WatchRuleInputSchema).optional(),
+  watchExpireDays: z.number().int().min(0).max(3650).optional(),
   webhookUrl: z.string().optional(),
   digest: M.DigestConfigSchema.partial().optional(),
   llm: M.LlmConfigSchema.partial().optional(),
@@ -476,6 +478,7 @@ export const prefsUpdateResponse = z.object({
   layout: M.LayoutSchema,
   filters: z.array(M.FilterRuleSchema),
   watchRules: z.array(M.WatchRuleSchema),
+  watchExpireDays: z.number().int().min(0).max(3650),
   webhookUrl: z.string(),
   digest: M.DigestConfigSchema,
 });

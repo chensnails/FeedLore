@@ -86,6 +86,8 @@ const miniFeeds = [
   { id: '3', url: 'https://blog.example.org/atom.xml', title: '某人的博客', customTitle: null, groupName: '', enabled: false, cardEnabled: true, fullText: false, refreshMinutes: null, sortOrder: 2, entryCount: 88, lastFetchedAt: null, status: null, error: '' },
 ];
 let miniGroupOrder = ['科技'];
+// 关注保留天数（规则 panel 的自动退出设置）
+let miniWatchExpireDays = 90;
 // 条目过滤规则（v2.7.0）：WatchPane（规则 tab）读 /api/prefs 的 filters，保存后由 mock 的 sanitize 回填
 let miniFilters = [
   { id: 'f1', on: true, act: 'block', field: 'title', kind: 'kw', pattern: '广告' },
@@ -263,6 +265,7 @@ w.feedlore = {
       return ok({
         llm: prefsLlm, groupOrder: miniGroupOrder.slice(), appearance: {}, filters: miniFilters.slice(),
         layout: { digestEnabled: prefsDigestEnabled }, digest: Object.assign({}, prefsDigest),
+        watchExpireDays: miniWatchExpireDays,
       });
     }
     if (url === '/api/prefs' && method === 'POST') {
@@ -312,7 +315,11 @@ w.feedlore = {
             pattern: f.pattern.trim().slice(0, 200),
           }));
       }
-      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), appearance: {}, layout: {}, filters: miniFilters.slice(), digest: Object.assign({}, prefsDigest) });
+      if (body && body.watchExpireDays !== undefined) {
+        const n = Number(body.watchExpireDays);
+        miniWatchExpireDays = Number.isFinite(n) ? Math.min(3650, Math.max(0, Math.round(n))) : 90;
+      }
+      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), appearance: {}, layout: {}, filters: miniFilters.slice(), digest: Object.assign({}, prefsDigest), watchExpireDays: miniWatchExpireDays });
     }
     if (url === '/api/digest/test-llm') return ok({ ok: true, reply: 'pong' });
     if (url === '/api/version') return ok(versionResponse);
@@ -2422,6 +2429,21 @@ const withEFP = (el, fn) => {
     if (rows.length !== 2) throw new Error('回填后行数 ' + rows.length);
     const res = document.querySelector('#filterResult');
     if (res.textContent.indexOf('1 条为空或非法，已丢弃') < 0) throw new Error('差量提示: ' + res.textContent);
+  });
+
+  t('关注自动退出：默认 90 天回填', () => {
+    const el = document.querySelector('#watchExpireDays');
+    if (!el) throw new Error('缺关注保留天数输入框');
+    if (el.value !== '90') throw new Error('默认天数: ' + el.value);
+  });
+  setVal(document.querySelector('#watchExpireDays'), '30');
+  await sleep(30);
+  document.querySelector('[data-sec="watch-rules"] .watch-actions .btn-primary').click();
+  await sleep(80);
+  t('关注自动退出：保存 30 天并回填', () => {
+    const body = lastPostBody('/api/prefs');
+    if (body.watchExpireDays !== 30) throw new Error('提交天数: ' + body.watchExpireDays);
+    if (document.querySelector('#watchExpireDays').value !== '30') throw new Error('回填天数: ' + document.querySelector('#watchExpireDays').value);
   });
 
   // 回到账号面板继续后面的账号保存用例

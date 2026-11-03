@@ -305,7 +305,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
       /* UPDATE 里不能给表起别名（见 read-all 的注释）；子查询做 owner 隔离，
        * 因为 entries 表本身没有 owner 列 —— 条件里必须落到 feeds.owner_id。 */
       const clearedRes = await db.execute(sql`
-        update entries set watch_state = null, watch_rule = null
+        update entries set watch_state = null, watch_rule = null, watch_tagged_at = null
          where (watch_state is not null or watch_rule is not null)
            and feed_id in (select id from feeds where owner_id = ${uid})
       `);
@@ -361,7 +361,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
         for (const g of groups.values()) {
           await db
             .update(entriesTable)
-            .set({ watchState: g.state, watchRule: g.rule })
+            .set({ watchState: g.state, watchRule: g.rule, watchTaggedAt: new Date() })
             .where(
               and(
                 inArray(entriesTable.id, g.ids),

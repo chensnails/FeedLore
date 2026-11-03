@@ -22,6 +22,7 @@ import { safeFetch } from './net';
 import { normalizeItem, parseFeed, type NormalizedItem } from './rss';
 import { applyFilters } from './filter';
 import { classify, notifyRuleNames, type WatchVerdict } from './watch';
+import { expireWatchTags } from './watch-expire';
 import { userFilters, userWatchRules, userWebhook } from './prefs';
 import { enhanceWithFullText, pruneArticleCache } from './fulltext';
 import {
@@ -336,7 +337,7 @@ async function markWatch(db: Db, feedId: number, verdicts: WatchVerdict[]): Prom
   for (const g of groups.values()) {
     await db
       .update(entries)
-      .set({ watchState: g.state, watchRule: g.rule })
+      .set({ watchState: g.state, watchRule: g.rule, watchTaggedAt: new Date() })
       .where(and(eq(entries.feedId, feedId), inArray(entries.guid, g.guids)));
   }
 }
@@ -638,6 +639,8 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = '抓取'): P
   await flushWatchNotify(db, prefs);
 
   const pruned = await pruneEntries(db, cfg).catch(() => 0);
+  // 关注保留期：标签到期自动退出关注（各用户天数不同，屏蔽不参与）
+  const watchExpired = await expireWatchTags(db).catch(() => 0);
   // 原文缓存只服务于全文抓取，跟条目裁剪分开清理（收藏条目的缓存也跟着过期）
   await pruneArticleCache(db).catch(() => 0);
 
@@ -665,6 +668,7 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = '抓取'): P
     + (failed.length ? `，失败 ${failed.length} 个` : '')
     + (autoDisabled ? `，连续失败自动停用 ${autoDisabled} 个` : '')
     + (filtered ? `，按过滤规则丢弃 ${filtered} 条` : '')
+    + (watchExpired ? `，关注到期 ${watchExpired} 条` : '')
     + (pruned ? `，清理 ${pruned} 条` : '')
     + `，耗时 ${Date.now() - startedAt}ms`,
   );

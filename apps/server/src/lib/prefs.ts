@@ -164,6 +164,18 @@ export function sanitizeFilters(raw: unknown, maxPattern = 200): FilterRule[] {
 
 /* ---------------- 关注 / 屏蔽规则 ---------------- */
 
+export const WATCH_EXPIRE_DEFAULT_DAYS = 90;
+const WATCH_EXPIRE_MAX_DAYS = 3650;
+
+/** 关注保留天数：0 = 永不自动退出；缺省 / 非法值回落默认 90 天。 */
+export function sanitizeWatchExpireDays(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw
+    : typeof raw === 'string' && raw.trim() !== '' ? Number(raw)
+      : NaN;
+  if (!Number.isFinite(n)) return WATCH_EXPIRE_DEFAULT_DAYS;
+  return Math.min(WATCH_EXPIRE_MAX_DAYS, Math.max(0, Math.round(n)));
+}
+
 const WATCH_MAX_RULES = 30;
 const WATCH_MAX_KEYWORDS = 50;
 const WATCH_KEYWORD_MAX = 60;
@@ -315,6 +327,7 @@ export const userAppearance = (prefs: PrefsBag) => sanitizeAppearance(bag(prefs,
 export const userLayout = (prefs: PrefsBag) => sanitizeLayout(bag(prefs, 'layout'));
 export const userFilters = (prefs: PrefsBag) => sanitizeFilters(bag(prefs, 'filters'));
 export const userWatchRules = (prefs: PrefsBag) => sanitizeWatchRules(bag(prefs, 'watchRules'));
+export const userWatchExpireDays = (prefs: PrefsBag) => sanitizeWatchExpireDays(bag(prefs, 'watchExpireDays'));
 export const userWebhook = (prefs: PrefsBag) => sanitizeWebhook(bag(prefs, 'webhookUrl'));
 export const userDigest = (prefs: PrefsBag) => sanitizeDigest(bag(prefs, 'digest'));
 

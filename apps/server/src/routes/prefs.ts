@@ -41,15 +41,18 @@ import {
   sanitizeFilters,
   sanitizeLayout,
   sanitizeWatchRules,
+  sanitizeWatchExpireDays,
   sanitizeWebhook,
   userAppearance,
   userDigest,
   userFilters,
   userGroupOrder,
   userLayout,
+  userWatchExpireDays,
   userWatchRules,
   userWebhook,
 } from '../lib/prefs';
+import { expireWatchTags } from '../lib/watch-expire';
 import { assertPublicHost } from '../lib/net';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
@@ -107,6 +110,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           layout: userLayout(prefs),
           filters: userFilters(prefs),
           watchRules: userWatchRules(prefs),
+          watchExpireDays: userWatchExpireDays(prefs),
           webhookUrl: userWebhook(prefs),
           digest: userDigest(prefs),
           llm: userLlmForView(llmRow, secret),
@@ -132,7 +136,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         /* 只读账户仍可调整「怎么看」（外观 / 布局 / 分组顺序），
          * 但不能再改「抓什么、怎么处理」：过滤规则、关注屏蔽、Webhook、日报、模型全部拒绝。 */
         if (c.get('user').role === 'readonly') {
-          const blocked = (['filters', 'watchRules', 'webhookUrl', 'digest', 'llm'] as const)
+          const blocked = (['filters', 'watchRules', 'watchExpireDays', 'webhookUrl', 'digest', 'llm'] as const)
             .filter((k) => body[k] !== undefined);
           if (blocked.length) {
             throw new HTTPException(403, { message: '只读账户不能修改订阅规则、模型或日报配置' });
@@ -170,6 +174,9 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         if (Array.isArray(body.watchRules)) {
           next.watchRules = sanitizeWatchRules(body.watchRules);
         }
+        if (body.watchExpireDays !== undefined) {
+          next.watchExpireDays = sanitizeWatchExpireDays(body.watchExpireDays);
+        }
 
         if (typeof body.webhookUrl === 'string') {
           const hook = sanitizeWebhook(body.webhookUrl);
@@ -198,6 +205,11 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           .update(users)
           .set({ prefs: next, updatedAt: sql`now()` })
           .where(eq(users.id, uid));
+
+        // 缩短保留期要立刻生效，不必等下一轮抓取
+        if (body.watchExpireDays !== undefined) {
+          await expireWatchTags(db, uid).catch(() => 0);
+        }
 
         /* ---- 模型配置：写 user_llm 侧表 ----
          * apiKey 走 packages/ai 的 AEAD 加密（与 legacy 密文格式兼容，迁移不用重填）。
@@ -248,6 +260,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
             layout: userLayout(next),
             filters: userFilters(next),
             watchRules: userWatchRules(next),
+            watchExpireDays: userWatchExpireDays(next),
             webhookUrl: userWebhook(next),
             digest: userDigest(next),
           },

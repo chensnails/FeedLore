@@ -176,6 +176,8 @@ export const entries = pgTable(
     links: text('links').array(), // 可复制链接（v17）
     watchState: text('watch_state'), // null|'watch'|'block'（v21）
     watchRule: text('watch_rule'),
+    // 进入「关注」的时刻：规则可设置保留天数，到期自动移除关注标记（屏蔽不受影响）
+    watchTaggedAt: timestamp('watch_tagged_at', { mode: 'date' }),
   },
   (t) => [
     uniqueIndex('entries_feed_id_guid_key').on(t.feedId, t.guid),

@@ -44,8 +44,10 @@ export function WatchPane() {
   const s = S();
   const [rules, setRules] = useState([]);
   const [webhook, setWebhook] = useState('');
+  const [expireDays, setExpireDays] = useState('90'); // 关注保留天数，0 = 永不
   const [savedRules, setSavedRules] = useState('');   // JSON 指纹，用来算「改过没」
   const [savedWebhook, setSavedWebhook] = useState('');
+  const [savedExpireDays, setSavedExpireDays] = useState('90');
   const [busy, setBusy] = useState('');               // save | apply | webhook | ''
   const [result, setResult] = useState(null);         // { ok, msg } | null
 
@@ -65,10 +67,13 @@ export function WatchPane() {
         if (!alive) return;
         const r = fromServer(d.watchRules);
         const w = typeof d.webhookUrl === 'string' ? d.webhookUrl : '';
+        const days = Number.isFinite(Number(d.watchExpireDays)) ? String(Number(d.watchExpireDays)) : '90';
         setRules(r);
         setWebhook(w);
+        setExpireDays(days);
         setSavedRules(JSON.stringify(r));
         setSavedWebhook(w);
+        setSavedExpireDays(days);
         setFilters(Array.isArray(d.filters) ? d.filters : []);
       } catch (err) {
         if (alive) setResult({ ok: false, msg: '读取失败：' + String((err && err.message) || err) });
@@ -95,6 +100,7 @@ export function WatchPane() {
 
   const rulesDirty = JSON.stringify(rules) !== savedRules;
   const webhookDirty = webhook !== savedWebhook;
+  const expireDirty = expireDays.trim() !== savedExpireDays;
 
   const patchRule = (id, patch) => {
     setRules((rs) => rs.map((r) => (r.id === id ? Object.assign({}, r, patch) : r)));
@@ -103,16 +109,22 @@ export function WatchPane() {
   const onSaveRules = async () => {
     setBusy('save');
     try {
+      // 空输入按默认值提交，避免 Number('') = 0 把「永不退出」误存进去
+      const rawDays = expireDays.trim() === '' ? 90 : Number(expireDays);
+      const days = Number.isFinite(rawDays) ? Math.max(0, Math.min(3650, Math.round(rawDays))) : 90;
       const res = await s.apiFetch('/api/prefs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ watchRules: toServer(rules) }),
+        body: JSON.stringify({ watchRules: toServer(rules), watchExpireDays: days }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setResult({ ok: false, msg: data.error || '保存失败' }); return; }
       const next = fromServer(data.watchRules);
+      const nextDays = Number.isFinite(Number(data.watchExpireDays)) ? String(Number(data.watchExpireDays)) : String(days);
       setRules(next);
+      setExpireDays(nextDays);
       setSavedRules(JSON.stringify(next));
+      setSavedExpireDays(nextDays);
       // 服务端清洗会丢掉非法规则，数量对不上要如实说
       const dropped = rules.length - next.length;
       setResult({ ok: true, msg: dropped > 0
@@ -241,6 +253,20 @@ export function WatchPane() {
           </small>
         </div>
 
+        <div className="form-row form-row-inline">
+          <label htmlFor="watchExpireDays">关注自动退出</label>
+          <input
+            id="watchExpireDays" type="number" inputMode="numeric" min="0" max="3650" step="1"
+            style={{ width: '6.5em', flex: '0 0 auto' }}
+            value={expireDays}
+            onChange={(ev) => setExpireDays(ev.target.value)}
+          />
+          <span className="muted">天后自动移除关注（0 = 永不；默认 90 天）</span>
+          <small className="form-tip">
+            只清「关注」标记，文章仍留在原频道；已读 / 收藏状态不变，屏蔽不受影响。到期清理在下一轮刷新时执行。
+          </small>
+        </div>
+
         <div className="form-row">
           <label className="form-row-head">
             <span>关注 / 屏蔽规则（{rules.length}/30）</span>
@@ -314,7 +340,7 @@ export function WatchPane() {
         ) : null}
 
         <div className="watch-actions">
-          <button className="btn btn-primary" type="button" disabled={busy === 'save' || !rulesDirty}
+          <button className="btn btn-primary" type="button" disabled={busy === 'save' || !(rulesDirty || expireDirty)}
             onClick={onSaveRules}>
             {busy === 'save' ? '保存中…' : '保存规则'}
           </button>
