@@ -9,6 +9,12 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ## Unreleased
 
+(nothing yet)
+
+## 2.2.0-rc.2 — 2026-11-03
+
+> Pre-release for validation: `latest` still points at 2.1.0 and no GitHub Release is created.
+
 ### Fixed
 
 - **Reader font size had no effect on mobile**: the ≤720px media query forced the body to
@@ -31,6 +37,16 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - **"Font size" renamed to "UI font size"** to distinguish it from "Reader font size": the
   former scales the whole site proportionally (including the article body), the latter
   affects only the article body.
+
+### Deployment
+
+- Image: `ghcr.io/chensnails/feedlore:2.2.0-rc.2` (amd64 + arm64); `latest` still points at
+  2.1.0 and no GitHub Release is created.
+- **Upgrading from 2.2.0-rc.1 or 2.1.0**: change `V2_IMAGE` to `…:2.2.0-rc.2` and run `up -d`.
+  There is no database structure change and the startup migration still runs idempotently;
+  legacy `prefs.appearance` data stays in the database but is no longer read.
+- **API compatibility**: `GET /api/prefs` and `POST /api/prefs` no longer include the
+  `appearance` field. Third-party clients should keep appearance locally or ignore it.
 
 ## 2.2.0-rc.1 — 2026-11-03
 

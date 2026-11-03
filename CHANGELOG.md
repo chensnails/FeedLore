@@ -9,6 +9,12 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 
 ## 未发布
 
+（暂无）
+
+## 2.2.0-rc.2 — 2026-11-03
+
+> 预发布版本：用于发布前验证，`latest` 仍指向 2.1.0，未创建 GitHub Release。
+
 ### 修复
 
 - **移动端「正文字号」不生效**：≤720px 的媒体查询把正文强制成界面字号，盖掉了外观
@@ -25,6 +31,16 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
   已选的小 / 中 / 大保持原值，无需迁移。
 - **「字号」改名为「界面字号」**：与「正文字号」区分——前者是整站等比缩放（含正文），
   后者只作用于文章正文。
+
+### 部署
+
+- 镜像：`ghcr.io/chensnails/feedlore:2.2.0-rc.2`（amd64 + arm64）；`latest` 仍指向 2.1.0，
+  未创建 GitHub Release。
+- **从 2.2.0-rc.1 或 2.1.0 升级**：把 `V2_IMAGE` 改成 `…:2.2.0-rc.2` 后 `up -d` 即可。
+  本次没有数据库结构变更，启动迁移照常幂等执行；账号里遗留的 `prefs.appearance` 不再读取，
+  但不会删除。
+- **API 兼容性**：`GET /api/prefs` 与 `POST /api/prefs` 的请求 / 响应不再包含 `appearance`
+  字段；第三方调用方请改为本机保存或忽略该字段。
 
 ## 2.2.0-rc.1 — 2026-11-03
 
