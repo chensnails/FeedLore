@@ -38,6 +38,7 @@ import {
   SessionSchema,
 } from '@feedlore/contract';
 import { createApp } from './app';
+import { createTarGz } from './lib/tar';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? '';
 
@@ -59,6 +60,16 @@ function parse<T>(schema: z.ZodType<T>, body: unknown, what: string): T {
     assert.fail(`${what} 的响应不符合契约：${JSON.stringify(r.error.issues)}`);
   }
   return r.data;
+}
+
+/** 用服务端同一套归档器造上传包，避免测试自己手搓 tar 头。 */
+async function buildArchive(files: Record<string, string>): Promise<Buffer> {
+  const ar = createTarGz();
+  for (const [name, data] of Object.entries(files)) await ar.add(name, data);
+  await ar.close();
+  const chunks: Buffer[] = [];
+  for await (const chunk of ar.readable) chunks.push(Buffer.from(chunk as Buffer));
+  return Buffer.concat(chunks);
 }
 
 /** 解开导出包（我们只写 ustar，不写 PAX），返回 文件名 → 内容。 */
@@ -107,11 +118,11 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
   let jar = '';
   async function call(
     path: string,
-    init: { method?: string; json?: unknown; body?: string } = {},
+    init: { method?: string; json?: unknown; body?: string | Uint8Array } = {},
   ): Promise<Response> {
     const headers = new Headers({ origin: ORIGIN });
     if (jar) headers.set('cookie', jar);
-    let body: string | undefined;
+    let body: string | Uint8Array | undefined;
     if (init.json !== undefined) {
       headers.set('content-type', 'application/json');
       body = JSON.stringify(init.json);
@@ -145,6 +156,8 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
   const email = `${username}@example.test`;
   const password = 'itest-pass-1234';
   let userId = '';
+  let userArchive = Buffer.alloc(0);
+  let siteArchive = Buffer.alloc(0);
 
   try {
     /* ---------------------------------------------------------------- 公开端点 */
@@ -543,7 +556,9 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         res.headers.get('content-disposition') ?? '',
         /^attachment; filename="feedlore-.+\.tar\.gz"$/,
       );
-      const files = readTarGz(await res.arrayBuffer());
+      const raw = await res.arrayBuffer();
+      userArchive = Buffer.from(raw);
+      const files = readTarGz(raw);
 
       const manifest = JSON.parse(files.get('manifest.json')!.toString('utf8')) as {
         kind: string; username: string; counts: { feeds: number; entries: number };
@@ -588,7 +603,9 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       const res = await call('/api/backup');
       assert.equal(res.status, 200);
       assert.match(res.headers.get('content-type') ?? '', /application\/gzip/);
-      const files = readTarGz(await res.arrayBuffer());
+      const raw = await res.arrayBuffer();
+      siteArchive = Buffer.from(raw);
+      const files = readTarGz(raw);
 
       const manifest = JSON.parse(files.get('manifest.json')!.toString('utf8')) as {
         kind: string; includes: { sessions: boolean };
@@ -602,6 +619,93 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         assert.ok(files.has(name), `备份缺 ${name}`);
       }
       assert.ok(![...files.keys()].some((k) => /^sessions|verification/i.test(k)));
+    });
+
+    /* ---------------------------------------------------------------- 数据导入 */
+    await t.test('账号导入：重复导入自己的导出包是幂等的，不改动现有标记', async () => {
+      const fd = (await db.execute(
+        sql`select id from feeds where owner_id = ${userId} and url = 'https://example.com/itest-feed.xml'`,
+      )) as unknown as { rows: Array<{ id: string }> };
+      const feedId = Number(fd.rows[0]!.id);
+
+      // 导出包里的这两条是「未读 / 未收藏」；导入必须跳过它们，而不是把标记刷回去
+      await db.execute(sql`update entries set is_read = true, is_favorite = true where feed_id = ${feedId}`);
+      const res = await call('/api/import', { method: 'POST', body: userArchive });
+      assert.equal(res.status, 200, await res.clone().text());
+      const out = (await res.json()) as {
+        ok: boolean; kind: string;
+        feeds: { inserted: number; skipped: number };
+        entries: { inserted: number; skipped: number };
+        prefs: boolean;
+      };
+      assert.equal(out.ok, true);
+      assert.equal(out.kind, 'user');
+      assert.deepEqual(out.feeds, { inserted: 0, skipped: 1 });
+      assert.deepEqual(out.entries, { inserted: 0, skipped: 2 });
+      assert.equal(out.prefs, false, '已有偏好时不应被导出包覆盖');
+
+      const flags = (await db.execute(
+        sql`select bool_and(is_read) as read, bool_and(is_favorite) as fav from entries where feed_id = ${feedId}`,
+      )) as unknown as { rows: Array<{ read: boolean; fav: boolean }> };
+      assert.equal(flags.rows[0]!.read, true, '已读状态应保留');
+      assert.equal(flags.rows[0]!.fav, true, '收藏状态应保留');
+    });
+
+    await t.test('账号导入：补缺失频道与文章，按 (频道, guid) 去重', async () => {
+      const archive = await buildArchive({
+        'manifest.json': JSON.stringify({ format: 'feedlore-backup', formatVersion: 1, kind: 'user' }),
+        'feeds.json': JSON.stringify([
+          { url: 'https://example.com/import-feed.xml', title: '导入频道' },
+        ]),
+        'digests.json': '[]',
+        'entries-0001.jsonl': [
+          // 新频道的新文章：应写入，且保留包里的已读标记
+          { feedUrl: 'https://example.com/import-feed.xml', guid: 'imp-1', title: '导入文章', isRead: true },
+          // 已有文章的 guid：应跳过，且不把库里的标记改回 false
+          { feedUrl: 'https://example.com/itest-feed.xml', guid: 'itest-1', title: '冲突文章', isRead: false },
+        ].map((r) => JSON.stringify(r)).join('\n'),
+      });
+
+      const res = await call('/api/import', { method: 'POST', body: archive });
+      assert.equal(res.status, 200, await res.clone().text());
+      const out = (await res.json()) as {
+        feeds: { inserted: number; skipped: number };
+        entries: { inserted: number; skipped: number };
+      };
+      assert.deepEqual(out.feeds, { inserted: 1, skipped: 0 });
+      assert.deepEqual(out.entries, { inserted: 1, skipped: 1 });
+
+      const added = (await db.execute(sql`
+        select e.is_read from entries e join feeds f on f.id = e.feed_id
+        where f.url = 'https://example.com/import-feed.xml' and e.guid = 'imp-1'
+      `)) as unknown as { rows: Array<{ is_read: boolean }> };
+      assert.equal(added.rows[0]?.is_read, true, '新文章应带上包里的已读状态');
+
+      const conflict = (await db.execute(sql`
+        select e.is_read from entries e join feeds f on f.id = e.feed_id
+        where f.url = 'https://example.com/itest-feed.xml' and e.guid = 'itest-1'
+      `)) as unknown as { rows: Array<{ is_read: boolean }> };
+      assert.equal(conflict.rows[0]?.is_read, true, '冲突文章不应被改成未读');
+
+      // 再导一次：全部跳过（幂等）
+      const again = await call('/api/import', { method: 'POST', body: archive });
+      assert.equal(again.status, 200);
+      const out2 = (await again.json()) as {
+        feeds: { inserted: number; skipped: number };
+        entries: { inserted: number; skipped: number };
+      };
+      assert.deepEqual(out2.feeds, { inserted: 0, skipped: 1 });
+      assert.deepEqual(out2.entries, { inserted: 0, skipped: 2 });
+    });
+
+    await t.test('导入拒绝坏包，整站包不能走账号导入入口', async () => {
+      const bad = await call('/api/import', { method: 'POST', body: Buffer.from('not a tar.gz') });
+      assert.equal(bad.status, 400);
+      assert.equal(((await bad.json()) as { error: string }).error, 'E_IMPORT_INVALID');
+
+      const wrongKind = await call('/api/import', { method: 'POST', body: siteArchive });
+      assert.equal(wrongKind.status, 400);
+      assert.equal(((await wrongKind.json()) as { error: string }).error, 'E_IMPORT_INVALID');
     });
 
     /* ---------------------------------------------------------------- 只读角色 */
@@ -660,6 +764,46 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
 
       const s = parse(SessionSchema, await (await call('/api/session')).json(), 'GET /api/session');
       assert.equal(s.authenticated, false);
+    });
+
+    /* ---------------------------------------------------------------- 整站还原
+     * 放在最后：它会清空并重建全库，之后的用例都不该再有登录态。 */
+    await t.test('整站还原：替换数据、旧会话失效、账号可重新登录', async () => {
+      // 只读用例把当前账号降过级，还原入口要求管理员
+      await db.execute(sql`update users set role = 'admin' where id = ${userId}`);
+      const before = await loginAs(username, password);
+      await db.execute(sql`
+        insert into feeds (owner_id, url, title)
+        values (${userId}, 'https://example.com/only-before-restore.xml', '还原前临时源')
+      `);
+
+      jar = before;   // 登出用例已经清空了主 Cookie 罐
+      const res = await call('/api/restore', { method: 'POST', body: siteArchive });
+      assert.equal(res.status, 200, await res.clone().text());
+      const out = (await res.json()) as {
+        ok: boolean; kind: string; counts: { users: number; feeds: number; entries: number };
+      };
+      assert.equal(out.ok, true);
+      assert.equal(out.kind, 'site');
+      assert.ok(out.counts.users >= 1);
+      assert.equal(out.counts.feeds, 1);
+      assert.equal(out.counts.entries, 2, '备份包里只有两条文章');
+
+      const gone = (await db.execute(sql`
+        select count(*)::int as n from feeds where url = 'https://example.com/only-before-restore.xml'
+      `)) as unknown as { rows: Array<{ n: number }> };
+      assert.equal(gone.rows[0]!.n, 0, '还原应清掉备份之后新增的数据');
+
+      const oldSession = await app.request('/api/session', { headers: { cookie: before } });
+      const s = parse(SessionSchema, await oldSession.json(), 'GET /api/session (before restore)');
+      assert.equal(s.authenticated, false, '还原后旧会话必须失效');
+
+      // 账号与密码哈希随备份恢复：能重新登录，频道也回来了
+      const afterCookie = await loginAs(username, password);
+      const feedsRes = await app.request('/api/feeds', { headers: { cookie: afterCookie } });
+      assert.equal(feedsRes.status, 200);
+      const list = (await feedsRes.json()) as { feeds: Array<{ url: string }> };
+      assert.ok(list.feeds.some((f) => f.url === 'https://example.com/itest-feed.xml'));
     });
   } finally {
     /* 级联清库：users 下所有业务表都是 on delete cascade，删这一行就够。

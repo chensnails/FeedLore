@@ -41,6 +41,7 @@ const CN = {
   E_SESSION_NOT_FOUND: '这台设备已不在登录列表中',
   E_CANNOT_REVOKE_CURRENT: '不能在这里退出当前设备，请用「退出登录」',
   E_BACKUP_IN_PROGRESS: '已经有一份整站备份在生成，等它完成后再试',
+  E_RESTORE_IN_PROGRESS: '已经有一份整站还原在进行，等它完成后再试',
 
   E_FEED_NOT_FOUND: '频道不存在',
   E_FEED_CREATE_FAILED: '频道创建失败',
@@ -81,6 +82,8 @@ const CN = {
   E_UPDATE_TRIGGER_FAILED: '触发更新失败',
   E_UPDATE_NO_RELEASE: 'GitHub 上还没有任何发布',
 
+  E_IMPORT_INVALID: '上传的文件不是有效的导出包，请检查是否选错了文件',
+  E_IMPORT_TOO_LARGE: '上传的文件太大，请检查是否选错了包',
   E_NO_FIELDS_TO_SAVE: '没有可保存的字段',
   E_BAD_REQUEST: '请求参数不合法',
   E_CONTRACT_VIOLATION: '服务响应不符合契约',

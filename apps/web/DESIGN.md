@@ -73,8 +73,15 @@
 - 「账号 → 整站备份」仅管理员可见，走危险确认后下载 `GET /api/backup`；包含所有账号
   （含密码哈希）、站点设置与图片缓存，界面文案必须标明「敏感文件」。同一时间只允许
   一份备份，重复请求返回 `E_BACKUP_IN_PROGRESS`（409）。
+- 「账号 → 数据导入」把导出包上传到 `POST /api/import`（原始 `application/gzip` 请求体，
+  不套 multipart）。合并语义：频道按 URL、文章按 (频道, guid)、日报按 (账号, 日期) 去重，
+  只补缺行；**已存在文章的已读 / 收藏 / 关注保持现状**，偏好只在账号还是空偏好时套用。
+  只读账户不展示入口（服务端也拒绝写）。
+- 「账号 → 整站还原」仅管理员可见，上传整站备份到 `POST /api/restore`。这是**替换**：
+  事务内清空业务表再按原 id 写回，旧会话全部失效，成功后跳登录页。两次危险确认必须保留；
+  与账号导入 / 备份互斥，冲突返回 `E_RESTORE_IN_PROGRESS`（409）。
 - 下载统一走 `core.downloadUrl()`（临时 `<a>` 点击），文件名由服务端的
-  `Content-Disposition` 决定，前端不硬编码。
+  `Content-Disposition` 决定，前端不硬编码；上传统一走 `core.uploadArchive(url, file)`。
 - 折叠分组 / 结果提示 / 底部动作栏统一用 `src/settings/primitives.jsx`（`Section` /
   `Result` / `PaneFoot`）。新面板不要再另抄一段 `details.sec` 或 `pane-foot`，
   否则标题层级、间距与保存栏会再次各走一套。类名与 `data-sec` 仍是原样，样式与
@@ -85,7 +92,7 @@
 ```bash
 corepack pnpm --filter @feedlore/web run build     # 构建
 node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算
-corepack pnpm --filter @feedlore/web run test      # jsdom UI 回归（447 项）
+corepack pnpm --filter @feedlore/web run test      # jsdom UI 回归（453 项）
 corepack pnpm -r run test                          # 契约 + 服务端
 ```
 

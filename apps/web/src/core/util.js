@@ -20,6 +20,24 @@ export async function apiFetch(url, opts) {
   return res;
 }
 
+/** 回登录页。整站还原会清空会话，单独收成一个函数便于测试与复用。 */
+export function goLogin() {
+  location.replace('/login.html');
+}
+
+/**
+ * 上传导出包：请求体就是文件本身（服务端按 `application/gzip` 原始流接收），
+ * 不套 multipart。浏览器给 File 请求体自动带 Content-Length；同源 POST 自带
+ * Origin / Referer，CSRF 中间件照常放行。401 仍由 apiFetch 统一跳登录页。
+ */
+export async function uploadArchive(url, file) {
+  return apiFetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/gzip' },
+    body: file,
+  });
+}
+
 /** 非 2xx 时构造带「服务端原因」的 Error，调用方一律 `throw await httpError(res)`。
  *
  *  以前各处写的是 `throw new Error('HTTP ' + res.status)`，用户只会看到

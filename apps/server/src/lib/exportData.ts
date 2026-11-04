@@ -97,6 +97,7 @@ export async function writeUserExport(ar: TarGzArchive, input: UserExportInput):
       'entries-*.jsonl 每行一篇文章，feedUrl 对应 feeds.json 里的订阅地址。',
       '不含登录会话、图片缓存与全文抓取缓存；模型配置默认不含，导出时勾选才会写入 llm.json。',
       '已读 / 收藏 / 关注标记都在每行文章记录里，换机后可按需要恢复。',
+      '在「设置 · 账号 · 数据导入」上传本包即可合并恢复：已存在的频道与文章会跳过，不改动现有标记。',
     ],
   }));
 
@@ -236,7 +237,7 @@ export async function writeSiteExport(ar: TarGzArchive, db: Db): Promise<void> {
       '敏感文件：含账号密码哈希、加密后的模型 Key 与站点设置，请勿外传。',
       'images/<key> 是图片缓存原文件，键与 image_cache.json 一一对应；article_cache-*.jsonl 是全文抓取缓存。',
       '不含 sessions / verifications：恢复后所有人需要重新登录。',
-      '恢复由运维手工完成（先跑结构迁移，再按表导入）；本包定位是「数据留底 + 换机搬运」，不是一键回滚。',
+      '在「设置 · 账号 · 整站还原」上传本包即可整体还原：会清空并替换当前全站数据，所有人需要重新登录。',
     ],
   }));
 

@@ -15,6 +15,12 @@ test('命中的错误码出中文', () => {
   assert.equal(errorText({ error: 'E_READONLY_CREDENTIAL', status: 403 }), '只读账户不能修改用户名或密码，请联系管理员');
 });
 
+test('导入 / 整站还原的错误码出中文', () => {
+  assert.equal(errorText('E_IMPORT_INVALID'), '上传的文件不是有效的导出包，请检查是否选错了文件');
+  assert.equal(errorText('E_IMPORT_TOO_LARGE'), '上传的文件太大，请检查是否选错了包');
+  assert.equal(errorText({ error: 'E_RESTORE_IN_PROGRESS', status: 409 }), '已经有一份整站还原在进行，等它完成后再试');
+});
+
 test('动态文案从 params 插值', () => {
   assert.equal(
     errorText({ error: 'E_RATE_LIMITED', status: 429, params: { retryAfter: 42 } }),

@@ -45,6 +45,7 @@ export const API_ERROR_CODES = [
   'E_SESSION_NOT_FOUND',
   'E_CANNOT_REVOKE_CURRENT',
   'E_BACKUP_IN_PROGRESS',
+  'E_RESTORE_IN_PROGRESS',
 
   // ---- 订阅源与条目 ----
   'E_FEED_NOT_FOUND',
@@ -89,6 +90,10 @@ export const API_ERROR_CODES = [
   'E_UPDATE_CHANNEL_URL_BAD',
   'E_UPDATE_TRIGGER_FAILED',
   'E_UPDATE_NO_RELEASE',
+
+  // ---- 导入 / 还原 ----
+  'E_IMPORT_INVALID',
+  'E_IMPORT_TOO_LARGE',
 
   // ---- 通用请求错误 ----
   'E_NO_FIELDS_TO_SAVE',
@@ -151,6 +156,10 @@ export const API_ERROR_DEFAULTS = {
     status: 409,
     message: 'A site backup is already running, retry when it finishes',
   },
+  E_RESTORE_IN_PROGRESS: {
+    status: 409,
+    message: 'A site restore is already running, retry when it finishes',
+  },
 
   E_FEED_NOT_FOUND: { status: 404, message: 'Feed not found' },
   E_FEED_CREATE_FAILED: { status: 500, message: 'Failed to create the feed' },
@@ -205,6 +214,9 @@ export const API_ERROR_DEFAULTS = {
   E_UPDATE_CHANNEL_URL_BAD: { status: 400, message: 'The update channel URL has an invalid scheme' },
   E_UPDATE_TRIGGER_FAILED: { status: 502, message: 'Failed to trigger the update' },
   E_UPDATE_NO_RELEASE: { status: 502, message: 'No releases published on GitHub yet' },
+
+  E_IMPORT_INVALID: { status: 400, message: 'The uploaded archive is not a valid FeedLore export' },
+  E_IMPORT_TOO_LARGE: { status: 413, message: 'The uploaded archive is too large' },
 
   E_NO_FIELDS_TO_SAVE: { status: 400, message: 'No field to save' },
   E_BAD_REQUEST: { status: 400, message: 'Malformed request' },

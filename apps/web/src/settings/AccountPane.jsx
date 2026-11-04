@@ -82,6 +82,12 @@ export function AccountPane({ onDirtyChange }) {
   // 数据导出：模型 Key 默认不打包，勾选才附带（导出的是明文，提示放在勾选项下）
   const [inclLlm, setInclLlm] = useState(false);
 
+  // 数据导入 / 整站还原：结果提示常驻到下一次操作（条数比 toast 更值得细看）
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState(null);
+
   // 进入面板：回填登录信息（旧 loadAccountForm），管理员再拉一次用户列表
   useEffect(() => {
     const st = (s && s.state) || {};
@@ -317,6 +323,77 @@ export function AccountPane({ onDirtyChange }) {
     s.toast('正在生成整站备份，完成后浏览器会保存文件');
   }
 
+  /* 账号导入：只做增量合并，已存在的频道与文章跳过（保留现状） */
+  async function importArchive(ev) {
+    const input = ev.target;
+    const file = input.files && input.files[0];
+    input.value = '';   // 清掉选择，同一个文件还能再选一次
+    if (!file) return;
+    const ok = await s.confirm({
+      title: '导入到当前账号？',
+      desc: `会把「${file.name}」里的频道、文章标记、日报与偏好合并进来；已存在的频道和文章会跳过，现有文章的已读 / 收藏 / 关注状态不会被改动。`,
+      confirmText: '开始导入',
+    });
+    if (!ok) return;
+    setImporting(true);
+    setImportMsg(null);
+    try {
+      const res = await s.uploadArchive('/api/import', file);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
+      const f = data.feeds || {};
+      const e = data.entries || {};
+      const d = data.digests || {};
+      const parts = [
+        `新增 ${f.inserted || 0} 个频道（跳过 ${f.skipped || 0} 个）`,
+        `新增 ${e.inserted || 0} 篇文章（跳过 ${e.skipped || 0} 篇）`,
+        `新增 ${d.inserted || 0} 篇日报（跳过 ${d.skipped || 0} 篇）`,
+      ];
+      if (data.prefs) parts.push('已写入偏好设置');
+      setImportMsg({ ok: true, msg: '导入完成：' + parts.join('，') + '。' });
+      await s.loadFeeds().catch(() => { /* 侧栏刷新失败不影响已入库的数据 */ });
+    } catch (err) {
+      setImportMsg({ ok: false, msg: '导入失败：' + String((err && err.message) || err) });
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  /* 整站还原：两次确认，成功后会话已被清空，直接回登录页 */
+  async function restoreSite(ev) {
+    const input = ev.target;
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+    const step1 = await s.confirm({
+      title: '准备还原整站？',
+      desc: `将读取「${file.name}」里的账号、频道、文章、日报、设置与图片缓存。上传完成后还需要再确认一次，才会真正清库写入。`,
+      confirmText: '继续',
+      danger: true,
+    });
+    if (!step1) return;
+    const step2 = await s.confirm({
+      title: '确认清空并还原整站？',
+      desc: '当前全站数据会被包内数据整体替换，不做合并；所有登录会话立即失效，还原后需要重新登录。此操作不可撤销。',
+      confirmText: '清空并还原',
+      danger: true,
+    });
+    if (!step2) return;
+    setRestoring(true);
+    setRestoreMsg(null);
+    try {
+      const res = await s.uploadArchive('/api/restore', file);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
+      const c = data.counts || {};
+      s.toast(`整站还原完成：${c.users || 0} 个账号、${c.entries || 0} 篇文章，请重新登录`);
+      setTimeout(() => s.goLogin(), 800);
+    } catch (err) {
+      setRestoreMsg({ ok: false, msg: '还原失败：' + String((err && err.message) || err) });
+      setRestoring(false);
+    }
+  }
+
   const usersSub = users.length ? `共 ${users.length} 个` : '';
   // 登录信息草稿 + 新增用户表单；当前密码本身不是持久改动，但填了就该提醒
   const dirty = !readonly && (
@@ -439,9 +516,31 @@ export function AccountPane({ onDirtyChange }) {
             </button>
           </div>
           <small className="form-tip">
-            包内 manifest.json 写明格式版本与条数，文章按 entries-0001.jsonl 分批；恢复是按表导入，不是一键还原。
+            包内 manifest.json 写明格式版本与条数，文章按 entries-0001.jsonl 分批；换机或回滚时在下方「数据导入」里原样上传即可。
           </small>
         </Section>
+
+        {/* 数据导入：账号级增量合并（只读账户由服务端拒绝写操作，不展示） */}
+        {!readonly && (
+          <Section secKey="acc-import" title="数据导入" sub="tar.gz">
+            <p className="hint">
+              上传本账号的导出包，把频道、文章标记、日报与偏好合并进来；
+              已存在的频道与文章会跳过，现有文章的已读 / 收藏 / 关注状态不会被改动。
+            </p>
+            <div className="dev-actions">
+              <button className="btn btn-ghost btn-sm" id="importBtn" type="button" disabled={importing}
+                onClick={() => document.getElementById('importFile').click()}>
+                {importing ? '导入中…（文件大时需要一点时间）' : '选择导出包并导入'}
+              </button>
+              <input id="importFile" type="file" accept=".gz,application/gzip,application/x-gzip" hidden
+                onChange={importArchive} />
+            </div>
+            <Result id="importResult" result={importMsg} />
+            <small className="form-tip">
+              导入只做增量合并，不会删除现有数据；模型 API Key 只有在导出时勾选才会在包里。
+            </small>
+          </Section>
+        )}
 
         {/* 用户管理：仅管理员可见 */}
         {admin && (
@@ -515,7 +614,30 @@ export function AccountPane({ onDirtyChange }) {
               </button>
             </div>
             <small className="form-tip">
-              同一时间只允许生成一份；恢复由运维按表手工导入，适合换机搬运用。
+              同一时间只允许生成一份；换机时可在下方「整站还原」里上传该备份包直接还原。
+            </small>
+          </Section>
+        )}
+
+        {/* 整站还原：清库覆盖、全员掉线，两次确认后才会真正执行 */}
+        {admin && (
+          <Section secKey="acc-restore" title="整站还原" sub="仅管理员">
+            <p className="hint">
+              上传整站备份包，用它<b>整体替换</b>当前全站数据：账号（含密码）、订阅源与文章、
+              日报、模型配置、站点设置与图片缓存。还原期间站点短暂不可用，结束后所有登录会话失效。
+            </p>
+            <div className="dev-actions">
+              <button className="btn btn-danger btn-sm" id="restoreBtn" type="button" disabled={restoring}
+                onClick={() => document.getElementById('restoreFile').click()}>
+                {restoring ? '还原中…（请勿关闭页面）' : '上传备份并还原'}
+              </button>
+              <input id="restoreFile" type="file" accept=".gz,application/gzip,application/x-gzip" hidden
+                onChange={restoreSite} />
+            </div>
+            <Result id="restoreResult" result={restoreMsg} />
+            <small className="form-tip">
+              还原不做合并，先清空再写入，不可撤销；建议先下载当前整站备份留底。只接受本系统导出的 tar.gz。
+              还原后建议重启一次服务，让进程加载包内的站点设置（含登录签名密钥）。
             </small>
           </Section>
         )}

@@ -143,6 +143,7 @@ const miniSettingsSource = {
 // 测试可控的挂起 / 失败开关
 let addShouldFail = false;
 let importShouldFail = false;
+let uploadFail = false;   // 账号导入 / 整站还原的上传结果（成功时按 URL 回不同结构）
 let refreshAllFailed = false;
 let patchFailNext = false;
 let feedsFailNext = false;
@@ -648,6 +649,25 @@ w.feedlore = {
   isWritable: () => !(w.feedlore && w.feedlore.state && w.feedlore.state.role === 'readonly'),
   toast: noop('toast'),
   downloadUrl: noop('downloadUrl'),
+  goLogin: noop('goLogin'),
+  // 导出包上传：请求体是 File 本身，桩只记录 URL / 文件名并回固定结果
+  uploadArchive: (url, file) => {
+    calls.push(['uploadArchive', url, file && file.name]);
+    if (uploadFail) {
+      return Promise.resolve({
+        ok: false, status: 400,
+        json: async () => ({ error: 'E_IMPORT_INVALID', message: 'bad archive', status: 400 }),
+      });
+    }
+    const body = url === '/api/restore'
+      ? { ok: true, kind: 'site', counts: { users: 1, accounts: 1, feeds: 2, entries: 5, digests: 0, images: 0, articles: 0 } }
+      : {
+        ok: true, kind: 'user',
+        feeds: { inserted: 1, skipped: 2 }, entries: { inserted: 3, skipped: 4 },
+        digests: { inserted: 0, skipped: 1 }, prefs: true,
+      };
+    return Promise.resolve({ ok: true, status: 200, json: async () => body });
+  },
   lockPageScroll: noop('lockPageScroll'), unlockPageScroll: noop('unlockPageScroll'),
   getSettingsSummary: () => '共 12 个订阅源 · 采集开启 10 个 · 卡片展示 8 个',
   setSettingsSummary: (v) => calls.push(['setSettingsSummary', v]),
@@ -2740,6 +2760,65 @@ const withEFP = (el, fn) => {
     if (!dl || dl[1] !== '/api/backup') throw new Error('downloadUrl: ' + JSON.stringify(dl));
   });
 
+  // 数据导入 / 整站还原（tar.gz 原始请求体上传）
+  const importInput = document.querySelector('#importFile');
+  importInput.click = () => calls.push(['importFileClick']);
+  clickEl('#importBtn');
+  t('数据导入：按钮触发文件选择', () => {
+    if (!document.querySelector('[data-sec="acc-import"]')) throw new Error('缺数据导入分组');
+    if (!callsOf('importFileClick').length) throw new Error('未触发 #importFile');
+  });
+  Object.defineProperty(importInput, 'files', { value: [{ name: 'me.tar.gz' }], configurable: true });
+  importInput.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await sleep(80);
+  t('数据导入：POST /api/import + 条数汇总 + 刷新频道', () => {
+    const up = lastCall('uploadArchive');
+    if (!up || up[1] !== '/api/import' || up[2] !== 'me.tar.gz') throw new Error('uploadArchive: ' + JSON.stringify(up));
+    const c = lastCall('confirm');
+    if (!c || !c[1].title.includes('导入到当前账号')) throw new Error('缺导入确认');
+    const r = document.querySelector('#importResult');
+    if (!r.classList.contains('ok')
+      || r.textContent.indexOf('新增 1 个频道（跳过 2 个）') < 0
+      || r.textContent.indexOf('新增 3 篇文章（跳过 4 篇）') < 0
+      || r.textContent.indexOf('已写入偏好设置') < 0) throw new Error(r.className + '/' + r.textContent);
+    if (!callsOf('loadFeeds').length) throw new Error('未刷新频道列表');
+    if (importInput.value !== '') throw new Error('文件框应重置');
+  });
+  uploadFail = true;
+  Object.defineProperty(importInput, 'files', { value: [{ name: 'bad.tar.gz' }], configurable: true });
+  importInput.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await sleep(80);
+  t('数据导入失败：显示词典中文原因', () => {
+    const r = document.querySelector('#importResult');
+    if (!r.classList.contains('err') || r.textContent.indexOf('不是有效的导出包') < 0) throw new Error(r.className + '/' + r.textContent);
+  });
+  uploadFail = false;
+
+  // 整站还原：两次危险确认、上传后跳登录页（会话被清空）
+  const restoreInput = document.querySelector('#restoreFile');
+  restoreInput.click = () => calls.push(['restoreFileClick']);
+  clickEl('#restoreBtn');
+  t('整站还原：按钮触发文件选择', () => {
+    if (!document.querySelector('[data-sec="acc-restore"]')) throw new Error('缺整站还原分组');
+    if (!callsOf('restoreFileClick').length) throw new Error('未触发 #restoreFile');
+  });
+  const confirmsBeforeRestore = callsOf('confirm').length;
+  Object.defineProperty(restoreInput, 'files', { value: [{ name: 'site.tar.gz' }], configurable: true });
+  restoreInput.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await sleep(80);
+  t('整站还原：两次危险确认后 POST /api/restore', () => {
+    const cs = callsOf('confirm').slice(confirmsBeforeRestore);
+    if (cs.length !== 2 || !cs[0][1].danger || !cs[1][1].danger) throw new Error('确认次数/危险标记不符: ' + cs.length);
+    if (!cs[1][1].title.includes('清空并还原')) throw new Error('第二次确认文案不符');
+    const up = lastCall('uploadArchive');
+    if (!up || up[1] !== '/api/restore' || up[2] !== 'site.tar.gz') throw new Error('uploadArchive: ' + JSON.stringify(up));
+    if (!callsOf('toast').some((c) => String(c[1]).indexOf('整站还原完成') >= 0)) throw new Error('缺完成 toast');
+  });
+  await sleep(900);
+  t('整站还原成功：跳转登录页', () => {
+    if (!callsOf('goLogin').length) throw new Error('未回登录页');
+  });
+
   // 条目过滤规则（v2.7.0）：现位于「规则」tab 的独立分组（WatchPane 读 /api/prefs 的 filters）
   clickTab('规则');
   await sleep(120);
@@ -3167,6 +3246,8 @@ const withEFP = (el, fn) => {
     if (!document.querySelector('.tab-pane[data-pane="account"]')) throw new Error('无账号面板');
     if (document.querySelector('#accUsersSec')) throw new Error('不应渲染用户管理区');
     if (document.querySelector('[data-sec="acc-backup"]')) throw new Error('普通用户不应看到整站备份');
+    if (document.querySelector('[data-sec="acc-restore"]')) throw new Error('普通用户不应看到整站还原');
+    if (!document.querySelector('[data-sec="acc-import"]')) throw new Error('普通用户应能导入自己的数据');
     if (countApi('/api/users') !== usersGetsBeforeUser) throw new Error('不应 GET /api/users');
   });
 
@@ -3192,6 +3273,8 @@ const withEFP = (el, fn) => {
     if (!document.querySelector('[data-sec="acc-login"] .hint')) throw new Error('缺少只读说明');
     if (document.querySelector('#exportLlm')) throw new Error('只读账户不应看到模型 Key 开关');
     if (!document.querySelector('#exportBtn')) throw new Error('只读账户仍应能导出自己的数据');
+    if (document.querySelector('[data-sec="acc-import"]')) throw new Error('只读账户不应看到数据导入');
+    if (document.querySelector('[data-sec="acc-restore"]')) throw new Error('只读账户不应看到整站还原');
     if (!document.querySelector('#logoutBtn')) throw new Error('仍应能退出登录');
   });
   w.feedlore.state.role = 'admin';
@@ -3201,7 +3284,9 @@ const withEFP = (el, fn) => {
   w.__settingsHost.setAdminFlag(true);
   await sleep(80);
   t('setAdminFlag(true) 恢复 8 tab', () => { if (document.querySelectorAll('.tabs .tab').length !== 8) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
-  clickTab('数据源'); await sleep(40);
+  // 切回数据源会挂载新的 SourcePane，/api/config 由挂载副作用异步发起，轮询等它落地
+  clickTab('数据源');
+  await waitFor(() => countApi('/api/config') > cfgGetsBeforeUser && !!document.querySelector('[data-sec="src-params"]'));
   t('恢复管理员：采集参数区出现并拉配置', () => {
     if (!document.querySelector('[data-sec="src-params"]')) throw new Error('采集参数区未出现');
     if (document.querySelector('#saveSourceBtn').hidden !== false) throw new Error('保存按钮应可见');

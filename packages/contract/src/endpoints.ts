@@ -675,6 +675,50 @@ export const exportApi = {
   },
 } as const satisfies Record<string, EndpointSpec>;
 
+/* ============================ 数据导入 / 整站还原 ============================ */
+
+const importCount = z.object({
+  inserted: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+});
+
+/** 上传的是原始 tar.gz 请求体，不按 JSON 校验；响应才是 JSON。 */
+export const importApi = {
+  userImport: {
+    method: 'post',
+    path: '/api/import',
+    auth: 'user',
+    body: z.unknown(),
+    response: z.object({
+      ok: z.boolean(),
+      kind: z.literal('user'),
+      feeds: importCount,
+      entries: importCount,
+      digests: importCount,
+      prefs: z.boolean(),
+    }),
+  },
+  siteRestore: {
+    method: 'post',
+    path: '/api/restore',
+    auth: 'admin',
+    body: z.unknown(),
+    response: z.object({
+      ok: z.boolean(),
+      kind: z.literal('site'),
+      counts: z.object({
+        users: z.number().int().nonnegative(),
+        accounts: z.number().int().nonnegative(),
+        feeds: z.number().int().nonnegative(),
+        entries: z.number().int().nonnegative(),
+        digests: z.number().int().nonnegative(),
+        images: z.number().int().nonnegative(),
+        articles: z.number().int().nonnegative(),
+      }),
+    }),
+  },
+} as const satisfies Record<string, EndpointSpec>;
+
 /* ============================ 图片代理 ============================ */
 
 export const img = {
@@ -703,6 +747,7 @@ export const contract = {
   admin,
   ai,
   export: exportApi,
+  import: importApi,
   img,
 } as const;
 

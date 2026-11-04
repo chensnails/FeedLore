@@ -19,6 +19,12 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - **Site backup for admins**: Settings → Account gains a site-wide backup entry, protected by a
   danger confirmation. It contains every account (including password hashes), feeds, settings
   and image cache, and is labelled as a sensitive file. Only one backup may run at a time.
+- **Account import**: upload an account export to merge it back. Feeds, articles, digests and
+  preferences only fill in missing rows; existing articles are never overwritten and their
+  read / favorite / watch state stays as it is. Repeating an import is safe.
+- **Site restore for admins**: upload a site backup, confirm twice, and the archive replaces
+  the whole site (wipe first, then write; not reversible). All login sessions are invalidated,
+  so everyone signs in again. It is mutually exclusive with account import and backup.
 - **Login devices in Settings → Account**: lists the account's active sessions (browser / OS,
   IP, last active) with a "this device" badge; revoke one device or all others. Session tokens
   are never sent to the frontend.
@@ -33,8 +39,8 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Notes
 
-- Restoring an export or a site backup is a manual, table-by-table import — it is an archive,
-  not a one-click rollback.
+- Account import merges only; site restore replaces everything and clears sessions. Download a
+  fresh site backup before restoring if you may need to go back.
 
 ## 2.2.1 — 2026-11-04
 
