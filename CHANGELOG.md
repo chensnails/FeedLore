@@ -7,7 +7,7 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
-## 未发布
+## 2.3.0 — 2026-11-04
 
 ### 新增
 
@@ -43,6 +43,12 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 - **含图片缓存变体的整站备份无法还原**：图片代理会为同一张图缓存 `:w320` / `:w640` /
   `:w960` 宽度变体，解包白名单只认字母数字与 `._-`，把 `images/<hash>:w640` 当成非法
   条目整包拒绝。现在整站还原按备份全量覆盖，图片缓存（含全部宽度变体）完整写回。
+
+### 部署
+
+- 镜像：`ghcr.io/chensnails/feedlore:2.3.0`（amd64 + arm64），`latest` 指向同一 digest。
+- **从 2.2.x 升级**：把 `V2_IMAGE` 改成 `…:2.3.0` 后 `up -d` 即可。没有数据库结构变化，
+  新增的导出 / 备份 / 导入 / 还原接口不需要任何额外配置。
 
 ## 2.2.1 — 2026-11-04
 

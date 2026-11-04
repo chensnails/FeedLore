@@ -7,7 +7,7 @@
 
 **Live demo**: https://feedlore.669600.xyz · demo account `demo` / `demo`
 
-Current version **2.2.1** · [Changelog](CHANGELOG.en.md) · [Upgrade & deployment](UPGRADE-v2.en.md)
+Current version **2.3.0** · [Changelog](CHANGELOG.en.md) · [Upgrade & deployment](UPGRADE-v2.en.md)
 
 ## What this is
 
