@@ -1607,15 +1607,21 @@ textarea:disabled {
     grid-template-areas: "head head" "nav body";
   }
   .settings-modal .modal-head { grid-area: head; }
-  .settings-modal .tabs {
+  .settings-modal .settings-nav {
     grid-area: nav;
+    display: flex; flex-direction: column;
+    min-height: 0;
+    border-right: 1px solid var(--border);
+  }
+  .settings-modal .tabs {
+    flex: 1 1 auto;
+    min-height: 0;
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
     gap: 2px;
-    padding: var(--sp-3);
-    border-bottom: 0;
-    border-right: 1px solid var(--border);
+    padding: var(--sp-2) var(--sp-3) var(--sp-4);
+    border-right: 0;
     overflow-x: hidden;
     overflow-y: auto;
   }
@@ -1630,6 +1636,72 @@ textarea:disabled {
   .settings-modal .tab.active { background: var(--accent-soft); color: var(--accent-text); }
   .settings-modal .tab.active::after { display: none; }
   .settings-modal .modal-body { grid-area: body; }
+}
+
+/* ---------- 设置分区导航：搜索 + 分组（v2.11.0） ---------- */
+.settings-nav { display: flex; flex-direction: column; min-height: 0; }
+.settings-search {
+  display: flex; align-items: center; gap: var(--sp-2);
+  margin: var(--sp-3) var(--sp-3) var(--sp-1);
+  padding: 0 var(--sp-2);
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
+}
+.settings-search:focus-within {
+  border-color: var(--accent-text);
+  background: var(--panel);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.settings-search > .ico { width: .9rem; height: .9rem; flex: 0 0 auto; color: var(--text-faint); }
+.settings-search input {
+  flex: 1 1 auto; min-width: 0;
+  border: 0; outline: none; background: none;
+  color: var(--text); font: inherit; font-size: var(--fs-sm);
+  padding: var(--sp-2) 0;
+}
+.settings-search input::placeholder { color: var(--text-faint); }
+.settings-search input::-webkit-search-cancel-button { display: none; }
+.settings-search-clear {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; flex: 0 0 auto;
+  border: 0; border-radius: var(--radius-pill); background: none;
+  color: var(--text-faint); cursor: pointer;
+}
+.settings-search-clear:hover { background: var(--hover); color: var(--text); }
+.settings-search-clear .ico { width: .75rem; height: .75rem; }
+.settings-empty {
+  padding: var(--sp-5) var(--sp-3);
+  text-align: center; font-size: var(--fs-sm); color: var(--text-faint);
+}
+.tab-group { display: flex; flex-direction: column; gap: 2px; }
+.tab-group + .tab-group { margin-top: var(--sp-3); }
+.tab-group-label {
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-2xs); font-weight: 700;
+  letter-spacing: .06em; color: var(--text-faint);
+}
+.settings-modal .tab { display: flex; align-items: center; gap: var(--sp-2); }
+.settings-modal .tab .tab-label { flex: 1 1 auto; min-width: 0; }
+.settings-modal .tab-ico { width: 1rem; height: 1rem; flex: 0 0 auto; color: var(--text-faint); }
+.settings-modal .tab:hover .tab-ico { color: var(--text-muted); }
+.settings-modal .tab.active .tab-ico { color: var(--accent-text); }
+.tab-desc { display: none; }
+.tab-dirty {
+  width: 6px; height: 6px; flex: 0 0 auto;
+  border-radius: 50%; background: var(--warn-text);
+}
+.settings-dirty {
+  display: inline-flex; align-items: center;
+  margin-top: var(--sp-1);
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--warn-bg); border: 1px solid var(--warn-border);
+  color: var(--warn-text);
+  font-size: var(--fs-2xs); font-weight: 650;
+  line-height: 1.6;
 }
 
 /* 头部左侧：返回键 + 标题（移动下钻时出现返回键） */
@@ -1649,8 +1721,10 @@ textarea:disabled {
 @media (max-width: 820px) {
   .modal.settings-modal { height: 94dvh; }
   .settings-modal.mobile-home .modal-body { display: none; }
-  .settings-modal.mobile-pane .tabs { display: none; }
+  .settings-modal.mobile-pane .settings-nav { display: none; }
   .settings-modal.mobile-pane .settings-back { display: inline-flex; }
+  .settings-modal.mobile-home .settings-nav { flex: 1 1 auto; min-height: 0; }
+  .settings-modal.mobile-home .settings-search { margin: var(--sp-2) var(--sp-3) var(--sp-1); }
   .settings-modal.mobile-home .tabs {
     flex: 1 1 auto; min-height: 0;
     flex-direction: column; align-items: stretch;
@@ -1661,7 +1735,22 @@ textarea:disabled {
     width: 100%; margin: 0;
     padding: var(--sp-3); border-radius: var(--radius-sm);
     text-align: left; font-size: var(--fs-lg);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "ico label dirty" "ico desc desc";
+    align-items: center;
+    column-gap: var(--sp-3);
+    row-gap: 2px;
   }
+  .settings-modal.mobile-home .tab .tab-ico { grid-area: ico; width: 1.1rem; height: 1.1rem; }
+  .settings-modal.mobile-home .tab .tab-label { grid-area: label; }
+  .settings-modal.mobile-home .tab .tab-desc {
+    grid-area: desc; display: block;
+    font-size: var(--fs-xs); font-weight: 450;
+    color: var(--text-faint); white-space: normal;
+  }
+  .settings-modal.mobile-home .tab.active .tab-desc { color: var(--text-muted); }
+  .settings-modal.mobile-home .tab .tab-dirty { grid-area: dirty; }
   .settings-modal.mobile-home .tab.active { background: var(--accent-soft); color: var(--accent-text); }
   .settings-modal.mobile-home .tab.active::after { display: none; }
 }
@@ -3456,7 +3545,10 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .feed-avatar { width: 30px; height: 30px; flex-basis: 30px; }
   .feed-group input { width: 100%; }
   .feed-actions { flex: 1 0 100%; flex-wrap: wrap; justify-content: flex-end; gap:var(--sp-2) var(--sp-4); }
-  .feed-icon-btn { width: 26px; height: 26px; }
+  /* 触屏命中区：图标按钮从 26px 抬到 40px，拖拽手柄 44px；排序框同步加高 */
+  .feed-icon-btn { width: 40px; height: 40px; }
+  .feed-actions .drag-handle { width: 44px; height: 44px; margin: 0; }
+  .feed-order { width: 48px; height: 40px; }
   .feed-group-head { padding:var(--sp-3) var(--sp-2) var(--sp-1); }
 
   .viewnav-btn { padding:var(--sp-1) var(--sp-3); }

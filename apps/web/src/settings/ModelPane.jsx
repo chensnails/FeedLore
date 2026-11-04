@@ -35,13 +35,21 @@ const parseTemp = (v) => {
 const depthToNum = (d) => (d === 'low' ? 1 : d === 'high' ? 3 : 2);
 const numToDepth = (n) => (n === 1 ? 'low' : n === 3 ? 'high' : 'medium');
 
-export function ModelPane() {
+export function ModelPane({ onDirtyChange }) {
   const [form, setForm] = useState(EMPTY);
+  const [savedForm, setSavedForm] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   // result: { ok, msg } | null
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState('');   // '' | 'test' | 'save' | 'clear'
+
+  /* ---- 未保存改动：表单指纹 + 已输入但未保存的 Key ---- */
+  const formDirty = !!savedForm && JSON.stringify(form) !== savedForm;
+  const dirty = formDirty || apiKey.trim() !== '';
+  useEffect(() => {
+    if (onDirtyChange) onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
 
   // 进入「模型」页拉一次配置（旧 loadModelForm 的迁移）；面板随 tab 切换挂载/卸载。
   // 注意：不清 result——保存 / 清除成功后要保留「已保存」提示（与旧实现一致），
@@ -54,7 +62,7 @@ export function ModelPane() {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const llm = data.llm || {};
-      setForm({
+      const next = {
         baseUrl: llm.baseUrl || '',
         model: llm.model || '',
         temperature: String(llm.temperature == null ? 0.3 : llm.temperature),
@@ -62,11 +70,15 @@ export function ModelPane() {
         thinkingDepth: numToDepth(llm.thinkingDepth),
         apiKeySet: !!llm.apiKeySet,
         apiKeyHint: llm.apiKeyHint || '••••',
-      });
+      };
+      setForm(next);
+      setSavedForm(JSON.stringify(next));
       // Key 输入框每次回填都清空并回到掩码态：留空 = 不修改
       setApiKey('');
       setShowKey(false);
     } catch (err) {
+      // 读取失败时以当前空表单为基线，用户仍可手填后保存
+      setSavedForm(JSON.stringify(EMPTY));
       setResult({ ok: false, msg: '读取配置失败：' + String((err && err.message) || err) });
     }
   }
@@ -293,7 +305,7 @@ export function ModelPane() {
             className="btn btn-primary"
             id="saveLlmBtn"
             type="button"
-            disabled={busy === 'save'}
+            disabled={busy === 'save' || !dirty}
             onClick={onSave}
           >
             {busy === 'save' ? '保存中…' : '保存模型'}

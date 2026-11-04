@@ -41,7 +41,7 @@ const Result = ({ id, result }) => (
   </div>
 );
 
-export function AccountPane() {
+export function AccountPane({ onDirtyChange }) {
   const s = S();
   const admin = !!(s && s.isAdmin && s.isAdmin());
   // 只读账户：只能阅读；配置项全部由服务端拒绝，账号凭据由管理员掌握
@@ -151,6 +151,17 @@ export function AccountPane() {
         await loadUsers();
       } else if (act === 'role') {
         const next = nextRole || (u.role === 'admin' ? 'user' : 'admin');
+        const ok = await s.confirm({
+          title: `将「${u.username}」设为${ROLE_LABEL[next] || next}？`,
+          desc: next === 'admin'
+            ? '管理员可以管理用户与站点级设置。'
+            : next === 'readonly'
+              ? '只读用户只能阅读，不能修改订阅源、规则、模型或日报。'
+              : '普通用户可以管理自己的订阅源、模型与日报。',
+          confirmText: '修改角色',
+          danger: next === 'admin',
+        });
+        if (!ok) return false;
         const res = await s.apiFetch('/api/users/' + u.id, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ role: next }),
@@ -159,6 +170,7 @@ export function AccountPane() {
         if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
         showUserResult(true, `已将 ${u.username} 设为${ROLE_LABEL[next] || next}`);
         await loadUsers();
+        return true;
       } else if (act === 'pass') {
         const np = await s.confirm({
           title: `为「${u.username}」设置新密码`,
@@ -212,6 +224,14 @@ export function AccountPane() {
   }
 
   const usersSub = users.length ? `共 ${users.length} 个` : '';
+  // 登录信息草稿 + 新增用户表单；当前密码本身不是持久改动，但填了就该提醒
+  const dirty = !readonly && (
+    username !== savedName || current !== '' || newPass !== ''
+    || newUserName !== '' || newUserPass !== '' || newUserRole !== 'user'
+  );
+  useEffect(() => {
+    if (onDirtyChange) onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
 
   return (
     <div className="tab-pane" data-pane="account" ref={paneRef}>
@@ -282,7 +302,10 @@ export function AccountPane() {
                           {!u.isSelf && (
                             <select className="select u-role" data-act="role" data-id={u.id}
                               title="角色" aria-label={`${u.username} 的角色`} value={u.role}
-                              onChange={(e) => userAction('role', u, e.target.value)}>
+                              onChange={async (e) => {
+                                const ok = await userAction('role', u, e.target.value);
+                                if (ok !== true) e.target.value = u.role;
+                              }}>
                               <option value="user">普通</option>
                               <option value="readonly">只读</option>
                               <option value="admin">管理员</option>
@@ -343,7 +366,7 @@ export function AccountPane() {
         <button className="btn btn-danger btn-sm" id="logoutBtn" onClick={logout}>退出登录</button>
         {!readonly && (
           <div className="pane-foot-btns">
-            <button className="btn btn-primary" id="saveAccBtn" disabled={saving} onClick={saveAccount}>
+            <button className="btn btn-primary" id="saveAccBtn" disabled={saving || !dirty} onClick={saveAccount}>
               {saving ? '保存中…' : '保存账号'}
             </button>
           </div>

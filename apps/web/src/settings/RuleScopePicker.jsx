@@ -101,6 +101,9 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
     const place = () => {
       const r = triggerRef.current && triggerRef.current.getBoundingClientRect();
       if (!r) return;
+      // 触发按钮被滚出可视区（弹层在 body 上，不会跟着走）就收起，别留一块悬空面板
+      // 无布局环境（jsdom）矩形恒为 0，此时跳过判定
+      if ((r.width || r.height) && (r.bottom < 8 || r.top > window.innerHeight - 8)) { setOpen(false); return; }
       const w = Math.min(320, window.innerWidth - 16);
       const x = compact
         ? Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w))
@@ -111,8 +114,19 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
       setPos({ x, y });
     };
     place();
-    window.addEventListener('resize', place);
-    return () => window.removeEventListener('resize', place);
+    // settings 的滚动发生在 .pane-scroll 上，滚动事件不冒泡；用捕获阶段接管。
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => { raf = 0; place(); });
+    };
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
     // compact 只影响左右对齐
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, compact]);

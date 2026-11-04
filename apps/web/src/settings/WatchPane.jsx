@@ -48,12 +48,12 @@ function toServer(rules) {
   }));
 }
 
-export function WatchPane() {
+export function WatchPane({ onDirtyChange }) {
   const s = S();
   const [rules, setRules] = useState([]);
   const [webhook, setWebhook] = useState('');
   const [expireDays, setExpireDays] = useState('90'); // 关注保留天数，0 = 永不
-  const [savedRules, setSavedRules] = useState('');   // JSON 指纹，用来算「改过没」
+  const [savedRules, setSavedRules] = useState('[]');   // JSON 指纹，用来算「改过没」
   const [savedWebhook, setSavedWebhook] = useState('');
   const [savedExpireDays, setSavedExpireDays] = useState('90');
   const [busy, setBusy] = useState('');               // save | apply | webhook | ''
@@ -61,6 +61,7 @@ export function WatchPane() {
 
   // 入库前过滤（原在账号面板，v2.8.0 起归入「规则」）
   const [filters, setFilters] = useState([]);
+  const [savedFilters, setSavedFilters] = useState('[]');
   const [filtersLoaded, setFiltersLoaded] = useState(false);
   const [savingFilter, setSavingFilter] = useState(false);
   const [filterResult, setFilterResult] = useState(null);
@@ -86,8 +87,10 @@ export function WatchPane() {
         setSavedRules(JSON.stringify(r));
         setSavedWebhook(w);
         setSavedExpireDays(days);
-        setFilters((Array.isArray(d.filters) ? d.filters : [])
-          .map((f) => Object.assign({}, f, { scope: normalizeScope(f.scope) })));
+        const nextFilters = (Array.isArray(d.filters) ? d.filters : [])
+          .map((f) => Object.assign({}, f, { scope: normalizeScope(f.scope) }));
+        setFilters(nextFilters);
+        setSavedFilters(JSON.stringify(nextFilters));
       } catch (err) {
         if (alive) setResult({ ok: false, msg: '读取失败：' + String((err && err.message) || err) });
       } finally {
@@ -121,6 +124,11 @@ export function WatchPane() {
   const rulesDirty = JSON.stringify(rules) !== savedRules;
   const webhookDirty = webhook !== savedWebhook;
   const expireDirty = expireDays.trim() !== savedExpireDays;
+  const filtersDirty = JSON.stringify(filters) !== savedFilters;
+  const dirty = rulesDirty || webhookDirty || expireDirty || filtersDirty;
+  useEffect(() => {
+    if (onDirtyChange) onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
 
   const patchRule = (id, patch) => {
     setRules((rs) => rs.map((r) => (r.id === id ? Object.assign({}, r, patch) : r)));
@@ -221,6 +229,7 @@ export function WatchPane() {
       const saved = (Array.isArray(data.filters) ? data.filters : [])
         .map((f) => Object.assign({}, f, { scope: normalizeScope(f.scope) }));
       setFilters(saved);
+      setSavedFilters(JSON.stringify(saved));
       const dropped = filters.length - saved.length;
       setFilterResult({ ok: true, msg: dropped > 0
         ? `已保存 ${saved.length} 条规则（${dropped} 条为空或非法，已丢弃）`
@@ -450,7 +459,7 @@ export function WatchPane() {
             </div>
             <div className="filter-save">
               <button className="btn btn-primary btn-sm" id="saveFilterBtn" type="button"
-                disabled={savingFilter} onClick={onSaveFilters}>
+                disabled={savingFilter || !filtersDirty} onClick={onSaveFilters}>
                 {savingFilter ? '保存中…' : '保存规则'}
               </button>
             </div>

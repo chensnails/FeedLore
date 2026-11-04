@@ -2,6 +2,7 @@
  * 具体动作由调用方把 `core` 单例作为 S 传入，本模块只保留纯逻辑，不直接触碰全局。 */
 
 import { cjkPinyin } from './pinyin.js';
+import { visibleTabs } from '../settings/tabs.js';
 
 /* 构建命令列表。S = core 单例，需提供：
  * switchView / applyTheme / openSettings / selectScope / jumpToFeed /
@@ -10,6 +11,7 @@ import { cjkPinyin } from './pinyin.js';
 export function buildCommands(S) {
   if (!S || typeof S.switchView !== 'function') return [];
   const readonly = !!(S.isReadonly && S.isReadonly());
+  const admin = !!(S.isAdmin && S.isAdmin());
   const cmds = [];
   [['reader', '文章'], ['cards', '卡片'], ['ai', '日报']].forEach((v) => {
     // 日报关掉后连命令都不该出现（真按到也进不去：switchView 那侧有守卫）
@@ -27,12 +29,11 @@ export function buildCommands(S) {
       keywords: 'theme dark light 暗色 浅色 外观', run: () => S.applyTheme(m, true),
     });
   });
-  [['source', '数据源'], ['model', '模型'], ['digest', '日报'], ['account', '账号'], ['appearance', '外观'], ['status', '状态'], ['about', '关于']].forEach((t) => {
-    // 只读账户只能进阅读体验 / 账号信息 / 关于；其余配置分区不出现
-    if (readonly && ['account', 'appearance', 'about'].indexOf(t[0]) < 0) return;
+  visibleTabs(admin, readonly).forEach((t) => {
     cmds.push({
-      group: '设置', icon: 'settings', label: '打开设置 · ' + t[1], hint: t[1], keywords: 'settings ' + t[1],
-      run: () => S.openSettings(t[0]),
+      group: '设置', icon: t.icon, label: '打开设置 · ' + t.label, hint: t.label,
+      keywords: 'settings ' + t.label + ' ' + t.desc + ' ' + t.keywords,
+      run: () => S.openSettings(t.name),
     });
   });
   [['all', '全部文章'], ['unread', '未读'], ['favorite', '收藏']].forEach((s) => {

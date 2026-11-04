@@ -47,16 +47,20 @@ global.confirm = () => true;   // SourcePane 删除订阅 / AccountPane 删除�
 // 用一个可变开关模拟断点变化，change 监听才测得到。
 let narrowMatches = false;
 const mqListeners = new Set();
-w.matchMedia = (q) => ({
-  matches: narrowMatches && String(q).indexOf('720px') >= 0,
-  media: String(q),
-  onchange: null,
-  addEventListener: (type, fn) => { if (type === 'change') mqListeners.add(fn); },
-  removeEventListener: (type, fn) => { if (type === 'change') mqListeners.delete(fn); },
-  addListener: (fn) => mqListeners.add(fn),
-  removeListener: (fn) => mqListeners.delete(fn),
-  dispatchEvent: () => false,
-});
+w.matchMedia = (q) => {
+  const media = String(q);
+  return {
+    // getter：设置弹层（≤820）与阅读宽度（≤720）共用同一个「窄屏」开关，模拟真实视口
+    get matches() { return narrowMatches && (media.indexOf('720px') >= 0 || media.indexOf('820px') >= 0); },
+    media,
+    onchange: null,
+    addEventListener: (type, fn) => { if (type === 'change') mqListeners.add(fn); },
+    removeEventListener: (type, fn) => { if (type === 'change') mqListeners.delete(fn); },
+    addListener: (fn) => mqListeners.add(fn),
+    removeListener: (fn) => mqListeners.delete(fn),
+    dispatchEvent: () => false,
+  };
+};
 const setNarrow = (v) => {
   narrowMatches = !!v;
   mqListeners.forEach((fn) => fn({ matches: narrowMatches, media: '(max-width: 720px)' }));
@@ -991,7 +995,11 @@ const waitFor = async (fn, ms = 1000, step = 20) => {
   return false;
 };
 const mask = () => document.querySelector('.modal-mask');
-const tabBtn = (label) => [...document.querySelectorAll('.tabs .tab')].find((b) => b.textContent === label);
+// 窄屏下 .tab 里还有描述文字，按 .tab-label 比对才不会被 desc 干扰
+const tabBtn = (label) => [...document.querySelectorAll('.tabs .tab')].find((b) => {
+  const l = b.querySelector('.tab-label');
+  return (l ? l.textContent : b.textContent) === label;
+});
 const clickTab = (label) => tabBtn(label).click();
 const callsOf = (name) => calls.filter((c) => c[0] === name);
 const lastCall = (name) => { const c = callsOf(name); return c[c.length - 1]; };
@@ -1518,6 +1526,52 @@ const withEFP = (el, fn) => {
   });
   t('source tab 默认高亮', () => { if (!tabBtn('数据源').classList.contains('active')) throw new Error('source 未高亮'); });
   t('副标题取 getSettingsSummary', () => { const s = document.querySelector('.modal-sub').textContent; if (s !== '共 12 个订阅源 · 采集开启 10 个 · 卡片展示 8 个') throw new Error('实际: ' + s); });
+
+  // ---- 导航分组 / 图标 / 搜索（A+B 信息架构） ----
+  t('导航按 内容/智能/账户/系统 分组', () => {
+    const labels = [...document.querySelectorAll('.tab-group-label')].map((x) => x.textContent);
+    if (labels.join('|') !== '内容|智能|账户|系统') throw new Error(labels.join('|'));
+    const groupOf = (name) => document.querySelector('#settingsTab-' + name).closest('.tab-group').querySelector('.tab-group-label');
+    if (groupOf('source').textContent !== '内容') throw new Error('source 分组');
+    if (groupOf('model').textContent !== '智能') throw new Error('model 分组');
+    if (groupOf('account').textContent !== '账户') throw new Error('account 分组');
+    if (groupOf('status').textContent !== '系统') throw new Error('status 分组');
+  });
+  t('每个 tab 都有可解析的 sprite 图标', () => {
+    for (const btn of document.querySelectorAll('.tabs .tab')) {
+      const use = btn.querySelector('.tab-ico use');
+      if (!use) throw new Error(btn.dataset.tab + ' 缺图标');
+      const href = use.getAttribute('href') || '';
+      if (href.slice(0, 3) !== '#i-' || indexHtml.indexOf('id="' + href.slice(1) + '"') < 0) {
+        throw new Error(btn.dataset.tab + ' 图标未定义: ' + href);
+      }
+    }
+  });
+  setInput('#settingsSearch', '日报');
+  await sleep(40);
+  t('搜索：按名称/描述/关键词过滤', () => {
+    const names = [...document.querySelectorAll('.tabs .tab')].map((x) => x.dataset.tab);
+    if (names.join(',') !== 'digest') throw new Error(names.join(','));
+  });
+  setInput('#settingsSearch', '代理');
+  await sleep(40);
+  t('搜索：关键词命中（代理 → 数据源）', () => {
+    const names = [...document.querySelectorAll('.tabs .tab')].map((x) => x.dataset.tab);
+    if (names.join(',') !== 'source') throw new Error(names.join(','));
+  });
+  setInput('#settingsSearch', '不存在的分区');
+  await sleep(40);
+  t('搜索无结果：空态文案且无 tab', () => {
+    if (document.querySelectorAll('.tabs .tab').length !== 0) throw new Error('仍有 tab');
+    const empty = document.querySelector('.settings-empty');
+    if (!empty || empty.textContent.indexOf('没有匹配') < 0) throw new Error('缺空态');
+  });
+  document.querySelector('.settings-search-clear').click();
+  await sleep(40);
+  t('清除搜索：恢复 8 个 tab 且输入框清空', () => {
+    if (document.querySelectorAll('.tabs .tab').length !== 8) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length);
+    if (document.querySelector('#settingsSearch').value !== '') throw new Error('输入框未清空');
+  });
 
   // ============ 面板挂载（全部 React 渲染，无 legacy 容器） ============
   t('source 为 React 渲染', () => {
@@ -2192,13 +2246,17 @@ const withEFP = (el, fn) => {
     if (hint.textContent.indexOf('已保存') < 0 || !hint.querySelector('code')) throw new Error('hint 未显示掩码: ' + hint.textContent);
   });
 
-  // 保存（不带 Key）：不传 apiKey 字段
+  // 保存（不带 Key）：不传 apiKey 字段。干净态保存按钮禁用，先改个温度再存
+  t('未改动时保存按钮禁用', () => { if (document.querySelector('#saveLlmBtn').disabled !== true) throw new Error('应禁用'); });
+  setInput('#llmTemp', '0.5');
+  await sleep(30);
+  t('改动后保存按钮恢复', () => { if (document.querySelector('#saveLlmBtn').disabled !== false) throw new Error('应可用'); });
   document.querySelector('#saveLlmBtn').click();
   await sleep(80);
   t('保存（Key 留空）：不传 apiKey 字段', () => {
     const body = lastPostBody('/api/prefs');
     if ('apiKey' in body.llm) throw new Error('不应传 apiKey');
-    if (body.llm.temperature !== 0.4) throw new Error('temperature: ' + body.llm.temperature);
+    if (body.llm.temperature !== 0.5) throw new Error('temperature: ' + body.llm.temperature);
     if (document.querySelector('#llmResult').textContent.indexOf('模型配置已保存') < 0) throw new Error('文案: ' + document.querySelector('#llmResult').textContent);
   });
 
@@ -2213,8 +2271,10 @@ const withEFP = (el, fn) => {
     if (document.querySelector('#llmApiKey').placeholder !== 'sk-...') throw new Error('占位未回落');
   });
 
-  // 失败路径：POST !ok
+  // 失败路径：POST !ok（同样先制造改动，按钮在干净态是禁用的）
   prefsPostOk = false;
+  setInput('#llmTemp', '0.6');
+  await sleep(30);
   document.querySelector('#saveLlmBtn').click();
   await sleep(80);
   t('保存失败 err 态', () => { const r = document.querySelector('#llmResult'); if (!r.classList.contains('err')) throw new Error('类名: ' + r.className); if (r.textContent.indexOf('炸了') < 0) throw new Error('文案: ' + r.textContent); });
@@ -2794,8 +2854,11 @@ const withEFP = (el, fn) => {
     if (!callsOf('toast').length) throw new Error('toast 未调用');
   });
 
-  // 保存账号失败
+  // 保存账号失败（保存成功后回到干净态，按钮禁用；先填当前密码制造改动）
   accountPostOk = false;
+  t('账号未改动时保存按钮禁用', () => { if (document.querySelector('#saveAccBtn').disabled !== true) throw new Error('应禁用'); });
+  setInput('#accCurrent', 'wrongpass');
+  await sleep(30);
   document.querySelector('#saveAccBtn').click();
   await sleep(80);
   t('保存账号失败：err 提示', () => {
@@ -3040,6 +3103,62 @@ const withEFP = (el, fn) => {
     if (document.querySelector('#saveSourceBtn').hidden !== false) throw new Error('保存按钮应可见');
     if (countApi('/api/config') <= cfgGetsBeforeUser) throw new Error('应补拉 /api/config');
   });
+
+  // 脏状态：徽标 + 切分区拦截（确认 / 取消两条路）
+  clickTab('账号'); await sleep(60);
+  setInput('#accCurrent', 'dirty-show');
+  await sleep(40);
+  t('有未保存改动：标题旁与 tab 上都有标记', () => {
+    if (!document.querySelector('.settings-dirty')) throw new Error('缺「未保存」徽标');
+    if (!tabBtn('账号').querySelector('.tab-dirty')) throw new Error('缺 tab 脏点');
+    if (document.querySelector('#saveAccBtn').disabled !== false) throw new Error('有改动时保存应可用');
+  });
+  const confirmStub = w.feedlore.confirm;
+  w.feedlore.confirm = () => Promise.resolve(false);
+  clickTab('关于'); await sleep(60);
+  t('放弃确认选「继续编辑」：留在原分区', () => {
+    if (!tabBtn('账号').classList.contains('active')) throw new Error('不应切走');
+    if (!document.querySelector('.settings-dirty')) throw new Error('脏标记应保留');
+  });
+  w.feedlore.confirm = confirmStub;
+  clickTab('关于'); await sleep(60);
+  t('放弃确认选「放弃更改」：切走且脏标记清除', () => {
+    if (!tabBtn('关于').classList.contains('active')) throw new Error('未切换');
+    if (document.querySelector('.settings-dirty')) throw new Error('脏标记应清除');
+    const last = callsOf('confirm').slice(-1)[0];
+    if (!last || !last[1] || last[1].title !== '放弃未保存的更改？') throw new Error('确认文案: ' + JSON.stringify(last && last[1]));
+  });
+
+  // 窄屏（≤820）：分区列表 → 分区内容 两级下钻
+  // 桌面态下已经停在某分区，变窄后保留该分区（有返回键）——先退回列表再验下钻
+  setNarrow(true);
+  await sleep(60);
+  if (document.querySelector('.settings-back')) { document.querySelector('.settings-back').click(); await sleep(60); }
+  t('窄屏：退化为分区列表并显示描述', () => {
+    const modal = document.querySelector('.settings-modal');
+    if (!modal.classList.contains('mobile-home')) throw new Error('class: ' + modal.className);
+    const descs = [...document.querySelectorAll('.tabs .tab .tab-desc')].map((x) => x.textContent);
+    if (descs.length !== 8) throw new Error('描述数 ' + descs.length);
+    if (descs[0].indexOf('订阅') < 0) throw new Error('首项描述: ' + descs[0]);
+  });
+  clickTab('数据源');
+  await sleep(60);
+  t('窄屏下钻：标题换成分区名，出现返回键', () => {
+    const modal = document.querySelector('.settings-modal');
+    if (!modal.classList.contains('mobile-pane')) throw new Error('class: ' + modal.className);
+    if (document.querySelector('#settingsTitle').textContent !== '数据源') throw new Error('标题: ' + document.querySelector('#settingsTitle').textContent);
+    if (document.querySelector('.modal-sub').textContent.indexOf('订阅') < 0) throw new Error('副标题: ' + document.querySelector('.modal-sub').textContent);
+    if (!document.querySelector('.settings-back')) throw new Error('缺返回键');
+  });
+  document.querySelector('.settings-back').click();
+  await sleep(60);
+  t('返回键：回到分区列表且标题复位', () => {
+    const modal = document.querySelector('.settings-modal');
+    if (!modal.classList.contains('mobile-home')) throw new Error('class: ' + modal.className);
+    if (document.querySelector('#settingsTitle').textContent !== '设置') throw new Error('标题未复位');
+  });
+  setNarrow(false);
+  await sleep(60);
 
   document.querySelector('.modal-mask').click();
   await sleep(60);

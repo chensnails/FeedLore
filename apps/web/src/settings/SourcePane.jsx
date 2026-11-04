@@ -148,12 +148,13 @@ const jsonPost = (body) => ({
   body: JSON.stringify(body),
 });
 
-export function SourcePane({ admin }) {
+export function SourcePane({ admin, onDirtyChange }) {
   /* ---- 状态 ---- */
   const [tick, setTick] = useState(0);                 // 原地改动后强制重绘（共享 state 是实时引用）
   const bump = useCallback(() => setTick((t) => t + 1), []);
 
   const [cfg, setCfg] = useState(CFG_DEFAULTS);        // 采集参数表单（字符串，与旧 DOM .value 一致）
+  const [savedCfg, setSavedCfg] = useState('');        // 上次落库的指纹，用来算「改过没」
   const [cfgLoaded, setCfgLoaded] = useState(false);   // 复刻旧 srcFormReady
   const [loadError, setLoadError] = useState('');      // /api/feeds 拉取失败（列表区兜底）
   const [imgStats, setImgStats] = useState({ count: 0, bytes: 0 });   // 图片缓存统计（v2.4.0）
@@ -211,6 +212,18 @@ export function SourcePane({ admin }) {
   const globalMins = meta.refreshMinutes || 30;
   const ownFreqCount = feeds.filter((f) => f.refreshMinutes != null).length;
 
+  /* ---- 未保存改动：采集参数 + 新增地址草稿 + 就地编辑态 ---- */
+  const cfgDirty = cfgLoaded && !!savedCfg && JSON.stringify(cfg) !== savedCfg;
+  const rowDraftDirty = Object.keys(groupDraft).some((id) => {
+    const f = feeds.find((x) => String(x.id) === id);
+    return f && String(groupDraft[id] == null ? '' : groupDraft[id]) !== (f.groupName || '');
+  });
+  const sourceDirty = cfgDirty || rowDraftDirty || url.trim() !== ''
+    || renamingId != null || editingUrlId != null || renamingGroup != null;
+  useEffect(() => {
+    if (onDirtyChange) onDirtyChange(sourceDirty);
+  }, [sourceDirty, onDirtyChange]);
+
   /* ---- 稳定回调（拖拽监听器的 add/remove 需要同一引用） ---- */
   const pushSummary = useCallback(() => {
     const s = S();
@@ -223,7 +236,7 @@ export function SourcePane({ admin }) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const src = data.source || {};
-      setCfg({
+      const next = {
         refreshMinutes: String(src.refreshMinutes == null ? '' : src.refreshMinutes),
         keepPerFeed: String(src.keepPerFeed == null ? '' : src.keepPerFeed),
         keepDays: String(src.keepDays == null ? 0 : src.keepDays),
@@ -236,7 +249,9 @@ export function SourcePane({ admin }) {
         imgMaxDim: String(src.imgMaxDim == null ? '' : src.imgMaxDim),
         imgQuality: String(src.imgQuality == null ? '' : src.imgQuality),
         feedFailLimit: String(src.feedFailLimit == null ? '' : src.feedFailLimit),
-      });
+      };
+      setCfg(next);
+      setSavedCfg(JSON.stringify(next));
       setCfgLoaded(true);
       // 图片缓存统计失败不阻塞参数回填（面板照常可用，只是看不到张数）
       try {
@@ -686,6 +701,7 @@ export function SourcePane({ admin }) {
       if (!res.ok) { setResult({ ok: false, msg: s.errText(data, '保存失败') }); return; }
       // 表单保存只用内联结果，不再叠一层 toast（列表级动作才用 toast）
       setResult({ ok: true, msg: '抓取设置已保存' });
+      setSavedCfg(JSON.stringify(cfg));
       if (s.scheduleAutoRefresh) s.scheduleAutoRefresh();   // 立刻按新的「页面自动刷新」间隔重排
     } catch (err) {
       setResult({ ok: false, msg: '保存失败：' + (err.message || err) });
@@ -1416,7 +1432,7 @@ export function SourcePane({ admin }) {
             id="saveSourceBtn"
             type="button"
             hidden={!admin}
-            disabled={busy === 'save'}
+            disabled={busy === 'save' || (cfgLoaded && !cfgDirty)}
             onClick={onSaveCfg}
           >
             {busy === 'save' ? '保存中…' : '保存设置'}

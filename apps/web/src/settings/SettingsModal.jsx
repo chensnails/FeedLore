@@ -9,7 +9,7 @@
  */
 
 import { core } from '@core';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AboutPane } from './AboutPane.jsx';
 import { AppearancePane } from './AppearancePane.jsx';
 import { ModelPane } from './ModelPane.jsx';
@@ -18,22 +18,7 @@ import { SourcePane } from './SourcePane.jsx';
 import { WatchPane } from './WatchPane.jsx';
 import { AccountPane } from './AccountPane.jsx';
 import { StatusPane } from './StatusPane.jsx';
-
-// 扁平导航（不分组）：按使用频率排列，数据源在前
-const TABS = [
-  ['source', '数据源'],
-  ['watch', '规则'],
-  ['model', '模型'],
-  ['digest', '日报'],
-  ['account', '账号'],
-  ['appearance', '外观'],
-  ['status', '状态'],
-  ['about', '关于'],
-];
-// 管理员专属 tab（与管理端约定一致；模型配置每用户独立，普通用户也能配）
-const ADMIN_TABS = ['status'];
-// 只读账户只保留「阅读体验 / 账号信息 / 关于」；数据源、规则、模型、日报配置一律不展示
-const READONLY_TABS = ['account', 'appearance', 'about'];
+import { ADMIN_TABS, READONLY_TABS, TAB_BY_NAME, TAB_GROUPS, matchTabs, visibleTabs } from './tabs.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 const isAdminNow = () => !!(S() && S().isAdmin && S().isAdmin());
@@ -43,6 +28,9 @@ export function SettingsModal() {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState('source');
   const [summary, setSummary] = useState('');
+  const [query, setQuery] = useState('');
+  // 当前面板是否有未保存的改动：面板通过 onDirtyChange 上报，切换 / 关闭前据此拦截
+  const [dirty, setDirty] = useState(false);
   const [admin, setAdmin] = useState(isAdminNow);
   const [role, setRole] = useState(() => (S().state && S().state.role) || '');
   // 移动端（≤820）用「首页列表 → 分区内容」的两级下钻；桌面端忽略这两个状态
@@ -55,13 +43,58 @@ export function SettingsModal() {
   const isMobileRef = useRef(false);
   const paneOpenRef = useRef(false);
   const tabRef = useRef(tab);
+  const dirtyRef = useRef(false);
+  // 确认框开着时忽略第二次切换/关闭，避免叠出两个「放弃更改」
+  const guardingRef = useRef(false);
 
   useEffect(() => { isMobileRef.current = isMobile; }, [isMobile]);
   useEffect(() => { paneOpenRef.current = mobilePane; }, [mobilePane]);
   useEffect(() => { tabRef.current = tab; }, [tab]);
 
+  // 面板上报脏状态时同步写 ref：仅靠 effect 镜像会晚一个被动副作用周期，
+  // 用户在刚改完就立刻切分区时可能漏拦。
+  const reportDirty = useCallback((v) => {
+    dirtyRef.current = !!v;
+    setDirty(!!v);
+  }, []);
+
+  /** 有未保存改动时先确认；返回 true 表示可以继续（无改动或用户选择放弃）。 */
+  async function askDiscard() {
+    if (!dirtyRef.current) return true;
+    if (guardingRef.current) return false;
+    guardingRef.current = true;
+    try {
+      const ok = await S().confirm({
+        title: '放弃未保存的更改？',
+        desc: '切换或关闭设置后，这些修改会丢失。',
+        confirmText: '放弃更改',
+        cancelText: '继续编辑',
+        danger: true,
+      });
+      if (ok) {
+        dirtyRef.current = false;
+        setDirty(false);
+      }
+      return !!ok;
+    } finally {
+      guardingRef.current = false;
+    }
+  }
+
   // 切分区：移动端同时进入「分区内容」这一层（桌面端忽略 mobilePane）
-  function selectTab(name) {
+  async function selectTab(name) {
+    // 移动端在首页点当前分区只是进入内容层，草稿还在，不该弹「放弃更改」
+    if (name === tabRef.current) {
+      if (!isMobile || paneOpenRef.current) return;
+      setMobilePane(true);
+      setTimeout(() => {
+        const el = modalRef.current && modalRef.current.querySelector('.settings-back');
+        if (el) el.focus();
+      }, 0);
+      return;
+    }
+    if (!(await askDiscard())) return;
+    tabRef.current = name;   // 立即生效，别等被动副作用，否则连点两下会误判成「点当前分区」
     setTab(name);
     if (!isMobile) return;
     setMobilePane(true);
@@ -110,12 +143,16 @@ export function SettingsModal() {
         if (ADMIN_TABS.indexOf(next) >= 0 && !adm) next = ro ? 'appearance' : 'source';
         if (ro && READONLY_TABS.indexOf(next) < 0) next = 'appearance';
         setSummary((S() && S().getSettingsSummary && S().getSettingsSummary()) || '');
+        tabRef.current = next;
         setTab(next);
+        setQuery('');
+        setDirty(false);
+        dirtyRef.current = false;
         // 指定了目标分区（深链 / 关于页）就直接进内容；否则移动端先停在首页列表
         setMobilePane(!!t);
         setOpen(true);
       },
-      close() { setOpen(false); },
+      close() { requestClose(); },
       /** Esc 的第一处理权交回宿主：移动端停在分区内容里时，Esc 应该退回设置列表
        *  （和「返回」按钮一致），只有已经在列表上时 Esc 才整层关闭。
        *  返回 true 表示这一击已被消化，core/ui.js 那边就不再 closeSettings。 */
@@ -191,19 +228,30 @@ export function SettingsModal() {
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const close = () => setOpen(false);
-  const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) close(); };
+  const requestClose = async () => {
+    if (!(await askDiscard())) return;
+    setOpen(false);
+  };
+  const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) requestClose(); };
 
   const readonly = role === 'readonly';
-  const tabs = TABS.filter(([name]) => {
-    if (ADMIN_TABS.indexOf(name) >= 0 && !admin) return false;
-    if (readonly && READONLY_TABS.indexOf(name) < 0) return false;
-    return true;
-  });
+  const tabs = visibleTabs(admin, readonly);
+  const matched = matchTabs(tabs, query);
+  const matchedNames = matched.map((t) => t.name);
+  const activeTab = TAB_BY_NAME[tab];
+  const activeVisible = matchedNames.indexOf(tab) >= 0;
+  // 搜索把当前分区过滤掉时，把 tablist 的 roving tabIndex 落到第一个可见项
+  const focusTab = activeVisible ? tab : matchedNames[0];
+  const navGroups = TAB_GROUPS
+    .map((group) => ({ group, items: matched.filter((t) => t.group === group) }))
+    .filter((g) => g.items.length);
 
   // 角色在弹层打开期间被改成只读（或反过来）时，把停在不允许分区上的用户带回可见页
   useEffect(() => {
-    if (readonly && READONLY_TABS.indexOf(tab) < 0) setTab('appearance');
+    if (readonly && READONLY_TABS.indexOf(tab) < 0) {
+      tabRef.current = 'appearance';
+      setTab('appearance');
+    }
   }, [readonly, tab]);
 
   // tablist 的键盘约定：↑↓（竖排）或 ←→ 移动并选中，Home/End 跳首尾；
@@ -211,11 +259,12 @@ export function SettingsModal() {
   const onTabsKey = (ev) => {
     const k = ev.key;
     if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'ArrowLeft' && k !== 'ArrowRight' && k !== 'Home' && k !== 'End') return;
-    const names = tabs.map(([n]) => n);
+    const names = matchedNames;
+    if (!names.length) return;
     const i = names.indexOf(tab);
-    if (i < 0) return;
     let next = i;
-    if (k === 'ArrowDown' || k === 'ArrowRight') next = (i + 1) % names.length;
+    if (i < 0) next = 0;
+    else if (k === 'ArrowDown' || k === 'ArrowRight') next = (i + 1) % names.length;
     else if (k === 'ArrowUp' || k === 'ArrowLeft') next = (i - 1 + names.length) % names.length;
     else if (k === 'Home') next = 0;
     else next = names.length - 1;
@@ -240,41 +289,79 @@ export function SettingsModal() {
               </button>
             ) : null}
             <div className="modal-head-txt">
-              <h2 id="settingsTitle">设置</h2>
-              <p className="modal-sub" id="settingsSummary">{summary || '加载中…'}</p>
+              <h2 id="settingsTitle">{isMobile && mobilePane && activeTab ? activeTab.label : '设置'}</h2>
+              <p className="modal-sub" id="settingsSummary">
+                {isMobile && mobilePane && activeTab ? activeTab.desc : (summary || '加载中…')}
+              </p>
+              {dirty ? <span className="settings-dirty" role="status">未保存</span> : null}
             </div>
           </div>
-          <button className="modal-close" id="settingsClose" type="button" aria-label="关闭" onClick={close}>
+          <button className="modal-close" id="settingsClose" type="button" aria-label="关闭" onClick={requestClose}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
           </button>
         </div>
 
-        <div className="tabs" id="tabs" role="tablist" aria-label="设置分区" aria-orientation="vertical" onKeyDown={onTabsKey}>
-          {tabs.map(([name, label]) => (
-            <button
-              key={name}
-              type="button"
-              role="tab"
-              id={'settingsTab-' + name}
-              className={'tab' + (tab === name ? ' active' : '')}
-              data-tab={name}
-              aria-selected={tab === name ? 'true' : 'false'}
-              aria-controls="settingsPanel"
-              tabIndex={tab === name ? 0 : -1}
-              onClick={() => selectTab(name)}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="settings-nav">
+          <div className="settings-search">
+            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+            <input
+              id="settingsSearch"
+              type="search"
+              value={query}
+              placeholder="搜索设置"
+              aria-label="搜索设置分区"
+              autoComplete="off"
+              onChange={(ev) => setQuery(ev.target.value)}
+            />
+            {query ? (
+              <button className="settings-search-clear" type="button" aria-label="清除搜索" onClick={() => setQuery('')}>
+                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+              </button>
+            ) : null}
+          </div>
+          <div className="tabs" id="tabs" role="tablist" aria-label="设置分区" aria-orientation="vertical" onKeyDown={onTabsKey}>
+            {navGroups.map(({ group, items }) => (
+              <div className="tab-group" key={group} role="presentation">
+                <div className="tab-group-label" aria-hidden="true">{group}</div>
+                {items.map((t) => (
+                  <button
+                    key={t.name}
+                    type="button"
+                    role="tab"
+                    id={'settingsTab-' + t.name}
+                    className={'tab' + (tab === t.name ? ' active' : '')}
+                    data-tab={t.name}
+                    aria-selected={tab === t.name ? 'true' : 'false'}
+                    aria-controls="settingsPanel"
+                    tabIndex={focusTab === t.name ? 0 : -1}
+                    title={dirty && tab === t.name ? '有未保存的更改' : undefined}
+                    onClick={() => selectTab(t.name)}
+                  >
+                    <svg className="tab-ico ico" aria-hidden="true" focusable="false"><use href={'#i-' + t.icon} /></svg>
+                    <span className="tab-label">{t.label}</span>
+                    {isMobile ? <span className="tab-desc">{t.desc}</span> : null}
+                    {dirty && tab === t.name ? <span className="tab-dirty" aria-hidden="true" /> : null}
+                  </button>
+                ))}
+              </div>
+            ))}
+            {!matched.length ? <div className="settings-empty">没有匹配的设置</div> : null}
+          </div>
         </div>
 
-        <div className="modal-body" id="settingsPanel" role="tabpanel" aria-labelledby={'settingsTab-' + tab}>
-          {tab === 'source' && open && !readonly && <SourcePane admin={admin} />}
-          {tab === 'watch' && open && !readonly && <WatchPane />}
+        <div
+          className="modal-body"
+          id="settingsPanel"
+          role="tabpanel"
+          aria-labelledby={activeVisible ? 'settingsTab-' + tab : undefined}
+          aria-label={activeVisible ? undefined : (activeTab ? activeTab.label + '设置' : '设置')}
+        >
+          {tab === 'source' && open && !readonly && <SourcePane admin={admin} onDirtyChange={reportDirty} />}
+          {tab === 'watch' && open && !readonly && <WatchPane onDirtyChange={reportDirty} />}
           {tab === 'appearance' && open && <AppearancePane />}
-          {tab === 'model' && open && !readonly && <ModelPane />}
-          {tab === 'digest' && open && !readonly && <DigestPane />}
-          {tab === 'account' && open && <AccountPane />}
+          {tab === 'model' && open && !readonly && <ModelPane onDirtyChange={reportDirty} />}
+          {tab === 'digest' && open && !readonly && <DigestPane onDirtyChange={reportDirty} />}
+          {tab === 'account' && open && <AccountPane onDirtyChange={reportDirty} />}
           {tab === 'status' && open && <StatusPane />}
           {tab === 'about' && open && <AboutPane />}
         </div>

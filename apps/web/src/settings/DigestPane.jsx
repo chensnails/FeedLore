@@ -22,7 +22,7 @@ const EMPTY = {
   maxPerFeed: '20', maxTotal: '150', keepDays: '30', style: '',
 };
 
-export function DigestPane() {
+export function DigestPane({ onDirtyChange }) {
   const [enabled, setEnabled] = useState(true);
   const [form, setForm] = useState(EMPTY);
   // saved：服务端当前值（字符串化后比较，用来判断「有没有没保存的改动」）
@@ -132,6 +132,9 @@ export function DigestPane() {
   };
 
   const dirty = JSON.stringify(form) !== saved;
+  useEffect(() => {
+    if (onDirtyChange) onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
   const hintScope = form.mode === 'all' ? '全部频道'
     : form.mode === 'custom' ? `自定义 ${form.feeds.length} 个频道`
       : '仅「采集」开启的频道';
