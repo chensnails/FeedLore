@@ -44,6 +44,7 @@ export const API_ERROR_CODES = [
   'E_PASSWORD_UPDATE_FAILED',
   'E_SESSION_NOT_FOUND',
   'E_CANNOT_REVOKE_CURRENT',
+  'E_BACKUP_IN_PROGRESS',
 
   // ---- 订阅源与条目 ----
   'E_FEED_NOT_FOUND',
@@ -145,6 +146,10 @@ export const API_ERROR_DEFAULTS = {
   E_CANNOT_REVOKE_CURRENT: {
     status: 400,
     message: 'The current session cannot be revoked here, sign out instead',
+  },
+  E_BACKUP_IN_PROGRESS: {
+    status: 409,
+    message: 'A site backup is already running, retry when it finishes',
   },
 
   E_FEED_NOT_FOUND: { status: 404, message: 'Feed not found' },

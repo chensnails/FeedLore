@@ -67,6 +67,14 @@
   **会话 token 永不下发**；本机由服务端按当前 Cookie 标记，可逐台退出或一键退出其它设备。
   本机退出仍走「退出登录」（服务端对 `DELETE /api/sessions/:id` 的本机 id 返回
   `E_CANNOT_REVOKE_CURRENT`）。
+- 「账号 → 数据导出」下载 `GET /api/export`（流式 tar.gz）：含订阅源、文章（含已读 /
+  收藏 / 关注标记）、日报与偏好；不含会话、图片与全文抓取缓存。模型 Key 默认不打包，
+  勾选后额外写 `llm.json`（明文，界面必须提示）。只读账户也能导出**自己**的数据。
+- 「账号 → 整站备份」仅管理员可见，走危险确认后下载 `GET /api/backup`；包含所有账号
+  （含密码哈希）、站点设置与图片缓存，界面文案必须标明「敏感文件」。同一时间只允许
+  一份备份，重复请求返回 `E_BACKUP_IN_PROGRESS`（409）。
+- 下载统一走 `core.downloadUrl()`（临时 `<a>` 点击），文件名由服务端的
+  `Content-Disposition` 决定，前端不硬编码。
 - 折叠分组 / 结果提示 / 底部动作栏统一用 `src/settings/primitives.jsx`（`Section` /
   `Result` / `PaneFoot`）。新面板不要再另抄一段 `details.sec` 或 `pane-foot`，
   否则标题层级、间距与保存栏会再次各走一套。类名与 `data-sec` 仍是原样，样式与
@@ -77,7 +85,7 @@
 ```bash
 corepack pnpm --filter @feedlore/web run build     # 构建
 node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算
-corepack pnpm --filter @feedlore/web run test      # jsdom UI 回归（444 项）
+corepack pnpm --filter @feedlore/web run test      # jsdom UI 回归（447 项）
 corepack pnpm -r run test                          # 契约 + 服务端
 ```
 

@@ -32,6 +32,7 @@ import { feedsRoutes } from './routes/feeds';
 import { entriesRoutes } from './routes/entries';
 import { prefsRoutes } from './routes/prefs';
 import { sessionRoutes } from './routes/sessions';
+import { exportRoutes } from './routes/export';
 import { imgRoutes } from './routes/img';
 import { aiRoutes } from './routes/ai';
 import {
@@ -318,6 +319,7 @@ export function createApp({ db, auth }: AppDeps) {
     .route('/', entriesRoutes(db, auth))
     .route('/', prefsRoutes(db, auth))
     .route('/', sessionRoutes(db, auth))
+    .route('/', exportRoutes(db, auth))
     .route('/', imgRoutes(db, auth))
     .route('/', aiRoutes(db, auth))
     .route('/', adminStatusRoutes(db, auth))

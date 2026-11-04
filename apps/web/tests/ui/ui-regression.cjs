@@ -647,6 +647,7 @@ w.feedlore = {
   isReadonly: () => !!(w.feedlore && w.feedlore.state && w.feedlore.state.role === 'readonly'),
   isWritable: () => !(w.feedlore && w.feedlore.state && w.feedlore.state.role === 'readonly'),
   toast: noop('toast'),
+  downloadUrl: noop('downloadUrl'),
   lockPageScroll: noop('lockPageScroll'), unlockPageScroll: noop('unlockPageScroll'),
   getSettingsSummary: () => '共 12 个订阅源 · 采集开启 10 个 · 卡片展示 8 个',
   setSettingsSummary: (v) => calls.push(['setSettingsSummary', v]),
@@ -2710,6 +2711,35 @@ const withEFP = (el, fn) => {
     if (!r.classList.contains('ok') || r.textContent.indexOf('已退出 1 台设备') < 0) throw new Error(r.className + '/' + r.textContent);
   });
 
+  // 数据导出 / 整站备份（账号面板，tar.gz 流式下载）
+  t('数据导出：默认不含模型 Key，点击下载 /api/export', () => {
+    if (!document.querySelector('[data-sec="acc-export"]')) throw new Error('缺数据导出分组');
+    const llm = document.querySelector('#exportLlm');
+    if (!llm || llm.checked) throw new Error('模型 Key 开关应默认关闭');
+    document.querySelector('#exportBtn').click();
+    const dl = lastCall('downloadUrl');
+    if (!dl || dl[1] !== '/api/export') throw new Error('downloadUrl: ' + JSON.stringify(dl));
+  });
+  document.querySelector('#exportLlm').click();
+  await sleep(40);
+  t('数据导出：勾选模型 Key 后带上 llm=1', () => {
+    if (!document.querySelector('#exportLlm').checked) throw new Error('开关未勾选');
+    document.querySelector('#exportBtn').click();
+    const dl = lastCall('downloadUrl');
+    if (!dl || dl[1] !== '/api/export?llm=1') throw new Error('downloadUrl: ' + JSON.stringify(dl));
+  });
+  document.querySelector('#backupBtn').click();
+  await sleep(40);
+  t('整站备份：管理员可见，危险确认后下载 /api/backup', () => {
+    const sec = document.querySelector('[data-sec="acc-backup"]');
+    if (!sec) throw new Error('缺整站备份分组');
+    if (!sec.textContent.includes('敏感文件')) throw new Error('缺敏感文件提示');
+    const c = lastCall('confirm');
+    if (!c || c[1].danger !== true) throw new Error('备份应走危险确认');
+    const dl = lastCall('downloadUrl');
+    if (!dl || dl[1] !== '/api/backup') throw new Error('downloadUrl: ' + JSON.stringify(dl));
+  });
+
   // 条目过滤规则（v2.7.0）：现位于「规则」tab 的独立分组（WatchPane 读 /api/prefs 的 filters）
   clickTab('规则');
   await sleep(120);
@@ -3136,6 +3166,7 @@ const withEFP = (el, fn) => {
   t('普通用户：账号面板无用户管理且不拉 /api/users', () => {
     if (!document.querySelector('.tab-pane[data-pane="account"]')) throw new Error('无账号面板');
     if (document.querySelector('#accUsersSec')) throw new Error('不应渲染用户管理区');
+    if (document.querySelector('[data-sec="acc-backup"]')) throw new Error('普通用户不应看到整站备份');
     if (countApi('/api/users') !== usersGetsBeforeUser) throw new Error('不应 GET /api/users');
   });
 
@@ -3159,6 +3190,8 @@ const withEFP = (el, fn) => {
     if (document.querySelector('#saveAccBtn')) throw new Error('不应渲染保存按钮');
     if (document.querySelector('[data-sec="watch-filters"]')) throw new Error('过滤规则配置不应渲染');
     if (!document.querySelector('[data-sec="acc-login"] .hint')) throw new Error('缺少只读说明');
+    if (document.querySelector('#exportLlm')) throw new Error('只读账户不应看到模型 Key 开关');
+    if (!document.querySelector('#exportBtn')) throw new Error('只读账户仍应能导出自己的数据');
     if (!document.querySelector('#logoutBtn')) throw new Error('仍应能退出登录');
   });
   w.feedlore.state.role = 'admin';

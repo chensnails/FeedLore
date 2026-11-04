@@ -79,6 +79,9 @@ export function AccountPane({ onDirtyChange }) {
   const [revoking, setRevoking] = useState('');
   const [devResult, showDevResult] = useResult();
 
+  // 数据导出：模型 Key 默认不打包，勾选才附带（导出的是明文，提示放在勾选项下）
+  const [inclLlm, setInclLlm] = useState(false);
+
   // 进入面板：回填登录信息（旧 loadAccountForm），管理员再拉一次用户列表
   useEffect(() => {
     const st = (s && s.state) || {};
@@ -297,6 +300,23 @@ export function AccountPane({ onDirtyChange }) {
     if (!ok) s.toast('请用手机浏览器菜单里的「安装应用 / 添加到主屏幕」');
   }
 
+  function startExport() {
+    s.downloadUrl('/api/export' + (inclLlm ? '?llm=1' : ''));
+    s.toast('正在生成导出包，浏览器会自动保存文件');
+  }
+
+  async function startBackup() {
+    const ok = await s.confirm({
+      title: '下载整站备份？',
+      desc: '包含所有账号（密码哈希）、订阅源与文章、日报、模型配置、站点设置与图片缓存，属于敏感文件。站点越大生成越久，期间请勿重复点击。',
+      confirmText: '开始备份',
+      danger: true,
+    });
+    if (!ok) return;
+    s.downloadUrl('/api/backup');
+    s.toast('正在生成整站备份，完成后浏览器会保存文件');
+  }
+
   const usersSub = users.length ? `共 ${users.length} 个` : '';
   // 登录信息草稿 + 新增用户表单；当前密码本身不是持久改动，但填了就该提醒
   const dirty = !readonly && (
@@ -394,6 +414,35 @@ export function AccountPane({ onDirtyChange }) {
           )}
         </Section>
 
+        {/* 数据导出：账号级存档，换机或长期留存用 */}
+        <Section secKey="acc-export" title="数据导出" sub="tar.gz">
+          <p className="hint">
+            把本账号的订阅源、全部文章（含已读 / 收藏 / 关注标记）、日报与偏好设置打包下载；
+            不含登录会话、图片缓存与全文抓取缓存。
+          </p>
+          {!readonly && (
+            <div className="form-row">
+              <label className="form-row-head">
+                <span>连同模型 API Key 一起导出</span>
+                <span className="switch">
+                  <input id="exportLlm" type="checkbox" checked={inclLlm}
+                    onChange={(e) => setInclLlm(e.target.checked)} />
+                  <span className="switch-slider" />
+                </span>
+              </label>
+              <small className="form-tip">勾选后 llm.json 里是解密的明文 Key，文件请只放在受控位置。</small>
+            </div>
+          )}
+          <div className="dev-actions">
+            <button className="btn btn-ghost btn-sm" id="exportBtn" type="button" onClick={startExport}>
+              下载导出包
+            </button>
+          </div>
+          <small className="form-tip">
+            包内 manifest.json 写明格式版本与条数，文章按 entries-0001.jsonl 分批；恢复是按表导入，不是一键还原。
+          </small>
+        </Section>
+
         {/* 用户管理：仅管理员可见 */}
         {admin && (
           <Section secKey="acc-users" id="accUsersSec" title="用户管理" sub={usersSub}>
@@ -450,6 +499,24 @@ export function AccountPane({ onDirtyChange }) {
                 删除用户会一并删除其订阅源、条目与日报，且不可恢复。
               </small>
               <Result id="userResult" result={userResult} />
+          </Section>
+        )}
+
+        {/* 整站备份：管理员级、含敏感数据，单独分组并走危险确认 */}
+        {admin && (
+          <Section secKey="acc-backup" title="整站备份" sub="仅管理员">
+            <p className="hint">
+              打包全站数据：所有账号（含密码哈希）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
+              这是敏感文件，请只保存在受控位置；包内不含登录会话，恢复后所有人需要重新登录。
+            </p>
+            <div className="dev-actions">
+              <button className="btn btn-danger btn-sm" id="backupBtn" type="button" onClick={startBackup}>
+                下载整站备份
+              </button>
+            </div>
+            <small className="form-tip">
+              同一时间只允许生成一份；恢复由运维按表手工导入，适合换机搬运用。
+            </small>
           </Section>
         )}
 

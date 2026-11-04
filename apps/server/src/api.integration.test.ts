@@ -25,6 +25,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { gunzipSync } from 'node:zlib';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { createDb, feeds as feedsTable, entries as entriesTable } from '@feedlore/db';
@@ -58,6 +59,23 @@ function parse<T>(schema: z.ZodType<T>, body: unknown, what: string): T {
     assert.fail(`${what} 的响应不符合契约：${JSON.stringify(r.error.issues)}`);
   }
   return r.data;
+}
+
+/** 解开导出包（我们只写 ustar，不写 PAX），返回 文件名 → 内容。 */
+function readTarGz(raw: ArrayBuffer): Map<string, Buffer> {
+  const tar = gunzipSync(Buffer.from(raw));
+  const files = new Map<string, Buffer>();
+  let off = 0;
+  for (;;) {
+    const h = tar.subarray(off, off + 512);
+    if (h.length < 512 || h.every((b) => b === 0)) break;
+    const text = (from: number, to: number) => h.subarray(from, to).toString('utf8').replace(/\0[\s\S]*$/, '');
+    const name = text(0, 100);
+    const size = parseInt(h.subarray(124, 136).toString('ascii').replace(/\0[\s\S]*$/, '').trim() || '0', 8);
+    files.set(name, tar.subarray(off + 512, off + 512 + size));
+    off += 512 + Math.ceil(size / 512) * 512;
+  }
+  return files;
 }
 
 test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) => {
@@ -138,7 +156,7 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     });
 
     await t.test('未登录访问受保护端点：401 而不是 500', async () => {
-      for (const path of ['/api/feeds', '/api/entries', '/api/users', '/api/prefs']) {
+      for (const path of ['/api/feeds', '/api/entries', '/api/users', '/api/prefs', '/api/export', '/api/backup']) {
         const res = await call(path);
         assert.equal(res.status, 401, `${path} 未登录应为 401（500 说明中间件或 DB 抛了）`);
       }
@@ -516,6 +534,76 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal((await app.request('/api/feeds', { headers: { cookie: jar } })).status, 200);
     });
 
+    /* ---------------------------------------------------------------- 数据导出 */
+    await t.test('账号导出：tar.gz 只含本人数据，默认不带模型 Key 与会话', async () => {
+      const res = await call('/api/export');
+      assert.equal(res.status, 200);
+      assert.match(res.headers.get('content-type') ?? '', /application\/gzip/);
+      assert.match(
+        res.headers.get('content-disposition') ?? '',
+        /^attachment; filename="feedlore-.+\.tar\.gz"$/,
+      );
+      const files = readTarGz(await res.arrayBuffer());
+
+      const manifest = JSON.parse(files.get('manifest.json')!.toString('utf8')) as {
+        kind: string; username: string; counts: { feeds: number; entries: number };
+      };
+      assert.equal(manifest.kind, 'user');
+      assert.equal(manifest.username, username);
+      assert.equal(manifest.counts.feeds, 1);
+      assert.equal(manifest.counts.entries, 2);
+
+      const feeds = JSON.parse(files.get('feeds.json')!.toString('utf8')) as Array<{ url: string }>;
+      assert.deepEqual(feeds.map((f) => f.url), ['https://example.com/itest-feed.xml']);
+
+      const batches = [...files.keys()].filter((k) => /^entries-\d{4}\.jsonl$/.test(k));
+      assert.equal(batches.length, 1, '两条条目应只写一个批次文件');
+      const rows = files
+        .get(batches[0]!)!
+        .toString('utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      assert.equal(rows.length, 2);
+      assert.equal(rows[0]?.feedUrl, 'https://example.com/itest-feed.xml');
+      // 库内自增 id / feedId 不外泄，换机导入靠 feedUrl 对应
+      assert.ok(rows.every((r) => !('id' in r) && !('feedId' in r)));
+
+      assert.ok(files.has('digests.json'));
+      assert.ok(files.has('prefs.json'));
+      assert.ok(!files.has('llm.json'), '未勾选时不应出现 llm.json');
+      assert.ok(![...files.keys()].some((k) => /session|verification/i.test(k)), '包里不应有会话文件');
+    });
+
+    await t.test('账号导出：勾选后才带 llm.json', async () => {
+      const res = await call('/api/export?llm=1');
+      assert.equal(res.status, 200);
+      const files = readTarGz(await res.arrayBuffer());
+      assert.ok(files.has('llm.json'));
+      // 测试账号没配模型：文件存在但内容为 null，说明走的是同一套分支
+      assert.equal(JSON.parse(files.get('llm.json')!.toString('utf8')), null);
+    });
+
+    await t.test('整站备份：管理员可下，含账号与设置，不含会话', async () => {
+      const res = await call('/api/backup');
+      assert.equal(res.status, 200);
+      assert.match(res.headers.get('content-type') ?? '', /application\/gzip/);
+      const files = readTarGz(await res.arrayBuffer());
+
+      const manifest = JSON.parse(files.get('manifest.json')!.toString('utf8')) as {
+        kind: string; includes: { sessions: boolean };
+      };
+      assert.equal(manifest.kind, 'site');
+      assert.equal(manifest.includes.sessions, false);
+
+      const users = JSON.parse(files.get('users.json')!.toString('utf8')) as Array<{ username: string }>;
+      assert.ok(users.some((u) => u.username === username), '备份应包含本账号');
+      for (const name of ['accounts.json', 'settings.json', 'user_llm.json', 'image_cache.json', 'feeds.json']) {
+        assert.ok(files.has(name), `备份缺 ${name}`);
+      }
+      assert.ok(![...files.keys()].some((k) => /^sessions|verification/i.test(k)));
+    });
+
     /* ---------------------------------------------------------------- 只读角色 */
     await t.test('只读：读接口照常，配置写接口一律 403', async () => {
       await db.execute(sql`update users set role = 'readonly' where id = ${userId}`);
@@ -555,6 +643,13 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal(readAll.status, 200);
       const patch = await call('/api/entries/999999', { method: 'PATCH', json: { isRead: true } });
       assert.equal(patch.status, 404, '鉴权应通过，只是条目不存在');
+    });
+
+    await t.test('只读：能导出自己的数据，但不能下整站备份', async () => {
+      const own = await call('/api/export');
+      assert.equal(own.status, 200);
+      await own.arrayBuffer(); // 消费掉流，避免测试结束时还有挂起的归档任务
+      assert.equal((await call('/api/backup')).status, 403);
     });
 
     /* ---------------------------------------------------------------- 登出 */

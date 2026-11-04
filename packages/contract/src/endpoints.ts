@@ -653,6 +653,28 @@ export const ai = {
   },
 } as const satisfies Record<string, EndpointSpec>;
 
+/* ============================ 数据导出 / 备份 ============================ */
+
+/** 都是 tar.gz 二进制下载：响应体不做 JSON 校验，前端直接用链接触发下载。 */
+export const exportApi = {
+  userExport: {
+    method: 'get',
+    path: '/api/export',
+    auth: 'user',
+    /** llm=1 时附 llm.json（含解密后的 API Key），默认不含 */
+    query: z.object({ llm: z.enum(['0', '1']).optional() }),
+    response: z.unknown(),
+    binary: true,
+  },
+  siteBackup: {
+    method: 'get',
+    path: '/api/backup',
+    auth: 'admin',
+    response: z.unknown(),
+    binary: true,
+  },
+} as const satisfies Record<string, EndpointSpec>;
+
 /* ============================ 图片代理 ============================ */
 
 export const img = {
@@ -680,6 +702,7 @@ export const contract = {
   prefs,
   admin,
   ai,
+  export: exportApi,
   img,
 } as const;
 

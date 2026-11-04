@@ -20,7 +20,7 @@ export const core = {
   state: S.state,
   switchView: UI.switchView, applyTheme: S.applyTheme, openSettings: S.openSettings,
   selectScope: UI.selectScope, jumpToFeed: UI.jumpToFeed,
-  focusSearchBox: UI.focusSearchBox, exportOpml: UI.exportOpml,
+  focusSearchBox: UI.focusSearchBox, exportOpml: UI.exportOpml, downloadUrl: UI.downloadUrl,
   shortFeedName: U.shortFeedName, feedTitle: U.feedTitle,
   THEME_MODES: S.THEME_MODES, THEME_META: S.THEME_META,
   refresh: UI.refreshFeeds,

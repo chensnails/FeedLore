@@ -85,6 +85,19 @@ export function exportOpml() {
   toast('已导出 ' + feeds.length + ' 个订阅源');
 }
 
+/**
+ * 触发一次同源 GET 下载。服务端用 Content-Disposition 给文件名，所以不给 download
+ * 属性（给了浏览器会覆盖掉服务端命名）。临时锚点即点即弃，不打断当前页面。
+ */
+export function downloadUrl(url) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 
 /* Esc = 关闭「最上面那一层」。这里只负责设置弹层，但要先看有没有更上层的覆盖物：
    整屏下拉弹层 / 命令面板 / 灯箱 / 确认框开着时，这一击归它们，不能顺手把设置也关掉。 */

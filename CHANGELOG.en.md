@@ -9,7 +9,32 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ## Unreleased
 
-(None)
+### Added
+
+- **Data export in Settings → Account**: downloads the account's feeds, articles (with read /
+  favorite / watch marks), digests and preferences as a streaming tar.gz. Login sessions,
+  image cache and full-text cache are excluded; the model API key is included only when opted
+  in, and the UI warns that it is written in plaintext. Read-only accounts can still export
+  their own data.
+- **Site backup for admins**: Settings → Account gains a site-wide backup entry, protected by a
+  danger confirmation. It contains every account (including password hashes), feeds, settings
+  and image cache, and is labelled as a sensitive file. Only one backup may run at a time.
+- **Login devices in Settings → Account**: lists the account's active sessions (browser / OS,
+  IP, last active) with a "this device" badge; revoke one device or all others. Session tokens
+  are never sent to the frontend.
+- **Unified settings structure and visuals**: collapsible sections, inline results and footer
+  action bars now use shared primitives; the desktop nav marks the active pane with a primary
+  color bar.
+
+### Changed
+
+- **Appearance scope is explicit**: appearance is stored on this device only; layout (view,
+  sort, sidebar width…) still follows the account.
+
+### Notes
+
+- Restoring an export or a site backup is a manual, table-by-table import — it is an archive,
+  not a one-click rollback.
 
 ## 2.2.1 — 2026-11-04
 
