@@ -538,6 +538,7 @@ export function AccountPane({ onDirtyChange }) {
             <Result id="importResult" result={importMsg} />
             <small className="form-tip">
               导入只做增量合并，不会删除现有数据；模型 API Key 只有在导出时勾选才会在包里。
+              这里只收「数据导出」的账号包，整站备份请到下方「整站还原」上传。
             </small>
           </Section>
         )}
@@ -637,6 +638,7 @@ export function AccountPane({ onDirtyChange }) {
             <Result id="restoreResult" result={restoreMsg} />
             <small className="form-tip">
               还原不做合并，先清空再写入，不可撤销；建议先下载当前整站备份留底。只接受本系统导出的 tar.gz。
+              这里只收「整站备份」，账号导出包请到上方「数据导入」上传。
               还原后建议重启一次服务，让进程加载包内的站点设置（含登录签名密钥）。
             </small>
           </Section>

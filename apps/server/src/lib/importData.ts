@@ -264,9 +264,8 @@ export async function importUserArchive(
   dir: string,
 ): Promise<UserImportResult> {
   const manifest = await readManifest(dir);
-  if (manifest.kind !== 'user') {
-    throw invalid('this archive is a site backup, use site restore instead');
-  }
+  if (manifest.kind === 'site') throw new ApiException('E_ARCHIVE_IS_SITE_BACKUP');
+  if (manifest.kind !== 'user') throw invalid(`unknown archive kind "${String(manifest.kind)}"`);
 
   const feedRows = asArray(await readJson(dir, 'feeds.json'), 'feeds.json');
   const digestRows = asArray(await readJson(dir, 'digests.json'), 'digests.json');
@@ -536,9 +535,8 @@ async function insertImages(tx: Db, dir: string, metaRows: Raw[]): Promise<numbe
 
 export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteRestoreResult> {
   const manifest = await readManifest(dir);
-  if (manifest.kind !== 'site') {
-    throw invalid('this archive is an account export, use account import instead');
-  }
+  if (manifest.kind === 'user') throw new ApiException('E_ARCHIVE_IS_USER_EXPORT');
+  if (manifest.kind !== 'site') throw invalid(`unknown archive kind "${String(manifest.kind)}"`);
 
   const userRows = asArray(await readJson(dir, 'users.json'), 'users.json');
   const accountRows = asArray(await readJson(dir, 'accounts.json'), 'accounts.json');

@@ -94,6 +94,8 @@ export const API_ERROR_CODES = [
   // ---- 导入 / 还原 ----
   'E_IMPORT_INVALID',
   'E_IMPORT_TOO_LARGE',
+  'E_ARCHIVE_IS_USER_EXPORT',
+  'E_ARCHIVE_IS_SITE_BACKUP',
 
   // ---- 通用请求错误 ----
   'E_NO_FIELDS_TO_SAVE',
@@ -217,6 +219,14 @@ export const API_ERROR_DEFAULTS = {
 
   E_IMPORT_INVALID: { status: 400, message: 'The uploaded archive is not a valid FeedLore export' },
   E_IMPORT_TOO_LARGE: { status: 413, message: 'The uploaded archive is too large' },
+  E_ARCHIVE_IS_USER_EXPORT: {
+    status: 400,
+    message: 'This archive is an account export; upload it on the account import entry',
+  },
+  E_ARCHIVE_IS_SITE_BACKUP: {
+    status: 400,
+    message: 'This archive is a site backup; upload it on the site restore entry',
+  },
 
   E_NO_FIELDS_TO_SAVE: { status: 400, message: 'No field to save' },
   E_BAD_REQUEST: { status: 400, message: 'Malformed request' },

@@ -705,7 +705,12 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
 
       const wrongKind = await call('/api/import', { method: 'POST', body: siteArchive });
       assert.equal(wrongKind.status, 400);
-      assert.equal(((await wrongKind.json()) as { error: string }).error, 'E_IMPORT_INVALID');
+      assert.equal(((await wrongKind.json()) as { error: string }).error, 'E_ARCHIVE_IS_SITE_BACKUP');
+
+      // 反过来：账号导出包传进整站还原，应指出该去「数据导入」，而不是笼统的坏包
+      const wrongRestore = await call('/api/restore', { method: 'POST', body: userArchive });
+      assert.equal(wrongRestore.status, 400);
+      assert.equal(((await wrongRestore.json()) as { error: string }).error, 'E_ARCHIVE_IS_USER_EXPORT');
     });
 
     /* ---------------------------------------------------------------- 只读角色 */

@@ -25,6 +25,9 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - **Site restore for admins**: upload a site backup, confirm twice, and the archive replaces
   the whole site (wipe first, then write; not reversible). All login sessions are invalidated,
   so everyone signs in again. It is mutually exclusive with account import and backup.
+- **Wrong import entry now points you to the right one**: uploading an account export to site
+  restore (or the reverse) name exactly which kind of archive it is and where to upload it,
+  instead of a generic "invalid package" error.
 - **Login devices in Settings → Account**: lists the account's active sessions (browser / OS,
   IP, last active) with a "this device" badge; revoke one device or all others. Session tokens
   are never sent to the frontend.

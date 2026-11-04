@@ -16,9 +16,12 @@ test('命中的错误码出中文', () => {
 });
 
 test('导入 / 整站还原的错误码出中文', () => {
-  assert.equal(errorText('E_IMPORT_INVALID'), '上传的文件不是有效的导出包，请检查是否选错了文件');
+  assert.equal(errorText('E_IMPORT_INVALID'), '上传的文件不是有效的导出包或备份包，请检查是否选错了文件');
   assert.equal(errorText('E_IMPORT_TOO_LARGE'), '上传的文件太大，请检查是否选错了包');
   assert.equal(errorText({ error: 'E_RESTORE_IN_PROGRESS', status: 409 }), '已经有一份整站还原在进行，等它完成后再试');
+  // 传错入口：告诉用户该去哪里，而不是笼统的「文件无效」
+  assert.equal(errorText('E_ARCHIVE_IS_USER_EXPORT'), '这是账号导出包，不能用于整站还原；请到「数据导入」上传');
+  assert.equal(errorText('E_ARCHIVE_IS_SITE_BACKUP'), '这是整站备份，不能用于账号导入；请到「整站还原」上传');
 });
 
 test('动态文案从 params 插值', () => {
