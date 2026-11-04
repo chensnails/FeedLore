@@ -11,31 +11,7 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 (None)
 
-## 2.2.0-rc.4 — 2026-11-04
-
-> Pre-release for validation: `latest` still points at 2.1.0 and no GitHub Release is created.
-
-### Changed
-
-- **Lighter first load**: the settings modal and the AI digest view are downloaded only when
-  first opened; the session check and channel list now start in parallel, and only the list
-  needed by the current page is fetched (the card list used to be preloaded on every start).
-- **Responsive images**: card covers, list / digest thumbnails and article images now use
-  320 / 640 / 960 width variants, cutting bytes on phones and slow links. The image proxy
-  accepts an optional `w` parameter, compresses and caches each variant separately, and keeps
-  the default 1280 version unchanged.
-
-### Deployment
-
-- Image: `ghcr.io/chensnails/feedlore:2.2.0-rc.4` (amd64 + arm64); `latest` still points at
-  2.1.0 and no GitHub Release is created.
-- **Upgrading from 2.2.0-rc.3**: change `V2_IMAGE` to `…:2.2.0-rc.4` and run `up -d`. There is
-  no database or breaking API change; the image proxy only gains an optional `w` parameter and
-  older front ends keep requesting the default 1280 version.
-
-## 2.2.0-rc.3 — 2026-11-04
-
-> Pre-release for validation: `latest` still points at 2.1.0 and no GitHub Release is created.
+## 2.2.0 — 2026-11-04
 
 ### Added
 
@@ -51,31 +27,13 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Changed
 
-- After "mark all as read", the card list is fetched once more so dots and counts stay in sync.
-
-### Deployment
-
-- Image: `ghcr.io/chensnails/feedlore:2.2.0-rc.3` (amd64 + arm64); `latest` still points at
-  2.1.0 and no GitHub Release is created.
-- **Upgrading from 2.2.0-rc.2**: change `V2_IMAGE` to `…:2.2.0-rc.3` and run `up -d`. There is
-  no database or API change; read state is still stored per entry on the server, and only the
-  way the front end presents and syncs it has changed.
-
-## 2.2.0-rc.2 — 2026-11-03
-
-> Pre-release for validation: `latest` still points at 2.1.0 and no GitHub Release is created.
-
-### Fixed
-
-- **Reader font size had no effect on mobile**: the ≤720px media query forced the body to
-  the UI font size and overrode the appearance setting; the override is gone, so phones now
-  follow "Reader font size".
-- **"Reading width" is no longer clickable on narrow screens**: the row is disabled with
-  the note "fills the width on narrow screens, adjustable on desktop" — all four presets
-  were wider than a phone, so the control changed nothing before.
-
-### Changed
-
+- **Lighter first load**: the settings modal and the AI digest view are downloaded only when
+  first opened; the session check and channel list now start in parallel, and only the list
+  needed by the current page is fetched (the card list used to be preloaded on every start).
+- **Responsive images**: card covers, list / digest thumbnails and article images now use
+  320 / 640 / 960 width variants, cutting bytes on phones and slow links. The image proxy
+  accepts an optional `w` parameter, compresses and caches each variant separately, and keeps
+  the default 1280 version unchanged.
 - **Appearance now lives in the browser**: theme / accent / UI font size / card density /
   article typography are no longer stored in the account. A new device, a different account
   or a cleared cache falls back to the defaults (all size-related options are "medium");
@@ -87,23 +45,9 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - **"Font size" renamed to "UI font size"** to distinguish it from "Reader font size": the
   former scales the whole site proportionally (including the article body), the latter
   affects only the article body.
-
-### Deployment
-
-- Image: `ghcr.io/chensnails/feedlore:2.2.0-rc.2` (amd64 + arm64); `latest` still points at
-  2.1.0 and no GitHub Release is created.
-- **Upgrading from 2.2.0-rc.1 or 2.1.0**: change `V2_IMAGE` to `…:2.2.0-rc.2` and run `up -d`.
-  There is no database structure change and the startup migration still runs idempotently;
-  legacy `prefs.appearance` data stays in the database but is no longer read.
-- **API compatibility**: `GET /api/prefs` and `POST /api/prefs` no longer include the
-  `appearance` field. Third-party clients should keep appearance locally or ignore it.
-
-## 2.2.0-rc.1 — 2026-11-03
-
-> Pre-release for validation: `latest` still points at 2.1.0 and no GitHub Release is created.
-
-### Changed
-
+- **Quieter card actions on mobile**: copy / open on media cards now use a translucent glass
+  background, and text cards use outlined icon buttons; the 40×40 touch target and the click
+  path are unchanged.
 - **Server logs and API errors now speak English**: server logs, startup and migration output
   and script output are all English; API errors now carry a stable machine-readable code plus
   an English description:
@@ -114,24 +58,32 @@ This file records user-visible changes and deployment-related changes for 2.x.
   - the front end maps codes to Chinese through `apps/web/src/core/errorText.js`, so the UI
     reads exactly as in 2.1.0; the login page's failure message uses the same dictionary.
 - **README intro rewritten**: the positioning now follows the actual "personal reading +
-  cloud-drive resources" use case, while configuration stays in `.env.example`.
-- **English docs added**: `README.en.md`, `CHANGELOG.en.md` and `UPGRADE-v2.en.md`, mirroring
-  the Chinese documents.
+  cloud-drive resources" use case, while configuration stays in `.env.example`. English docs
+  (`README.en.md`, `CHANGELOG.en.md`, `UPGRADE-v2.en.md`) mirror the Chinese documents.
 
 ### Fixed
 
+- **Reader font size had no effect on mobile**: the ≤720px media query forced the body to
+  the UI font size and overrode the appearance setting; the override is gone, so phones now
+  follow "Reader font size".
+- **"Reading width" is no longer clickable on narrow screens**: the row is disabled with
+  the note "fills the width on narrow screens, adjustable on desktop" — all four presets
+  were wider than a phone, so the control changed nothing before.
+- After "mark all as read", the card list is fetched once more so dots and counts stay in sync.
 - "No releases published on GitHub yet" now returns `502 E_UPDATE_NO_RELEASE` instead of an
   unclassified 500.
 
 ### Deployment
 
-- Image: `ghcr.io/chensnails/feedlore:2.2.0-rc.1` (amd64 + arm64); `latest` still points at
-  2.1.0 and no GitHub Release is created.
-- **Upgrading from 2.1.0**: change `V2_IMAGE` to `…:2.2.0-rc.1` and run `up -d`. There is no
-  database structure change, and the startup migration still runs idempotently.
-- **Note for third-party API clients**: clients that displayed the old Chinese `error` text
-  should branch on the `error` code, or fall back to the English `message`. This is the only
-  compatibility change in this release.
+- Image: `ghcr.io/chensnails/feedlore:2.2.0` (amd64 + arm64); `latest` points at the same
+  digest and a GitHub Release is created.
+- **Upgrading from 2.1.0 / 2.0.x or any 2.2.0-rc**: change `V2_IMAGE` to `…:2.2.0` and run
+  `up -d`. There is no database structure change and the startup migration still runs
+  idempotently; legacy `prefs.appearance` data stays in the database but is no longer read.
+- **API compatibility**: `GET /api/prefs` and `POST /api/prefs` no longer include the
+  `appearance` field; error responses now carry a code plus `message` / `status` / `params`
+  instead of Chinese `error` prose. Third-party clients should branch on the `error` code, or
+  fall back to the English `message`.
 
 ## 2.1.0 — 2026-11-03
 
