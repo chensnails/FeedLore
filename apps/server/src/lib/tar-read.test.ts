@@ -54,16 +54,19 @@ test('extractTarGz：与导出器往返，UTF-8 / 空文件 / 图片名都保留
     await ar.add('manifest.json', '{"kind":"user"}');
     await ar.add('entries-0001.jsonl', '条目一\n');
     await ar.add('images/abc123', Buffer.from([0, 1, 2]));
+    // 图片代理的宽度变体键带 `:w640` 后缀（见 imageVariantKey），整站备份里必有
+    await ar.add('images/abc123:w640', Buffer.from([3, 4, 5]));
     await ar.add('prefs.json', '');
     await ar.close();
     await done;
     await writeFile(archive, Buffer.concat(chunks));
 
     const res = await extractTarGz(archive, out);
-    assert.equal(res.files, 4);
+    assert.equal(res.files, 5);
     assert.equal(await readFile(join(out, 'manifest.json'), 'utf8'), '{"kind":"user"}');
     assert.equal(await readFile(join(out, 'entries-0001.jsonl'), 'utf8'), '条目一\n');
     assert.deepEqual([...await readFile(join(out, 'images', 'abc123'))], [0, 1, 2]);
+    assert.deepEqual([...await readFile(join(out, 'images', 'abc123:w640'))], [3, 4, 5]);
     assert.equal((await readFile(join(out, 'prefs.json'))).length, 0);
   });
 });

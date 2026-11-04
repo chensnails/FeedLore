@@ -40,6 +40,13 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - **Appearance scope is explicit**: appearance is stored on this device only; layout (view,
   sort, sidebar width…) still follows the account.
 
+### Fixed
+
+- **Site backups with image cache variants could not be restored**: the image proxy caches
+  `:w320` / `:w640` / `:w960` width variants, but the extraction allowlist accepted only
+  alphanumerics and `._-`, rejecting `images/<hash>:w640` as an unexpected entry and failing
+  the whole archive. Site restore now covers the backup fully, including every width variant.
+
 ### Notes
 
 - Account import merges only; site restore replaces everything and clears sessions. Download a

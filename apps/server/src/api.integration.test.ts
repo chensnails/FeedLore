@@ -600,6 +600,12 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     });
 
     await t.test('整站备份：管理员可下，含账号与设置，不含会话', async () => {
+      // 图片代理的宽度变体键带 `:w640` 后缀：备份必须能写入，还原也必须能认回
+      await db.execute(sql`
+        insert into image_cache (key, content_type, data, size)
+        values ('itestimg', 'image/webp', decode('00', 'hex'), 1),
+               ('itestimg:w640', 'image/webp', decode('0102', 'hex'), 2)
+      `);
       const res = await call('/api/backup');
       assert.equal(res.status, 200);
       assert.match(res.headers.get('content-type') ?? '', /application\/gzip/);
@@ -618,6 +624,7 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       for (const name of ['accounts.json', 'settings.json', 'user_llm.json', 'image_cache.json', 'feeds.json']) {
         assert.ok(files.has(name), `备份缺 ${name}`);
       }
+      assert.ok(files.has('images/itestimg:w640'), '备份应包含宽度变体的图片缓存');
       assert.ok(![...files.keys()].some((k) => /^sessions|verification/i.test(k)));
     });
 
@@ -786,13 +793,14 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       const res = await call('/api/restore', { method: 'POST', body: siteArchive });
       assert.equal(res.status, 200, await res.clone().text());
       const out = (await res.json()) as {
-        ok: boolean; kind: string; counts: { users: number; feeds: number; entries: number };
+        ok: boolean; kind: string; counts: { users: number; feeds: number; entries: number; images: number };
       };
       assert.equal(out.ok, true);
       assert.equal(out.kind, 'site');
       assert.ok(out.counts.users >= 1);
       assert.equal(out.counts.feeds, 1);
       assert.equal(out.counts.entries, 2, '备份包里只有两条文章');
+      assert.equal(out.counts.images, 2, '默认图与 :w640 变体都应还原');
 
       const gone = (await db.execute(sql`
         select count(*)::int as n from feeds where url = 'https://example.com/only-before-restore.xml'
@@ -815,6 +823,8 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
      * 再按用户名前缀兜一层，防止中途 return 留下孤儿（比如注册成功但没走到取 id）。 */
     try {
       await db.execute(sql`delete from users where username like 'itest\_%' or username = ${username}`);
+      // image_cache 没有 owner，不属于 users 级联范围：跑失败时也要清掉测试键
+      await db.execute(sql`delete from image_cache where key like 'itestimg%'`);
     } catch (e) {
       console.error('[itest] cleanup failed (test verdict is unaffected, but check the test database manually):', (e as Error).message);
     }

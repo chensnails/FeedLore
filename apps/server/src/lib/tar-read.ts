@@ -18,9 +18,20 @@ import { ApiException } from './apiError';
 
 const BLOCK = 512;
 
+/** 图片缓存键允许的字符；宽度变体带 `:w640` 这类后缀（见 imageVariantKey）。 */
+const IMAGE_KEY_SOURCE = '[A-Za-z0-9._-]{1,150}(?::w\\d{1,4})?';
+
 /** 导出器可能写出的全部文件名。images/ 下是图片缓存键。 */
-const SAFE_NAME =
-  /^(manifest\.json|feeds\.json|prefs\.json|llm\.json|digests\.json|users\.json|accounts\.json|user_llm\.json|settings\.json|image_cache\.json|entries-\d{4}\.jsonl|article_cache-\d{4}\.jsonl|images\/[A-Za-z0-9._-]{1,150})$/;
+const SAFE_NAME = new RegExp(
+  '^(manifest\\.json|feeds\\.json|prefs\\.json|llm\\.json|digests\\.json|users\\.json|accounts\\.json|' +
+  'user_llm\\.json|settings\\.json|image_cache\\.json|entries-\\d{4}\\.jsonl|article_cache-\\d{4}\\.jsonl|' +
+  `images/${IMAGE_KEY_SOURCE})$`,
+);
+
+const IMAGE_KEY_RE = new RegExp(`^${IMAGE_KEY_SOURCE}$`);
+
+/** 清单里的图片键是否与解包白名单同一套规则（防止清单 json 注入路径）。 */
+export const isSafeImageKey = (key: string): boolean => IMAGE_KEY_RE.test(key);
 
 export interface ExtractLimits {
   maxFileBytes: number;

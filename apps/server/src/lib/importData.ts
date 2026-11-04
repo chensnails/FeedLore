@@ -32,6 +32,7 @@ import {
   type NewFeed,
 } from '@feedlore/db';
 import { ApiException } from './apiError';
+import { isSafeImageKey } from './tar-read';
 
 const FORMAT = 'feedlore-backup';
 const FORMAT_VERSION = 1;
@@ -485,18 +486,10 @@ async function insertImages(tx: Db, dir: string, metaRows: Raw[]): Promise<numbe
   for (const raw of metaRows) {
     const key = str(raw.key);
     if (!key) throw invalid('bad image_cache.json record');
+    // 清单是包内数据，不能拿它拼任意路径；与解包白名单共用同一套键规则
+    if (!isSafeImageKey(key)) throw invalid(`bad image key "${key}"`);
     meta.set(key, raw);
   }
-  let files: string[];
-  try {
-    files = (await readdir(join(dir, 'images'), { withFileTypes: true }))
-      .filter((n) => n.isFile())
-      .map((n) => n.name)
-      .sort();
-  } catch {
-    files = [];
-  }
-  const seen = new Set<string>();
   let total = 0;
   let batch: Array<typeof imageCache.$inferInsert> = [];
 
@@ -507,12 +500,15 @@ async function insertImages(tx: Db, dir: string, metaRows: Raw[]): Promise<numbe
     batch = [];
   };
 
-  for (const name of files) {
-    const key = name;
-    const info = meta.get(key);
-    if (!info) continue;
-    const data = await readFile(join(dir, 'images', name));
-    seen.add(key);
+  /* 按清单键逐个读，而不是 readdir 后按文件名匹配：图片变体键含 `:`（如 `:w640`），
+   * Windows 上这类名字是 NTFS 的备用数据流，readdir 根本列不出来。 */
+  for (const [key, info] of meta) {
+    let data: Buffer;
+    try {
+      data = await readFile(join(dir, 'images', key));
+    } catch {
+      throw invalid(`image file is missing for key "${key}"`);
+    }
     batch.push({
       key,
       contentType: str(info.contentType) || 'application/octet-stream',
@@ -526,10 +522,6 @@ async function insertImages(tx: Db, dir: string, metaRows: Raw[]): Promise<numbe
     if (batch.length >= IMAGE_BATCH) await flush();
   }
   await flush();
-
-  for (const key of meta.keys()) {
-    if (!seen.has(key)) throw invalid(`image file is missing for key "${key}"`);
-  }
   return total;
 }
 
