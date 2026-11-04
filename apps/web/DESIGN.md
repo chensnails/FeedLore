@@ -69,7 +69,7 @@
 ```bash
 corepack pnpm --filter @feedlore/web run build     # 构建
 node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算
-corepack pnpm --filter @feedlore/web run test      # jsdom UI 回归（437 项）
+corepack pnpm --filter @feedlore/web run test      # jsdom UI 回归（440 项）
 corepack pnpm -r run test                          # 契约 + 服务端
 ```
 
