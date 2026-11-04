@@ -45,7 +45,7 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - **"Font size" renamed to "UI font size"** to distinguish it from "Reader font size": the
   former scales the whole site proportionally (including the article body), the latter
   affects only the article body.
-- **Quieter card actions on mobile**: copy / open on media cards now use a translucent glass
+- **Quieter card actions on mobile**: copy / open on media cards now use a translucent dark
   background, and text cards use outlined icon buttons; the 40×40 touch target and the click
   path are unchanged.
 - **Server logs and API errors now speak English**: server logs, startup and migration output
