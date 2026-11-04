@@ -11,6 +11,23 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 (None)
 
+## 2.2.1 — 2026-11-04
+
+### Fixed
+
+- **Card action buttons on mobile now use a solid dark background**: 2.2.0's translucent
+  glass background exceeded the build check's blur budget (reserved for the two full-screen
+  masks), and a dozen live blur layers in the long scrolling card grid also cost frames. The
+  buttons now use a denser shade of the same tone; the white icons, outline and 40×40 touch
+  target are unchanged, and the visual quieting is the same.
+
+### Deployment
+
+- Image: `ghcr.io/chensnails/feedlore:2.2.1` (amd64 + arm64); `latest` points at the same
+  digest.
+- **Upgrading from 2.2.0 or any 2.2.0-rc**: change `V2_IMAGE` to `…:2.2.1` and run `up -d`.
+  There is no database or API change.
+
 ## 2.2.0 — 2026-11-04
 
 ### Added

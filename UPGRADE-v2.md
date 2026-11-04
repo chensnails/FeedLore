@@ -89,7 +89,7 @@ curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-co
 | `AUTH_TRUSTED_ORIGINS` | 否 | 需要额外信任的来源，逗号分隔 |
 | `AUTH_SECURE_COOKIES` | 否 | 纯 HTTP 保持 `0`；前面是 HTTPS 反代时设 `1` |
 | `V2_DB_NAME` | 否 | 新库名，默认 `feedlore_v2` |
-| `V2_IMAGE` | 否 | 默认 `ghcr.io/chensnails/feedlore:2.2.0`；想跟 latest 滚动就写 `:latest` |
+| `V2_IMAGE` | 否 | 默认 `ghcr.io/chensnails/feedlore:2.2.1`；想跟 latest 滚动就写 `:latest` |
 | `UPGRADE_SKIP_IMAGE_CACHE` | 否 | 设 `1` 跳过图片缓存拷贝（v2 会按需回源） |
 | `UPGRADE_SKIP_BACKUP` | 否 | 仅自举路径：设 `1` 跳过 `<库名>_backup` 快照 |
 | `ADMIN_USER` / `ADMIN_PASS` | 否 | 空站点首次启动的初始管理员；不填密码则生成一次性随机口令（只在启动日志出现一次） |

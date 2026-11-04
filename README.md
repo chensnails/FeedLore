@@ -7,7 +7,7 @@ English: [README.en.md](README.en.md)
 
 **在线体验**：https://feedlore.669600.xyz · 演示账户 `demo` / `demo`
 
-当前版本 **2.2.0** · [更新日志](CHANGELOG.md) · [升级与部署](UPGRADE-v2.md)
+当前版本 **2.2.1** · [更新日志](CHANGELOG.md) · [升级与部署](UPGRADE-v2.md)
 
 ## 这是什么
 
