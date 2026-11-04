@@ -1095,13 +1095,30 @@ textarea:disabled {
   padding-top:var(--sp-2);
   border-top: var(--divider-w) solid var(--border);
 }
-/* 卡片底部操作收成小方块图标：复制（主色）+ 打开原文章（描边） */
+/* 卡片底部操作收成小方块图标。无图卡没有图片需要压层级，实心主色反而成了
+   整张卡最亮的一块，与有图卡的玻璃浮层也不统一 —— 两枚都改成同族描边按钮，
+   复制成功态仍短暂变绿作为唯一强调。 */
 .card-foot .btn-copy,
 .card-foot .btn-open {
   flex: 0 0 auto;
   width: 32px; height: 32px; padding:0;
   justify-content: center;
   border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-strong);
+  transition: background var(--dur-base), border-color var(--dur-base), color var(--dur-base);
+}
+.card-foot .btn-copy:hover,
+.card-foot .btn-open:hover {
+  background: var(--chip-bg);
+  border-color: var(--accent-text);
+  color: var(--accent-text);
+}
+.card-foot .btn-copy.copied {
+  background: var(--green);
+  color: var(--on-accent);
+  border-color: transparent;
 }
 
 /* 移动端 / 窄屏适配：收紧内边距与字号、浮层按钮贴边
