@@ -1635,6 +1635,11 @@ textarea:disabled {
   }
   .settings-modal .tab.active { background: var(--accent-soft); color: var(--accent-text); }
   .settings-modal .tab.active::after { display: none; }
+  /* 选中项左侧主色条：桌面导航是竖排，横排那根下划线没有意义，用竖条对齐分组层级 */
+  .settings-modal .tab.active::before {
+    content: ""; position: absolute; left: 0; top: 20%; bottom: 20%;
+    width: 3px; border-radius: 0 2px 2px 0; background: var(--accent);
+  }
   .settings-modal .modal-body { grid-area: body; }
 }
 
@@ -1779,6 +1784,8 @@ textarea:disabled {
  * 用原生 <details>/<summary>：键盘可操作、无障碍语义天然正确、不依赖 JS。
  * 展开状态由 app.js 按 data-sec 记进 localStorage，下次打开保持。 */
 .sec { border-top: 1px solid var(--border); }
+/* 内容区第一个分组不重复画顶边：头部已经有分隔线，再来一条会显得脏 */
+.pane-scroll > .sec:first-of-type { border-top: 0; }
 .sec-head {
   display: flex; align-items: center; gap:var(--sp-2);
   padding:var(--sp-3) var(--sp-6);
@@ -1843,6 +1850,8 @@ textarea:disabled {
   gap:var(--sp-3);
   padding:var(--sp-4) var(--sp-6) var(--sp-5);
   border-top: 1px solid var(--border);
+  /* 浅一档底色把「动作栏」和可滚动正文分开；不加阴影/模糊，避免长面板里的重绘开销 */
+  background: var(--panel-2);
   flex: 0 0 auto;
 }
 .pane-foot-btns { display: flex; gap:var(--sp-2); }
@@ -2971,6 +2980,41 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .user-add { display: flex; flex-wrap: wrap; gap:var(--sp-2); align-items: center; }
 .user-add input, .user-add select { flex: 1 1 120px; min-width: 0; }
 .user-add .btn { flex: 0 0 auto; }
+
+/* 登录设备（账号 → 登录设备）：一行一台；本机用主色标出，其余可逐台退出 */
+.dev-list { display: flex; flex-direction: column; gap:var(--sp-2); margin-bottom:var(--sp-3); }
+.dev-row {
+  display: flex; align-items: center; gap:var(--sp-3);
+  padding:var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+.dev-row.current { border-color: var(--border-strong); background: var(--accent-soft); }
+.dev-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dev-name {
+  display: flex; align-items: center; gap:var(--sp-2); min-width: 0;
+  font-size: var(--fs-sm); font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dev-badge {
+  flex: 0 0 auto; font-size: var(--fs-2xs); font-weight: 700;
+  padding:1px var(--sp-2); border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--accent-text);
+}
+.dev-row.current .dev-badge { background: var(--panel); }
+.dev-meta {
+  font-size: var(--fs-xs); color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dev-revoke {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer; font-family: inherit;
+  font-size: var(--fs-sm); color: var(--text-muted);
+  padding:var(--sp-1) var(--sp-2); border-radius: var(--radius-xs);
+}
+.dev-revoke:hover { background: var(--hover); color: var(--danger); }
+.dev-revoke:disabled { cursor: wait; opacity: var(--disabled-opacity); }
+.dev-actions { display: flex; justify-content: flex-end; }
 
 /* 条目过滤规则（账号 → 过滤规则，v2.7.0）：一行一条规则，窄屏自动换行 */
 .filter-row {

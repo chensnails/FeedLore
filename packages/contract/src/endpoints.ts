@@ -191,6 +191,24 @@ export const auth = {
     auth: 'admin',
     response: C.OkSchema,
   },
+  sessionsList: {
+    method: 'get',
+    path: '/api/sessions',
+    auth: 'user',
+    response: z.object({ sessions: z.array(M.SessionDeviceSchema) }),
+  },
+  sessionRevoke: {
+    method: 'delete',
+    path: '/api/sessions/:id',
+    auth: 'user',
+    response: C.OkSchema,
+  },
+  sessionsRevokeOthers: {
+    method: 'post',
+    path: '/api/sessions/revoke-others',
+    auth: 'user',
+    response: z.object({ ok: z.boolean(), revoked: z.number().int() }),
+  },
 } as const satisfies Record<string, EndpointSpec>;
 
 /* ============================ 频道（Feeds） ============================ */

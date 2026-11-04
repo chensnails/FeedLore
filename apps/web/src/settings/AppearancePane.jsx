@@ -10,6 +10,7 @@
 
 import { core } from '@core';
 import React, { useEffect, useState } from 'react';
+import { PaneFoot } from './primitives.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -201,10 +202,10 @@ export function AppearancePane() {
         </div>
       </div>
 
-      <div className="pane-foot">
-        <button className="btn btn-ghost btn-sm" id="apprResetBtn" type="button" onClick={onReset}>恢复默认</button>
-        <span className="pane-foot-note">外观只存这台设备，换设备或清缓存后回到默认</span>
-      </div>
+      <PaneFoot
+        lead={<button className="btn btn-ghost btn-sm" id="apprResetBtn" type="button" onClick={onReset}>恢复默认</button>}
+        note="外观只存这台设备（换设备或清缓存后回到默认）；视图 / 排序 / 侧栏宽度等布局按账号保存，换设备登录会跟随账号"
+      />
     </div>
   );
 }

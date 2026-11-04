@@ -198,6 +198,24 @@ export const AdminUserSchema = UserSchema.extend({
 });
 export type AdminUser = z.infer<typeof AdminUserSchema>;
 
+/**
+ * 一台已登录设备（GET /api/sessions）。
+ *
+ * 只下发展示字段：`token` 是会话凭据本身，永远不出现在响应里（拿到它就能冒用登录）。
+ * `current` 由服务端按当前 Cookie 对应的会话标记，前端据此区分「本机」与「其它设备」。
+ */
+export const SessionDeviceSchema = z.object({
+  id: z.string().min(1),
+  current: z.boolean(),
+  ip: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  createdAt: IsoDateTime,
+  /** 最近一次请求时间（better-auth 每次校验会话都会刷新 updated_at） */
+  lastSeenAt: IsoDateTime,
+  expiresAt: IsoDateTime,
+});
+export type SessionDevice = z.infer<typeof SessionDeviceSchema>;
+
 /* ============================ 偏好（prefs） ============================ */
 
 /**

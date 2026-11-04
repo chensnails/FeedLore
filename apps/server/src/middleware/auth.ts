@@ -15,6 +15,8 @@ export interface SessionUser {
   id: string;
   username: string;
   role: Role;
+  /** 当前请求所用会话的 id（设备管理据此标记「本机」，不把 token 交给前端）。 */
+  sessionId: string;
 }
 
 export type AppEnv = {
@@ -48,6 +50,7 @@ export function requireAuth(
     if (!session) return apiError(c, 'E_UNAUTHORIZED');
 
     const u = session.user as unknown as AuthUserLike;
+    const current = session.session as unknown as { id?: string };
     const role = normalizeRole(u.role);
     if (level === 'admin' && role !== 'admin') {
       return apiError(c, 'E_ADMIN_ONLY');
@@ -62,6 +65,7 @@ export function requireAuth(
       id: u.id,
       username: u.username ?? u.name ?? u.email ?? '',
       role,
+      sessionId: String(current?.id ?? ''),
     });
     await next();
   };

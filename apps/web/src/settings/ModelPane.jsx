@@ -9,6 +9,7 @@
 
 import { core } from '@core';
 import React, { useEffect, useState } from 'react';
+import { PaneFoot, Result } from './primitives.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -283,35 +284,28 @@ export function ModelPane({ onDirtyChange }) {
           </select>
           <small className="form-tip">日报是每天一次的后台任务，「中」通常就够；只有条目很多、分类总跑偏时才值得上「深」</small>
         </div>
-        {result && (
-          <div className={'test-result show ' + (result.ok ? 'ok' : 'err')} id="llmResult" role="status">
-            {result.msg}
-          </div>
-        )}
+        {result ? <Result id="llmResult" result={result} /> : null}
       </div>
-      <div className="pane-foot">
-        <span className="hint">模型配置完全跟随账号：这一份只对你自己生效，不会用上别人的地址或 Key，也没有站点默认值可回退——三项都填好才能生成日报</span>
-        <div className="pane-foot-btns">
-          <button
-            className="btn btn-ghost"
-            id="testLlmBtn"
-            type="button"
-            disabled={busy === 'test'}
-            onClick={onTest}
-          >
-            {busy === 'test' ? '测试中…' : '测试模型'}
-          </button>
-          <button
-            className="btn btn-primary"
-            id="saveLlmBtn"
-            type="button"
-            disabled={busy === 'save' || !dirty}
-            onClick={onSave}
-          >
-            {busy === 'save' ? '保存中…' : '保存模型'}
-          </button>
-        </div>
-      </div>
+      <PaneFoot lead={<span className="hint">模型配置完全跟随账号：这一份只对你自己生效，不会用上别人的地址或 Key，也没有站点默认值可回退——三项都填好才能生成日报</span>}>
+        <button
+          className="btn btn-ghost"
+          id="testLlmBtn"
+          type="button"
+          disabled={busy === 'test'}
+          onClick={onTest}
+        >
+          {busy === 'test' ? '测试中…' : '测试模型'}
+        </button>
+        <button
+          className="btn btn-primary"
+          id="saveLlmBtn"
+          type="button"
+          disabled={busy === 'save' || !dirty}
+          onClick={onSave}
+        >
+          {busy === 'save' ? '保存中…' : '保存模型'}
+        </button>
+      </PaneFoot>
     </div>
   );
 }

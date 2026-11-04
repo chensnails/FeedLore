@@ -23,6 +23,7 @@
 
 import { core } from '@core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { PaneFoot, Result, Section } from './primitives.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -1133,20 +1134,12 @@ export function SourcePane({ admin, onDirtyChange }) {
               onChange={onImport}
             />
           </div>
-          <div className={'test-result' + (result ? ' show ' + (result.ok ? 'ok' : 'err') : '')} id="feedResult" role="status">
-            {result ? result.msg : ''}
-          </div>
+          <Result id="feedResult" result={result} />
         </div>
 
         {/* 采集参数：设置一次就不常动，默认收起；收起时标题右侧直接显示当前值（仅管理员） */}
         {admin && (
-          <details className="sec" data-sec="src-params">
-            <summary className="sec-head">
-              <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-              <span className="sec-title">采集参数</span>
-              <span className="sec-sub" id="srcParamsSub">{paramsSub}</span>
-            </summary>
-            <div className="sec-body">
+          <Section secKey="src-params" title="采集参数" sub={paramsSub} subId="srcParamsSub">
               <div className="source-opts">
                 <label htmlFor="srcRefresh">自动抓取{' '}
                   <select id="srcRefresh" className="select" value={cfg.refreshMinutes} onChange={setCfgField('refreshMinutes')}>
@@ -1288,24 +1281,16 @@ export function SourcePane({ admin, onDirtyChange }) {
                 「图片回源窗口」内的重复访问不再请求上游，超过窗口仍先返回旧图、后台静默刷新；「图片保留」到期后由每日清理删除。
                 改动保存后对之后新缓存的图片生效；点「清空图片缓存」可立即按新参数重新缓存全部图片。
               </small>
-            </div>
-          </details>
+          </Section>
         )}
 
         {/* 频道列表：日常最常看，默认展开 */}
-        <details className="sec" data-sec="src-feeds" open>
-          <summary className="sec-head">
-            <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-            <span className="sec-title">频道列表</span>
-            <span className="sec-sub" id="feedToolbarHint">
-              {total
-                ? `${total} 个频道${groupNames.length ? ` · ${groupNames.length} 个分组` : ''}`
-                  + `${ownFreqCount ? ` · ${ownFreqCount} 个单独设了频率` : ''}`
-                  + ' · 改分组或频率后即保存'
-                : ''}
-            </span>
-          </summary>
-          <div className="sec-body">
+        <Section secKey="src-feeds" title="频道列表" open subId="feedToolbarHint"
+          sub={total
+            ? `${total} 个频道${groupNames.length ? ` · ${groupNames.length} 个分组` : ''}`
+              + `${ownFreqCount ? ` · ${ownFreqCount} 个单独设了频率` : ''}`
+              + ' · 改分组或频率后即保存'
+            : ''}>
             <div className="feed-filter">
               <svg className="feed-filter-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
               <input className="feed-filter-input" type="search" value={feedQuery}
@@ -1402,12 +1387,11 @@ export function SourcePane({ admin, onDirtyChange }) {
             <datalist id="groupList">
               {groupNames.map((g) => <option key={g} value={g} />)}
             </datalist>
-          </div>
-        </details>
+        </Section>
 
       </div>
 
-      <div className="pane-foot">
+      <PaneFoot lead={
         <span className="hint" id="settingsHint">
           {total ? (
             <>
@@ -1417,28 +1401,27 @@ export function SourcePane({ admin, onDirtyChange }) {
             </>
           ) : '添加一个 RSS 地址即可开始'}
         </span>
-        <div className="pane-foot-btns">
-          <button
-            className="btn btn-ghost"
-            id="refreshAllFeedsBtn"
-            type="button"
-            disabled={busy === 'all'}
-            onClick={onRefreshAll}
-          >
-            {busy === 'all' ? '抓取中…' : '刷新全部'}
-          </button>
-          <button
-            className="btn btn-primary"
-            id="saveSourceBtn"
-            type="button"
-            hidden={!admin}
-            disabled={busy === 'save' || (cfgLoaded && !cfgDirty)}
-            onClick={onSaveCfg}
-          >
-            {busy === 'save' ? '保存中…' : '保存设置'}
-          </button>
-        </div>
-      </div>
+      }>
+        <button
+          className="btn btn-ghost"
+          id="refreshAllFeedsBtn"
+          type="button"
+          disabled={busy === 'all'}
+          onClick={onRefreshAll}
+        >
+          {busy === 'all' ? '抓取中…' : '刷新全部'}
+        </button>
+        <button
+          className="btn btn-primary"
+          id="saveSourceBtn"
+          type="button"
+          hidden={!admin}
+          disabled={busy === 'save' || (cfgLoaded && !cfgDirty)}
+          onClick={onSaveCfg}
+        >
+          {busy === 'save' ? '保存中…' : '保存设置'}
+        </button>
+      </PaneFoot>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { core } from '@core';
 import { useState, useEffect, useRef } from 'react';
+import { Result, Section } from './primitives.jsx';
 import { RuleScopePicker, emptyScope, normalizeScope } from './RuleScopePicker';
 
 /**
@@ -256,13 +257,8 @@ export function WatchPane({ onDirtyChange }) {
   return (
     <div className="tab-pane" data-pane="watch" ref={paneRef}>
       <div className="pane-scroll">
-        <details className="sec" data-sec="watch-rules" open>
-          <summary className="sec-head">
-            <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-            <span className="sec-title">关注 / 屏蔽规则</span>
-            <span className="sec-sub">{rules.length ? `${rules.length} 条` : '未配置'}</span>
-          </summary>
-          <div className="sec-body">
+        <Section secKey="watch-rules" title="关注 / 屏蔽规则" open
+          sub={rules.length ? `${rules.length} 条` : '未配置'}>
         <div className="form-row">
           <label htmlFor="watchWebhook">Webhook 通知地址（可选）</label>
           <div className="input-with-btn">
@@ -390,21 +386,11 @@ export function WatchPane({ onDirtyChange }) {
           </button>
         </div>
 
-            {result && (
-              <div className={'test-result show ' + (result.ok ? 'ok' : 'err')} id="watchResult" role="status">
-                {result.msg}
-              </div>
-            )}
-          </div>
-        </details>
+            {result ? <Result id="watchResult" result={result} /> : null}
+        </Section>
 
-        <details className="sec" data-sec="watch-filters">
-          <summary className="sec-head">
-            <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-            <span className="sec-title">入库前过滤</span>
-            <span className="sec-sub">{!filtersLoaded ? '读取中…' : (filters.length ? `${filters.length} 条` : '未配置')}</span>
-          </summary>
-          <div className="sec-body">
+        <Section secKey="watch-filters" title="入库前过滤"
+          sub={!filtersLoaded ? '读取中…' : (filters.length ? `${filters.length} 条` : '未配置')}>
             {!filtersLoaded ? <div className="hint">正在读取规则…</div>
               : !filters.length ? <div className="hint">还没有规则。点「添加过滤规则」试试，比如丢弃标题含「广告」的文章。</div>
                 : filters.map((f) => (
@@ -453,18 +439,14 @@ export function WatchPane({ onDirtyChange }) {
               <b>丢弃</b>：命中即不入库；<b>只收</b>：只保留命中的文章（白名单）。两者同时存在时，先丢弃、再只收。<br />
               关键词不区分大小写；范围「全部」= 标题 + 摘要 + 正文；非法正则在保存时会被忽略。
             </small>
-            <div id="filterResult" role="status" aria-live="polite"
-              className={'test-result' + (filterResult ? ' show ' + (filterResult.ok ? 'ok' : 'err') : '')}>
-              {filterResult ? filterResult.msg : ''}
-            </div>
+            <Result id="filterResult" result={filterResult} />
             <div className="filter-save">
               <button className="btn btn-primary btn-sm" id="saveFilterBtn" type="button"
                 disabled={savingFilter || !filtersDirty} onClick={onSaveFilters}>
                 {savingFilter ? '保存中…' : '保存规则'}
               </button>
             </div>
-          </div>
-        </details>
+        </Section>
       </div>
     </div>
   );

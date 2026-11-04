@@ -12,6 +12,7 @@
 
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
+import { PaneFoot, Section } from './primitives.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -78,17 +79,8 @@ const StatRow = ({ k, v }) => (
   <div className="stat-row"><span className="stat-k">{k}</span><span className="stat-v">{v}</span></div>
 );
 
-/** 一个折叠分组。open 只是首次的默认值；用户改过之后以记住的状态为准（bindSections 接管） */
-const StatSection = ({ secKey, title, sub, open, children }) => (
-  <details className="sec" data-sec={secKey} open={open || undefined}>
-    <summary className="sec-head">
-      <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-      <span className="sec-title">{title}</span>
-      <span className="sec-sub">{sub}</span>
-    </summary>
-    <div className="sec-body">{children}</div>
-  </details>
-);
+/** 一个折叠分组（见 primitives.jsx；open 只是首次默认值，之后以目录记住的状态为准） */
+const StatSection = Section;
 
 /* ---------- 诊断文本（拼好后贴到 issue / 聊天里） ---------- */
 function buildDiagnostics(d) {
@@ -240,13 +232,10 @@ export function StatusPane() {
         <div className="status-body" id="statusBody">
           <p className="stat-loading">正在读取运行状态…</p>
         </div>
-        <div className="pane-foot">
-          <span className="hint" id="statusHint">{hint}</span>
-          <div className="pane-foot-btns">
-            <button className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
-            <button className="btn btn-primary" id="statusRefreshBtn" onClick={load}>刷新</button>
-          </div>
-        </div>
+        <PaneFoot lead={<span className="hint" id="statusHint">{hint}</span>}>
+          <button className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
+          <button className="btn btn-primary" id="statusRefreshBtn" onClick={load}>刷新</button>
+        </PaneFoot>
       </div>
     );
   }
@@ -257,13 +246,10 @@ export function StatusPane() {
         <div className="status-body" id="statusBody">
           <p className="stat-error">读取失败：{data.__error}</p>
         </div>
-        <div className="pane-foot">
-          <span className="hint" id="statusHint">{hint}</span>
-          <div className="pane-foot-btns">
-            <button className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
-            <button className="btn btn-primary" id="statusRefreshBtn" onClick={load}>刷新</button>
-          </div>
-        </div>
+        <PaneFoot lead={<span className="hint" id="statusHint">{hint}</span>}>
+          <button className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
+          <button className="btn btn-primary" id="statusRefreshBtn" onClick={load}>刷新</button>
+        </PaneFoot>
       </div>
     );
   }
@@ -403,13 +389,10 @@ export function StatusPane() {
         </StatSection>
       </div>
 
-      <div className="pane-foot">
-        <span className="hint" id="statusHint">{hint}</span>
-        <div className="pane-foot-btns">
-          <button className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
-          <button className="btn btn-primary" id="statusRefreshBtn" onClick={load}>刷新</button>
-        </div>
-      </div>
+      <PaneFoot lead={<span className="hint" id="statusHint">{hint}</span>}>
+        <button className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
+        <button className="btn btn-primary" id="statusRefreshBtn" onClick={load}>刷新</button>
+      </PaneFoot>
     </div>
   );
 }

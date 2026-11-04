@@ -42,6 +42,8 @@ export const API_ERROR_CODES = [
   'E_USER_CREATE_FAILED',
   'E_USER_NOT_PERSISTED',
   'E_PASSWORD_UPDATE_FAILED',
+  'E_SESSION_NOT_FOUND',
+  'E_CANNOT_REVOKE_CURRENT',
 
   // ---- 订阅源与条目 ----
   'E_FEED_NOT_FOUND',
@@ -139,6 +141,11 @@ export const API_ERROR_DEFAULTS = {
   E_USER_CREATE_FAILED: { status: 400, message: 'Failed to create the user' },
   E_USER_NOT_PERSISTED: { status: 500, message: 'Failed to create the user: it is not in the database' },
   E_PASSWORD_UPDATE_FAILED: { status: 400, message: 'Failed to change the password' },
+  E_SESSION_NOT_FOUND: { status: 404, message: 'Device session not found' },
+  E_CANNOT_REVOKE_CURRENT: {
+    status: 400,
+    message: 'The current session cannot be revoked here, sign out instead',
+  },
 
   E_FEED_NOT_FOUND: { status: 404, message: 'Feed not found' },
   E_FEED_CREATE_FAILED: { status: 500, message: 'Failed to create the feed' },

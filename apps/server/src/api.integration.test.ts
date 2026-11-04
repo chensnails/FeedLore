@@ -26,13 +26,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { sql } from 'drizzle-orm';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { createDb, feeds as feedsTable, entries as entriesTable } from '@feedlore/db';
 import { createAuth } from '@feedlore/auth';
 import {
   feedsListResponse,
   entriesListResponse,
   HealthSchema,
+  SessionDeviceSchema,
   SessionSchema,
 } from '@feedlore/contract';
 import { createApp } from './app';
@@ -414,6 +415,71 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         '其它设备应被踢下线',
       );
       await loginAs(name, 'self-pass-5678');
+    });
+
+    /* ---------------------------------------------------------------- 设备管理 */
+    await t.test('设备清单：只列本账号活跃会话，标记本机且不泄露 token', async () => {
+      const name = `itest_dev_${Date.now().toString(36)}`;
+      await call('/api/users', { method: 'POST', json: { username: name, password: 'dev-pass-1234', role: 'user' } });
+      const first = await loginAs(name, 'dev-pass-1234');
+      const second = await loginAs(name, 'dev-pass-1234');
+
+      const res = await app.request('/api/sessions', { headers: { cookie: first } });
+      assert.equal(res.status, 200);
+      const raw = await res.text();
+      assert.doesNotMatch(raw, /token/i, '会话 token 是登录凭据，绝不能下发到前端');
+      const body = parse(
+        z.object({ sessions: z.array(SessionDeviceSchema) }),
+        JSON.parse(raw),
+        'GET /api/sessions',
+      );
+      assert.ok(body.sessions.length >= 2, `应至少看到两台设备，实际 ${body.sessions.length}`);
+      assert.equal(body.sessions.filter((s) => s.current).length, 1, '有且只有一条是当前设备');
+      assert.equal(body.sessions[0]?.current, true, '当前设备排在最前');
+
+      const other = body.sessions.find((s) => !s.current);
+      assert.ok(other, '应能定位另一台设备');
+
+      // 单台吊销：另一台立即失效，本机不受影响
+      const del = await app.request(`/api/sessions/${other.id}`, {
+        method: 'DELETE',
+        headers: { origin: ORIGIN, cookie: first },
+      });
+      assert.equal(del.status, 200);
+      assert.equal((await app.request('/api/feeds', { headers: { cookie: second } })).status, 401);
+      assert.equal((await app.request('/api/feeds', { headers: { cookie: first } })).status, 200);
+
+      // 不能「吊销本机」：应提示改用退出登录，而不是 200 后把自己踢掉
+      const mine = body.sessions.find((s) => s.current);
+      assert.ok(mine);
+      const selfRevoke = await app.request(`/api/sessions/${mine.id}`, {
+        method: 'DELETE',
+        headers: { origin: ORIGIN, cookie: first },
+      });
+      assert.equal(selfRevoke.status, 400);
+      assert.equal(((await selfRevoke.json()) as { error: string }).error, 'E_CANNOT_REVOKE_CURRENT');
+      assert.equal((await app.request('/api/feeds', { headers: { cookie: first } })).status, 200);
+
+      // 不存在的 id → 404 而不是 500
+      const missing = await app.request('/api/sessions/not-a-real-session', {
+        method: 'DELETE',
+        headers: { origin: ORIGIN, cookie: first },
+      });
+      assert.equal(missing.status, 404);
+      assert.equal(((await missing.json()) as { error: string }).error, 'E_SESSION_NOT_FOUND');
+
+      // 「退出其它设备」：一次清掉，自己留下
+      const third = await loginAs(name, 'dev-pass-1234');
+      const revokeOthers = await app.request('/api/sessions/revoke-others', {
+        method: 'POST',
+        headers: { origin: ORIGIN, cookie: first },
+      });
+      assert.equal(revokeOthers.status, 200);
+      const out = (await revokeOthers.json()) as { ok: boolean; revoked: number };
+      assert.equal(out.ok, true);
+      assert.ok(out.revoked >= 1, `应至少吊销 1 台，实际 ${out.revoked}`);
+      assert.equal((await app.request('/api/feeds', { headers: { cookie: third } })).status, 401);
+      assert.equal((await app.request('/api/feeds', { headers: { cookie: first } })).status, 200);
     });
 
     /* ---------------------------------------------------------------- CSRF */

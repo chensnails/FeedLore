@@ -10,6 +10,7 @@
 
 import { core } from '@core';
 import { useEffect, useState } from 'react';
+import { PaneFoot, Result } from './primitives.jsx';
 
 const S = () => core;
 
@@ -246,23 +247,16 @@ export function DigestPane({ onDirtyChange }) {
           </small>
         </div>
 
-        {result && (
-          <div className={'test-result show ' + (result.ok ? 'ok' : 'err')} id="digResult" role="status">
-            {result.msg}
-          </div>
-        )}
+        {result ? <Result id="digResult" result={result} /> : null}
       </div>
-      <div className="pane-foot">
-        <span className="hint">这些设置只对你的账号生效；模型地址与 Key 在「设置 → 模型」里单独配</span>
-        <div className="pane-foot-btns">
-          <button className="btn btn-ghost" id="digResetBtn" type="button"
-            disabled={busy || !form.style} onClick={onResetStyle}>清空风格</button>
-          <button className="btn btn-primary" id="digSaveBtn" type="button"
-            disabled={busy || !dirty} onClick={onSave}>
-            {busy ? '保存中…' : '保存日报设置'}
-          </button>
-        </div>
-      </div>
+      <PaneFoot lead={<span className="hint">这些设置只对你的账号生效；模型地址与 Key 在「设置 → 模型」里单独配</span>}>
+        <button className="btn btn-ghost" id="digResetBtn" type="button"
+          disabled={busy || !form.style} onClick={onResetStyle}>清空风格</button>
+        <button className="btn btn-primary" id="digSaveBtn" type="button"
+          disabled={busy || !dirty} onClick={onSave}>
+          {busy ? '保存中…' : '保存日报设置'}
+        </button>
+      </PaneFoot>
     </div>
   );
 }

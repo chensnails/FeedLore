@@ -38,6 +38,8 @@ const CN = {
   E_USER_CREATE_FAILED: '创建失败',
   E_USER_NOT_PERSISTED: '创建失败：用户未落库',
   E_PASSWORD_UPDATE_FAILED: '改密失败',
+  E_SESSION_NOT_FOUND: '这台设备已不在登录列表中',
+  E_CANNOT_REVOKE_CURRENT: '不能在这里退出当前设备，请用「退出登录」',
 
   E_FEED_NOT_FOUND: '频道不存在',
   E_FEED_CREATE_FAILED: '频道创建失败',

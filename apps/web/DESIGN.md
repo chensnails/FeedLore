@@ -63,13 +63,21 @@
 - 有未保存改动时，标题旁出现「未保存」、当前页签出现圆点；切页签或关闭会先弹「放弃未保存的更改？」。
   面板通过 `onDirtyChange` 上报，外壳用 ref 立即记录，避免被动副作用晚一拍漏拦。
 - 规则「适用范围」浮层挂在 body 上，随页面/面板滚动用 rAF 重新定位；触发按钮滚出可视区即收起。
+- 「账号 → 登录设备」列 `GET /api/sessions`：只给浏览器 / 系统、IP、最近活跃等展示字段，
+  **会话 token 永不下发**；本机由服务端按当前 Cookie 标记，可逐台退出或一键退出其它设备。
+  本机退出仍走「退出登录」（服务端对 `DELETE /api/sessions/:id` 的本机 id 返回
+  `E_CANNOT_REVOKE_CURRENT`）。
+- 折叠分组 / 结果提示 / 底部动作栏统一用 `src/settings/primitives.jsx`（`Section` /
+  `Result` / `PaneFoot`）。新面板不要再另抄一段 `details.sec` 或 `pane-foot`，
+  否则标题层级、间距与保存栏会再次各走一套。类名与 `data-sec` 仍是原样，样式与
+  折叠状态持久化不受影响。
 
 ## 5. 守门（改完必须全绿）
 
 ```bash
 corepack pnpm --filter @feedlore/web run build     # 构建
 node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算
-corepack pnpm --filter @feedlore/web run test      # jsdom UI 回归（440 项）
+corepack pnpm --filter @feedlore/web run test      # jsdom UI 回归（444 项）
 corepack pnpm -r run test                          # 契约 + 服务端
 ```
 

@@ -157,6 +157,11 @@ let miniUsers = [
   { id: '2', username: 'alice', role: 'user', createdAt: null, feedCount: 1, isSelf: false },
 ];
 let usersFailNext = false;
+// 登录设备（GET /api/sessions）：一台本机 + 一台手机
+let miniSessions = [
+  { id: 'sess-current', current: true, ip: '192.0.2.10', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36', createdAt: '2026-11-01T08:00:00.000Z', lastSeenAt: '2026-11-04T09:30:00.000Z', expiresAt: '2026-12-01T08:00:00.000Z' },
+  { id: 'sess-phone', current: false, ip: '192.0.2.44', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1', createdAt: '2026-11-02T10:00:00.000Z', lastSeenAt: '2026-11-04T09:00:00.000Z', expiresAt: '2026-12-02T10:00:00.000Z' },
+];
 let accountPostOk = true;
 let statusFailNext = false;
 let promptInstallResult = false;
@@ -544,6 +549,24 @@ w.feedlore = {
         if (s.autoRefreshMinutes !== undefined) miniSettingsSource.autoRefreshMinutes = clampInt(s.autoRefreshMinutes, 0, 0, 1440);
         if (s.proxyUrl !== undefined) miniSettingsSource.proxyUrl = String(s.proxyUrl || '').trim().slice(0, 500);
       }
+      return ok({ ok: true });
+    }
+    // ---- 登录设备（会话管理） ----
+    if (url === '/api/sessions' && method === 'GET') {
+      return ok({ sessions: miniSessions.map((x) => Object.assign({}, x)) });
+    }
+    if (url === '/api/sessions/revoke-others' && method === 'POST') {
+      const n = miniSessions.filter((x) => !x.current).length;
+      miniSessions = miniSessions.filter((x) => x.current);
+      return ok({ ok: true, revoked: n });
+    }
+    const sessRoute = url.match(/^\/api\/sessions\/([^/]+)$/);
+    if (sessRoute && method === 'DELETE') {
+      const sid = decodeURIComponent(sessRoute[1]);
+      const sess = miniSessions.find((x) => x.id === sid);
+      if (!sess) return bad('E_SESSION_NOT_FOUND', 404);
+      if (sess.current) return bad('E_CANNOT_REVOKE_CURRENT', 400);
+      miniSessions = miniSessions.filter((x) => x.id !== sid);
       return ok({ ok: true });
     }
     // ---- 账号 / 用户管理 / 状态（P2d） ----
@@ -2638,6 +2661,54 @@ const withEFP = (el, fn) => {
     if (document.querySelector('#accUsersSec .sec-sub').textContent !== '共 2 个') throw new Error('计数: ' + document.querySelector('#accUsersSec .sec-sub').textContent);
   });
   t('安装指引显示当前域名', () => { if (document.querySelector('#installHost').textContent !== 'localhost:3000') throw new Error(document.querySelector('#installHost').textContent); });
+
+  // 登录设备（会话）：本机徽章、UA 归并、逐台退出 / 一键退出其它
+  t('登录设备：本机标记 + 浏览器/系统归并 + 地址', () => {
+    const rows = document.querySelectorAll('[data-sec="acc-devices"] .dev-row');
+    if (rows.length !== 2) throw new Error('设备行数 ' + rows.length);
+    const cur = document.querySelector('[data-sec="acc-devices"] .dev-row.current');
+    if (!cur) throw new Error('缺本机行');
+    if (!cur.querySelector('.dev-badge')) throw new Error('缺「本机」徽章');
+    if (cur.querySelector('.dev-revoke')) throw new Error('本机不应有退出按钮');
+    const phone = Array.prototype.find.call(rows, (r) => !r.classList.contains('current'));
+    const label = phone.querySelector('.dev-name').textContent;
+    if (label.indexOf('Safari') < 0 || label.indexOf('iOS') < 0) throw new Error('UA 归并: ' + label);
+    const meta = phone.querySelector('.dev-meta').textContent;
+    if (meta.indexOf('192.0.2.44') < 0 || meta.indexOf('活跃') < 0) throw new Error('设备元信息: ' + meta);
+    if (!document.querySelector('#revokeOtherSessionsBtn')) throw new Error('缺「退出其它设备」');
+    if (document.querySelector('[data-sec="acc-devices"] .sec-sub').textContent !== '2 台') {
+      throw new Error('设备计数: ' + document.querySelector('[data-sec="acc-devices"] .sec-sub').textContent);
+    }
+  });
+  document.querySelector('[data-sec="acc-devices"] .dev-row:not(.current) .dev-revoke').click();
+  await sleep(80);
+  t('退出单台设备：DELETE /api/sessions/:id + 列表刷新', () => {
+    if (!deletesTo('/api/sessions/sess-phone').length) throw new Error('未 DELETE sess-phone');
+    if (document.querySelectorAll('[data-sec="acc-devices"] .dev-row').length !== 1) throw new Error('应只剩本机');
+    if (document.querySelector('#revokeOtherSessionsBtn')) throw new Error('只剩本机时不应再显示「退出其它设备」');
+    if (!callsOf('toast').length) throw new Error('缺 toast');
+  });
+  // 再放一台回来：重开面板会重新拉设备列表，然后测「退出其它设备」
+  miniSessions.push({
+    id: 'sess-tablet', current: false, ip: '192.0.2.77',
+    userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/126.0.0.0 Mobile Safari/537.36',
+    createdAt: '2026-11-03T10:00:00.000Z', lastSeenAt: '2026-11-04T08:00:00.000Z', expiresAt: '2026-12-03T10:00:00.000Z',
+  });
+  clickTab('关于');
+  await sleep(60);
+  clickTab('账号');
+  await sleep(80);
+  t('重开账号面板：设备列表重新拉取', () => {
+    if (document.querySelectorAll('[data-sec="acc-devices"] .dev-row').length !== 2) throw new Error('设备行数未刷新');
+  });
+  document.querySelector('#revokeOtherSessionsBtn').click();
+  await sleep(80);
+  t('退出其它设备：POST revoke-others + 结果提示', () => {
+    if (!postsTo('/api/sessions/revoke-others').length) throw new Error('未 POST revoke-others');
+    if (document.querySelectorAll('[data-sec="acc-devices"] .dev-row').length !== 1) throw new Error('应只剩本机');
+    const r = document.querySelector('#devResult');
+    if (!r.classList.contains('ok') || r.textContent.indexOf('已退出 1 台设备') < 0) throw new Error(r.className + '/' + r.textContent);
+  });
 
   // 条目过滤规则（v2.7.0）：现位于「规则」tab 的独立分组（WatchPane 读 /api/prefs 的 filters）
   clickTab('规则');
