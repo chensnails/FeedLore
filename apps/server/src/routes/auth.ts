@@ -86,11 +86,24 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
           return apiError(c, 'E_RATE_LIMITED', { params: { retryAfter: limit.retryAfter } });
         }
 
+        /* 设备清单要显示浏览器 / 系统和来源 IP，而 better-auth 只从
+         * user-agent 与 x-forwarded-for 两个头里取值；重构请求时漏掉它们，
+         * 会话记录里的 user_agent / ip_address 会一直是空串。
+         * IP 用 clientIpOf 的结果回填：它已经按 TRUST_PROXY 决定信不信反代头，
+         * 客户端自己带来的 XFF 不会被原样传下去。 */
+        const clientIp = clientIpOf(c);
+        const signInHeaders: Record<string, string> = {
+          'content-type': 'application/json',
+          origin: originOf(c),
+          'user-agent': c.req.header('user-agent') ?? '',
+        };
+        if (clientIp !== 'unknown') signInHeaders['x-forwarded-for'] = clientIp;
+
         // 交给 better-auth 的 username 登录端点（真正校验密码并签发会话）
         const res = await auth.handler(
           new Request(new URL('/api/auth/sign-in/username', baseURLOf(c)), {
             method: 'POST',
-            headers: { 'content-type': 'application/json', origin: originOf(c) },
+            headers: signInHeaders,
             body: JSON.stringify({ username: body.username, password: body.password }),
           }),
         );

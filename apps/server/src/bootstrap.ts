@@ -32,7 +32,7 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq, sql } from 'drizzle-orm';
-import { createDb, createPool, users } from '@feedlore/db';
+import { createDb, createPool, sessions, users } from '@feedlore/db';
 import { getAuth } from './auth';
 import { ensureAuthSecret } from './lib/auth-secret';
 
@@ -333,6 +333,14 @@ async function ensureDefaultAdmin(): Promise<void> {
       } as never,
     });
     await db.update(users).set({ role: 'admin' }).where(eq(users.username, username));
+    /* 进程内 signUpEmail 会顺带签一张会话（better-auth 默认 autoSignIn），
+     * 但令牌没交给任何人；留着它会在「登录设备」里多出一台来路不明的设备。 */
+    const created = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, username))
+      .limit(1);
+    if (created[0]) await db.delete(sessions).where(eq(sessions.userId, created[0].id));
   } catch (e) {
     warn(`Failed to create the initial admin: ${(e as Error)?.message ?? e}`);
     return;

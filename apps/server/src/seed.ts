@@ -43,6 +43,15 @@ async function main(): Promise<void> {
         username,
       } as never, // username 字段由 username 插件扩展，类型未覆盖
     });
+    /* 进程内 signUpEmail 会顺带签一张没人持有的会话，留着会出现在「登录设备」里 */
+    const created = await db
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(eq(schema.users.username, username))
+      .limit(1);
+    if (created[0]) {
+      await db.delete(schema.sessions).where(eq(schema.sessions.userId, created[0].id));
+    }
     console.log(`[seed] created user ${username}`);
   } else {
     console.log(`[seed] user ${username} already exists, skipping creation`);

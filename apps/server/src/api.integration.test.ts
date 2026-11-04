@@ -107,11 +107,14 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     return res;
   }
 
-  /** 单独登录一个账号并返回它自己的 Cookie 串（不污染主 jar）。 */
-  async function loginAs(u: string, p: string): Promise<string> {
+  /** 单独登录一个账号并返回它自己的 Cookie 串（不污染主 jar）。
+   *  userAgent 会随登录请求透传，用于验证「登录设备」里的浏览器识别。 */
+  async function loginAs(u: string, p: string, userAgent = ''): Promise<string> {
+    const headers: Record<string, string> = { origin: ORIGIN, 'content-type': 'application/json' };
+    if (userAgent) headers['user-agent'] = userAgent;
     const res = await app.request('/api/login', {
       method: 'POST',
-      headers: { origin: ORIGIN, 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify({ username: u, password: p }),
     });
     assert.equal(res.status, 200, `${u} 登录应成功`);
@@ -421,8 +424,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     await t.test('设备清单：只列本账号活跃会话，标记本机且不泄露 token', async () => {
       const name = `itest_dev_${Date.now().toString(36)}`;
       await call('/api/users', { method: 'POST', json: { username: name, password: 'dev-pass-1234', role: 'user' } });
-      const first = await loginAs(name, 'dev-pass-1234');
-      const second = await loginAs(name, 'dev-pass-1234');
+      const UA_DESKTOP = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0';
+      const UA_PHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Version/17.0 Mobile Safari/604.1';
+      const first = await loginAs(name, 'dev-pass-1234', UA_DESKTOP);
+      const second = await loginAs(name, 'dev-pass-1234', UA_PHONE);
 
       const res = await app.request('/api/sessions', { headers: { cookie: first } });
       assert.equal(res.status, 200);
@@ -436,6 +441,9 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.ok(body.sessions.length >= 2, `应至少看到两台设备，实际 ${body.sessions.length}`);
       assert.equal(body.sessions.filter((s) => s.current).length, 1, '有且只有一条是当前设备');
       assert.equal(body.sessions[0]?.current, true, '当前设备排在最前');
+      const uas = body.sessions.map((s) => s.userAgent);
+      assert.ok(uas.includes(UA_DESKTOP), `设备清单应带上登录时的 UA，实际 ${JSON.stringify(uas)}`);
+      assert.ok(uas.includes(UA_PHONE), '手机登录也要能被识别成另一台设备');
 
       const other = body.sessions.find((s) => !s.current);
       assert.ok(other, '应能定位另一台设备');
