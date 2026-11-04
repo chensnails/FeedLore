@@ -682,6 +682,15 @@ const importCount = z.object({
   skipped: z.number().int().nonnegative(),
 });
 
+/**
+ * 模型配置的合并结果（与偏好一样「只补空、不覆盖」）：
+ * - `applied`：账号原本没配模型，已按包内配置写入（Key 用本机主密钥重新加密）；
+ * - `absent`：包里没带 `llm.json`（导出时没勾选）；
+ * - `already-configured`：账号已有模型配置，包内的那份被保留现状地跳过；
+ * - `url-blocked`：包里的模型地址没通过出网安全校验（SSRF 基线），整条跳过。
+ */
+const llmImportOutcome = z.enum(['applied', 'absent', 'already-configured', 'url-blocked']);
+
 /** 上传的是原始 tar.gz 请求体，不按 JSON 校验；响应才是 JSON。 */
 export const importApi = {
   userImport: {
@@ -696,6 +705,7 @@ export const importApi = {
       entries: importCount,
       digests: importCount,
       prefs: z.boolean(),
+      llm: llmImportOutcome,
     }),
   },
   siteRestore: {

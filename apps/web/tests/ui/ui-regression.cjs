@@ -144,6 +144,7 @@ const miniSettingsSource = {
 let addShouldFail = false;
 let importShouldFail = false;
 let uploadFail = false;   // 账号导入 / 整站还原的上传结果（成功时按 URL 回不同结构）
+let importLlmOutcome = 'applied'; // 账号导入回显的模型配置结果，见 llmImportOutcome 契约
 let refreshAllFailed = false;
 let patchFailNext = false;
 let feedsFailNext = false;
@@ -664,7 +665,7 @@ w.feedlore = {
       : {
         ok: true, kind: 'user',
         feeds: { inserted: 1, skipped: 2 }, entries: { inserted: 3, skipped: 4 },
-        digests: { inserted: 0, skipped: 1 }, prefs: true,
+        digests: { inserted: 0, skipped: 1 }, prefs: true, llm: importLlmOutcome,
       };
     return Promise.resolve({ ok: true, status: 200, json: async () => body });
   },
@@ -2780,10 +2781,21 @@ const withEFP = (el, fn) => {
     if (!r.classList.contains('ok')
       || r.textContent.indexOf('新增 1 个频道（跳过 2 个）') < 0
       || r.textContent.indexOf('新增 3 篇文章（跳过 4 篇）') < 0
-      || r.textContent.indexOf('已写入偏好设置') < 0) throw new Error(r.className + '/' + r.textContent);
+      || r.textContent.indexOf('已写入偏好设置') < 0
+      || r.textContent.indexOf('已写入模型配置') < 0) throw new Error(r.className + '/' + r.textContent);
     if (!callsOf('loadFeeds').length) throw new Error('未刷新频道列表');
     if (importInput.value !== '') throw new Error('文件框应重置');
   });
+  // 包内模型地址被判内网：只换服务端回显，界面要能自解释为什么没写入
+  importLlmOutcome = 'url-blocked';
+  Object.defineProperty(importInput, 'files', { value: [{ name: 'me2.tar.gz' }], configurable: true });
+  importInput.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await sleep(80);
+  t('数据导入：模型地址指向内网时单独说明跳过原因', () => {
+    const r = document.querySelector('#importResult');
+    if (!r.classList.contains('ok') || r.textContent.indexOf('指向内网，已跳过') < 0) throw new Error(r.className + '/' + r.textContent);
+  });
+  importLlmOutcome = 'applied';
   uploadFail = true;
   Object.defineProperty(importInput, 'files', { value: [{ name: 'bad.tar.gz' }], configurable: true });
   importInput.dispatchEvent(new w.Event('change', { bubbles: true }));

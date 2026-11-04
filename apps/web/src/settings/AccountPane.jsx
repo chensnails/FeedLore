@@ -331,7 +331,7 @@ export function AccountPane({ onDirtyChange }) {
     if (!file) return;
     const ok = await s.confirm({
       title: '导入到当前账号？',
-      desc: `会把「${file.name}」里的频道、文章标记、日报与偏好合并进来；已存在的频道和文章会跳过，现有文章的已读 / 收藏 / 关注状态不会被改动。`,
+      desc: `会把「${file.name}」里的频道、文章标记、日报与偏好合并进来；已存在的频道和文章会跳过，现有文章的已读 / 收藏 / 关注状态不会被改动。模型配置只在这个账号还没配过模型时写入。`,
       confirmText: '开始导入',
     });
     if (!ok) return;
@@ -350,6 +350,9 @@ export function AccountPane({ onDirtyChange }) {
         `新增 ${d.inserted || 0} 篇日报（跳过 ${d.skipped || 0} 篇）`,
       ];
       if (data.prefs) parts.push('已写入偏好设置');
+      if (data.llm === 'applied') parts.push('已写入模型配置（Key 按本机密钥重新加密）');
+      else if (data.llm === 'already-configured') parts.push('本账号已有模型配置，包内那份未覆盖');
+      else if (data.llm === 'url-blocked') parts.push('包里的模型地址指向内网，已跳过');
       setImportMsg({ ok: true, msg: '导入完成：' + parts.join('，') + '。' });
       await s.loadFeeds().catch(() => { /* 侧栏刷新失败不影响已入库的数据 */ });
     } catch (err) {
@@ -526,6 +529,7 @@ export function AccountPane({ onDirtyChange }) {
             <p className="hint">
               上传本账号的导出包，把频道、文章标记、日报与偏好合并进来；
               已存在的频道与文章会跳过，现有文章的已读 / 收藏 / 关注状态不会被改动。
+              包里若带模型配置（导出时勾选），只在这个账号还没配过模型时写入，并用本机主密钥重新加密。
             </p>
             <div className="dev-actions">
               <button className="btn btn-ghost btn-sm" id="importBtn" type="button" disabled={importing}
@@ -537,7 +541,8 @@ export function AccountPane({ onDirtyChange }) {
             </div>
             <Result id="importResult" result={importMsg} />
             <small className="form-tip">
-              导入只做增量合并，不会删除现有数据；模型 API Key 只有在导出时勾选才会在包里。
+              导入只做增量合并，不会删除现有数据；模型 API Key 只有在导出时勾选才会在包里，
+              写入时用的是本机的加密主密钥，不是包里的那份。
               这里只收「数据导出」的账号包，整站备份请到下方「整站还原」上传。
             </small>
           </Section>

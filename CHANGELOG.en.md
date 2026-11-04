@@ -21,7 +21,10 @@ This file records user-visible changes and deployment-related changes for 2.x.
   and image cache, and is labelled as a sensitive file. Only one backup may run at a time.
 - **Account import**: upload an account export to merge it back. Feeds, articles, digests and
   preferences only fill in missing rows; existing articles are never overwritten and their
-  read / favorite / watch state stays as it is. Repeating an import is safe.
+  read / favorite / watch state stays as it is. Repeating an import is safe. A model config in
+  the archive is applied only when the account has none yet, with the API key re-encrypted
+  using this instance's master secret; existing config is kept and an internal model URL is
+  skipped, each with its own explanation in the result message.
 - **Site restore for admins**: upload a site backup, confirm twice, and the archive replaces
   the whole site (wipe first, then write; not reversible). All login sessions are invalidated,
   so everyone signs in again. It is mutually exclusive with account import and backup.

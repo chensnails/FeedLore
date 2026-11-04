@@ -317,3 +317,4 @@ export type Digest = typeof digests.$inferSelect;
 export type ImageCacheRow = typeof imageCache.$inferSelect;
 export type Setting = typeof settings.$inferSelect;
 export type UserLlm = typeof userLlm.$inferSelect;
+export type NewUserLlm = typeof userLlm.$inferInsert;

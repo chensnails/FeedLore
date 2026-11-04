@@ -4,7 +4,7 @@
  * 两种导入的语义完全不同，不能共用一条路：
  * - 账号导入是**合并**：按频道 URL、文章 (feed, guid)、日报 (owner, date) 去重，
  *   只补库里没有的行。已存在的文章**不改**已读 / 收藏 / 关注（用户在界面上选的
- *   「保留现状」）；偏好只在该账号还是空偏好时套用。可以重复执行，不会越导越乱。
+ *   「保留现状」）；偏好与模型配置只在该账号还是空的时候套用。可以重复执行，不会越导越乱。
  * - 整站还原是**替换**：管理员上传整站备份，事务内清空业务表再按原 id 写回，
  *   并清掉登录会话（备份本来就不含）与短信验证记录。任何一步失败整笔回滚。
  *
@@ -30,9 +30,17 @@ import {
   type Db,
   type NewEntry,
   type NewFeed,
+  type NewUserLlm,
 } from '@feedlore/db';
+import {
+  clampTemperature,
+  encryptSecret,
+  getCryptoSecret,
+  normalizeThinkingDepth,
+} from '@feedlore/ai';
 import { ApiException } from './apiError';
 import { isSafeImageKey } from './tar-read';
+import { assertPublicHost } from './net';
 
 const FORMAT = 'feedlore-backup';
 const FORMAT_VERSION = 1;
@@ -44,6 +52,13 @@ export interface ImportCount {
   skipped: number;
 }
 
+/** 与契约 `llmImportOutcome` 一一对应；`pending` 只是「包里有配置、待事务里确认」。 */
+type LlmPlan =
+  | { outcome: 'absent' | 'url-blocked' }
+  | { outcome: 'pending'; row: NewUserLlm };
+
+export type LlmImportOutcome = 'applied' | 'absent' | 'already-configured' | 'url-blocked';
+
 export interface UserImportResult {
   ok: true;
   kind: 'user';
@@ -51,6 +66,7 @@ export interface UserImportResult {
   entries: ImportCount;
   digests: ImportCount;
   prefs: boolean;
+  llm: LlmImportOutcome;
 }
 
 export interface SiteRestoreResult {
@@ -259,6 +275,53 @@ function mapUserEntry(raw: Raw, feedId: number): NewEntry | null {
   };
 }
 
+/**
+ * 包里的 `llm.json` → 待落库的模型配置。
+ *
+ * 三条边界：
+ * - **明文 Key 绝不原样落库**：导出时勾出来的 `apiKey` 是解密后的明文，这里用**本机**主
+ *   密钥重新加密（跨实例搬老密文是解不开的）；
+ * - **模型地址也是出网口**：与「设置 → 模型」同一条 SSRF 基线。这里用 `resolve: false`
+ *   只判字面量（导入不该为了校验去查 DNS，也避免把「暂时解析失败」误报成安全拦截）；
+ *   真正调用模型时 `safeFetch` 会逐跳重新判定，所以不构成绕过；
+ * - **没带 / 空对象**（老包、没勾选导出）一律 `absent`，不报错。
+ */
+async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan> {
+  const raw = asRecord(await readOptionalJson(dir, 'llm.json'));
+  if (!raw) return { outcome: 'absent' };
+
+  const baseUrl = str(raw.baseUrl).trim().replace(/\/+$/, '');
+  const model = str(raw.model).trim();
+  const apiKey = str(raw.apiKey).trim();
+  if (!baseUrl && !model && !apiKey) return { outcome: 'absent' };
+
+  if (baseUrl) {
+    try {
+      await assertPublicHost(baseUrl, { resolve: false });
+    } catch {
+      return { outcome: 'url-blocked' };
+    }
+  }
+
+  const secret = await getCryptoSecret(db);
+  return {
+    outcome: 'pending',
+    row: {
+      userId,
+      encryptedKey: apiKey ? encryptSecret(apiKey, secret) : null,
+      baseUrl: baseUrl || null,
+      model: model || null,
+      // 未导出温度 = 沿用默认（NULL 由视图层回落 0.3）
+      temperature: raw.temperature === null || raw.temperature === undefined
+        ? null
+        : clampTemperature(raw.temperature),
+      thinking: raw.thinking === true,
+      thinkingDepth: normalizeThinkingDepth(raw.thinkingDepth),
+      updatedAt: new Date(),
+    },
+  };
+}
+
 export async function importUserArchive(
   db: Db,
   userId: string,
@@ -272,11 +335,14 @@ export async function importUserArchive(
   const digestRows = asArray(await readJson(dir, 'digests.json'), 'digests.json');
   const prefsRaw = asRecord(await readOptionalJson(dir, 'prefs.json'));
   const entryFiles = await listBatches(dir, /^entries-\d{4}\.jsonl$/);
+  // DNS / 加解密都安排在事务外，别让一笔合并事务卡在出网校验上
+  const llmPlan = await planUserLlm(db, userId, dir);
 
   const feedCount: ImportCount = { inserted: 0, skipped: 0 };
   const entryCount: ImportCount = { inserted: 0, skipped: 0 };
   const digestCount: ImportCount = { inserted: 0, skipped: 0 };
   let prefsImported = false;
+  let llmOutcome: LlmImportOutcome = llmPlan.outcome === 'url-blocked' ? 'url-blocked' : 'absent';
 
   await db.transaction(async (tx) => {
     const existing = await tx
@@ -378,6 +444,22 @@ export async function importUserArchive(
         prefsImported = true;
       }
     }
+    if (llmPlan.outcome === 'pending') {
+      const [had] = await tx
+        .select({ encryptedKey: userLlm.encryptedKey, baseUrl: userLlm.baseUrl, model: userLlm.model })
+        .from(userLlm)
+        .where(sql`${userLlm.userId} = ${userId}`)
+        .limit(1);
+      if (had && (had.encryptedKey || had.baseUrl || had.model)) {
+        llmOutcome = 'already-configured';
+      } else {
+        await tx
+          .insert(userLlm)
+          .values(llmPlan.row)
+          .onConflictDoNothing({ target: userLlm.userId });
+        llmOutcome = 'applied';
+      }
+    }
   });
 
   return {
@@ -387,6 +469,7 @@ export async function importUserArchive(
     entries: entryCount,
     digests: digestCount,
     prefs: prefsImported,
+    llm: llmOutcome,
   };
 }
 

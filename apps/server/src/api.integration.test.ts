@@ -30,6 +30,7 @@ import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { createDb, feeds as feedsTable, entries as entriesTable } from '@feedlore/db';
 import { createAuth } from '@feedlore/auth';
+import { ENCRYPTED_PREFIX, decryptSecret, getCryptoSecret } from '@feedlore/ai';
 import {
   feedsListResponse,
   entriesListResponse,
@@ -703,6 +704,82 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       };
       assert.deepEqual(out2.feeds, { inserted: 0, skipped: 1 });
       assert.deepEqual(out2.entries, { inserted: 0, skipped: 2 });
+    });
+
+    await t.test('账号导入：包里的模型配置只补空，Key 用本机主密钥重新加密', async () => {
+      const prevEscape = process.env.ALLOW_PRIVATE_HOSTS;
+      delete process.env.ALLOW_PRIVATE_HOSTS; // 出网校验的逃生口会整体放行，本组断言要求它关着
+      try {
+        const llmFile = (patch: Record<string, unknown>) =>
+          JSON.stringify({ baseUrl: 'https://api.example.com/v1', model: 'gpt-test', apiKey: 'sk-plain-123', ...patch });
+        const baseFiles: Record<string, string> = {
+          'manifest.json': JSON.stringify({ format: 'feedlore-backup', formatVersion: 1, kind: 'user' }),
+          'feeds.json': JSON.stringify([{ url: 'https://example.com/llm-feed.xml', title: '模型频道' }]),
+          'digests.json': '[]',
+        };
+        const withLlm = (llmJson: string) => ({ ...baseFiles, 'llm.json': llmJson });
+
+        const res = await call('/api/import', { method: 'POST', body: await buildArchive(withLlm(llmFile({ temperature: 0.3, thinking: true, thinkingDepth: 3 }))) });
+        assert.equal(res.status, 200, await res.clone().text());
+        const out = (await res.json()) as { llm: string; feeds: { inserted: number } };
+        assert.equal(out.llm, 'applied');
+        assert.deepEqual(out.feeds, { inserted: 1, skipped: 0 }, '模型地址合规时不应拖累其余数据的导入');
+
+        const secret = await getCryptoSecret(db);
+        const stored = (await db.execute(sql`
+          select encrypted_key, base_url, model, temperature, thinking, thinking_depth
+          from user_llm where user_id = ${userId}
+        `)) as unknown as {
+          rows: Array<{
+            encrypted_key: string | null; base_url: string | null; model: string | null;
+            temperature: number | null; thinking: boolean; thinking_depth: string | null;
+          }>;
+        };
+        assert.equal(stored.rows.length, 1);
+        const row = stored.rows[0]!;
+        assert.ok(row.encrypted_key?.startsWith(ENCRYPTED_PREFIX), '入库的应是本机加密格式');
+        assert.ok(!row.encrypted_key!.includes('sk-plain-123'), '明文 Key 不得落库');
+        assert.equal(decryptSecret(row.encrypted_key, secret), 'sk-plain-123', '必须能用本机主密钥解回');
+        assert.equal(row.base_url, 'https://api.example.com/v1');
+        assert.equal(row.model, 'gpt-test');
+        assert.equal(row.temperature, 0.3);
+        assert.equal(row.thinking, true);
+        assert.equal(row.thinking_depth, 3);
+
+        // 已经有配置了：再导一次只报「未覆盖」，库里那行一个字都不能动
+        await db.execute(sql`update user_llm set model = 'keep-me', encrypted_key = NULL where user_id = ${userId}`);
+        const twiceBody = await buildArchive(withLlm(llmFile({})));
+        const twiceRes = await call('/api/import', { method: 'POST', body: twiceBody });
+        assert.equal(twiceRes.status, 200);
+        assert.equal(((await twiceRes.json()) as { llm: string }).llm, 'already-configured');
+        const after = (await db.execute(
+          sql`select model, encrypted_key from user_llm where user_id = ${userId}`,
+        )) as unknown as { rows: Array<{ model: string | null; encrypted_key: string | null }> };
+        assert.equal(after.rows[0]!.model, 'keep-me', '已有配置不应被包内的那份覆盖');
+        assert.equal(after.rows[0]!.encrypted_key, null);
+
+        // 内网地址：整条模型配置跳过，但数据照常导入
+        await db.execute(sql`delete from user_llm where user_id = ${userId}`);
+        const blockedRes = await call('/api/import', {
+          method: 'POST',
+          body: await buildArchive(withLlm(llmFile({ baseUrl: 'http://127.0.0.1:11434/v1' }))),
+        });
+        const blockedOut = (await blockedRes.json()) as { llm: string; feeds: { inserted: number; skipped: number } };
+        assert.equal(blockedRes.status, 200);
+        assert.equal(blockedOut.llm, 'url-blocked');
+        assert.deepEqual(blockedOut.feeds, { inserted: 0, skipped: 1 }, '这份包的频道上一轮已并入');
+        const none = (await db.execute(
+          sql`select 1 as one from user_llm where user_id = ${userId}`,
+        )) as unknown as { rows: unknown[] };
+        assert.equal(none.rows.length, 0, '被拦截的配置不应写库');
+
+        // 没勾选导出的包：根本没有 llm.json
+        const absentRes = await call('/api/import', { method: 'POST', body: await buildArchive(baseFiles) });
+        assert.equal(absentRes.status, 200);
+        assert.equal(((await absentRes.json()) as { llm: string }).llm, 'absent');
+      } finally {
+        if (prevEscape !== undefined) process.env.ALLOW_PRIVATE_HOSTS = prevEscape;
+      }
     });
 
     await t.test('导入拒绝坏包，整站包不能走账号导入入口', async () => {
