@@ -5008,6 +5008,28 @@ body { overflow: hidden; }
   .card-foot .btn-open,
   .row-actions .btn-copy,
   .row-actions .btn-open { width: 40px; height: 40px; }
+
+  /* 触屏上两枚按钮必须常显（没有悬停可依赖），但实心主色 + 描边各占一块，
+     375px 屏的卡宽只有约 172px，两枚按钮加间距吃掉图片一半以上宽度，
+     一屏十几枚方块比标题还抢眼。这里统一成半透明玻璃底 + 白图标：
+     点击路径不变，只是把视觉层级压回图片后面；复制成功态保留绿色作为唯一反馈。
+     桌面窄窗口也命中本段，但那边仍由 (hover:hover) 规则控制显隐，只是换了皮。 */
+  .card-media-actions .btn-copy,
+  .card-media-actions .btn-open,
+  .card-media-actions .btn-open:hover {
+    background: rgba(14, 16, 22, .55);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, .34);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .28);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  .card-media-actions .btn-copy:hover { background: rgba(14, 16, 22, .68); }
+  .card-media-actions .btn-copy.copied {
+    background: var(--green);
+    color: var(--on-accent);
+    border-color: transparent;
+  }
   .empty-action { min-height: 44px; padding: 0 var(--sp-5); }
 }
 
