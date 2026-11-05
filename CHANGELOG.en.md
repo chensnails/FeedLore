@@ -7,6 +7,22 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## Unreleased
+
+### Security
+
+- **A hard floor on the Node runtime inside the image**: CI now reads
+  `process.versions.node` from the built image and fails the build below `22.23.4`.
+  That is the October 21, 2026 Node security release, which fixed 10 issues including
+  TLS certificate hostname-verification bypasses and `dns.resolve` hostname truncation —
+  exactly the behaviour our server-side SSRF guard relies on. `engines.node` in
+  `package.json` now requires `>=22.23.4` as well.
+- **Self-hosters, note**: we ship prebuilt images, so the base image digest behind a tag
+  like `ghcr.io/…:2.3.0` is frozen at push time — an upstream patch to `node:22-slim` never
+  reaches an existing tag. Node has pre-announced another security release for the
+  22 / 24 / 26 lines on or shortly after November 11, 2026. When it lands we will raise the
+  floor and publish a new version; then point `V2_IMAGE` at it and run `up -d`.
+
 ## 2.3.0 — 2026-11-04
 
 ### Added

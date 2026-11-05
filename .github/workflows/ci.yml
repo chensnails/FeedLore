@@ -118,6 +118,30 @@ jobs:
             echo "镜像产物齐全"
           '
 
+      # 预构建镜像会把基础镜像的 digest 冻在推送那一刻：`FROM node:22-slim` 的浮动只作用在
+      # 构建时，构建缓存或镜像站回退都可能产出未打补丁的 Node 却没人报警。
+      # 2026-10-21 那次安全发行修的是 TLS 主机名校验绕过与 dns.resolve NUL 截断，
+      # 正是服务端 SSRF 防线（assertPublicHost / safeFetch）依赖的行为，所以做成硬门禁。
+      # 官方预告 2026-11-11 还会有一次覆盖 22/24/26 的安全发行，届时抬高这个下限并重发版本。
+      - name: 校验镜像内 Node 运行时不低于安全下限
+        run: |
+          docker run --rm -e NODE_FLOOR=22.23.4 feedlore:ci node -e '
+            const cmp = (a, b) => {
+              const x = a.split(".").map(Number);
+              const y = b.split(".").map(Number);
+              for (let i = 0; i < 3; i++) {
+                if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0) ? -1 : 1;
+              }
+              return 0;
+            };
+            const floor = process.env.NODE_FLOOR;
+            if (cmp(process.versions.node, floor) < 0) {
+              console.error("Node runtime " + process.versions.node + " is below the security floor " + floor);
+              process.exit(1);
+            }
+            console.log("Node runtime " + process.versions.node + " >= floor " + floor);
+          '
+
   # ARM64 单独跑一次镜像构建：生产机是 ARM，而 sharp 这类原生依赖
   # 在 x64 上构建成功不代表 arm64 有对应预编译包 —— 那正是「本地好、线上崩」的常见来源。
   # 放在 check 之后（needs 它），避免每次 push 都并行跑两遍完整依赖安装。

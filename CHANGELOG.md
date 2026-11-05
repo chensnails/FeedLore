@@ -7,6 +7,19 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
+## 未发布
+
+### 安全
+
+- **镜像内的 Node 运行时有了硬下限**：CI 会在构建出的镜像里直接读 `process.versions.node`，
+  低于 `22.23.4` 就红灯。22.23.4 是 2026-10-21 那次 Node 安全发行，修的是 TLS 证书主机名
+  校验绕过、`dns.resolve` 域名截断等 10 项，正是服务端 SSRF 防线依赖的行为；`package.json`
+  的 `engines.node` 同步抬到 `>=22.23.4`。
+- **自托者注意**：发布出去的是预构建镜像，`ghcr.io/…:2.3.0` 这类标签里的基础镜像 digest
+  在推送那一刻就冻住了，上游给 `node:22-slim` 打补丁不会自动进到已有标签。Node 官方已预告
+  2026-11-11（或稍后）对 22 / 24 / 26 三条线再发一次安全更新，我们会在新补丁落地后抬高下限
+  并重发新版本，届时改 `V2_IMAGE` 重新 `up -d` 即可。
+
 ## 2.3.0 — 2026-11-04
 
 ### 新增
