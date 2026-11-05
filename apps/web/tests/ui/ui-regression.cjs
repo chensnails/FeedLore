@@ -1557,6 +1557,9 @@ const withEFP = (el, fn) => {
   // ============ 外壳与宿主 ============
   t('初始：遮罩常驻但 hidden', () => { const m = mask(); if (!m) throw new Error('无遮罩'); if (m.hidden !== true) throw new Error('初始应隐藏'); });
   t('初始：__settingsOpen 未定义/false', () => { if (w.__settingsOpen) throw new Error('__settingsOpen=' + w.__settingsOpen); });
+  // React 宿主要等 useEffect 注册 window.__settingsHost：不等就直接 .open() 会抛 FATAL，
+  // 把 454 项断言一起打断（负载高的 runner 上真踩过）
+  await waitFor(() => !!w.__settingsHost, 2000);
   t('初始：宿主已注册', () => { if (!w.__settingsHost) throw new Error('宿主未注册'); });
 
   w.__settingsHost.open('source');
@@ -2047,7 +2050,12 @@ const withEFP = (el, fn) => {
   await sleep(20);
   clickTab('外观'); await sleep(40);
   const feedsGetsBefore = countApi('/api/feeds');
-  clickTab('数据源'); await sleep(100);
+  clickTab('数据源');
+  // 二次进入要等 React 重挂 + loadFeeds 落地 + bindSections 回填开合状态：
+  // 固定 sleep 在负载高的 runner 上会假红（CI 真红过一次，读的是还没挂上的面板）
+  await waitFor(() => countApi('/api/feeds') > feedsGetsBefore
+    && document.querySelector('[data-sec="src-params"]')?.open === true
+    && !document.querySelector('.feed-group-head[data-group="科技"]')?.classList.contains('collapsed'), 2000);
   t('二次进入重新 loadFeeds', () => { if (countApi('/api/feeds') !== feedsGetsBefore + 1) throw new Error('GET 次数=' + countApi('/api/feeds')); });
   t('details 开合状态跨次进入保持', () => {
     if (document.querySelector('[data-sec="src-params"]').open !== true) throw new Error('未记住展开');
@@ -3239,7 +3247,7 @@ const withEFP = (el, fn) => {
   const cfgGetsBeforeUser = countApi('/api/config');
   adminFlag = false;
   w.__settingsHost.open('status');
-  await sleep(80);
+  await waitFor(() => tabBtn('数据源')?.classList.contains('active') && !!document.querySelector('.tab-pane[data-pane="source"]'), 2000);
   t('普通用户 open(status) 回落 source', () => { if (!tabBtn('数据源').classList.contains('active')) throw new Error('未回落 source'); });
   t('普通用户无状态 tab', () => { if (tabBtn('状态')) throw new Error('状态 tab 仍渲染'); if (document.querySelectorAll('.tabs .tab').length !== 7) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
   t('普通用户：无采集参数区 + 保存按钮隐藏', () => {
