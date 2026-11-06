@@ -11,19 +11,19 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Added
 
-- **Article density**: 外观 → 界面 gains an 文章密度 row next to 卡片密度, with the same two
-  positions. 舒适 (default) shows the title, two lines of the captured summary, source and time,
-  plus a thumbnail on the right; 紧凑 compresses title / source / time into one line and loads
-  neither the thumbnail nor the summary, so many more headlines fit on screen. The expanded entry
-  keeps its full title. Device-local like the rest of appearance.
+- **Article density (compact by default)**: 外观 → 界面 gains an 文章密度 row next to 卡片密度,
+  with the same two positions, and both now default to compact. 紧凑 shows the title plus source
+  and time (one line on desktop; at ≤720px phones relax it into two lines, title above and
+  source/time below) and loads neither thumbnail nor summary; 舒适 adds two lines of the captured
+  summary and a thumbnail on the right. The expanded entry keeps its full title. Device-local like
+  the rest of appearance.
 - **Grouped appearance settings**: the appearance pane is now split into 主题与配色 / 界面 /
   正文阅读, so the growing list of options stays scannable.
-- **The article list is now a news-feed style list**: cards became borderless rows — titles run up
-  to three lines, a leading image appears as a 4:3 thumbnail on the right (served through the image
-  proxy at 200/400w variants, lazy loaded, and dropped entirely if it fails), source and time sit on
-  one bottom line, and a hairline separates entries. Scanning hundreds of headlines no longer means
-  looking at hundreds of cards; only the expanded row lifts back into a card to mark what you are
-  reading.
+- **Rounded card rows are back in the article list**: every entry is an independent card again —
+  panel background, hairline border, light shadow, 12px radius, and 12px between cards. The unread
+  dot and the leading chevron return (the chevron rotates 90° when expanded), and the expanded
+  article body stays inside its card. Density still lets hundreds of headlines be scanned quickly;
+  it is just no longer a borderless news feed.
 - **Horizontally scrolling channel strip on phones**: at ≤720px the article page and the card page
   get a swipeable channel strip under the header (article: 全部 / 未读 / 收藏 / 关注 + channels;
   cards: 全部 + channels). One tap reaches a top-level channel, the active tab carries a short

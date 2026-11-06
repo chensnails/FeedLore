@@ -79,7 +79,7 @@ try { Object.defineProperty(w, 'isSecureContext', { value: true, configurable: t
 // ---- 与线上 window.feedlore 同构的桩 ----
 const calls = [];
 const noop = (name) => (...a) => calls.push([name, ...a]);
-const appearance = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listDensity: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
+const appearance = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'compact', listDensity: 'compact', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
 const fireAppearanceChanged = () => w.dispatchEvent(new w.Event('__appearanceChanged'));
 
 let adminFlag = true;
@@ -683,7 +683,7 @@ w.feedlore = {
   applyTheme: (m, animate) => { calls.push(['applyTheme', m, animate]); appearance.theme = m; fireAppearanceChanged(); },
   resetAppearance: () => {
     calls.push(['resetAppearance']);
-    Object.assign(appearance, { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listDensity: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' });
+    Object.assign(appearance, { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'compact', listDensity: 'compact', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' });
     fireAppearanceChanged();
   },
 
@@ -2511,26 +2511,26 @@ const withEFP = (el, fn) => {
   t('外观分组：主题与配色 / 界面 / 正文阅读', () => {
     const hs = [...document.querySelectorAll('.appr-group-h')].map((h) => h.textContent);
     if (hs.join(',') !== '主题与配色,界面,正文阅读') throw new Error('分组: ' + hs.join(','));
-    const row = document.querySelector('[data-list-density="cozy"]').closest('.appr-row');
+    const row = document.querySelector('[data-list-density="compact"]').closest('.appr-row');
     const group = row.closest('.appr-group');
     if (!group || group.querySelector('.appr-group-h').textContent !== '界面') throw new Error('文章密度不在「界面」组');
     if (!row.querySelector('.appr-label').textContent.includes('文章密度')) throw new Error('行名应为文章密度: ' + row.querySelector('.appr-label').textContent);
     if (!row.querySelector('.appr-label small').textContent.includes('紧凑')) throw new Error('文章密度缺档位说明');
   });
-  t('文章密度默认舒适：与卡片密度并排、同一套档位', () => {
-    if (!document.querySelector('[data-list-density="cozy"].active')) throw new Error('默认应为舒适');
-    const row = document.querySelector('[data-list-density="cozy"]').closest('.appr-row');
+  t('文章密度默认紧凑：与卡片密度并排、同一套档位', () => {
+    if (!document.querySelector('[data-list-density="compact"].active')) throw new Error('默认应为紧凑');
+    const row = document.querySelector('[data-list-density="compact"]').closest('.appr-row');
     const prev = row.previousElementSibling;
-    if (!prev || !prev.querySelector('[data-density="cozy"]')) throw new Error('文章密度应紧跟在卡片密度后面');
-  });
-  document.querySelector('[data-list-density="compact"]').click();
-  await sleep(40);
-  t('点紧凑 → setAppearance(listDensity, compact) 且事件回流', () => {
-    const c = callsOf('setAppearance');
-    if (!c.length || c[c.length - 1][1] !== 'listDensity' || c[c.length - 1][2] !== 'compact') throw new Error(JSON.stringify(c));
-    if (!document.querySelector('[data-list-density="compact"].active')) throw new Error('compact 未选中');
+    if (!prev || !prev.querySelector('[data-density="compact"].active')) throw new Error('文章密度应紧跟在卡片密度后面，且卡片密度默认也是紧凑');
   });
   document.querySelector('[data-list-density="cozy"]').click();
+  await sleep(40);
+  t('点舒适 → setAppearance(listDensity, cozy) 且事件回流', () => {
+    const c = callsOf('setAppearance');
+    if (!c.length || c[c.length - 1][1] !== 'listDensity' || c[c.length - 1][2] !== 'cozy') throw new Error(JSON.stringify(c));
+    if (!document.querySelector('[data-list-density="cozy"].active')) throw new Error('cozy 未选中');
+  });
+  document.querySelector('[data-list-density="compact"]').click();
   await sleep(40);
 
   document.querySelector('[data-reader-width="full"]').click();
@@ -4323,6 +4323,23 @@ const withEFP = (el, fn) => {
     const it2 = R('#readerList .art-item[data-id="r2"]');
     if (!it2.classList.contains('is-read') || !it2.classList.contains('is-fav')) throw new Error('r2 状态类不符');
   });
+  t('条目行首带展开箭头（sprite #i-chevron-right）', () => {
+    for (const it of RA('#readerList .art-item')) {
+      const caret = it.querySelector('.art-caret use');
+      if (!caret || caret.getAttribute('href') !== '#i-chevron-right') throw new Error((it.dataset.id || '?') + ' 缺展开箭头');
+    }
+  });
+  // 两套密度默认都是紧凑：文章列表一开始就是单行卡，不渲染摘要 / 缩略图
+  t('默认紧凑：文章列表初始为单行卡片，不渲染摘要与缩略图', () => {
+    const items = RA('#readerList .art-item');
+    if (!items.length) throw new Error('列表为空');
+    for (const it of items) {
+      if (!it.classList.contains('is-line')) throw new Error((it.dataset.id || '?') + ' 默认未收成单行');
+      if (it.querySelector('.art-thumb, .art-sum')) throw new Error((it.dataset.id || '?') + ' 默认紧凑不该有图或摘要');
+    }
+  });
+  w.feedlore.setAppearance('listDensity', 'cozy');
+  await sleep(40);
   // 缩略图（v2.5.0 行式重构）：列表接口本来就带 image，有图才渲染，没有就不留灰框
   t('缩略图：只在条目带 image 时渲染，走代理地址与宽度变体', () => {
     const it1 = R('#readerList .art-item[data-id="r1"]');
@@ -4338,7 +4355,7 @@ const withEFP = (el, fn) => {
   });
 
   // 外观 → 文章密度：改的是 DOM 结构，不是纯 CSS
-  t('默认舒适：条目带 desc 就渲染摘要，带 image 就渲染缩略图', () => {
+  t('舒适密度：条目带 desc 就渲染摘要，带 image 就渲染缩略图', () => {
     const it1 = R('#readerList .art-item[data-id="r1"]');
     const sum = it1.querySelector('.art-sum');
     if (!sum) throw new Error('舒适密度缺摘要');
@@ -5253,13 +5270,13 @@ const withEFP = (el, fn) => {
         if (got !== want) throw new Error(`fmtBadge(${n}) = ${got}，期望 ${want}`);
       }
     });
-    t('外观：默认全「中」，首屏属性一致，且初始不写本机', () => {
+    t('外观：默认全「中」、两套密度默认紧凑，首屏属性一致，且初始不写本机', () => {
       const got = sw.__coreForTest.getAppearance();
-      const want = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listDensity: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
+      const want = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'compact', listDensity: 'compact', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
       for (const k of Object.keys(want)) if (got[k] !== want[k]) throw new Error(`${k}=${got[k]}`);
       if (sw.localStorage.getItem('feedlore.appearance.v2') !== null) throw new Error('初始就写了 localStorage');
       const el = sw.document.documentElement;
-      const attrs = [['data-font-size', 'm'], ['data-list-density', 'cozy'], ['data-reader-font', 'sans'], ['data-reader-lh', 'm'], ['data-reader-fs', 'm'], ['data-reader-width', 'm']];
+      const attrs = [['data-font-size', 'm'], ['data-density', 'compact'], ['data-list-density', 'compact'], ['data-reader-font', 'sans'], ['data-reader-lh', 'm'], ['data-reader-fs', 'm'], ['data-reader-width', 'm']];
       for (const [a, v] of attrs) if (el.getAttribute(a) !== v) throw new Error(`${a}=${el.getAttribute(a)}`);
     });
     t('外观：setAppearance 只写本机 feedlore.appearance.v2 并即时生效', () => {
@@ -6005,12 +6022,38 @@ const withEFP = (el, fn) => {
     if (!/\.chan-tabs-more/.test(block)) throw new Error('缺「完整频道列表」入口样式');
   });
 
-  t('style.css：文章列表是无边框行式排版（标题 3 行 + 缩略图 + 发丝分隔）', () => {
+  t('style.css：文章列表是圆角卡片行（面板底 + 细边 + 轻阴影 + 展开箭头）', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    const list = css.match(/\.reader-list \{([^}]*)\}/);
+    if (!list || !/gap: var\(--sp-3\)/.test(list[1])) throw new Error('卡片之间应留 --sp-3 间距');
     const item = css.match(/\.art-item \{([^}]*)\}/);
     if (!item) throw new Error('缺 .art-item 基础规则');
-    if (/box-shadow:\s*var\(--elevation/.test(item[1])) throw new Error('行式列表不该再抬卡片阴影（几百条一起闪）');
-    if (!/border-bottom: 1px solid var\(--border\)/.test(item[1])) throw new Error('条目之间缺发丝分隔线');
+    if (!/background:\s*var\(--panel\)/.test(item[1])) throw new Error('卡片应有面板底（不能是透明行）');
+    if (!/border: 1px solid var\(--border\)/.test(item[1])) throw new Error('卡片缺细边');
+    if (!/border-radius: var\(--radius\)/.test(item[1])) throw new Error('卡片应圆角');
+    if (!/box-shadow:\s*var\(--elevation-2\)/.test(item[1])) throw new Error('卡片应抬起轻阴影');
+    if (!/overflow: hidden/.test(item[1])) throw new Error('卡片需裁掉溢出的缩略图');
+    const caret = css.match(/\.art-caret \{([^}]*)\}/);
+    if (!caret) throw new Error('缺 .art-caret 规则');
+    if (!/font-size:\s*1rem/.test(caret[1]) || !/color:\s*var\(--text-faint\)/.test(caret[1])) {
+      throw new Error('展开箭头应 1rem、低对比');
+    }
+    if (!/\.art-item\.open \.art-caret \{[^}]*transform:\s*rotate\(90deg\)/.test(css)) {
+      throw new Error('展开后箭头应转 90°');
+    }
+    if (!/\.art-item\.is-line \.art-caret \{[^}]*margin-top:\s*0/.test(css)) {
+      throw new Error('单行卡片里箭头应垂直居中（margin-top: 0）');
+    }
+    // 手机上紧凑档不压成单行：标题一行（可换到两行），来源时间落到第二行
+    if (!/手机上紧凑仍占两行[\s\S]{0,700}?\.art-item\.is-line \.art-text \{[^}]*flex-direction: column/.test(css)) {
+      throw new Error('手机上紧凑密度应收成两行（art-text 纵向排列）');
+    }
+    if (!/手机上紧凑仍占两行[\s\S]{0,1400}?\.art-item\.is-line \.art-title \{[^}]*white-space: normal/.test(css)) {
+      throw new Error('手机上紧凑标题应恢复换行（最多两行）');
+    }
+    if (!/手机上紧凑仍占两行[\s\S]{0,1800}?\.art-item\.is-line \.art-acts \{[^}]*translateY\(-50%\)/.test(css)) {
+      throw new Error('手机上两行卡片的动作键应垂直居中');
+    }
     const title = css.match(/\.art-title \{([^}]*)\}/);
     if (!title || !/-webkit-line-clamp: 3/.test(title[1])) throw new Error('标题应最多 3 行');
     const thumb = css.match(/\.art-thumb \{([^}]*)\}/);
@@ -6020,6 +6063,10 @@ const withEFP = (el, fn) => {
     if (!sum || !/-webkit-line-clamp: 2/.test(sum[1])) throw new Error('摘要应最多 2 行');
     if (!/\.art-item\.has-sum \.art-title \{[^}]*-webkit-line-clamp: 2/.test(css)) {
       throw new Error('摘要开启时标题应收紧到 2 行（否则整条被摘要撑高）');
+    }
+    // 落点闪烁只叠加主色光圈，不能把卡片本身的阴影抹掉
+    if (!/@keyframes artFlash[\s\S]*?100%\s*\{\s*box-shadow:\s*var\(--elevation-2\)/.test(css)) {
+      throw new Error('artFlash 结束帧应回到卡片阴影，否则闪完卡片就塌了');
     }
 
     // 纯文字 + 隐藏摘要 = 单行清单。三条缺一不可：标题单行省略、元信息不换行、动作垂直居中。
@@ -6065,10 +6112,11 @@ const withEFP = (el, fn) => {
       return body;
     };
     const effective = lastRule('.art-item');
-    if (!/background:\s*transparent/.test(effective)) throw new Error('文章行最终生效规则应仍是透明底（末尾拟态块反盖了行式排版）');
-    if (/var\(--neu-/.test(effective)) throw new Error('文章行最终生效规则里又出现了拟态阴影');
-    if (!/background:\s*var\(--hover\)/.test(lastRule('.art-item:hover')) || /var\(--neu-/.test(lastRule('.art-item:hover'))) {
-      throw new Error('文章行悬停应只给极淡底色，不该再有拟态阴影');
+    if (!/background:\s*var\(--panel\)/.test(effective)) throw new Error('卡片最终生效规则应是面板底（末尾拟态块反盖了卡片外壳）');
+    if (!/box-shadow:\s*var\(--elevation-2\)/.test(effective)) throw new Error('卡片最终生效规则应保留 --elevation-2');
+    if (/var\(--neu-/.test(effective)) throw new Error('文章卡片最终生效规则里又出现了拟态阴影');
+    if (!/border-color:\s*var\(--border-strong\)/.test(lastRule('.art-item:hover')) || /var\(--neu-/.test(lastRule('.art-item:hover'))) {
+      throw new Error('文章卡片悬停应只加深描边，不该再有拟态阴影');
     }
     // 收藏只靠星标标金：通栏行式里左侧主色竖条会被读成「当前选中」或未读标记
     const favRules = [...css.matchAll(/\.art-item\.is-fav[^{]*\{([^}]*)\}/g)].map((m) => m[1]);
@@ -6209,9 +6257,10 @@ const withEFP = (el, fn) => {
     }
   });
 
-  t('首屏外观脚本覆盖文章密度，默认值与运行时一致', () => {
+  t('首屏外观脚本覆盖两套密度，默认值与运行时一致（都是紧凑）', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
-    if (!/pick\(ap\.listDensity, \['cozy', 'compact'\], 'cozy'\)/.test(html)) throw new Error('index.html 未写 data-list-density（默认舒适）');
+    if (!/pick\(ap\.density, \['cozy', 'compact'\], 'compact'\)/.test(html)) throw new Error('index.html 未写 data-density（默认紧凑）');
+    if (!/pick\(ap\.listDensity, \['cozy', 'compact'\], 'compact'\)/.test(html)) throw new Error('index.html 未写 data-list-density（默认紧凑）');
   });
 
   // 独立窗口（添加到主屏幕）下，没有 viewport-fit=cover 就留出一条宿主填色的边：

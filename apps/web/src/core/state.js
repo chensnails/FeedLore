@@ -396,7 +396,7 @@ try {
  * ============================================================ */
 export const APPR_STORAGE_KEY = 'feedlore.appearance.v2';
 // 默认值：尺寸类一律中间档，主题跟随系统、主色蓝、正文字体无衬线
-export const APPR_DEFAULTS = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listDensity: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
+export const APPR_DEFAULTS = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'compact', listDensity: 'compact', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
 // 键名 → html 属性名；同时这个属性名就是控件上用来标值的 data 属性名
 export const APPR_ATTR = {
   accent: 'data-accent',

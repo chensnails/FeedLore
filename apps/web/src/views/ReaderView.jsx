@@ -445,6 +445,7 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
       <div className="art-row">
         <button className="art-head" type="button" aria-expanded={expanded ? 'true' : 'false'} onClick={() => onToggle(e.id)}>
           <span className="art-dot" aria-hidden="true" />
+          <svg className="art-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
           {/* 标题与来源/时间竖排成一栏：右边留给缩略图，底部只留一行元信息，
               与「标题 3 行 + 图 + 时间」的资讯流排版一致。 */}
           <span className="art-text">

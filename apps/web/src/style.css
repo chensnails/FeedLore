@@ -3049,59 +3049,49 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .filter-actions { margin:2px 0 var(--sp-2); }
 .filter-save { margin-top:var(--sp-3); display: flex; justify-content: flex-end; }
 
-/* 文章列表（v2.5.0 行式重构）
+/* 文章列表：卡片行
  * ------------------------------------------------------------
- * 从「一条一张卡片」改成资讯流的行式排版：无边框、无阴影、条目之间只用一条
- * 发丝分隔线，标题最多三行，右侧缩略图，来源与时间压在底部一行。
- * 卡片式每条都在抢注意力（几百条 = 几百张卡），行式让「扫描标题」成为第一动作。
- * 展开的那一条才浮起来变成一张卡 —— 此时用户在看内容，不再是扫描。
+ * 每条是一张独立的圆角卡（面板底 + 细边 + 轻阴影），卡片之间留间距；
+ * 标题 / 摘要 / 缩略图都在卡内，展开仍在原位，不再换一套视觉。
+ * 紧凑密度只是把卡里的内容压成一行，卡本身不消失 —— 列表始终是「一叠卡片」。
  */
-.reader-list { display: flex; flex-direction: column; gap: 0; max-width: var(--reader-width); margin: var(--sp-3) auto 0; }
+.reader-list { display: flex; flex-direction: column; gap: var(--sp-3); max-width: var(--reader-width); margin: var(--sp-5) auto 0; }
 
 .art-item {
   position: relative;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  border-radius: 0;
-  box-shadow: none;
-  transition: background var(--dur-base), box-shadow var(--dur-slow), border-color var(--dur-slow);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--elevation-2);
+  overflow: hidden;
+  transition: border-color var(--dur-slow), box-shadow var(--dur-slow);
   /* 视口外的文章项跳过渲染：阅读页几百条条目也不卡 */
   content-visibility: auto;
-  contain-intrinsic-size: auto 104px;
+  contain-intrinsic-size: auto 84px;
   /* 让出下方那根吸顶工具条的高度，否则新文章的第一行正好被工具条盖住。
      进入文章的置顶由 core/reader.js#scrollReaderToArt 直接设 scrollTop 完成
      （用 scrollIntoView 会在手风琴收起的旧布局里测量，导致新文章被甩到视口上方）；
      这条 scroll-margin 留给 focusReaderArt 的 block:'center' 等原生滚动场景。 */
   scroll-margin-top: calc(var(--head-h, 52px) + 8px);
 }
-/* 悬停只给一层极淡的底色：行式列表里抬阴影会让整列「毛边」闪烁 */
-.art-item:hover { background: var(--hover); }
+.art-item:hover { border-color: var(--border-strong); }
 
-/* 展开态：这一条从行变成卡 —— 描边 + 极轻阴影，告诉用户「现在看的是这条」。
-   描边走 box-shadow 而不是 border：加 1px 边框会让整列在展开瞬间抖动一下。 */
-.art-item.open {
-  background: var(--panel);
-  border-bottom-color: transparent;
-  border-radius: var(--radius);
-  box-shadow: 0 0 0 1px var(--border-strong), var(--elevation-2);
-  /* 展开体自带底色，不裁一下会在圆角外露出四个直角 */
-  overflow: hidden;
-}
-.art-item.open:hover { background: var(--panel); }
+/* 展开态只把描边加深一档，不再抬阴影 / 换底色：
+   卡片本来就是浮起的，读正文时不需要整块发亮抢视线。 */
+.art-item.open { border-color: var(--border-strong); }
 /* 落点指示（v1.3.7）：从卡片页「在文章页查看」跳过来时，滚到这篇并让文章框闪一下，
    告诉用户「你要的那条在这里」。只动描边与阴影，不动布局；类由 core 的 focusReaderArt
    挂 1.5s 后摘掉（时长要和这里的 1.5s 对齐）。 */
 .art-item.is-flash { animation: artFlash 1.5s var(--ease); }
 @keyframes artFlash {
-  0%, 55% { box-shadow: 0 0 0 3px var(--accent-glow); }
-  100% { box-shadow: none; }
+  0%, 55% { box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-2); }
+  100% { box-shadow: var(--elevation-2); }
 }
 @media (prefers-reduced-motion: reduce) {
   /* 不做闪烁动画，改成静止描边停一瞬 —— 指示作用留着，动效去掉 */
   .art-item.is-flash {
     animation: none;
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-2);
   }
 }
 
@@ -3137,6 +3127,18 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   transition: opacity var(--dur-slow);
 }
 .art-item.is-read .art-dot { opacity: 0; }
+
+/* 展开箭头：卡片行首的 ›，展开后转成向下。与未读点同一列、与标题首行对齐；
+   紧凑单行时行内已垂直居中，不再单独抬 margin。 */
+.art-caret {
+  flex: 0 0 auto;
+  font-size: 1rem;
+  color: var(--text-faint);
+  margin-top: 4px;
+  transition: transform var(--dur-slow), color var(--dur-base);
+}
+.art-item.open .art-caret { transform: rotate(90deg); color: var(--text-muted); }
+.art-item.is-line .art-caret { margin-top: 0; }
 
 .art-thumb {
   flex: 0 0 104px; width: 104px;
@@ -3732,6 +3734,24 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .art-thumb { flex: 0 0 92px; width: 92px; }
   .art-meta { padding-right: 60px; }
   .art-meta .src-pill { max-width: none; }
+  /* 文章密度：手机上紧凑仍占两行 —— 标题一行（最多两行），来源与时间落到下一行，
+     动作键垂直居中靠右收尾。桌面紧凑仍是一行；手机横向不够，标题与元信息挤在
+     同一行会两头都截断。 */
+  .art-item.is-line { contain-intrinsic-size: auto 76px; }
+  .art-item.is-line .art-head { align-items: flex-start; padding: var(--sp-3) var(--sp-4); }
+  .art-item.is-line .art-dot { margin-top: 8px; }
+  .art-item.is-line .art-caret { margin-top: 3px; }
+  .art-item.is-line .art-text { flex-direction: column; align-items: stretch; gap: 5px; }
+  .art-item.is-line .art-title {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+    overflow: hidden;
+  }
+  .art-item.is-line .art-meta { flex-wrap: wrap; margin-top: 0; padding-right: 52px; }
+  .art-item.is-line .art-meta .src-pill { max-width: 180px; }
+  .art-item.is-line .art-acts { top: 50%; bottom: auto; right: 8px; transform: translateY(-50%); }
   .art-inner { padding: var(--sp-3); gap: var(--sp-3); }
   /* 动作键右对齐在窄屏也生效（基础规则已负责，这里不再回退靠左）：
      读完正文视线落在末尾，复制 / 打开就该在落点，不用再扫回左边。

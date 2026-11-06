@@ -29,12 +29,12 @@ const ROWS = {
   },
   density: {
     key: 'density', label: '卡片密度', attr: 'data-density',
-    small: '紧凑 = 同屏更多卡片；舒适 = 更大的卡片与留白（默认）',
+    small: '紧凑 = 同屏更多卡片（默认）；舒适 = 更大的卡片与留白',
     options: [['cozy', '舒适'], ['compact', '紧凑']],
   },
   listDensity: {
     key: 'listDensity', label: '文章密度', attr: 'data-list-density',
-    small: '紧凑 = 标题 / 来源 / 时间压成一行；舒适 = 标题 + 摘要 + 来源时间 + 缩略图（默认）',
+    small: '紧凑 = 标题 / 来源 / 时间压成一行（默认）；舒适 = 标题 + 摘要 + 来源时间 + 缩略图',
     options: [['cozy', '舒适'], ['compact', '紧凑']],
   },
   readerFont: {
