@@ -53,6 +53,13 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Fixed
 
+- **List action buttons no longer sit on top of titles or sources on phones**: after the star and
+  mark-unread hit areas grew to 44×44, the right-side reservation still assumed 30px buttons, so
+  long source names slipped underneath. Compact two-line cards now reserve the width for the whole
+  text column; on read entries the two actions stack vertically, turning the 106px horizontal pair
+  back into a 44px column, so source and time return to one line (rows drop from about 128px to
+  100px). Comfortable read rows without a thumbnail and compact single-line rows on coarse-pointer
+  tablets got the same wider reservation.
 - **No more "loading took too long" when the site opens in a background tab**: the boot layer
   only listened for a rendered frame, and browsers do not produce frames for hidden pages, so
   the 12-second watchdog reported "you have not switched to this tab yet" as a load failure.
