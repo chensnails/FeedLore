@@ -62,8 +62,7 @@
   el.setAttribute('data-font-size', pick(ap.fontSize, ['s', 'm', 'l'], 'm'));
   /* 文章列表配图 / 摘要：组件本身读偏好，这里先写属性只为首屏与运行时状态一致
      （属性缺失时样式与测试都无从判断第一帧用的是哪一档）。 */
-  el.setAttribute('data-list-thumbs', pick(ap.listThumbs, ['on', 'off'], 'on'));
-  el.setAttribute('data-list-summary', pick(ap.listSummary, ['off', 'on'], 'off'));
+  el.setAttribute('data-list-density', pick(ap.listDensity, ['cozy', 'compact'], 'cozy'));
   el.setAttribute('data-reader-font', pick(ap.readerFont, ['sans', 'serif'], 'sans'));
   el.setAttribute('data-reader-lh', pick(ap.readerLh, ['s', 'm', 'l'], 'm'));
   el.setAttribute('data-reader-fs', pick(ap.readerFs, ['xs', 's', 'm', 'l', 'xl'], 'm'));

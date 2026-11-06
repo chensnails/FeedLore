@@ -79,7 +79,7 @@ try { Object.defineProperty(w, 'isSecureContext', { value: true, configurable: t
 // ---- 与线上 window.feedlore 同构的桩 ----
 const calls = [];
 const noop = (name) => (...a) => calls.push([name, ...a]);
-const appearance = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listThumbs: 'on', listSummary: 'off', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
+const appearance = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listDensity: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
 const fireAppearanceChanged = () => w.dispatchEvent(new w.Event('__appearanceChanged'));
 
 let adminFlag = true;
@@ -683,7 +683,7 @@ w.feedlore = {
   applyTheme: (m, animate) => { calls.push(['applyTheme', m, animate]); appearance.theme = m; fireAppearanceChanged(); },
   resetAppearance: () => {
     calls.push(['resetAppearance']);
-    Object.assign(appearance, { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listThumbs: 'on', listSummary: 'off', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' });
+    Object.assign(appearance, { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listDensity: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' });
     fireAppearanceChanged();
   },
 
@@ -2495,7 +2495,7 @@ const withEFP = (el, fn) => {
   clickTab('外观');
   await sleep(60);
   t('外观面板渲染', () => { if (!document.querySelector('.appr')) throw new Error('无 .appr'); });
-  t('分段控件总数 27（正文字号五档 + 列表配图 / 摘要）', () => { if (document.querySelectorAll('.seg-btn').length !== 27) throw new Error('实际 ' + document.querySelectorAll('.seg-btn').length); });
+  t('分段控件总数 25（正文字号五档 + 卡片 / 文章两套密度）', () => { if (document.querySelectorAll('.seg-btn').length !== 25) throw new Error('实际 ' + document.querySelectorAll('.seg-btn').length); });
   t('调板 6 色 + 预览 + 重置', () => {
     if (document.querySelectorAll('.swatch').length !== 6) throw new Error('swatch 数不符');
     if (!document.querySelector('.appr-preview-t')) throw new Error('无预览');
@@ -2506,34 +2506,32 @@ const withEFP = (el, fn) => {
     if (!on('[data-theme-mode="auto"]')) throw new Error('auto 未选中');
     if (!on('.swatch[data-accent="blue"]')) throw new Error('blue 未选中');
     if (!on('[data-font-size="m"]')) throw new Error('m 未选中');
-    if (document.querySelectorAll('.seg-btn.active').length !== 9) throw new Error('active seg-btn 应为 9，实际 ' + document.querySelectorAll('.seg-btn.active').length);
+    if (document.querySelectorAll('.seg-btn.active').length !== 8) throw new Error('active seg-btn 应为 8，实际 ' + document.querySelectorAll('.seg-btn.active').length);
   });
-  t('外观分组：主题与配色 / 界面 / 文章列表 / 正文阅读', () => {
+  t('外观分组：主题与配色 / 界面 / 正文阅读', () => {
     const hs = [...document.querySelectorAll('.appr-group-h')].map((h) => h.textContent);
-    if (hs.join(',') !== '主题与配色,界面,文章列表,正文阅读') throw new Error('分组: ' + hs.join(','));
-    const row = document.querySelector('[data-list-thumbs="on"]').closest('.appr-row');
+    if (hs.join(',') !== '主题与配色,界面,正文阅读') throw new Error('分组: ' + hs.join(','));
+    const row = document.querySelector('[data-list-density="cozy"]').closest('.appr-row');
     const group = row.closest('.appr-group');
-    if (!group || group.querySelector('.appr-group-h').textContent !== '文章列表') throw new Error('列表配图不在「文章列表」组');
-    if (!row.querySelector('.appr-label small').textContent.includes('纯文字')) throw new Error('列表配图缺档位说明');
+    if (!group || group.querySelector('.appr-group-h').textContent !== '界面') throw new Error('文章密度不在「界面」组');
+    if (!row.querySelector('.appr-label').textContent.includes('文章密度')) throw new Error('行名应为文章密度: ' + row.querySelector('.appr-label').textContent);
+    if (!row.querySelector('.appr-label small').textContent.includes('紧凑')) throw new Error('文章密度缺档位说明');
   });
-  t('列表配图 / 摘要默认：缩略图 + 摘要隐藏', () => {
-    if (!document.querySelector('[data-list-thumbs="on"].active')) throw new Error('默认应为缩略图');
-    if (!document.querySelector('[data-list-summary="off"].active')) throw new Error('默认应隐藏摘要');
+  t('文章密度默认舒适：与卡片密度并排、同一套档位', () => {
+    if (!document.querySelector('[data-list-density="cozy"].active')) throw new Error('默认应为舒适');
+    const row = document.querySelector('[data-list-density="cozy"]').closest('.appr-row');
+    const prev = row.previousElementSibling;
+    if (!prev || !prev.querySelector('[data-density="cozy"]')) throw new Error('文章密度应紧跟在卡片密度后面');
   });
-  document.querySelector('[data-list-thumbs="off"]').click();
+  document.querySelector('[data-list-density="compact"]').click();
   await sleep(40);
-  t('点纯文字 → setAppearance(listThumbs, off) 且事件回流', () => {
+  t('点紧凑 → setAppearance(listDensity, compact) 且事件回流', () => {
     const c = callsOf('setAppearance');
-    if (!c.length || c[c.length - 1][1] !== 'listThumbs' || c[c.length - 1][2] !== 'off') throw new Error(JSON.stringify(c));
-    if (!document.querySelector('[data-list-thumbs="off"].active')) throw new Error('off 未选中');
+    if (!c.length || c[c.length - 1][1] !== 'listDensity' || c[c.length - 1][2] !== 'compact') throw new Error(JSON.stringify(c));
+    if (!document.querySelector('[data-list-density="compact"].active')) throw new Error('compact 未选中');
   });
-  document.querySelector('[data-list-summary="on"]').click();
+  document.querySelector('[data-list-density="cozy"]').click();
   await sleep(40);
-  t('点显示摘要 → setAppearance(listSummary, on) 且事件回流', () => {
-    const c = callsOf('setAppearance');
-    if (!c.length || c[c.length - 1][1] !== 'listSummary' || c[c.length - 1][2] !== 'on') throw new Error(JSON.stringify(c));
-    if (!document.querySelector('[data-list-summary="on"].active')) throw new Error('on 未选中');
-  });
 
   document.querySelector('[data-reader-width="full"]').click();
   await sleep(40);
@@ -4339,34 +4337,36 @@ const withEFP = (el, fn) => {
     if (it2.className.indexOf('has-thumb') >= 0) throw new Error('无图条目不该带 has-thumb');
   });
 
-  // 外观 → 文章列表：配图与摘要改的是 DOM 结构，不是纯 CSS
-  t('摘要默认隐藏：条目带 desc 也不渲染 .art-sum', () => {
-    if (R('#readerList .art-sum')) throw new Error('默认不该出现摘要');
-  });
-  w.feedlore.setAppearance('listSummary', 'on');
-  await sleep(40);
-  t('打开摘要 → 标题下出现 desc，无描述条目不渲染', () => {
+  // 外观 → 文章密度：改的是 DOM 结构，不是纯 CSS
+  t('默认舒适：条目带 desc 就渲染摘要，带 image 就渲染缩略图', () => {
     const it1 = R('#readerList .art-item[data-id="r1"]');
     const sum = it1.querySelector('.art-sum');
-    if (!sum) throw new Error('缺摘要');
+    if (!sum) throw new Error('舒适密度缺摘要');
     if (sum.textContent !== READER_ENTRIES()[0].desc) throw new Error('摘要文案: ' + sum.textContent);
     if (!it1.classList.contains('has-sum')) throw new Error('缺 has-sum（标题要收到两行）');
+    if (!it1.querySelector('.art-thumb')) throw new Error('舒适密度缺缩略图');
     if (R('#readerList .art-item[data-id="r2"] .art-sum')) throw new Error('无 desc 的条目不该有摘要');
   });
-  w.feedlore.setAppearance('listThumbs', 'off');
+  w.feedlore.setAppearance('listDensity', 'compact');
   await sleep(40);
-  t('纯文字模式：不渲染缩略图，也不留 has-thumb 暗底', () => {
-    const it1 = R('#readerList .art-item[data-id="r1"]');
-    if (it1.querySelector('.art-thumb')) throw new Error('纯文字模式仍渲染缩略图');
-    if (it1.classList.contains('has-thumb')) throw new Error('无图仍带 has-thumb，动作按钮会多一层暗底');
+  t('紧凑密度 → 条目收成单行，不渲染缩略图与摘要', () => {
+    const items = RA('#readerList .art-item');
+    if (!items.length) throw new Error('列表为空');
+    for (const it of items) {
+      if (!it.classList.contains('is-line')) throw new Error(it.dataset.id + ' 未收成单行');
+      if (!it.querySelector('.art-meta')) throw new Error(it.dataset.id + ' 单行模式丢了来源/时间');
+      if (it.querySelector('.art-thumb, .art-sum')) throw new Error(it.dataset.id + ' 紧凑模式不该有图或摘要');
+      if (it.classList.contains('has-thumb') || it.classList.contains('has-sum')) throw new Error(it.dataset.id + ' 紧凑模式不该带 has-thumb / has-sum');
+    }
+    if (R('#readerList .art-item[data-id="r1"] .art-title').textContent !== '文章一') throw new Error('标题被单行模式弄丢');
   });
-  w.feedlore.setAppearance('listThumbs', 'on');
-  w.feedlore.setAppearance('listSummary', 'off');
+  w.feedlore.setAppearance('listDensity', 'cozy');
   await sleep(40);
-  t('切回默认：缩略图回来、摘要消失', () => {
+  t('切回舒适：单行模式退出，缩略图与摘要回来', () => {
     const it1 = R('#readerList .art-item[data-id="r1"]');
+    if (it1.classList.contains('is-line')) throw new Error('还有条目停在单行模式');
     if (!it1.querySelector('.art-thumb')) throw new Error('缩略图未回来');
-    if (it1.querySelector('.art-sum')) throw new Error('摘要未消失');
+    if (!it1.querySelector('.art-sum')) throw new Error('摘要未回来');
   });
 
   // 横滑频道条：与抽屉同一份筛选状态，只多了「一级频道一步可达」
@@ -5255,11 +5255,11 @@ const withEFP = (el, fn) => {
     });
     t('外观：默认全「中」，首屏属性一致，且初始不写本机', () => {
       const got = sw.__coreForTest.getAppearance();
-      const want = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listThumbs: 'on', listSummary: 'off', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
+      const want = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listDensity: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
       for (const k of Object.keys(want)) if (got[k] !== want[k]) throw new Error(`${k}=${got[k]}`);
       if (sw.localStorage.getItem('feedlore.appearance.v2') !== null) throw new Error('初始就写了 localStorage');
       const el = sw.document.documentElement;
-      const attrs = [['data-font-size', 'm'], ['data-list-thumbs', 'on'], ['data-list-summary', 'off'], ['data-reader-font', 'sans'], ['data-reader-lh', 'm'], ['data-reader-fs', 'm'], ['data-reader-width', 'm']];
+      const attrs = [['data-font-size', 'm'], ['data-list-density', 'cozy'], ['data-reader-font', 'sans'], ['data-reader-lh', 'm'], ['data-reader-fs', 'm'], ['data-reader-width', 'm']];
       for (const [a, v] of attrs) if (el.getAttribute(a) !== v) throw new Error(`${a}=${el.getAttribute(a)}`);
     });
     t('外观：setAppearance 只写本机 feedlore.appearance.v2 并即时生效', () => {
@@ -6022,6 +6022,23 @@ const withEFP = (el, fn) => {
       throw new Error('摘要开启时标题应收紧到 2 行（否则整条被摘要撑高）');
     }
 
+    // 纯文字 + 隐藏摘要 = 单行清单。三条缺一不可：标题单行省略、元信息不换行、动作垂直居中。
+    // 少了 min-width:0 的 flex 子项不肯收缩，省略号根本不会出现；元信息一旦换行就退回两行。
+    const lineTitle = css.match(/\.art-item\.is-line \.art-title \{([^}]*)\}/);
+    if (!lineTitle) throw new Error('缺 .art-item.is-line .art-title 规则');
+    if (!/white-space: nowrap/.test(lineTitle[1]) || !/text-overflow: ellipsis/.test(lineTitle[1])) {
+      throw new Error('单行模式标题应 nowrap + ellipsis');
+    }
+    if (!/min-width: 0/.test(lineTitle[1])) throw new Error('单行模式标题缺 min-width: 0，flex 下省略号不生效');
+    const lineText = css.match(/\.art-item\.is-line \.art-text \{([^}]*)\}/);
+    if (!lineText || !/flex-direction: row/.test(lineText[1])) throw new Error('单行模式 art-text 应改成横向排列');
+    const lineMeta = css.match(/\.art-item\.is-line \.art-meta \{([^}]*)\}/);
+    if (!lineMeta || !/flex-wrap: nowrap/.test(lineMeta[1])) throw new Error('单行模式元信息应 nowrap（换行就等于回到两行）');
+    const lineActs = css.match(/\.art-item\.is-line \.art-acts \{([^}]*)\}/);
+    if (!lineActs || !/transform: translateY\(-50%\)/.test(lineActs[1])) {
+      throw new Error('单行模式动作键应垂直居中（否则贴在单行顶部）');
+    }
+
     // 文件末尾还有两段「组件统一」规则（v1.1.7 拟态 / v1.3.8 统一表面），
     // 同特异度靠源顺序取胜。只在前面写好样式，会被它们整段反盖回拟态卡 ——
     // 真机上量出来就是「行式列表每条都带渐变底 + 6px 柔光阴影」。
@@ -6192,10 +6209,9 @@ const withEFP = (el, fn) => {
     }
   });
 
-  t('首屏外观脚本覆盖列表配图 / 摘要，默认值与运行时一致', () => {
+  t('首屏外观脚本覆盖文章密度，默认值与运行时一致', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
-    if (!/pick\(ap\.listThumbs, \['on', 'off'\], 'on'\)/.test(html)) throw new Error('index.html 未写 data-list-thumbs（默认缩略图）');
-    if (!/pick\(ap\.listSummary, \['off', 'on'\], 'off'\)/.test(html)) throw new Error('index.html 未写 data-list-summary（默认隐藏摘要）');
+    if (!/pick\(ap\.listDensity, \['cozy', 'compact'\], 'cozy'\)/.test(html)) throw new Error('index.html 未写 data-list-density（默认舒适）');
   });
 
   // 独立窗口（添加到主屏幕）下，没有 viewport-fit=cover 就留出一条宿主填色的边：

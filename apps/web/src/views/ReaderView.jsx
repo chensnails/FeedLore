@@ -383,28 +383,28 @@ export function ArtBody({ e, onTag, extraActions }) {
   return <div className="art-inner">{parts}</div>;
 }
 
-/* 外观里的「文章列表」两项会改变 DOM 结构（不是纯 CSS）：纯文字模式连 <img> 都不该下发，
- * 摘要则决定标题下多不多一层文字。所以列表必须订阅 __appearanceChanged 重绘；
- * 只靠 data 属性 + CSS 的话，关掉配图后动作按钮的 has-thumb 暗底仍会压在空处。 */
+/* 外观里的「列表密度」会改变 DOM 结构（不是纯 CSS）：紧凑模式连 <img> 与摘要都不该下发。
+ * 所以列表必须订阅 __appearanceChanged 重绘；只靠 data 属性 + CSS 的话，
+ * 切到紧凑后动作按钮的 has-thumb 暗底仍会压在空处。 */
 function useArticleListPrefs() {
   const read = () => {
     const a = (S().getAppearance && S().getAppearance()) || {};
-    return { thumbs: a.listThumbs !== 'off', summary: a.listSummary === 'on' };
+    return a.listDensity !== 'compact';
   };
-  const [pref, setPref] = useState(read);
+  const [comfortable, setComfortable] = useState(read);
   useEffect(() => {
-    const sync = () => setPref(read());
+    const sync = () => setComfortable(read());
     window.addEventListener('__appearanceChanged', sync);
     return () => window.removeEventListener('__appearanceChanged', sync);
   }, []);
-  return pref;
+  return comfortable;
 }
 
 /** 列表项（对应旧 artItemHtml + expandArt/collapseArt）。
  *  做成 memo：每次 __readerTick 都会把整列 entries 重新 map 一遍，而条目对象只在
  *  状态真的变化时才换新（core/reader.js 的 applyEntryFlag / ui.js 的 cardSetFlag 同口径），
  *  所以没变的那几百条不必跟着重新渲染。 */
-const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, thumbs, summary, onToggle, onFav, onTag, onUnread, onRetryBody }) {
+const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfortable, onToggle, onFav, onTag, onUnread, onRetryBody }) {
   const s = S();
   const src = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
@@ -413,14 +413,17 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, thumb
   /* 缩略图：列表接口本来就把首图放在 e.image（已走 /api/img 代理），只是以前没渲染。
      展开后让位给正文（正文自己会出图），加载失败退成纯文字行 —— 不留一个灰框。
      失败态记在组件本地：条目对象换新时（已读 / 收藏）不该把失败的图又试一遍。
-     「纯文字」模式直接不渲染 <img>：不只是藏起来，连首图请求都不发。 */
+     「紧凑」密度直接不渲染 <img>：不只是藏起来，连首图请求都不发。 */
   const [imgFailed, setImgFailed] = useState(false);
-  const thumb = !expanded && thumbs && e.image && !imgFailed ? e.image : null;
+  const thumb = !expanded && comfortable && e.image && !imgFailed ? e.image : null;
   /* 摘要来自抓取时压平的 description（纯文本），展开后正文已经在读，不再重复一遍 */
-  const desc = !expanded && summary && e.desc ? String(e.desc) : '';
+  const desc = !expanded && comfortable && e.desc ? String(e.desc) : '';
+  /* 紧凑密度 = 单行清单：标题单行省略，来源与时间并到同一行。
+     展开的那条恢复普通行式排版，别让正在读的文章标题也被截成一行。 */
+  const lineMode = !comfortable && !expanded;
   // has-thumb 让样式知道图占了右下角：动作按钮要垫一层暗底，否则压在亮图上就看不见了
   const cls = 'art-item' + (e.isRead ? ' is-read' : ' is-unread') + (fav ? ' is-fav' : '') + (expanded ? ' open' : '')
-    + (thumb ? ' has-thumb' : '') + (desc ? ' has-sum' : '') + (flash ? ' is-flash' : '');
+    + (thumb ? ' has-thumb' : '') + (desc ? ' has-sum' : '') + (lineMode ? ' is-line' : '') + (flash ? ' is-flash' : '');
 
   let inner = null;
   if (expanded) {
@@ -551,8 +554,8 @@ export function ReaderView() {
   // 窄屏（≤720px）搜索框默认收起，标题栏里只留一个放大镜按钮 —— 一整条搜索框占掉
   // 手机上最金贵的一行，而它大部分时间是空的。桌面不受影响（CSS 里按钮隐藏、搜索框常驻）。
   const [searchOpen, setSearchOpen] = useState(false);
-  // 列表配图 / 摘要（外观偏好，只存本机）：改变的是 DOM 结构，订阅事件后重绘整列
-  const listPrefs = useArticleListPrefs();
+  // 列表密度（外观偏好，只存本机）：改变的是 DOM 结构，订阅事件后重绘整列
+  const listComfortable = useArticleListPrefs();
 
   useEffect(() => {
     const onTick = () => bump((x) => x + 1);
@@ -823,7 +826,7 @@ export function ReaderView() {
             <ArtItem key={e.id} e={e} expanded={expanded.has(e.id)}
               full={bodyMap.get(e.id)} bodyErr={bodyErrSet.has(e.id)}
               flash={flashId != null && flashId === String(e.id)}
-              thumbs={listPrefs.thumbs} summary={listPrefs.summary}
+              comfortable={listComfortable}
               onToggle={onToggleArt} onFav={onFavArt} onUnread={onUnreadArt}
               onRetryBody={onRetryBodyArt} onTag={onTagArt} />
           ))}

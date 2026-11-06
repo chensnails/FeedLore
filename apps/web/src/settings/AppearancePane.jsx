@@ -6,7 +6,7 @@
  * - 主题分段控件 / 调板 / 其余分段控件的点击分别走桥的 applyTheme / setAppearance，
  *   外部改动（顶栏主题按钮、恢复默认）经 window.__appearanceChanged 事件回流同步。
  * - 外观偏好只存本机（feedlore.appearance.v2），不随账号跨设备同步。
- * - 控件仍是一行一项（.appr-row），外面按主题 / 界面 / 文章列表 / 正文阅读加了分组标题；
+ * - 控件仍是一行一项（.appr-row），外面按主题 / 界面 / 正文阅读加了分组标题；
  *   每项的类名、data 属性与 aria 保持原样，样式与测试可以继续按单行定位。 */
 
 import { core } from '@core';
@@ -32,15 +32,10 @@ const ROWS = {
     small: '紧凑 = 同屏更多卡片；舒适 = 更大的卡片与留白（默认）',
     options: [['cozy', '舒适'], ['compact', '紧凑']],
   },
-  listThumbs: {
-    key: 'listThumbs', label: '列表配图', attr: 'data-list-thumbs',
-    small: '缩略图 = 右侧显示首图；纯文字 = 连图片都不加载，同屏放下更多标题',
-    options: [['on', '缩略图'], ['off', '纯文字']],
-  },
-  listSummary: {
-    key: 'listSummary', label: '文章摘要', attr: 'data-list-summary',
-    small: '在标题下补两行摘要（抓取到的描述）；展开文章时不再重复',
-    options: [['off', '隐藏'], ['on', '显示']],
+  listDensity: {
+    key: 'listDensity', label: '文章密度', attr: 'data-list-density',
+    small: '紧凑 = 标题 / 来源 / 时间压成一行；舒适 = 标题 + 摘要 + 来源时间 + 缩略图（默认）',
+    options: [['cozy', '舒适'], ['compact', '紧凑']],
   },
   readerFont: {
     key: 'readerFont', label: '正文字体', attr: 'data-reader-font',
@@ -64,12 +59,12 @@ const ROWS = {
   },
 };
 
-// 分组：从「主题怎么长」到「列表怎么长」再到「正文怎么读」，后者影响范围更小。
+// 分组：从「主题怎么长」到「界面尺寸」再到「正文怎么读」，后者影响范围更小。
+// 卡片密度与文章密度并排放在「界面」组：分别管卡片页和文章页两套列表。
 // 主色调属于主题组，单独渲染（色块控件不是分段控件）。
 const GROUPS = [
   { title: '主题与配色', accent: true, rows: [ROWS.theme] },
-  { title: '界面', rows: [ROWS.fontSize, ROWS.density] },
-  { title: '文章列表', rows: [ROWS.listThumbs, ROWS.listSummary] },
+  { title: '界面', rows: [ROWS.fontSize, ROWS.density, ROWS.listDensity] },
   { title: '正文阅读', rows: [ROWS.readerFont, ROWS.readerLh, ROWS.readerFs, ROWS.readerWidth] },
 ];
 

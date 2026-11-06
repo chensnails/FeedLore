@@ -41,10 +41,13 @@
 
 - 主题：`html[data-theme]` = `light` / `dark` / `github`，另有 `auto` 跟随系统。
 - 强调色：`html[data-accent]`，6 档（默认蓝 / violet / teal / green / amber / rose）。
-- 外观（主题 / 强调色 / 字号 / 列表配图与摘要 / 正文排版）只存本机 `localStorage['feedlore.appearance.v2']`，
+- 外观（主题 / 强调色 / 字号 / 文章密度 / 正文排版）只存本机 `localStorage['feedlore.appearance.v2']`，
   `index.html` 内联脚本在首帧前应用；登录页读同一键的 `theme` 字段。
-- 列表的「配图 / 摘要」是结构性偏好，不是纯 CSS：`ReaderView` 订阅 `__appearanceChanged` 重绘整列。
-  纯文字模式直接不渲染 `<img>`（连首图请求都不发），摘要只在收起态出现，并把标题收到两行。
+- 列表密度（`listDensity`）与卡片密度（`density`）是两套独立两档，「文章密度」放在「界面」组里
+  与「卡片密度」并排。它是结构性偏好，不是纯 CSS：`ReaderView` 订阅 `__appearanceChanged` 重绘整列。
+  舒适（默认）渲染缩略图 + 两行摘要；紧凑直接不渲染 `<img>`（连首图请求都不发）与摘要，条目加
+  `is-line`：标题单行省略、来源与时间并到同一行右侧、动作键垂直居中；**展开的那条不加**，
+  正在读的文章仍按普通行式显示完整标题。
 - 布局（视图 / 排序 / 侧栏宽度 / 折叠分组等）按账号保存，由服务端注入 `window.__LAYOUT__`。
   **不要把这套改成客户端 GET /api/prefs 再应用** —— 会闪一帧白；外观也不放账号，避免跨设备互相干扰。
 - `manifest.json` 的 `theme_color` 必须与亮色 `--panel` 同色（现在是 `#ffffff`）：「添加到主屏幕」

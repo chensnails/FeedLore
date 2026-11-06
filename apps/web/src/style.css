@@ -3201,7 +3201,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-item.is-read .art-title { font-weight: 450; color: var(--text-muted); }
 .art-item.is-read .art-meta { opacity: .72; }
 
-/* 摘要（外观 → 文章列表 → 显示摘要）：标题下补两行，行高与正文接近但降档、降色。
+/* 摘要（外观 → 文章列表 → 列表密度：舒适）：标题下补两行，行高与正文接近但降档、降色。
    开启时标题收到两行，保证整条高度仍受控 —— 几百条列表不能让摘要把行撑成文章。 */
 .art-sum {
   display: -webkit-box;
@@ -3215,6 +3215,35 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 }
 .art-item.has-sum .art-title { -webkit-line-clamp: 2; }
 .art-item.is-read .art-sum { opacity: .78; }
+
+/* 紧凑密度 = 单行清单：标题单行省略，来源与时间并到同一行右侧，
+   行高从「标题 + 元信息」的两段收成一条，扫标题时一屏能多看十几条。
+   展开态在组件里就不加 is-line，正在读的那条仍按普通行式排版显示完整标题。 */
+.art-item.is-line { contain-intrinsic-size: auto 48px; }
+.art-item.is-line .art-head { padding: 10px var(--sp-4); align-items: center; }
+.art-item.is-line .art-dot { margin-top: 0; }
+.art-item.is-line .art-text { flex-direction: row; align-items: center; gap: var(--sp-3); }
+.art-item.is-line .art-title {
+  flex: 1 1 auto; min-width: 0;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.art-item.is-line .art-meta {
+  flex: 0 0 auto;
+  margin-top: 0;
+  flex-wrap: nowrap;
+  /* 右侧两个动作仍绝对定在行末，元信息让出这一截 */
+  padding-right: 64px;
+}
+/* 同一行里来源最多占 120px，剩下的宽度留给标题；窄屏也不放开 */
+.art-item.is-line .art-meta .src-pill { max-width: 120px; }
+.art-item.is-line .art-acts {
+  top: 50%; bottom: auto;
+  right: 10px;
+  transform: translateY(-50%);
+}
 
 .art-meta {
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2);
