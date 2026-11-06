@@ -10,6 +10,8 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { core } from '@core';
+import { on, EVENT } from '../kernel/events.js';
+import { provide, revoke, isOn } from '../kernel/bridge.js';
 
 const S = () => core;
 
@@ -154,12 +156,12 @@ function Lightbox({ box, close }) {
   useEffect(() => {
     const onKey = (ev) => {
       if (ev.key === 'Escape') {
-        if (window.__confirmOpen) return;
+        if (isOn('confirmOpen')) return;
         ev.preventDefault();
         ev.stopPropagation();
         close();
       } else if (ev.key === 'Tab') {
-        if (window.__confirmOpen) return;   // 确认框叠在上面时，Tab 归它管
+        if (isOn('confirmOpen')) return;   // 确认框叠在上面时，Tab 归它管
         // 灯箱里所有按钮（上一张 / 下一张 / 关闭）一起循环，键盘也能切图
         const f = rootRef.current ? Array.from(rootRef.current.querySelectorAll('button')) : [];
         if (!f.length) { ev.preventDefault(); if (rootRef.current) rootRef.current.focus(); return; }
@@ -226,8 +228,7 @@ export function Overlays() {
   const [, bump] = useState(0);
   useEffect(() => {
     const onTick = () => bump((n) => n + 1);
-    window.addEventListener('__overlaysTick', onTick);
-    return () => window.removeEventListener('__overlaysTick', onTick);
+    return on(EVENT.OVERLAYS, onTick);
   }, []);
 
   const s = S();
@@ -239,10 +240,10 @@ export function Overlays() {
   // 确认框打开期间锁住背景滚动（与设置弹层用同一个计数器，关掉时只解自己那一层），
   // 同时把「确认框在最上层」告诉其他 Esc 处理器（见 core/ui.js）。
   useEffect(() => {
-    window.__confirmOpen = !!cfm.open;
+    provide('confirmOpen', !!cfm.open);
     if (!cfm.open || !s) return undefined;
     s.lockPageScroll();
-    return () => { window.__confirmOpen = false; s.unlockPageScroll(); };
+    return () => { revoke('confirmOpen'); s.unlockPageScroll(); };
   }, [cfm.open]);
 
   if (!s) return null;

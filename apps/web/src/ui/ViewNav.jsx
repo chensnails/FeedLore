@@ -6,6 +6,7 @@
  * 现在三视图各自顶栏右簇都有常驻入口，点哪切哪，当前视图用 --accent-soft 打底高亮。 */
 import React, { useEffect, useState } from 'react';
 import { core } from '@core';
+import { onAny, EVENT } from '../kernel/events.js';
 
 const VIEWS = [
   { id: 'reader', label: '文章', ico: 'inbox' },
@@ -22,12 +23,7 @@ export function ViewNav() {
 
   useEffect(() => {
     const onTick = () => setView((core.state && core.state.tab) || 'reader');
-    window.addEventListener('__viewChanged', onTick);
-    window.addEventListener('__shellTick', onTick);
-    return () => {
-      window.removeEventListener('__viewChanged', onTick);
-      window.removeEventListener('__shellTick', onTick);
-    };
+    return onAny([EVENT.VIEW, EVENT.SHELL], onTick);
   }, []);
 
   const snap = readShell();

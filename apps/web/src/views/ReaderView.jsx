@@ -10,6 +10,8 @@
  */
 
 import { core } from '@core';
+import { on, EVENT } from '../kernel/events.js';
+import { provide, revoke } from '../kernel/bridge.js';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChannelList } from './ChannelList.jsx';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
@@ -394,8 +396,7 @@ function useArticleListPrefs() {
   const [comfortable, setComfortable] = useState(read);
   useEffect(() => {
     const sync = () => setComfortable(read());
-    window.addEventListener('__appearanceChanged', sync);
-    return () => window.removeEventListener('__appearanceChanged', sync);
+    return on(EVENT.APPEARANCE, sync);
   }, []);
   return comfortable;
 }
@@ -566,21 +567,20 @@ export function ReaderView() {
 
   useEffect(() => {
     const onTick = () => bump((x) => x + 1);
-    window.addEventListener('__readerTick', onTick);
-    return () => window.removeEventListener('__readerTick', onTick);
+    return on(EVENT.READER, onTick);
   }, []);
 
   useEffect(() => {
     // 命令面板 / 「/」快捷键要求聚焦搜索：窄屏下得先把搜索框展开，否则焦点落到 display:none 上。
     // 已展开时 setSearchOpen(true) 不会触发状态变化，这里直接聚焦，保证再按「/」同样生效。
-    window.__readerFocusSearch = () => {
+    provide('readerFocusSearch', () => {
       setSearchOpen(true);
       requestAnimationFrame(() => {
         const el = searchRef.current;
         if (el) { el.focus(); if (typeof el.select === 'function') el.select(); }
       });
-    };
-    return () => { delete window.__readerFocusSearch; };
+    });
+    return () => { revoke('readerFocusSearch'); };
   }, []);
 
   // 展开后把焦点送进输入框（展开这一步是 display 切换，同 tick 聚焦无效）

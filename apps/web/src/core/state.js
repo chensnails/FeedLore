@@ -6,6 +6,8 @@
  * ============================================================ */
 
 import { toast, emitShell } from './util.js';
+import { emit, EVENT } from '../kernel/events.js';
+import { get } from '../kernel/bridge.js';
 
 /* ---------------- 常量 ----------------
  * 分页长度固定：卡片页 50 条，文章页 40 篇。
@@ -224,7 +226,7 @@ export const isWritable = () => state.role !== 'readonly';
 export function applyRoleUI() {
   const admin = isAdmin();
   // 设置弹层 tab 已 React 化：按角色过滤交给宿主（管理员专属 tab 由外壳不再渲染）
-  const host = window.__settingsHost;
+  const host = get('settingsHost');
   if (host && host.setAdminFlag) host.setAdminFlag(admin);
   if (host && host.setRoleFlag) host.setRoleFlag(state.role || '');
 }
@@ -265,18 +267,19 @@ export function unlockPageScroll() {
  *  区分「进设置列表」和「直达某分区」（见 SettingsModal 的 mobilePane 判定）；
  *  桌面端的默认分区由 SettingsModal 自己兜底，语义不变。 */
 export function openSettings(tab) {
-  const host = window.__settingsHost;
+  const host = get('settingsHost');
   if (host && host.open) { host.open(tab); return; }
   // 设置弹层自 v2.2.0 起按需加载：宿主还没注册时交给入口去拉 chunk，
   // 拉完由 SettingsModal 读取 __settingsPending 补上这次打开。
-  if (typeof window.__mountSettings === 'function') {
-    const p = window.__mountSettings(tab);
+  const mount = get('mountSettings');
+  if (typeof mount === 'function') {
+    const p = mount(tab);
     if (p && p.catch) p.catch(() => toast('设置页面加载失败，请检查网络后重试', false));
   }
 }
 
 export function closeSettings() {
-  const host = window.__settingsHost;
+  const host = get('settingsHost');
   if (host && host.close) host.close();
 }
 
@@ -292,7 +295,7 @@ export function getSettingsSummary() {
 
 /** 推送副标题给 React 外壳（宿主未就绪时静默） */
 export function setSettingsSummary(text) {
-  const host = window.__settingsHost;
+  const host = get('settingsHost');
   if (host && host.setSummary) host.setSummary(text);
 }
 
@@ -488,7 +491,7 @@ export function saveAppearance(pref) {
 export function applyAppearance(pref) {
   const el = document.documentElement;
   Object.keys(APPR_ATTR).forEach((k) => el.setAttribute(APPR_ATTR[k], pref[k]));
-  window.dispatchEvent(new Event('__appearanceChanged'));
+  emit(EVENT.APPEARANCE);
 }
 
 export function setAppearance(key, value) {

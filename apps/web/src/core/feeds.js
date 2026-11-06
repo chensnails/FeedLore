@@ -7,6 +7,7 @@
 
 import { apiFetch, httpError, toast, emitShell } from './util.js';
 import { state, layoutPref, setLayout, lockPageScroll, unlockPageScroll } from './state.js';
+import { emit, EVENT } from '../kernel/events.js';
 
 /** 按分组名把频道归类：未分组的排最前，其余按名称排序；组内保持原顺序 */
 export function groupFeeds(feeds) {
@@ -199,7 +200,7 @@ export function render() {
   // 顶栏（副标题 / 视图高亮）由 React 渲染
   emitShell();
   // 卡片列表渲染交给 React 卡片视图（src/views/CardsView.jsx）：通知它读实时 state 重绘
-  window.dispatchEvent(new Event('__cardsTick'));
+  emit(EVENT.CARDS);
 }
 
 /* 卡片页的「滚动到底自动加载」在 src/views/CardsView.jsx 的 effect 里实现（v1.6.0-test6）：

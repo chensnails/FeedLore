@@ -16,6 +16,8 @@
  */
 
 import { core } from '@core';
+import { on, EVENT } from '../kernel/events.js';
+import { provide, revoke } from '../kernel/bridge.js';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { CardDetail } from './CardDetail.jsx';
 import { ChannelList } from './ChannelList.jsx';
@@ -280,8 +282,7 @@ export function CardsView() {
   // 卡片 UI 重绘信号（app.js 在状态变化时派发）
   useEffect(() => {
     const onTick = () => bump((x) => x + 1);
-    window.addEventListener('__cardsTick', onTick);
-    return () => window.removeEventListener('__cardsTick', onTick);
+    return on(EVENT.CARDS, onTick);
   }, []);
 
   // 「/」聚焦委托：app.js 的全局快捷键经此把焦点交到本组件输入框
@@ -289,14 +290,14 @@ export function CardsView() {
   useEffect(() => {
     /* 直接聚焦而不只依赖 searchOpen 的 effect：框已经展开时 setSearchOpen(true)
        不会触发状态变化，再按「/」就落到空白处。rAF 等展开的样式切换落地后再聚焦。 */
-    window.__cardsFocusSearch = () => {
+    provide('cardsFocusSearch', () => {
       setSearchOpen(true);
       requestAnimationFrame(() => {
         const el = searchRef.current;
         if (el) { el.focus(); if (typeof el.select === 'function') el.select(); }
       });
-    };
-    return () => { delete window.__cardsFocusSearch; };
+    });
+    return () => { revoke('cardsFocusSearch'); };
   }, []);
 
   // 展开后把焦点送进输入框
@@ -331,11 +332,11 @@ export function CardsView() {
     document.addEventListener('scroll', check, { capture: true, passive: true });
     // 从别的页面切回来时补一次判定：effect 依赖不变，光等 scroll 事件会漏掉「重新显示」
     const onView = () => { setTimeout(check, 0); };
-    window.addEventListener('__viewChanged', onView);
+    const stopView = on(EVENT.VIEW, onView);
     const t = setTimeout(check, 350);
     return () => {
       document.removeEventListener('scroll', check, { capture: true });
-      window.removeEventListener('__viewChanged', onView);
+      stopView();
       clearTimeout(t);
     };
   }, [st.hasMore, st.loading, st.loadMoreErr]);

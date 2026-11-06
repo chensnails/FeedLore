@@ -9,6 +9,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { core } from '@core';
+import { on, EVENT } from '../kernel/events.js';
 
 const SHOW_AFTER = 600;
 
@@ -28,11 +29,11 @@ export function ScrollTop() {
     };
     document.addEventListener('scroll', onScroll, { capture: true, passive: true });
     // 切视图后容器换了：重新判一次，别把上一页的滚动位置带过来
-    window.addEventListener('__viewChanged', read);
+    const stopViewEvents = on(EVENT.VIEW, read);
     read();
     return () => {
       document.removeEventListener('scroll', onScroll, { capture: true });
-      window.removeEventListener('__viewChanged', read);
+      stopViewEvents();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);

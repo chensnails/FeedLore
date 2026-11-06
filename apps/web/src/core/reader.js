@@ -8,6 +8,7 @@
 import { apiFetch, httpError, toast, emitShell, confirm, writeHash } from './util.js';
 import { state, layoutPref, setLayout, openSettings, lockPageScroll, unlockPageScroll } from './state.js';
 import { loadFeeds, groupFeeds, loadPage } from './feeds.js';
+import { emit, EVENT } from '../kernel/events.js';
 
 /* ============================================================
  * 阅读页（文章）：左频道 / 右文章，点标题展开全文
@@ -28,7 +29,7 @@ let readerPinnedId = null;
  *  ⚠️ 这里不要挂任何滚动副作用：renderReader() 在近 20 处被调用（含与置顶无关的
  *  重绘），往里塞 rAF 会在每次重绘都排一次滚动修正，既拖慢又容易踩到时序。
  *  置顶的重新对准只在真正改变布局的两处做：正文异步到达、翻页追加（见下）。 */
-export function renderReader() { window.dispatchEvent(new Event('__readerTick')); }
+export function renderReader() { emit(EVENT.READER); }
 /** 兼容旧调用名：频道侧栏同样由 ReaderView 渲染，故与 renderReader 同为一次重绘 */
 export function renderReaderChannels() { renderReader(); }
 
@@ -428,7 +429,7 @@ export function applyEntryFlag(id, patch) {
 
   if (inReader) renderReader();
   // 卡片列表只在可见时重绘：隐藏时重排整墙卡片没有意义，切回卡片页时 switchView 会再刷一次
-  if (inCards && state.tab === 'cards') window.dispatchEvent(new Event('__cardsTick'));
+  if (inCards && state.tab === 'cards') emit(EVENT.CARDS);
 
   // 在「收藏」范围里取消收藏 = 明确的「移出这里」，立刻从列表拿掉。
   if (inReader && state.rdScope === 'favorite' && !now.isFavorite) {
@@ -498,7 +499,7 @@ export function rdCollapsedGroups() {
    而两边的重绘信号各自独立 —— 改一次要两边都派发，否则另一边拿着旧集合渲染。 */
 function renderGroupFold() {
   renderReader();
-  window.dispatchEvent(new Event('__cardsTick'));
+  emit(EVENT.CARDS);
 }
 
 export function readerToggleGroupCollapse(name) {
@@ -529,7 +530,7 @@ export function rdExpandGroup(name) {
   set.delete(g);
   setLayout('rdCollapsedGroups', Array.from(set));
   // 调用方随后自己 renderReader()，这里只补卡片页那半边
-  window.dispatchEvent(new Event('__cardsTick'));
+  emit(EVENT.CARDS);
 }
 
 /* ---------- 频道 / 范围 / 分组切换（ReaderView 经桥调用） ---------- */

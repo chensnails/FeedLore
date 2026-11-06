@@ -11,6 +11,7 @@
  */
 
 import { core } from '@core';
+import { on, EVENT } from '../kernel/events.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
@@ -157,8 +158,7 @@ export function AiView() {
   // 视图激活感知（React 常驻挂载，只在切到 AI 页时拉数据）
   useEffect(() => {
     const onView = (ev) => setActive(ev.detail === 'ai');
-    window.addEventListener('__viewChanged', onView);
-    return () => window.removeEventListener('__viewChanged', onView);
+    return on(EVENT.VIEW, onView);
   }, []);
 
   // 合并头部：本视图第一行即吸顶条，实测高度写入 --topbar-h（隐藏视图测得 0 高不写，避免覆盖）

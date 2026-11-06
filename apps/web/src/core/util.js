@@ -8,6 +8,7 @@
 /* ---------------- DOM ---------------- */
 export const $ = (s) => document.querySelector(s);
 import { errorText } from './errorText.js';
+import { emit, EVENT } from '../kernel/events.js';
 export { errorText as errText };
 /* ---------------- 工具 ---------------- */
 /** 带登录态处理的 fetch：401 时跳登录页 */
@@ -207,10 +208,10 @@ export function feedTitle(f) {
 }
 
 /** 通知视图导航 / ⋮ 菜单重绘：它们监听 __shellTick 后重读 getShell() */
-export function emitShell() { window.dispatchEvent(new Event('__shellTick')); }
+export function emitShell() { emit(EVENT.SHELL); }
 
 /** 通知覆盖层（src/ui/Overlays.jsx）重绘：toast / 新内容浮标 / 图片灯箱都归它渲染 */
-export function emitOverlays() { window.dispatchEvent(new Event('__overlaysTick')); }
+export function emitOverlays() { emit(EVENT.OVERLAYS); }
 
 /* ---------------- 链接：标签 / 复制 / 打开原文 ---------------- */
 

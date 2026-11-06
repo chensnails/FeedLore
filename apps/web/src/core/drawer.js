@@ -19,6 +19,7 @@
 import { state } from './state.js';
 import { setReaderDrawer } from './reader.js';
 import { setCardsDrawer } from './feeds.js';
+import { isOn } from '../kernel/bridge.js';
 
 const THRESH = 48;                                              // 松手判定开 / 关的最小位移（px）
 const OPEN_ZONE = () => Math.round(window.innerWidth * 2 / 3);  // 关闭态下可起手的左 2/3 屏幕宽
@@ -74,7 +75,7 @@ document.addEventListener('touchstart', (ev) => {
   // 宽屏并排布局 / 当前页面没有抽屉，不拦截（避免误锁页面滚动）
   const cur = drawerMode() ? target() : null;
   if (!cur) { dragging = false; active = null; return; }
-  if (window.__settingsOpen || window.__cmdkOpen) return;
+  if (isOn('settingsOpen') || isOn('cmdkOpen')) return;
   const open = document.body.classList.contains(cur.cls);
   // 关闭态：仅在左 2/3 区域内可起手（右滑拉出）；其余区域交给内容本身
   if (!open && t.clientX > OPEN_ZONE()) { dragging = false; return; }

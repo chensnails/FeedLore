@@ -27,6 +27,7 @@ const TARGETS = [
   ['mount-cards.jsx', '.build/mount-cards.cjs'],
   ['mount-reader.jsx', '.build/mount-reader.cjs'],
   ['mount-overlays.jsx', '.build/mount-overlays.cjs'],
+  ['kernel-entry.js', '.build/kernel.cjs'],
 ];
 
 await Promise.all(TARGETS.map(([infile, outfile]) => build({

@@ -9,6 +9,7 @@ import { apiFetch, httpError, toast, emitShell, emitOverlays } from './util.js';
 import { state, activeScrollTop, scrollActiveTop } from './state.js';
 import { render, loadFeeds, cardGroupFeedIds } from './feeds.js';
 import { renderReader, readerFilterParams } from './reader.js';
+import { isOn } from '../kernel/bridge.js';
 
 /* ============================================================
  * 网页自动刷新
@@ -41,7 +42,7 @@ export function scheduleAutoRefresh() {
   autoRefreshLastAt = Date.now();
   autoRefreshTimer = setInterval(() => {
     if (document.hidden) return;                        // 后台不跑，回到前台再补
-    if (window.__settingsOpen) return;   // 正在改设置就别动列表
+    if (isOn('settingsOpen')) return;   // 正在改设置就别动列表
     autoRefreshLastAt = Date.now();
     checkForNew().catch(() => { /* 自动刷新失败就静默跳过，不打扰用户 */ });
   }, mins * 60000);
@@ -157,7 +158,7 @@ document.addEventListener('visibilitychange', () => {
   const mins = autoRefreshMinutes();
   if (!mins) return;
   if (Date.now() - autoRefreshLastAt < mins * 60000) return;
-  if (window.__settingsOpen) return;
+  if (isOn('settingsOpen')) return;
   autoRefreshLastAt = Date.now();
   checkForNew().catch(() => {});
 });

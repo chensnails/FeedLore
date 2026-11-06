@@ -1031,6 +1031,7 @@ require('./.build/mount-ai.cjs');
 require('./.build/mount-cards.cjs');
 require('./.build/mount-reader.cjs');
 require('./.build/mount-overlays.cjs');
+require('./.build/kernel.cjs');
 const __mount = w.__mount;
 const __mountAi = w.__mountAi;
 const __mountCards = w.__mountCards;
@@ -4168,7 +4169,7 @@ const withEFP = (el, fn) => {
   t('源码守卫：卡片页隐藏时不后台自动翻页，切回可见时补一次判定', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'views', 'CardsView.jsx'), 'utf8');
     if (!/getElementById\('cardsView'\)[\s\S]{0,80}hidden/.test(src)) throw new Error('自动加载未检查 #cardsView 是否隐藏');
-    if (!/__viewChanged/.test(src)) throw new Error('切回卡片页没有补判定，隐藏期间跳过后会一直不加载');
+    if (!/EVENT\.VIEW/.test(src)) throw new Error('切回卡片页没有订阅内核的 EVENT.VIEW，隐藏期间跳过后会一直不加载');
   });
 
   // 骨架态
@@ -5903,7 +5904,7 @@ const withEFP = (el, fn) => {
     }
     if (v.indexOf('switchView') < 0) throw new Error('ViewNav 应调用 switchView 切换视图');
     if (v.indexOf('viewnav-btn') < 0) throw new Error('ViewNav 应使用 .viewnav-btn 结构');
-    if (v.indexOf('__viewChanged') < 0) throw new Error('ViewNav 应订阅 __viewChanged 高亮当前视图');
+    if (!/EVENT\.VIEW/.test(v)) throw new Error('ViewNav 应订阅内核的 EVENT.VIEW 高亮当前视图');
   });
 
   // ============ 移动端底部视图标签栏（v2.4.0） ============
@@ -5922,9 +5923,9 @@ const withEFP = (el, fn) => {
     for (const id of ['readerView', 'cardsView', 'aiView']) {
       if (html.indexOf('id="' + id + '"') > at) throw new Error('#' + id + ' 排到了标签栏挂载点之后');
     }
-    if (!/getElementById\('mobileTabbarRoot'\)/.test(mj)) throw new Error('main.jsx 未挂载 #mobileTabbarRoot');
-    if (!/<ViewNav \/>/.test(mj)) throw new Error('底部栏应复用 ViewNav，不再复制第二份导航结构');
-    if (!/import \{ ViewNav \}/.test(mj)) throw new Error('main.jsx 未引入 ViewNav');
+    const pts = fs.readFileSync(path.join(root, 'src', 'kernel', 'mount-points.js'), 'utf8');
+    if (!/id: 'mobileTabbarRoot', component: 'ViewNav'/.test(pts)) throw new Error('挂载表未把 #mobileTabbarRoot 指向 ViewNav');
+    if (!/mountAll\(\)/.test(mj)) throw new Error('main.jsx 未调用声明式装配入口');
   });
 
   t('style.css：≤720 顶栏实例让位、底部栏固定，且压在抽屉遮罩之下', () => {
@@ -6224,8 +6225,8 @@ const withEFP = (el, fn) => {
       if (html.indexOf('id="' + id + '"') > at) throw new Error('#' + id + ' 排在回顶钮之后（回顶钮必须在视图之外）');
     }
     const mj = fs.readFileSync(path.join(root, 'src', 'main.jsx'), 'utf8');
-    if (!/getElementById\('scrollTopRoot'\)/.test(mj)) throw new Error('main.jsx 未挂载 #scrollTopRoot');
-    if (!/import \{ ScrollTop \}/.test(mj)) throw new Error('main.jsx 未引入 ScrollTop');
+    const pts = fs.readFileSync(path.join(root, 'src', 'kernel', 'mount-points.js'), 'utf8');
+    if (!/id: 'scrollTopRoot', component: 'ScrollTop'/.test(pts)) throw new Error('挂载表未把 #scrollTopRoot 指向 ScrollTop');
     const st = fs.readFileSync(path.join(root, 'src', 'ui', 'ScrollTop.jsx'), 'utf8');
     if (!/SHOW_AFTER = 600/.test(st)) throw new Error('出现阈值应为 600px（滚过一屏）');
     if (!/addEventListener\('scroll'/.test(st)) throw new Error('缺滚动监听');
@@ -6645,6 +6646,102 @@ const withEFP = (el, fn) => {
     if (!/--sticky-pad: var\(--sp-4\)/.test(css) || !/\.cards-sticky \{ --sticky-pad: var\(--sp-3\)/.test(css)) {
       throw new Error('头部内距与频道条负外距必须共用 --sticky-pad，否则 ≤480 档左右各溢出 4px');
     }
+  });
+
+  /* 内核契约：用运行时行为 + 架构不变量守门，替代「grep 实现字符串」。
+     改实现（事件名、订阅方式）不该让断言失效，破坏契约才该红。 */
+  t('内核：事件订阅 / 派发 / 退订在真实 DOM 上生效', () => {
+    const k = w.__kernelForTest;
+    if (!k || !k.EVENT || !k.emit || !k.on) throw new Error('内核未挂到测试 window');
+    let hits = 0; let detailSeen = null;
+    const stopCards = k.on(k.EVENT.CARDS, () => { hits += 1; });
+    const stopView = k.on(k.EVENT.VIEW, (ev) => { detailSeen = ev.detail; });
+    k.emit(k.EVENT.CARDS);
+    k.emit(k.EVENT.CARDS);
+    k.emit(k.EVENT.VIEW, 'ai');
+    stopCards();
+    k.emit(k.EVENT.CARDS);
+    stopView();
+    if (hits !== 2) throw new Error('退订未生效，hits=' + hits);
+    if (detailSeen !== 'ai') throw new Error('CustomEvent detail 未透传：' + detailSeen);
+  });
+  t('内核：能力桥提供 / 读取 / 撤销，未登记名立即报错', () => {
+    const k = w.__kernelForTest;
+    k.provide('settingsOpen', true);
+    if (!k.isOn('settingsOpen')) throw new Error('provide/isOn 未生效');
+    k.provide('cardsFocusSearch', () => {});
+    if (typeof k.requireBridge('cardsFocusSearch') !== 'function') throw new Error('requireBridge 未取回已提供能力');
+    k.revoke('cardsFocusSearch');
+    k.revoke('settingsOpen');
+    if (k.isOn('settingsOpen')) throw new Error('revoke 未清掉桥值');
+    let threw = false;
+    try { k.provide('typoBridge', 1); } catch (_) { threw = true; }
+    if (!threw) throw new Error('未登记的桥名应明确报错，不能静默写到 window');
+  });
+  t('内核：事件名集中登记且业务源码无裸字符串', () => {
+    const srcRoot = path.join(__dirname, '..', '..', 'src');
+    const ev = fs.readFileSync(path.join(srcRoot, 'kernel', 'events.js'), 'utf8');
+    for (const k of ['VIEW', 'SHELL', 'CARDS', 'READER', 'APPEARANCE', 'OVERLAYS']) {
+      if (!new RegExp('\\b' + k + ": '__").test(ev)) throw new Error('EVENT 未登记 ' + k);
+    }
+    const files = [];
+    const walk = (d) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.(js|jsx)$/.test(e.name)) files.push(p);
+      }
+    };
+    walk(srcRoot);
+    const bare = [];
+    for (const p of files) {
+      if (p.endsWith(path.join('kernel', 'events.js'))) continue;
+      const s = fs.readFileSync(p, 'utf8');
+      const m = s.match(/['"]__(viewChanged|shellTick|cardsTick|readerTick|appearanceChanged|overlaysTick)['"]/g);
+      if (m) bare.push(path.relative(srcRoot, p) + ':' + m.join(','));
+    }
+    if (bare.length) throw new Error('仍有裸事件字符串（应改用 EVENT 常量）：' + bare.join(' | '));
+  });
+  t('内核：挂载点清单运行时可查、无重复，入口不再直接 createRoot', () => {
+    const k = w.__kernelForTest;
+    const ids = k.MOUNT_IDS;
+    if (!Array.isArray(ids) || ids.length !== 8) throw new Error('挂载点应为 8 个，实际 ' + (ids && ids.length));
+    if (new Set(ids).size !== ids.length) throw new Error('挂载点 id 重复');
+    for (const id of ['cmdkRoot', 'cardsRoot', 'readerRoot', 'overlaysRoot',
+      'mobileTabbarRoot', 'scrollTopRoot', 'settingsRoot', 'aiRoot']) {
+      if (!ids.includes(id)) throw new Error('缺挂载点 ' + id);
+    }
+    const lazy = k.MOUNT_POINTS.filter((p) => p.lazy);
+    if (lazy.length !== 2) throw new Error('按需加载项应为 2 个，实际 ' + lazy.length);
+    const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'main.jsx'), 'utf8');
+    if (/createRoot\s*\(/.test(main)) throw new Error('入口不应再直接 createRoot（装配已收口到 kernel/mounts.jsx）');
+    if (main.indexOf('mountAll()') < 0) throw new Error('入口未调用 mountAll()');
+  });
+  t('内核：业务源码不再直接读写 window.__* 能力桥', () => {
+    const srcRoot = path.join(__dirname, '..', '..', 'src');
+    const files = [];
+    const walk = (d) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.(js|jsx)$/.test(e.name)) files.push(p);
+      }
+    };
+    walk(srcRoot);
+    // 首屏注入的布局与启动看门狗钩子不属于跨 Root 能力桥，仍允许直接读。
+    const ALLOW = new Set(['__boot', '__LAYOUT__', '__coreForTest', '__kernelForTest']);
+    const bad = [];
+    for (const p of files) {
+      if (p.endsWith(path.join('kernel', 'bridge.js'))) continue;
+      const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/)
+        .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l));   // 注释里提到桥名不算
+      for (const line of lines) {
+        const m = line.match(/window\.(__[A-Za-z_]+)/g);
+        if (!m) continue;
+        for (const hit of m) if (!ALLOW.has(hit.slice(7))) bad.push(path.relative(srcRoot, p) + ':' + hit);
+      }
+    }
+    if (bad.length) throw new Error('仍有直连全局桥：' + bad.join(' | '));
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });

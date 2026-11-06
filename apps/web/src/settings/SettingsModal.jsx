@@ -19,6 +19,7 @@ import { WatchPane } from './WatchPane.jsx';
 import { AccountPane } from './AccountPane.jsx';
 import { StatusPane } from './StatusPane.jsx';
 import { ADMIN_TABS, READONLY_TABS, TAB_BY_NAME, TAB_GROUPS, matchTabs, visibleTabs } from './tabs.js';
+import { provide, revoke, get } from '../kernel/bridge.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 const isAdminNow = () => !!(S() && S().isAdmin && S().isAdmin());
@@ -164,21 +165,21 @@ export function SettingsModal() {
       setAdminFlag(a) { setAdmin(!!a); },
       setRoleFlag(r) { setRole(r || ''); },
     };
-    window.__settingsHost = host;
+    provide('settingsHost', host);
     // 按需挂载：入口在 chunk 下载前就记下了这次要打开的分区，宿主注册后补开一次。
     // 只消费一次（StrictMode 会重复跑 effect，开启状态在重复挂载之间保留）。
-    const pending = window.__settingsPending;
+    const pending = get('settingsPending');
     if (pending) {
-      window.__settingsPending = null;
+      revoke('settingsPending');
       host.open(pending.tab);
     }
-    return () => { delete window.__settingsHost; };
+    return () => { revoke('settingsHost'); };
   }, []);
 
   // 开合状态同步给旧代码（Escape 关闭 / 自动刷新的判据）
   useEffect(() => {
-    window.__settingsOpen = open;
-    return () => { window.__settingsOpen = false; };
+    provide('settingsOpen', open);
+    return () => { revoke('settingsOpen'); };
   }, [open]);
 
   // 打开时锁背景滚动（计数式，与图片灯箱共存的旧约定兼容），关闭时解锁

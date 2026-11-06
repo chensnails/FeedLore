@@ -12,6 +12,7 @@
 import { core } from '@core';
 import React, { useEffect, useState } from 'react';
 import { PaneFoot } from './primitives.jsx';
+import { on, EVENT } from '../kernel/events.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -113,8 +114,7 @@ export function AppearancePane() {
       if (s && s.getAppearance) setPref(s.getAppearance());
     };
     sync();
-    window.addEventListener('__appearanceChanged', sync);
-    return () => window.removeEventListener('__appearanceChanged', sync);
+    return on(EVENT.APPEARANCE, sync);
   }, []);
 
   const narrow = useNarrowViewport();

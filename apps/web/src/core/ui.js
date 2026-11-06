@@ -10,6 +10,8 @@ import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScro
 import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
 import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, setEntryFlag, focusReaderArt, restoreReaderArt } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
+import { emit, EVENT } from '../kernel/events.js';
+import { get, isOn } from '../kernel/bridge.js';
 
 /* ============================================================
  * 事件绑定
@@ -102,15 +104,15 @@ export function downloadUrl(url) {
 /* Esc = 关闭「最上面那一层」。这里只负责设置弹层，但要先看有没有更上层的覆盖物：
    整屏下拉弹层 / 命令面板 / 灯箱 / 确认框开着时，这一击归它们，不能顺手把设置也关掉。 */
 document.addEventListener('keydown', (ev) => {
-  if (ev.key !== 'Escape' || !window.__settingsOpen) return;
+  if (ev.key !== 'Escape' || !isOn('settingsOpen')) return;
   if (document.querySelector('.dd-mask')) return;                    // 移动端整屏下拉
   const cmdk = document.querySelector('.cmdk-mask:not([hidden])');
   if (cmdk) return;                                                  // 命令面板
   if (document.querySelector('.lightbox')) return;                   // 图片灯箱
-  if (window.__confirmOpen) return;                                  // 统一确认框
+  if (isOn('confirmOpen')) return;                                  // 统一确认框
   // 最后交给宿主：移动端停在「分区内容」这一层时，Esc 应先退回设置列表，
   // 只有已经在列表上才整层关闭（与「返回」按钮一致）。返回 true = 已消化。
-  const host = window.__settingsHost;
+  const host = get('settingsHost');
   if (host && typeof host.escape === 'function' && host.escape()) return;
   closeSettings();
 });
@@ -130,8 +132,9 @@ export function switchView(name, opts) {
   if (name === 'ai' && layoutPref.digestEnabled === false) name = 'reader';
   const same = from === name;
   // AI 视图按需加载（v2.2.0）：切过去之前先发起 chunk 下载，别等视图切完才开始。
-  if (name === 'ai' && typeof window.__mountAi === 'function') {
-    const p = window.__mountAi();
+  const mountAi = get('mountAi');
+  if (name === 'ai' && typeof mountAi === 'function') {
+    const p = mountAi();
     if (p && p.catch) p.catch(() => toast('AI 页面加载失败，请检查网络后重试', false));
   }
   const apply = () => {
@@ -165,7 +168,7 @@ export function switchView(name, opts) {
       if (!state.entries.length && !state.loading) loadPage(true);
     }
     // AI 视图已 React 化：通知 AiView 激活 / 隐去（切到 ai 时由组件自行加载子页数据）
-    window.dispatchEvent(new CustomEvent('__viewChanged', { detail: name }));
+    emit(EVENT.VIEW, name);
 
     // 新视图的容器切完后处理它自己的滚动位置（window.scrollTo 在这里是空操作）：
     // - 点的是当前视图（底部标签栏再点一次）→ 平滑回顶；
@@ -421,11 +424,13 @@ export function jumpToFeed(id, focusId) {
 }
 export function focusSearchBox() {
   if (state.tab === 'cards') {
-    if (window.__cardsFocusSearch) window.__cardsFocusSearch();   // 卡片搜索框已 React 化
+    const focusCards = get('cardsFocusSearch');
+    if (focusCards) focusCards();   // 卡片搜索框已 React 化
     return;
   }
   if (state.tab !== 'reader') switchView('reader');
-  if (window.__readerFocusSearch) window.__readerFocusSearch();
+  const focusReader = get('readerFocusSearch');
+  if (focusReader) focusReader();
 }
 
 // 「/」聚焦搜索：命令面板里一直写着这个提示，之前却没有对应的按键处理。
@@ -434,7 +439,7 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
   const t = ev.target;
   if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
-  if (window.__settingsOpen || window.__cmdkOpen || window.__confirmOpen) return;
+  if (isOn('settingsOpen') || isOn('cmdkOpen') || isOn('confirmOpen')) return;
   // 设置弹层常驻挂载（关闭时只是 hidden），必须排除隐藏态，否则「/」永远被它吃掉
   if (document.querySelector('.lightbox, .modal-mask:not([hidden]), .dd-mask:not([hidden])')) return;
   ev.preventDefault();

@@ -13,6 +13,7 @@
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
 import { PaneFoot, Section } from './primitives.jsx';
+import { isOn } from '../kernel/bridge.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -166,7 +167,7 @@ export function StatusPane() {
   useEffect(() => {
     aliveRef.current = true;
     load();                                             // 进入即拉一次
-    const poll = setInterval(() => { if (window.__settingsOpen) load(); }, 30000);
+    const poll = setInterval(() => { if (isOn('settingsOpen')) load(); }, 30000);
     const t = setInterval(() => tick((x) => x + 1), 1000);
     return () => {
       aliveRef.current = false;

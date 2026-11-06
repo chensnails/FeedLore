@@ -6,6 +6,7 @@
  * 面板为实底（同 .link-menu 治理思路：未锁滚动不模糊），不触发滚动锁定。 */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { core } from '@core';
+import { on, EVENT } from '../kernel/events.js';
 
 const S = () => core;
 
@@ -31,8 +32,7 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
 
   const refreshSnap = useCallback(() => setSnap(readShell()), []);
   useEffect(() => {
-    window.addEventListener('__shellTick', refreshSnap);
-    return () => window.removeEventListener('__shellTick', refreshSnap);
+    return on(EVENT.SHELL, refreshSnap);
   }, [refreshSnap]);
 
   const close = useCallback(() => {

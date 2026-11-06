@@ -6,6 +6,7 @@
 import { core } from '@core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { buildCommands, cmdkFilter } from './commands.js';
+import { provide, revoke, isOn } from '../kernel/bridge.js';
 
 const BRIDGE = () => core;   // 核心逻辑单例（@core）
 
@@ -31,8 +32,8 @@ export function CommandPalette() {
 
   // 开合状态同步给旧 app（命令面板开着时屏蔽页面级键盘交互）
   useEffect(() => {
-    window.__cmdkOpen = open;
-    return () => { window.__cmdkOpen = false; };
+    provide('cmdkOpen', open);
+    return () => { revoke('cmdkOpen'); };
   }, [open]);
 
   // 打开时清空输入并聚焦；关闭时还给焦点
@@ -79,7 +80,7 @@ export function CommandPalette() {
     if (ev.key === 'ArrowDown') { ev.preventDefault(); setActive((i) => (items.length ? (i + 1) % items.length : 0)); }
     else if (ev.key === 'ArrowUp') { ev.preventDefault(); setActive((i) => (items.length ? (i - 1 + items.length) % items.length : 0)); }
     else if (ev.key === 'Enter') { ev.preventDefault(); runCmdk(active); }
-    else if (ev.key === 'Escape') { ev.preventDefault(); if (!window.__confirmOpen) close(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); if (!isOn('confirmOpen')) close(); }
   };
 
   const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) close(); };
