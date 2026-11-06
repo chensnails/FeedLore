@@ -8,7 +8,11 @@
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#ffffff">
+<!-- 首屏 theme-color：JS 还没跑时按系统深浅兜底，深色系统不会先闪一条白。
+     两条都带 media：不支持 media 的老浏览器会取第一条（亮色），是安全默认。
+     运行时 syncThemeColor() 会把所有条目改成当前主题的 --panel。 -->
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#2e2e2e" media="(prefers-color-scheme: dark)">
 <!-- 可安装到手机（Edge / Chrome「添加到手机」，iOS「添加到主屏幕」）-->
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -33,6 +37,14 @@
   var mq = window.matchMedia('(prefers-color-scheme: dark)');
   var dark = mode === 'dark' || (mode === 'auto' && mq.matches);
   el.setAttribute('data-theme', mode === 'github' ? 'github' : (dark ? 'dark' : 'light'));
+
+  /* HTML 里两条 <meta theme-color> 只跟系统深浅走；用户显式选了浅色 / 暗色 / GitHub
+     时系统偏好不作数，这里按实际主题立刻改写（颜色 = style.css 各主题的 --panel）。
+     不改的话：系统深色 + 用户选浅色，首屏会先按深色兜底再被 JS 翻成白色。 */
+  var THEME_COLORS = { light: '#ffffff', dark: '#2e2e2e', github: '#151b23' };
+  var tcs = document.querySelectorAll('meta[name="theme-color"]');
+  var tcColor = THEME_COLORS[el.getAttribute('data-theme')] || '#ffffff';
+  for (var ti = 0; ti < tcs.length; ti++) tcs[ti].setAttribute('content', tcColor);
 
   // 主色调：github 主题写死 GitHub 蓝；其余用本机保存的值（无则蓝）
   el.setAttribute('data-accent', mode === 'github' ? 'github' : pick(ap.accent, ACCENTS, 'blue'));

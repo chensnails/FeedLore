@@ -145,12 +145,14 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
 }
 
 /**
- * 把账号的布局注入首页 <head>（锚点是 index.html 里固定的 theme-color meta）。
+ * 把账号的布局注入首页 <head>（锚点是 index.html 里固定的 manifest link）。
  * 未登录 / 没连库时原样返回，交给前端默认值兜底。
  * 外观不再注入：它只存在浏览器本机 localStorage。
  */
 async function injectBootLayout(html: string, c: Context<AppEnv>, deps: AppDeps): Promise<string> {
-  const anchor = '<meta name="theme-color" content="#ffffff">';
+  /* 不锚 theme-color meta：它已拆成亮 / 暗两条（带 media），按固定 color 串匹配
+   * 会在改配色时静默失配，布局注入无声丢掉。manifest link 与配色无关。 */
+  const anchor = '<link rel="manifest" href="/manifest.json">';
   const at = html.indexOf(anchor);
   if (at < 0 || !deps.auth || !deps.db) return html;
 

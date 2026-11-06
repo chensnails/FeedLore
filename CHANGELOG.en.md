@@ -55,6 +55,13 @@ This file records user-visible changes and deployment-related changes for 2.x.
   v1-era brand `theme_color`, which the host browser uses to fill the home-indicator strip, so a
   band unrelated to the page appeared below the bar. It is now the same white as the toolbar;
   the login page also gained `viewport-fit=cover` so both pages share one safe-area story.
+- **No white flash on dark systems at first paint**: `theme-color` had only the white fallback,
+  so the status bar and browser bar were white until JavaScript ran. There is now one fallback
+  per color scheme via `media`, and the inline first-paint script rewrites it when light / dark /
+  GitHub was chosen explicitly, so the color is right before any script has finished loading.
+- **Favorited articles no longer carry a left accent bar**: in the full-width row list that bar
+  read as "currently selected" or "unread". Favorites are now marked only by the gold star. The
+  card page keeps its marker, where the bar is the only favorite signal.
 
 ### Security
 

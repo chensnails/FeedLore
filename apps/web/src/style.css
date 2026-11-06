@@ -3170,10 +3170,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-unread { color: var(--text-faint); opacity: .65; }
 .art-unread:hover { color: var(--accent-text); opacity: 1; }
 .art-unread .ico { width: .95rem; height: .95rem; }
-/* 跨页状态统一（v1.5.2）：收藏态与卡片页同语言——左侧主色竖条 + 星标变色。
-   竖条用 inset 阴影，不挤占布局。 */
-.art-item.is-fav { box-shadow: inset 3px 0 0 var(--accent); }
-.art-item.is-fav.open { box-shadow: 0 0 0 1px var(--border-strong), var(--elevation-2), inset 3px 0 0 var(--accent); }
+/* 收藏态只由星标标金（.art-star[data-fav]），不在行首压主色竖条：
+   通栏行式列表里左侧亮条容易被误读成「当前选中」或未读标记。 */
 
 .art-title {
   font-size: var(--fs-lg); font-weight: 620; line-height: 1.5;

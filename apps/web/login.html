@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>登录 · 笺川</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<meta name="theme-color" content="#ffffff">
+<!-- 首屏 theme-color：JS 还没跑时按系统深浅兜底（颜色 = login.css 各主题的 --bg）。
+     运行时 applyTheme() 会把所有条目改成当前主题的 --bg。 -->
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1d21" media="(prefers-color-scheme: dark)">
 <script>
 /* 主题：与主站共用同一份本机外观偏好（feedlore.appearance.v2 的 theme 字段），
    首屏前定好 data-theme 避免闪白。四档与主站一致：auto / light / dark / github。 */
@@ -20,6 +23,13 @@
   var el = document.documentElement;
   el.setAttribute('data-theme', eff);
   el.setAttribute('data-theme-mode', mode);
+
+  /* theme-color 的两条 media 只跟系统深浅；显式选了主题时按实际主题改写（颜色 = login.css 的 --bg）。 */
+  var THEME_COLORS = { light: '#ffffff', dark: '#1b1d21', github: '#0d1117' };
+  var tcs = document.querySelectorAll('meta[name="theme-color"]');
+  var tcColor = THEME_COLORS[eff] || '#ffffff';
+  for (var ti = 0; ti < tcs.length; ti++) tcs[ti].setAttribute('content', tcColor);
+
   window.__themeBoot = { KEY: KEY, mq: mq, mode: mode, MODES: MODES };
 })();
 </script>
@@ -104,8 +114,10 @@
     if (themeUse) themeUse.setAttribute('href', '#' + THEME_META[m].ico);
     themeBtn.title = '主题：' + THEME_META[m].label + '（点击切换）';
     themeBtn.setAttribute('aria-label', '主题：' + THEME_META[m].label);
-    const tc = document.querySelector('meta[name="theme-color"]');
-    if (tc) tc.setAttribute('content', eff === 'light' ? '#ffffff' : (eff === 'github' ? '#0d1117' : '#1b1d21'));
+    // 兜底是两条 theme-color（亮 / 暗各一条带 media），必须一起改，
+    // 否则系统深浅与当前主题相反时，浏览器命中的那条还留着旧色。
+    const tcColor = eff === 'light' ? '#ffffff' : (eff === 'github' ? '#0d1117' : '#1b1d21');
+    document.querySelectorAll('meta[name="theme-color"]').forEach((tc) => tc.setAttribute('content', tcColor));
   }
 
   themeBtn.addEventListener('click', () => {

@@ -20,7 +20,8 @@ test('静态文件按档设缓存，且 compress 不会吞掉 Cache-Control', as
   // 首页要 >1KB，否则 compress 直接跳过，测不到「Vary 重建」这条路径
   await writeFile(
     join(root, 'index.html'),
-    '<html><head><meta name="theme-color" content="#ffffff"></head><body>' +
+    '<html><head><link rel="manifest" href="/manifest.json">' +
+      '<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)"></head><body>' +
       '<p>' + 'x'.repeat(2048) + '</p></body></html>',
   );
   await writeFile(join(root, 'login.html'), '<html><body>' + 'y'.repeat(2048) + '</body></html>');

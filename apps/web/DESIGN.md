@@ -47,7 +47,9 @@
   **不要把这套改成客户端 GET /api/prefs 再应用** —— 会闪一帧白；外观也不放账号，避免跨设备互相干扰。
 - `manifest.json` 的 `theme_color` 必须与亮色 `--panel` 同色（现在是 `#ffffff`）：「添加到主屏幕」
   后宿主浏览器用它填 Home 指示条那一带，不一致就会在底部标签栏下面露出一条与页面无关的色带。
-  运行时的 `<meta name="theme-color">` 由 `syncThemeColor()` 跟着主题取 `--panel`，两者同源。
+- `index.html` 有两条带 `media="(prefers-color-scheme: …)"` 的 `theme-color` 兜底（亮色在前），
+  深色系统在 JS 跑起来之前也不会闪白；显式选了主题时由首屏内联脚本与 `syncThemeColor()` /
+  `applyTheme()` 把所有条目一起改掉。运行时颜色取 `--panel`，与主题同源。
 
 ## 4. 设置页签
 

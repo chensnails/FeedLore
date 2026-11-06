@@ -308,7 +308,7 @@ export const THEME_MODES = ['auto', 'light', 'dark', 'github'];
 export const THEME_META = {
   auto: { ico: 'theme-auto', label: '跟随系统', color: null },
   light: { ico: 'sun', label: '浅色', color: '#ffffff' },
-  dark: { ico: 'moon', label: 'CommaFeed 暗色', color: '#242424' },
+  dark: { ico: 'moon', label: 'CommaFeed 暗色', color: '#2e2e2e' },
   github: { ico: 'github', label: 'GitHub 暗黑', color: '#0d1117' },
 };
 // 每档主题实际写进 data-theme 的值：github 主题另外用一套 CSS 变量块，
@@ -365,8 +365,10 @@ export function applyTheme(mode, animate) {
   }
 
   const meta = THEME_META[m];
-  const tc = document.querySelector('meta[name="theme-color"]');
-  if (tc) tc.setAttribute('content', meta.color || (dark ? '#242424' : '#ffffff'));
+  // 首屏兜底有亮 / 暗两条带 media 的 theme-color，浏览器只认命中的那条：
+  // 全部改成同一个值，免得另一条还留着旧主题的颜色。
+  const color = meta.color || (dark ? '#2e2e2e' : '#ffffff');
+  document.querySelectorAll('meta[name="theme-color"]').forEach((tc) => tc.setAttribute('content', color));
   emitShell();   // ⋮ 菜单里的夜间模式图标由 React 重绘
 
   // 外观页的主题分段控件已 React 化：选中态由窗口级 __appearanceChanged 事件回流，

@@ -5992,6 +5992,14 @@ const withEFP = (el, fn) => {
     if (!/background:\s*var\(--hover\)/.test(lastRule('.art-item:hover')) || /var\(--neu-/.test(lastRule('.art-item:hover'))) {
       throw new Error('文章行悬停应只给极淡底色，不该再有拟态阴影');
     }
+    // 收藏只靠星标标金：通栏行式里左侧主色竖条会被读成「当前选中」或未读标记
+    const favRules = [...css.matchAll(/\.art-item\.is-fav[^{]*\{([^}]*)\}/g)].map((m) => m[1]);
+    if (favRules.some((b) => /inset 3px 0 0 var\(--accent\)/.test(b))) {
+      throw new Error('收藏文章不该再压左侧主色竖条（星标已经标金）');
+    }
+    if (!/\.art-item\.is-fav \.art-star\[data-fav\]\s*\{[^}]*color:\s*var\(--star\)/.test(css)) {
+      throw new Error('收藏态必须保留星标标金，否则列表里看不出收藏');
+    }
     for (const sel of ['.card', '.row-item']) {
       if (!/box-shadow:\s*var\(--elevation-1\)/.test(lastRule(sel))) {
         throw new Error(`${sel} 最终生效阴影应是 --elevation-1（末尾拟态块反盖了 v2.5.0 薄边浅影）`);
@@ -6084,20 +6092,42 @@ const withEFP = (el, fn) => {
 
   // 独立窗口 / 手机浏览器会拿清单的 theme_color 填宿主底栏（home indicator 那条带）。
   // 它一旦和标签栏底色不同，底部栏下面就露出一条与页面无关的色带（真机实测过）。
+  // index.html 另有一条深色兜底：JS 未跑时系统深色不能先闪一条白。
   t('manifest.json：theme_color 与亮色 --panel / meta theme-color 同源', () => {
     const root = path.join(__dirname, '..', '..');
     const mf = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest.json'), 'utf8'));
     const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
-    const meta = (html.match(/<meta name="theme-color" content="([^"]+)"/) || [])[1];
+    const metas = [...html.matchAll(/<meta name="theme-color" content="([^"]+)"(?: media="([^"]+)")?>/g)]
+      .map((m) => ({ color: m[1], media: m[2] || '' }));
+    const light = metas.find((m) => /prefers-color-scheme:\s*light/.test(m.media));
+    const dark = metas.find((m) => /prefers-color-scheme:\s*dark/.test(m.media));
     const panel = (css.match(/:root\s*\{[\s\S]*?--panel:\s*(#[0-9a-fA-F]{3,8});/) || [])[1];
-    if (!meta || !panel) throw new Error('没抓到 meta theme-color 或 :root --panel，本条守门失效');
-    const norm = (v) => String(v).toLowerCase();
-    if (norm(mf.theme_color) !== norm(meta)) {
-      throw new Error('清单 theme_color(' + mf.theme_color + ') 与 index.html meta(' + meta + ') 不一致：宿主底栏用清单值，标签栏下面会露出色带');
+    const panelDark = (css.match(/html\[data-theme="dark"\]\s*\{[\s\S]*?--panel:\s*(#[0-9a-fA-F]{3,8});/) || [])[1];
+    if (!light || !dark || !panel || !panelDark) {
+      throw new Error('没抓到亮 / 暗 theme-color 或 --panel，本条守门失效');
     }
-    if (norm(meta) !== norm(panel)) {
-      throw new Error('meta theme-color(' + meta + ') 应等于亮色 --panel(' + panel + ')：syncThemeColor 运行时也取这个值');
+    const norm = (v) => String(v).toLowerCase();
+    if (norm(mf.theme_color) !== norm(light.color)) {
+      throw new Error('清单 theme_color(' + mf.theme_color + ') 与 index.html 亮色 meta(' + light.color + ') 不一致：宿主底栏用清单值，标签栏下面会露出色带');
+    }
+    if (norm(light.color) !== norm(panel)) {
+      throw new Error('亮色 meta(' + light.color + ') 应等于亮色 --panel(' + panel + ')：syncThemeColor 运行时也取这个值');
+    }
+    if (norm(dark.color) !== norm(panelDark)) {
+      throw new Error('深色 meta(' + dark.color + ') 应等于深色 --panel(' + panelDark + ')：JS 未跑时状态栏靠它兜底，色差就是首屏闪一条色带');
+    }
+  });
+
+  // 两条 theme-color 兜底必须一起改：浏览器只认 media 命中的那条，
+  // 只改第一条（旧写法）会在系统深浅与当前主题相反时留下旧色。
+  t('theme-color：首屏内联脚本与运行时同步都改写全部条目', () => {
+    const root = path.join(__dirname, '..', '..');
+    for (const f of ['index.html', 'login.html', 'src/core/ui.js', 'src/core/state.js']) {
+      const src = fs.readFileSync(path.join(root, f), 'utf8');
+      if (!/querySelectorAll\('meta\[name="theme-color"\]'\)/.test(src)) {
+        throw new Error(f + ' 没有改写全部 theme-color 条目：只改第一条会在系统深浅与主题相反时留下旧色');
+      }
     }
   });
 
