@@ -24,6 +24,9 @@
 5. **视图切换只有一份实现**：`.viewnav` + `ViewNav` 组件。桌面 / 平板由三视图各自顶栏右簇渲染；
    ≤720px 顶栏实例隐藏，由 `main.jsx` 挂载在视图之外的同一个组件停靠到视口底部（`.mobile-tabbar`）。
    不要另起一套 tab 或把切换塞回溢出菜单。
+6. **启动收口不能只等渲染帧**：`bootstrap.js` 的 `bootReady`、`waitViewFirstPaint` 的末帧等待、
+   `bootThemeAndView` 三处都得配 `setTimeout` 兜底。浏览器不给不可见页面排帧，只等帧的话
+   12 秒看门狗会把「用户还在后台标签页」误报成「加载时间超出预期」，首屏主题也会拖到切过来才跳。
 
 ## 2. 布局骨架
 
@@ -42,6 +45,9 @@
   `index.html` 内联脚本在首帧前应用；登录页读同一键的 `theme` 字段。
 - 布局（视图 / 排序 / 侧栏宽度 / 折叠分组等）按账号保存，由服务端注入 `window.__LAYOUT__`。
   **不要把这套改成客户端 GET /api/prefs 再应用** —— 会闪一帧白；外观也不放账号，避免跨设备互相干扰。
+- `manifest.json` 的 `theme_color` 必须与亮色 `--panel` 同色（现在是 `#ffffff`）：「添加到主屏幕」
+  后宿主浏览器用它填 Home 指示条那一带，不一致就会在底部标签栏下面露出一条与页面无关的色带。
+  运行时的 `<meta name="theme-color">` 由 `syncThemeColor()` 跟着主题取 `--panel`，两者同源。
 
 ## 4. 设置页签
 

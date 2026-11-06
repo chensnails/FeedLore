@@ -26,6 +26,18 @@ This file records user-visible changes and deployment-related changes for 2.x.
   「复制链接」, shrunk to a 36px square; 「打开原文」 moves to the card detail (the card itself
   already opens it), so the title and image become the subject again.
 
+### Fixed
+
+- **No more "loading took too long" when the site opens in a background tab**: the boot layer
+  only listened for a rendered frame, and browsers do not produce frames for hidden pages, so
+  the 12-second watchdog reported "you have not switched to this tab yet" as a load failure.
+  It now takes whichever arrives first, frame or timer; the first-paint theme and view mode
+  got the same fallback, so a tab opened in the background no longer re-themes when you reach it.
+- **The blue strip under the tab bar in "Add to Home Screen"**: the manifest still carried the
+  v1-era brand `theme_color`, which the host browser uses to fill the home-indicator strip, so a
+  band unrelated to the page appeared below the bar. It is now the same white as the toolbar;
+  the login page also gained `viewport-fit=cover` so both pages share one safe-area story.
+
 ### Security
 
 - **A hard floor on the Node runtime inside the image**: CI now reads

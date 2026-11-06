@@ -21,7 +21,10 @@ export function bootThemeAndView() {
   applyTheme(currentThemeMode(), false);
   applyViewMode(currentViewMode(), false);
 }
+/* 同样要定时兜底：后台标签页不排帧，只等帧的话首屏主题 / 视图模式会一直不落地，
+   用户切过来才跳一下（bootThemeAndView 幂等，双通道重复执行没有副作用）。 */
 requestAnimationFrame(() => requestAnimationFrame(bootThemeAndView));
+setTimeout(bootThemeAndView, 300);
 
 /* ============================================================
  * 启动
@@ -29,7 +32,12 @@ requestAnimationFrame(() => requestAnimationFrame(bootThemeAndView));
 /* 启动层收口：ready 只在首个视图真正渲染后调用；fail 让启动层原地给出错误与「重新加载」，
    而不是留一片白屏 + 一条很快消失的 toast。 */
 function bootReady() {
-  if (window.__boot) requestAnimationFrame(() => window.__boot.ready());
+  if (!window.__boot) return;
+  /* 帧信号 + 定时兜底双通道：不可见页面不排帧（后台标签页里 rAF 永不触发），
+     只等帧的话 12s 看门狗会把「用户还在别的标签页」误报成「加载超时」。
+     index.html 的 dismiss 自带 done 幂等，谁先到算谁。 */
+  requestAnimationFrame(() => window.__boot.ready());
+  setTimeout(() => window.__boot.ready(), 300);
 }
 function bootFail(message) {
   if (window.__boot) window.__boot.fail(message);
@@ -63,8 +71,13 @@ async function waitViewFirstPaint(tab) {
       }
     }
   }
-  // React 提交后再等两帧，确保首屏内容真正画出来
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // React 提交后再等两帧，确保首屏内容真正画出来。
+  // 后台标签页不排帧，只等帧会让整条启动链卡在这里（启动层于是被看门狗判成超时），
+  // 所以给帧一个定时兜底：拿不到帧也放行。
+  await Promise.race([
+    new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    new Promise((r) => setTimeout(r, 300)),
+  ]);
 }
 
 (async function init() {

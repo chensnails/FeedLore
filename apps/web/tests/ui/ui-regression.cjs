@@ -5869,6 +5869,58 @@ const withEFP = (el, fn) => {
     }
   });
 
+  // 独立窗口 / 手机浏览器会拿清单的 theme_color 填宿主底栏（home indicator 那条带）。
+  // 它一旦和标签栏底色不同，底部栏下面就露出一条与页面无关的色带（真机实测过）。
+  t('manifest.json：theme_color 与亮色 --panel / meta theme-color 同源', () => {
+    const root = path.join(__dirname, '..', '..');
+    const mf = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest.json'), 'utf8'));
+    const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    const meta = (html.match(/<meta name="theme-color" content="([^"]+)"/) || [])[1];
+    const panel = (css.match(/:root\s*\{[\s\S]*?--panel:\s*(#[0-9a-fA-F]{3,8});/) || [])[1];
+    if (!meta || !panel) throw new Error('没抓到 meta theme-color 或 :root --panel，本条守门失效');
+    const norm = (v) => String(v).toLowerCase();
+    if (norm(mf.theme_color) !== norm(meta)) {
+      throw new Error('清单 theme_color(' + mf.theme_color + ') 与 index.html meta(' + meta + ') 不一致：宿主底栏用清单值，标签栏下面会露出色带');
+    }
+    if (norm(meta) !== norm(panel)) {
+      throw new Error('meta theme-color(' + meta + ') 应等于亮色 --panel(' + panel + ')：syncThemeColor 运行时也取这个值');
+    }
+  });
+
+  // 独立窗口（添加到主屏幕）下，没有 viewport-fit=cover 就留出一条宿主填色的边：
+  // style.css 的「PWA / 刘海屏：安全区适配」整段都以它为前提，登录页也得同一套。
+  t('index.html 与 login.html 的 viewport 都带 viewport-fit=cover', () => {
+    const root = path.join(__dirname, '..', '..');
+    for (const f of ['index.html', 'login.html']) {
+      const html = fs.readFileSync(path.join(root, f), 'utf8');
+      const vp = (html.match(/<meta name="viewport" content="([^"]+)"/) || [])[1];
+      if (!vp) throw new Error(f + ' 没有 viewport meta');
+      if (!/viewport-fit=cover/.test(vp)) throw new Error(f + ' 的 viewport 缺 viewport-fit=cover：' + vp);
+    }
+  });
+
+  // 后台标签页不给排帧：只等 rAF 的启动收口会卡住，12s 看门狗于是把
+  // 「用户还在别的标签页」误报成「加载时间超出预期」（真机 / 隐藏页都复现过）。
+  t('启动收口不依赖渲染帧：bootReady、末帧等待、首屏主题都要有定时兜底', () => {
+    const root = path.join(__dirname, '..', '..');
+    const src = fs.readFileSync(path.join(root, 'src', 'core', 'bootstrap.js'), 'utf8').replace(/\r\n/g, '\n');
+    const ready = src.match(/function bootReady\(\)\s*\{[\s\S]*?\n\}/);
+    if (!ready) throw new Error('没抓到 bootReady，本条守门失效');
+    if (!/requestAnimationFrame/.test(ready[0])) throw new Error('bootReady 仍应优先等帧（前台要的是真画出来）');
+    if (!/setTimeout\(\(\) => window\.__boot\.ready\(\)/.test(ready[0])) {
+      throw new Error('bootReady 缺定时兜底：不可见页面不排帧，启动层会被看门狗判成加载超时');
+    }
+    const paint = src.match(/async function waitViewFirstPaint[\s\S]*?\n\}/);
+    if (!paint) throw new Error('没抓到 waitViewFirstPaint，本条守门失效');
+    if (!/Promise\.race\(\[[\s\S]*?requestAnimationFrame[\s\S]*?setTimeout/.test(paint[0])) {
+      throw new Error('waitViewFirstPaint 的末帧等待必须包在 Promise.race 里，否则后台打开时整条启动链卡死在这里');
+    }
+    if (!/setTimeout\(bootThemeAndView/.test(src)) {
+      throw new Error('首屏主题 / 视图模式也要有定时兜底：后台标签页里它只挂在 rAF 上，切过来才跳一下主题');
+    }
+  });
+
   t('P1 动效：cardIn keyframes + 卡片错峰 + 弹层/遮罩沿用基础层 popIn/fadeIn + reduce-motion 局部关闭', () => {    const root = path.join(__dirname, '..', '..');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
     if (!/@keyframes cardIn\s*\{/.test(css)) throw new Error('缺 cardIn keyframes');

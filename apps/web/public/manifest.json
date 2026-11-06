@@ -9,7 +9,7 @@
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "any",
   "background_color": "#f4f6f9",
-  "theme_color": "#185FA5",
+  "theme_color": "#ffffff",
   "lang": "zh-CN",
   "dir": "ltr",
   "categories": ["news", "productivity"],
