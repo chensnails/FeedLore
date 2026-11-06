@@ -3743,9 +3743,9 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .art-item.is-line .art-caret { margin-top: 3px; }
   /* 触屏上星标抬到 44×44，已读还有第二枚「标未读」。两行排版里动作垂直居中，
      标题与元信息都会从它旁边经过，所以让位给整列文字而不只是底部那一行；
-     未读一枚（44+4）让 40，已读两枚让 90。 */
-  .art-item.is-line .art-text { flex-direction: column; align-items: stretch; gap: 5px; padding-right: 40px; }
-  .art-item.is-line.is-read .art-text { padding-right: 90px; }
+     未读一枚（44+4）让 44，已读两枚让 96。 */
+  .art-item.is-line .art-text { flex-direction: column; align-items: stretch; gap: 5px; padding-right: 44px; }
+  .art-item.is-line.is-read .art-text { padding-right: 96px; }
   .art-item.is-line .art-title {
     display: -webkit-box;
     -webkit-line-clamp: 2;

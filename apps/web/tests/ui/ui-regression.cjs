@@ -6087,11 +6087,11 @@ const withEFP = (el, fn) => {
     }
     // 触屏动作 44×44：右让宽必须跟着长，否则来源 / 时间钻到按钮底下。
     // 手机两行版动作垂直居中，标题与元信息都经过它 —— 让位给整列 .art-text。
-    if (!/手机上紧凑仍占两行[\s\S]{0,900}?\.art-item\.is-line \.art-text \{[^}]*padding-right:\s*40px/.test(css)) {
-      throw new Error('手机两行卡的未读行应给 44px 星标让出 40px');
+    if (!/手机上紧凑仍占两行[\s\S]{0,900}?\.art-item\.is-line \.art-text \{[^}]*padding-right:\s*44px/.test(css)) {
+      throw new Error('手机两行卡的未读行应给 44px 星标让出 44px');
     }
-    if (!/\.art-item\.is-line\.is-read \.art-text \{[^}]*padding-right:\s*90px/.test(css)) {
-      throw new Error('手机两行卡的已读行应给两枚 44px 动作让出 90px');
+    if (!/\.art-item\.is-line\.is-read \.art-text \{[^}]*padding-right:\s*96px/.test(css)) {
+      throw new Error('手机两行卡的已读行应给两枚 44px 动作让出 96px');
     }
     if (!/手机上紧凑仍占两行[\s\S]{0,1800}?\.art-item\.is-line \.art-meta \{[^}]*padding-right:\s*0/.test(css)) {
       throw new Error('手机两行卡的元信息不再重复让位（避让已上移到整列）');
