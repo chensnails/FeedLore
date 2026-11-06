@@ -410,6 +410,11 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
   const fmtDate = s.fmtDate || ((d) => (d ? String(d) : ''));
   const fav = !!e.isFavorite;
+  /* 未读态此前只有一个 aria-hidden 的 6px 圆点 + 字重差，读屏完全听不出来。
+     把标题 / 来源 / 时间 / 未读 / 收藏拼进按钮的可访问名，视觉冗余保持不变；
+     aria-label 会取代内部文本的朗读，所以这里要把信息补全而不是只写「未读」。 */
+  const ariaLabel = [e.name, src, fmtDate(e.date), e.isRead ? '已读' : '未读', fav ? '已收藏' : '']
+    .filter(Boolean).join('，');
   /* 缩略图：列表接口本来就把首图放在 e.image（已走 /api/img 代理），只是以前没渲染。
      展开后让位给正文（正文自己会出图），加载失败退成纯文字行 —— 不留一个灰框。
      失败态记在组件本地：条目对象换新时（已读 / 收藏）不该把失败的图又试一遍。
@@ -443,7 +448,8 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
   return (
     <article className={cls} data-id={e.id}>
       <div className="art-row">
-        <button className="art-head" type="button" aria-expanded={expanded ? 'true' : 'false'} onClick={() => onToggle(e.id)}>
+        <button className="art-head" type="button" aria-expanded={expanded ? 'true' : 'false'}
+          aria-label={ariaLabel} onClick={() => onToggle(e.id)}>
           <span className="art-dot" aria-hidden="true" />
           <svg className="art-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
           {/* 标题与来源/时间竖排成一栏：右边留给缩略图，底部只留一行元信息，

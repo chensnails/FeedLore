@@ -82,6 +82,20 @@ export function AccountPane({ onDirtyChange }) {
   // 数据导出：模型 Key 默认不打包，勾选才附带（导出的是明文，提示放在勾选项下）
   const [inclLlm, setInclLlm] = useState(false);
 
+  /* 下载走 <a> 由浏览器接管，前端拿不到「生成完成」事件（流式 tar.gz 不落内存）。
+     这里只在生成窗口内把按钮置忙、防重复点击：服务端本来就会用
+     E_BACKUP_IN_PROGRESS 拒绝第二份，与其让用户点完收到一条报错，不如先拦住。 */
+  const [exporting, setExporting] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const downloadTimers = useRef([]);
+  useEffect(() => () => { downloadTimers.current.forEach(clearTimeout); }, []);
+  const busyDownload = (setBusy) => {
+    setBusy(true);
+    downloadTimers.current.push(setTimeout(() => setBusy(false), 5000));
+  };
+  // 改了导出选项 = 用户要的是另一份包，别让上一次的置忙窗口把它拦住
+  useEffect(() => { setExporting(false); }, [inclLlm]);
+
   // 数据导入 / 整站还原：结果提示常驻到下一次操作（条数比 toast 更值得细看）
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState(null);
@@ -307,11 +321,14 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   function startExport() {
+    if (exporting) return;
+    busyDownload(setExporting);
     s.downloadUrl('/api/export' + (inclLlm ? '?llm=1' : ''));
     s.toast('正在生成导出包，浏览器会自动保存文件');
   }
 
   async function startBackup() {
+    if (backingUp) return;
     const ok = await s.confirm({
       title: '下载整站备份？',
       desc: '包含所有账号（密码哈希）、订阅源与文章、日报、模型配置、站点设置与图片缓存，属于敏感文件。站点越大生成越久，期间请勿重复点击。',
@@ -319,6 +336,7 @@ export function AccountPane({ onDirtyChange }) {
       danger: true,
     });
     if (!ok) return;
+    busyDownload(setBackingUp);
     s.downloadUrl('/api/backup');
     s.toast('正在生成整站备份，完成后浏览器会保存文件');
   }
@@ -514,8 +532,9 @@ export function AccountPane({ onDirtyChange }) {
             </div>
           )}
           <div className="dev-actions">
-            <button className="btn btn-ghost btn-sm" id="exportBtn" type="button" onClick={startExport}>
-              下载导出包
+            <button className="btn btn-ghost btn-sm" id="exportBtn" type="button"
+              disabled={exporting} aria-busy={exporting} onClick={startExport}>
+              {exporting ? '生成中…' : '下载导出包'}
             </button>
           </div>
           <small className="form-tip">
@@ -533,6 +552,7 @@ export function AccountPane({ onDirtyChange }) {
             </p>
             <div className="dev-actions">
               <button className="btn btn-ghost btn-sm" id="importBtn" type="button" disabled={importing}
+                aria-busy={importing}
                 onClick={() => document.getElementById('importFile').click()}>
                 {importing ? '导入中…（文件大时需要一点时间）' : '选择导出包并导入'}
               </button>
@@ -615,8 +635,9 @@ export function AccountPane({ onDirtyChange }) {
               这是敏感文件，请只保存在受控位置；包内不含登录会话，恢复后所有人需要重新登录。
             </p>
             <div className="dev-actions">
-              <button className="btn btn-danger btn-sm" id="backupBtn" type="button" onClick={startBackup}>
-                下载整站备份
+              <button className="btn btn-danger btn-sm" id="backupBtn" type="button"
+                disabled={backingUp} aria-busy={backingUp} onClick={startBackup}>
+                {backingUp ? '生成中…' : '下载整站备份'}
               </button>
             </div>
             <small className="form-tip">
@@ -634,6 +655,7 @@ export function AccountPane({ onDirtyChange }) {
             </p>
             <div className="dev-actions">
               <button className="btn btn-danger btn-sm" id="restoreBtn" type="button" disabled={restoring}
+                aria-busy={restoring}
                 onClick={() => document.getElementById('restoreFile').click()}>
                 {restoring ? '还原中…（请勿关闭页面）' : '上传备份并还原'}
               </button>
@@ -661,7 +683,7 @@ export function AccountPane({ onDirtyChange }) {
         </Section>
       </div>
 
-      <PaneFoot lead={
+      <PaneFoot dirty={dirty} lead={
         <button className="btn btn-danger btn-sm" id="logoutBtn" onClick={logout}>退出登录</button>
       }>
         {!readonly && (

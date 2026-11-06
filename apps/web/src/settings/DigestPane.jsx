@@ -249,7 +249,7 @@ export function DigestPane({ onDirtyChange }) {
 
         {result ? <Result id="digResult" result={result} /> : null}
       </div>
-      <PaneFoot lead={<span className="hint">这些设置只对你的账号生效；模型地址与 Key 在「设置 → 模型」里单独配</span>}>
+      <PaneFoot dirty={dirty} lead={<span className="hint">这些设置只对你的账号生效；模型地址与 Key 在「设置 → 模型」里单独配</span>}>
         <button className="btn btn-ghost" id="digResetBtn" type="button"
           disabled={busy || !form.style} onClick={onResetStyle}>清空风格</button>
         <button className="btn btn-primary" id="digSaveBtn" type="button"

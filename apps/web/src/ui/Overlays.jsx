@@ -249,11 +249,12 @@ export function Overlays() {
 
   return (
     <>
-      {/* 轻提示：role=status + aria-live 让屏幕阅读器也能播报保存结果 */}
+      {/* 轻提示：成功走 polite 的 status，失败走 assertive 的 alert ——
+          错误不该排在其它状态消息之后才播报。 */}
       <div
         className={'toast' + (toast.show ? ' show' + (toast.ok ? ' ok' : ' err') : '')}
-        role="status"
-        aria-live="polite"
+        role={toast.ok ? 'status' : 'alert'}
+        aria-live={toast.ok ? 'polite' : 'assertive'}
         aria-atomic="true"
       >
         {toast.ok

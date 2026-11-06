@@ -24,21 +24,32 @@ export function Section({ secKey, title, sub, subId, open, id, children }) {
   );
 }
 
-/** 面板底部固定动作栏：左侧说明 / 次要动作，右侧主动作。 */
-export function PaneFoot({ lead, note, children }) {
+/** 面板底部固定动作栏：左侧说明 / 次要动作，右侧主动作。
+ *  dirty 时在保存按钮旁补一枚常驻提示：它和弹层标题、页签圆点说的是同一件事，
+ *  但就在手边 —— 长面板滚到底时不必抬头找状态。动作栏本身在滚动容器之外，恒可见。 */
+export function PaneFoot({ lead, note, children, dirty }) {
   return (
-    <div className="pane-foot">
+    <div className={'pane-foot' + (dirty ? ' is-dirty' : '')}>
       {lead != null ? lead : null}
-      {children ? <div className="pane-foot-btns">{children}</div> : null}
+      {children ? (
+        <div className="pane-foot-btns">
+          {dirty ? <span className="pane-foot-dirty" role="status">有未保存的更改</span> : null}
+          {children}
+        </div>
+      ) : null}
       {note ? <span className="pane-foot-note">{note}</span> : null}
     </div>
   );
 }
 
-/** 内联结果提示。ok 由调用方决定何时清除（多数面板 4 秒，err 常驻）。 */
+/** 内联结果提示。ok 由调用方决定何时清除（多数面板 4 秒，err 常驻）。
+ *  失败用 role=alert（隐含 assertive）：以前一律 polite，导入 / 还原失败会排在
+ *  其它状态消息之后播报，读屏用户可能几分钟后才知道操作没成功。 */
 export function Result({ id, result }) {
+  const failed = !!(result && !result.ok);
   return (
-    <div id={id} role="status" aria-live="polite"
+    <div id={id} role={failed ? 'alert' : 'status'} aria-live={failed ? 'assertive' : 'polite'}
+      aria-atomic="true"
       className={'test-result' + (result ? ' show ' + (result.ok ? 'ok' : 'err') : '')}>
       {result ? result.msg : ''}
     </div>

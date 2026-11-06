@@ -8,7 +8,7 @@
  * 都调同一个 setter，所以从标签条选完，抽屉里的高亮同步跟着变，不存在第二套筛选。
  * 只在 ≤720px 显示（CSS 控制），桌面继续用常驻侧栏。
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { core } from '@core';
 
 const S = () => core;
@@ -28,6 +28,8 @@ export function ChannelTabs({
   const s = S();
   const isReader = variant === 'reader';
   const activeRef = useRef(null);
+  const navRef = useRef(null);
+  const [atEnd, setAtEnd] = useState(false);
 
   // 分组里的频道摊平：标签条是一维的，分组层级留在抽屉里
   const feeds = [];
@@ -54,6 +56,38 @@ export function ChannelTabs({
     }
   }, [activeKey]);
 
+  /* 右缘渐隐只在「右侧还有内容」时出现；滚到末尾就撤掉，否则最后一个标签
+     和「更多」按钮会一直灰着一截。滚动条本身是隐藏的，渐隐是唯一的可发现性提示。 */
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return undefined;
+    const update = () => setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 4);
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [feeds.length]);
+
+  /* 标签条用 roving tabindex：Tab 一次进入，方向键在频道间移动并直接切换，
+     不再让键盘用户逐个穿过几十个频道才能到达末尾的「完整频道列表」。 */
+  const rovingKey = activeKey || 'scope:all';
+  const onKeyDown = (ev) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) return;
+    const tabs = Array.from(ev.currentTarget.querySelectorAll('.chan-tab'));
+    const idx = tabs.indexOf(document.activeElement);
+    if (idx < 0 || !tabs.length) return;
+    ev.preventDefault();
+    let next = idx;
+    if (ev.key === 'Home') next = 0;
+    else if (ev.key === 'End') next = tabs.length - 1;
+    else next = Math.max(0, Math.min(tabs.length - 1, idx + (ev.key === 'ArrowRight' ? 1 : -1)));
+    tabs[next].focus();
+    tabs[next].click();
+  };
+
   // 再点当前项：筛选条件没变，重设状态不会重绘列表 —— 顺手把视线带回顶部，
   // 与底部视图导航的 retap 同一套手感。换项时仍走原来的 setter（会自己回顶）。
   const activate = (active, run) => () => {
@@ -71,6 +105,7 @@ export function ChannelTabs({
       ref={active ? activeRef : undefined}
       className={'chan-tab' + (active ? ' active' : '')}
       aria-pressed={active ? 'true' : 'false'}
+      tabIndex={key === rovingKey ? 0 : -1}
       title={title || label}
       onClick={activate(active, onClick)}
     >
@@ -84,7 +119,8 @@ export function ChannelTabs({
   };
 
   return (
-    <nav className="chan-tabs" aria-label="频道切换">
+    <nav ref={navRef} className={'chan-tabs' + (atEnd ? ' at-end' : '')}
+      aria-label="频道切换，可横向滚动，方向键可换频道" onKeyDown={onKeyDown}>
       {isReader
         ? tab('scope:all', '全部', scopeOn('all'), () => onScope && onScope('all'))
         : tab('scope:all', '全部', baseAll, () => onFeed && onFeed(null))}
@@ -102,9 +138,11 @@ export function ChannelTabs({
         () => onFeed && onFeed(f.id),
         f.enabled === false ? `${feedName(f)}（已停止采集）` : feedName(f),
       ))}
-      <button type="button" className="chan-tab chan-tabs-more" aria-label="打开完整频道列表"
+      <button type="button" className="chan-tab chan-tabs-more" tabIndex={-1}
+        aria-label={`打开完整频道列表，共 ${feeds.length} 个订阅频道`}
         title="完整频道列表" onClick={onManage}>
         <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg>
+        <span className="chan-tabs-more-n">{feeds.length}</span>
       </button>
     </nav>
   );

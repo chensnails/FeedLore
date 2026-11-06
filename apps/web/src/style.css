@@ -101,6 +101,7 @@
   --fs-lg: 0.9375rem;    /* 15px  小标题 / 卡片标题 */
   --fs-xl: 1.0625rem;    /* 17px  弹层标题 */
   --fs-2xl: 1.3125rem;   /* 21px  页面主标题 */
+  --hit-min: 44px;       /* 触屏最小命中区：视觉尺寸可以小，落点不能小 */
   /* 动效刻度：统一的时长与缓动（--dur-base 取事实标准 150ms）。
      注意：这三行必须给出具体值，禁止自引用 var(--dur-xxx)（会导致循环依赖、
      解析为「保证无效值」，全站 transition/animation 回落 0s 硬切）。 */
@@ -273,8 +274,10 @@ html[data-theme="dark"] {
   --text-faint: #999999;
   --toast-bg: #e6e6e6;
   --toast-text: #1a1a1a;
-  --toast-ok: #0f7a43;
-  --toast-err: #ffb3b3;
+  /* 暗色把 toast 反相成浅底，状态色必须跟着反过来：原来沿用亮色的
+     #0f7a43 / #ffb3b3 在浅底只有 4.33:1 / 1.36:1，红边与感叹号几乎看不见。 */
+  --toast-ok: #0b6b3a;
+  --toast-err: #b3261e;
   --badge-bg: rgba(0, 0, 0, .62);
   --badge-text: #e6e6e6;
   --chip-bg: rgba(255, 255, 255, .1);
@@ -586,7 +589,7 @@ body.modal-open {
   border-radius: var(--radius-md);
   padding:var(--sp-2) var(--sp-4);
   font-size: var(--fs-md);
-  font-weight: 550;
+  font-weight: 500;
   cursor: pointer;
   font-family: inherit;
   transition: border-color var(--dur-base), background var(--dur-base),
@@ -619,6 +622,41 @@ body.modal-open {
 .btn-primary:disabled, .btn-primary[disabled] { background: var(--accent); }
 .btn-danger:disabled, .btn-danger[disabled] { background: var(--panel); }
 .btn-ghost:disabled, .btn-ghost[disabled] { background: var(--surface-soft); }
+/* 统一字重刻度：只用 400 / 500 / 600 / 700 四档。
+   非可变字重字体上 450 / 550 / 620 / 650 会被四舍五入成平台各自的结果，
+   同一份 CSS 在 Windows / macOS / Android 上能差出一档观感。
+   字号同理：正文辅助信息最小 12px（--fs-sm），--fs-2xs 只留给纯角标。 */
+
+/* 搜索框的小叉视觉只有 22~24px：用伪元素把命中区补到 44px，
+   既不动视觉尺寸，也不会把输入框撑高。 */
+.settings-search-clear, .rd-ch-search-clear { position: relative; }
+.reader-search-clear::after,
+.search-clear::after,
+.settings-search-clear::after,
+.rd-ch-search-clear::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  width: var(--hit-min); height: var(--hit-min);
+  transform: translate(-50%, -50%);
+}
+/* 耗时操作（导出 / 备份 / 导入 / 还原）：置忙时给一枚跟随文字的小转圈，
+   否则「生成中…」和「被禁用」看起来没差别。aria-busy 同时是读屏的语义信号；
+   这里把禁用态的整体变淡撤掉，让进行中态保持可读。 */
+.btn[aria-busy="true"] { opacity: 1; cursor: progress; pointer-events: none; }
+.btn[aria-busy="true"]::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 12px; height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btnSpin .7s linear infinite;
+}
+@keyframes btnSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .btn[aria-busy="true"]::after { animation: none; }
+}
 /* 表单控件禁用态 */
 .select:disabled,
 .form-row input:disabled,
@@ -1046,7 +1084,7 @@ textarea:disabled {
 }
 
 .card-title {
-  font-size: var(--fs-lg); font-weight: 650; line-height: 1.45;
+  font-size: var(--fs-lg); font-weight: 600; line-height: 1.45;
   /* 固定两行高度：标题只有一行时也占满，避免同一排的摘要起点参差 */
   height: calc(1.45em * 2);
   margin:0 0 var(--sp-2);
@@ -1291,9 +1329,17 @@ textarea:disabled {
   left: 50%; bottom: calc(40px + env(safe-area-inset-bottom, 0px));
   transform: translate(-50%, 20px);
   background: var(--toast-bg); color: var(--toast-text);
+  /* 长错误原因（导入 / 还原失败）以前没有宽度上限：375px 屏上会挤成一条竖长条，
+     或横穿整屏压住右下角回顶钮。给上限 + 允许任意位置折行，两行内读完。 */
+  max-width: min(560px, calc(100vw - 32px));
+  /* fixed + left:50% 的收缩宽度只有「视口 - 50%」，不加这条长文案会被压成
+     半屏宽的竖条；max-content 按内容撑开，再由 max-width 收到 32px 边距内。 */
+  width: max-content;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
   padding:var(--sp-3) var(--sp-5);
   border-radius: var(--radius-md);
-  font-size: var(--fs-base); font-weight: 550;
+  font-size: var(--fs-base); font-weight: 500;
   box-shadow: var(--elevation-toast);
   opacity: 0; pointer-events: none;
   transition: opacity var(--dur-slow), transform var(--dur-slow);
@@ -1312,7 +1358,7 @@ textarea:disabled {
 .card-meta {
   display: flex; align-items: center; gap:var(--sp-2);
   margin-bottom:var(--sp-2);
-  font-size: var(--fs-2xs);
+  font-size: var(--fs-sm);
   min-width: 0;
 }
 .src-pill {
@@ -1433,7 +1479,7 @@ textarea:disabled {
 .row-head { display: flex; align-items: baseline; gap:var(--sp-3); min-width: 0; }
 .row-title {
   flex: 1; min-width: 0;
-  font-size: var(--fs-base); font-weight: 650; line-height: 1.4;
+  font-size: var(--fs-base); font-weight: 600; line-height: 1.4;
   margin:0;
   color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1526,7 +1572,7 @@ textarea:disabled {
   padding:var(--sp-5) var(--sp-6) var(--sp-4);
   border-bottom: 1px solid var(--border);
 }
-.modal-head h2 { margin:0; font-size: var(--fs-xl); font-weight: 650; }
+.modal-head h2 { margin:0; font-size: var(--fs-xl); font-weight: 600; }
 .modal-sub { margin:var(--sp-1) 0 0; font-size: var(--fs-sm); color: var(--text-faint); }
 .modal-close {
   border: none; background: transparent; cursor: pointer;
@@ -1593,7 +1639,7 @@ textarea:disabled {
 .tabs::-webkit-scrollbar { display: none; }
 .tab {
   border: none; background: none; font-family: inherit;
-  font-size: var(--fs-md); font-weight: 550; color: var(--text-muted);
+  font-size: var(--fs-md); font-weight: 500; color: var(--text-muted);
   padding:var(--sp-3) var(--sp-1); margin-right:var(--sp-5);
   cursor: pointer; position: relative;
   white-space: nowrap; flex: 0 0 auto;
@@ -1719,7 +1765,7 @@ textarea:disabled {
   border-radius: var(--radius-pill);
   background: var(--warn-bg); border: 1px solid var(--warn-border);
   color: var(--warn-text);
-  font-size: var(--fs-2xs); font-weight: 650;
+  font-size: var(--fs-2xs); font-weight: 600;
   line-height: 1.6;
 }
 
@@ -1765,7 +1811,7 @@ textarea:disabled {
   .settings-modal.mobile-home .tab .tab-label { grid-area: label; }
   .settings-modal.mobile-home .tab .tab-desc {
     grid-area: desc; display: block;
-    font-size: var(--fs-xs); font-weight: 450;
+    font-size: var(--fs-xs); font-weight: 400;
     color: var(--text-faint); white-space: normal;
   }
   .settings-modal.mobile-home .tab.active .tab-desc { color: var(--text-muted); }
@@ -1868,8 +1914,22 @@ textarea:disabled {
   background: var(--panel-2);
   flex: 0 0 auto;
 }
-.pane-foot-btns { display: flex; gap:var(--sp-2); }
+.pane-foot-btns { display: flex; gap:var(--sp-2); align-items: center; }
 .pane-foot-note { font-size: var(--fs-xs); color: var(--text-muted); }
+/* 未保存提示就贴在保存按钮左边：标题区那枚「未保存」和页签圆点在长面板里
+   容易离开视线，这里保证动手时一定看得见。 */
+.pane-foot-dirty {
+  display: inline-flex; align-items: center; gap:var(--sp-1);
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--warn-bg); border: 1px solid var(--warn-border);
+  color: var(--warn-text);
+  font-size: var(--fs-2xs); font-weight: 600;
+  line-height: 1.8;
+  white-space: nowrap;
+}
+.pane-foot.is-dirty { border-top-color: var(--warn-border); }
+.pane-foot.is-dirty .btn-primary { box-shadow: 0 0 0 3px var(--accent-glow); }
 
 /* ---------- 设置 · 外观 ----------
    一行一个偏好项：左边标题 + 说明，右边控件。窄屏下自动折成两行。
@@ -1910,7 +1970,7 @@ textarea:disabled {
 }
 .seg-btn {
   border: none; background: none; font-family: inherit;
-  font-size: var(--fs-sm); font-weight: 550; color: var(--text-muted);
+  font-size: var(--fs-sm); font-weight: 500; color: var(--text-muted);
   padding:var(--sp-1) var(--sp-3); border-radius: var(--radius-xs);
   cursor: pointer; white-space: nowrap;
   transition: background var(--dur-base), color var(--dur-base);
@@ -2345,7 +2405,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 /* v1.1.17 起导航也带图标，与右侧操作按钮统一「图标 + 文字」；窄屏由 .btn-label 收掉文字 */
 .viewnav-btn {
   border: none; background: none; font-family: inherit;
-  font-size: var(--fs-md); font-weight: 550; color: var(--text-muted);
+  font-size: var(--fs-md); font-weight: 500; color: var(--text-muted);
   padding:var(--sp-1) var(--sp-3); border-radius: var(--radius-xs); cursor: pointer;
   transition: background var(--dur-base), color var(--dur-base);
   display: inline-flex; align-items: center; justify-content: center; gap:var(--sp-2);
@@ -2370,7 +2430,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   border-bottom: 1px solid var(--border);
 }
 .ai-head h2 {
-  margin:0; font-size: var(--fs-xl); font-weight: 650; letter-spacing: -.2px;
+  margin:0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.2px;
 }
 
 .ai-pane { min-width: 0; }
@@ -2413,7 +2473,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 
 .dg-section-title {
   display: flex; align-items: center; gap:var(--sp-3);
-  font-size: 1rem; font-weight: 650; margin:0 0 var(--sp-4);
+  font-size: 1rem; font-weight: 600; margin:0 0 var(--sp-4);
 }
 .dg-section-title::before {
   content: ''; width: 4px; height: 16px; border-radius: 2px;
@@ -2436,7 +2496,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   display: flex; align-items: center; justify-content: center;
 }
 .dg-hl-body { min-width: 0; }
-.dg-hl-text { font-size: var(--fs-md); font-weight: 550; }
+.dg-hl-text { font-size: var(--fs-md); font-weight: 500; }
 .dg-hl-name {
   font-size: var(--fs-sm); color: var(--text-muted); margin-top:2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -2602,7 +2662,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 }
 .side-brand .brand-logo { width: 26px; height: 26px; }
 .side-brand-name {
-  font-size: var(--fs-lg); font-weight: 650; letter-spacing: .2px; color: var(--text);
+  font-size: var(--fs-lg); font-weight: 600; letter-spacing: .2px; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .reader-side-head, .cards-side-head {
@@ -2631,7 +2691,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   transition: background var(--dur-base), color var(--dur-base);
 }
 .rd-ch:hover { background: var(--hover); color: var(--text); }
-.rd-ch.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 650; }
+.rd-ch.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
 /* 目录树层级：分组行贴左（折叠箭头 14px + 组按钮间隙 8px = 组名起线 22px），
    频道行的头像对齐这条起线，一眼看出「这些频道属于上面那组」。
    只挑 data-feed：顶部「全部 / 未读 / 收藏」三个固定入口不属于任何分组，保持贴左。 */
@@ -2927,7 +2987,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   margin:0;
   font-size: var(--rd-head-fs); line-height: 1.3;
   /* 与右侧按钮同字号同字重（700 会让同字号看起来更大） */
-  font-weight: 550; color: var(--text);
+  font-weight: 500; color: var(--text);
 }
 .reader-head-tools { flex: 0 0 auto; display: flex; align-items: center; gap:var(--sp-2); }
 /* 工具按钮与标题同高同字号（否则标题顶对齐、按钮居中，看着不齐） */
@@ -3105,10 +3165,15 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   }
 }
 
-/* 一行 = 可点开的主体（标题 + 图）+ 右下角的收藏 / 标未读。
-   两个动作不能塞进 .art-head：button 里不能再嵌 button，所以绝对定位到右下角，
-   与底部元信息同一行，不再单独占一列宽度。 */
-.art-row { position: relative; display: flex; align-items: stretch; }
+/* 一行 = 可点开的主体（标题 + 图）+ 右侧一列收藏 / 标未读。
+   两个动作不能塞进 .art-head（button 里不能再嵌 button），所以单独占第二列：
+   grid 自动算出该让多宽，以前「绝对定位 + 64/60/44/40/96px 五套魔法让位」
+   连修三轮仍会让标题钻到按钮底下，加第三枚动作也必崩。 */
+.art-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
 
 .art-head {
   display: flex; align-items: flex-start; gap: var(--sp-3);
@@ -3160,10 +3225,14 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .art-acts {
-  position: absolute;
-  right: 6px; bottom: 6px;
-  display: flex; align-items: center; gap: 2px;
-  z-index: 1;
+  /* 第二列：两枚动作竖排，宽度由内容决定；不再用 right/bottom 叠在文字上 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0 6px 0 2px;
+  min-width: 0;
 }
 .art-star {
   flex: 0 0 auto;
@@ -3179,26 +3248,19 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-star:hover { background: var(--hover); color: var(--star); }
 .art-star:active { transform: scale(.9); }
 .art-item.is-fav .art-star[data-fav] { color: var(--star); }
-/* 有缩略图时动作正好压在图上：垫一层半透明暗底 + 白图标，亮图里也看得清。
-   收藏态的颜色由上面那条（特异度更高）继续赢，星标仍是金色。 */
-.art-item.has-thumb .art-acts {
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  background: rgba(12, 16, 24, .45);
-}
-.art-item.has-thumb .art-star { color: rgba(255, 255, 255, .92); }
-.art-item.has-thumb .art-star:hover { background: rgba(255, 255, 255, .18); color: #fff; }
-/* 动作已经落在图上，元信息不必再让出那一截：窄屏每一点宽度都留给来源与时间 */
-.art-item.has-thumb .art-meta { padding-right: 0; }
-/* 「标为未读」是补救动作，常驻会和收藏星争视觉；给低对比，悬停 / 触屏上仍清晰可点 */
-.art-unread { color: var(--text-faint); opacity: .65; }
-.art-unread:hover { color: var(--accent-text); opacity: 1; }
+/* 动作列已是独立一列，不再压在缩略图上：原先那套半透明暗底 + 白图标
+   是为「绝对定位叠在亮图上」准备的，现在反而让两枚动作看起来像贴纸。
+   缩略图和元信息也都不必再为它让出宽度（grid 自动算）。 */
+/* 「标为未读」是补救动作，常驻会和收藏星争视觉；用略弱但仍达标的实色，
+   不用 opacity：叠在已读行的透明度上曾经只剩 2.56:1，触屏上几乎看不见。 */
+.art-unread { color: var(--text-muted); }
+.art-unread:hover { color: var(--accent-text); }
 .art-unread .ico { width: .95rem; height: .95rem; }
 /* 收藏态只由星标标金（.art-star[data-fav]），不在行首压主色竖条：
    通栏行式列表里左侧亮条容易被误读成「当前选中」或未读标记。 */
 
 .art-title {
-  font-size: var(--fs-lg); font-weight: 620; line-height: 1.5;
+  font-size: var(--fs-lg); font-weight: 600; line-height: 1.5;
   color: var(--text);
   /* 最多三行：资讯流的标题以「一眼看全」为准，长标题截断而不是折成四五行把图拉开 */
   display: -webkit-box;
@@ -3207,11 +3269,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   overflow: hidden;
   word-break: break-word;
 }
-/* 已读 / 未读：未读标题更重，已读降一档。
-   展开态不再给标题上主色，所以这里不需要再排除 .open。 */
-.art-item.is-unread .art-title { font-weight: 650; }
-.art-item.is-read .art-title { font-weight: 450; color: var(--text-muted); }
-.art-item.is-read .art-meta { opacity: .72; }
+/* 已读 / 未读：只靠字重 + 未读圆点区分，不再叠 opacity。
+   以前 .is-read 上 .72 / .78 两层透明度把元信息压到 2.9:1、摘要压到 3.x:1，
+   暗色下更是糊成一片；--text-faint / --text-muted 本身就是合规的弱化色。 */
+.art-item.is-unread .art-title { font-weight: 600; }
+.art-item.is-read .art-title { font-weight: 400; color: var(--text-muted); }
 
 /* 摘要（外观 → 文章列表 → 列表密度：舒适）：标题下补两行，行高与正文接近但降档、降色。
    开启时标题收到两行，保证整条高度仍受控 —— 几百条列表不能让摘要把行撑成文章。 */
@@ -3226,7 +3288,6 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   word-break: break-word;
 }
 .art-item.has-sum .art-title { -webkit-line-clamp: 2; }
-.art-item.is-read .art-sum { opacity: .78; }
 
 /* 紧凑密度 = 单行清单：标题单行省略，来源与时间并到同一行右侧，
    行高从「标题 + 元信息」的两段收成一条，扫标题时一屏能多看十几条。
@@ -3246,24 +3307,16 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   flex: 0 0 auto;
   margin-top: 0;
   flex-wrap: nowrap;
-  /* 右侧两个动作仍绝对定在行末，元信息让出这一截 */
-  padding-right: 64px;
 }
 /* 同一行里来源最多占 120px，剩下的宽度留给标题；窄屏也不放开 */
 .art-item.is-line .art-meta .src-pill { max-width: 120px; }
-.art-item.is-line .art-acts {
-  top: 50%; bottom: auto;
-  right: 10px;
-  transform: translateY(-50%);
-}
 
 .art-meta {
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2);
   min-width: 0;
   margin-top: auto;
-  /* 右侧两个动作压在元信息这一行的末端，给文字留出等宽避让 */
-  padding-right: 64px;
-  font-size: var(--fs-2xs);
+  /* 元信息是正文辅助信息，最小 12px：11px 在长列表里会糊成一片 */
+  font-size: var(--fs-sm);
 }
 .art-meta .src-pill { max-width: 180px; }
 .art-size { color: var(--text-muted); background: var(--accent-soft); border-radius: var(--radius-pill); padding:2px var(--sp-2); font-weight: 600; }
@@ -3499,7 +3552,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 }
 .art-table th {
   background: var(--panel-2);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 /* 图注：图与说明成组，说明比正文小一号、居中 */
@@ -3584,7 +3637,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
  * 半屏窗口里「关注 / 未读 / 收藏」等入口被移出屏幕、点击无响应。频道栏在 721px 以上
  * 仍有足够空间常驻（内容列约 760px+），故统一到 720，与 JS 的 resize 阈值一致。
  * ============================================================ */
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   /* 阅读页：分栏 → 单列，左侧频道栏收进抽屉（右滑打开 / 左滑收起） */
   .reader { padding-top: var(--sp-4); }
   .reader > #readerRoot { grid-template-columns: minmax(0, 1fr); gap: 0; }
@@ -3743,7 +3796,6 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .art-head { gap: var(--sp-2); padding: var(--sp-3); }
   .art-dot { margin-top: 8px; }
   .art-thumb { flex: 0 0 92px; width: 92px; }
-  .art-meta { padding-right: 60px; }
   .art-meta .src-pill { max-width: none; }
   /* 文章密度：手机上紧凑仍占两行 —— 标题一行（最多两行），来源与时间落到下一行，
      动作键垂直居中靠右收尾。桌面紧凑仍是一行；手机横向不够，标题与元信息挤在
@@ -3752,17 +3804,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .art-item.is-line .art-head { align-items: flex-start; padding: var(--sp-3) var(--sp-4); }
   .art-item.is-line .art-dot { margin-top: 8px; }
   .art-item.is-line .art-caret { margin-top: 3px; }
-  /* 触屏上星标抬到 44×44，已读还有第二枚「标未读」。两行排版里动作垂直居中，
-     标题与元信息都会从它旁边经过，所以让位给整列文字而不只是底部那一行；
-     未读一枚（44+4）让 44。 */
-  .art-item.is-line .art-text { flex-direction: column; align-items: stretch; gap: 5px; padding-right: 44px; }
-  /* 已读的两枚动作竖排：横排并放要吃掉 106px，两行卡的内容列只剩 189px，
-     来源与时间被再挤一行（整条 128px 高）。竖排只占一列 44px，内容回到 ~239px，
-     来源与时间重新并到同一行；卡片高度本来就在 88px 以上，装得下这一列。 */
-  .art-item.is-line.is-read .art-acts { flex-direction: column; gap: 0; }
+  /* 动作已是 grid 的第二列（基础规则里竖排 + 垂直居中），内容列不必再让位：
+     以前靠 .art-text / .art-meta 的 44 / 40 / 60 / 96px padding-right 硬腾地方，
+     按钮一多或字号一变就会盖住标题。 */
+  .art-item.is-line .art-text { flex-direction: column; align-items: stretch; gap: 5px; }
   .art-item.is-line.is-read .art-star { margin: 0; }
-  .art-item.is-line.is-read .art-head { min-height: 88px; }
-  .art-item.is-line.is-read .art-text { padding-right: 40px; }
   .art-item.is-line .art-title {
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -3770,9 +3816,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
     white-space: normal;
     overflow: hidden;
   }
-  .art-item.is-line .art-meta { flex-wrap: wrap; margin-top: 0; padding-right: 0; }
+  .art-item.is-line .art-meta { flex-wrap: wrap; margin-top: 0; }
   .art-item.is-line .art-meta .src-pill { max-width: 180px; }
-  .art-item.is-line .art-acts { top: 50%; bottom: auto; right: 8px; transform: translateY(-50%); }
   .art-inner { padding: var(--sp-3); gap: var(--sp-3); }
   /* 动作键右对齐在窄屏也生效（基础规则已负责，这里不再回退靠左）：
      读完正文视线落在末尾，复制 / 打开就该在落点，不用再扫回左边。
@@ -4327,7 +4372,13 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 /* 正文块在弹窗里不再铺自己的底色：.art-body 的文章页样式（不透明 panel-2 + 顶部分隔线）
    放进玻璃面板就成了「一个卡片三种颜色」，撤掉后整个弹窗只剩一层底。 */
 .cd-art { border-top: none; background: transparent; }
-/* 统一的键盘可见焦点环（无障碍 + 现代观感） */
+/* 统一的键盘可见焦点环（无障碍 + 现代观感）
+ * 焦点环一律用实色主色：上面 6 套强调色 × 3 套主题各自定义的半透明
+ * --focus-ring（.16 / .24）在白底只有 1.2~1.5:1，键盘 Tab 到按钮基本看不见。
+ * 这里用同特异度、靠后的一条规则一次性覆盖，避免逐块改 13 处变量定义。
+ * 另：焦点指示不能用 box-shadow —— .viewnav-btn.active 等后写的规则会把它盖掉，
+ * 所以下面统一走 outline（见 WCAG 1.4.11 非文本对比 ≥3:1）。 */
+html[data-theme][data-accent] { --focus-ring: var(--accent); }
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -4336,17 +4387,9 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 /* 输入框自家已有聚焦样式（边框 + 光环），避免双重描边 */
 input:focus-visible,
 textarea:focus-visible { outline: none; }
-/* 无自有焦点环的控件：改用统一光环（此前被上面一刀切 outline:none 抹掉，
-   导致键盘 Tab 到按钮 / 分段控件 / 色块时完全没有可见焦点） */
-.btn:focus-visible,
-.seg-btn:focus-visible,
-.swatch:focus-visible,
-.viewnav-btn:focus-visible,
-.viewmode-btn:focus-visible,
-.tab:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
+/* 按钮 / 分段控件 / 色块 / 视图导航刻意不再覆盖 outline：
+   原先这一段写的是 outline:none + box-shadow 淡环，既被 .active 的拟物阴影盖掉，
+   半透明环本身也不达标。统一继承上面的 2px 实色描边即可。 */
 /* 开关：隐藏的 input 获得焦点时，把光环画在滑块上 */
 .switch input:focus-visible + .switch-slider { box-shadow: 0 0 0 3px var(--focus-ring); }
 
@@ -4757,7 +4800,7 @@ body { overflow: hidden; }
   /* min-width 约 4 个汉字：桌面这一行里标题也会参与收缩，但不许缩成「全…」——
      真放不下时该缩的是搜索（它有 220px 的底线，再小就不像输入框了） */
   flex: 0 1 auto; min-width: 60px; margin: 0;
-  font-size: var(--fs-lg); font-weight: 550; line-height: 1.3;
+  font-size: var(--fs-lg); font-weight: 500; line-height: 1.3;
   color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -4786,7 +4829,7 @@ body { overflow: hidden; }
     padding: 0 var(--sp-1) 0 0;
     border: 1px solid transparent;
     background: none;
-    font-size: var(--fs-lg); font-weight: 550; color: var(--text);
+    font-size: var(--fs-lg); font-weight: 500; color: var(--text);
   }
   .cards-head > #feedDD .dd-trigger:hover {
     background: var(--hover); border-color: var(--border);
@@ -5063,7 +5106,7 @@ body { overflow: hidden; }
  * ============================================================ */
 .chan-tabs { display: none; }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .chan-tabs {
     display: flex; align-items: stretch; gap: 2px;
     /* 100% 基础宽：头部是 flex-wrap 容器，这一行独占第二排 */
@@ -5076,7 +5119,12 @@ body { overflow: hidden; }
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
+    /* 隐藏了滚动条，右侧渐隐是「后面还有频道」的唯一提示；滚到末尾由
+       ChannelTabs 加 .at-end 撤掉，别让最后一个标签永远灰着一截。 */
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent 100%);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent 100%);
   }
+  .chan-tabs.at-end { -webkit-mask-image: none; mask-image: none; }
   .chan-tabs::-webkit-scrollbar { display: none; }
   /* 基础头部是 nowrap（桌面一行排开）；这条要独占第二行，窄屏才放开换行。
      padding-bottom 归零：条的 42px 命中高度本身已经提供了下沿留白。 */
@@ -5086,7 +5134,7 @@ body { overflow: hidden; }
     position: relative;
     flex: 0 0 auto;
     display: inline-flex; align-items: center; justify-content: center;
-    min-height: 42px;
+    min-height: 44px;   /* 触屏命中区统一 44px，视觉高度不变（padding 收一点即可） */
     padding: 0 10px;
     border: 0; background: none;
     font-family: inherit;
@@ -5098,7 +5146,7 @@ body { overflow: hidden; }
     -webkit-tap-highlight-color: transparent;
   }
   .chan-tab:first-child { padding-left: 0; }
-  .chan-tab.active { color: var(--text); font-weight: 650; }
+  .chan-tab.active { color: var(--text); font-weight: 600; }
   /* 选中态用居中的短下划线：比整块底色轻，也不会改变命中区 */
   .chan-tab.active::after {
     content: '';
@@ -5109,16 +5157,26 @@ body { overflow: hidden; }
     background: var(--accent);
   }
   .chan-tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus-ring); }
-  /* 末尾的「完整频道列表」：与标签同一行，永远贴在滚动末端 */
+  /* 末尾的「完整频道列表」：与标签同一行，永远贴在滚动末端。
+     数字说明抽屉里还有多少个订阅频道，比一枚孤零零的 ☰ 更能提示「还有内容」。 */
   .chan-tabs-more { margin-left: auto; padding: 0 6px; color: var(--text-faint); }
   .chan-tabs-more .ico { width: 18px; height: 18px; }
-
-  /* 卡片页：频道条要铺到吸顶条的两端，自带一条下边框把它和内容分开 */
-  .cards-sticky .chan-tabs {
-    margin: var(--sp-1) calc(var(--sp-4) * -1) calc(var(--sp-1) * -1);
-    padding: 0 var(--sp-4);
-    border-bottom: 1px solid var(--border);
+  .chan-tabs-more-n {
+    margin-left: 2px;
+    font-size: var(--fs-2xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
   }
+
+  /* 卡片页头部自带左右 16px 内距：频道条用等量负外距铺到两端即可。
+     垂直方向不再加负 margin / 额外下边框 —— 两页都靠基础规则排在各自吸顶头部
+     的第二行，选中项必须落在同一条基线上（此前卡片页比文章页低 8px：flex 行
+     间距 8px 叠在 4px 上外距上）。 */
+  .cards-sticky .chan-tabs {
+    margin: var(--sp-1) calc(var(--sticky-pad, var(--sp-4)) * -1) 0;
+    padding: 0 var(--sticky-pad, var(--sp-4));
+  }
+  .cards-sticky:has(.chan-tabs) { row-gap: 0; }
 }
 
 /* ============================================================
@@ -5141,7 +5199,7 @@ body { overflow: hidden; }
  * ============================================================ */
 .mobile-tabbar { display: none; }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   /* 顶栏里的视图导航让位给底部栏：只隐藏实例，不删结构（桌面仍用它） */
   .view-toolbar .viewnav { display: none; }
 
@@ -5183,13 +5241,13 @@ body { overflow: hidden; }
     background: none;
     box-shadow: none;
     font-size: var(--fs-2xs);
-    font-weight: 550;
+    font-weight: 500;
     color: var(--text-muted);
   }
   .mobile-tabbar .viewnav-btn .ico { width: 18px; height: 18px; font-size: 18px; }
   .mobile-tabbar .viewnav-btn .btn-label {
     display: block;
-    font-size: 10px;
+    font-size: var(--fs-sm);
     line-height: 1;
     letter-spacing: .02em;
   }
@@ -5237,12 +5295,16 @@ body { overflow: hidden; }
 .scroll-top:focus-visible { outline: none; box-shadow: var(--float-shadow), 0 0 0 3px var(--focus-ring); }
 .scroll-top .ico { width: 20px; height: 20px; }
 @keyframes scrollTopIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* toast 和回顶钮共用同一条底部高度带；长文案会一直延伸到右侧。
+   提示只显示 1.9s，这段时间把回顶钮收起来比让它被压住更清楚（toast 走了自动恢复）。
+   放在基础规则之后：回归里按 `.scroll-top {` 取首条规则验浮层阴影 / fixed 定位。 */
+body:has(.toast.show) .scroll-top { opacity: 0; pointer-events: none; transition: opacity var(--dur-fast); }
 /* 桌面没有底部标签栏：回到普通页边距，别悬在半空 */
 @media (min-width: 721px) {
   .scroll-top { bottom: var(--sp-6); }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   /* 密度降级：控件长到 36px（命中高度补到 44），头部一行只留 8px 间距。
      --ctl-gap 同时压低顶栏与工具栏的间距 —— 一套令牌管两排。 */
   :root { --head-h: 44px; --head-ctl: 36px; --head-gap: var(--sp-2);
@@ -5331,7 +5393,11 @@ body { overflow: hidden; }
   .cards-sticky {
     display: flex; flex-wrap: wrap; align-items: center;
     gap: var(--head-gap);
-    padding: 4px var(--sp-4);
+    /* 频道条要用等量负外距铺到两端，两处内距共用一个变量：
+       ≤480 档会把内距收到 --sp-3，写死 --sp-4 会让条左右各溢出 4px，
+       右端渐隐与「更多」按钮被推到屏幕外。 */
+    --sticky-pad: var(--sp-4);
+    padding: 4px var(--sticky-pad);
     position: sticky;
     top: 0;
     z-index: 6;
@@ -5463,7 +5529,7 @@ body { overflow: hidden; }
  * 否则第二行工具栏比顶栏多凹 4px，右簇与顶栏「设置」差在半根手指的位置上，
  * 上下两条栏的右边缘对不齐（实测 480px 下 468 vs 464）。 */
 @media (max-width: 480px) {
-  .cards-sticky { padding: 4px var(--sp-3); }
+  .cards-sticky { --sticky-pad: var(--sp-3); padding: 4px var(--sticky-pad); }
 }
 
 /* 超小屏（≤360，Android 常见的最小宽度档）：
@@ -5500,14 +5566,10 @@ body { overflow: hidden; }
   .reader-side-close { min-width: 40px; min-height: 40px; padding: 0 var(--sp-2); }
   .rd-ch-filter { width: 30px; height: 30px; }
   .overflow-item { min-height: 44px; }
-  /* 文章列表右侧的星标 / 标为未读：真实盒子抬到 44×44，图标视觉尺寸不变 */
+  /* 文章列表右侧的星标 / 标为未读：真实盒子抬到 44×44，图标视觉尺寸不变。
+     两枚动作在 grid 第二列竖排，列宽由内容自动算出，文字不再需要任何让位宽度。 */
   .art-star { min-width: 44px; min-height: 44px; margin: var(--sp-1) var(--sp-1) 0 0; padding: 0; }
   .art-star .ico { width: 1.05rem; height: 1.05rem; }
-  /* 44×44 的两枚动作比 30px 时宽出一大截，元信息原来的 60/64px 避让不够：
-     无缩略图的已读行有两枚，来源与时间会钻到按钮底下。缩略图行不在此列 ——
-     动作本就压在图上、元信息也已放开（见 .has-thumb）。窄屏两行紧凑版另由
-     .art-text 整列让位，这里排除 is-line。 */
-  .art-item.is-read:not(.has-thumb):not(.is-line) .art-meta { padding-right: 96px; }
   .art-actions .btn-copy,
   .art-actions .btn-open,
   .art-actions .btn-fav,
@@ -5545,11 +5607,8 @@ body { overflow: hidden; }
   .empty-action { min-height: 44px; padding: 0 var(--sp-5); }
 }
 
-/* 粗指针的宽屏（平板横置）：紧凑单行同样拿到 44×44 的动作，只按 30px 按钮算的
-   64px 避让会让来源与时间钻到按钮底下。窄屏两行版已由上面 .art-text 整列让位。 */
-@media (pointer: coarse) and (min-width: 721px) {
-  .art-item.is-line .art-meta { padding-right: 96px; }
-}
+/* 粗指针宽屏：动作列同样是 grid 的第二列，列宽自动跟随 44×44 按钮，
+   不再需要单独给紧凑单行补 96px 让位。 */
 
 /* ---------------- 规则面板（v1.6.0-test5）：关注 / 屏蔽 + webhook ----------------
    复用 .form / .form-row / .input-with-btn / .test-result，这里只补规则卡片自己的排版。
@@ -5586,4 +5645,38 @@ body { overflow: hidden; }
   .card-media-actions .btn-copy,
   .card-foot .btn-copy,
   .row-actions .btn-copy { width: 36px; height: 36px; }
+}
+
+/* ============================================================
+ * 粗指针矮屏 / 手机横屏（844×390 这类）
+ * ------------------------------------------------------------
+ * 宽度 >720 会掉进桌面布局：常驻 232px 侧栏 + 两层吸顶头部把 390px
+ * 的高度吃掉大半，底部又没有标签栏，内容区剩不到 200px。
+ * 上面的四块移动降级（抽屉 / 频道条 / 底栏 / 密度）已把条件扩成
+ * 「窄屏 或 矮屏粗指针」，规则仍各归各位、没有合并成一大块。
+ * 这里只补矮屏独有的纵向压缩：--tabbar-h 保持 48px，按钮命中区仍是 44px，
+ * 不能为了省 8px 把触屏落点压小。
+ * ============================================================ */
+@media (max-height: 500px) and (pointer: coarse) {
+  :root { --head-h: 38px; --head-ctl: 32px; --head-gap: var(--sp-1); --ctl-gap: var(--sp-1); }
+  /* 吸顶头部不再叠安全区与上下留白：横屏每一像素都留给内容 */
+  .reader-head, .cards-sticky, .ai-head { padding-top: 0; padding-bottom: 0; }
+  /* 横屏只压头部，不压手指落点：频道标签仍保持 44px 命中 */
+  .chan-tab { min-height: 44px; }
+  .reader-main, #cardsRoot > main.wrap, #aiView {
+    padding-bottom: calc(var(--tabbar-h) + var(--sp-3) + env(safe-area-inset-bottom, 0px));
+  }
+  /* 横屏抽屉不该盖掉 84vw：给内容留一大半宽度，便于对照着看 */
+  .reader-side, .cards-side { width: min(272px, 40vw); }
+}
+
+/* 极窄两栏（320–400px）：卡宽只剩 ~168px，四行文字 + 一张 4:3 图会把卡塞满。
+   仍守「≤720 最少两栏」的硬规矩（改单栏后一屏只看得到一张卡，像详情页），
+   这里只降信息量：带图摘要收成 1 行、纯文字 2 行，卡内边距与标题行距各收一档。
+   放在文件末尾，用源顺序压过 ≤720 / ≤360 段的 clamp。 */
+@media (max-width: 400px) {
+  .card-body { padding: var(--sp-2); }
+  .card-title { line-height: 1.35; height: calc(1.35em * 2); }
+  .card-desc { -webkit-line-clamp: 2; line-height: 1.45; }
+  .card-has-media .card-desc { -webkit-line-clamp: 1; }
 }

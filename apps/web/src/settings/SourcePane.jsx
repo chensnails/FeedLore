@@ -1391,7 +1391,7 @@ export function SourcePane({ admin, onDirtyChange }) {
 
       </div>
 
-      <PaneFoot lead={
+      <PaneFoot dirty={sourceDirty} lead={
         <span className="hint" id="settingsHint">
           {total ? (
             <>

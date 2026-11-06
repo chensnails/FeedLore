@@ -286,7 +286,7 @@ export function ModelPane({ onDirtyChange }) {
         </div>
         {result ? <Result id="llmResult" result={result} /> : null}
       </div>
-      <PaneFoot lead={<span className="hint">模型配置完全跟随账号：这一份只对你自己生效，不会用上别人的地址或 Key，也没有站点默认值可回退——三项都填好才能生成日报</span>}>
+      <PaneFoot dirty={dirty} lead={<span className="hint">模型配置完全跟随账号：这一份只对你自己生效，不会用上别人的地址或 Key，也没有站点默认值可回退——三项都填好才能生成日报</span>}>
         <button
           className="btn btn-ghost"
           id="testLlmBtn"

@@ -2190,14 +2190,16 @@ const withEFP = (el, fn) => {
   // ---- 异常路径：列表拉取失败 / 空列表 ----
   clickTab('外观'); await sleep(40);
   feedsFailNext = true;
-  clickTab('数据源'); await sleep(100);
+  clickTab('数据源');
+  await waitFor(() => document.querySelector('#feedList .hint')?.textContent.indexOf('读取失败') >= 0, 2000);
   t('频道列表拉取失败：列表区提示', () => {
     const hint = document.querySelector('#feedList .hint');
     if (!hint || hint.textContent.indexOf('读取失败') < 0) throw new Error(hint && hint.textContent);
   });
   clickTab('外观'); await sleep(40);
   feedsEmptyNext = true;
-  clickTab('数据源'); await sleep(100);
+  clickTab('数据源');
+  await waitFor(() => document.querySelector('#feedList .hint')?.textContent.indexOf('还没有订阅源') >= 0, 2000);
   t('空列表：引导文案 + 底部兜底', () => {
     const hint = document.querySelector('#feedList .hint');
     if (!hint || hint.textContent.indexOf('还没有订阅源') < 0) throw new Error(hint && hint.textContent);
@@ -4339,7 +4341,9 @@ const withEFP = (el, fn) => {
     }
   });
   w.feedlore.setAppearance('listDensity', 'cozy');
-  await sleep(40);
+  // 改密度会整列重绘；并行跑全仓测试时 40ms 可能赶在 React 提交前到期，等条件而非等时间。
+  await waitFor(() => !!R('#readerList .art-item[data-id="r1"] .art-thumb img')
+    && !!R('#readerList .art-item[data-id="r1"] .art-sum'), 2000);
   // 缩略图（v2.5.0 行式重构）：列表接口本来就带 image，有图才渲染，没有就不留灰框
   t('缩略图：只在条目带 image 时渲染，走代理地址与宽度变体', () => {
     const it1 = R('#readerList .art-item[data-id="r1"]');
@@ -4378,7 +4382,9 @@ const withEFP = (el, fn) => {
     if (R('#readerList .art-item[data-id="r1"] .art-title').textContent !== '文章一') throw new Error('标题被单行模式弄丢');
   });
   w.feedlore.setAppearance('listDensity', 'cozy');
-  await sleep(40);
+  // 改密度会整列重绘；并行跑全仓测试时 40ms 可能赶在 React 提交前到期，等条件而非等时间。
+  await waitFor(() => !!R('#readerList .art-item[data-id="r1"] .art-thumb img')
+    && !!R('#readerList .art-item[data-id="r1"] .art-sum'), 2000);
   t('切回舒适：单行模式退出，缩略图与摘要回来', () => {
     const it1 = R('#readerList .art-item[data-id="r1"]');
     if (it1.classList.contains('is-line')) throw new Error('还有条目停在单行模式');
@@ -5069,7 +5075,9 @@ const withEFP = (el, fn) => {
     const el = O('.toast');
     if (el.className !== 'toast show err') throw new Error('class: ' + el.className);
     if (!O('.toast .toast-ico.err')) throw new Error('失败态应换成警示图标');
-    if (el.getAttribute('role') !== 'status' || el.getAttribute('aria-live') !== 'polite') throw new Error('缺 aria-live 播报');
+    if (el.getAttribute('role') !== 'alert' || el.getAttribute('aria-live') !== 'assertive') {
+      throw new Error('失败态应 assertive 播报（role=alert），不能排在其它消息后面');
+    }
   });
 
   t('浮标：默认隐藏', () => { if (!O('.new-pill') || O('.new-pill').hidden !== true) throw new Error('应隐藏'); });
@@ -5962,8 +5970,8 @@ const withEFP = (el, fn) => {
     if (!/\.mobile-tabbar \.viewnav-btn \.ico \{ width: 18px; height: 18px; font-size: 18px; \}/.test(block)) {
       throw new Error('底栏图标应收到 18px');
     }
-    if (!/\.mobile-tabbar \.viewnav-btn \.btn-label \{[^}]*font-size: 10px/.test(block)) {
-      throw new Error('底栏文字应收到 10px');
+    if (!/\.mobile-tabbar \.viewnav-btn \.btn-label \{[^}]*font-size: var\(--fs-sm\)/.test(block)) {
+      throw new Error('底栏文字应提到 12px（--fs-sm），10px 在长列表里读不清');
     }
     const zi = b.match(/z-index: (\d+)/);
     const mask = css.match(/--z-drawer-mask: (\d+)/);
@@ -6031,7 +6039,11 @@ const withEFP = (el, fn) => {
     const root = path.join(__dirname, '..', '..');
     const compPath = path.join(root, 'src', 'ui', 'ChannelTabs.jsx');
     const comp = fs.readFileSync(compPath, 'utf8');
-    if (comp.indexOf('className="chan-tabs"') < 0) throw new Error('ChannelTabs 未渲染 .chan-tabs');
+    if (!/className=\{'chan-tabs'/.test(comp)) throw new Error('ChannelTabs 未渲染 .chan-tabs');
+    // 横滑可发现性 + 键盘漫游：渐隐 / roving tabindex / 方向键三件套不能只剩一半
+    if (!/atEnd \? ' at-end' : ''/.test(comp)) throw new Error('ChannelTabs 缺滚到末尾时撤掉渐隐的 at-end 态');
+    if (!/tabIndex=\{key === rovingKey \? 0 : -1\}/.test(comp)) throw new Error('ChannelTabs 缺 roving tabindex');
+    if (!/ArrowLeft[\s\S]{0,80}ArrowRight/.test(comp)) throw new Error('ChannelTabs 缺方向键切换');
     // 再点当前频道 = 回到列表顶部（与底栏 retap 同一套手感），不能点第二下毫无反应
     if (!/api\.scrollTop/.test(comp)) throw new Error('ChannelTabs 再点当前项应调用 scrollTop 回顶');
     for (const v of ['ReaderView.jsx', 'CardsView.jsx']) {
@@ -6098,14 +6110,25 @@ const withEFP = (el, fn) => {
     if (!/手机上紧凑仍占两行[\s\S]{0,1400}?\.art-item\.is-line \.art-title \{[^}]*white-space: normal/.test(css)) {
       throw new Error('手机上紧凑标题应恢复换行（最多两行）');
     }
-    if (!/手机上紧凑仍占两行[\s\S]{0,1800}?\.art-item\.is-line \.art-acts \{[^}]*translateY\(-50%\)/.test(css)) {
-      throw new Error('手机上两行卡片的动作键应垂直居中');
+    // 动作列是 .art-row 的第二列，grid 自动算宽；不再靠 translateY / 五套 padding-right 让位。
+    const artRow = css.match(/\.art-row \{([^}]*)\}/);
+    if (!artRow || !/display:\s*grid/.test(artRow[1])) throw new Error('文章行应为 grid 两列布局');
+    if (!/grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/.test(artRow[1])) {
+      throw new Error('文章行列宽应为 minmax(0,1fr) auto（第二列留给动作）');
+    }
+    const baseActs = css.match(/\.art-acts \{([^}]*)\}/);
+    if (!baseActs || !/flex-direction:\s*column/.test(baseActs[1])) throw new Error('动作列应竖排');
+    if (/position:\s*absolute/.test(baseActs[1])) throw new Error('动作列不能再绝对定位（会盖住标题）');
+    if (/\.art-item\.is-line \.art-acts \{[^}]*translateY\(-50%\)/.test(css)) {
+      throw new Error('动作列已由 grid 垂直居中，不该再靠 translateY');
     }
     const title = css.match(/\.art-title \{([^}]*)\}/);
     if (!title || !/-webkit-line-clamp: 3/.test(title[1])) throw new Error('标题应最多 3 行');
     const thumb = css.match(/\.art-thumb \{([^}]*)\}/);
     if (!thumb || !/aspect-ratio: 4 \/ 3/.test(thumb[1])) throw new Error('缩略图应为 4:3');
-    if (!/\.art-item\.has-thumb \.art-acts \{/.test(css)) throw new Error('有图条目缺动作按钮的暗底（白图标压在亮图上会消失）');
+    if (/\.art-item\.has-thumb \.art-acts \{/.test(css)) {
+      throw new Error('动作列已独立成列、不再压在缩略图上，暗底 / 白图标补丁应删除');
+    }
     const sum = css.match(/\.art-sum \{([^}]*)\}/);
     if (!sum || !/-webkit-line-clamp: 2/.test(sum[1])) throw new Error('摘要应最多 2 行');
     if (!/\.art-item\.has-sum \.art-title \{[^}]*-webkit-line-clamp: 2/.test(css)) {
@@ -6131,34 +6154,9 @@ const withEFP = (el, fn) => {
     if (!lineText || !/flex-direction: row/.test(lineText[1])) throw new Error('单行模式 art-text 应改成横向排列');
     const lineMeta = css.match(/\.art-item\.is-line \.art-meta \{([^}]*)\}/);
     if (!lineMeta || !/flex-wrap: nowrap/.test(lineMeta[1])) throw new Error('单行模式元信息应 nowrap（换行就等于回到两行）');
-    const lineActs = css.match(/\.art-item\.is-line \.art-acts \{([^}]*)\}/);
-    if (!lineActs || !/transform: translateY\(-50%\)/.test(lineActs[1])) {
-      throw new Error('单行模式动作键应垂直居中（否则贴在单行顶部）');
-    }
-    // 触屏动作 44×44：右让宽必须跟着长，否则来源 / 时间钻到按钮底下。
-    // 手机两行版动作垂直居中，标题与元信息都经过它 —— 让位给整列 .art-text。
-    if (!/手机上紧凑仍占两行[\s\S]{0,900}?\.art-item\.is-line \.art-text \{[^}]*padding-right:\s*44px/.test(css)) {
-      throw new Error('手机两行卡的未读行应给 44px 星标让出 44px');
-    }
-    if (!/\.art-item\.is-line\.is-read \.art-text \{[^}]*padding-right:\s*40px/.test(css)) {
-      throw new Error('手机两行卡的已读行应给竖排的 44px 动作让出 40px');
-    }
-    if (!/\.art-item\.is-line\.is-read \.art-acts \{[^}]*flex-direction: column/.test(css)) {
-      throw new Error('手机两行卡的已读行两枚动作应竖排（横排会把来源挤到第二行）');
-    }
-    if (!/\.art-item\.is-line\.is-read \.art-head \{[^}]*min-height:\s*88px/.test(css)) {
-      throw new Error('手机两行卡的已读行要给竖排动作留出 88px 高度');
-    }
-    if (!/手机上紧凑仍占两行[\s\S]{0,1800}?\.art-item\.is-line \.art-meta \{[^}]*padding-right:\s*0/.test(css)) {
-      throw new Error('手机两行卡的元信息不再重复让位（避让已上移到整列）');
-    }
-    // 舒适行式（无缩略图）在触屏上同样有两枚 44px 动作，元信息也要加宽让位；
-    // 粗指针宽屏的紧凑单行同理（窄屏两行版由上面的 .art-text 负责，故排除 is-line）。
-    if (!/\.art-item\.is-read:not\(\.has-thumb\):not\(\.is-line\) \.art-meta \{[^}]*padding-right:\s*96px/.test(css)) {
-      throw new Error('触屏无图已读行的元信息应让出两枚 44px 动作');
-    }
-    if (!/@media \(pointer: coarse\) and \(min-width: 721px\) \{\s*\.art-item\.is-line \.art-meta \{[^}]*padding-right:\s*96px/.test(css)) {
-      throw new Error('粗指针宽屏的紧凑单行应给 44px 动作加宽避让');
+    // 动作列宽度由 grid 算，文字列里不该再出现任何「给按钮让位」的固定 padding。
+    if (/\.art-(?:meta|text)[^{]*\{[^}]*padding-right:\s*(?:40|44|60|64|96)px/.test(css)) {
+      throw new Error('动作列改 grid 后，文字列不该再有 40/44/60/64/96px 让位宽度');
     }
 
     // 文件末尾还有两段「组件统一」规则（v1.1.7 拟态 / v1.3.8 统一表面），
@@ -6573,6 +6571,80 @@ const withEFP = (el, fn) => {
     // ④ 消费方别改成别的字段名（改了这条就得同步改）
     const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
     if (!/rdCollapsedGroups/.test(rv)) throw new Error('ReaderView 未读 rdCollapsedGroups');
+  });
+
+  /* 反馈语义：失败必须 assertive，耗时操作必须 aria-busy。
+     浏览器里只验得到初始态，错误分支与置忙分支靠源码断言守住。 */
+  t('操作反馈：失败结果走 alert/assertive，耗时按钮带 aria-busy 与转圈', () => {
+    const root = path.join(__dirname, '..', '..', 'src');
+    const prim = fs.readFileSync(path.join(root, 'settings', 'primitives.jsx'), 'utf8');
+    if (!/role=\{failed \? 'alert' : 'status'\}/.test(prim)) throw new Error('Result 失败时未切到 role=alert');
+    if (!/aria-live=\{failed \? 'assertive' : 'polite'\}/.test(prim)) throw new Error('Result 失败时未切到 assertive');
+    const ov = fs.readFileSync(path.join(root, 'ui', 'Overlays.jsx'), 'utf8');
+    if (!/role=\{toast\.ok \? 'status' : 'alert'\}/.test(ov)) throw new Error('toast 失败时未切到 role=alert');
+    const acc = fs.readFileSync(path.join(root, 'settings', 'AccountPane.jsx'), 'utf8');
+    for (const id of ['exportBtn', 'backupBtn', 'importBtn', 'restoreBtn']) {
+      const btn = new RegExp('id="' + id + '"[^>]*aria-busy=');
+      if (!btn.test(acc)) throw new Error(id + ' 缺 aria-busy');
+    }
+    const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
+    if (!/\.btn\[aria-busy="true"\]::after/.test(css)) throw new Error('置忙按钮缺转圈指示');
+    if (!/@keyframes btnSpin/.test(css)) throw new Error('缺 btnSpin 动画');
+  });
+
+  /* 排版刻度：字重只用四档、元信息最小 12px、小图标按钮命中补到 44px。 */
+  t('排版刻度：字重四档 / 元信息 12px / 触屏命中 44px', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    if (/font-weight:\s*(450|550|620|650)\b/.test(css)) throw new Error('仍有 450/550/620/650 字重，跨平台渲染会各差一档');
+    if (!/--hit-min:\s*44px/.test(css)) throw new Error('缺 --hit-min: 44px 令牌');
+    for (const sel of ['reader-search-clear', 'search-clear', 'settings-search-clear', 'rd-ch-search-clear']) {
+      if (!new RegExp('\\.' + sel + '::after').test(css)) throw new Error(sel + ' 缺 44px 命中伪元素');
+    }
+    if (!/\.art-meta \{[^}]*font-size: var\(--fs-sm\)/.test(css)) throw new Error('文章元信息应 ≥12px');
+    if (!/\.card-meta \{[^}]*font-size: var\(--fs-sm\)/.test(css)) throw new Error('卡片元信息应 ≥12px');
+  });
+
+  /* 横屏矮屏：844×390 这类尺寸宽度 >720，不能落回「常驻侧栏 + 顶栏 ViewNav」。 */
+  t('适配：粗指针矮屏复用移动降级，横屏单独压头部', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const combo = '@media (max-width: 720px), (max-height: 500px) and (pointer: coarse)';
+    if (css.split(combo).length - 1 < 4) throw new Error('移动降级主断点未覆盖粗指针矮屏（抽屉 / 频道条 / 底栏 / 密度至少 4 处）');
+    const land = css.match(/@media \(max-height: 500px\) and \(pointer: coarse\) \{([\s\S]*?)\n\}/);
+    if (!land) throw new Error('缺横屏专属密度块');
+    if (!/--head-h: 38px/.test(land[1])) throw new Error('横屏未压缩头部高度');
+    if (!/\.chan-tab \{ min-height: 44px/.test(land[1])) throw new Error('横屏压头部时把触屏命中也压掉了');
+    if (!/\.reader-side, \.cards-side \{ width: min\(272px, 40vw\)/.test(land[1])) throw new Error('横屏抽屉仍会盖住整屏');
+  });
+
+  /* 窄屏信息量：保留「≤720 最少两栏」硬规矩，改收卡内文字行数而不是改单栏。 */
+  t('适配：≤400px 收紧卡内摘要，不动两栏网格', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const b = css.match(/@media \(max-width: 400px\) \{([\s\S]*?)\n\}/);
+    if (!b) throw new Error('缺 ≤400px 的卡内密度块');
+    if (!/\.card-has-media \.card-desc \{[^}]*-webkit-line-clamp: 1/.test(b[1])) throw new Error('带图卡摘要未收到 1 行');
+    if (/grid-template-columns/.test(b[1])) throw new Error('≤400px 不该改网格列数（仓库要求两栏）');
+  });
+
+  /* 设置脏态常驻 + 两页频道条同一基线：浏览器量到卡片页曾比文章页低 8px。 */
+  t('设置：未保存提示常驻动作栏；两页频道条同一基线', () => {
+    const root = path.join(__dirname, '..', '..', 'src');
+    const prim = fs.readFileSync(path.join(root, 'settings', 'primitives.jsx'), 'utf8');
+    if (!/export function PaneFoot\(\{[^}]*dirty/.test(prim)) throw new Error('PaneFoot 未接收 dirty');
+    if (!/pane-foot-dirty/.test(prim)) throw new Error('动作栏未渲染常驻未保存提示');
+    for (const f of ['AccountPane', 'DigestPane', 'ModelPane', 'SourcePane']) {
+      const pane = fs.readFileSync(path.join(root, 'settings', f + '.jsx'), 'utf8');
+      if (!/<PaneFoot dirty=/.test(pane)) throw new Error(f + ' 未把脏态传给动作栏');
+    }
+    const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
+    if (!/\.pane-foot\.is-dirty \{/.test(css)) throw new Error('缺动作栏脏态样式');
+    if (!/\.cards-sticky:has\(\.chan-tabs\) \{ row-gap: 0; \}/.test(css)) throw new Error('卡片页频道条未消掉 flex 行间距');
+    const cardTabs = css.match(/\.cards-sticky \.chan-tabs \{([^}]*)\}/);
+    if (!cardTabs) throw new Error('缺卡片页频道条水平铺满规则');
+    if (/border-bottom/.test(cardTabs[1])) throw new Error('卡片页频道条仍多一条下边框，与文章页不一致');
+    if (!/margin: var\(--sp-1\) calc\(var\(--sticky-pad, var\(--sp-4\)\) \* -1\) 0/.test(cardTabs[1])) throw new Error('卡片页频道条仍用负下外距，会把基线拉偏');
+    if (!/--sticky-pad: var\(--sp-4\)/.test(css) || !/\.cards-sticky \{ --sticky-pad: var\(--sp-3\)/.test(css)) {
+      throw new Error('头部内距与频道条负外距必须共用 --sticky-pad，否则 ≤480 档左右各溢出 4px');
+    }
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });
