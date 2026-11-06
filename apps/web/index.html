@@ -232,6 +232,9 @@ html.boot-lock { overflow: hidden; }
 <!-- AI：大模型能力聚合页（已 React 化，组件见 src/ai/AiView.jsx，挂载到下面的 #aiRoot） -->
 <div class="wrap" id="aiView" hidden><div id="aiRoot"></div></div>
 
+<!-- 移动端底部视图标签栏（≤720px 显示；桌面 / 平板隐藏，仍用各视图顶栏里的 ViewNav） -->
+<div id="mobileTabbarRoot" class="mobile-tabbar"></div>
+
 <!-- 设置弹层（已 React 化，组件见 src/settings/SettingsModal.jsx），挂载到 #settingsRoot -->
 <div id="settingsRoot"></div>
 

@@ -112,6 +112,9 @@
   /* 间距刻度：4px 栅格，组件 padding / margin / gap 一律取刻度 */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+  /* 移动端底部视图标签栏高度（不含 safe-area）：视图导航在 ≤720px 停靠在
+     视口底部，各滚动容器用它预留底部空间，最后一条内容不会被标签栏盖住。 */
+  --tabbar-h: 56px;
   /* 阅读页频道栏宽度：初值与 core/state.js 的 READER_SIDE_DEFAULT 同源，
      实际值由 JS 按账号偏好写到 :root（可拖拽调整） */
   --reader-side-w: 232px;
@@ -262,7 +265,7 @@ html[data-theme="dark"] {
   --text: #c9c9c9;
   --text-2: #b8b8b8;
   --text-read: #d3dae3;   /* 暗色正文提亮一档，不再发灰发虚 */
-  --text-muted: #a6a6a6;
+  --text-muted: #b0b0b0;  /* 原 #a6a6a6 在 --accent-soft（#393e4b）上只有 4.39:1，提亮到 4.9:1 */
   --text-faint: #999999;
   --toast-bg: #e6e6e6;
   --toast-text: #1a1a1a;
@@ -4902,6 +4905,97 @@ body { overflow: hidden; }
   .rule-scope-foot-actions { margin-left: auto; }
 }
 
+/* ============================================================
+ * 移动端底部视图标签栏（v2.4.0）
+ * ------------------------------------------------------------
+ * 手机上一屏最重要的一件事是「看清楚内容」，而不是在顶栏挤三个视图图标。
+ * 视图切换仍只有一份实现（.viewnav + ViewNav）：桌面 / 平板由各视图顶栏右簇
+ * 渲染；≤720px 顶栏里的实例隐藏，改由 main.jsx 挂载在视图之外的全局实例
+ * 停靠到视口底部。DOM 结构、状态与无障碍语义都不变，只换位置。
+ *
+ * 为什么不能直接把顶栏里那个实例改成 fixed：.reader-head 是容器查询容器
+ * （container-type: inline-size），会为 fixed 后代建立包含块，标签栏会被
+ * 压在头部那一小块里。挂到视图外就没有这个问题。
+ *
+ * z-index 压在频道抽屉遮罩（55）之下：抽屉 / 弹层打开时标签栏被盖住，
+ * 不会出现「两层导航打架」。控制台滚动容器在下面同一档断点里预留底部空间。
+ *
+ * 标签文字在 ≤820px 已被全局 .btn-label 收起（移出无障碍树）；底部栏空间足够，
+ * 这里显式放回来，按钮的可访问名仍由 ViewNav 的 aria-label 提供。
+ * ============================================================ */
+.mobile-tabbar { display: none; }
+
+@media (max-width: 720px) {
+  /* 顶栏里的视图导航让位给底部栏：只隐藏实例，不删结构（桌面仍用它） */
+  .view-toolbar .viewnav { display: none; }
+
+  .mobile-tabbar { display: block; }
+  .mobile-tabbar .viewnav {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 50;   /* < --z-drawer-mask(55)：抽屉/弹层永远盖住标签栏 */
+    display: flex;
+    align-items: stretch;
+    width: auto;
+    height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+    margin: 0;
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+    gap: 0;
+    background: var(--panel);
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    /* 不用 backdrop-filter：底部栏是常驻 fixed 表面，模糊预算留给全屏遮罩 */
+    box-shadow: 0 -4px 16px rgba(16, 22, 32, .06);
+    overscroll-behavior: contain;
+  }
+  .mobile-tabbar .viewnav-btn {
+    position: relative;
+    flex: 1 1 0;
+    width: auto; min-width: 0;
+    height: var(--tabbar-h);
+    flex-direction: column;
+    gap: 3px;
+    padding: 0 var(--sp-1);
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    font-size: var(--fs-2xs);
+    font-weight: 550;
+    color: var(--text-muted);
+  }
+  .mobile-tabbar .viewnav-btn .ico { width: 20px; height: 20px; font-size: 20px; }
+  .mobile-tabbar .viewnav-btn .btn-label {
+    display: block;
+    font-size: var(--fs-2xs);
+    line-height: 1;
+    letter-spacing: .02em;
+  }
+  .mobile-tabbar .viewnav-btn.active {
+    background: none;
+    color: var(--accent-text);
+    box-shadow: none;
+  }
+  /* 选中项用顶边短横条表达：比整块底色克制，也不改变按钮的点击区域 */
+  .mobile-tabbar .viewnav-btn.active::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    width: 28px; height: 3px;
+    transform: translateX(-50%);
+    border-radius: 0 0 3px 3px;
+    background: var(--accent);
+  }
+  .mobile-tabbar .viewnav-btn:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--focus-ring);
+  }
+  /* toast 的默认底边（40px）落在这条 56px 常驻栏里，而 toast 的 z-index(400) 又压在
+     栏之上 —— 结果是提示语骑在标签栏上。抬到栏顶再加一档间距。「有新内容」浮标本来就在
+     92px，不受影响。 */
+  .toast { bottom: calc(var(--tabbar-h) + var(--sp-4) + env(safe-area-inset-bottom, 0px)); }
+}
+
 @media (max-width: 720px) {
   /* 密度降级：控件长到 36px（命中高度补到 44），头部一行只留 8px 间距。
      --ctl-gap 同时压低顶栏与工具栏的间距 —— 一套令牌管两排。 */
@@ -5023,6 +5117,20 @@ body { overflow: hidden; }
   #viewMode { order: 4; flex: 0 0 auto; }
   /* v1.6.0：搜索放大镜与 ⋮ 都在 .head-right 内，保持 DOM 顺序（[🔍][⋮]），
      不再给单独 order —— 否则放大镜会被甩到 ⋮ 右侧，溢出菜单不在最右。 */
+
+  /* 内容区给底部视图标签栏留出高度：最后一条 / 页脚不会被固定栏盖住。
+     三个视图各有自己的滚动容器，这里一次列全。 */
+  .reader-main,
+  #cardsRoot > main.wrap,
+  #aiView {
+    padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* 顶部安全区：PWA / 刘海屏里，吸顶头部不再贴住状态栏。
+     写在密度段末尾，才盖得住上面 .cards-sticky 的 padding 简写。 */
+  .reader-head { padding-top: calc(4px + env(safe-area-inset-top, 0px)); }
+  .cards-sticky { padding-top: calc(4px + env(safe-area-inset-top, 0px)); }
+  .ai-head { padding-top: calc(var(--sp-3) + env(safe-area-inset-top, 0px)); }
 }
 
 /* ---------- 阅读页头部按「自身宽度」收放（容器查询） ----------
@@ -5210,3 +5318,15 @@ body { overflow: hidden; }
 .watch-rule-del { margin-left: auto; color: var(--danger); }
 .watch-empty { padding: var(--sp-4) 0; text-align: center; color: var(--text-faint); font-size: var(--fs-sm); }
 .watch-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-2); }
+
+/* 小屏卡片动作瘦身（v2.4.0）：卡宽约 172px 时，两枚 40px 方块加间距要占掉
+   一半以上；卡片本身点击即进详情，详情里复制 / 打开都在。这里只保留更常用的
+   「复制链接」这一枚，并把视觉尺寸收到 36px，让标题和图片重新成为主体。 */
+@media (max-width: 560px) {
+  .card-media-actions .btn-open,
+  .card-foot .btn-open,
+  .row-actions .btn-open { display: none; }
+  .card-media-actions .btn-copy,
+  .card-foot .btn-copy,
+  .row-actions .btn-copy { width: 36px; height: 36px; }
+}

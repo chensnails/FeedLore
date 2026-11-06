@@ -5254,6 +5254,64 @@ const withEFP = (el, fn) => {
       c2.setDigestEnabled(true);
       if (c2.digestIsEnabled() !== true) throw new Error('未能重新开启');
     });
+    // 底部标签栏（v2.4.0）的行为契约：视图导航切回来停在离开时的位置，其它入口照旧回顶。
+    // jsdom 没有布局，滚动容器要一个可读写的槽（scrollTo 也接管，走的是真实分支）。
+    // 每次切走后再把容器手动挪到一个第三个值：不这样做的话「恢复」和「没恢复」看起来一样
+    // —— 容器在 jsdom 里不会自己归零，而真实页面重绘列表时就是会归零。
+    t('冒烟：切走记位置 → 视图导航切回来恢复；默认入口与再点当前页仍回顶', () => {
+      const c2 = sw.__coreForTest;
+      const doc = sw.document;
+      const readerView = doc.getElementById('readerView');
+      if (!readerView.querySelector('.reader-main')) {
+        readerView.insertAdjacentHTML('beforeend', '<section class="reader-main"></section>');
+      }
+      // 真实浏览器走 scrollTo({top, behavior})，jsdom 没有布局：把 scrollTop 换成一个可读写
+      // 的槽，并把 behavior 记下来 —— 「再点当前页平滑回顶」与「别的入口硬切回顶」才有区别可断言。
+      const slot = (el) => {
+        let top = 0;
+        const rec = { behavior: null, get: () => top, set: (v) => { top = Math.max(0, Number(v) || 0); } };
+        Object.defineProperty(el, 'scrollTop', {
+          configurable: true,
+          get: () => top,
+          set: (v) => { top = Math.max(0, Number(v) || 0); },
+        });
+        el.scrollTo = (o) => {
+          top = Math.max(0, (o && Number(o.top)) || 0);
+          rec.behavior = (o && o.behavior) || null;
+        };
+        return rec;
+      };
+      const rd = slot(doc.querySelector('#readerView .reader-main'));
+      const ai = slot(doc.getElementById('aiView'));
+      c2.switchView('reader');
+      // ① 文章页翻到 240 → 切日报（记下 240）→ 列表重绘（回 0）→ 从底部栏切回来（恢复 240）
+      rd.set(240);
+      c2.switchView('ai');
+      if (c2.state.tab !== 'ai') throw new Error('未切到日报：' + c2.state.tab);
+      rd.set(0);
+      c2.switchView('reader', { restoreScroll: true, retap: true });
+      if (rd.get() !== 240) throw new Error('视图导航切回来没恢复位置：' + rd.get());
+      // ② 再点一次当前视图 → 平滑回顶（不是硬切，也不维持原位）
+      c2.switchView('reader', { restoreScroll: true, retap: true });
+      if (rd.get() !== 0) throw new Error('再点当前视图应回顶：' + rd.get());
+      if (rd.behavior !== 'smooth') throw new Error('再点当前视图应平滑滚回顶部，实际 behavior=' + rd.behavior);
+      // ③ 不带 opts 的入口（筛选 / 深链 / 命令面板）：既不恢复旧位置，也不停在中间
+      rd.set(180);
+      c2.switchView('ai');
+      rd.set(77);
+      c2.switchView('reader');
+      if (rd.get() !== 0) throw new Error('默认入口应回顶，实际停在：' + rd.get());
+      if (rd.behavior !== 'auto') throw new Error('默认入口应硬切回顶（切页动画已经接管过渡），实际 behavior=' + rd.behavior);
+      // ④ 记的是「离开的那一页」：在日报翻到 90 → 切走 → 列表重绘 → 切回来还是 90
+      c2.switchView('ai', { restoreScroll: true, retap: true });
+      ai.set(90);
+      c2.switchView('reader');
+      ai.set(0);
+      c2.switchView('ai', { restoreScroll: true, retap: true });
+      if (ai.get() !== 90) throw new Error('日报页离开时的位置没记住：' + ai.get());
+      ai.set(0); rd.set(0);
+      c2.switchView('reader');
+    });
     // 侧滑手势已抽到 drawer.js（v1.3.10）：文章页 / 卡片页共用一套。
     // 这里在真实 core 上验「按 state.tab 选对抽屉」——选错的表现是右滑什么都拉不出来。
     t('冒烟：卡片页右滑拉出频道抽屉（手势按当前页面选抽屉）', () => {
@@ -5691,6 +5749,124 @@ const withEFP = (el, fn) => {
     if (v.indexOf('switchView') < 0) throw new Error('ViewNav 应调用 switchView 切换视图');
     if (v.indexOf('viewnav-btn') < 0) throw new Error('ViewNav 应使用 .viewnav-btn 结构');
     if (v.indexOf('__viewChanged') < 0) throw new Error('ViewNav 应订阅 __viewChanged 高亮当前视图');
+  });
+
+  // ============ 移动端底部视图标签栏（v2.4.0） ============
+  // 视图切换在 ≤720px 从顶栏右簇挪到视口底部：位置类规则 jsdom 跑不了媒体查询，
+  // 按源码守门；「切走记位置 / 切回恢复」的行为在下面的真实核心冒烟里验。
+  t('底部标签栏：挂载点在三个视图之外，且复用同一份 ViewNav', () => {
+    const root = path.join(__dirname, '..', '..');
+    const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+    const mj = fs.readFileSync(path.join(root, 'src', 'main.jsx'), 'utf8');
+    if (html.indexOf('<div id="mobileTabbarRoot" class="mobile-tabbar"></div>') < 0) {
+      throw new Error('index.html 缺 #mobileTabbarRoot 挂载点（class 必须是 mobile-tabbar）');
+    }
+    const at = html.indexOf('mobileTabbarRoot');
+    // 挂在视图容器里面会被 container-type（.reader-head 等）变成 fixed 的包含块，
+    // 标签栏就只贴在头部那一小块上 —— 挂载点必须是三个视图的同级、排在它们之后。
+    for (const id of ['readerView', 'cardsView', 'aiView']) {
+      if (html.indexOf('id="' + id + '"') > at) throw new Error('#' + id + ' 排到了标签栏挂载点之后');
+    }
+    if (!/getElementById\('mobileTabbarRoot'\)/.test(mj)) throw new Error('main.jsx 未挂载 #mobileTabbarRoot');
+    if (!/<ViewNav \/>/.test(mj)) throw new Error('底部栏应复用 ViewNav，不再复制第二份导航结构');
+    if (!/import \{ ViewNav \}/.test(mj)) throw new Error('main.jsx 未引入 ViewNav');
+  });
+
+  t('style.css：≤720 顶栏实例让位、底部栏固定，且压在抽屉遮罩之下', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/^\.mobile-tabbar \{ display: none; \}$/m.test(css)) {
+      throw new Error('基线必须 .mobile-tabbar{display:none}：桌面/平板仍用顶栏那一份导航');
+    }
+    const segs = css.match(/@media \(max-width: 720px\)[\s\S]*?\n\}\n/g) || [];
+    const block = segs.join('\n');
+    if (!block) throw new Error('缺 ≤720 媒体段');
+    if (!/\.view-toolbar \.viewnav \{ display: none; \}/.test(block)) {
+      throw new Error('≤720 未隐藏顶栏里的视图导航：会出现上下两排导航');
+    }
+    if (!/\.mobile-tabbar \{ display: block; \}/.test(block)) throw new Error('≤720 未显示底部栏');
+    const bar = block.match(/\.mobile-tabbar \.viewnav \{([^}]*)\}/);
+    if (!bar) throw new Error('缺 .mobile-tabbar .viewnav 定位规则');
+    const b = bar[1];
+    if (!/position: fixed/.test(b) || !/bottom: 0/.test(b)) throw new Error('底部栏必须 fixed 贴视口底：' + b.trim());
+    const h = b.match(/height: calc\(var\(--tabbar-h\) \+ env\(safe-area-inset-bottom[^)]*\)\)/);
+    if (!h) throw new Error('底部栏高度应为 --tabbar-h + 安全区：' + b.trim());
+    if (/backdrop-filter\s*:/.test(b)) throw new Error('常驻 fixed 表面不该再吃模糊预算');
+    const zi = b.match(/z-index: (\d+)/);
+    const mask = css.match(/--z-drawer-mask: (\d+)/);
+    if (!zi || !mask) throw new Error('底部栏 z-index 或 --z-drawer-mask 缺失');
+    if (Number(zi[1]) >= Number(mask[1])) {
+      throw new Error(`标签栏 z-index ${zi[1]} 必须低于抽屉遮罩 ${mask[1]}，否则抽屉打开时两层导航打架`);
+    }
+  });
+
+  t('style.css：三个滚动容器各按 --tabbar-h 预留底部，且就是 activeScrollEl 那一组', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    const st = fs.readFileSync(path.join(root, 'src', 'core', 'state.js'), 'utf8');
+    if (!/^  --tabbar-h: \d+px;$/m.test(css)) throw new Error(':root 缺 --tabbar-h 令牌（预留高度与栏高必须同源）');
+    const segs = css.match(/@media \(max-width: 720px\)[\s\S]*?\n\}\n/g) || [];
+    const block = segs.join('\n');
+    const padAt = block.indexOf('padding-bottom: calc(var(--tabbar-h)');
+    if (padAt < 0) throw new Error('≤720 未给滚动容器预留底部空间：最后一条内容会被标签栏盖住');
+    // 选择器列表是多行的，往回取到规则开头（再兜一层长度，够装下三条选择器）
+    const pad = block.slice(Math.max(0, padAt - 200), padAt).replace(/\/\*[\s\S]*?\*\//g, '');
+    // 预留规则的选择器必须覆盖 activeScrollEl() 返回的三个容器，少一个就是那个页面被盖住
+    const containers = [
+      ['.reader-main', "#readerView .reader-main"],
+      ['#cardsRoot > main.wrap', '#cardsRoot > main.wrap'],
+      ['#aiView', "getElementById('aiView')"],
+    ];
+    for (const [cssSel, jsSel] of containers) {
+      if (!pad.includes(cssSel)) throw new Error('预留底部空间缺滚动容器 ' + cssSel);
+      if (!st.includes(jsSel)) throw new Error('activeScrollEl 已不再取 ' + cssSel + '（找的是 ' + jsSel + '），本条守门需同步');
+    }
+    // toast 默认底边 40px 落在 56px 的栏里，z-index 又高于栏 —— 提示语会骑在标签栏上
+    if (!/\.toast \{ bottom: calc\(var\(--tabbar-h\) \+ var\(--sp-4\) \+ env\(safe-area-inset-bottom/.test(block)) {
+      throw new Error('≤720 未把 toast 抬到标签栏之上');
+    }
+  });
+
+  t('style.css：≤560 卡片动作只留复制链接，命中区仍 ≥36', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    const segs = css.match(/@media \(max-width: 560px\)[\s\S]*?\n\}\n/g) || [];
+    const block = segs.join('\n');
+    const hide = block.match(/([^{}]*?)\{\s*display: none; \}/g) || [];
+    for (const sel of ['.card-media-actions .btn-open', '.card-foot .btn-open', '.row-actions .btn-open']) {
+      if (!hide.some((r) => r.includes(sel))) throw new Error('≤560 未收起「打开原文」：' + sel);
+    }
+    const copy = block.match(/\.card-media-actions \.btn-copy,[\s\S]*?\{([^}]*)\}/);
+    if (!copy || !/width: 36px/.test(copy[1]) || !/height: 36px/.test(copy[1])) {
+      throw new Error('≤560 复制链接应收到 36px 方块（再小就不像能按的地方）');
+    }
+  });
+
+  // 「恢复上次位置」只属于视图导航：筛选 / 深链 / 命令面板换了列表，沿用旧位置会停在半截。
+  t('源码：只有 ViewNav 传 restoreScroll，其它 switchView 调用保持回顶', () => {
+    const root = path.join(__dirname, '..', '..');
+    const calls = [];
+    const walk = (dir) => {
+      for (const name of fs.readdirSync(dir)) {
+        const p = path.join(dir, name);
+        if (fs.statSync(p).isDirectory()) { walk(p); continue; }
+        if (!/\.(js|jsx)$/.test(name)) continue;
+        const src = fs.readFileSync(p, 'utf8');
+        for (const m of src.matchAll(/switchView\(([^)]*)\)/g)) {
+          calls.push({ rel: path.relative(root, p), arg: m[0] });
+        }
+      }
+    };
+    walk(path.join(root, 'src'));
+    if (calls.length < 5) throw new Error('没抓到 switchView 调用，本条守门失效（' + calls.length + ' 处）');
+    for (const c of calls) {
+      const isNav = c.rel === path.join('src', 'ui', 'ViewNav.jsx');
+      if (isNav) {
+        if (!/restoreScroll/.test(c.arg)) throw new Error('ViewNav 必须传 restoreScroll，否则切回来又回顶');
+        if (!/retap/.test(c.arg)) throw new Error('ViewNav 必须传 retap，再点当前视图要能回顶');
+      } else if (/restoreScroll|retap/.test(c.arg)) {
+        throw new Error(c.rel + ' 不该要求恢复位置：' + c.arg);
+      }
+    }
   });
 
   t('P1 动效：cardIn keyframes + 卡片错峰 + 弹层/遮罩沿用基础层 popIn/fadeIn + reduce-motion 局部关闭', () => {    const root = path.join(__dirname, '..', '..');

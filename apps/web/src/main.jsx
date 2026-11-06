@@ -16,6 +16,7 @@ import './style.css';
 import { CommandPalette } from './cmdk/CommandPalette.jsx';
 import { CardsView } from './views/CardsView.jsx';
 import { ReaderView } from './views/ReaderView.jsx';
+import { ViewNav } from './ui/ViewNav.jsx';
 import { Overlays } from './ui/Overlays.jsx';
 
 /* v1.6.0：顶栏并入各视图自带的第一行（≡频道 / 标题 / 搜索 / ⋮），
@@ -96,6 +97,18 @@ if (overlaysRoot) {
   createRoot(overlaysRoot).render(
     <React.StrictMode>
       <Overlays />
+    </React.StrictMode>
+  );
+}
+
+/* 移动端底部视图标签栏（v2.4.0）：只在 ≤720px 显示，复用同一份 ViewNav 组件。
+ * 放在视图容器之外，避免 .reader-head 的容器查询（container-type）把 fixed
+ * 后代限制在头部那一小块里。桌面 / 平板由各视图顶栏里的实例负责。 */
+const mobileTabbarRoot = document.getElementById('mobileTabbarRoot');
+if (mobileTabbarRoot) {
+  createRoot(mobileTabbarRoot).render(
+    <React.StrictMode>
+      <ViewNav />
     </React.StrictMode>
   );
 }

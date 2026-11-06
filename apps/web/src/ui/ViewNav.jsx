@@ -48,7 +48,7 @@ export function ViewNav() {
             aria-label={v.label}
             title={v.label}
             aria-current={active ? 'page' : undefined}
-            onClick={() => core.switchView(v.id)}
+            onClick={() => core.switchView(v.id, { restoreScroll: true, retap: true })}
           >
             <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + v.ico} /></svg>
             <span className="btn-label" aria-hidden="true">{v.label}</span>

@@ -96,6 +96,34 @@ export function scrollActiveTop(behavior = 'auto') {
   else el.scrollTop = 0;
 }
 
+/* ---------------- 视图滚动位置记忆（移动端底部标签栏） ----------------
+ * 三个视图是三个独立滚动容器，「切走再切回」时如果一律回顶，用户得重新翻回
+ * 刚才看到的位置。这里按视图 id 记一份 scrollTop：切页前存当前页、切回时恢复。
+ * 只活在内存里（刷新后回到顶部是合理的），也不参与账号偏好持久化。
+ *
+ * 注意：selectScope / jumpToFeed 这类「换了筛选条件」的入口仍应显式回顶 ——
+ * 旧位置属于旧列表，恢复它反而会停在半截。所以默认 switchView 仍回顶，
+ * 只有视图导航（ViewNav）明确传 restoreScroll 时才走这里。 */
+const viewScroll = new Map();
+
+export function rememberViewScroll(tab = state.tab) {
+  const el = activeScrollEl();
+  if (!el) return;
+  const top = Math.max(0, Number(el.scrollTop) || 0);
+  if (top > 0) viewScroll.set(tab, top);
+  else viewScroll.delete(tab);
+}
+
+export function restoreViewScroll(tab = state.tab) {
+  const el = activeScrollEl();
+  if (!el) return;
+  const top = viewScroll.get(tab) || 0;
+  if (!top) return;
+  // 与 scrollActiveTop 同一套兜底：jsdom / 老浏览器没有 Element.scrollTo
+  if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: 'auto' });
+  else el.scrollTop = top;
+}
+
 /* ---------------- 频道栏宽度 ----------------
  * 实际生效的是 :root 上的 --reader-side-w（.reader 网格第一列引用它）。
  * 拖拽跟手期间由组件直接写这个变量（一次拖拽几十帧，走 state 会把整棵阅读页重渲染），

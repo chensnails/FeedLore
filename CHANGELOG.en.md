@@ -9,6 +9,23 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ## Unreleased
 
+### Added
+
+- **Bottom view tab bar on phones**: at ≤720px the 文章 / 卡片 / 日报 switcher moves from the
+  header cluster to a fixed bar at the bottom of the screen, where a thumb can reach it; the
+  header copy hides at the same time so there is never one nav above and below. Channel drawer,
+  modals and the command palette cover the bar instead of fighting it for layers. The bar grows
+  by the safe-area inset on notched devices, and all three view containers reserve that same
+  height so the last item is never hidden.
+- **Views remember where you left them**: switching away and back with the view navigation lands
+  on the row you were reading; tapping the current view's icon scrolls smoothly back to the top.
+  Changing a filter, opening a deep link or jumping from the command palette still goes to the
+  top — an old offset belongs to an old list. The memory lives in RAM only, so a reload starts at
+  the top.
+- **Slimmer card actions on narrow screens**: at ≤560px cards and list rows keep only
+  「复制链接」, shrunk to a 36px square; 「打开原文」 moves to the card detail (the card itself
+  already opens it), so the title and image become the subject again.
+
 ### Security
 
 - **A hard floor on the Node runtime inside the image**: CI now reads

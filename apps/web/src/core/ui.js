@@ -6,7 +6,7 @@
  * ============================================================ */
 
 import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, writeHash, parseHash } from './util.js';
-import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, scrollActiveTop, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
+import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, scrollActiveTop, rememberViewScroll, restoreViewScroll, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
 import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
 import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, setEntryFlag, focusReaderArt, restoreReaderArt } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
@@ -118,11 +118,17 @@ document.addEventListener('keydown', (ev) => {
 /* ============================================================
  * 页面切换（文章 / 卡片 / AI）
  * ============================================================ */
-export function switchView(name) {
+export function switchView(name, opts) {
   if (TABS.indexOf(name) < 0) name = 'reader';
+  const o = opts || {};
+  const from = state.tab;
+  // 切走之前先把「离开的那一页」滚到哪儿记下来；回来时（仅 ViewNav 显式要求）
+  // 再恢复。默认仍回顶：换筛选 / 深链 / 命令面板跳转都不该沿用旧列表的位置。
+  if (from !== name) rememberViewScroll(from);
   // 日报关掉后这里兜一道：#digest 深链、命令面板遗留项、外部调用都从同一个口子回落，
   // 不用在每个入口各写一遍判断（顶栏按钮的隐藏只是让它平时看不见）
   if (name === 'ai' && layoutPref.digestEnabled === false) name = 'reader';
+  const same = from === name;
   // AI 视图按需加载（v2.2.0）：切过去之前先发起 chunk 下载，别等视图切完才开始。
   if (name === 'ai' && typeof window.__mountAi === 'function') {
     const p = window.__mountAi();
@@ -161,8 +167,13 @@ export function switchView(name) {
     // AI 视图已 React 化：通知 AiView 激活 / 隐去（切到 ai 时由组件自行加载子页数据）
     window.dispatchEvent(new CustomEvent('__viewChanged', { detail: name }));
 
-    // 新视图的容器切完后把它自己的滚动位置归零（window.scrollTo 在这里是空操作）
-    scrollActiveTop('auto');
+    // 新视图的容器切完后处理它自己的滚动位置（window.scrollTo 在这里是空操作）：
+    // - 点的是当前视图（底部标签栏再点一次）→ 平滑回顶；
+    // - 视图导航切回来 → 恢复上次离开的位置；
+    // - 其它入口（筛选 / 深链 / 命令面板）→ 保持旧行为，回到顶部。
+    if (same && o.retap) scrollActiveTop(prefersReducedMotion() ? 'auto' : 'smooth');
+    else if (o.restoreScroll && !same) restoreViewScroll(name);
+    else scrollActiveTop('auto');
   };
   // View Transitions API：视图切换时整页交叉淡入（渐进增强，减少动态效果时跳过）
   if (document.startViewTransition && !prefersReducedMotion()) {
