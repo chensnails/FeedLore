@@ -10,7 +10,7 @@
 
 import { core } from '@core';
 import { useEffect, useState } from 'react';
-import { PaneFoot, Result } from './primitives.jsx';
+import { PaneFoot, Result, useFormLoadGuard } from './primitives.jsx';
 
 const S = () => core;
 
@@ -31,6 +31,8 @@ export function DigestPane({ onDirtyChange }) {
   const [feedsList, setFeedsList] = useState([]);
   const [result, setResult] = useState(null);   // { ok, msg } | null
   const [busy, setBusy] = useState(false);
+  // 异步回填守卫：/api/prefs 还没回来时用户已改动，就不能拿服务端旧值盖掉本地编辑
+  const guard = useFormLoadGuard();
 
   useEffect(() => { load(); }, []);
 
@@ -50,9 +52,13 @@ export function DigestPane({ onDirtyChange }) {
         keepDays: String(d.keepDays == null ? 30 : d.keepDays),
         style: typeof d.style === 'string' ? d.style : '',
       };
-      setForm(next);
-      setSaved(JSON.stringify(next));
-      setEnabled((data.layout && data.layout.digestEnabled) !== false);
+      // 用户已经在加载完成前动过表单：跳过回填，脏态基线仍是初始 EMPTY，
+      // 所以「有未保存的更改」会立刻出现，改动也不会被静默吃掉。
+      guard.apply(() => {
+        setForm(next);
+        setSaved(JSON.stringify(next));
+        setEnabled((data.layout && data.layout.digestEnabled) !== false);
+      });
     } catch (err) {
       setResult({ ok: false, msg: '读取日报设置失败：' + String((err && err.message) || err) });
     }
@@ -63,10 +69,11 @@ export function DigestPane({ onDirtyChange }) {
     } catch (_) { /* 列表拿不到时自定义区显示占位文案 */ }
   }
 
-  const setField = (k, v) => setForm((f) => Object.assign({}, f, { [k]: v }));
+  const setField = (k, v) => { guard.mark(); setForm((f) => Object.assign({}, f, { [k]: v })); };
 
   const onToggle = (ev) => {
     const on = ev.target.checked;
+    guard.mark();
     setEnabled(on);
     // 关掉时如果正停在日报页，桥里会把人带回文章页（入口没了页面还杵着最怪）
     S().setDigestEnabled(on);
@@ -74,6 +81,7 @@ export function DigestPane({ onDirtyChange }) {
   };
 
   const onToggleFeed = (fid, on) => {
+    guard.mark();
     setForm((f) => {
       const set = new Set(f.feeds);
       if (on) set.add(fid); else set.delete(fid);
@@ -129,6 +137,7 @@ export function DigestPane({ onDirtyChange }) {
   // 「恢复默认」是清掉自定义风格这一项（其余参数各有内置默认，交给服务端夹回）
   const onResetStyle = () => {
     if (!form.style && !JSON.parse(saved).style) { setResult({ ok: true, msg: '本来就没写自定义风格' }); return; }
+    guard.mark();
     setForm((f) => Object.assign({}, f, { style: '' }));
   };
 

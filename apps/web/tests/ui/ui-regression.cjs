@@ -6141,7 +6141,10 @@ const withEFP = (el, fn) => {
       if (!/import \{ ChannelTabs \} from '\.\.\/ui\/ChannelTabs\.jsx'/.test(src)) throw new Error(v + ' 未引用 ChannelTabs');
       if (!/<ChannelTabs /.test(src)) throw new Error(v + ' 未渲染 ChannelTabs');
     }
-    // 不许在别处再造一条标签带（两份实现必然各自演化）
+    // 不许在别处再造一条标签带（两份实现必然各自演化）。
+    // 只拦「真的渲染了第二份频道条」的代码：`core/reader.js` 里的 `.chan-tabs`
+    // 是量吸顶头部高度的**选择器字符串**，不是另一份 UI；用宽泛的 /chan-tab/
+    // 全文匹配会把这种合法引用误报成重复实现（11-07 实测踩过）。
     const files = [];
     const walk = (dir) => {
       for (const name of fs.readdirSync(dir)) {
@@ -6151,7 +6154,8 @@ const withEFP = (el, fn) => {
       }
     };
     walk(path.join(root, 'src'));
-    const dup = files.filter((p) => p !== compPath && /chan-tab/.test(fs.readFileSync(p, 'utf8')));
+    const dup = files.filter((p) => p !== compPath
+      && /(?:className|classList|createElement)[^\n]*chan-tab/.test(fs.readFileSync(p, 'utf8')));
     if (dup.length) throw new Error('频道条出现第二份实现：' + dup.map((p) => path.relative(root, p)).join(', '));
   });
 
@@ -6902,6 +6906,89 @@ const withEFP = (el, fn) => {
     if (!/st\.loadError \|\| !\(st\.entries \|\| \[\]\)\.length/.test(cards)) {
       throw new Error('CardsView 滚动哨兵仍会在首屏失败时无限重拉');
     }
+  });
+
+  // ============ 11-07：标题置顶与 Apple HIG 视觉层 ============
+  t('标题置顶：吸顶头部按实测高度让位，不再只读静态 --head-h', () => {
+    const root = path.join(__dirname, '..', '..');
+    const reader = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8').replace(/\r\n/g, '\n');
+    const fn = reader.match(/function readerHeadOffset\(\) \{[\s\S]*?\n\}/);
+    if (!fn) throw new Error('readerHeadOffset 不见了');
+    const body = fn[0];
+    if (!/getBoundingClientRect/.test(body)) throw new Error('必须实测吸顶头部高度，静态 --head-h 少算频道条那一行');
+    if (!/\.reader-head/.test(body) || !/\.chan-tabs/.test(body)) throw new Error('工具行与频道条都要计入吸顶高度');
+    if (!/--reader-sticky-offset/.test(body)) throw new Error('实测值要写回令牌，CSS 才能同源');
+    // 每帧重算：正文异步到达 / 频道条换行都会改头部高度
+    const place = reader.match(/const place = \(\) => \{[\s\S]*?\n  \};/);
+    if (!place || !/const headOff = readerHeadOffset\(\)/.test(place[0])) {
+      throw new Error('headOff 必须在每帧的 place() 里重算，不能只量一次');
+    }
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/scroll-margin-top: var\(--reader-sticky-offset,/.test(css)) {
+      throw new Error('scroll-margin-top 要跟 JS 实测同源（窄屏头部两行会盖住标题）');
+    }
+  });
+
+  t('Apple HIG 视觉层：分层导入 + 令牌真源 + 不破坏硬规矩', () => {
+    const root = path.join(__dirname, '..', '..');
+    const main = fs.readFileSync(path.join(root, 'src', 'main.jsx'), 'utf8').replace(/\r\n/g, '\n');
+    const iBase = main.indexOf("import './style.css';");
+    const iHig = main.indexOf("import './hig.css';");
+    if (iBase < 0 || iHig < 0 || iHig <= iBase) throw new Error('hig.css 必须在 style.css 之后导入（后写者胜）');
+    const hig = fs.readFileSync(path.join(root, 'src', 'hig.css'), 'utf8').replace(/\r\n/g, '\n');
+    for (const token of ['--radius-xs:', '--radius-lg:', '--radius-xl:', '--hig-separator:',
+      '--hig-fill:', '--hig-tint:', '--hig-press-scale:', '--ease:']) {
+      if (!hig.includes(token)) throw new Error('设计令牌缺失：' + token);
+    }
+    // 只看真实声明：契约注释里会提到这个属性名，别把说明文字当成违规
+    if (/backdrop-filter\s*:/.test(hig)) throw new Error('视觉层不得新增 backdrop-filter（模糊预算 ≤4，fixed 表面会掉帧）');
+    if (/opacity:/.test(hig)) throw new Error('次要文字禁用 opacity 弱化（对比度 ≥4.5:1）');
+    if (!/inset 0 0 0 2px var\(--hig-tint\)/.test(hig)) throw new Error('焦点环必须是 2px 实色主色');
+    // 布局契约留在 style.css：视觉层不碰网格列数与触屏命中区
+    for (const forbidden of ['grid-template-columns', '--hit-min:']) {
+      if (hig.includes(forbidden)) throw new Error('视觉层不该改布局契约：' + forbidden);
+    }
+    const login = fs.readFileSync(path.join(root, 'src', 'login.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/Apple HIG 视觉层（登录页）/.test(login) || !/--hig-fill:/.test(login)) {
+      throw new Error('登录页是独立入口，要补同一套视觉语言');
+    }
+  });
+
+  t('Apple HIG 视觉层：当前阅读项突出、按压反馈统一、移动规则同断点', () => {
+    const root = path.join(__dirname, '..', '..');
+    const hig = fs.readFileSync(path.join(root, 'src', 'hig.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/\.art-item\.open \.art-title \{ color: var\(--hig-label\); font-weight: 600; \}/.test(hig)) {
+      throw new Error('展开即已读会把标题降成次要色，正在读的反而最看不清');
+    }
+    if (!/\.btn:not\(:disabled\)[^\n]*:active \{[\s\S]{0,120}scale\(var\(--hig-press-scale\)\)/.test(hig)) {
+      throw new Error('按钮按压反馈要统一成整块轻缩，不要 translateY(1px) 各写一份');
+    }
+    const mq = '@media (max-width: 720px), (max-height: 500px) and (pointer: coarse)';
+    const at = hig.indexOf(mq);
+    if (at < 0) throw new Error('移动降级主断点不能少');
+    const seg = hig.slice(at, hig.indexOf('\n}\n', at) + 3);
+    if (!/\.mobile-tabbar \.viewnav \{/.test(seg)) throw new Error('底栏规则必须写在同一个断点里，否则被旧层叠盖掉');
+  });
+
+  t('设置：异步回填不得覆盖加载期间的用户输入', () => {
+    const dir = path.join(__dirname, '..', '..', 'src', 'settings');
+    const prim = fs.readFileSync(path.join(dir, 'primitives.jsx'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/export function useFormLoadGuard/.test(prim)) throw new Error('缺共享的回填守卫');
+    if (!/if \(touched\.current\) return false/.test(prim)) throw new Error('守卫没有拦住已编辑表单的回填');
+    for (const f of ['DigestPane.jsx', 'ModelPane.jsx']) {
+      const src = fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r\n/g, '\n');
+      if (!/const guard = useFormLoadGuard\(\)/.test(src)) throw new Error(f + ' 未接入守卫');
+      if (!/guard\.mark\(\)/.test(src)) throw new Error(f + ' 用户输入没有标记 touched');
+      const load = src.match(/async function load\([^)]*\) \{[\s\S]*?\n  \}/);
+      if (!load) throw new Error(f + ' 找不到 load()');
+      const iApply = load[0].indexOf('guard.apply(');
+      if (iApply < 0) throw new Error(f + ' 回填没走守卫');
+      // 守卫回调内部的 setForm(next) 是合法的；只拦「进守卫之前就无条件覆盖」
+      if (/setForm\(next\)/.test(load[0].slice(0, iApply))) throw new Error(f + ' 仍在无条件覆盖表单');
+    }
+    const model = fs.readFileSync(path.join(dir, 'ModelPane.jsx'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/async function load\(force = false\)/.test(model)) throw new Error('模型面板缺强制重拉通道');
+    if ((model.match(/await load\(true\)/g) || []).length < 2) throw new Error('保存 / 清除后的主动重拉必须绕过守卫，否则掩码态刷新不回来');
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });

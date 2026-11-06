@@ -3142,7 +3142,9 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
      进入文章的置顶由 core/reader.js#scrollReaderToArt 直接设 scrollTop 完成
      （用 scrollIntoView 会在手风琴收起的旧布局里测量，导致新文章被甩到视口上方）；
      这条 scroll-margin 留给 focusReaderArt 的 block:'center' 等原生滚动场景。 */
-  scroll-margin-top: calc(var(--head-h, 52px) + 8px);
+  /* 由 core/reader.js 每帧按吸顶头部实测高度写入；回退值只用于 JS 尚未跑到的首帧。
+     窄屏头部是两行（工具行 + 频道条），旧写法按 --head-h 会少算一行，把标题盖住。 */
+  scroll-margin-top: var(--reader-sticky-offset, calc(var(--head-h, 52px) + 8px));
 }
 .art-item:hover { border-color: var(--border-strong); box-shadow: var(--elevation-2); }
 

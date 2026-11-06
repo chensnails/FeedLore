@@ -182,20 +182,31 @@ function readerScroller() {
   return document.querySelector('#readerView .reader-main');
 }
 
-/** 吸顶工具条的高度：置顶时要让出它，否则新文章的第一行正好被盖住。
- *  与 style.css 的 .art-item { scroll-margin-top } 同口径（--head-h + 8）。 */
+/** 吸顶头部的真实高度：置顶时要让出它，否则新文章的第一行正好被盖住。
+ *
+ *  不要再读静态 `--head-h`：窄屏的吸顶头部是两行（工具行 44 + 频道条 44 = 88），
+ *  而令牌仍写 44。390×844 真机尺寸下浏览器实测：展开后标题被头部盖住 35px，
+ *  只露出下半截，看起来就是「标题被划过头 / 划掉了」。
+ *  这里直接量当前布局里 sticky 头部的底边，频道条出现、横屏压缩、搜索框换行、
+ *  密度变化都自动跟随，不必再为每个断点补一个魔数。
+ *  结果写回 `--reader-sticky-offset`，让 CSS 的 scroll-margin-top 与这里同源。 */
 function readerHeadOffset() {
   const main = readerScroller();
-  let h = 0;
-  if (main) {
-    const v = getComputedStyle(main).getPropertyValue('--head-h');
-    h = parseFloat(v) || 0;
+  if (!main) return 56;
+  const mainTop = main.getBoundingClientRect().top;
+  let bottom = 0;
+  for (const sel of ['.reader-head', '.chan-tabs', '.view-toolbar']) {
+    for (const el of main.querySelectorAll(sel)) {
+      const r = el.getBoundingClientRect();
+      if (r.height <= 0 || r.bottom <= mainTop) continue;
+      bottom = Math.max(bottom, r.bottom - mainTop);
+    }
   }
-  if (!h) {
-    const root = getComputedStyle(document.documentElement).getPropertyValue('--head-h');
-    h = parseFloat(root) || 48;
-  }
-  return h + 8;
+  // 头部尚未挂载 / 被隐藏（首帧、抽屉态）时回退到令牌，别把标题顶到屏幕外
+  if (!bottom) bottom = parseFloat(getComputedStyle(main).getPropertyValue('--head-h')) || 52;
+  const offset = Math.round(bottom) + 8;
+  main.style.setProperty('--reader-sticky-offset', offset + 'px');
+  return offset;
 }
 
 /** 把文章列表滚到「某篇的标题行对齐内容区顶部」，并把页面级滚动一并归零。
@@ -219,9 +230,10 @@ function scrollReaderToArt(id) {
   const main = readerScroller();
   if (!main) return;
   const want = String(id);
-  const headOff = readerHeadOffset();
 
   const place = () => {
+    // 每帧重算：正文异步到达 / 频道条换行都会改吸顶头部高度，静态量一次会偏
+    const headOff = readerHeadOffset();
     // 页面级滚动一并归零：窄屏抽屉态等没有独立滚动容器的场合，
     // 窗口残留的偏移会让「置顶」看起来没生效。
     if (window.scrollY > 0 || document.documentElement.scrollTop > 0) window.scrollTo(0, 0);

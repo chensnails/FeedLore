@@ -172,3 +172,51 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 }
 .tip { margin-top: 20px; text-align: center; font-size: 12px; color: var(--faint); }
 .tip code { background: var(--code-bg); padding: 1px 6px; border-radius: var(--radius-xs, 6px); font-size: 12px; }
+
+/* ---------------------------------------------------------------------------
+ * Apple HIG 视觉层（登录页）
+ * ---------------------------------------------------------------------------
+ * 登录页是独立入口，不会加载主站的 hig.css，所以在这里补同一套语言：
+ * 连续圆角、淡填充输入框、实色焦点环、整块轻缩的按压反馈。
+ * 颜色仍全部取自本文件 :root / 主题块，不另立一套色板。
+ */
+:root {
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --hig-fill: color-mix(in srgb, var(--text) 5%, var(--panel));
+  --hig-fill-2: color-mix(in srgb, var(--text) 9%, var(--panel));
+  --hig-separator: color-mix(in srgb, var(--text) 11%, transparent);
+  --hig-tint-halo: color-mix(in srgb, var(--accent) 22%, transparent);
+  --hig-ease: cubic-bezier(.32, .72, 0, 1);
+}
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+.login-card { border-radius: var(--radius-lg); border-color: var(--hig-separator); }
+input {
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-md);
+  background: var(--hig-fill);
+  transition: border-color var(--dur-base) var(--hig-ease),
+              box-shadow var(--dur-base) var(--hig-ease),
+              background var(--dur-base) var(--hig-ease);
+}
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--hig-tint-halo);
+  background: var(--panel);
+}
+button {
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  letter-spacing: -.01em;
+  transition: background var(--dur-base) var(--hig-ease),
+              transform .12s var(--hig-ease);
+}
+button:not(:disabled):active { transform: scale(.975); }
+.theme-toggle { border-radius: var(--radius-sm); border-color: var(--hig-separator); }
+.error, .tip code { border-radius: var(--radius-sm); }
+@media (prefers-reduced-motion: reduce) {
+  button, input, .login-card { transition: none !important; animation: none !important; }
+  button:active { transform: none !important; }
+}

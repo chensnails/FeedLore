@@ -8,9 +8,13 @@
  *  - `@core` 求值时就会绑定全局事件、应用首屏主题/视图并跑 init()，必须先于组件挂载；
  *  - 样式表必须由入口 import，Vite 由此打出带内容哈希的 CSS —— 手写固定路径的
  *    <link> 会被 CDN 缓存 1~4 小时，出现「新 HTML + 旧 CSS」的错配。
+ *  - 样式分两层：`style.css` 是历史布局层（骨架 / 断点 / 几何 / 状态类名），
+ *    `hig.css` 是 Apple HIG 视觉层（令牌 / 材质 / 圆角 / 反馈 / 控件形态）。
+ *    顺序不能反：后者靠「后写者胜」覆盖前者的视觉声明，不复制任何布局规则。
  */
 import '@core';
 import './style.css';
+import './hig.css';
 import { mountAll } from './kernel/mounts.jsx';
 
 mountAll();

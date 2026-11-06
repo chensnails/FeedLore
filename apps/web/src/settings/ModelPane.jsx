@@ -9,7 +9,7 @@
 
 import { core } from '@core';
 import React, { useEffect, useState } from 'react';
-import { PaneFoot, Result } from './primitives.jsx';
+import { PaneFoot, Result, useFormLoadGuard } from './primitives.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -44,6 +44,8 @@ export function ModelPane({ onDirtyChange }) {
   // result: { ok, msg } | null
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState('');   // '' | 'test' | 'save' | 'clear'
+  // 与日报面板同一条守卫：GET 回来前用户已输入，就不能用服务端旧值覆盖表单
+  const guard = useFormLoadGuard();
 
   /* ---- 未保存改动：表单指纹 + 已输入但未保存的 Key ---- */
   const formDirty = !!savedForm && JSON.stringify(form) !== savedForm;
@@ -57,7 +59,10 @@ export function ModelPane({ onDirtyChange }) {
   // 读取失败时才在 catch 里置 err；初次进入时 result 本就为 null。
   useEffect(() => { load(); }, []);
 
-  async function load() {
+  // force：保存 / 清除成功后的主动重拉，属于「用户已确认」，必须允许回填并重置 touched；
+  // 只有挂载那次（load() 无参）才受守卫保护，避免覆盖加载期间的输入。
+  async function load(force = false) {
+    if (force) guard.reset();
     try {
       const res = await S().apiFetch('/api/prefs');
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -72,19 +77,23 @@ export function ModelPane({ onDirtyChange }) {
         apiKeySet: !!llm.apiKeySet,
         apiKeyHint: llm.apiKeyHint || '••••',
       };
-      setForm(next);
-      setSavedForm(JSON.stringify(next));
-      // Key 输入框每次回填都清空并回到掩码态：留空 = 不修改
-      setApiKey('');
-      setShowKey(false);
+      // 用户已在加载完成前输入：只补一条脏态基线，不覆盖任何输入框
+      const applied = guard.apply(() => {
+        setForm(next);
+        setSavedForm(JSON.stringify(next));
+        // Key 输入框每次回填都清空并回到掩码态：留空 = 不修改
+        setApiKey('');
+        setShowKey(false);
+      });
+      if (!applied) setSavedForm((s) => s || JSON.stringify(EMPTY));
     } catch (err) {
       // 读取失败时以当前空表单为基线，用户仍可手填后保存
-      setSavedForm(JSON.stringify(EMPTY));
+      guard.apply(() => setSavedForm(JSON.stringify(EMPTY)));
       setResult({ ok: false, msg: '读取配置失败：' + String((err && err.message) || err) });
     }
   }
 
-  const set = (k) => (ev) => setForm((f) => Object.assign({}, f, { [k]: ev.target.value }));
+  const set = (k) => (ev) => { guard.mark(); setForm((f) => Object.assign({}, f, { [k]: ev.target.value })); };
 
   const onTest = async () => {
     setBusy('test');
@@ -134,7 +143,7 @@ export function ModelPane({ onDirtyChange }) {
       const msg = typedKey ? '模型配置与 API Key 已保存' : '模型配置已保存';
       // 表单保存只用内联结果，不再叠一层 toast（列表级动作才用 toast）
       setResult({ ok: true, msg });
-      await load();
+      await load(true);
     } catch (err) {
       setResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
     } finally {
@@ -160,7 +169,7 @@ export function ModelPane({ onDirtyChange }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setResult({ ok: false, msg: S().errText(data, '清除失败') }); return; }
       setResult({ ok: true, msg: 'API Key 已清除' });
-      await load();
+      await load(true);
     } catch (err) {
       setResult({ ok: false, msg: '清除失败：' + String((err && err.message) || err) });
     } finally {
@@ -195,7 +204,7 @@ export function ModelPane({ onDirtyChange }) {
               spellCheck="false"
               autoComplete="off"
               value={apiKey}
-              onChange={(ev) => setApiKey(ev.target.value)}
+              onChange={(ev) => { guard.mark(); setApiKey(ev.target.value); }}
             />
             <button
               className="btn btn-ghost btn-sm"
@@ -265,7 +274,7 @@ export function ModelPane({ onDirtyChange }) {
                 id="llmThinking"
                 type="checkbox"
                 checked={form.thinking}
-                onChange={(ev) => setForm((f) => Object.assign({}, f, { thinking: ev.target.checked }))}
+                onChange={(ev) => { guard.mark(); setForm((f) => Object.assign({}, f, { thinking: ev.target.checked })); }}
               />
               <span className="switch-slider" />
             </span>

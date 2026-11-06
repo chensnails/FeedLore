@@ -5,7 +5,33 @@
  * 不改类名与 data-sec —— 样式与折叠状态持久化仍完全依赖原有的 class / 属性。
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+
+/**
+ * 表单面板的异步回填守卫。
+ *
+ * 面板一挂载就发 GET /api/prefs，用户完全可能在响应回来前就开始输入。
+ * 旧实现拿到数据后无条件 `setForm(next)` + `setSaved(...)`，会把用户刚敲的内容
+ * 整块覆盖、改动静默丢失（浏览器实测：拨「每天自动生成」后 checked 被弹回、
+ * 不进脏态，保存按钮仍是禁用的）。而且时序一变就复现，属于典型的隐性竞态。
+ *
+ * 用法：
+ *   const guard = useFormLoadGuard();
+ *   每次用户输入 → guard.mark()
+ *   load() 回填   → guard.apply(() => { setForm(next); setSaved(...) })
+ * apply 返回 false 表示「用户已编辑，本次回填被跳过」，调用方只需保证脏态基线有效。
+ */
+export function useFormLoadGuard() {
+  const touched = useRef(false);
+  const mark = useCallback(() => { touched.current = true; }, []);
+  const apply = useCallback((fn) => {
+    if (touched.current) return false;
+    fn();
+    return true;
+  }, []);
+  const reset = useCallback(() => { touched.current = false; }, []);
+  return { mark, apply, reset };
+}
 
 /**
  * 一个可折叠分组。`open` 只是首次默认值；用户改过之后以 bindSections 记住的状态为准。

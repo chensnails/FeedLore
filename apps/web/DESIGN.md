@@ -2,7 +2,10 @@
 
 > 适用范围：`apps/web`。
 > 前端沿用 v1 的交互与界面（整体搬入，未重设计）。权威实现：
-> - 样式：`apps/web/src/style.css`（顶部有断点索引，改之前先读）
+> - 样式分两层：`apps/web/src/style.css`（历史布局层，顶部有断点索引，改之前先读）
+>   + `apps/web/src/hig.css`（Apple HIG 视觉系统层：令牌 / 材质 / 圆角 / 反馈 / 控件形态）。
+>   后者由 `main.jsx` 在前者**之后**导入，靠「后写者胜」覆盖视觉声明，不复制任何布局规则。
+>   登录页是独立入口，只加载 `login.css`，其末尾带一份同源的简化视觉层。
 > - 视图：`apps/web/src/views/`（文章 / 卡片 / 日报三视图）
 > - 逻辑单例：`apps/web/src/core/`（`@core` 别名）
 > - 设置：`apps/web/src/settings/`（8 个页签）
@@ -34,6 +37,22 @@
    请求层统一在 `core/util.js`：GET 单次 8 秒 + 一次幂等重试，写操作 30 秒且绝不自动重试；
    上传归档 / RSS 刷新等长任务显式给 `timeoutMs`。两页列表各带 controller / generation，
    「重试」必须能打断悬挂请求，旧的慢响应不得覆盖新列表；切页与自动刷新都要有互斥，避免弱网叠请求。
+7. **样式两层，各管一件事**。`style.css` 管骨架 / 断点 / 几何 / 状态类名；`hig.css` 管设计令牌、
+   材质、圆角、字阶、按压反馈、控件形态。视觉层**不改** grid 列数、`--hit-min`、字号下限、
+   断点数值，也不新增 `backdrop-filter`（模糊预算仍是 4 条）。颜色一律用 `color-mix()` 从现有
+   主题变量派生，自动适配 light / dark / github × 6 档主色，别在视觉层复制一套色板。
+   焦点环保持 2px 实色 `--accent`，次要文字禁用 opacity 弱化。移动端覆盖规则必须写进
+   `@media (max-width:720px), (max-height:500px) and (pointer:coarse)` 同一个断点里。
+8. **展开文章的置顶按实测吸顶高度让位**。`core/reader.js#readerHeadOffset` 每帧量
+   `.reader-head` / `.chan-tabs` / `.view-toolbar` 的底边，写回 `--reader-sticky-offset`，
+   CSS 的 `scroll-margin-top` 与它同源。**不要再读静态 `--head-h`**：窄屏头部是两行
+   （工具行 44 + 频道条 44 = 88），令牌仍写 44，实测会少算一行、把展开标题盖住 35px，
+   看起来就像「标题被划过头」。频道条出现、横屏压缩、搜索换行都由实测自动跟随。
+9. **设置表单的异步回填不许覆盖用户输入**。面板一挂载就 GET `/api/prefs`，用户在响应
+   回来前完全可能已经开始改。统一用 `settings/primitives.jsx#useFormLoadGuard`：输入时
+   `mark()`，回填时 `apply()`；`apply` 返回 false 就跳过 `setForm` / `setSaved`，
+   脏态基线仍按初始值算。模型面板保存 / 清除成功后的主动重拉走 `load(true)` 绕过守卫，
+   否则掩码态刷新不回来。日报、模型两个表单型面板都已接入，新增面板照此办理。
 
 ## 2. 布局骨架
 
@@ -136,10 +155,17 @@
 ## 5. 守门（改完必须全绿）
 
 ```bash
+corepack pnpm -r run typecheck                     # 类型
 corepack pnpm --filter @feedlore/web run build     # 构建
-node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算
-corepack pnpm --filter @feedlore/web run test      # jsdom UI 回归（453 项）
-corepack pnpm -r run test                          # 契约 + 服务端
+node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算（49 项）
+DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归（508 项）
+node .workbuddy/ui-lab/verify.mjs --only=all --shots --no-build
+  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 多视口截图（54 项）
+node .workbuddy/ui-lab/weaknet.mjs --scenario=all  # 弱网专项：悬挂 / 慢响应 / 503 / 连点（14 项）
+node .workbuddy/ui-lab/geometry.mjs                # 展开文章后标题与吸顶头部的遮挡量
 ```
+
+两套浏览器脚本用不同 CDP 端口（9336/9337、9346/9347、9356/9357），**串行跑**更稳。
+`ui-lab/` 下的脚本与截图不入库，属本地验证工具。
 
 真机冒烟（需先部署到测试环境）：`node scripts/ui-smoke.mjs <url> <user> <pass>`。

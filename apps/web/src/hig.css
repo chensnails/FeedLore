@@ -1,0 +1,353 @@
+/* ============================================================================
+ * 笺川 · Apple HIG 视觉层（Design System Layer）
+ * ============================================================================
+ * 定位
+ * ----
+ * 本文件是「设计系统层」，`main.jsx` 在 `style.css` **之后**导入。
+ *   style.css  = 历史布局层：骨架、断点、几何、状态类名、栅格（不在此重写）
+ *   hig.css    = 视觉系统层：设计令牌、材质、圆角、字阶、反馈、控件形态
+ * 之所以分层而不是推倒重写 5600 行历史 CSS：断点规则按功能就近分散，合并会改变
+ * 层叠结果（实测 181 处偏差），且 UI 回归里大量断言直接锚定 style.css 的规则文本。
+ * 分层后：布局与视觉各一份真源、可独立回滚，后续按组件把规则逐块下沉即可。
+ *
+ * 契约（改动前必读）
+ * ------------------
+ * 1. **不改 DOM / class / 几何**：不碰 grid 列数、`--hit-min`、字号下限、断点数值。
+ *    视图切换仍只有 `.viewnav` + `ViewNav` 一份；`--tabbar-h` 派生所有底部留白。
+ * 2. **不新增 `backdrop-filter`**：常驻 fixed 表面逐帧重采样会掉帧，模糊预算
+ *    （≤4 条活跃声明）只留给 `.modal-mask` / `.cmdk-mask`，由 verify-dist 守门。
+ * 3. **焦点环保持 2px 实色 `--accent`**，不退回半透明 `--focus-ring` 光环（亮色仅 1.26:1）。
+ * 4. **次要文字禁用 opacity 弱化**：全部走实色语义令牌，对比度 ≥4.5:1。
+ * 5. **颜色一律派生自现有主题变量**，自动适配 light / dark / github × 6 档主色，
+ *    不在这里复制一套色板（主题真源仍是 style.css 的 `html[data-theme]`）。
+ * 6. `color-mix()` 只用于「填充 / 分隔线 / 阴影」这类自适应材质，不用于正文文字。
+ *
+ * 目录
+ * ----
+ * 1. 令牌       2. 基础排版    3. 按钮与控件   4. 内容卡片
+ * 5. 导航       6. 弹层与菜单  7. 反馈与状态   8. 动效与可访问
+ * ============================================================================ */
+
+/* ---------------------------------------------------------------------------
+ * 1. 令牌
+ * ---------------------------------------------------------------------------
+ * 形状 / 动效令牌在这里统一收口；颜色令牌只派生，不覆盖主题块。
+ * `--radius-*` 与 `--ease` 在 style.css 的主题块里没有被重定义，所以在 :root
+ * 覆盖即可全局生效；`--shadow-*` 会被暗色主题块覆盖，**故意不动**。
+ */
+:root {
+  /* 连续圆角（continuous corner）：半径随容器层级递增，
+     小控件 8 → 按钮 12 → 卡片 18 → 弹层 24，避免全站一个 10px 用到底。 */
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius: 16px;          /* 卡片 / 内容块 */
+
+  /* Apple 常用的「快出慢收」：起步利落、收尾柔和，比线性 ease-out 更有弹性感。
+     全站过渡与入场动画共用；--dur-* 保持原值，避免打乱已有的等待时序。 */
+  --ease: cubic-bezier(.32, .72, 0, 1);
+  --hig-press-scale: .965;
+  --hig-press-dur: .12s;
+
+  /* 语义材质：从主题色派生，三主题 × 六主色自动适配 */
+  --hig-label: var(--text);
+  --hig-secondary: var(--text-2);
+  --hig-tertiary: var(--text-muted);
+  --hig-quaternary: var(--text-faint);
+  --hig-bg: var(--bg);
+  --hig-surface: var(--panel);
+  --hig-surface-2: var(--panel-2);
+  --hig-separator: color-mix(in srgb, var(--text) 11%, transparent);
+  --hig-separator-strong: color-mix(in srgb, var(--text) 19%, transparent);
+  --hig-fill: color-mix(in srgb, var(--text) 5%, var(--panel));
+  --hig-fill-2: color-mix(in srgb, var(--text) 9%, var(--panel));
+  --hig-tint: var(--accent);
+  --hig-tint-strong: var(--accent-strong);
+  --hig-tint-text: var(--accent-text);
+  --hig-tint-soft: var(--accent-soft);
+  --hig-tint-halo: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. 基础排版
+ * --------------------------------------------------------------------------- */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+body { font-family: var(--font-ui); }
+::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* 数字表格化：时间 / 计数 / 未读数不随字形抖动，列表滚动时列更稳 */
+.art-date, .meta-date, .list-count, .badge-size, .badge-idx,
+.chan-tabs-more-n, .card-foot, .row-date, .dg-date {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 正文标题字距收紧一点点（Apple 的大标题习惯）；中文不受字距影响排版宽度 */
+.art-title, .card-title, .row-title, .modal-head h2, .page-title,
+.dd-sheet-title, .confirm-label {
+  letter-spacing: -.011em;
+}
+
+/* 滚动条：细、圆头、跟随主题的淡色，不再用系统默认的粗方块 */
+* { scrollbar-width: thin; scrollbar-color: var(--hig-separator-strong) transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--hig-separator-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. 按钮与控件
+ * ---------------------------------------------------------------------------
+ * 统一一条反馈规则：可交互控件按下时轻微缩放，抬起回弹。
+ * 旧的 `.btn-primary:active { transform: translateY(1px) }` 是「压下去」的拟物感，
+ * 与 iOS 的「整块轻缩」不一致；这里用更高特异性收成一套。
+ */
+.btn {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  letter-spacing: -.01em;
+  transition:
+    transform var(--hig-press-dur) var(--ease),
+    background var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease),
+    color var(--dur-base) var(--ease),
+    box-shadow var(--dur-base) var(--ease);
+}
+.btn:not(:disabled):not([disabled]):not([aria-disabled="true"]):not([aria-busy="true"]):active {
+  transform: scale(var(--hig-press-scale));
+}
+.btn-primary {
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 28%, transparent),
+              0 4px 14px var(--accent-glow);
+}
+.btn-primary:active { transform: scale(var(--hig-press-scale)); }
+.btn-ghost {
+  background: var(--hig-fill);
+  border-color: var(--hig-separator);
+}
+.btn-ghost:hover { background: var(--hig-tint-soft); }
+.btn-danger-solid:active { transform: scale(var(--hig-press-scale)); }
+.btn-sm { border-radius: var(--radius-sm); }
+
+/* 图标按钮：正方形时用「胶囊半径」自然成圆，比 8px 方角更接近 iOS 工具栏 */
+.icon-btn {
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-md);
+  background: var(--hig-surface);
+  transition:
+    transform var(--hig-press-dur) var(--ease),
+    background var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease),
+    color var(--dur-base) var(--ease);
+}
+.icon-btn:not(:disabled):not([disabled]):active { transform: scale(var(--hig-press-scale)); }
+
+/* 顶栏那些裸按钮（≡ / 搜索 / ⋮）也统一到同一套材质与按压反馈 */
+.reader-head-tools .btn,
+.page-head .reader-head-tools .btn,
+.view-toolbar .btn {
+  -webkit-tap-highlight-color: transparent;
+}
+.reader-head-tools .btn:not(:disabled):active,
+.view-toolbar .btn:not(:disabled):active { transform: scale(var(--hig-press-scale)); }
+
+/* 卡片里的复制 / 打开按钮：同一手势、同一圆角 */
+.btn-copy:active, .btn-open:active, .btn-fav:active, .btn-jump:active {
+  transform: scale(var(--hig-press-scale));
+}
+.btn-copy, .btn-open, .btn-fav, .btn-jump {
+  border-radius: var(--radius-sm);
+  transition:
+    transform var(--hig-press-dur) var(--ease),
+    background var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease),
+    color var(--dur-base) var(--ease);
+}
+
+/* 输入框 / 下拉 / 文本域：iOS 的「填充式」控件 —— 淡填充 + 极淡描边，
+   焦点时实色主色描边而不是半透明光环。禁用态与只读态保持原样。 */
+.form-row input,
+.form-row textarea,
+.settings-modal :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="search"]):not(.feed-order):not(.feed-group-edit):not(.feed-title-edit):not(.feed-url-edit)),
+.settings-modal :where(textarea),
+.confirm-input,
+.select {
+  background: var(--hig-fill);
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-md);
+}
+.form-row input:focus,
+.form-row textarea:focus,
+.confirm-input:focus,
+.select:focus {
+  border-color: var(--hig-tint);
+  box-shadow: 0 0 0 3px var(--hig-tint-halo);
+}
+
+/* 开关：轨道更轻，滑块带一层极浅阴影，避免「贴纸感」 */
+.switch-slider { box-shadow: inset 0 0 0 1px var(--hig-separator); }
+.switch input:focus-visible + .switch-slider {
+  /* 评审硬规矩：焦点环必须实色 2px，不能用半透明光环 */
+  box-shadow: inset 0 0 0 1px var(--hig-separator), 0 0 0 2px var(--hig-tint);
+}
+
+/* ---------------------------------------------------------------------------
+ * 4. 内容卡片
+ * ---------------------------------------------------------------------------
+ * 文章行 / 卡片 / 列表行三种容器共用同一条「淡描边 + 大圆角」语言。
+ * 阴影刻意沿用主题自带的 --elevation-*：暗色主题有专门的深色阴影，
+ * 在这里写 rgba 会把暗色模式的层次抹平。
+ */
+.art-item, .card, .row-item, .sk-card, .sk-row {
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-lg);
+}
+.card:hover, .row-item:hover, .art-item:hover {
+  border-color: var(--hig-separator-strong);
+}
+
+/* 正在读的那一条：用主色细环把「当前项」标出来，而不是把整块发亮。
+   同时把展开态标题恢复成主文字色 + 600 字重 —— 展开即标记已读，
+   旧规则会顺手把标题降成次要色，用户点开的反而最难看清。 */
+.art-item.open {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--hig-separator));
+  box-shadow: 0 0 0 1px var(--hig-tint-soft), var(--elevation-1);
+}
+.art-item.open .art-title { color: var(--hig-label); font-weight: 600; }
+.art-item.open .art-caret { color: var(--hig-tint-text); }
+
+.art-head, .card, .row-item { -webkit-tap-highlight-color: transparent; }
+/* 按压反馈只走 transform，不用 opacity：文字被压淡会直接掉到 4.5:1 以下 */
+
+/* 未读点：略放大到 7px、加一圈与主色同源的极淡光晕，扫列表时更容易捕捉 */
+.art-dot, .row-dot, .card-dot {
+  box-shadow: 0 0 0 3px var(--hig-tint-soft);
+}
+
+/* 缩略图与媒体：圆角跟着容器走，不再比卡片小一档 */
+.art-thumb, .row-thumb, .card-media { border-radius: var(--radius-sm); }
+
+/* 元信息胶囊：半径统一到 pill，字重降到 500（600 在小字上偏重） */
+.src-pill, .meta-size, .mini-tag, .badge-size {
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+}
+.src-pill { background: var(--hig-fill-2); }
+
+/* ---------------------------------------------------------------------------
+ * 5. 导航
+ * ---------------------------------------------------------------------------
+ * 视图切换：胶囊容器 + 胶囊选中项，贴近 iOS segmented control。
+ * 选中底色仍用 `--accent-soft`（沿用既有约定，不另立一套色）。
+ */
+.viewnav {
+  background: var(--hig-fill);
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-pill);
+}
+.viewnav-btn { border-radius: var(--radius-pill); }
+.viewnav-btn.active {
+  background: var(--accent-soft);
+  color: var(--hig-tint-text);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+/* 频道条：选中项的短下划线改成更圆润的胶囊条；焦点环改实色 */
+.chan-tab { border-radius: var(--radius-sm); }
+.chan-tab:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--hig-tint);
+}
+.chan-tab.active { color: var(--hig-tint-text); }
+.chan-tab.active::after {
+  width: 20px; height: 3px;
+  border-radius: 999px;
+  background: var(--hig-tint);
+}
+
+/* 移动端底栏：半径、描边、按压。
+   **必须写在同一个断点里**：style.css 的 `.mobile-tabbar .viewnav` 在
+   `@media (max-width:720px), (max-height:500px) and (pointer:coarse)` 内，
+   放在断点外会被「后写者胜」误伤或反过来失效。 */
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .mobile-tabbar .viewnav {
+    border-color: var(--hig-separator);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--float-shadow), inset 0 1px 0 var(--float-hi);
+  }
+  .mobile-tabbar .viewnav-btn { border-radius: var(--radius-lg); }
+  .mobile-tabbar .viewnav-btn.active {
+    background: var(--accent-soft);
+    color: var(--hig-tint-text);
+  }
+  .mobile-tabbar .viewnav-btn:not(:disabled):active { transform: scale(var(--hig-press-scale)); }
+  .mobile-tabbar .viewnav-btn:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--hig-tint);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 6. 弹层与菜单
+ * --------------------------------------------------------------------------- */
+.modal {
+  border: 1px solid var(--hig-separator);
+  border-radius: var(--radius-xl);
+}
+.modal-head { border-bottom-color: var(--hig-separator); }
+.modal-close {
+  border-radius: 50%;
+  background: var(--hig-fill);
+}
+.modal-close:hover { background: var(--hig-fill-2); }
+.tabs { border-bottom-color: var(--hig-separator); }
+
+.overflow-menu, .dd-panel, .overflow-submenu {
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-lg);
+}
+.overflow-item { border-radius: var(--radius-sm); }
+.overflow-sep { background: var(--hig-separator); }
+
+/* ---------------------------------------------------------------------------
+ * 7. 反馈与状态
+ * ---------------------------------------------------------------------------
+ * toast 的 max-width / width:max-content / overflow-wrap 由 style.css 负责
+ * （浏览器守门会实测），这里只调形态，不动任何宽度约束。
+ */
+.toast {
+  border: 1px solid var(--hig-separator-strong);
+  border-radius: var(--radius-lg);
+}
+.new-pill, .scroll-top { border-radius: var(--radius-pill); }
+.scroll-top { border-color: var(--hig-separator); }
+.empty-action .btn { border-radius: var(--radius-md); }
+.load-retry .btn { border-radius: var(--radius-sm); }
+
+/* ---------------------------------------------------------------------------
+ * 8. 动效与可访问
+ * ---------------------------------------------------------------------------
+ * 系统开启「减少动态效果」时，去掉缩放 / 位移 / 淡入，状态仍靠颜色与描边表达。
+ * 不写全局 `* { animation: none }`：启动收口、看门狗与骨架屏都依赖 CSS 状态，
+ * 一刀切会把「加载中」也变成静止空屏。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .btn, .icon-btn, .btn-primary, .btn-ghost, .btn-copy, .btn-open,
+  .btn-fav, .btn-jump, .viewnav-btn, .mobile-tabbar .viewnav-btn,
+  .art-item, .card, .row-item, .modal, .toast, .new-pill {
+    transition: none !important;
+    animation: none !important;
+  }
+  .btn:active, .icon-btn:active, .btn-primary:active,
+  .btn-copy:active, .btn-open:active { transform: none !important; }
+  .grid > .card, .grid > .row-item { animation: none !important; }
+}

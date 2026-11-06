@@ -53,6 +53,17 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Changed
 
+- **UI realigned with Apple's Human Interface Guidelines**: a new `apps/web/src/hig.css`
+  visual-system layer sits next to the historical `style.css` layout layer. Layout, breakpoints
+  and geometry stay where they were; the continuous corner scale (8 / 10 / 12 / 18 / 24px),
+  theme-derived semantic materials (separator / fill / tint), font smoothing and tabular numerals,
+  one shared press gesture (a subtle scale instead of scattered `translateY(1px)`), Apple's easing
+  curve, hairline borders, pill segmented controls and larger card/sheet radii are all defined once.
+  Buttons, icon buttons, inputs, switches, chips, channel tabs, the bottom tab bar, modals, menus,
+  toasts and scrollbars now speak the same language; the standalone login page carries a matching
+  compact layer at the end of `login.css`. Colors derive from the existing theme variables, so all
+  three themes × six accents adapt automatically. The 2px solid focus ring, the ban on opacity-based
+  secondary text and the four-declaration blur budget are unchanged.
 - **Slimmer phone tab bar**: the bottom bar drops from 56px to 48px, its bottom offset from 8px to
   6px, and its side gutters widen from 12px to 16px — 54px of screen instead of 64px. Icons go
   20→18 and labels 11→10, while buttons stay 44×44 for touch (only the frame shrinks). Toasts,
@@ -70,6 +81,18 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Fixed
 
+- **Article titles are no longer clipped by the sticky header**: on phones the sticky header is two
+  rows (toolbar 44px + channel tabs 44px) while the scroll offset still used the static
+  `--head-h: 44px`. Measured at 390×844, an opened article's title was hidden by 35px and only its
+  lower half showed — the "struck-through title". `readerHeadOffset()` now measures the real bottom
+  edge of every sticky header each frame and writes `--reader-sticky-offset`, which CSS also uses;
+  the title now lands 9px below the header. The expanded (hence auto-read) title also keeps the
+  primary label color and 600 weight instead of being dimmed.
+- **Settings no longer silently discard edits made while loading**: the digest and model panels
+  fetch `/api/prefs` on mount; a response arriving after the user started typing used to overwrite
+  the whole form, losing the change and never showing "unsaved changes". A shared
+  `useFormLoadGuard` now marks input and skips the backfill when touched, while the model panel's
+  post-save / post-clear refresh can still force a reload to restore the masked key state.
 - **Home-screen installs always get a dark system bottom bar**: the host (WebAPK) takes the
   navigation-bar color from the manifest, which page CSS cannot touch, and only re-reads it at
   install / background refresh. Switching manifests by theme was tried: a dark install stayed
