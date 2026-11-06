@@ -75,9 +75,9 @@ This file records user-visible changes and deployment-related changes for 2.x.
   There is now a second `manifest-dark.json` (`theme_color` / `background_color` both `#242424`),
   and the head script plus `applyTheme()` switch `<link rel="manifest">` by app theme, so dark and
   GitHub installs point at the dark manifest and the splash screen no longer flashes light. An
-  icon already on the home screen must be removed and re-added to pick up the new manifest;
-  whether the Android navigation bar follows those colors is up to the host, not something a web
-  page can guarantee.
+  icon already on the home screen must be removed and re-added to pick up the new manifest. On
+  Android Chrome's WebAPK the bottom navigation bar does follow the manifest color (verified on a
+  real device); that color is still decided by the host/vendor, not something a web page can force.
 - **The status bar no longer sits a shade away from the page top**: `theme-color` used to report
   the panel color (dark `#2e2e2e`) while the page top actually paints the page background `--bg`
   (`#242424`), so hosts that honor the meta showed the status bar and header as two different
