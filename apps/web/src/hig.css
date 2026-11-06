@@ -351,3 +351,26 @@ body { font-family: var(--font-ui); }
   .btn-copy:active, .btn-open:active { transform: none !important; }
   .grid > .card, .grid > .row-item { animation: none !important; }
 }
+
+/* ---------------------------------------------------------------------------
+ * 9. 自动填充（只针对非登录字段）
+ * ---------------------------------------------------------------------------
+ * Chrome / Edge Android 会忽略 autocomplete="off"，把登录页保存的账号填进同源
+ * 页面里任何文本框，并给输入框刷一层蓝色/黄色内部背景。这里做两件事：
+ *  - 把背景变化压到 9999s 之后（实际永不出现），文字色回到主题实色；
+ *  - 挂 1ms 哨兵动画，src/ui/noAutofill.js 的全局守卫据此清掉被塞进来的值。
+ * 登录页是独立入口、不引入 hig.css，密码管理器在那儿仍然可用。
+ */
+@keyframes flAutofillGuard {
+  from { caret-color: var(--text); }
+  to   { caret-color: var(--text); }
+}
+input[data-fl-no-autofill]:-webkit-autofill,
+input[data-fl-no-autofill]:-webkit-autofill:hover,
+input[data-fl-no-autofill]:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--text);
+  transition: background-color 9999s ease-out, border-color var(--dur-base), box-shadow var(--dur-base);
+  animation-name: flAutofillGuard;
+  animation-duration: 1ms;
+}

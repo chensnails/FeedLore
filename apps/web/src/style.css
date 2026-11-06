@@ -4647,7 +4647,8 @@ button.mini-tag { border: 0; font-family: inherit; cursor: pointer; }
 /* 17) 移动端弹层统一为「底部整屏抽屉」
  * 此前下拉 / 卡片详情是 .dd-sheet（从下推入、可下滑收起），设置与确认框却是居中浮窗，
  * 同一个 App 在手机上是两种弹层体验。这里把 .modal 也收进同一套语言：贴底、满宽、
- * 顶部圆角 + 手势条；入口/出口仍是遮罩与 Esc（设置暂无下滑收起，避免误触关闭表单）。 */
+ * 顶部圆角 + 手势条；入口/出口仍是遮罩与 Esc。下滑手势由 useSwipeDismiss 统一提供，
+ * 设置弹层也接入了它 —— 有未保存改动时关闭会先走「放弃更改」确认，不会误触丢表单。 */
 @media (max-width: 720px) {
   .modal-mask { align-items: flex-end; padding: 0; }
   .modal {

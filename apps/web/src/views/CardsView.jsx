@@ -26,6 +26,7 @@ import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
 import { ChannelTabs } from '../ui/ChannelTabs.jsx';
 import { BrandLogo } from '../ui/BrandLogo.jsx';
+import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthSrcSet, widthVariant } from '../imgSrc.js';
 
@@ -265,6 +266,7 @@ const Skeletons = ({ view }) => {
 };
 
 export function CardsView() {
+  const searchName = useNoAutofillName('cards-q');
   const s = S();
   const [, bump] = useState(0);
   const searchRef = useRef(null);
@@ -543,9 +545,10 @@ export function CardsView() {
           <div className="head-right vt-tools">
             <div className={'search-box page-search vt-search' + (searchOpen ? ' is-open' : '')}>
               <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-              <input id="searchInput" name="q" type="search" ref={searchRef}
-                placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索"
+              <input id="searchInput" name={searchName} type="search" ref={searchRef}
+                placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" enterKeyHint="search" aria-label="搜索"
                 value={qDraft} onChange={onSearchInput}
+                {...NO_AUTOFILL_PROPS}
                 onKeyDown={(ev) => {
                   if (ev.key === 'Escape') { ev.stopPropagation(); toggleSearch(); return; }
                   onSearchKey(ev);

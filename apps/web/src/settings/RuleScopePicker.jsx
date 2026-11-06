@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 
 /**
  * 规则的适用范围选择器（v2.10.0）。
@@ -47,6 +48,7 @@ const feedName = (f) => f.customTitle || f.title || f.url || '未命名频道';
 
 export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], compact = false }) {
   const scope = normalizeScope(value);
+  const searchName = useNoAutofillName('scope-q');
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [expanded, setExpanded] = useState(() => new Set());
@@ -216,10 +218,12 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
         <input
           ref={inputRef}
           type="search"
+          name={searchName}
           value={q}
           placeholder="搜索分组 / 频道"
           aria-label="搜索分组或频道"
           onChange={(ev) => setQ(ev.target.value)}
+          {...NO_AUTOFILL_PROPS}
         />
       </div>
 

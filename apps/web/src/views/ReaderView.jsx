@@ -20,6 +20,7 @@ import { ChannelTabs } from '../ui/ChannelTabs.jsx';
 import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthSrcSet } from '../imgSrc.js';
+import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -553,6 +554,7 @@ function ReaderSideResize() {
 }
 
 export function ReaderView() {
+  const searchName = useNoAutofillName('reader-q');
   const s = S();
   const [, bump] = useState(0);
   const searchRef = useRef(null);
@@ -798,9 +800,9 @@ export function ReaderView() {
             {/* 搜索：桌面常驻胶囊、窄屏收进放大镜，展开时独占第二行 */}
             <div className={'reader-search page-search vt-search' + (searchOpen ? ' is-open' : '')}>
               <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-              <input id="readerSearch" name="rq" type="search" ref={searchRef} defaultValue={q}
-                placeholder="搜索标题、描述、正文或标签…（服务端检索）" autoComplete="off" enterKeyHint="search" aria-label="搜索文章"
-                onInput={onSearchInput} onKeyDown={onSearchKey} />
+              <input id="readerSearch" name={searchName} type="search" ref={searchRef} defaultValue={q}
+                placeholder="搜索标题、描述、正文或标签…（服务端检索）" enterKeyHint="search" aria-label="搜索文章"
+                onInput={onSearchInput} onKeyDown={onSearchKey} {...NO_AUTOFILL_PROPS} />
               <button className="reader-search-clear" id="readerSearchClear" type="button" hidden={!qDraft}
                 aria-label="清除搜索" onClick={onSearchClear}>
                 <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>

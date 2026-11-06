@@ -2,6 +2,7 @@ import { core } from '@core';
 import { useState, useEffect, useRef } from 'react';
 import { Result, Section } from './primitives.jsx';
 import { RuleScopePicker, emptyScope, normalizeScope } from './RuleScopePicker';
+import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
 
 /**
  * 规则面板（v1.6.0-test5）：关注 / 屏蔽规则 + webhook 通知 + 入库前过滤。
@@ -415,10 +416,11 @@ export function WatchPane({ onDirtyChange }) {
                       <option value="kw">关键词</option>
                       <option value="re">正则</option>
                     </select>
-                    <input className="filter-pattern" type="text" spellCheck="false" autoComplete="off"
+                    <input className="filter-pattern" type="text"
                       placeholder={f.kind === 're' ? '如：v\\d+\\.\\d+' : '关键词，不区分大小写'}
                       value={f.pattern}
-                      onChange={(e) => patchFilter(f.id, { pattern: e.target.value })} />
+                      onChange={(e) => patchFilter(f.id, { pattern: e.target.value })}
+                      {...NO_AUTOFILL_PROPS} />
                     <RuleScopePicker
                       compact
                       value={f.scope}

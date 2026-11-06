@@ -10,6 +10,7 @@
 import { core } from '@core';
 import React, { useEffect, useState } from 'react';
 import { PaneFoot, Result, useFormLoadGuard } from './primitives.jsx';
+import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -37,6 +38,7 @@ const depthToNum = (d) => (d === 'low' ? 1 : d === 'high' ? 3 : 2);
 const numToDepth = (n) => (n === 1 ? 'low' : n === 3 ? 'high' : 'medium');
 
 export function ModelPane({ onDirtyChange }) {
+  const keyName = useNoAutofillName('llm-key');
   const [form, setForm] = useState(EMPTY);
   const [savedForm, setSavedForm] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -199,12 +201,12 @@ export function ModelPane({ onDirtyChange }) {
           <div className="input-with-btn">
             <input
               id="llmApiKey"
+              name={keyName}
               type={showKey ? 'text' : 'password'}
               placeholder={saved ? '已保存，留空则不修改' : 'sk-...'}
-              spellCheck="false"
-              autoComplete="off"
               value={apiKey}
               onChange={(ev) => { guard.mark(); setApiKey(ev.target.value); }}
+              {...NO_AUTOFILL_PROPS}
             />
             <button
               className="btn btn-ghost btn-sm"

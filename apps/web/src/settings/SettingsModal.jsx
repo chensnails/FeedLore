@@ -20,6 +20,8 @@ import { AccountPane } from './AccountPane.jsx';
 import { StatusPane } from './StatusPane.jsx';
 import { ADMIN_TABS, READONLY_TABS, TAB_BY_NAME, TAB_GROUPS, matchTabs, visibleTabs } from './tabs.js';
 import { provide, revoke, get } from '../kernel/bridge.js';
+import { NO_AUTOFILL_PROPS, useNoAutofillName, clearAutofilledInput } from '../ui/noAutofill.js';
+import { useSwipeDismiss } from '../views/useSwipeDismiss.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 const isAdminNow = () => !!(S() && S().isAdmin && S().isAdmin());
@@ -39,6 +41,8 @@ export function SettingsModal() {
   const [mobilePane, setMobilePane] = useState(false);
   const modalRef = useRef(null);
   const openerRef = useRef(null);
+  // 搜索框绝不能带登录语义：Chrome Android 会把保存的账号启发式填进来。
+  const searchName = useNoAutofillName('settings-q');
   // 宿主回调是 [] 依赖的闭包，读 state 会读到首次渲染的旧值；Esc / 返回要判断
   // 「现在是不是窄屏、是不是停在分区内容里」，所以镜像一份最新值到 ref。
   const isMobileRef = useRef(false);
@@ -230,10 +234,31 @@ export function SettingsModal() {
   }, [open]);
 
   const requestClose = async () => {
-    if (!(await askDiscard())) return;
+    if (!(await askDiscard())) return false;
     setOpen(false);
+    return true;
   };
   const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) requestClose(); };
+
+  // 手机上是贴底抽屉：往下拖即可收起，和卡片详情 / 频道下拉同一套手势。
+  // dismiss 返回 false（用户选择保留未保存的改动）时 hook 会把面板弹回原位。
+  const { setPanelRef, handlers: swipeHandlers, reset: resetSwipe } =
+    useSwipeDismiss(requestClose, { enabled: isMobile });
+  const attachModal = useCallback((el) => {
+    modalRef.current = el;
+    setPanelRef(el);
+  }, [setPanelRef]);
+
+  // 面板常驻 DOM（hidden 切换），每次开合都清掉上一轮拖拽残留的内联 transform / 遮罩透明度。
+  useEffect(() => { resetSwipe(); }, [open, isMobile, resetSwipe]);
+
+  // 浏览器可能在弹层打开之后又填一次：state 说空、DOM 却有值，直接纠偏。
+  // 全局哨兵（main.jsx → installAutofillGuard）负责填充发生当刻，这里兜「打开时已填好」。
+  useEffect(() => {
+    if (!open || query) return;
+    const el = modalRef.current && modalRef.current.querySelector('#settingsSearch');
+    if (el && el.value) clearAutofilledInput(el);
+  }, [open, query]);
 
   const readonly = role === 'readonly';
   const tabs = visibleTabs(admin, readonly);
@@ -281,7 +306,7 @@ export function SettingsModal() {
   return (
     <div className="modal-mask" hidden={!open} onClick={onMaskClick}>
       <div className={'modal settings-modal' + (isMobile ? (mobilePane ? ' mobile-pane' : ' mobile-home') : '')}
-        role="dialog" aria-modal="true" aria-labelledby="settingsTitle" ref={modalRef} tabIndex={-1}>
+        role="dialog" aria-modal="true" aria-labelledby="settingsTitle" ref={attachModal} tabIndex={-1} {...swipeHandlers}>
         <div className="modal-head">
           <div className="modal-head-lead">
             {isMobile && mobilePane ? (
@@ -308,11 +333,12 @@ export function SettingsModal() {
             <input
               id="settingsSearch"
               type="search"
+              name={searchName}
               value={query}
               placeholder="搜索设置"
               aria-label="搜索设置分区"
-              autoComplete="off"
               onChange={(ev) => setQuery(ev.target.value)}
+              {...NO_AUTOFILL_PROPS}
             />
             {query ? (
               <button className="settings-search-clear" type="button" aria-label="清除搜索" onClick={() => setQuery('')}>

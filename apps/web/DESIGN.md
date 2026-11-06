@@ -53,6 +53,18 @@
    `mark()`，回填时 `apply()`；`apply` 返回 false 就跳过 `setForm` / `setSaved`，
    脏态基线仍按初始值算。模型面板保存 / 清除成功后的主动重拉走 `load(true)` 绕过守卫，
    否则掩码态刷新不回来。日报、模型两个表单型面板都已接入，新增面板照此办理。
+10. **非登录输入框不许被账密自动填充**。登录页保存的凭据会被 Chrome / Edge Android
+    启发式忽略 `autocomplete="off"`，填进同源页面里任何文本框（设置搜索框冒出 `admin`
+    就是这么来的）。所有搜索 / 过滤 / 关键词输入统一 spread
+    `ui/noAutofill.js#NO_AUTOFILL_PROPS` + `useNoAutofillName()`；全局哨兵在 `main.jsx`
+    一处安装，`hig.css` 的 `:-webkit-autofill` 规则负责背景重置与哨兵动画。
+    **登录、改密、新建用户等凭据字段不要接** —— 密码管理器在那儿是正确行为。
+11. **移动端贴底弹层只有一个手势实现**。`views/useSwipeDismiss.js` 用原生
+    `{ passive: false }` 的 `touchmove` 接管下拉（React 的被动监听拦不住 Android 下拉刷新），
+    面板必须接 `setPanelRef` 这个 callback ref：弹层常是打开时才挂载，普通 ref 会让
+    监听绑在 null 上。抓手 / 头部可直接拖，正文区要先滚到顶；关闭判据是距离或
+    `FLICK_MIN_MS` 之后的快甩。`onDismiss` 返回 `false`（如设置的「放弃更改」被取消）时
+    面板回弹，新增弹层不要另写一套 touch 逻辑。
 
 ## 2. 布局骨架
 
@@ -158,9 +170,9 @@
 corepack pnpm -r run typecheck                     # 类型
 corepack pnpm --filter @feedlore/web run build     # 构建
 node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算（49 项）
-DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归（508 项）
+DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归（511 项）
 node .workbuddy/ui-lab/verify.mjs --only=all --shots --no-build
-  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 多视口截图（54 项）
+  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 手势 / 自动填充 / 多视口截图（63 项）
 node .workbuddy/ui-lab/weaknet.mjs --scenario=all  # 弱网专项：悬挂 / 慢响应 / 503 / 连点（14 项）
 node .workbuddy/ui-lab/geometry.mjs                # 展开文章后标题与吸顶头部的遮挡量
 ```

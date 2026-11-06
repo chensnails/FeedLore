@@ -24,6 +24,7 @@
 import { core } from '@core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PaneFoot, Result, Section } from './primitives.jsx';
+import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -1295,7 +1296,7 @@ export function SourcePane({ admin, onDirtyChange }) {
               <svg className="feed-filter-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
               <input className="feed-filter-input" type="search" value={feedQuery}
                 placeholder="搜索频道（名称 / 地址 / 分组）" aria-label="搜索频道"
-                onChange={(ev) => setFeedQuery(ev.target.value)} />
+                onChange={(ev) => setFeedQuery(ev.target.value)} {...NO_AUTOFILL_PROPS} />
             </div>
             <div className="feed-list" id="feedList">
               {fq && !displayGroups.length ? <div className="hint pane-msg">没有匹配的频道</div> : null}

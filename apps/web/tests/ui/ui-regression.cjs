@@ -1032,6 +1032,7 @@ require('./.build/mount-cards.cjs');
 require('./.build/mount-reader.cjs');
 require('./.build/mount-overlays.cjs');
 require('./.build/kernel.cjs');
+require('./.build/ui.cjs');
 const __mount = w.__mount;
 const __mountAi = w.__mountAi;
 const __mountCards = w.__mountCards;
@@ -6989,6 +6990,76 @@ const withEFP = (el, fn) => {
     const model = fs.readFileSync(path.join(dir, 'ModelPane.jsx'), 'utf8').replace(/\r\n/g, '\n');
     if (!/async function load\(force = false\)/.test(model)) throw new Error('模型面板缺强制重拉通道');
     if ((model.match(/await load\(true\)/g) || []).length < 2) throw new Error('保存 / 清除后的主动重拉必须绕过守卫，否则掩码态刷新不回来');
+  });
+
+  t('自动填充：非登录输入框三层防护齐备、登录页语义不被误删', () => {
+    const root = path.join(__dirname, '..', '..');
+    const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');
+    const mod = read('src/ui/noAutofill.js');
+    if (!/export const NO_AUTOFILL_PROPS/.test(mod)) throw new Error('缺共享防填充属性');
+    if (!/data-fl-no-autofill/.test(mod) || !/data-lpignore/.test(mod) || !/data-1p-ignore/.test(mod)) {
+      throw new Error('缺密码管理器忽略标记');
+    }
+    if (!/export function installAutofillGuard/.test(mod)) throw new Error('缺全局哨兵');
+    if (!/desc\.set\.call\(input, ''\)/.test(mod)) throw new Error('清值必须绕过 React value tracker');
+    if (!/export function useNoAutofillName/.test(mod)) throw new Error('name 必须非语义且每次挂载唯一');
+    if (!/installAutofillGuard\(\)/.test(read('src/main.jsx'))) throw new Error('入口没装全局哨兵');
+    const hig = read('src/hig.css');
+    if (!/@keyframes flAutofillGuard/.test(hig) || !/input\[data-fl-no-autofill\]:-webkit-autofill/.test(hig)) {
+      throw new Error('视觉层缺 autofill 哨兵动画与背景重置');
+    }
+    for (const f of ['src/settings/SettingsModal.jsx', 'src/settings/ModelPane.jsx',
+      'src/settings/SourcePane.jsx', 'src/settings/RuleScopePicker.jsx', 'src/settings/WatchPane.jsx',
+      'src/views/CardsView.jsx', 'src/views/ReaderView.jsx', 'src/views/ChannelList.jsx']) {
+      if (!/NO_AUTOFILL_PROPS/.test(read(f))) throw new Error(f + ' 的搜索/过滤框没接防填充属性');
+    }
+    const login = read('login.html');
+    if (!/autocomplete="username"/.test(login) || !/autocomplete="current-password"/.test(login)) {
+      throw new Error('登录页的密码管理器语义不能被误删');
+    }
+  });
+
+  t('自动填充：运行时哨兵清掉塞进来的账号，卸载后不再拦', () => {
+    const api = w.__noAutofillForTest;
+    if (!api || !api.installAutofillGuard) throw new Error('ui-entry 未把真实模块挂到 window');
+    const input = w.document.createElement('input');
+    input.setAttribute('data-fl-no-autofill', 'true');
+    input.value = 'admin';
+    w.document.body.appendChild(input);
+    const off = api.installAutofillGuard(w.document);
+    const ev = new w.Event('animationstart', { bubbles: true });
+    Object.defineProperty(ev, 'animationName', { value: api.AUTOFILL_ANIMATION });
+    input.dispatchEvent(ev);
+    if (input.value !== '') throw new Error('哨兵没清掉自动填充的账号：' + input.value);
+    input.value = 'admin2';
+    off();
+    input.dispatchEvent(ev);
+    if (input.value !== 'admin2') throw new Error('卸载后不该再改输入框');
+    input.remove();
+  });
+
+  t('手势关闭：原生被动监听修复、callback ref 与脏态回弹契约', () => {
+    const root = path.join(__dirname, '..', '..');
+    const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');
+    const hook = read('src/views/useSwipeDismiss.js');
+    if (!/addEventListener\('touchmove', onMove, \{ passive: false \}\)/.test(hook)) {
+      throw new Error('React 的 passive onTouchMove 拦不住 Android 下拉刷新，必须原生 passive:false');
+    }
+    if (!/ev\.preventDefault\(\)/.test(hook)) throw new Error('接管拖拽后必须阻止默认滚动');
+    if (!/setPanelRef/.test(hook) || !/useState\(null\)/.test(hook)) {
+      throw new Error('延迟挂载的弹层必须用 callback ref 重绑监听');
+    }
+    if (!/FLICK_MIN_MS/.test(hook)) throw new Error('速度判据要有最小采样窗，否则合成事件会误关弹层');
+    if (!/ok === false\) springBack\(el\)/.test(hook)) throw new Error('脏态确认取消必须把面板弹回原位');
+    if (!/mask\.style\.opacity/.test(hook)) throw new Error('拖拽时遮罩要跟手渐隐');
+    for (const f of ['src/views/CardDetail.jsx', 'src/views/Dropdown.jsx', 'src/settings/SettingsModal.jsx']) {
+      if (!/setPanelRef/.test(read(f))) throw new Error(f + ' 没接新 hook 的 callback ref');
+    }
+    const sm = read('src/settings/SettingsModal.jsx');
+    if (!/useSwipeDismiss\(requestClose, \{ enabled: isMobile \}\)/.test(sm)) throw new Error('设置弹层没接手势');
+    if (!/return false;/.test(sm) || !/return true;/.test(sm)) throw new Error('requestClose 要返回是否真的关闭');
+    if (!/clearAutofilledInput\(el\)/.test(sm)) throw new Error('打开设置时要兜底清「已填好」的账号');
+    if (!/allowHorizontal: true/.test(read('src/views/CardDetail.jsx'))) throw new Error('卡片详情要支持边缘横滑关闭');
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });

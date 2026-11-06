@@ -99,7 +99,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   const openPanel = () => { setMobile(isMobileMq()); setOpen(true); setHi(-1); };
 
   // 移动端：往下拖就能收起（见 useSwipeDismiss.js）
-  const { panelRef: sheetRef, handlers: sheetHandlers } = useSwipeDismiss(close);
+  const { setPanelRef, handlers: sheetHandlers } = useSwipeDismiss(close);
 
   const pick = (v) => {
     setOpen(false);
@@ -236,7 +236,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
 
       {open && mobile && (
         <div className="dd-mask" onClick={close}>
-          <div ref={sheetRef} className="dd-sheet" role="dialog" aria-modal="true"
+          <div ref={setPanelRef} className="dd-sheet" role="dialog" aria-modal="true"
             aria-label={ariaLabel || title} onClick={(ev) => ev.stopPropagation()} {...sheetHandlers}>
             {/* 手势条 = 「往下拖就能收起」的提示 */}
             <div className="dd-sheet-grip" aria-hidden="true" />

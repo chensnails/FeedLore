@@ -16,6 +16,7 @@
 import { core } from '@core';
 import { memo, useDeferredValue, useState } from 'react';
 import { ChannelAvatar } from './ChannelAvatar.jsx';
+import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 
 const S = () => core;
 
@@ -41,6 +42,7 @@ export const ChannelList = memo(function ChannelList({
   onAdd,
 }) {
   const s = S();
+  const searchName = useNoAutofillName('channel-q');
   const isReader = variant === 'reader';
   const writable = !(s && s.state && s.state.role === 'readonly');
   // 「全部」高亮的判据两页一致：既没挑频道、也没锁分组
@@ -93,8 +95,9 @@ export const ChannelList = memo(function ChannelList({
     <>
       <div className="rd-ch-search" role="search">
         <svg className="rd-ch-search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-        <input type="search" className="rd-ch-search-input" placeholder="搜索频道…" aria-label="搜索频道"
-          value={q} onChange={(e) => setQ(e.target.value)} />
+        <input type="search" className="rd-ch-search-input" name={searchName}
+          placeholder="搜索频道…" aria-label="搜索频道"
+          value={q} onChange={(e) => setQ(e.target.value)} {...NO_AUTOFILL_PROPS} />
         {q ? (
           <button type="button" className="rd-ch-search-clear" aria-label="清除搜索" onClick={() => setQ('')}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>

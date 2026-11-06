@@ -11,6 +11,11 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Added
 
+- **Swipe to dismiss on phones**: the settings sheet, card detail and channel drawer can all be
+  pulled down from the grip / header. The panel follows the finger and the backdrop fades with it;
+  releasing closes on distance or a quick flick, otherwise it springs back. Card detail also closes
+  with an edge-to-edge horizontal swipe. Settings still asks before discarding unsaved changes —
+  cancelling springs the sheet back instead of losing the form.
 - **Article density (compact by default)**: 外观 → 界面 gains an 文章密度 row next to 卡片密度,
   with the same two positions, and both now default to compact. 紧凑 shows the title plus source
   and time (one line on desktop; at ≤720px phones relax it into two lines, title above and
@@ -81,6 +86,18 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Fixed
 
+- **Browsers no longer autofill credentials into search boxes**: Chrome / Edge on Android ignored
+  `autocomplete="off"` and heuristically dropped the saved login name into the settings search
+  field (the `admin` text and blue fill in the screenshot), leaving "no matching settings".
+  Every search / filter / keyword input now gets a non-login, unique `name`, password-manager
+  ignore markers, and one global sentinel that clears the injected value the moment autofill
+  happens and restores the field's own background. Login, password change and new-user fields are
+  untouched — password managers still work there.
+- **Swipe-to-dismiss now works on real devices**: the old hook used React's passive
+  `onTouchMove`; Android Chrome treated a continued downward pull as a page refresh and cancelled
+  the gesture. The hook now owns a native `{ passive: false }` listener on the panel and rebinds
+  via a callback ref when the sheet mounts late, while keeping the two older guarantees (do not
+  steal scrolling mid-list, and swallow the synthetic click after a drag).
 - **Article titles are no longer clipped by the sticky header**: on phones the sticky header is two
   rows (toolbar 44px + channel tabs 44px) while the scroll offset still used the static
   `--head-h: 44px`. Measured at 390×844, an opened article's title was hidden by 35px and only its
