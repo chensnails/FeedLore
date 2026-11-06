@@ -6295,9 +6295,10 @@ const withEFP = (el, fn) => {
   // 系统状态栏则吃 meta theme-color。两处都必须等于页面真正画出来的顶色 --bg：
   // 底栏是悬浮的，它下方与页面顶部露出的都是页面底色，不是面板色 --panel。
   // index.html 另有一条深色兜底：JS 未跑时系统深色不能先闪一条白。
-  t('manifest.json：theme_color 与亮色 --bg / meta theme-color 同源', () => {
+  t('manifest.json / manifest-dark.json：颜色与三套 --bg 同源，双清单只差颜色', () => {
     const root = path.join(__dirname, '..', '..');
     const mf = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest.json'), 'utf8'));
+    const mfd = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest-dark.json'), 'utf8'));
     const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
     const metas = [...html.matchAll(/<meta name="theme-color" content="([^"]+)"(?: media="([^"]+)")?>/g)]
@@ -6326,6 +6327,33 @@ const withEFP = (el, fn) => {
     if (norm(map[1]) !== norm(bg) || norm(map[2]) !== norm(bgDark) || norm(map[3]) !== norm(bgGithub)) {
       throw new Error('index.html THEME_COLORS 与 --bg 不一致：' + map.slice(1, 4).join(' / '));
     }
+    // 暗色清单：安装壳的系统栏取它，颜色必须等于暗色 --bg；其余身份字段与亮色清单完全一致，
+    // 否则同一应用会装出两份身份（id / start_url / 图标不一致）。
+    if (norm(mfd.theme_color) !== norm(bgDark)) {
+      throw new Error('暗色清单 theme_color(' + mfd.theme_color + ') 应等于暗色 --bg(' + bgDark + ')');
+    }
+    if (norm(mfd.background_color) !== norm(bgDark)) {
+      throw new Error('暗色清单 background_color(' + mfd.background_color + ') 应等于暗色 --bg(' + bgDark + ')：启动屏会先闪一帧浅色');
+    }
+    for (const k of ['id', 'name', 'short_name', 'start_url', 'scope', 'display']) {
+      if (JSON.stringify(mfd[k]) !== JSON.stringify(mf[k])) throw new Error('暗色清单的 ' + k + ' 与亮色清单不一致');
+    }
+    if (JSON.stringify(mfd.icons) !== JSON.stringify(mf.icons)) throw new Error('暗色清单的图标清单与亮色清单不一致');
+  });
+
+  // 宿主壳的系统栏颜色只在安装 / 清单刷新时从 <link rel=manifest> 重读：
+  // 首屏内联脚本（安装前就得对）与 applyTheme（用户切主题）两处都要指向暗色清单，
+  // 且按「应用主题」选、不按系统深浅 —— 应用选了暗色，壳就该是暗的。
+  t('安装壳清单按应用主题切换：内联脚本与 applyTheme 都认 dark / github', () => {
+    const root = path.join(__dirname, '..', '..');
+    const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+    const state = fs.readFileSync(path.join(root, 'src', 'core', 'state.js'), 'utf8');
+    if (!/id="appManifest"/.test(html)) throw new Error('index.html 的 manifest link 缺 id="appManifest"，首屏脚本选不到它');
+    if (!/manifest-dark\.json/.test(html)) throw new Error('index.html 没在首屏切到 /manifest-dark.json：暗色主题装出来的壳仍是浅色');
+    if (!/manifest-dark\.json/.test(state)) throw new Error('applyTheme 没切清单：用户从亮色切到暗色后，安装壳不会重读');
+    const gate = /===\s*'dark'\s*\|\|\s*\w+\s*===\s*'github'/;
+    if (!gate.test(html)) throw new Error('index.html 的清单选择没同时覆盖 dark 与 github');
+    if (!gate.test(state)) throw new Error('state.js 的清单选择没同时覆盖 dark 与 github');
   });
 
   // 两条 theme-color 兜底必须一起改：浏览器只认 media 命中的那条，

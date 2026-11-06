@@ -70,6 +70,14 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Fixed
 
+- **A dark-theme install no longer ships a light shell**: the host (WebAPK) takes its system-bar
+  colors from the manifest, which page CSS cannot touch and which is only read at install time.
+  There is now a second `manifest-dark.json` (`theme_color` / `background_color` both `#242424`),
+  and the head script plus `applyTheme()` switch `<link rel="manifest">` by app theme, so dark and
+  GitHub installs point at the dark manifest and the splash screen no longer flashes light. An
+  icon already on the home screen must be removed and re-added to pick up the new manifest;
+  whether the Android navigation bar follows those colors is up to the host, not something a web
+  page can guarantee.
 - **The status bar no longer sits a shade away from the page top**: `theme-color` used to report
   the panel color (dark `#2e2e2e`) while the page top actually paints the page background `--bg`
   (`#242424`), so hosts that honor the meta showed the status bar and header as two different

@@ -28,6 +28,7 @@ const htmlPath = join(DIST, 'index.html');
 check(existsSync(htmlPath), 'index.html 存在');
 const html = existsSync(htmlPath) ? readFileSync(htmlPath, 'utf8') : '';
 check(/<link[^>]+rel="manifest"[^>]+href="\/manifest\.json"/.test(html), 'index.html 引用了 /manifest.json');
+check(/id="appManifest"/.test(html) && /\/manifest-dark\.json/.test(html), 'index.html 暗色主题会切到 /manifest-dark.json');
 check(/<meta[^>]+name="theme-color"/.test(html), 'index.html 有 theme-color');
 check(/<meta[^>]+name="color-scheme"[^>]*content="light dark"/.test(html), 'index.html 有 color-scheme 兜底');
 
@@ -47,8 +48,8 @@ check(!/<link[^>]+modulepreload[^>]+(SettingsModal|AiView)-/.test(html), 'index.
 /* ---------------- PWA ---------------- */
 const mfPath = join(DIST, 'manifest.json');
 check(existsSync(mfPath), 'manifest.json 进了产物');
+let mf = null;
 if (existsSync(mfPath)) {
-  let mf = null;
   try {
     mf = JSON.parse(readFileSync(mfPath, 'utf8'));
   } catch {
@@ -68,6 +69,34 @@ if (existsSync(mfPath)) {
     for (const ic of mf.icons ?? []) {
       const f = join(DIST, String(ic.src ?? '').replace(/^\//, ''));
       check(existsSync(f), `图标存在：${ic.src}`);
+    }
+  }
+}
+
+// 暗色主题装出来的壳必须是暗的：系统底栏的颜色只能由清单给，页面 CSS 碰不到。
+// 只差颜色：id / start_url / 图标一致，否则同一次安装会被当成两个应用。
+const mfDarkPath = join(DIST, 'manifest-dark.json');
+check(existsSync(mfDarkPath), 'manifest-dark.json 进了产物');
+if (existsSync(mfDarkPath)) {
+  let mfd = null;
+  try {
+    mfd = JSON.parse(readFileSync(mfDarkPath, 'utf8'));
+  } catch {
+    fails.push('manifest-dark.json 不是合法 JSON');
+  }
+  if (mfd) {
+    const lower = (v) => String(v).toLowerCase();
+    check(Boolean(mfd.name) && Boolean(mfd.start_url), `暗色清单有 name / start_url（${mfd.name ?? '缺失'}）`);
+    check(Array.isArray(mfd.icons) && mfd.icons.length >= 3, `暗色清单有 ${mfd.icons?.length ?? 0} 个图标（≥3）`);
+    check(lower(mfd.theme_color) === lower(mfd.background_color), `暗色清单 theme_color / background_color 一致（${mfd.theme_color} / ${mfd.background_color}）`);
+    if (mf) {
+      check(mfd.id === mf.id && mfd.start_url === mf.start_url, '暗色清单与亮色清单同一身份（id / start_url）');
+      check(lower(mfd.theme_color) !== lower(mf.theme_color), `暗色清单 theme_color 与亮色不同（${mfd.theme_color} / ${mf.theme_color}）`);
+      check(JSON.stringify(mfd.icons) === JSON.stringify(mf.icons), '暗色清单图标与亮色清单一致');
+    }
+    for (const ic of mfd.icons ?? []) {
+      const f = join(DIST, String(ic.src ?? '').replace(/^\//, ''));
+      check(existsSync(f), `暗色清单图标存在：${ic.src}`);
     }
   }
 }
