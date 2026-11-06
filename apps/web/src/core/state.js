@@ -396,12 +396,14 @@ try {
  * ============================================================ */
 export const APPR_STORAGE_KEY = 'feedlore.appearance.v2';
 // 默认值：尺寸类一律中间档，主题跟随系统、主色蓝、正文字体无衬线
-export const APPR_DEFAULTS = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
+export const APPR_DEFAULTS = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'cozy', listThumbs: 'on', listSummary: 'off', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
 // 键名 → html 属性名；同时这个属性名就是控件上用来标值的 data 属性名
 export const APPR_ATTR = {
   accent: 'data-accent',
   fontSize: 'data-font-size',
   density: 'data-density',
+  listThumbs: 'data-list-thumbs',
+  listSummary: 'data-list-summary',
   readerFont: 'data-reader-font',
   readerLh: 'data-reader-lh',
   readerFs: 'data-reader-fs',
@@ -412,6 +414,8 @@ export const APPR_VALUES = {
   accent: ['blue', 'violet', 'teal', 'green', 'amber', 'rose'],
   fontSize: ['s', 'm', 'l'],
   density: ['cozy', 'compact'],
+  listThumbs: ['on', 'off'],
+  listSummary: ['off', 'on'],
   readerFont: ['sans', 'serif'],
   readerLh: ['s', 'm', 'l'],
   readerFs: ['xs', 's', 'm', 'l', 'xl'],

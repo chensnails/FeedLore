@@ -29,8 +29,8 @@ export const SETTINGS_TABS = [
   },
   {
     name: 'appearance', label: '外观', group: '账户', icon: 'palette',
-    desc: '主题、字号与阅读宽度',
-    keywords: '外观 主题 深色 浅色 字号 字体 阅读宽度 行距 appearance theme',
+    desc: '主题、列表配图、摘要与阅读宽度',
+    keywords: '外观 主题 深色 浅色 字号 字体 阅读宽度 行距 列表 缩略图 配图 纯文字 摘要 appearance theme thumbnail summary',
   },
   {
     name: 'status', label: '状态', group: '系统', icon: 'activity',

@@ -11,6 +11,13 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Added
 
+- **Text-only list and optional summaries**: 外观 → 文章列表 gains two switches. 列表配图 toggles
+  between thumbnails and a pure text list; in pure text mode the leading image is not even
+  requested, so more headlines fit on screen. 文章摘要 adds two lines of the captured description
+  under the title, hides itself while an article is expanded, and tightens the title to two lines
+  so rows keep a bounded height. Both are device-local like the rest of appearance.
+- **Grouped appearance settings**: the appearance pane is now split into 主题与配色 / 界面 /
+  文章列表 / 正文阅读, so the growing list of options stays scannable.
 - **The article list is now a news-feed style list**: cards became borderless rows — titles run up
   to three lines, a leading image appears as a 4:3 thumbnail on the right (served through the image
   proxy at 200/400w variants, lazy loaded, and dropped entirely if it fails), source and time sit on

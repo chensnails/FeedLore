@@ -1864,15 +1864,27 @@ textarea:disabled {
 .pane-foot-note { font-size: var(--fs-xs); color: var(--text-muted); }
 
 /* ---------- 设置 · 外观 ----------
-   一行一个偏好项：左边标题 + 说明，右边控件。窄屏下自动折成两行。 */
-.appr { padding:var(--sp-2) 0; }
+   一行一个偏好项：左边标题 + 说明，右边控件。窄屏下自动折成两行。
+   v2.3.0 起按「主题与配色 / 界面 / 文章列表 / 正文阅读」分组：外观项已经多到
+   一列排下来找不到，分组标题是最省的层级提示（不引入折叠，避免多一次点击）。 */
+.appr { padding:var(--sp-1) 0 var(--sp-2); }
+.appr-group-h {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-6) var(--sp-1);
+  font-size: var(--fs-2xs); font-weight: 700; letter-spacing: .08em;
+  color: var(--text-faint);
+}
+/* 组与组之间只画一条线；第一组上方不再单独加线（标签栏下沿已经有一条） */
+.appr-group + .appr-group .appr-group-h {
+  margin-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+}
 .appr-row {
   display: flex; align-items: center; justify-content: space-between;
   gap:var(--sp-4); flex-wrap: wrap;
   padding:var(--sp-3) var(--sp-6);
   border-bottom: 1px solid var(--border);
 }
-.appr-row:first-child { border-top: 1px solid var(--border); }
 .appr-label { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
 .appr-label small {
   display: block; margin-top:var(--sp-1);
@@ -3188,6 +3200,21 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-item.is-unread .art-title { font-weight: 650; }
 .art-item.is-read .art-title { font-weight: 450; color: var(--text-muted); }
 .art-item.is-read .art-meta { opacity: .72; }
+
+/* 摘要（外观 → 文章列表 → 显示摘要）：标题下补两行，行高与正文接近但降档、降色。
+   开启时标题收到两行，保证整条高度仍受控 —— 几百条列表不能让摘要把行撑成文章。 */
+.art-sum {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+.art-item.has-sum .art-title { -webkit-line-clamp: 2; }
+.art-item.is-read .art-sum { opacity: .78; }
 
 .art-meta {
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2);
