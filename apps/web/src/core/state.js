@@ -329,15 +329,6 @@ export function currentThemeMode() {
   return (appearancePref && THEME_MODES.indexOf(appearancePref.theme) >= 0) ? appearancePref.theme : 'auto';
 }
 
-// 安装壳（WebAPK）的系统栏颜色来自清单，页面 CSS 改不到；清单又只在安装 / 后台刷新时重读。
-// 所以主题一变就把 <link rel=manifest> 指到对应清单，否则暗色主题装出来的壳仍是浅色底栏。
-function syncManifest(theme) {
-  const link = document.querySelector('link[rel="manifest"]');
-  if (!link) return;
-  const href = theme === 'dark' || theme === 'github' ? '/manifest-dark.json' : '/manifest.json';
-  if (link.getAttribute('href') !== href) link.setAttribute('href', href);
-}
-
 export function applyTheme(mode, animate) {
   const m = THEME_MODES.indexOf(mode) >= 0 ? mode : 'auto';
   // auto 只看系统深浅（不出 GitHub），其余三档各自写自己的 CSS 变量块
@@ -352,7 +343,6 @@ export function applyTheme(mode, animate) {
   }
   el.setAttribute('data-theme', eff);
   el.setAttribute('data-theme-mode', m);
-  syncManifest(eff);
 
   // github 主题自带主色，不跟随 6 套主色调板：切到它时把当前主色暂存，
   // 切回浅/暗时恢复成暂存值（会话内有效，不写本机 localStorage）。

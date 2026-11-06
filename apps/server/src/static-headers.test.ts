@@ -26,7 +26,6 @@ test('静态文件按档设缓存，且 compress 不会吞掉 Cache-Control', as
   );
   await writeFile(join(root, 'login.html'), '<html><body>' + 'y'.repeat(2048) + '</body></html>');
   await writeFile(join(root, 'manifest.json'), '{"name":"t"}');
-  await writeFile(join(root, 'manifest-dark.json'), '{"name":"t","theme_color":"#242424"}');
   await writeFile(join(root, 'sw.js'), '/* sw */' + 'z'.repeat(300));
   await writeFile(join(root, 'assets', 'a.js'), 'console.log(1);');
 
@@ -46,7 +45,6 @@ test('静态文件按档设缓存，且 compress 不会吞掉 Cache-Control', as
       ['/login.html', 'no-cache'],
       ['/sw.js', 'no-cache'],
       ['/manifest.json', 'public, max-age=3600'],
-      ['/manifest-dark.json', 'public, max-age=3600'],
       ['/assets/a.js', 'public, max-age=31536000, immutable'],
     ];
     for (const [path, expected] of cases) {
@@ -60,12 +58,12 @@ test('静态文件按档设缓存，且 compress 不会吞掉 Cache-Control', as
   }
 });
 
-/* 布局注入锚在 manifest link 上：清单换 id / href（暗色清单）时整条标签匹配会失配，
- * 注入静默丢掉（首屏偏好回默认值，线上很难发现）。锚点必须容忍额外属性。 */
+/* 布局注入锚在 manifest link 上：link 属性（id / href / crossorigin）随时可能增减，
+ * 按整条标签匹配一旦失配，注入静默丢掉（首屏偏好回默认值，线上很难发现）。 */
 test('布局注入容忍 manifest link 的额外属性，插在标签之后', async () => {
   const { injectBootLayout } = await import('./app.js');
   const html =
-    '<html><head><link rel="manifest" href="/manifest.json" id="appManifest">' +
+    '<html><head><link rel="manifest" href="/manifest.json" crossorigin="use-credentials">' +
     '<meta name="theme-color" content="#242424"></head><body></body></html>';
   const c = { req: { raw: { headers: new Headers() } } };
   const deps = {
@@ -75,5 +73,5 @@ test('布局注入容忍 manifest link 的额外属性，插在标签之后', as
   const out = await injectBootLayout(html, c as never, deps as never);
   const injected = out.indexOf('<script>window.__LAYOUT__');
   assert.ok(injected > 0, '布局没注入：锚点失配');
-  assert.ok(injected > out.indexOf('id="appManifest">'), '注入位置应在 manifest link 标签闭合之后');
+  assert.ok(injected > out.indexOf('crossorigin="use-credentials">'), '注入位置应在 manifest link 标签闭合之后');
 });

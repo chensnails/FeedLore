@@ -129,7 +129,6 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
    * - 图标长缓存：文件名固定但内容基本不变，一天一次足够。 */
   const ROOT_FILES: ReadonlyArray<readonly [string, string]> = [
     ['manifest.json', 'public, max-age=3600'],
-    ['manifest-dark.json', 'public, max-age=3600'],
     ['sw.js', 'no-cache'],
     ['favicon.ico', 'public, max-age=86400'],
     ['favicon.svg', 'public, max-age=86400'],
@@ -153,8 +152,8 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
 export async function injectBootLayout(html: string, c: Context<AppEnv>, deps: AppDeps): Promise<string> {
   /* 不锚 theme-color meta：它已拆成亮 / 暗两条（带 media），按固定 color 串匹配
    * 会在改配色时静默失配，布局注入无声丢掉。manifest link 与配色无关。
-   * 只匹配到 `<link rel="manifest"`，再找到本标签的 `>`：清单 link 会加 id / 换 href
-   * （暗色清单），按整条标签匹配会失配，注入静默丢掉。 */
+   * 只匹配到 `<link rel="manifest"`，再找到本标签的 `>`：link 上的属性（id / href）
+   * 随时可能增减，按整条标签匹配会失配，注入静默丢掉。 */
   const anchor = '<link rel="manifest"';
   const at = html.indexOf(anchor);
   const tagEnd = at < 0 ? -1 : html.indexOf('>', at);

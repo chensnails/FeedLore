@@ -10,9 +10,9 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<!-- 暗色主题要换到 manifest-dark.json：安装壳（WebAPK）的系统栏颜色取自清单且只在
-     安装 / 后台刷新时重读，页面 CSS 改不到；用浅色清单装出来的图标，底部会留一条白。 -->
-<link rel="manifest" href="/manifest.json" id="appManifest">
+<!-- 安装壳（WebAPK）的系统栏颜色取自清单，只在安装 / 后台刷新时重读，页面 CSS 和运行时
+     都改不了，所以清单固定用深色（安装壳的底栏恒为深色，不跟主题走）。 -->
+<link rel="manifest" href="/manifest.json">
 <!-- 首屏 theme-color：JS 还没跑时按系统深浅兜底，深色系统不会先闪一条白。
      两条都带 media：不支持 media 的老浏览器会取第一条（亮色），是安全默认。
      颜色 = 各主题的 --bg（页面真正的顶色）。运行时 syncThemeColor() 会把所有条目改成当前值。 -->
@@ -50,14 +50,6 @@
   var tcs = document.querySelectorAll('meta[name="theme-color"]');
   var tcColor = THEME_COLORS[el.getAttribute('data-theme')] || '#f4f5f7';
   for (var ti = 0; ti < tcs.length; ti++) tcs[ti].setAttribute('content', tcColor);
-
-  /* 安装壳的系统栏颜色来自清单，页面 CSS 碰不到，且只在安装那一刻定下：
-     按「应用主题」而不是「系统深浅」选清单 —— 壳应该跟应用走。 */
-  var mfLink = document.getElementById('appManifest');
-  var mfTheme = el.getAttribute('data-theme');
-  if (mfLink && (mfTheme === 'dark' || mfTheme === 'github')) {
-    mfLink.setAttribute('href', '/manifest-dark.json');
-  }
 
   // 主色调：github 主题写死 GitHub 蓝；其余用本机保存的值（无则蓝）
   el.setAttribute('data-accent', mode === 'github' ? 'github' : pick(ap.accent, ACCENTS, 'blue'));

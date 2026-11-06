@@ -28,7 +28,6 @@ const htmlPath = join(DIST, 'index.html');
 check(existsSync(htmlPath), 'index.html 存在');
 const html = existsSync(htmlPath) ? readFileSync(htmlPath, 'utf8') : '';
 check(/<link[^>]+rel="manifest"[^>]+href="\/manifest\.json"/.test(html), 'index.html 引用了 /manifest.json');
-check(/id="appManifest"/.test(html) && /\/manifest-dark\.json/.test(html), 'index.html 暗色主题会切到 /manifest-dark.json');
 check(/<meta[^>]+name="theme-color"/.test(html), 'index.html 有 theme-color');
 check(/<meta[^>]+name="color-scheme"[^>]*content="light dark"/.test(html), 'index.html 有 color-scheme 兜底');
 
@@ -59,44 +58,18 @@ if (existsSync(mfPath)) {
     check(Boolean(mf.name), `manifest 有 name（${mf.name ?? '缺失'}）`);
     check(Boolean(mf.start_url), 'manifest 有 start_url');
     check(Array.isArray(mf.icons) && mf.icons.length >= 3, `manifest 有 ${mf.icons?.length ?? 0} 个图标（≥3）`);
-    // 宿主底栏吃清单值，页面顶部画的是 --bg：两者不同色就会在底部剥出一条色带。
-    const lightMeta = (html.match(/<meta name="theme-color" content="(#[0-9a-fA-F]+)" media="\(prefers-color-scheme: light\)"/) || [])[1];
-    check(Boolean(lightMeta), 'index.html 有亮色 theme-color');
-    if (lightMeta) {
-      check(String(mf.theme_color).toLowerCase() === lightMeta.toLowerCase(), `manifest theme_color 与亮色 meta 一致（${mf.theme_color} / ${lightMeta}）`);
+    // 安装壳（WebAPK）的底栏颜色只能由清单给，页面 CSS 和运行时都改不了，且只在安装时定下；
+    // 清单恒用深色 --bg，暗色下底部才不会留白条（浅色下是一条刻意的深色底栏）。
+    const darkMeta = (html.match(/<meta name="theme-color" content="(#[0-9a-fA-F]+)" media="\(prefers-color-scheme: dark\)"/) || [])[1];
+    check(Boolean(darkMeta), 'index.html 有深色 theme-color');
+    if (darkMeta) {
+      check(String(mf.theme_color).toLowerCase() === darkMeta.toLowerCase(), `manifest theme_color 用深色 --bg（${mf.theme_color} / ${darkMeta}）`);
+      check(String(mf.background_color).toLowerCase() === darkMeta.toLowerCase(), `manifest background_color 用深色 --bg（${mf.background_color} / ${darkMeta}）`);
     }
     // 每个图标文件都要真的存在，否则装到桌面是一个白框
     for (const ic of mf.icons ?? []) {
       const f = join(DIST, String(ic.src ?? '').replace(/^\//, ''));
       check(existsSync(f), `图标存在：${ic.src}`);
-    }
-  }
-}
-
-// 暗色主题装出来的壳必须是暗的：系统底栏的颜色只能由清单给，页面 CSS 碰不到。
-// 只差颜色：id / start_url / 图标一致，否则同一次安装会被当成两个应用。
-const mfDarkPath = join(DIST, 'manifest-dark.json');
-check(existsSync(mfDarkPath), 'manifest-dark.json 进了产物');
-if (existsSync(mfDarkPath)) {
-  let mfd = null;
-  try {
-    mfd = JSON.parse(readFileSync(mfDarkPath, 'utf8'));
-  } catch {
-    fails.push('manifest-dark.json 不是合法 JSON');
-  }
-  if (mfd) {
-    const lower = (v) => String(v).toLowerCase();
-    check(Boolean(mfd.name) && Boolean(mfd.start_url), `暗色清单有 name / start_url（${mfd.name ?? '缺失'}）`);
-    check(Array.isArray(mfd.icons) && mfd.icons.length >= 3, `暗色清单有 ${mfd.icons?.length ?? 0} 个图标（≥3）`);
-    check(lower(mfd.theme_color) === lower(mfd.background_color), `暗色清单 theme_color / background_color 一致（${mfd.theme_color} / ${mfd.background_color}）`);
-    if (mf) {
-      check(mfd.id === mf.id && mfd.start_url === mf.start_url, '暗色清单与亮色清单同一身份（id / start_url）');
-      check(lower(mfd.theme_color) !== lower(mf.theme_color), `暗色清单 theme_color 与亮色不同（${mfd.theme_color} / ${mf.theme_color}）`);
-      check(JSON.stringify(mfd.icons) === JSON.stringify(mf.icons), '暗色清单图标与亮色清单一致');
-    }
-    for (const ic of mfd.icons ?? []) {
-      const f = join(DIST, String(ic.src ?? '').replace(/^\//, ''));
-      check(existsSync(f), `暗色清单图标存在：${ic.src}`);
     }
   }
 }

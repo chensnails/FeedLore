@@ -70,14 +70,15 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Fixed
 
-- **A dark-theme install no longer ships a light shell**: the host (WebAPK) takes its system-bar
-  colors from the manifest, which page CSS cannot touch and which is only read at install time.
-  There is now a second `manifest-dark.json` (`theme_color` / `background_color` both `#242424`),
-  and the head script plus `applyTheme()` switch `<link rel="manifest">` by app theme, so dark and
-  GitHub installs point at the dark manifest and the splash screen no longer flashes light. An
-  icon already on the home screen must be removed and re-added to pick up the new manifest. On
-  Android Chrome's WebAPK the bottom navigation bar does follow the manifest color (verified on a
-  real device); that color is still decided by the host/vendor, not something a web page can force.
+- **Home-screen installs always get a dark system bottom bar**: the host (WebAPK) takes the
+  navigation-bar color from the manifest, which page CSS cannot touch, and only re-reads it at
+  install / background refresh. Switching manifests by theme was tried: a dark install stayed
+  black after switching the app to light, because the shell does not re-read. The manifest now
+  pins `theme_color` / `background_color` to the dark `--bg` (`#242424`): no white band in dark
+  mode, a deliberate dark bar in light mode, while the top status bar still follows the theme via
+  `theme-color`. An icon already on the home screen must be removed and re-added to pick up the
+  new manifest. The bar color is still decided by the host/vendor, not something a web page can
+  force.
 - **The status bar no longer sits a shade away from the page top**: `theme-color` used to report
   the panel color (dark `#2e2e2e`) while the page top actually paints the page background `--bg`
   (`#242424`), so hosts that honor the meta showed the status bar and header as two different
