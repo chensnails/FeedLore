@@ -11,6 +11,24 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Added
 
+- **The article list is now a news-feed style list**: cards became borderless rows — titles run up
+  to three lines, a leading image appears as a 4:3 thumbnail on the right (served through the image
+  proxy at 200/400w variants, lazy loaded, and dropped entirely if it fails), source and time sit on
+  one bottom line, and a hairline separates entries. Scanning hundreds of headlines no longer means
+  looking at hundreds of cards; only the expanded row lifts back into a card to mark what you are
+  reading.
+- **Horizontally scrolling channel strip on phones**: at ≤720px the article page and the card page
+  get a swipeable channel strip under the header (article: 全部 / 未读 / 收藏 / 关注 + channels;
+  cards: 全部 + channels). One tap reaches a top-level channel, the active tab carries a short
+  centered underline, and the trailing icon still opens the full drawer with groups and unread
+  counts. Desktops keep the permanent sidebar, and both read the same filter state.
+- **Floating pill tab bar and a back-to-top button**: the phone tab bar now floats over the content
+  as a rounded pill with gutters on both sides instead of a full-width band; a back-to-top button
+  appears in the lower-right after one screen of scrolling, above the bar and below the drawer mask,
+  and scrolls back smoothly.
+- **Card page visual alignment**: cards and list rows use a thin border with a light shadow and a
+  12px radius, rows tint on hover instead of sliding sideways, and favorite / mark-unread buttons on
+  rows with an image sit on a translucent scrim so they stay legible over photos.
 - **Bottom view tab bar on phones**: at ≤720px the 文章 / 卡片 / 日报 switcher moves from the
   header cluster to a fixed bar at the bottom of the screen, where a thumb can reach it; the
   header copy hides at the same time so there is never one nav above and below. Channel drawer,

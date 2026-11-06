@@ -235,6 +235,9 @@ html.boot-lock { overflow: hidden; }
 <!-- 移动端底部视图标签栏（≤720px 显示；桌面 / 平板隐藏，仍用各视图顶栏里的 ViewNav） -->
 <div id="mobileTabbarRoot" class="mobile-tabbar"></div>
 
+<!-- 悬浮回顶钮（滚过一屏才出现；挂在这里而不是视图内，避免被头部容器查询困住） -->
+<div id="scrollTopRoot"></div>
+
 <!-- 设置弹层（已 React 化，组件见 src/settings/SettingsModal.jsx），挂载到 #settingsRoot -->
 <div id="settingsRoot"></div>
 

@@ -81,7 +81,7 @@
   --shadow-lg: 0 20px 60px rgba(16, 18, 22, .28);
   --shadow-sm: 0 1px 3px rgba(20, 24, 30, .1);
   --shadow-toast: 0 8px 28px rgba(16, 18, 22, .3);
-  --radius: 14px;
+  --radius: 12px;
 
   /* ---------- 统一设计规范（v1.1.12） ----------
      下面这组令牌把散落各处的取值收敛成可复用的刻度；组件一律引用令牌，不再硬编码。 */
@@ -89,7 +89,7 @@
   --radius-xs: 6px;      /* 行内编辑框、代码块等极小元素 */
   --radius-sm: 8px;      /* 小控件：图标按钮、小标签 */
   --radius-md: 10px;     /* 默认控件：按钮、输入框、下拉、Toast */
-  --radius-lg: 14px;     /* 容器：卡片、内容块（= --radius） */
+  --radius-lg: 12px;     /* 容器：卡片、内容块（= --radius） */
   --radius-xl: 16px;     /* 弹层：模态窗 */
   --radius-pill: 999px;  /* 胶囊：标签、徽标 */
   /* 字号阶梯（由既有取值收敛，覆盖 11px ~ 21px；阶梯外取值一律并入相邻档） */
@@ -940,7 +940,9 @@ textarea:disabled {
   overflow: hidden;
   display: flex; flex-direction: column;
   height: var(--card-h);
-  box-shadow: var(--elevation-2);
+  /* v2.5.0：卡片改成「薄边 + 一层浅影」，与文章页的无边框行列表同一语言。
+     整页几十张卡各带一层深影，视觉噪音比卡片本身的图还重。 */
+  box-shadow: var(--elevation-1);
   transition: transform var(--dur-slow) ease, box-shadow var(--dur-slow) ease, border-color var(--dur-slow);
   cursor: pointer;
   /* 视口外的卡片跳过渲染：长列表滚动更顺滑（contain-intrinsic-size 预留高度避免滚动条抖动） */
@@ -948,8 +950,8 @@ textarea:disabled {
   contain-intrinsic-size: auto var(--card-h);
 }
 .card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--elevation-3);
+  transform: translateY(-2px);
+  box-shadow: var(--elevation-2);
   border-color: var(--border-strong);
 }
 
@@ -1376,8 +1378,9 @@ textarea:disabled {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding:var(--sp-3) var(--sp-4);
-  box-shadow: var(--elevation-2);
-  transition: transform var(--dur-slow) ease, box-shadow var(--dur-slow) ease, border-color var(--dur-slow);
+  /* v2.5.0：与卡片同口径，浅影薄边；行内不再左右推移（列表一滚就晃，读起来累） */
+  box-shadow: var(--elevation-1);
+  transition: background var(--dur-base), box-shadow var(--dur-slow) ease, border-color var(--dur-slow);
   cursor: pointer;
   /* 与 .card / .art-item 同口径：视口外的行跳过渲染（此前只有卡片和文章页有） */
   content-visibility: auto;
@@ -1395,8 +1398,8 @@ textarea:disabled {
   animation: cardIn var(--dur-slow) var(--ease) backwards;
 }
 .row-item:hover {
-  transform: translateX(2px);
-  box-shadow: var(--elevation-3);
+  background: var(--hover);
+  box-shadow: var(--elevation-2);
   border-color: var(--border-strong);
 }
 
@@ -1404,7 +1407,7 @@ textarea:disabled {
   position: relative;
   flex: 0 0 104px;
   width: 104px; height: 66px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: var(--media-grad);
   border: 1px solid var(--border);
@@ -1462,7 +1465,7 @@ textarea:disabled {
 }
 .sk-row-thumb {
   flex: 0 0 104px; width: 104px; height: 66px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: linear-gradient(90deg, var(--sk-a) 25%, var(--sk-b) 37%, var(--sk-a) 63%);
   background-size: 400% 100%;
   animation: sk 1.4s ease infinite;
@@ -3034,70 +3037,110 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .filter-actions { margin:2px 0 var(--sp-2); }
 .filter-save { margin-top:var(--sp-3); display: flex; justify-content: flex-end; }
 
-.reader-list { display: flex; flex-direction: column; gap:var(--sp-3); max-width: var(--reader-width); margin: var(--sp-5) auto 0; }
+/* 文章列表（v2.5.0 行式重构）
+ * ------------------------------------------------------------
+ * 从「一条一张卡片」改成资讯流的行式排版：无边框、无阴影、条目之间只用一条
+ * 发丝分隔线，标题最多三行，右侧缩略图，来源与时间压在底部一行。
+ * 卡片式每条都在抢注意力（几百条 = 几百张卡），行式让「扫描标题」成为第一动作。
+ * 展开的那一条才浮起来变成一张卡 —— 此时用户在看内容，不再是扫描。
+ */
+.reader-list { display: flex; flex-direction: column; gap: 0; max-width: var(--reader-width); margin: var(--sp-3) auto 0; }
 
 .art-item {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--elevation-2);
-  overflow: hidden;
-  transition: border-color var(--dur-slow), box-shadow var(--dur-slow);
+  position: relative;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  transition: background var(--dur-base), box-shadow var(--dur-slow), border-color var(--dur-slow);
   /* 视口外的文章项跳过渲染：阅读页几百条条目也不卡 */
   content-visibility: auto;
-  contain-intrinsic-size: auto 84px;
+  contain-intrinsic-size: auto 104px;
   /* 让出下方那根吸顶工具条的高度，否则新文章的第一行正好被工具条盖住。
      进入文章的置顶由 core/reader.js#scrollReaderToArt 直接设 scrollTop 完成
      （用 scrollIntoView 会在手风琴收起的旧布局里测量，导致新文章被甩到视口上方）；
      这条 scroll-margin 留给 focusReaderArt 的 block:'center' 等原生滚动场景。 */
   scroll-margin-top: calc(var(--head-h, 52px) + 8px);
 }
-.art-item:hover { border-color: var(--border-strong); }
+/* 悬停只给一层极淡的底色：行式列表里抬阴影会让整列「毛边」闪烁 */
+.art-item:hover { background: var(--hover); }
 
-/* 展开态不再做主色描边 + 抬高阴影（整块发亮太抢眼），只留极弱的边框区分，
-   靠 caret 旋转 + 展开的正文本身表达"当前展开的是哪条"。 */
-.art-item.open { border-color: var(--border-strong); }
+/* 展开态：这一条从行变成卡 —— 描边 + 极轻阴影，告诉用户「现在看的是这条」。
+   描边走 box-shadow 而不是 border：加 1px 边框会让整列在展开瞬间抖动一下。 */
+.art-item.open {
+  background: var(--panel);
+  border-bottom-color: transparent;
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 1px var(--border-strong), var(--elevation-2);
+  /* 展开体自带底色，不裁一下会在圆角外露出四个直角 */
+  overflow: hidden;
+}
+.art-item.open:hover { background: var(--panel); }
 /* 落点指示（v1.3.7）：从卡片页「在文章页查看」跳过来时，滚到这篇并让文章框闪一下，
    告诉用户「你要的那条在这里」。只动描边与阴影，不动布局；类由 core 的 focusReaderArt
    挂 1.5s 后摘掉（时长要和这里的 1.5s 对齐）。 */
 .art-item.is-flash { animation: artFlash 1.5s var(--ease); }
 @keyframes artFlash {
-  0%, 55% { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-2); }
-  100% { border-color: var(--border); box-shadow: var(--elevation-2); }
+  0%, 55% { box-shadow: 0 0 0 3px var(--accent-glow); }
+  100% { box-shadow: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   /* 不做闪烁动画，改成静止描边停一瞬 —— 指示作用留着，动效去掉 */
   .art-item.is-flash {
     animation: none;
-    border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-2);
+    box-shadow: 0 0 0 3px var(--accent-glow);
   }
 }
 
-/* 一行 = 可点开的头部 + 右侧收藏星标。
-   星标不能塞进 .art-head：button 里不能再嵌 button，所以外面套一层 .art-row。 */
-.art-row { display: flex; align-items: flex-start; }
+/* 一行 = 可点开的主体（标题 + 图）+ 右下角的收藏 / 标未读。
+   两个动作不能塞进 .art-head：button 里不能再嵌 button，所以绝对定位到右下角，
+   与底部元信息同一行，不再单独占一列宽度。 */
+.art-row { position: relative; display: flex; align-items: stretch; }
 
 .art-head {
-  display: flex; align-items: center; gap:var(--sp-3);
+  display: flex; align-items: flex-start; gap: var(--sp-3);
   flex: 1 1 auto; min-width: 0; width: auto;
   border: none; background: none; font-family: inherit;
   text-align: left;
-  padding:var(--sp-3) var(--sp-4);
+  padding: var(--sp-4);
   cursor: pointer;
   color: inherit;
 }
-.art-item.open .art-head { padding-bottom:var(--sp-3); }
+.art-item.open .art-head { padding-bottom: var(--sp-3); }
+
+/* 标题 + 元信息竖排；缩略图是这一栏的兄弟，不参与文字换行 */
+.art-text {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
 
 /* 未读圆点：已读时用 opacity 藏掉但保留占位，两行标题的左边缘才是齐的 */
 .art-dot {
   flex: 0 0 auto;
   width: 6px; height: 6px;
+  margin-top: 9px;
   border-radius: 50%;
   background: var(--accent);
   transition: opacity var(--dur-slow);
 }
 .art-item.is-read .art-dot { opacity: 0; }
 
+.art-thumb {
+  flex: 0 0 104px; width: 104px;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--media-grad);
+}
+.art-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.art-acts {
+  position: absolute;
+  right: 6px; bottom: 6px;
+  display: flex; align-items: center; gap: 2px;
+  z-index: 1;
+}
 .art-star {
   flex: 0 0 auto;
   display: inline-flex; align-items: center; justify-content: center;
@@ -3105,34 +3148,42 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   font-size: 1rem; line-height: 1;
   color: var(--text-faint);
   cursor: pointer;
-  padding:var(--sp-1) var(--sp-2);
-  margin:var(--sp-2) var(--sp-2) 0 0;
+  width: 30px; height: 30px; padding: 0;
   border-radius: var(--radius-sm);
   transition: color var(--dur-base), background var(--dur-base), transform var(--dur-fast);
 }
 .art-star:hover { background: var(--hover); color: var(--star); }
 .art-star:active { transform: scale(.9); }
 .art-item.is-fav .art-star[data-fav] { color: var(--star); }
+/* 有缩略图时动作正好压在图上：垫一层半透明暗底 + 白图标，亮图里也看得清。
+   收藏态的颜色由上面那条（特异度更高）继续赢，星标仍是金色。 */
+.art-item.has-thumb .art-acts {
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: rgba(12, 16, 24, .45);
+}
+.art-item.has-thumb .art-star { color: rgba(255, 255, 255, .92); }
+.art-item.has-thumb .art-star:hover { background: rgba(255, 255, 255, .18); color: #fff; }
+/* 动作已经落在图上，元信息不必再让出那一截：窄屏每一点宽度都留给来源与时间 */
+.art-item.has-thumb .art-meta { padding-right: 0; }
 /* 「标为未读」是补救动作，常驻会和收藏星争视觉；给低对比，悬停 / 触屏上仍清晰可点 */
 .art-unread { color: var(--text-faint); opacity: .65; }
 .art-unread:hover { color: var(--accent-text); opacity: 1; }
 .art-unread .ico { width: .95rem; height: .95rem; }
 /* 跨页状态统一（v1.5.2）：收藏态与卡片页同语言——左侧主色竖条 + 星标变色。
-   竖条用 inset 阴影，不挤占布局；保留自身拟态表面（hover 升到 neu-3）。 */
-.art-item.is-fav { box-shadow: var(--neu-2), inset 3px 0 0 var(--accent); }
-.art-item.is-fav:hover { box-shadow: var(--neu-3), inset 3px 0 0 var(--accent); }
-
-.art-caret {
-  flex: 0 0 auto;
-  font-size: var(--fs-2xs); color: var(--text-faint);
-  transition: transform var(--dur-slow) ease;
-}
-.art-item.open .art-caret { transform: rotate(90deg); }
+   竖条用 inset 阴影，不挤占布局。 */
+.art-item.is-fav { box-shadow: inset 3px 0 0 var(--accent); }
+.art-item.is-fav.open { box-shadow: 0 0 0 1px var(--border-strong), var(--elevation-2), inset 3px 0 0 var(--accent); }
 
 .art-title {
-  flex: 1; min-width: 0;
-  font-size: var(--fs-lg); font-weight: 620; line-height: 1.45;
+  font-size: var(--fs-lg); font-weight: 620; line-height: 1.5;
   color: var(--text);
+  /* 最多三行：资讯流的标题以「一眼看全」为准，长标题截断而不是折成四五行把图拉开 */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
 }
 /* 已读 / 未读：未读标题更重，已读降一档。
    展开态不再给标题上主色，所以这里不需要再排除 .open。 */
@@ -3141,8 +3192,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-item.is-read .art-meta { opacity: .72; }
 
 .art-meta {
-  flex: 0 0 auto;
-  display: inline-flex; align-items: center; gap:var(--sp-2);
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2);
+  min-width: 0;
+  margin-top: auto;
+  /* 右侧两个动作压在元信息这一行的末端，给文字留出等宽避让 */
+  padding-right: 64px;
   font-size: var(--fs-2xs);
 }
 .art-meta .src-pill { max-width: 180px; }
@@ -3617,16 +3671,14 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   /* 窄屏正文图片：跟着屏宽走，只对特别高的长图用视口高度兜底，避免占满整屏 */
 
   /* 展开态箭头和标题同一行，来源/体积/日期换到第二行 */
-  .art-head { flex-wrap: wrap; align-items: flex-start; gap:var(--sp-1) var(--sp-2); padding:var(--sp-3) var(--sp-3); }
-  .art-caret { margin-top:var(--sp-1); }
-  /* 头部改成顶对齐后，圆点得自己往下挪一点才和标题首行居中 */
-  .art-dot { margin-top:var(--sp-2); }
-  .art-star { margin-top:var(--sp-2); }
-  .art-title { flex: 1 1 0; min-width: 0; font-size: var(--fs-base); }
-  /* 20px = 圆点 6 + 间距 9 + 箭头 11 + 间距 9，让第二行的来源对齐标题 */
-  .art-meta { flex: 1 0 100%; padding-left:var(--sp-7); }
+  /* 行式列表的窄屏密度：留白收到 12、缩略图 92、标题 15px。
+     不再换行堆地址 —— 来源与时间本来就在底部那一行，动作压在行末。 */
+  .art-head { gap: var(--sp-2); padding: var(--sp-3); }
+  .art-dot { margin-top: 8px; }
+  .art-thumb { flex: 0 0 92px; width: 92px; }
+  .art-meta { padding-right: 60px; }
   .art-meta .src-pill { max-width: none; }
-  .art-inner { padding:var(--sp-3) var(--sp-3); gap:var(--sp-3); }
+  .art-inner { padding: var(--sp-3); gap: var(--sp-3); }
   /* 动作键右对齐在窄屏也生效（基础规则已负责，这里不再回退靠左）：
      读完正文视线落在末尾，复制 / 打开就该在落点，不用再扫回左边。
      正文不要在窄屏改字号：--reader-fs 归「正文字号」管，钉死界面字号会让手机上的设置失效。 */
@@ -3654,9 +3706,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .reader-head { gap:var(--sp-2); padding-bottom:var(--sp-3); }
 
   /* 文章卡片：内边距再收一点，正文更贴边、更省空间 */
-  .art-head { padding:var(--sp-3) var(--sp-3); }
-  .art-inner { padding:var(--sp-3) var(--sp-3); }
-  .art-meta { padding-left:var(--sp-7); }
+  .art-head { padding: var(--sp-3); }
+  .art-inner { padding: var(--sp-3); }
 }
 
 /* ============================================================
@@ -4906,6 +4957,76 @@ body { overflow: hidden; }
 }
 
 /* ============================================================
+ * 横滑频道条（v2.5.0）
+ * ------------------------------------------------------------
+ * 只在 ≤720px 出现，挂进两页自己的吸顶头部里（文章页 .reader-head 第二行、
+ * 卡片页 .cards-sticky 第二行）—— 头部本来就是 sticky / 非滚动行，
+ * 频道条跟着一起吸顶，不需要再算一层 top 偏移。
+ *
+ * 数据与高亮完全复用抽屉那一套（state.rdScope / rdFeedId / rdWatch、cardFeed…），
+ * 这里是纯展示 + 转发，没有第二份筛选状态。
+ * ============================================================ */
+.chan-tabs { display: none; }
+
+@media (max-width: 720px) {
+  .chan-tabs {
+    display: flex; align-items: stretch; gap: 2px;
+    /* 100% 基础宽：头部是 flex-wrap 容器，这一行独占第二排 */
+    flex: 1 0 100%;
+    order: 9;
+    min-width: 0;
+    margin: var(--sp-1) 0 0;
+    padding: 0;
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .chan-tabs::-webkit-scrollbar { display: none; }
+  /* 基础头部是 nowrap（桌面一行排开）；这条要独占第二行，窄屏才放开换行。
+     padding-bottom 归零：条的 42px 命中高度本身已经提供了下沿留白。 */
+  .reader-head:has(.chan-tabs) { flex-wrap: wrap; row-gap: 0; padding-bottom: 0; }
+
+  .chan-tab {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 42px;
+    padding: 0 10px;
+    border: 0; background: none;
+    font-family: inherit;
+    font-size: var(--fs-base);
+    font-weight: 500;
+    color: var(--text-muted);
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chan-tab:first-child { padding-left: 0; }
+  .chan-tab.active { color: var(--text); font-weight: 650; }
+  /* 选中态用居中的短下划线：比整块底色轻，也不会改变命中区 */
+  .chan-tab.active::after {
+    content: '';
+    position: absolute; left: 50%; bottom: 0;
+    width: 18px; height: 3px;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    background: var(--accent);
+  }
+  .chan-tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus-ring); }
+  /* 末尾的「完整频道列表」：与标签同一行，永远贴在滚动末端 */
+  .chan-tabs-more { margin-left: auto; padding: 0 6px; color: var(--text-faint); }
+  .chan-tabs-more .ico { width: 18px; height: 18px; }
+
+  /* 卡片页：频道条要铺到吸顶条的两端，自带一条下边框把它和内容分开 */
+  .cards-sticky .chan-tabs {
+    margin: var(--sp-1) calc(var(--sp-4) * -1) calc(var(--sp-1) * -1);
+    padding: 0 var(--sp-4);
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+/* ============================================================
  * 移动端底部视图标签栏（v2.4.0）
  * ------------------------------------------------------------
  * 手机上一屏最重要的一件事是「看清楚内容」，而不是在顶栏挤三个视图图标。
@@ -4930,34 +5051,38 @@ body { overflow: hidden; }
   .view-toolbar .viewnav { display: none; }
 
   .mobile-tabbar { display: block; }
+  /* 悬浮胶囊（v2.5.0）：从贴底整条改成浮在内容上的圆角块 ——
+     内容能从栏两侧「透」出来，栏本身只占三枚按钮，不再像一条把页面切开的横杠。 */
   .mobile-tabbar .viewnav {
     position: fixed;
-    left: 0; right: 0; bottom: 0;
+    left: var(--sp-3); right: var(--sp-3);
+    bottom: calc(var(--sp-2) + env(safe-area-inset-bottom, 0px));
     z-index: 50;   /* < --z-drawer-mask(55)：抽屉/弹层永远盖住标签栏 */
     display: flex;
     align-items: stretch;
     width: auto;
-    height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+    height: var(--tabbar-h);
     margin: 0;
-    padding: 0 0 env(safe-area-inset-bottom, 0px);
-    gap: 0;
+    padding: 0 var(--sp-2);
+    gap: 2px;
     background: var(--panel);
-    border: 0;
-    border-top: 1px solid var(--border);
-    border-radius: 0;
-    /* 不用 backdrop-filter：底部栏是常驻 fixed 表面，模糊预算留给全屏遮罩 */
-    box-shadow: 0 -4px 16px rgba(16, 22, 32, .06);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    /* 唯一一处常驻阴影：浮起才分得清「栏」与「内容」，但不用 backdrop-filter
+       （模糊预算留给全屏遮罩，见玻璃模糊治理）。 */
+    box-shadow: 0 8px 24px rgba(16, 22, 32, .12), 0 1px 2px rgba(16, 22, 32, .06);
     overscroll-behavior: contain;
   }
   .mobile-tabbar .viewnav-btn {
     position: relative;
     flex: 1 1 0;
     width: auto; min-width: 0;
-    height: var(--tabbar-h);
+    height: calc(var(--tabbar-h) - 8px);
+    margin: 4px 0;
     flex-direction: column;
     gap: 3px;
     padding: 0 var(--sp-1);
-    border-radius: 0;
+    border-radius: 16px;
     background: none;
     box-shadow: none;
     font-size: var(--fs-2xs);
@@ -4971,29 +5096,53 @@ body { overflow: hidden; }
     line-height: 1;
     letter-spacing: .02em;
   }
+  /* 选中项：主色文字 + 淡主色底丸。胶囊底栏里再画一条顶边横杠会像「没贴住的角」 */
   .mobile-tabbar .viewnav-btn.active {
-    background: none;
+    background: var(--accent-soft);
     color: var(--accent-text);
     box-shadow: none;
-  }
-  /* 选中项用顶边短横条表达：比整块底色克制，也不改变按钮的点击区域 */
-  .mobile-tabbar .viewnav-btn.active::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 50%;
-    width: 28px; height: 3px;
-    transform: translateX(-50%);
-    border-radius: 0 0 3px 3px;
-    background: var(--accent);
   }
   .mobile-tabbar .viewnav-btn:focus-visible {
     outline: none;
     box-shadow: inset 0 0 0 2px var(--focus-ring);
   }
-  /* toast 的默认底边（40px）落在这条 56px 常驻栏里，而 toast 的 z-index(400) 又压在
-     栏之上 —— 结果是提示语骑在标签栏上。抬到栏顶再加一档间距。「有新内容」浮标本来就在
-     92px，不受影响。 */
-  .toast { bottom: calc(var(--tabbar-h) + var(--sp-4) + env(safe-area-inset-bottom, 0px)); }
+  /* toast 的默认底边（40px）落在这条常驻栏里，而 toast 的 z-index(400) 又压在
+     栏之上 —— 结果是提示语骑在标签栏上。抬到栏顶 + 栏浮起的下边距 + 一档间距。
+     「有新内容」浮标本来就在 92px，不受影响。 */
+  .toast { bottom: calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ============================================================
+ * 悬浮回顶钮（v2.5.0）
+ * ------------------------------------------------------------
+ * 滚过一屏（600px）才出现：短列表本来就在顶部，多一个钮只是噪音。
+ * 挂在 #scrollTopRoot（视图之外）—— 各视图头部的 container-type 会
+ * 把 fixed 后代关进头部那一小块。
+ * z-index(40) 低于标签栏(50) 与抽屉遮罩(55)：钮在右下角，不跟它们抢层。
+ * ============================================================ */
+.scroll-top {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--text-muted);
+  box-shadow: 0 6px 20px rgba(16, 22, 32, .14);
+  cursor: pointer;
+  animation: scrollTopIn .18s ease-out;
+}
+.scroll-top:hover { color: var(--accent-text); border-color: var(--accent-text); }
+.scroll-top:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+.scroll-top .ico { width: 20px; height: 20px; }
+@keyframes scrollTopIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* 桌面没有底部标签栏：回到普通页边距，别悬在半空 */
+@media (min-width: 721px) {
+  .scroll-top { bottom: var(--sp-6); }
 }
 
 @media (max-width: 720px) {
@@ -5118,12 +5267,12 @@ body { overflow: hidden; }
   /* v1.6.0：搜索放大镜与 ⋮ 都在 .head-right 内，保持 DOM 顺序（[🔍][⋮]），
      不再给单独 order —— 否则放大镜会被甩到 ⋮ 右侧，溢出菜单不在最右。 */
 
-  /* 内容区给底部视图标签栏留出高度：最后一条 / 页脚不会被固定栏盖住。
+  /* 内容区给悬浮标签栏留出高度：栏本身 56 + 浮起的下边距 8 + 一档 12 的呼吸间距。
      三个视图各有自己的滚动容器，这里一次列全。 */
   .reader-main,
   #cardsRoot > main.wrap,
   #aiView {
-    padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom, 0px));
   }
 
   /* 顶部安全区：PWA / 刘海屏里，吸顶头部不再贴住状态栏。

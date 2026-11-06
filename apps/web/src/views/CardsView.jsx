@@ -22,6 +22,7 @@ import { ChannelList } from './ChannelList.jsx';
 import { Dropdown } from './Dropdown.jsx';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
+import { ChannelTabs } from '../ui/ChannelTabs.jsx';
 import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthSrcSet, widthVariant } from '../imgSrc.js';
@@ -561,6 +562,10 @@ export function CardsView() {
             <ViewNav />
             <OverflowMenu view="cards" cardControls sortValue={st.sort} viewMode={view} />
           </div>
+          {/* 窄屏第二行：与文章页同一个 ChannelTabs（桌面 display:none，抽屉 / 下拉不变） */}
+          <ChannelTabs variant="cards" groups={groups} activeFeedId={st.feedFilter}
+            activeGroup={st.cardGroup} onFeed={pickFeed}
+            onManage={() => { if (s.cardsToggleDrawer) s.cardsToggleDrawer(); }} />
         </div>
       </div>
 

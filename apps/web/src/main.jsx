@@ -17,6 +17,7 @@ import { CommandPalette } from './cmdk/CommandPalette.jsx';
 import { CardsView } from './views/CardsView.jsx';
 import { ReaderView } from './views/ReaderView.jsx';
 import { ViewNav } from './ui/ViewNav.jsx';
+import { ScrollTop } from './ui/ScrollTop.jsx';
 import { Overlays } from './ui/Overlays.jsx';
 
 /* v1.6.0：顶栏并入各视图自带的第一行（≡频道 / 标题 / 搜索 / ⋮），
@@ -109,6 +110,17 @@ if (mobileTabbarRoot) {
   createRoot(mobileTabbarRoot).render(
     <React.StrictMode>
       <ViewNav />
+    </React.StrictMode>
+  );
+}
+
+/* 回到顶部浮钮：同样放在视图之外（fixed 定位，不能落在容器查询容器里）。
+ * 桌面与窄屏都显示，位置由 CSS 分别给。 */
+const scrollTopRoot = document.getElementById('scrollTopRoot');
+if (scrollTopRoot) {
+  createRoot(scrollTopRoot).render(
+    <React.StrictMode>
+      <ScrollTop />
     </React.StrictMode>
   );
 }

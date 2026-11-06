@@ -337,8 +337,14 @@ const applyFlagEverywhere = (id, patch) => {
   return before;
 };
 
+// 回顶钮读的「当前容器滚动位置」：真实核心按 state.tab 选容器，这里由测试直接给值
+let stubScrollTop = 0;
+
 w.feedlore = {
   errText: errorText,
+  activeScrollTop: () => stubScrollTop,
+  __setScrollTop: (v) => { stubScrollTop = Number(v) || 0; },
+  scrollTop: () => { calls.push(['scrollTop']); },
   apiFetch: (url, opts) => {
     calls.push(['apiFetch', url, opts && opts.method, opts && opts.body]);
     const method = (opts && opts.method) || 'GET';
@@ -982,7 +988,7 @@ const readerTick = () => w.dispatchEvent(new w.Event('__readerTick'));
 
 /** 阅读页条目（P3c 测试用） */
 const READER_ENTRIES = () => ([
-  { id: 'r1', name: '文章一', tags: ['标签A'], size: '2.5G', date: '2026-10-15T10:00:00Z', feedName: '例子星球 - Telegram Channel', isRead: false, isFavorite: false, sourceUrl: 'https://example.com/a1' },
+  { id: 'r1', name: '文章一', tags: ['标签A'], size: '2.5G', date: '2026-10-15T10:00:00Z', feedName: '例子星球 - Telegram Channel', isRead: false, isFavorite: false, sourceUrl: 'https://example.com/a1', image: '/api/img?u=https%3A%2F%2Fexample.com%2Fa1.jpg&w=400' },
   { id: 'r2', name: '文章二', tags: [], size: '', date: '2026-10-14T10:00:00Z', feedName: 'demo', isRead: true, isFavorite: true },
 ]);
 const readerSetEntries = (list) => { w.feedlore.state.rdEntries = list; readerTick(); };
@@ -1030,6 +1036,7 @@ const __mountAi = w.__mountAi;
 const __mountCards = w.__mountCards;
 const __mountReader = w.__mountReader;
 const __mountOverlays = w.__mountOverlays;
+const __mountScrollTop = w.__mountScrollTop;
 __mount(document.getElementById('settingsRoot'));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -4292,6 +4299,44 @@ const withEFP = (el, fn) => {
     const it2 = R('#readerList .art-item[data-id="r2"]');
     if (!it2.classList.contains('is-read') || !it2.classList.contains('is-fav')) throw new Error('r2 状态类不符');
   });
+  // 缩略图（v2.5.0 行式重构）：列表接口本来就带 image，有图才渲染，没有就不留灰框
+  t('缩略图：只在条目带 image 时渲染，走代理地址与宽度变体', () => {
+    const it1 = R('#readerList .art-item[data-id="r1"]');
+    const img = it1.querySelector('.art-thumb img');
+    if (!img) throw new Error('有 image 的条目缺缩略图');
+    if (img.getAttribute('src') !== READER_ENTRIES()[0].image) throw new Error('src 不是条目给的 image');
+    if (!img.getAttribute('srcset')) throw new Error('缩略图缺 srcset（应走 200/400 宽度变体）');
+    if (!img.getAttribute('loading')) throw new Error('缩略图应懒加载');
+    if (it1.className.indexOf('has-thumb') < 0) throw new Error('缺 has-thumb：动作按钮会直接压在亮图上');
+    const it2 = R('#readerList .art-item[data-id="r2"]');
+    if (it2.querySelector('.art-thumb')) throw new Error('没有 image 的条目不该出现空图框');
+    if (it2.className.indexOf('has-thumb') >= 0) throw new Error('无图条目不该带 has-thumb');
+  });
+
+  // 横滑频道条：与抽屉同一份筛选状态，只多了「一级频道一步可达」
+  t('频道条：全部 / 未读 / 收藏 / 关注 + 频道 +「完整列表」', () => {
+    const tabs = R('.chan-tabs');
+    if (!tabs) throw new Error('文章页头部缺横滑频道条');
+    const labels = RA('.chan-tabs .chan-tab').map((b) => b.textContent);
+    if (labels.slice(0, 5).join(',') !== '全部,未读,收藏,关注,例子星球') throw new Error('标签: ' + labels.join(','));
+    const on = R('.chan-tabs .chan-tab.active');
+    if (!on || on.textContent !== '全部') throw new Error('默认应选中「全部」');
+    if (!R('.chan-tabs .chan-tabs-more')) throw new Error('缺「完整频道列表」入口');
+  });
+  t('频道条：点「未读」走 readerSetScope（不另起筛选状态）', () => {
+    RA('.chan-tabs .chan-tab')[1].click();
+    if (!callsOf('readerSetScope').some((c) => c[1] === 'unread')) throw new Error('未读标签没走 readerSetScope');
+  });
+  // 复原筛选，别把状态漏给后面的用例
+  w.feedlore.state.rdScope = 'all'; w.feedlore.state.rdFeedId = null; readerTick();
+  await waitFor(() => (R('.chan-tabs .chan-tab.active') || {}).textContent === '全部');
+  t('频道条：点频道走 readerSetFeed', () => {
+    RA('.chan-tabs .chan-tab')[4].click();
+    if (!callsOf('readerSetFeed').some((c) => String(c[1]) === '1')) throw new Error('频道标签没走 readerSetFeed');
+  });
+  w.feedlore.state.rdFeedId = null; w.feedlore.state.rdGroup = null; w.feedlore.state.rdScope = 'all'; readerTick();
+  await waitFor(() => (R('.chan-tabs .chan-tab.active') || {}).textContent === '全部');
+
   // 已读回退：只有已读条目出现「标为未读」，未读条目不重复给入口
   t('标为未读入口只出现在已读条目', () => {
     if (!R('#readerList .art-item[data-id="r2"] .art-unread')) throw new Error('已读条目缺「标为未读」');
@@ -4347,6 +4392,8 @@ const withEFP = (el, fn) => {
     if (!body.querySelector('.art-tags .mini-tag')) throw new Error('无标签');
     if (!body.querySelector('.art-actions .btn-open')) throw new Error('无打开按钮');
     if (!body.querySelector('.art-actions .btn-copy')) throw new Error('无复制按钮');
+    // 展开后正文自己会出图：列表缩略图让位，不重复占位
+    if (it1.querySelector('.art-thumb')) throw new Error('展开态不该再显示列表缩略图');
   });
   t('展开后「全部收起」出现', () => { if (R('#readerCollapseAll').hidden) throw new Error('应显示'); });
 
@@ -4374,10 +4421,11 @@ const withEFP = (el, fn) => {
   // 收起
   R('#readerList .art-item[data-id="r1"] .art-head').click();
   await sleep(30);
-  t('再点收起：open 移除 + 正文隐藏', () => {
+  t('再点收起：open 移除 + 正文隐藏 + 缩略图回来', () => {
     const it1 = R('#readerList .art-item[data-id="r1"]');
     if (it1.classList.contains('open')) throw new Error('仍 open');
     if (!it1.querySelector('.art-body').hidden) throw new Error('正文应隐藏');
+    if (!it1.querySelector('.art-thumb')) throw new Error('收起后缩略图应回来');
   });
 
   // bodyVersion 2：结构化正文（标题 / 链接 / 列表 / 引用 / 代码 / 图片）
@@ -4934,7 +4982,8 @@ const withEFP = (el, fn) => {
   });
   overlayState.toast = { msg: '订阅已添加', ok: true, show: true };
   overlaysTick();
-  await sleep(20);
+  // 等条件而不是等时间：jsdom + React 19 偶尔 20ms 还没提交完
+  await waitFor(() => O('.toast').className === 'toast show ok');
   t('toast：show + ok + 文案', () => {
     const el = O('.toast');
     if (el.className !== 'toast show ok') throw new Error('class: ' + el.className);
@@ -4942,7 +4991,7 @@ const withEFP = (el, fn) => {
   });
   overlayState.toast = { msg: '操作失败', ok: false, show: true };
   overlaysTick();
-  await sleep(20);
+  await waitFor(() => O('.toast').className === 'toast show err');
   t('toast：失败态带 .err 且无 .ok', () => {
     const el = O('.toast');
     if (el.className !== 'toast show err') throw new Error('class: ' + el.className);
@@ -5008,6 +5057,31 @@ const withEFP = (el, fn) => {
   overlaysTick();
   await sleep(20);
   t('灯箱：单图不渲染翻页控件', () => { if (O('.lightbox-nav')) throw new Error('单图不该有翻页'); });
+
+  // 回顶钮（v2.5.0）：滚过一屏才出现，挂在视图之外
+  const scrollTopEl = w.document.createElement('div');
+  w.document.body.appendChild(scrollTopEl);
+  __mountScrollTop(scrollTopEl);
+  await sleep(20);
+  t('回顶钮：顶部不出现（短列表不摆一个没用的钮）', () => {
+    if (scrollTopEl.querySelector('.scroll-top')) throw new Error('顶部不该出现回顶钮');
+  });
+  w.feedlore.__setScrollTop(900);
+  w.document.dispatchEvent(new w.Event('scroll'));
+  await waitFor(() => scrollTopEl.querySelector('.scroll-top'));
+  t('回顶钮：滚过一屏出现，点击走 core.scrollTop', () => {
+    const btn = scrollTopEl.querySelector('.scroll-top');
+    if (!btn) throw new Error('滚过 600px 后未出现');
+    if (btn.getAttribute('aria-label') !== '回到顶部') throw new Error('缺可访问名');
+    btn.click();
+    if (!callsOf('scrollTop').length) throw new Error('没调到 core.scrollTop');
+  });
+  w.feedlore.__setScrollTop(0);
+  w.dispatchEvent(new w.Event('__viewChanged'));
+  await waitFor(() => !scrollTopEl.querySelector('.scroll-top'));
+  t('回顶钮：切视图后按新容器重判并收起', () => {
+    if (scrollTopEl.querySelector('.scroll-top')) throw new Error('换到顶部视图后应收起');
+  });
 
   // 统一确认框（v1.3.8-test2：替代原生 confirm / prompt）
   t('确认框：默认不渲染', () => { if (O('.confirm')) throw new Error('不应存在'); });
@@ -5788,9 +5862,16 @@ const withEFP = (el, fn) => {
     const bar = block.match(/\.mobile-tabbar \.viewnav \{([^}]*)\}/);
     if (!bar) throw new Error('缺 .mobile-tabbar .viewnav 定位规则');
     const b = bar[1];
-    if (!/position: fixed/.test(b) || !/bottom: 0/.test(b)) throw new Error('底部栏必须 fixed 贴视口底：' + b.trim());
-    const h = b.match(/height: calc\(var\(--tabbar-h\) \+ env\(safe-area-inset-bottom[^)]*\)\)/);
-    if (!h) throw new Error('底部栏高度应为 --tabbar-h + 安全区：' + b.trim());
+    if (!/position: fixed/.test(b)) throw new Error('底部栏必须 fixed 贴视口：' + b.trim());
+    // v2.5.0 起是悬浮胶囊：左右留出页边距、底边抬到安全区之上，高度仍等于 --tabbar-h。
+    // 之前贴底整条时这里断言 bottom: 0 —— 现在改成断言「浮起」的那两条几何。
+    if (!/left: var\(--sp-3\); right: var\(--sp-3\)/.test(b)) {
+      throw new Error('悬浮胶囊两侧要留出页边距（left/right: var(--sp-3)），否则又变成切页面的横条：' + b.trim());
+    }
+    if (!/bottom: calc\(var\(--sp-2\) \+ env\(safe-area-inset-bottom/.test(b)) {
+      throw new Error('底部栏必须停在安全区之上：' + b.trim());
+    }
+    if (!/height: var\(--tabbar-h\)/.test(b)) throw new Error('底部栏高度应为 --tabbar-h：' + b.trim());
     if (/backdrop-filter\s*:/.test(b)) throw new Error('常驻 fixed 表面不该再吃模糊预算');
     const zi = b.match(/z-index: (\d+)/);
     const mask = css.match(/--z-drawer-mask: (\d+)/);
@@ -5822,8 +5903,94 @@ const withEFP = (el, fn) => {
       if (!st.includes(jsSel)) throw new Error('activeScrollEl 已不再取 ' + cssSel + '（找的是 ' + jsSel + '），本条守门需同步');
     }
     // toast 默认底边 40px 落在 56px 的栏里，z-index 又高于栏 —— 提示语会骑在标签栏上
-    if (!/\.toast \{ bottom: calc\(var\(--tabbar-h\) \+ var\(--sp-4\) \+ env\(safe-area-inset-bottom/.test(block)) {
+    if (!/\.toast \{ bottom: calc\(var\(--tabbar-h\) \+ var\(--sp-5\) \+ env\(safe-area-inset-bottom/.test(block)) {
       throw new Error('≤720 未把 toast 抬到标签栏之上');
+    }
+  });
+
+  // ============ v2.5.0 资讯流改版 ============
+  t('源码：横滑频道条只有一份实现，两页共用 ChannelTabs', () => {
+    const root = path.join(__dirname, '..', '..');
+    const compPath = path.join(root, 'src', 'ui', 'ChannelTabs.jsx');
+    const comp = fs.readFileSync(compPath, 'utf8');
+    if (comp.indexOf('className="chan-tabs"') < 0) throw new Error('ChannelTabs 未渲染 .chan-tabs');
+    for (const v of ['ReaderView.jsx', 'CardsView.jsx']) {
+      const src = fs.readFileSync(path.join(root, 'src', 'views', v), 'utf8');
+      if (!/import \{ ChannelTabs \} from '\.\.\/ui\/ChannelTabs\.jsx'/.test(src)) throw new Error(v + ' 未引用 ChannelTabs');
+      if (!/<ChannelTabs /.test(src)) throw new Error(v + ' 未渲染 ChannelTabs');
+    }
+    // 不许在别处再造一条标签带（两份实现必然各自演化）
+    const files = [];
+    const walk = (dir) => {
+      for (const name of fs.readdirSync(dir)) {
+        const p = path.join(dir, name);
+        if (fs.statSync(p).isDirectory()) { walk(p); continue; }
+        if (/\.(js|jsx)$/.test(name)) files.push(p);
+      }
+    };
+    walk(path.join(root, 'src'));
+    const dup = files.filter((p) => p !== compPath && /chan-tab/.test(fs.readFileSync(p, 'utf8')));
+    if (dup.length) throw new Error('频道条出现第二份实现：' + dup.map((p) => path.relative(root, p)).join(', '));
+  });
+
+  t('style.css：≤720 频道条可横滑、独占第二行、选中态是短下划线', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/^\.chan-tabs \{ display: none; \}$/m.test(css)) throw new Error('桌面必须藏起频道条（侧栏仍在）');
+    const block = (css.match(/@media \(max-width: 720px\)[\s\S]*?\n\}\n/g) || []).join('\n');
+    const nav = block.match(/\.chan-tabs \{([^}]*)\}/);
+    if (!nav) throw new Error('≤720 缺 .chan-tabs 规则');
+    if (!/display: flex/.test(nav[1]) || !/overflow-x: auto/.test(nav[1])) throw new Error('频道条要横向滚动');
+    if (!/flex: 1 0 100%/.test(nav[1])) throw new Error('频道条要独占第二行（flex: 1 0 100%）');
+    // 头部基础规则是 nowrap：不放开换行，这条会把标题 / 工具挤出屏幕
+    if (!/\.reader-head:has\(\.chan-tabs\) \{ flex-wrap: wrap/.test(block)) {
+      throw new Error('文章页头部未放开换行：频道条会撑出屏幕');
+    }
+    if (!/\.chan-tab\.active::after \{[^}]*background: var\(--accent\)/.test(block)) throw new Error('选中态缺主色短下划线');
+    if (!/\.chan-tabs-more/.test(block)) throw new Error('缺「完整频道列表」入口样式');
+  });
+
+  t('style.css：文章列表是无边框行式排版（标题 3 行 + 缩略图 + 发丝分隔）', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    const item = css.match(/\.art-item \{([^}]*)\}/);
+    if (!item) throw new Error('缺 .art-item 基础规则');
+    if (/box-shadow:\s*var\(--elevation/.test(item[1])) throw new Error('行式列表不该再抬卡片阴影（几百条一起闪）');
+    if (!/border-bottom: 1px solid var\(--border\)/.test(item[1])) throw new Error('条目之间缺发丝分隔线');
+    const title = css.match(/\.art-title \{([^}]*)\}/);
+    if (!title || !/-webkit-line-clamp: 3/.test(title[1])) throw new Error('标题应最多 3 行');
+    const thumb = css.match(/\.art-thumb \{([^}]*)\}/);
+    if (!thumb || !/aspect-ratio: 4 \/ 3/.test(thumb[1])) throw new Error('缩略图应为 4:3');
+    if (!/\.art-item\.has-thumb \.art-acts \{/.test(css)) throw new Error('有图条目缺动作按钮的暗底（白图标压在亮图上会消失）');
+  });
+
+  t('回顶钮：挂载点在视图之外，滚过一屏才出现，浮在标签栏之上', () => {
+    const root = path.join(__dirname, '..', '..');
+    const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+    const at = html.indexOf('id="scrollTopRoot"');
+    if (at < 0) throw new Error('index.html 缺 #scrollTopRoot 挂载点');
+    for (const id of ['readerView', 'cardsView', 'aiView']) {
+      if (html.indexOf('id="' + id + '"') > at) throw new Error('#' + id + ' 排在回顶钮之后（回顶钮必须在视图之外）');
+    }
+    const mj = fs.readFileSync(path.join(root, 'src', 'main.jsx'), 'utf8');
+    if (!/getElementById\('scrollTopRoot'\)/.test(mj)) throw new Error('main.jsx 未挂载 #scrollTopRoot');
+    if (!/import \{ ScrollTop \}/.test(mj)) throw new Error('main.jsx 未引入 ScrollTop');
+    const st = fs.readFileSync(path.join(root, 'src', 'ui', 'ScrollTop.jsx'), 'utf8');
+    if (!/SHOW_AFTER = 600/.test(st)) throw new Error('出现阈值应为 600px（滚过一屏）');
+    if (!/addEventListener\('scroll'/.test(st)) throw new Error('缺滚动监听');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    const rule = css.match(/\.scroll-top \{([^}]*)\}/);
+    if (!rule) throw new Error('缺 .scroll-top 样式');
+    if (!/position: fixed/.test(rule[1])) throw new Error('回顶钮应固定在视口');
+    if (!/border-radius: 50%/.test(rule[1])) throw new Error('回顶钮应是圆形');
+    if (!/bottom: calc\(var\(--tabbar-h\) \+ var\(--sp-5\) \+ env\(safe-area-inset-bottom/.test(rule[1])) {
+      throw new Error('手机端要浮在标签栏之上');
+    }
+    const bar = css.match(/\.mobile-tabbar \.viewnav \{([^}]*)\}/);
+    const zi = rule[1].match(/z-index: (\d+)/);
+    if (!bar || !zi) throw new Error('缺 z-index（回顶钮 / 标签栏）');
+    const barZi = bar[1].match(/z-index: (\d+)/);
+    if (Number(zi[1]) >= Number(barZi[1])) throw new Error('回顶钮 z-index 必须低于标签栏');
+    if (!/@media \(min-width: 721px\) \{\s*\.scroll-top \{ bottom: var\(--sp-6\); \}/.test(css)) {
+      throw new Error('桌面要回到普通页边距（没有底部标签栏）');
     }
   });
 

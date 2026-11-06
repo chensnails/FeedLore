@@ -26,6 +26,7 @@ export const core = {
   refresh: UI.refreshFeeds,
   cycleTheme: S.cycleTheme,
   scrollTop: () => S.scrollActiveTop(U.prefersReducedMotion() ? 'auto' : 'smooth'),
+  activeScrollTop: S.activeScrollTop,
   // —— 设置弹层 / 外观 / 关于（v1.3.0 起 React 化） ——
   apiFetch: U.apiFetch, httpError: U.httpError, errText: U.errText, uploadArchive: U.uploadArchive, goLogin: U.goLogin,
   isAdmin: S.isAdmin, isReadonly: S.isReadonly, isWritable: S.isWritable,

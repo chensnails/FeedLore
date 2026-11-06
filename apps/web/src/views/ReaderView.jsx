@@ -14,6 +14,7 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import { ChannelList } from './ChannelList.jsx';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
+import { ChannelTabs } from '../ui/ChannelTabs.jsx';
 import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthSrcSet } from '../imgSrc.js';
@@ -392,8 +393,14 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, onTog
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
   const fmtDate = s.fmtDate || ((d) => (d ? String(d) : ''));
   const fav = !!e.isFavorite;
+  /* 缩略图：列表接口本来就把首图放在 e.image（已走 /api/img 代理），只是以前没渲染。
+     展开后让位给正文（正文自己会出图），加载失败退成纯文字行 —— 不留一个灰框。
+     失败态记在组件本地：条目对象换新时（已读 / 收藏）不该把失败的图又试一遍。 */
+  const [imgFailed, setImgFailed] = useState(false);
+  const thumb = !expanded && e.image && !imgFailed ? e.image : null;
+  // has-thumb 让样式知道图占了右下角：动作按钮要垫一层暗底，否则压在亮图上就看不见了
   const cls = 'art-item' + (e.isRead ? ' is-read' : ' is-unread') + (fav ? ' is-fav' : '') + (expanded ? ' open' : '')
-    + (flash ? ' is-flash' : '');
+    + (thumb ? ' has-thumb' : '') + (flash ? ' is-flash' : '');
 
   let inner = null;
   if (expanded) {
@@ -415,26 +422,37 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, onTog
       <div className="art-row">
         <button className="art-head" type="button" aria-expanded={expanded ? 'true' : 'false'} onClick={() => onToggle(e.id)}>
           <span className="art-dot" aria-hidden="true" />
-          <svg className="art-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-          <span className="art-title">{e.name}</span>
-          <span className="art-meta">
-            {src ? <span className="src-pill">{src}</span> : null}
-            {e.size ? <span className="art-size">{e.size}</span> : null}
-            <span className="art-date" title={fmtFull(e.date)}>{fmtDate(e.date)}</span>
+          {/* 标题与来源/时间竖排成一栏：右边留给缩略图，底部只留一行元信息，
+              与「标题 3 行 + 图 + 时间」的资讯流排版一致。 */}
+          <span className="art-text">
+            <span className="art-title">{e.name}</span>
+            <span className="art-meta">
+              {src ? <span className="src-pill">{src}</span> : null}
+              {e.size ? <span className="art-size">{e.size}</span> : null}
+              <span className="art-date" title={fmtFull(e.date)}>{fmtDate(e.date)}</span>
+            </span>
           </span>
+          {thumb ? (
+            <span className="art-thumb">
+              <img src={thumb} srcSet={widthSrcSet(thumb, [200, 400])} sizes="104px"
+                alt="" loading="lazy" decoding="async" onError={() => setImgFailed(true)} />
+            </span>
+          ) : null}
         </button>
-        <button className="art-star" type="button" data-fav={e.id} aria-pressed={fav ? 'true' : 'false'}
-          aria-label={fav ? '取消收藏' : '收藏'} title={fav ? '取消收藏' : '收藏这篇'}
-          onClick={(ev) => { ev.stopPropagation(); onFav(e.id); }}>
-          <Icon n={fav ? 'star' : 'star-o'} />
-        </button>
-        {e.isRead ? (
-          <button className="art-star art-unread" type="button" data-unread={e.id}
-            aria-label="标为未读" title="标为未读"
-            onClick={(ev) => { ev.stopPropagation(); onUnread(e.id); }}>
-            <Icon n="circle" />
+        <span className="art-acts">
+          <button className="art-star" type="button" data-fav={e.id} aria-pressed={fav ? 'true' : 'false'}
+            aria-label={fav ? '取消收藏' : '收藏'} title={fav ? '取消收藏' : '收藏这篇'}
+            onClick={(ev) => { ev.stopPropagation(); onFav(e.id); }}>
+            <Icon n={fav ? 'star' : 'star-o'} />
           </button>
-        ) : null}
+          {e.isRead ? (
+            <button className="art-star art-unread" type="button" data-unread={e.id}
+              aria-label="标为未读" title="标为未读"
+              onClick={(ev) => { ev.stopPropagation(); onUnread(e.id); }}>
+              <Icon n="circle" />
+            </button>
+          ) : null}
+        </span>
       </div>
       <div className="art-body" hidden={!expanded}>{inner}</div>
     </article>
@@ -766,6 +784,12 @@ export function ReaderView() {
             <OverflowMenu view="reader" readerControls
               readerState={{ accordionOn, hasUnread, anyExpanded }} />
           </div>
+          {/* 窄屏第二行：横滑频道条（桌面 display:none，仍走常驻侧栏）。
+              放在头部内部 = 跟着头部一起吸顶，不用再算一层 sticky 偏移。 */}
+          <ChannelTabs variant="reader" groups={grouped} activeScope={st.rdScope}
+            activeFeedId={st.rdFeedId} activeGroup={st.rdGroup} activeWatch={st.rdWatch}
+            onScope={cbScope} onFeed={cbFeed} onWatch={cbWatch}
+            onManage={() => s.readerToggleDrawer && s.readerToggleDrawer()} />
         </div>
 
         {q && entries.length > 0 ? (
