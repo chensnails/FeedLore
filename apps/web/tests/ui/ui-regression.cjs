@@ -6090,8 +6090,14 @@ const withEFP = (el, fn) => {
     if (!/手机上紧凑仍占两行[\s\S]{0,900}?\.art-item\.is-line \.art-text \{[^}]*padding-right:\s*44px/.test(css)) {
       throw new Error('手机两行卡的未读行应给 44px 星标让出 44px');
     }
-    if (!/\.art-item\.is-line\.is-read \.art-text \{[^}]*padding-right:\s*96px/.test(css)) {
-      throw new Error('手机两行卡的已读行应给两枚 44px 动作让出 96px');
+    if (!/\.art-item\.is-line\.is-read \.art-text \{[^}]*padding-right:\s*40px/.test(css)) {
+      throw new Error('手机两行卡的已读行应给竖排的 44px 动作让出 40px');
+    }
+    if (!/\.art-item\.is-line\.is-read \.art-acts \{[^}]*flex-direction: column/.test(css)) {
+      throw new Error('手机两行卡的已读行两枚动作应竖排（横排会把来源挤到第二行）');
+    }
+    if (!/\.art-item\.is-line\.is-read \.art-head \{[^}]*min-height:\s*88px/.test(css)) {
+      throw new Error('手机两行卡的已读行要给竖排动作留出 88px 高度');
     }
     if (!/手机上紧凑仍占两行[\s\S]{0,1800}?\.art-item\.is-line \.art-meta \{[^}]*padding-right:\s*0/.test(css)) {
       throw new Error('手机两行卡的元信息不再重复让位（避让已上移到整列）');

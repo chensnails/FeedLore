@@ -3743,9 +3743,15 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .art-item.is-line .art-caret { margin-top: 3px; }
   /* 触屏上星标抬到 44×44，已读还有第二枚「标未读」。两行排版里动作垂直居中，
      标题与元信息都会从它旁边经过，所以让位给整列文字而不只是底部那一行；
-     未读一枚（44+4）让 44，已读两枚让 96。 */
+     未读一枚（44+4）让 44。 */
   .art-item.is-line .art-text { flex-direction: column; align-items: stretch; gap: 5px; padding-right: 44px; }
-  .art-item.is-line.is-read .art-text { padding-right: 96px; }
+  /* 已读的两枚动作竖排：横排并放要吃掉 106px，两行卡的内容列只剩 189px，
+     来源与时间被再挤一行（整条 128px 高）。竖排只占一列 44px，内容回到 ~239px，
+     来源与时间重新并到同一行；卡片高度本来就在 88px 以上，装得下这一列。 */
+  .art-item.is-line.is-read .art-acts { flex-direction: column; gap: 0; }
+  .art-item.is-line.is-read .art-star { margin: 0; }
+  .art-item.is-line.is-read .art-head { min-height: 88px; }
+  .art-item.is-line.is-read .art-text { padding-right: 40px; }
   .art-item.is-line .art-title {
     display: -webkit-box;
     -webkit-line-clamp: 2;
