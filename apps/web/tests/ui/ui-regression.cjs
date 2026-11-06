@@ -6085,6 +6085,25 @@ const withEFP = (el, fn) => {
     if (!lineActs || !/transform: translateY\(-50%\)/.test(lineActs[1])) {
       throw new Error('单行模式动作键应垂直居中（否则贴在单行顶部）');
     }
+    // 触屏动作 44×44：右让宽必须跟着长，否则来源 / 时间钻到按钮底下。
+    // 手机两行版动作垂直居中，标题与元信息都经过它 —— 让位给整列 .art-text。
+    if (!/手机上紧凑仍占两行[\s\S]{0,900}?\.art-item\.is-line \.art-text \{[^}]*padding-right:\s*40px/.test(css)) {
+      throw new Error('手机两行卡的未读行应给 44px 星标让出 40px');
+    }
+    if (!/\.art-item\.is-line\.is-read \.art-text \{[^}]*padding-right:\s*90px/.test(css)) {
+      throw new Error('手机两行卡的已读行应给两枚 44px 动作让出 90px');
+    }
+    if (!/手机上紧凑仍占两行[\s\S]{0,1800}?\.art-item\.is-line \.art-meta \{[^}]*padding-right:\s*0/.test(css)) {
+      throw new Error('手机两行卡的元信息不再重复让位（避让已上移到整列）');
+    }
+    // 舒适行式（无缩略图）在触屏上同样有两枚 44px 动作，元信息也要加宽让位；
+    // 粗指针宽屏的紧凑单行同理（窄屏两行版由上面的 .art-text 负责，故排除 is-line）。
+    if (!/\.art-item\.is-read:not\(\.has-thumb\):not\(\.is-line\) \.art-meta \{[^}]*padding-right:\s*96px/.test(css)) {
+      throw new Error('触屏无图已读行的元信息应让出两枚 44px 动作');
+    }
+    if (!/@media \(pointer: coarse\) and \(min-width: 721px\) \{\s*\.art-item\.is-line \.art-meta \{[^}]*padding-right:\s*96px/.test(css)) {
+      throw new Error('粗指针宽屏的紧凑单行应给 44px 动作加宽避让');
+    }
 
     // 文件末尾还有两段「组件统一」规则（v1.1.7 拟态 / v1.3.8 统一表面），
     // 同特异度靠源顺序取胜。只在前面写好样式，会被它们整段反盖回拟态卡 ——

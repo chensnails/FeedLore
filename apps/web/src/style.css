@@ -3741,7 +3741,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   .art-item.is-line .art-head { align-items: flex-start; padding: var(--sp-3) var(--sp-4); }
   .art-item.is-line .art-dot { margin-top: 8px; }
   .art-item.is-line .art-caret { margin-top: 3px; }
-  .art-item.is-line .art-text { flex-direction: column; align-items: stretch; gap: 5px; }
+  /* 触屏上星标抬到 44×44，已读还有第二枚「标未读」。两行排版里动作垂直居中，
+     标题与元信息都会从它旁边经过，所以让位给整列文字而不只是底部那一行；
+     未读一枚（44+4）让 40，已读两枚让 90。 */
+  .art-item.is-line .art-text { flex-direction: column; align-items: stretch; gap: 5px; padding-right: 40px; }
+  .art-item.is-line.is-read .art-text { padding-right: 90px; }
   .art-item.is-line .art-title {
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -3749,7 +3753,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
     white-space: normal;
     overflow: hidden;
   }
-  .art-item.is-line .art-meta { flex-wrap: wrap; margin-top: 0; padding-right: 52px; }
+  .art-item.is-line .art-meta { flex-wrap: wrap; margin-top: 0; padding-right: 0; }
   .art-item.is-line .art-meta .src-pill { max-width: 180px; }
   .art-item.is-line .art-acts { top: 50%; bottom: auto; right: 8px; transform: translateY(-50%); }
   .art-inner { padding: var(--sp-3); gap: var(--sp-3); }
@@ -5478,6 +5482,11 @@ body { overflow: hidden; }
   /* 文章列表右侧的星标 / 标为未读：真实盒子抬到 44×44，图标视觉尺寸不变 */
   .art-star { min-width: 44px; min-height: 44px; margin: var(--sp-1) var(--sp-1) 0 0; padding: 0; }
   .art-star .ico { width: 1.05rem; height: 1.05rem; }
+  /* 44×44 的两枚动作比 30px 时宽出一大截，元信息原来的 60/64px 避让不够：
+     无缩略图的已读行有两枚，来源与时间会钻到按钮底下。缩略图行不在此列 ——
+     动作本就压在图上、元信息也已放开（见 .has-thumb）。窄屏两行紧凑版另由
+     .art-text 整列让位，这里排除 is-line。 */
+  .art-item.is-read:not(.has-thumb):not(.is-line) .art-meta { padding-right: 96px; }
   .art-actions .btn-copy,
   .art-actions .btn-open,
   .art-actions .btn-fav,
@@ -5513,6 +5522,12 @@ body { overflow: hidden; }
     border-color: transparent;
   }
   .empty-action { min-height: 44px; padding: 0 var(--sp-5); }
+}
+
+/* 粗指针的宽屏（平板横置）：紧凑单行同样拿到 44×44 的动作，只按 30px 按钮算的
+   64px 避让会让来源与时间钻到按钮底下。窄屏两行版已由上面 .art-text 整列让位。 */
+@media (pointer: coarse) and (min-width: 721px) {
+  .art-item.is-line .art-meta { padding-right: 96px; }
 }
 
 /* ---------------- 规则面板（v1.6.0-test5）：关注 / 屏蔽 + webhook ----------------
