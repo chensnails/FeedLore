@@ -51,6 +51,23 @@ This file records user-visible changes and deployment-related changes for 2.x.
   「复制链接」, shrunk to a 36px square; 「打开原文」 moves to the card detail (the card itself
   already opens it), so the title and image become the subject again.
 
+### Changed
+
+- **Slimmer phone tab bar**: the bottom bar drops from 56px to 48px, its bottom offset from 8px to
+  6px, and its side gutters widen from 12px to 16px — 54px of screen instead of 64px. Icons go
+  20→18 and labels 11→10, while buttons stay 44×44 for touch (only the frame shrinks). Toasts,
+  the back-to-top button and all three scroll containers derive their bottom spacing from
+  `--tabbar-h`, so they follow automatically.
+- **Stronger neumorphic glass on floating layers**: modal and command-palette masks now blur 16px
+  (theme token) with 1.4 saturation — still the only backdrop-filter declarations — while the tab
+  bar, channel drawer, back-to-top button and new-content pill get a near/far dual shadow plus a
+  1px top highlight. No backdrop-filter is added to persistent fixed surfaces.
+- **Unified elevation across the three views**: article rows drop from `--elevation-2` to
+  `--elevation-1`, matching cards and list rows, and lift to 2 on hover; digest cards keep their
+  neumorphic surface because they are a few large reading blocks rather than a long list.
+- **Re-tapping the active channel scrolls to top**: same behaviour as the bottom view bar. The
+  filter is unchanged, so the list is not re-rendered — only the viewport returns to the top.
+
 ### Fixed
 
 - **List action buttons no longer sit on top of titles or sources on phones**: after the star and

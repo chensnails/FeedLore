@@ -54,6 +54,16 @@ export function ChannelTabs({
     }
   }, [activeKey]);
 
+  // 再点当前项：筛选条件没变，重设状态不会重绘列表 —— 顺手把视线带回顶部，
+  // 与底部视图导航的 retap 同一套手感。换项时仍走原来的 setter（会自己回顶）。
+  const activate = (active, run) => () => {
+    if (active) {
+      const api = S();
+      if (api.scrollTop) api.scrollTop();
+    }
+    if (run) run();
+  };
+
   const tab = (key, label, active, onClick, title) => (
     <button
       key={key}
@@ -62,7 +72,7 @@ export function ChannelTabs({
       className={'chan-tab' + (active ? ' active' : '')}
       aria-pressed={active ? 'true' : 'false'}
       title={title || label}
-      onClick={onClick}
+      onClick={activate(active, onClick)}
     >
       {label}
     </button>

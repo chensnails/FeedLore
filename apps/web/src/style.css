@@ -114,7 +114,7 @@
   --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
   /* 移动端底部视图标签栏高度（不含 safe-area）：视图导航在 ≤720px 停靠在
      视口底部，各滚动容器用它预留底部空间，最后一条内容不会被标签栏盖住。 */
-  --tabbar-h: 56px;
+  --tabbar-h: 48px;
   /* 阅读页频道栏宽度：初值与 core/state.js 的 READER_SIDE_DEFAULT 同源，
      实际值由 JS 按账号偏好写到 :root（可拖拽调整） */
   --reader-side-w: 232px;
@@ -156,6 +156,10 @@
   --glass-bg-strong: rgba(255, 255, 255, .82);
   --glass-border: rgba(255, 255, 255, .55);
   --glass-blur: 16px;
+  /* 浮层（底栏 / 抽屉 / 回顶钮）：一近一远两层柔光 + 顶部 1px 高光。
+     不用 backdrop-filter —— 常驻 fixed 表面逐帧重采样会掉帧，模糊预算只留给全屏遮罩。 */
+  --float-shadow: 0 10px 28px rgba(16, 22, 32, .14), 0 2px 6px rgba(16, 22, 32, .07);
+  --float-hi: rgba(255, 255, 255, .72);
   --neu-hi: rgba(255, 255, 255, .9);
   --neu-lo: rgba(163, 177, 198, .55);
   /* 拟态浮起感 = 双向阴影的「对角落差」，由 offset 主导、blur 决定过渡带宽。
@@ -320,6 +324,8 @@ html[data-theme="dark"] {
   --glass-bg-strong: rgba(46, 50, 58, .82);
   --glass-border: rgba(255, 255, 255, .12);
   --glass-blur: 16px;
+  --float-shadow: 0 12px 32px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .4);
+  --float-hi: rgba(255, 255, 255, .06);
   --neu-hi: rgba(255, 255, 255, .05);
   --neu-lo: rgba(0, 0, 0, .55);
   --neu-shadow: 6px 6px 16px var(--neu-lo), -6px -6px 16px var(--neu-hi);
@@ -466,6 +472,8 @@ html[data-theme="github"] {
   --glass-bg-strong: rgba(28, 33, 40, .82);
   --glass-border: rgba(255, 255, 255, .12);
   --glass-blur: 16px;
+  --float-shadow: 0 12px 32px rgba(0, 0, 0, .6), 0 2px 8px rgba(0, 0, 0, .45);
+  --float-hi: rgba(255, 255, 255, .06);
   --neu-hi: rgba(255, 255, 255, .045);
   --neu-lo: rgba(0, 0, 0, .6);
   --neu-shadow: 6px 6px 16px var(--neu-lo), -6px -6px 16px var(--neu-hi);
@@ -3062,7 +3070,9 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--elevation-2);
+  /* v2.5.0：与卡片 / 行同口径的「薄边 + 一层浅影」。
+     文章行此前比卡片重一档（elevation-2），三视图并排看会显得文章页更「沉」。 */
+  box-shadow: var(--elevation-1);
   overflow: hidden;
   transition: border-color var(--dur-slow), box-shadow var(--dur-slow);
   /* 视口外的文章项跳过渲染：阅读页几百条条目也不卡 */
@@ -3074,7 +3084,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
      这条 scroll-margin 留给 focusReaderArt 的 block:'center' 等原生滚动场景。 */
   scroll-margin-top: calc(var(--head-h, 52px) + 8px);
 }
-.art-item:hover { border-color: var(--border-strong); }
+.art-item:hover { border-color: var(--border-strong); box-shadow: var(--elevation-2); }
 
 /* 展开态只把描边加深一档，不再抬阴影 / 换底色：
    卡片本来就是浮起的，读正文时不需要整块发亮抢视线。 */
@@ -3084,14 +3094,14 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
    挂 1.5s 后摘掉（时长要和这里的 1.5s 对齐）。 */
 .art-item.is-flash { animation: artFlash 1.5s var(--ease); }
 @keyframes artFlash {
-  0%, 55% { box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-2); }
-  100% { box-shadow: var(--elevation-2); }
+  0%, 55% { box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-1); }
+  100% { box-shadow: var(--elevation-1); }
 }
 @media (prefers-reduced-motion: reduce) {
   /* 不做闪烁动画，改成静止描边停一瞬 —— 指示作用留着，动效去掉 */
   .art-item.is-flash {
     animation: none;
-    box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-2);
+    box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-1);
   }
 }
 
@@ -3614,7 +3624,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
     width: min(272px, 84vw);
     max-height: none;
     background: var(--panel);
-    box-shadow: var(--elevation-2);
+    /* 抽屉是浮在内容上的「一层面板」：双层柔光 + 顶边高光，和底栏同一套浮层语言 */
+    box-shadow: var(--float-shadow), inset 0 1px 0 var(--float-hi);
     padding: var(--sp-4) var(--sp-3) var(--sp-6);
     border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
     border: 1px solid var(--border);
@@ -4416,16 +4427,18 @@ textarea:focus-visible { outline: none; }
 
 /* mini-tag / 浮标：轻玻璃 */
 .mini-tag { box-shadow: var(--neu-inset); }
-.new-pill { box-shadow: 0 2px 10px var(--accent-glow), var(--neu-2); }
+.new-pill { box-shadow: 0 2px 10px var(--accent-glow), var(--neu-2), inset 0 1px 0 rgba(255, 255, 255, .18); }
 
 /* 弹层 / 命令面板 / 灯箱：玻璃模糊只在遮罩（mask）单层生效。
-   弹层自身用半透明实底盖在已模糊的遮罩上，不再二次模糊（页面已滚动锁定）。 */
-.modal-mask { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+   弹层自身用半透明实底盖在已模糊的遮罩上，不再二次模糊（页面已滚动锁定）。
+   v2.5.0 起走 --glass-blur（16px）并加饱和度：只提亮背后的颜色，不加亮度，
+   遮罩上的弹层仍能拉开层次；声明条数不变，模糊预算守着两个遮罩。 */
+.modal-mask { backdrop-filter: blur(var(--glass-blur)) saturate(1.4); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4); }
 .modal {
   background: var(--glass-bg-strong);
   border: 1px solid var(--glass-border);
 }
-.cmdk-mask { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.cmdk-mask { backdrop-filter: blur(var(--glass-blur)) saturate(1.4); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4); }
 .cmdk {
   background: var(--glass-bg-strong);
   border: 1px solid var(--glass-border);
@@ -5134,11 +5147,13 @@ body { overflow: hidden; }
 
   .mobile-tabbar { display: block; }
   /* 悬浮胶囊（v2.5.0）：从贴底整条改成浮在内容上的圆角块 ——
-     内容能从栏两侧「透」出来，栏本身只占三枚按钮，不再像一条把页面切开的横杠。 */
+     内容能从栏两侧「透」出来，栏本身只占三枚按钮，不再像一条把页面切开的横杠。
+     v2.5.1 再压一档：栏高 56→48、两侧留白 12→16、距底 8→6，总占位 64→54px；
+     按钮仍是 44×44 触屏命中（只压外框，不压手指落点），图标 20→18、文字 11→10。 */
   .mobile-tabbar .viewnav {
     position: fixed;
-    left: var(--sp-3); right: var(--sp-3);
-    bottom: calc(var(--sp-2) + env(safe-area-inset-bottom, 0px));
+    left: var(--sp-4); right: var(--sp-4);
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
     z-index: 50;   /* < --z-drawer-mask(55)：抽屉/弹层永远盖住标签栏 */
     display: flex;
     align-items: stretch;
@@ -5149,32 +5164,32 @@ body { overflow: hidden; }
     gap: 2px;
     background: var(--panel);
     border: 1px solid var(--border);
-    border-radius: 20px;
-    /* 唯一一处常驻阴影：浮起才分得清「栏」与「内容」，但不用 backdrop-filter
-       （模糊预算留给全屏遮罩，见玻璃模糊治理）。 */
-    box-shadow: 0 8px 24px rgba(16, 22, 32, .12), 0 1px 2px rgba(16, 22, 32, .06);
+    border-radius: 16px;
+    /* 浮起才分得清「栏」与「内容」：一近一远两层柔光 + 顶部高光。
+       不用 backdrop-filter（模糊预算留给全屏遮罩，见玻璃模糊治理）。 */
+    box-shadow: var(--float-shadow), inset 0 1px 0 var(--float-hi);
     overscroll-behavior: contain;
   }
   .mobile-tabbar .viewnav-btn {
     position: relative;
     flex: 1 1 0;
     width: auto; min-width: 0;
-    height: calc(var(--tabbar-h) - 8px);
-    margin: 4px 0;
+    height: calc(var(--tabbar-h) - 4px);
+    margin: 2px 0;
     flex-direction: column;
-    gap: 3px;
+    gap: 2px;
     padding: 0 var(--sp-1);
-    border-radius: 16px;
+    border-radius: 12px;
     background: none;
     box-shadow: none;
     font-size: var(--fs-2xs);
     font-weight: 550;
     color: var(--text-muted);
   }
-  .mobile-tabbar .viewnav-btn .ico { width: 20px; height: 20px; font-size: 20px; }
+  .mobile-tabbar .viewnav-btn .ico { width: 18px; height: 18px; font-size: 18px; }
   .mobile-tabbar .viewnav-btn .btn-label {
     display: block;
-    font-size: var(--fs-2xs);
+    font-size: 10px;
     line-height: 1;
     letter-spacing: .02em;
   }
@@ -5214,12 +5229,12 @@ body { overflow: hidden; }
   border-radius: 50%;
   background: var(--panel);
   color: var(--text-muted);
-  box-shadow: 0 6px 20px rgba(16, 22, 32, .14);
+  box-shadow: var(--float-shadow), inset 0 1px 0 var(--float-hi);
   cursor: pointer;
   animation: scrollTopIn .18s ease-out;
 }
 .scroll-top:hover { color: var(--accent-text); border-color: var(--accent-text); }
-.scroll-top:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-ring); }
+.scroll-top:focus-visible { outline: none; box-shadow: var(--float-shadow), 0 0 0 3px var(--focus-ring); }
 .scroll-top .ico { width: 20px; height: 20px; }
 @keyframes scrollTopIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 /* 桌面没有底部标签栏：回到普通页边距，别悬在半空 */

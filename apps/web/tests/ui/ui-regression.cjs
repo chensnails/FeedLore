@@ -5937,15 +5937,34 @@ const withEFP = (el, fn) => {
     const b = bar[1];
     if (!/position: fixed/.test(b)) throw new Error('底部栏必须 fixed 贴视口：' + b.trim());
     // v2.5.0 起是悬浮胶囊：左右留出页边距、底边抬到安全区之上，高度仍等于 --tabbar-h。
-    // 之前贴底整条时这里断言 bottom: 0 —— 现在改成断言「浮起」的那两条几何。
-    if (!/left: var\(--sp-3\); right: var\(--sp-3\)/.test(b)) {
-      throw new Error('悬浮胶囊两侧要留出页边距（left/right: var(--sp-3)），否则又变成切页面的横条：' + b.trim());
+    // v2.5.1 再压一档：两侧 12→16（更窄的胶囊）、距底 8→6、圆角 20→16，总占位 64→54px。
+    if (!/left: var\(--sp-4\); right: var\(--sp-4\)/.test(b)) {
+      throw new Error('悬浮胶囊两侧要留出页边距（left/right: var(--sp-4)），否则又变成切页面的横条：' + b.trim());
     }
-    if (!/bottom: calc\(var\(--sp-2\) \+ env\(safe-area-inset-bottom/.test(b)) {
-      throw new Error('底部栏必须停在安全区之上：' + b.trim());
+    if (!/bottom: calc\(6px \+ env\(safe-area-inset-bottom/.test(b)) {
+      throw new Error('底部栏必须停在安全区之上（距底 6px）：' + b.trim());
     }
     if (!/height: var\(--tabbar-h\)/.test(b)) throw new Error('底部栏高度应为 --tabbar-h：' + b.trim());
+    if (!/border-radius: 16px/.test(b)) throw new Error('胶囊圆角应收到 16px（48px 高）');
+    if (!/box-shadow: var\(--float-shadow\), inset 0 1px 0 var\(--float-hi\)/.test(b)) {
+      throw new Error('浮层应使用「双层柔光 + 顶部高光」令牌，不要在改一处时硬编码阴影');
+    }
     if (/backdrop-filter\s*:/.test(b)) throw new Error('常驻 fixed 表面不该再吃模糊预算');
+    // 只压外框、不压手指落点：栏高 48 - 上下各 2 = 44，仍满足触屏命中。
+    const btn = block.match(/\.mobile-tabbar \.viewnav-btn \{([^}]*)\}/);
+    if (!btn) throw new Error('缺 .mobile-tabbar .viewnav-btn 规则');
+    if (!/height: calc\(var\(--tabbar-h\) - 4px\)/.test(btn[1]) || !/margin: 2px 0/.test(btn[1])) {
+      throw new Error('底栏按钮应 44px 高（48 - 上下各 2），触屏命中不能跟着外框一起缩');
+    }
+    if (!/gap: 2px/.test(btn[1]) || !/border-radius: 12px/.test(btn[1])) {
+      throw new Error('底栏按钮内间距/圆角未同步收紧');
+    }
+    if (!/\.mobile-tabbar \.viewnav-btn \.ico \{ width: 18px; height: 18px; font-size: 18px; \}/.test(block)) {
+      throw new Error('底栏图标应收到 18px');
+    }
+    if (!/\.mobile-tabbar \.viewnav-btn \.btn-label \{[^}]*font-size: 10px/.test(block)) {
+      throw new Error('底栏文字应收到 10px');
+    }
     const zi = b.match(/z-index: (\d+)/);
     const mask = css.match(/--z-drawer-mask: (\d+)/);
     if (!zi || !mask) throw new Error('底部栏 z-index 或 --z-drawer-mask 缺失');
@@ -5958,7 +5977,7 @@ const withEFP = (el, fn) => {
     const root = path.join(__dirname, '..', '..');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
     const st = fs.readFileSync(path.join(root, 'src', 'core', 'state.js'), 'utf8');
-    if (!/^  --tabbar-h: \d+px;$/m.test(css)) throw new Error(':root 缺 --tabbar-h 令牌（预留高度与栏高必须同源）');
+    if (!/^  --tabbar-h: 48px;$/m.test(css)) throw new Error(':root 缺 --tabbar-h: 48px（预留高度与栏高必须同源）');
     const segs = css.match(/@media \(max-width: 720px\)[\s\S]*?\n\}\n/g) || [];
     const block = segs.join('\n');
     const padAt = block.indexOf('padding-bottom: calc(var(--tabbar-h)');
@@ -5975,9 +5994,35 @@ const withEFP = (el, fn) => {
       if (!pad.includes(cssSel)) throw new Error('预留底部空间缺滚动容器 ' + cssSel);
       if (!st.includes(jsSel)) throw new Error('activeScrollEl 已不再取 ' + cssSel + '（找的是 ' + jsSel + '），本条守门需同步');
     }
-    // toast 默认底边 40px 落在 56px 的栏里，z-index 又高于栏 —— 提示语会骑在标签栏上
+    // toast 默认底边 40px 落在标签栏高度里，z-index 又高于栏 —— 提示语会骑在标签栏上
     if (!/\.toast \{ bottom: calc\(var\(--tabbar-h\) \+ var\(--sp-5\) \+ env\(safe-area-inset-bottom/.test(block)) {
       throw new Error('≤720 未把 toast 抬到标签栏之上');
+    }
+  });
+
+  t('玻璃与浮层：模糊走 --glass-blur + 饱和度，常驻浮层只用柔光与高光', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    // 两个全屏遮罩：模糊值走主题令牌（16px），并加一点饱和度让背后颜色透出来
+    const glass = /backdrop-filter: blur\(var\(--glass-blur\)\) saturate\(1\.4\); -webkit-backdrop-filter: blur\(var\(--glass-blur\)\) saturate\(1\.4\);/;
+    // 同名规则有多条（定位 / 窄屏各一份），取带模糊声明的那一条
+    const ruleWithBlur = (sel) => [...css.matchAll(new RegExp('\\.' + sel + ' \\{([^}]*)\\}', 'g'))]
+      .map((m) => m[1]).find((body) => /backdrop-filter/.test(body));
+    const modal = ruleWithBlur('modal-mask');
+    const cmdk = ruleWithBlur('cmdk-mask');
+    if (!modal || !glass.test(modal)) throw new Error('.modal-mask 应走 --glass-blur + saturate(1.4)');
+    if (!cmdk || !glass.test(cmdk)) throw new Error('.cmdk-mask 应走 --glass-blur + saturate(1.4)');
+    // 三套主题（亮 / 暗 / GitHub 暗）都要有令牌，否则切主题就掉回无模糊
+    for (const tok of ['--glass-blur: 16px;', '--float-shadow:', '--float-hi:']) {
+      const n = (css.match(new RegExp(tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+      if (n !== 3) throw new Error(`${tok} 应在三套主题各定义一次（当前 ${n}）`);
+    }
+    // 模糊声明总数仍是 4（两遮罩 × webkit 双写），不能被浮层偷偷加回去
+    const decls = (css.match(/backdrop-filter:/g) || []).length;
+    if (decls !== 4) throw new Error(`backdrop-filter 声明应为 4 条（当前 ${decls}）`);
+    // 回顶钮也走同一套浮层语言
+    const top = css.match(/\.scroll-top \{([^}]*)\}/);
+    if (!top || !/var\(--float-shadow\), inset 0 1px 0 var\(--float-hi\)/.test(top[1])) {
+      throw new Error('回顶钮应与底栏共用浮层阴影');
     }
   });
 
@@ -5987,6 +6032,8 @@ const withEFP = (el, fn) => {
     const compPath = path.join(root, 'src', 'ui', 'ChannelTabs.jsx');
     const comp = fs.readFileSync(compPath, 'utf8');
     if (comp.indexOf('className="chan-tabs"') < 0) throw new Error('ChannelTabs 未渲染 .chan-tabs');
+    // 再点当前频道 = 回到列表顶部（与底栏 retap 同一套手感），不能点第二下毫无反应
+    if (!/api\.scrollTop/.test(comp)) throw new Error('ChannelTabs 再点当前项应调用 scrollTop 回顶');
     for (const v of ['ReaderView.jsx', 'CardsView.jsx']) {
       const src = fs.readFileSync(path.join(root, 'src', 'views', v), 'utf8');
       if (!/import \{ ChannelTabs \} from '\.\.\/ui\/ChannelTabs\.jsx'/.test(src)) throw new Error(v + ' 未引用 ChannelTabs');
@@ -6031,7 +6078,7 @@ const withEFP = (el, fn) => {
     if (!/background:\s*var\(--panel\)/.test(item[1])) throw new Error('卡片应有面板底（不能是透明行）');
     if (!/border: 1px solid var\(--border\)/.test(item[1])) throw new Error('卡片缺细边');
     if (!/border-radius: var\(--radius\)/.test(item[1])) throw new Error('卡片应圆角');
-    if (!/box-shadow:\s*var\(--elevation-2\)/.test(item[1])) throw new Error('卡片应抬起轻阴影');
+    if (!/box-shadow:\s*var\(--elevation-1\)/.test(item[1])) throw new Error('文章行应与卡片/行同一档轻阴影（--elevation-1）');
     if (!/overflow: hidden/.test(item[1])) throw new Error('卡片需裁掉溢出的缩略图');
     const caret = css.match(/\.art-caret \{([^}]*)\}/);
     if (!caret) throw new Error('缺 .art-caret 规则');
@@ -6065,8 +6112,11 @@ const withEFP = (el, fn) => {
       throw new Error('摘要开启时标题应收紧到 2 行（否则整条被摘要撑高）');
     }
     // 落点闪烁只叠加主色光圈，不能把卡片本身的阴影抹掉
-    if (!/@keyframes artFlash[\s\S]*?100%\s*\{\s*box-shadow:\s*var\(--elevation-2\)/.test(css)) {
-      throw new Error('artFlash 结束帧应回到卡片阴影，否则闪完卡片就塌了');
+    if (!/@keyframes artFlash[\s\S]*?100%\s*\{\s*box-shadow:\s*var\(--elevation-1\)/.test(css)) {
+      throw new Error('artFlash 结束帧应回到文章行阴影，否则闪完卡片就塌了');
+    }
+    if (!/\.art-item:hover \{[^}]*box-shadow:\s*var\(--elevation-2\)/.test(css)) {
+      throw new Error('文章行悬停应抬到 --elevation-2，与卡片/行的手感一致');
     }
 
     // 纯文字 + 隐藏摘要 = 单行清单。三条缺一不可：标题单行省略、元信息不换行、动作垂直居中。
@@ -6138,10 +6188,10 @@ const withEFP = (el, fn) => {
     };
     const effective = lastRule('.art-item');
     if (!/background:\s*var\(--panel\)/.test(effective)) throw new Error('卡片最终生效规则应是面板底（末尾拟态块反盖了卡片外壳）');
-    if (!/box-shadow:\s*var\(--elevation-2\)/.test(effective)) throw new Error('卡片最终生效规则应保留 --elevation-2');
+    if (!/box-shadow:\s*var\(--elevation-1\)/.test(effective)) throw new Error('文章行最终生效规则应保留 --elevation-1');
     if (/var\(--neu-/.test(effective)) throw new Error('文章卡片最终生效规则里又出现了拟态阴影');
     if (!/border-color:\s*var\(--border-strong\)/.test(lastRule('.art-item:hover')) || /var\(--neu-/.test(lastRule('.art-item:hover'))) {
-      throw new Error('文章卡片悬停应只加深描边，不该再有拟态阴影');
+      throw new Error('文章卡片悬停应加深描边 + 轻抬阴影，不该用拟态阴影');
     }
     // 收藏只靠星标标金：通栏行式里左侧主色竖条会被读成「当前选中」或未读标记
     const favRules = [...css.matchAll(/\.art-item\.is-fav[^{]*\{([^}]*)\}/g)].map((m) => m[1]);
