@@ -129,6 +129,7 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
    * - 图标长缓存：文件名固定但内容基本不变，一天一次足够。 */
   const ROOT_FILES: ReadonlyArray<readonly [string, string]> = [
     ['manifest.json', 'public, max-age=3600'],
+    ['manifest-dark.json', 'public, max-age=3600'],
     ['sw.js', 'no-cache'],
     ['favicon.ico', 'public, max-age=86400'],
     ['favicon.svg', 'public, max-age=86400'],
@@ -149,12 +150,15 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
  * 未登录 / 没连库时原样返回，交给前端默认值兜底。
  * 外观不再注入：它只存在浏览器本机 localStorage。
  */
-async function injectBootLayout(html: string, c: Context<AppEnv>, deps: AppDeps): Promise<string> {
+export async function injectBootLayout(html: string, c: Context<AppEnv>, deps: AppDeps): Promise<string> {
   /* 不锚 theme-color meta：它已拆成亮 / 暗两条（带 media），按固定 color 串匹配
-   * 会在改配色时静默失配，布局注入无声丢掉。manifest link 与配色无关。 */
-  const anchor = '<link rel="manifest" href="/manifest.json">';
+   * 会在改配色时静默失配，布局注入无声丢掉。manifest link 与配色无关。
+   * 只匹配到 `<link rel="manifest"`，再找到本标签的 `>`：清单 link 会加 id / 换 href
+   * （暗色清单），按整条标签匹配会失配，注入静默丢掉。 */
+  const anchor = '<link rel="manifest"';
   const at = html.indexOf(anchor);
-  if (at < 0 || !deps.auth || !deps.db) return html;
+  const tagEnd = at < 0 ? -1 : html.indexOf('>', at);
+  if (at < 0 || tagEnd < 0 || !deps.auth || !deps.db) return html;
 
   const session = await deps.auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
   if (!session) return html;
@@ -169,7 +173,8 @@ async function injectBootLayout(html: string, c: Context<AppEnv>, deps: AppDeps)
   /* `<` 转义：分组名是用户输入，直接拼进 <script> 会提前闭合标签。 */
   const json = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
   const script = '<script>window.__LAYOUT__=' + json(userLayout(prefs)) + ';</script>';
-  return html.slice(0, at + anchor.length) + '\n' + script + html.slice(at + anchor.length);
+  const cut = tagEnd + 1;
+  return html.slice(0, cut) + '\n' + script + html.slice(cut);
 }
 
 export function createApp({ db, auth }: AppDeps) {
