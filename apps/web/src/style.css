@@ -4194,7 +4194,7 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 /* 卡片页的两种标记：收藏强调条 + 未读圆点。已读只收掉圆点，卡面照常显示
    （点开详情即算读过，状态与文章页同步，见 src/views/CardsView.jsx）。 */
 .card.is-fav,
-.row-item.is-fav { box-shadow: inset 3px 0 0 var(--accent); }
+.row-item.is-fav { box-shadow: var(--elevation-1), inset 3px 0 0 var(--accent); }
 
 /* ---------- 卡片详情弹窗（src/views/CardDetail.jsx） ----------
  * 桌面用 .modal-mask / .modal 一族，窄屏用 .dd-mask / .dd-sheet 整屏弹层（与 Dropdown 同一约定）；
@@ -4323,12 +4323,9 @@ textarea:focus-visible { outline: none; }
 .viewmode { background: var(--surface-soft-2); box-shadow: var(--neu-inset); border-color: var(--border); }
 .viewmode-btn.active { background: var(--surface-soft); box-shadow: var(--neu-1); }
 
-/* 卡片 / 列表条目：拟态（无模糊，长列表安全） */
-.card { background: var(--surface-soft); box-shadow: var(--neu-2); }
-.card:hover { box-shadow: var(--neu-3); }
-.row-item { background: var(--surface-soft); box-shadow: var(--neu-1); }
-.row-item:hover { box-shadow: var(--neu-2); }
-.card.is-fav, .row-item.is-fav { box-shadow: var(--neu-1), inset 3px 0 0 var(--accent); }
+/* 卡片 / 列表条目：不再在这里统一拟态。
+ * v2.5.0 起两者改成「薄边 + 一层浅影」（见 .card / .row-item 主定义），
+ * 这段统一规则写在文件末尾，同特异度会把新质感整段反盖掉。 */
 
 /* 阅读页侧栏（sticky，禁用模糊） */
 .reader-side { background: var(--surface-soft); box-shadow: var(--neu-2); }
@@ -4402,12 +4399,13 @@ textarea:focus-visible { outline: none; }
   }
 }
 
-/* 2) 内容卡统一拟态表面：文章条目 / 日报卡 / 骨架屏与卡片页同一层质感 */
-.art-item, .dg-card, .sk-card, .sk-row {
+/* 2) 内容卡统一拟态表面：日报卡 / 骨架屏与卡片页同一层质感。
+ *    文章行不在这里：v2.5.0 起它是无边框行式（透明底 + 发丝分隔线），
+ *    这段写在文件末尾，同特异度会把行式规则反盖成一张张拟态卡。 */
+.dg-card, .sk-card, .sk-row {
   background: var(--surface-soft);
   box-shadow: var(--neu-2);
 }
-.art-item:hover { box-shadow: var(--neu-3); }
 .sk-card, .sk-row { border: 1px solid var(--border); }
 
 /* 3) 空态：统一字号 / 颜色 / 图标尺寸 */

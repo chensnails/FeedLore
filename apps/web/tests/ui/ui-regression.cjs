@@ -5960,6 +5960,52 @@ const withEFP = (el, fn) => {
     const thumb = css.match(/\.art-thumb \{([^}]*)\}/);
     if (!thumb || !/aspect-ratio: 4 \/ 3/.test(thumb[1])) throw new Error('缩略图应为 4:3');
     if (!/\.art-item\.has-thumb \.art-acts \{/.test(css)) throw new Error('有图条目缺动作按钮的暗底（白图标压在亮图上会消失）');
+
+    // 文件末尾还有两段「组件统一」规则（v1.1.7 拟态 / v1.3.8 统一表面），
+    // 同特异度靠源顺序取胜。只在前面写好样式，会被它们整段反盖回拟态卡 ——
+    // 真机上量出来就是「行式列表每条都带渐变底 + 6px 柔光阴影」。
+    // 这里验最终生效的那条（去掉媒体查询块后的最后一条同类规则）。
+    const top = (() => {
+      let out = '', i = 0;
+      for (;;) {
+        const at = css.indexOf('@media', i);
+        if (at < 0) return out + css.slice(i);
+        out += css.slice(i, at);
+        const brace = css.indexOf('{', at);
+        let depth = 0, j = brace;
+        for (; j < css.length; j++) {
+          if (css[j] === '{') depth++;
+          else if (css[j] === '}' && --depth === 0) break;
+        }
+        i = j + 1;
+      }
+    })();
+    const lastRule = (sel) => {
+      const re = new RegExp('(?:^|\\n)\\s*' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}', 'g');
+      let m, body = '';
+      while ((m = re.exec(top))) body = m[1];
+      return body;
+    };
+    const effective = lastRule('.art-item');
+    if (!/background:\s*transparent/.test(effective)) throw new Error('文章行最终生效规则应仍是透明底（末尾拟态块反盖了行式排版）');
+    if (/var\(--neu-/.test(effective)) throw new Error('文章行最终生效规则里又出现了拟态阴影');
+    if (!/background:\s*var\(--hover\)/.test(lastRule('.art-item:hover')) || /var\(--neu-/.test(lastRule('.art-item:hover'))) {
+      throw new Error('文章行悬停应只给极淡底色，不该再有拟态阴影');
+    }
+    for (const sel of ['.card', '.row-item']) {
+      if (!/box-shadow:\s*var\(--elevation-1\)/.test(lastRule(sel))) {
+        throw new Error(`${sel} 最终生效阴影应是 --elevation-1（末尾拟态块反盖了 v2.5.0 薄边浅影）`);
+      }
+      if (!/background:\s*var\(--panel\)/.test(lastRule(sel))) {
+        throw new Error(`${sel} 最终生效底色应是 --panel（不该是拟态渐变）`);
+      }
+      if (/var\(--neu-/.test(lastRule(sel))) throw new Error(`${sel} 最终生效规则里不该再有拟态阴影`);
+    }
+    if (!/box-shadow:\s*var\(--elevation-2\)/.test(lastRule('.card:hover'))) throw new Error('.card:hover 最终生效阴影应是 --elevation-2');
+    if (!/box-shadow:\s*var\(--elevation-2\)/.test(lastRule('.row-item:hover'))) throw new Error('.row-item:hover 最终生效阴影应是 --elevation-2');
+    if (!/var\(--elevation-1\), inset 3px 0 0 var\(--accent\)/.test(lastRule('.row-item.is-fav'))) {
+      throw new Error('收藏行应保留浅影 + 左侧主色条');
+    }
   });
 
   t('回顶钮：挂载点在视图之外，滚过一屏才出现，浮在标签栏之上', () => {
