@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { apiFetch, httpError, toast, emitShell } from './util.js';
+import { apiFetch, httpError, toast, emitShell, NET_TIMEOUT_MS } from './util.js';
 import { state, layoutPref, setLayout, lockPageScroll, unlockPageScroll } from './state.js';
 import { emit, EVENT } from '../kernel/events.js';
 
@@ -112,19 +112,46 @@ export async function loadFeeds() {
  * 与 reader.js 的同名机制对称（文章页 / 卡片页两套列表各有一份）。
  */
 let pagePendingReset = false;
+/* 同一时刻只认最后一次列表请求：切换筛选、搜索连打、点「重试」都会发起新请求，
+ * 旧的慢响应不能回来覆盖当前列表（弱网下旧响应常常比新响应晚到）。
+ * controller 让「重试」能真正打断仍挂在半路的请求，而不是被 loading 闸门吞掉。 */
+let pageController = null;
+let pageGeneration = 0;
+
+export function cancelPageLoad() {
+  pageGeneration += 1;
+  if (pageController) { pageController.abort(); pageController = null; }
+}
 
 export async function loadPage(reset = false) {
+  // 错误空态里的「重试」：上一次可能还挂在半路，先让它失效、释放闸门再发新的。
+  // 旧实现只往 pagePendingReset 排队，请求永不返回时就永远不会补跑 —— 按钮点了没反应。
+  const force = reset && state.loadError;
+  if (force) {
+    cancelPageLoad();
+    state.loading = false;
+    pagePendingReset = false;
+  }
+  // 首屏失败、列表还是空的时候，滚动哨兵会不断触发「翻页」请求 ——
+  // 失败 → 自动重拉 → 再失败，骨架永远不消失，错误空态里的「重试」也没机会出现。
+  // 只有用户主动「重试」(reset) 才继续，自动加载一律停下。
+  if (!reset && state.loadError && !state.entries.length) return;
   if (state.loading) {
     if (reset) pagePendingReset = true;
     return;
   }
   state.loading = true;
 
-  if (reset) { state.offset = 0; state.hasMore = true; state.entries = []; state.loadMoreErr = false; }
+  if (reset) { state.offset = 0; state.hasMore = true; state.entries = []; state.loadMoreErr = false; state.loadError = false; }
   if (!reset) state.loadMoreErr = false;
 
   const first = state.entries.length === 0;
   render();   // 立刻反映骨架 / 加载态（渲染归 React 卡片视图）
+
+  const gen = ++pageGeneration;
+  const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+  pageController = ctrl;
+  const stale = () => gen !== pageGeneration || !!(ctrl && ctrl.signal.aborted);
 
   try {
     // 移动端首屏只取一小批（v1.5.0）：窄屏一屏只显示得下 6~8 张卡，
@@ -143,9 +170,12 @@ export async function loadPage(reset = false) {
     else if (state.feedFilter) qs.set('feeds', String(state.feedFilter));
     else qs.set('scope', 'cards');
 
-    const res = await apiFetch('/api/entries?' + qs.toString());
+    const res = await apiFetch('/api/entries?' + qs.toString(),
+      ctrl ? { signal: ctrl.signal, timeoutMs: NET_TIMEOUT_MS } : { timeoutMs: NET_TIMEOUT_MS });
+    if (stale()) return;   // 已被更新的请求取代 / 用户点了重试
     if (!res.ok) throw await httpError(res);
     const data = await res.json();
+    if (stale()) return;
 
     if (reset) state.tags = data.tags || [];
 
@@ -159,9 +189,12 @@ export async function loadPage(reset = false) {
     state.loadError = false;
     state.loadMoreErr = false;
   } catch (err) {
+    if (stale()) return;                 // 主动取消 / 已被取代，不算失败
     if (first) state.loadError = true;   // 首屏失败 → React 显示错误空态
     else state.loadMoreErr = true;       // 翻页失败 → 列表底部给「重试」，不再只弹一下 toast
   } finally {
+    if (pageController === ctrl) pageController = null;
+    if (gen !== pageGeneration) return;  // 新请求已接管，别把它的 loading 状态清掉
     state.loading = false;
     render();
     // 加载途中排队的「重置重载」：补跑一次，让用户的第二次点击真正生效

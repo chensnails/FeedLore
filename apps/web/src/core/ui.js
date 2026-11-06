@@ -23,21 +23,33 @@ import { get, isOn } from '../kernel/bridge.js';
 /* 刷新：先让服务端去抓一轮最新条目，再重新拉列表。
    ⋮ 溢出菜单的「刷新」项经桥 refresh 调用（src/ui/OverflowMenu.jsx），
    按钮的忙态由组件本地维护，这里只负责数据。 */
+/* 连点「刷新」不该叠一串抓取请求：弱网下它们会互相抢带宽，越刷越慢。 */
+let refreshing = false;
+
 export async function refreshFeeds() {
+  if (refreshing) return;
+  refreshing = true;
   hideNewPill();   // 手动刷新了，自动刷新挂的那个「有新内容」提示就作废了
   try {
-    const r = await apiFetch('/api/feeds/refresh', { method: 'POST' });
+    // 服务端要逐个抓 RSS，本来就慢，给它单独的较长上限；POST 不自动重试。
+    const r = await apiFetch('/api/feeds/refresh', { method: 'POST', timeoutMs: 60000 });
+    if (!r.ok) throw await httpError(r);
     const data = await r.json();
     await loadFeeds();
     state.tag = null;
-    await loadPage(true);
     // 阅读页有自己的列表，也一起刷新（顺带更新左侧频道计数）
     renderReaderChannels();
-    if (state.tab === 'reader' || state.rdEntries.length) await loadReader({ reset: true });
+    // 两页列表互不依赖，并行发出：旧实现串行 4 个请求，弱网下延迟直接累加。
+    await Promise.all([
+      loadPage(true),
+      (state.tab === 'reader' || state.rdEntries.length) ? loadReader({ reset: true }) : Promise.resolve(),
+    ]);
     if (data.failed && data.failed.length) toast(`已刷新，${data.failed.length} 个频道抓取失败`, false);
     else toast(data.added ? `已刷新，新增 ${data.added} 条` : '已刷新，没有新内容');
   } catch (err) {
     toast('刷新失败：' + (err.message || err), false);
+  } finally {
+    refreshing = false;
   }
 }
 
@@ -158,14 +170,16 @@ export function switchView(name, opts) {
     if (name === 'reader') {
       renderReaderChannels();
       // 已经有数据就不重新拉，避免来回切页面时列表闪一下
-      if (!state.rdEntries.length) loadReader({ reset: true });
+      // 首屏失败时也不要自动重拉：错误空态里已经给了「重试」，来回切页不该一直转圈
+      if (!state.rdEntries.length && !state.rdReadError) loadReader({ reset: true });
       else renderReader();
     }
     // 卡片页同理：文章页里点掉的未读要在这里立刻反映（圆点 / 计数），已有数据不重拉
     if (name === 'cards') {
       render();
-      // 启动时只加载当前页的列表（v2.2.0）；第一次切到卡片页再拉首屏，别留空白
-      if (!state.entries.length && !state.loading) loadPage(true);
+      // 启动时只加载当前页的列表（v2.2.0）；第一次切到卡片页再拉首屏，别留空白。
+      // loadError 时不自动补拉，由用户点「重试」决定，否则一次切页就多一个弱网请求。
+      if (!state.entries.length && !state.loading && !state.loadError) loadPage(true);
     }
     // AI 视图已 React 化：通知 AiView 激活 / 隐去（切到 ai 时由组件自行加载子页数据）
     emit(EVENT.VIEW, name);

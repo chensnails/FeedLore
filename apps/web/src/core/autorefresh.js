@@ -117,30 +117,39 @@ export function applyFresh({ view, data }) {
     .catch(() => { /* 频道刷新失败不影响列表本身 */ });
 }
 
+/* 定时检查 + 回前台补检查可能撞在一起，弱网下叠请求只会更慢。 */
+let checking = false;
+
 export async function checkForNew() {
-  if (state.tab === 'ai') return 0;                     // AI 页（日报按日期取、设置是表单）不参与自动刷新
-  // 收藏列表里不可能冒出新内容（新条目默认都不是收藏），别白拉一次
-  if (state.tab === 'reader' && state.rdScope === 'favorite') return 0;
-  if (state.loading || state.rdLoading) return 0;
-  const view = state.tab === 'cards' ? 'cards' : 'reader';
-  const current = view === 'reader' ? state.rdEntries : state.entries;
+  if (checking) return 0;
+  checking = true;
+  try {
+    if (state.tab === 'ai') return 0;                   // AI 页（日报按日期取、设置是表单）不参与自动刷新
+    // 收藏列表里不可能冒出新内容（新条目默认都不是收藏），别白拉一次
+    if (state.tab === 'reader' && state.rdScope === 'favorite') return 0;
+    if (state.loading || state.rdLoading) return 0;
+    const view = state.tab === 'cards' ? 'cards' : 'reader';
+    const current = view === 'reader' ? state.rdEntries : state.entries;
 
-  const data = await fetchHead(view);
-  const n = countNewHead(data.entries || [], current);
-  if (!n) return 0;
+    const data = await fetchHead(view);
+    const n = countNewHead(data.entries || [], current);
+    if (!n) return 0;
 
-  // 停在顶部、也没有展开中的文章时才敢直接换列表；否则挂浮标等用户点。
-  // ⚠️ App Shell 的滚动在视图容器上，window.scrollY 恒为 0 —— 必须问当前容器。
-  const atTop = activeScrollTop() < 300;
-  const busy = view === 'reader' && state.rdExpanded.size > 0;
-  if (atTop && !busy) {
-    applyFresh({ view, data });
-    toast(`已更新 ${n} 条新内容`);
+    // 停在顶部、也没有展开中的文章时才敢直接换列表；否则挂浮标等用户点。
+    // ⚠️ App Shell 的滚动在视图容器上，window.scrollY 恒为 0 —— 必须问当前容器。
+    const atTop = activeScrollTop() < 300;
+    const busy = view === 'reader' && state.rdExpanded.size > 0;
+    if (atTop && !busy) {
+      applyFresh({ view, data });
+      toast(`已更新 ${n} 条新内容`);
+      return n;
+    }
+    pendingFresh = { view, data, n };
+    setNewPill(true, `${n} 条新内容`);
     return n;
+  } finally {
+    checking = false;
   }
-  pendingFresh = { view, data, n };
-  setNewPill(true, `${n} 条新内容`);
-  return n;
 }
 
 /** 浮标被点击（src/ui/Overlays.jsx 渲染的按钮调它）：套用新内容并回到顶部 */

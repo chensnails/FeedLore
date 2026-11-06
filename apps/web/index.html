@@ -107,6 +107,10 @@ html[data-theme="github"] #appBoot {
   --boot-track: rgba(255, 255, 255, .14); --boot-glow: rgba(0, 0, 0, .55);
 }
 #appBoot.is-done { opacity: 0; pointer-events: none; }
+/* 启动失败时也不能把整页锁死：错误提示留在最上层，但只有按钮本身接点击，
+   下面的应用（视图切换、错误空态里的「重试」）仍然可操作、可滚动。 */
+#appBoot.is-error { pointer-events: none; }
+#appBoot.is-error .boot-err { pointer-events: auto; }
 html.boot-lock { overflow: hidden; }
 .boot-inner { display: flex; flex-direction: column; align-items: center; gap: 14px; transform: translateY(-2vh); }
 .boot-mark { width: 64px; height: 64px; border-radius: 15px; box-shadow: 0 10px 30px var(--boot-glow); animation: bootPulse 1.8s ease-in-out infinite; }
@@ -183,11 +187,16 @@ html.boot-lock { overflow: hidden; }
     fail: function (text) {
       if (done) return;
       clearTimeout(timer);
+      /* 失败也可能只是「数据接口慢」，应用外壳早就渲染好了：
+         解锁滚动 + 上面那条 CSS 让遮罩不吃点击，用户仍能点应用内的重试。 */
+      document.documentElement.classList.remove('boot-lock');
       el.classList.add('is-error');
       errText.textContent = text || '加载遇到问题';
     }
   };
-  timer = setTimeout(function () { window.__boot.fail('加载时间超出预期，请检查网络后重试'); }, 12000);
+  /* 启动层现在只等「外壳渲染」，不等数据，正常几百毫秒就 ready；
+     这里只兜「JS 根本没跑起来」的情况，给弱网留足余量再到 20s。 */
+  timer = setTimeout(function () { window.__boot.fail('加载时间超出预期，请检查网络后重试'); }, 20000);
 })();
 </script>
 

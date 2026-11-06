@@ -10,15 +10,93 @@ export const $ = (s) => document.querySelector(s);
 import { errorText } from './errorText.js';
 import { emit, EVENT } from '../kernel/events.js';
 export { errorText as errText };
-/* ---------------- 工具 ---------------- */
-/** 带登录态处理的 fetch：401 时跳登录页 */
-export async function apiFetch(url, opts) {
-  const res = await fetch(url, opts);
-  if (res.status === 401) {
-    location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
-    throw new Error('未登录');
+/* ---------------- 网络层 ----------------
+ * 弱网下「请求挂住不返回」比「请求失败」更糟：调用方的 loading 闸门一直不释放，
+ * 重试按钮点了没反应，启动链也会卡死在 await 上被看门狗误报成启动失败。
+ * 所以这里统一兜三件事：超时、幂等 GET 的有限重试、尊重调用方的取消信号。
+ *   - GET/HEAD：单次 8s，网络错误 / 超时 / 408 / 429 / 5xx 重试一次（短退避）
+ *   - 写操作：单次 30s，**绝不自动重试**（POST/PATCH/DELETE 可能已经生效）
+ *   - 调用方自带 signal 或显式 timeoutMs:0 时，超时交给调用方，不叠加计时器
+ * 长耗时调用（上传归档、LLM 生成、整站刷新）请显式传 timeoutMs。
+ */
+export const NET_TIMEOUT_MS = 8000;
+export const NET_WRITE_TIMEOUT_MS = 30000;
+export const NET_RETRY_DELAY_MS = 400;
+
+function isRetryableStatus(status) {
+  return status === 408 || status === 429 || (Number(status) >= 500 && Number(status) < 600);
+}
+
+/** 单次请求：超时既 abort 真实请求，也用 race 保证「fetch 实现忽略 signal」时仍能结束。
+ *  外部 signal（如 AbortSignal.timeout）触发时同步 abort 内部 controller。 */
+function fetchOnce(url, opts, timeoutMs, outerSignal) {
+  const clean = { ...opts };
+  delete clean.timeoutMs;
+  delete clean.retry;
+  const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+  if (ctrl) clean.signal = ctrl.signal;
+
+  const onOuterAbort = () => { if (ctrl) ctrl.abort(); };
+  if (ctrl && outerSignal) {
+    if (outerSignal.aborted) onOuterAbort();
+    else outerSignal.addEventListener('abort', onOuterAbort, { once: true });
   }
-  return res;
+
+  const req = fetch(url, clean);
+  req.catch(() => {});   // 超时胜出后，被 abort 的请求可能晚一步 reject，别留悬空 rejection
+  let timer = null;
+  const timeout = timeoutMs > 0
+    ? new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error('网络请求超时，请检查网络后重试');
+        err.name = 'TimeoutError';
+        if (ctrl) ctrl.abort();
+        reject(err);
+      }, timeoutMs);
+    })
+    : null;
+  return (timeout ? Promise.race([req, timeout]) : req).finally(() => {
+    if (timer) clearTimeout(timer);
+    if (ctrl && outerSignal) outerSignal.removeEventListener('abort', onOuterAbort);
+  });
+}
+
+/** 带登录态处理的 fetch：401 时跳登录页；GET 失败有限重试；所有请求都有超时上限。 */
+export async function apiFetch(url, opts = {}) {
+  const o = opts || {};
+  const method = String(o.method || 'GET').toUpperCase();
+  const idempotent = method === 'GET' || method === 'HEAD';
+  const attempts = idempotent && o.retry !== false ? 2 : 1;
+  // 调用方自带 signal 且没写 timeoutMs → 由它自己负责超时；
+  // 显式给了 timeoutMs（哪怕同时带 signal，比如列表请求的取消链）→ 仍按这个上限超时。
+  const timeoutMs = o.timeoutMs === 0
+    ? 0
+    : (o.signal && o.timeoutMs == null
+      ? 0
+      : (o.timeoutMs || (idempotent ? NET_TIMEOUT_MS : NET_WRITE_TIMEOUT_MS)));
+
+  let lastErr = null;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const res = await fetchOnce(url, o, timeoutMs, o.signal);
+      if (res.status === 401) {
+        location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
+        throw new Error('未登录');
+      }
+      if (i + 1 < attempts && idempotent && isRetryableStatus(res.status)) {
+        lastErr = new Error('HTTP ' + res.status);   // 不消费 body，留给最终那次响应
+      } else {
+        return res;
+      }
+    } catch (err) {
+      if (err && err.message === '未登录') throw err;          // 401 不重试
+      if (o.signal && o.signal.aborted) throw err;             // 调用方主动取消
+      lastErr = err;
+      if (i + 1 >= attempts) throw err;
+    }
+    await new Promise((r) => setTimeout(r, NET_RETRY_DELAY_MS * (i + 1)));
+  }
+  throw lastErr || new Error('网络请求失败');
 }
 
 /** 回登录页。整站还原会清空会话，单独收成一个函数便于测试与复用。 */
@@ -36,6 +114,7 @@ export async function uploadArchive(url, file) {
     method: 'POST',
     headers: { 'Content-Type': 'application/gzip' },
     body: file,
+    timeoutMs: 0,   // 导入 / 还原包可能几十 MB，弱网下上传很久，别被 30s 写超时误杀
   });
 }
 

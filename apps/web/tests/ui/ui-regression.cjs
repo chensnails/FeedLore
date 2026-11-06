@@ -5581,6 +5581,95 @@ const withEFP = (el, fn) => {
       if (c2.state.rdFeedId !== 7) throw new Error('再点同一频道后频道被清掉了：' + c2.state.rdFeedId);
     });
 
+    // ---- 弱网守门：请求悬挂时「重试」必须真的生效，且旧慢响应不能覆盖新列表 ----
+    t('弱网：错误态下重试能打断悬挂请求，旧响应不覆盖新列表', async () => {
+      const c2 = sw.__coreForTest;
+      const st = c2.state;
+      const origFetch = sw.fetch;
+      const pending = [];
+      let n = 0;
+      sw.fetch = (url, opts) => new Promise((resolve, reject) => {
+        const k = ++n;
+        const sig = opts && opts.signal;
+        if (sig) sig.addEventListener('abort', () => {
+          const e = new Error('Aborted'); e.name = 'AbortError'; reject(e);
+        }, { once: true });
+        pending.push({ k, resolve });
+      });
+      const ok = (id) => ({
+        ok: true, status: 200,
+        json: () => Promise.resolve({ entries: [{ id, name: id }], hasMore: false, total: 1, tags: [] }),
+      });
+      try {
+        st.entries = []; st.offset = 0; st.hasMore = true;
+        st.loading = false; st.loadError = false; st.loadMoreErr = false;
+        const p1 = c2.loadPage(true);              // 第一次挂在半路
+        await sleep(10);
+        st.loadError = true;                       // 模拟已判失败后的错误空态
+        const p2 = c2.loadPage(true);              // 用户点「重试」
+        await sleep(10);
+        if (n !== 2) throw new Error('重试没有发出新请求，n=' + n);
+        pending.find((x) => x.k === 2).resolve(ok('new-2'));
+        await p2;
+        pending.find((x) => x.k === 1).resolve(ok('old-1'));   // 旧响应即便晚到
+        await p1;
+        await sleep(20);
+        if (st.entries.length !== 1 || st.entries[0].id !== 'new-2') {
+          throw new Error('旧响应覆盖了新列表：' + JSON.stringify(st.entries.map((e) => e.id)));
+        }
+        if (st.loadError) throw new Error('重试成功后错误态没清掉');
+      } finally {
+        sw.fetch = origFetch;
+        st.entries = []; st.offset = 0; st.hasMore = true;
+        st.loading = false; st.loadError = false; st.loadMoreErr = false;
+      }
+    });
+
+    t('弱网：首屏失败后自动翻页不会无限重拉', async () => {
+      const c2 = sw.__coreForTest;
+      const st = c2.state;
+      const origFetch = sw.fetch;
+      let calls = 0;
+      sw.fetch = () => {
+        calls += 1;
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ entries: [], hasMore: false, total: 0, tags: [] }) });
+      };
+      try {
+        st.entries = []; st.loading = false; st.loadError = true;
+        st.loadMoreErr = false; st.hasMore = true;
+        await c2.cardsLoadMore();
+        if (calls !== 0) throw new Error('错误态下仍自动发出了翻页请求（骨架会一直转）');
+      } finally {
+        sw.fetch = origFetch;
+        st.entries = []; st.loading = false; st.loadError = false;
+        st.loadMoreErr = false; st.hasMore = true;
+      }
+    });
+
+    t('弱网：GET 5xx 自动重试一次，写操作绝不重试', async () => {
+      const c2 = sw.__coreForTest;
+      const origFetch = sw.fetch;
+      const calls = [];
+      sw.fetch = (url, opts) => {
+        const method = (opts && opts.method) || 'GET';
+        calls.push(method);
+        const gets = calls.filter((x) => x === 'GET').length;
+        return Promise.resolve(method === 'POST' || gets === 1
+          ? { ok: false, status: 503, json: () => Promise.resolve({}) }
+          : { ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+      };
+      try {
+        const res = await c2.apiFetch('/api/weaknet-get');
+        if (!res.ok) throw new Error('GET 重试后仍未成功');
+        const post = await c2.apiFetch('/api/weaknet-post', { method: 'POST' });
+        if (post.status !== 503) throw new Error('POST 响应异常');
+        if (calls.filter((x) => x === 'GET').length !== 2) throw new Error('GET 应恰好两次');
+        if (calls.filter((x) => x === 'POST').length !== 1) throw new Error('POST 被自动重试了');
+      } finally {
+        sw.fetch = origFetch;
+      }
+    });
+
     sw.close();
   }
 
@@ -6742,6 +6831,77 @@ const withEFP = (el, fn) => {
       }
     }
     if (bad.length) throw new Error('仍有直连全局桥：' + bad.join(' | '));
+  });
+
+  /* ---------- 弱网守门：这些坑都是浏览器实测复现过的，别再退回去 ---------- */
+  t('弱网：请求层统一超时 + 幂等重试，写操作不自动重试', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'core', 'util.js'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/NET_TIMEOUT_MS = 8000/.test(src)) throw new Error('缺 GET 8s 超时上限');
+    if (!/NET_WRITE_TIMEOUT_MS = 30000/.test(src)) throw new Error('缺写操作 30s 上限');
+    if (!/function fetchOnce/.test(src) || !/Promise\.race\(\[req, timeout\]\)/.test(src)) {
+      throw new Error('超时必须同时 abort 真实请求 + race 兜底（fetch 实现可能忽略 signal）');
+    }
+    if (!/const attempts = idempotent && o\.retry !== false \? 2 : 1/.test(src)) throw new Error('只有幂等请求才允许重试');
+    if (!/if \(o\.signal && o\.signal\.aborted\) throw err/.test(src)) throw new Error('调用方主动取消时不能继续重试');
+    if (!/export async function uploadArchive[\s\S]*?timeoutMs: 0/.test(src)) throw new Error('大文件上传不能被 30s 写超时误杀');
+  });
+
+  t('弱网：启动层不等数据请求，失败时也不锁死页面', () => {
+    const root = path.join(__dirname, '..', '..');
+    const boot = fs.readFileSync(path.join(root, 'src', 'core', 'bootstrap.js'), 'utf8').replace(/\r\n/g, '\n');
+    // 注释里会提到旧实现，只看真实代码行
+    const bootCode = boot.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+    if (/await loadPage\(/.test(bootCode)) throw new Error('启动链不得 await 列表请求：弱网悬挂会让启动层永久报错');
+    const iSwitch = boot.indexOf('await switchView(tab)');
+    const iReady = boot.indexOf('bootReady();', iSwitch);
+    if (iSwitch < 0 || iReady < 0) throw new Error('视图切完就该 bootReady（启动层只负责外壳）');
+    if (!/setTimeout\(\(\) => window\.__boot\.ready\(\)/.test(boot)) throw new Error('bootReady 的定时兜底不能丢');
+    const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/#appBoot\.is-error \{ pointer-events: none; \}/.test(html)) throw new Error('启动失败时遮罩不能吃掉点击');
+    if (!/}, 20000\)/.test(html)) throw new Error('看门狗应放宽到 20s，给弱网留余量');
+    if (!/classList\.remove\('boot-lock'\)/.test(html)) throw new Error('启动失败时要解锁页面滚动');
+  });
+
+  t('弱网：两页列表有请求代际与可打断重试，刷新/自动刷新有互斥', () => {
+    const root = path.join(__dirname, '..', '..', 'src', 'core');
+    const pairs = [
+      ['卡片页', 'feeds.js', 'pageGeneration', 'cancelPageLoad', 'state.loadError'],
+      ['文章页', 'reader.js', 'readerGeneration', 'cancelReaderLoad', 'state.rdReadError'],
+    ];
+    for (const [name, file, gen, cancel, errFlag] of pairs) {
+      const src = fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
+      if (!src.includes(`let ${gen} = 0`)) throw new Error(name + ' 缺请求代际（旧慢响应会覆盖新列表）');
+      if (!src.includes(`export function ${cancel}()`)) throw new Error(name + ' 缺可打断的取消入口');
+      if (!new RegExp('const force = reset && ' + errFlag.replace('.', '\\.')).test(src)) {
+        throw new Error(name + ' 错误态下的「重试」没有强制打断上一次请求');
+      }
+      if (!/signal: ctrl\.signal, timeoutMs: NET_TIMEOUT_MS/.test(src)) throw new Error(name + ' 列表请求没接取消信号 / 超时');
+      if (!/if \(stale\(\)\) return/.test(src)) throw new Error(name + ' 缺旧请求失效判定');
+    }
+    const ui = fs.readFileSync(path.join(root, 'ui.js'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/if \(refreshing\) return/.test(ui)) throw new Error('连点「刷新」没有互斥');
+    if (!/Promise\.all\(\[/.test(ui)) throw new Error('两页列表刷新仍串行，弱网下延迟累加');
+    if (!/!state\.loadError\) loadPage\(true\)/.test(ui) || !/!state\.rdReadError\) loadReader/.test(ui)) {
+      throw new Error('首屏失败后切页不该自动重复拉列表（错误空态已有「重试」）');
+    }
+    const ar = fs.readFileSync(path.join(root, 'autorefresh.js'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/if \(checking\) return 0/.test(ar)) throw new Error('定时器与回前台补检查没有互斥');
+  });
+
+  t('弱网：首屏失败后自动翻页在数据层与组件层都停下', () => {
+    const root = path.join(__dirname, '..', '..', 'src');
+    const feeds = fs.readFileSync(path.join(root, 'core', 'feeds.js'), 'utf8').replace(/\r\n/g, '\n');
+    const reader = fs.readFileSync(path.join(root, 'core', 'reader.js'), 'utf8').replace(/\r\n/g, '\n');
+    const cards = fs.readFileSync(path.join(root, 'views', 'CardsView.jsx'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/if \(!reset && state\.loadError && !state\.entries\.length\) return/.test(feeds)) {
+      throw new Error('卡片页数据层没有拦住「错误态下的翻页」');
+    }
+    if (!/if \(!reset && state\.rdReadError && !state\.rdEntries\.length\) return/.test(reader)) {
+      throw new Error('文章页数据层没有拦住「错误态下的翻页」');
+    }
+    if (!/st\.loadError \|\| !\(st\.entries \|\| \[\]\)\.length/.test(cards)) {
+      throw new Error('CardsView 滚动哨兵仍会在首屏失败时无限重拉');
+    }
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });

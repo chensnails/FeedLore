@@ -7,7 +7,7 @@
 
 import { toast, emitShell } from './util.js';
 import { state, applyRoleUI, applyTheme, currentThemeMode, openSettings } from './state.js';
-import { currentViewMode, applyViewMode, currentTab, loadFeeds, loadPage } from './feeds.js';
+import { currentViewMode, applyViewMode, currentTab, loadFeeds } from './feeds.js';
 import { scheduleAutoRefresh } from './autorefresh.js';
 import { switchView } from './ui.js';
 import { restoreReaderArt } from './reader.js';
@@ -135,21 +135,24 @@ async function waitViewFirstPaint(tab) {
   else if (location.hash.startsWith('#digest')) tab = 'ai';
   else if (location.hash.startsWith('#ai')) tab = 'ai';
 
-  // 文章页的列表由 switchView 内的 loadReader 拉；卡片页没有自加载，这里补首屏
-  if (tab === 'cards') await loadPage(true);
+  // 首屏列表统一由 switchView 触发（唯一入口），这里**不再 await 数据请求**。
+  // 旧实现在卡片页先串行等完列表请求才切视图：弱网下请求一挂住，整条启动链
+  // 就停在 await 上，bootReady 永远不来，12s 看门狗把「还在等数据」误报成启动失败，
+  // 错误层盖住整页，连应用内那个带「重试」的错误空态都没机会渲染（实测复现）。
+  // 启动层只负责「外壳已经画出来」；数据的骨架 / 失败态 / 重试交给应用内自己负责。
   await switchView(tab);
 
   if (location.hash.startsWith('#settings')) openSettings();
 
-  // 条目级深链：列表落地后展开那一篇并置顶（与「点下一篇进入」同一策略）
+  // 外壳就绪即收口（bootReady 自带帧 + 定时双通道，后台标签页也不会被看门狗误伤）。
+  // dismiss 本身至少留 350ms，正常网络下首屏数据这时已经落地，不会有空白跳变。
+  bootReady();
+
+  // 条目级深链要等列表落地才能展开那一篇；此刻启动层已淡出，等待不会锁死页面。
   if (deepArtId) {
     await waitViewFirstPaint('reader');
     await restoreReaderArt(deepArtId);
-  } else {
-    await waitViewFirstPaint(tab);
   }
-
-  bootReady();
 })().catch((err) => {
   bootFail('加载失败：' + (err && err.message ? err.message : '未知错误'));
 });

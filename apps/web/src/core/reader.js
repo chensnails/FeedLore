@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { apiFetch, httpError, toast, emitShell, confirm, writeHash } from './util.js';
+import { apiFetch, httpError, toast, emitShell, confirm, writeHash, NET_TIMEOUT_MS } from './util.js';
 import { state, layoutPref, setLayout, openSettings, lockPageScroll, unlockPageScroll } from './state.js';
 import { loadFeeds, groupFeeds, loadPage } from './feeds.js';
 import { emit, EVENT } from '../kernel/events.js';
@@ -65,13 +65,30 @@ export function readerFilterParams() {
  * 这里记一个 pendingReset，等当前这次结束后补一次重置重载。
  */
 let readerPendingReset = false;
+/* 与卡片页对称：只认最后一次列表请求，且「重试」能打断仍挂在半路的请求。 */
+let readerController = null;
+let readerGeneration = 0;
+
+export function cancelReaderLoad() {
+  readerGeneration += 1;
+  if (readerController) { readerController.abort(); readerController = null; }
+}
 
 export async function loadReader({ reset = false } = {}) {
+  // 错误空态里的「重试」不能被上一次悬挂的请求挡住
+  const force = reset && state.rdReadError;
+  if (force) {
+    cancelReaderLoad();
+    state.rdLoading = false;
+    readerPendingReset = false;
+  }
   if (state.rdLoading) {
     // 已经在加载：把「重置重载」排队，别静默丢弃
     if (reset) readerPendingReset = true;
     return;
   }
+  // 与卡片页对称：首屏失败且列表为空时，不让滚动哨兵借「翻页」无限重拉
+  if (!reset && state.rdReadError && !state.rdEntries.length) return;
   if (!reset && (!state.rdHasMore || state.rdLoadMoreErr)) return;
 
   state.rdLoading = true;
@@ -90,14 +107,22 @@ export async function loadReader({ reset = false } = {}) {
   }
   renderReader();
 
+  const gen = ++readerGeneration;
+  const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+  readerController = ctrl;
+  const stale = () => gen !== readerGeneration || !!(ctrl && ctrl.signal.aborted);
+
   try {
     const params = readerFilterParams();
     params.set('limit', String(state.readerPageSize));
     params.set('offset', String(state.rdOffset));
 
-    const res = await apiFetch('/api/entries?' + params.toString());
+    const res = await apiFetch('/api/entries?' + params.toString(),
+      ctrl ? { signal: ctrl.signal, timeoutMs: NET_TIMEOUT_MS } : { timeoutMs: NET_TIMEOUT_MS });
+    if (stale()) return;
     if (!res.ok) throw await httpError(res);
     const data = await res.json();
+    if (stale()) return;
 
     const list = data.entries || [];
     state.rdEntries = reset ? list : state.rdEntries.concat(list);
@@ -107,6 +132,7 @@ export async function loadReader({ reset = false } = {}) {
     state.rdReadError = false;
     state.rdLoadMoreErr = false;
   } catch (err) {
+    if (stale()) return;   // 主动取消 / 已被取代，不算失败
     if (!state.rdEntries.length) {
       state.rdReadError = true;
       state.rdReadErrorMsg = '加载失败：' + String((err && err.message) || err);
@@ -114,6 +140,8 @@ export async function loadReader({ reset = false } = {}) {
       state.rdLoadMoreErr = true;
     }
   } finally {
+    if (readerController === ctrl) readerController = null;
+    if (gen !== readerGeneration) return;   // 新请求已接管，别动它的状态与滚动副作用
     state.rdLoading = false;
     renderReader();
     // 翻页追加会让列表总高剧变（实测 scrollHeight 21411 → 14797），此前算好的

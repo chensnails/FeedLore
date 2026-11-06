@@ -319,7 +319,9 @@ export function CardsView() {
   useEffect(() => {
     if (!st.hasMore) return undefined;
     const check = () => {
-      if (st.loading || !st.hasMore || st.loadMoreErr) return;
+      // 首屏失败 / 列表为空时不自动翻页：否则错误态会被无限重拉顶掉，
+      // 用户只看到一直在转的骨架（弱网下尤其明显）。重试交给错误空态的按钮。
+      if (st.loading || !st.hasMore || st.loadMoreErr || st.loadError || !(st.entries || []).length) return;
       // 视图隐藏时 measurement 全部归零：哨兵 top 必然 < innerHeight，会被误判成
       // 「已到底部」而把整个列表在后台分页拉完。只有卡片页可见时才自动加载。
       const host = document.getElementById('cardsView');
