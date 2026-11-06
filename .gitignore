@@ -48,3 +48,6 @@ tests/ui/.build/
 # Turborepo 缓存 / TS 增量编译产物
 .turbo/
 *.tsbuildinfo
+
+# Qoder 积分审计的临时产物（报告 / canvas），不入库
+.qoder-credits/
