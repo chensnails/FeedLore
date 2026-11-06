@@ -3,11 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- 样式表到达之前按系统深浅给画布 / 滚动条兜底；生效主题仍由下面的内联脚本与 CSS 决定。 -->
+<meta name="color-scheme" content="light dark">
 <title>登录 · 笺川</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <!-- 首屏 theme-color：JS 还没跑时按系统深浅兜底（颜色 = login.css 各主题的 --bg）。
      运行时 applyTheme() 会把所有条目改成当前主题的 --bg。 -->
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1b1d21" media="(prefers-color-scheme: dark)">
 <script>
 /* 主题：与主站共用同一份本机外观偏好（feedlore.appearance.v2 的 theme 字段），
@@ -25,9 +27,9 @@
   el.setAttribute('data-theme-mode', mode);
 
   /* theme-color 的两条 media 只跟系统深浅；显式选了主题时按实际主题改写（颜色 = login.css 的 --bg）。 */
-  var THEME_COLORS = { light: '#ffffff', dark: '#1b1d21', github: '#0d1117' };
+  var THEME_COLORS = { light: '#f4f5f7', dark: '#1b1d21', github: '#0d1117' };
   var tcs = document.querySelectorAll('meta[name="theme-color"]');
-  var tcColor = THEME_COLORS[eff] || '#ffffff';
+  var tcColor = THEME_COLORS[eff] || '#f4f5f7';
   for (var ti = 0; ti < tcs.length; ti++) tcs[ti].setAttribute('content', tcColor);
 
   window.__themeBoot = { KEY: KEY, mq: mq, mode: mode, MODES: MODES };
@@ -116,7 +118,7 @@
     themeBtn.setAttribute('aria-label', '主题：' + THEME_META[m].label);
     // 兜底是两条 theme-color（亮 / 暗各一条带 media），必须一起改，
     // 否则系统深浅与当前主题相反时，浏览器命中的那条还留着旧色。
-    const tcColor = eff === 'light' ? '#ffffff' : (eff === 'github' ? '#0d1117' : '#1b1d21');
+    const tcColor = eff === 'light' ? '#f4f5f7' : (eff === 'github' ? '#0d1117' : '#1b1d21');
     document.querySelectorAll('meta[name="theme-color"]').forEach((tc) => tc.setAttribute('content', tcColor));
   }
 

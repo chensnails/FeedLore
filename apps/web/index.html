@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- 样式表到达之前，让 UA 按系统深浅决定画布 / 滚动条 / 表单控件的默认色；
+     真正生效的主题由下面的内联脚本与 CSS 的 color-scheme 逐套覆盖。 -->
+<meta name="color-scheme" content="light dark">
 <title>笺川</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
@@ -10,9 +13,9 @@
 <link rel="manifest" href="/manifest.json">
 <!-- 首屏 theme-color：JS 还没跑时按系统深浅兜底，深色系统不会先闪一条白。
      两条都带 media：不支持 media 的老浏览器会取第一条（亮色），是安全默认。
-     运行时 syncThemeColor() 会把所有条目改成当前主题的 --panel。 -->
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#2e2e2e" media="(prefers-color-scheme: dark)">
+     颜色 = 各主题的 --bg（页面真正的顶色）。运行时 syncThemeColor() 会把所有条目改成当前值。 -->
+<meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#242424" media="(prefers-color-scheme: dark)">
 <!-- 可安装到手机（Edge / Chrome「添加到手机」，iOS「添加到主屏幕」）-->
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -39,11 +42,11 @@
   el.setAttribute('data-theme', mode === 'github' ? 'github' : (dark ? 'dark' : 'light'));
 
   /* HTML 里两条 <meta theme-color> 只跟系统深浅走；用户显式选了浅色 / 暗色 / GitHub
-     时系统偏好不作数，这里按实际主题立刻改写（颜色 = style.css 各主题的 --panel）。
-     不改的话：系统深色 + 用户选浅色，首屏会先按深色兜底再被 JS 翻成白色。 */
-  var THEME_COLORS = { light: '#ffffff', dark: '#2e2e2e', github: '#151b23' };
+     时系统偏好不作数，这里按实际主题立刻改写（颜色 = style.css 各主题的 --bg）。
+     不改的话：系统深色 + 用户选浅色，首屏会先按深色兜底再被 JS 翻成浅色。 */
+  var THEME_COLORS = { light: '#f4f5f7', dark: '#242424', github: '#0d1117' };
   var tcs = document.querySelectorAll('meta[name="theme-color"]');
-  var tcColor = THEME_COLORS[el.getAttribute('data-theme')] || '#ffffff';
+  var tcColor = THEME_COLORS[el.getAttribute('data-theme')] || '#f4f5f7';
   for (var ti = 0; ti < tcs.length; ti++) tcs[ti].setAttribute('content', tcColor);
 
   // 主色调：github 主题写死 GitHub 蓝；其余用本机保存的值（无则蓝）

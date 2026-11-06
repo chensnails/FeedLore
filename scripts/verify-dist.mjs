@@ -29,6 +29,7 @@ check(existsSync(htmlPath), 'index.html 存在');
 const html = existsSync(htmlPath) ? readFileSync(htmlPath, 'utf8') : '';
 check(/<link[^>]+rel="manifest"[^>]+href="\/manifest\.json"/.test(html), 'index.html 引用了 /manifest.json');
 check(/<meta[^>]+name="theme-color"/.test(html), 'index.html 有 theme-color');
+check(/<meta[^>]+name="color-scheme"[^>]*content="light dark"/.test(html), 'index.html 有 color-scheme 兜底');
 
 // 静态资源必须带内容哈希：固定名会被 CDN/浏览器缓存住，导致「新 HTML + 旧 CSS」
 const assets = html.match(/\/assets\/[A-Za-z0-9._-]+/g) ?? [];
@@ -57,6 +58,12 @@ if (existsSync(mfPath)) {
     check(Boolean(mf.name), `manifest 有 name（${mf.name ?? '缺失'}）`);
     check(Boolean(mf.start_url), 'manifest 有 start_url');
     check(Array.isArray(mf.icons) && mf.icons.length >= 3, `manifest 有 ${mf.icons?.length ?? 0} 个图标（≥3）`);
+    // 宿主底栏吃清单值，页面顶部画的是 --bg：两者不同色就会在底部剥出一条色带。
+    const lightMeta = (html.match(/<meta name="theme-color" content="(#[0-9a-fA-F]+)" media="\(prefers-color-scheme: light\)"/) || [])[1];
+    check(Boolean(lightMeta), 'index.html 有亮色 theme-color');
+    if (lightMeta) {
+      check(String(mf.theme_color).toLowerCase() === lightMeta.toLowerCase(), `manifest theme_color 与亮色 meta 一致（${mf.theme_color} / ${lightMeta}）`);
+    }
     // 每个图标文件都要真的存在，否则装到桌面是一个白框
     for (const ic of mf.icons ?? []) {
       const f = join(DIST, String(ic.src ?? '').replace(/^\//, ''));

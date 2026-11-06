@@ -70,6 +70,14 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Fixed
 
+- **The status bar no longer sits a shade away from the page top**: `theme-color` used to report
+  the panel color (dark `#2e2e2e`) while the page top actually paints the page background `--bg`
+  (`#242424`), so hosts that honor the meta showed the status bar and header as two different
+  blacks. The app and the login page now report `--bg` for all three themes, read from the
+  computed CSS value at runtime so there is a single source of truth; the manifest `theme_color`
+  follows to light `#f4f5f7` (what shows under the floating bar is the page background too).
+  Added `<meta name="color-scheme" content="light dark">` so the canvas and scrollbars follow the
+  system preference before the stylesheet arrives, with no white flash on dark systems.
 - **List action buttons no longer sit on top of titles or sources on phones**: after the star and
   mark-unread hit areas grew to 44×44, the right-side reservation still assumed 30px buttons, so
   long source names slipped underneath. Compact two-line cards now reserve the width for the whole

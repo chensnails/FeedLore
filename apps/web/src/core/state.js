@@ -306,10 +306,10 @@ export function setSettingsSummary(text) {
 // —— 跟随系统只在浅色与 CommaFeed 暗之间切，想要 GitHub 暗黑必须显式选。
 export const THEME_MODES = ['auto', 'light', 'dark', 'github'];
 export const THEME_META = {
-  auto: { ico: 'theme-auto', label: '跟随系统', color: null },
-  light: { ico: 'sun', label: '浅色', color: '#ffffff' },
-  dark: { ico: 'moon', label: 'CommaFeed 暗色', color: '#2e2e2e' },
-  github: { ico: 'github', label: 'GitHub 暗黑', color: '#0d1117' },
+  auto: { ico: 'theme-auto', label: '跟随系统' },
+  light: { ico: 'sun', label: '浅色' },
+  dark: { ico: 'moon', label: 'CommaFeed 暗色' },
+  github: { ico: 'github', label: 'GitHub 暗黑' },
 };
 // 每档主题实际写进 data-theme 的值：github 主题另外用一套 CSS 变量块，
 // 主色固定 GitHub 蓝（不对应 6 套 accent，所以外观页要把主色调板禁掉）。
@@ -364,10 +364,12 @@ export function applyTheme(mode, animate) {
     saveAppearance(appearancePref);
   }
 
-  const meta = THEME_META[m];
   // 首屏兜底有亮 / 暗两条带 media 的 theme-color，浏览器只认命中的那条：
   // 全部改成同一个值，免得另一条还留着旧主题的颜色。
-  const color = meta.color || (dark ? '#2e2e2e' : '#ffffff');
+  // 取 --bg 而不是 --panel：系统栏和页面顶部贴的是页面底色，取面板色会差一档灰。
+  const cssRoot = typeof getComputedStyle === 'function' ? getComputedStyle(el) : null;
+  const bg = cssRoot ? String(cssRoot.getPropertyValue('--bg') || '').trim() : '';
+  const color = bg || (dark ? '#242424' : '#f4f5f7');
   document.querySelectorAll('meta[name="theme-color"]').forEach((tc) => tc.setAttribute('content', color));
   emitShell();   // ⋮ 菜单里的夜间模式图标由 React 重绘
 

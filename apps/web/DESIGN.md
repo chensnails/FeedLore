@@ -65,11 +65,14 @@
 - 频道条与底栏遵循同一条「再点当前项回顶」：筛选没变时不重绘列表，只把视线带回顶部。
 - 布局（视图 / 排序 / 侧栏宽度 / 折叠分组等）按账号保存，由服务端注入 `window.__LAYOUT__`。
   **不要把这套改成客户端 GET /api/prefs 再应用** —— 会闪一帧白；外观也不放账号，避免跨设备互相干扰。
-- `manifest.json` 的 `theme_color` 必须与亮色 `--panel` 同色（现在是 `#ffffff`）：「添加到主屏幕」
-  后宿主浏览器用它填 Home 指示条那一带，不一致就会在底部标签栏下面露出一条与页面无关的色带。
+- `manifest.json` 的 `theme_color` 必须与亮色 `--bg` 同色（现在是 `#f4f5f7`）：「添加到主屏幕」
+  后宿主浏览器用它填 Home 指示条那一带。底栏是悬浮的，栏下方与页面顶部露出的都是页面底色，
+  所以取 `--bg` 而不是 `--panel`——取面板色会在状态栏和底栏下各差一档灰。
 - `index.html` 有两条带 `media="(prefers-color-scheme: …)"` 的 `theme-color` 兜底（亮色在前），
   深色系统在 JS 跑起来之前也不会闪白；显式选了主题时由首屏内联脚本与 `syncThemeColor()` /
-  `applyTheme()` 把所有条目一起改掉。运行时颜色取 `--panel`，与主题同源。
+  `applyTheme()` 把所有条目一起改掉。运行时颜色取 `--bg` 的计算值（`ui.js` / `state.js` 同源），
+  三套主题只剩 CSS 一处真源。另有一条 `<meta name="color-scheme" content="light dark">`，
+  只管样式表到达前画布 / 滚动条 / 表单控件的默认色；逐套主题的 `color-scheme` 仍由 CSS 给。
 
 ## 4. 设置页签
 

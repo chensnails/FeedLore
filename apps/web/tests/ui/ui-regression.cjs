@@ -6291,10 +6291,11 @@ const withEFP = (el, fn) => {
     }
   });
 
-  // 独立窗口 / 手机浏览器会拿清单的 theme_color 填宿主底栏（home indicator 那条带）。
-  // 它一旦和标签栏底色不同，底部栏下面就露出一条与页面无关的色带（真机实测过）。
+  // 独立窗口 / 手机浏览器会用清单的 theme_color 填宿主底栏（home indicator 那条带），
+  // 系统状态栏则吃 meta theme-color。两处都必须等于页面真正画出来的顶色 --bg：
+  // 底栏是悬浮的，它下方与页面顶部露出的都是页面底色，不是面板色 --panel。
   // index.html 另有一条深色兜底：JS 未跑时系统深色不能先闪一条白。
-  t('manifest.json：theme_color 与亮色 --panel / meta theme-color 同源', () => {
+  t('manifest.json：theme_color 与亮色 --bg / meta theme-color 同源', () => {
     const root = path.join(__dirname, '..', '..');
     const mf = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest.json'), 'utf8'));
     const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/\r\n/g, '\n');
@@ -6303,26 +6304,34 @@ const withEFP = (el, fn) => {
       .map((m) => ({ color: m[1], media: m[2] || '' }));
     const light = metas.find((m) => /prefers-color-scheme:\s*light/.test(m.media));
     const dark = metas.find((m) => /prefers-color-scheme:\s*dark/.test(m.media));
-    const panel = (css.match(/:root\s*\{[\s\S]*?--panel:\s*(#[0-9a-fA-F]{3,8});/) || [])[1];
-    const panelDark = (css.match(/html\[data-theme="dark"\]\s*\{[\s\S]*?--panel:\s*(#[0-9a-fA-F]{3,8});/) || [])[1];
-    if (!light || !dark || !panel || !panelDark) {
-      throw new Error('没抓到亮 / 暗 theme-color 或 --panel，本条守门失效');
+    const bg = (css.match(/:root\s*\{[\s\S]*?--bg:\s*(#[0-9a-fA-F]{3,8});/) || [])[1];
+    const bgDark = (css.match(/html\[data-theme="dark"\]\s*\{[\s\S]*?--bg:\s*(#[0-9a-fA-F]{3,8});/) || [])[1];
+    const bgGithub = (css.match(/html\[data-theme="github"\]\s*\{[\s\S]*?--bg:\s*(#[0-9a-fA-F]{3,8});/) || [])[1];
+    if (!light || !dark || !bg || !bgDark || !bgGithub) {
+      throw new Error('没抓到亮 / 暗 theme-color 或三套 --bg，本条守门失效');
     }
     const norm = (v) => String(v).toLowerCase();
     if (norm(mf.theme_color) !== norm(light.color)) {
-      throw new Error('清单 theme_color(' + mf.theme_color + ') 与 index.html 亮色 meta(' + light.color + ') 不一致：宿主底栏用清单值，标签栏下面会露出色带');
+      throw new Error('清单 theme_color(' + mf.theme_color + ') 与 index.html 亮色 meta(' + light.color + ') 不一致：宿主底栏用清单值，底栏下面会露出色带');
     }
-    if (norm(light.color) !== norm(panel)) {
-      throw new Error('亮色 meta(' + light.color + ') 应等于亮色 --panel(' + panel + ')：syncThemeColor 运行时也取这个值');
+    if (norm(light.color) !== norm(bg)) {
+      throw new Error('亮色 meta(' + light.color + ') 应等于亮色 --bg(' + bg + ')：页面顶部画的就是这个颜色');
     }
-    if (norm(dark.color) !== norm(panelDark)) {
-      throw new Error('深色 meta(' + dark.color + ') 应等于深色 --panel(' + panelDark + ')：JS 未跑时状态栏靠它兜底，色差就是首屏闪一条色带');
+    if (norm(dark.color) !== norm(bgDark)) {
+      throw new Error('深色 meta(' + dark.color + ') 应等于深色 --bg(' + bgDark + ')：JS 未跑时状态栏靠它兜底，色差就是首屏闪一条色带');
+    }
+    // 首屏内联脚本跑在样式表之前，只能硬编码三档；必须与 --bg 同值，否则第一帧仍跳一次色。
+    const map = html.match(/var THEME_COLORS = \{ light: '(#[0-9a-fA-F]{3,8})', dark: '(#[0-9a-fA-F]{3,8})', github: '(#[0-9a-fA-F]{3,8})' \};/);
+    if (!map) throw new Error('index.html 没抓到 THEME_COLORS 三档映射');
+    if (norm(map[1]) !== norm(bg) || norm(map[2]) !== norm(bgDark) || norm(map[3]) !== norm(bgGithub)) {
+      throw new Error('index.html THEME_COLORS 与 --bg 不一致：' + map.slice(1, 4).join(' / '));
     }
   });
 
   // 两条 theme-color 兜底必须一起改：浏览器只认 media 命中的那条，
   // 只改第一条（旧写法）会在系统深浅与当前主题相反时留下旧色。
-  t('theme-color：首屏内联脚本与运行时同步都改写全部条目', () => {
+  // 颜色必须取自 --bg：运行时两处同步都读计算值，报 --panel 会与页面顶部差一档灰。
+  t('theme-color：同步色取自 --bg，内联脚本与运行时都改写全部条目', () => {
     const root = path.join(__dirname, '..', '..');
     for (const f of ['index.html', 'login.html', 'src/core/ui.js', 'src/core/state.js']) {
       const src = fs.readFileSync(path.join(root, f), 'utf8');
@@ -6330,6 +6339,39 @@ const withEFP = (el, fn) => {
         throw new Error(f + ' 没有改写全部 theme-color 条目：只改第一条会在系统深浅与主题相反时留下旧色');
       }
     }
+    for (const f of ['src/core/ui.js', 'src/core/state.js']) {
+      const src = fs.readFileSync(path.join(root, f), 'utf8');
+      if (!/getPropertyValue\('--bg'\)/.test(src)) throw new Error(f + ' 运行时同步没有取 --bg');
+      if (/getPropertyValue\('--panel'\)/.test(src)) throw new Error(f + ' 仍从 --panel 取同步色：状态栏会与页面顶部差一档灰');
+    }
+  });
+
+  // 样式表到达之前，画布 / 滚动条 / 表单控件先按系统深浅定一档，深色下不先闪一块白。
+  t('index.html 与 login.html 都有 color-scheme 兜底', () => {
+    const root = path.join(__dirname, '..', '..');
+    for (const f of ['index.html', 'login.html']) {
+      const html = fs.readFileSync(path.join(root, f), 'utf8');
+      if (!/<meta name="color-scheme" content="light dark">/.test(html)) {
+        throw new Error(f + ' 缺 <meta name="color-scheme" content="light dark">');
+      }
+    }
+  });
+
+  // 登录页是独立文档：theme-color 同样要与 login.css 的 --bg 同源（三档都写死在这里）。
+  t('login.html：theme-color 与 login.css 的 --bg 同源', () => {
+    const root = path.join(__dirname, '..', '..');
+    const html = fs.readFileSync(path.join(root, 'login.html'), 'utf8').replace(/\r\n/g, '\n');
+    const css = fs.readFileSync(path.join(root, 'src', 'login.css'), 'utf8').replace(/\r\n/g, '\n');
+    const metas = [...html.matchAll(/<meta name="theme-color" content="([^"]+)"(?: media="([^"]+)")?>/g)]
+      .map((m) => ({ color: m[1], media: m[2] || '' }));
+    const light = metas.find((m) => /prefers-color-scheme:\s*light/.test(m.media));
+    const dark = metas.find((m) => /prefers-color-scheme:\s*dark/.test(m.media));
+    const bg = (css.match(/:root\s*\{[\s\S]*?--bg:\s*(#[0-9a-fA-F]{3,8});/) || [])[1];
+    const bgDark = (css.match(/html\[data-theme="dark"\]\s*\{[\s\S]*?--bg:\s*(#[0-9a-fA-F]{3,8});/) || [])[1];
+    if (!light || !dark || !bg || !bgDark) throw new Error('没抓到登录页 theme-color 或 --bg');
+    const norm = (v) => String(v).toLowerCase();
+    if (norm(light.color) !== norm(bg)) throw new Error('登录页亮色 meta(' + light.color + ') 应为 --bg(' + bg + ')');
+    if (norm(dark.color) !== norm(bgDark)) throw new Error('登录页深色 meta(' + dark.color + ') 应为 --bg(' + bgDark + ')');
   });
 
   t('首屏外观脚本覆盖两套密度，默认值与运行时一致（都是紧凑）', () => {

@@ -318,17 +318,17 @@ export async function promptInstall() {
   return true;
 }
 
-// 让浏览器地址栏 / 状态栏颜色跟随主题（取顶栏底色 --panel，PWA 独立窗口更协调）
+// 让浏览器地址栏 / 状态栏颜色跟随主题（取页面底色 --bg，系统栏与页面顶部不会差一档灰）
 export function syncThemeColor() {
   // 首页有亮 / 暗两条带 media 的兜底 meta，浏览器按系统深浅命中其中一条：
   // 只改第一条会让另一条一直留着首屏的旧色，必须全部写成同一个值。
   const metas = document.querySelectorAll('meta[name="theme-color"]');
-  // 与主题同源：直接取当前主题的 --panel（亮/暗/GitHub 三主题各自不同），
-  // 不再硬编码 #2e2e2e / #ffffff（旧写法在 GitHub 主题下与页面底色不一致）。
+  // 与主题同源：取当前主题的 --bg（亮/暗/GitHub 三主题各自不同）。
+  // 不取 --panel —— 页面顶部与底栏下方露出的都是 --bg，报 --panel 会差一档灰。
   const cs = typeof getComputedStyle === 'function' ? getComputedStyle(document.documentElement) : null;
-  const panel = cs ? String(cs.getPropertyValue('--panel') || '').trim() : '';
+  const bg = cs ? String(cs.getPropertyValue('--bg') || '').trim() : '';
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-  const color = panel || (dark ? '#2e2e2e' : '#ffffff');
+  const color = bg || (dark ? '#242424' : '#f4f5f7');
   if (!metas.length) {
     const meta = document.createElement('meta');
     meta.name = 'theme-color';
