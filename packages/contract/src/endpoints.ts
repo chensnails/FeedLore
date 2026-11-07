@@ -747,6 +747,58 @@ export const img = {
   },
 } as const satisfies Record<string, EndpointSpec>;
 
+/* ============================ MCP 接口令牌 ============================ */
+
+/**
+ * MCP（Model Context Protocol）接口的访问令牌，交给外部 AI 客户端当
+ * `Authorization: Bearer flm_...` 用。与浏览器会话完全隔离：
+ * - 哈希落库，明文只在创建响应里出现一次；
+ * - scope 两档：`read`（P1 全部工具）/ `write`（预留，写工具上线后生效）；
+ * - 吊销是软删（revokedAt），列表里不再出现。
+ */
+export const mcpTokenScope = z.enum(['read', 'write']);
+export type McpTokenScope = z.infer<typeof mcpTokenScope>;
+
+export const mcpTokenInfo = z.object({
+  id: z.string(),
+  name: z.string(),
+  scope: mcpTokenScope,
+  /** 明文前缀（如 `flm_ab12cd34`），用于在客户端侧辨认 token 归属。 */
+  prefix: z.string(),
+  createdAt: C.IsoDateTime,
+  lastUsedAt: C.IsoDateTime.nullable(),
+});
+export type McpTokenInfo = z.infer<typeof mcpTokenInfo>;
+
+export const mcpTokenCreateBody = z.object({
+  name: z.string().min(1).max(40),
+  scope: mcpTokenScope.default('read'),
+});
+export type McpTokenCreateBody = z.infer<typeof mcpTokenCreateBody>;
+
+export const mcpTokens = {
+  list: {
+    method: 'get',
+    path: '/api/mcp-tokens',
+    auth: 'user',
+    response: z.object({ tokens: z.array(mcpTokenInfo) }),
+  },
+  create: {
+    method: 'post',
+    path: '/api/mcp-tokens',
+    auth: 'user',
+    body: mcpTokenCreateBody,
+    /** `secret` 是完整明文，只在这一次响应里出现。 */
+    response: z.object({ token: mcpTokenInfo, secret: z.string() }),
+  },
+  revoke: {
+    method: 'delete',
+    path: '/api/mcp-tokens/:id',
+    auth: 'user',
+    response: C.OkSchema,
+  },
+} as const satisfies Record<string, EndpointSpec>;
+
 /* ============================ 全集 ============================ */
 
 export const contract = {
@@ -759,6 +811,7 @@ export const contract = {
   export: exportApi,
   import: importApi,
   img,
+  mcpTokens,
 } as const;
 
 export type Contract = typeof contract;

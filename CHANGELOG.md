@@ -7,6 +7,19 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
+## 未发布
+
+### 新增
+
+- **MCP 接口：外部 AI 客户端可以直接读你的订阅了**。新增 `/mcp` 端点（Model Context Protocol，
+  Streamable HTTP、无状态），支持 MCP 的客户端（Claude、Cherry Studio 等）添加服务器后即可调用
+  五个只读工具：频道列表（含未读数）、文章检索（关键词 / 标签 / 未读 / 收藏，每页上限 50）、
+  单篇全文（超 24000 字符自动截断并标注）、日报日期列表与按日读取。
+  鉴权走「设置 → MCP 接口」里创建的 Bearer 令牌（`flm_` 前缀，哈希落库、明文只显示一次、
+  可随时吊销、记录最近使用），与登录会话完全隔离 —— `/mcp` 不读 Cookie，也就不进 CSRF/同源
+  模型，网页登录与令牌互不影响。管理类接口（用户 / 配置 / 导入还原）不接受 MCP 调用；
+  只读账户创建不了令牌。`MCP_ENABLED=0` 可整体关闭（默认开启，无令牌时端点只会 401）。
+
 ## 2.4.0 — 2026-11-07
 
 ### 变更

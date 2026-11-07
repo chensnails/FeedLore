@@ -243,6 +243,28 @@ export const userLlm = pgTable('user_llm', {
   updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
 });
 
+/**
+ * MCP（Model Context Protocol）接口令牌。
+ *
+ * 与浏览器会话完全隔离：`/mcp` 只认 `Authorization: Bearer flm_...`，不读 Cookie，
+ * 因此不进 CSRF/同源模型。token 只存 SHA-256（明文只在创建响应出现一次）；
+ * prefix 是明文前 12 字符，供设置页与日志辨认归属。
+ */
+export const mcpTokens = pgTable('mcp_tokens', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  /** 'read' | 'write'（P1 只有 read 工具；write 预留给后续写工具） */
+  scope: text('scope').notNull().default('read'),
+  tokenHash: text('token_hash').notNull().unique(), // sha256 hex
+  prefix: text('prefix').notNull(),
+  lastUsedAt: timestamp('last_used_at', { mode: 'date' }),
+  revokedAt: timestamp('revoked_at', { mode: 'date' }),
+  createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+});
+
 /* ============================================================================
  * 索引（镜像 legacy 高频路径）
  * ----------------------------------------------------------------------------
@@ -318,3 +340,4 @@ export type ImageCacheRow = typeof imageCache.$inferSelect;
 export type Setting = typeof settings.$inferSelect;
 export type UserLlm = typeof userLlm.$inferSelect;
 export type NewUserLlm = typeof userLlm.$inferInsert;
+export type McpToken = typeof mcpTokens.$inferSelect;

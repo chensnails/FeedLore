@@ -93,6 +93,7 @@ curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-co
 | `UPGRADE_SKIP_IMAGE_CACHE` | 否 | 设 `1` 跳过图片缓存拷贝（v2 会按需回源） |
 | `UPGRADE_SKIP_BACKUP` | 否 | 仅自举路径：设 `1` 跳过 `<库名>_backup` 快照 |
 | `ADMIN_USER` / `ADMIN_PASS` | 否 | 空站点首次启动的初始管理员；不填密码则生成一次性随机口令（只在启动日志出现一次） |
+| `MCP_ENABLED` | 否 | MCP 接口开关（默认开）。外部 AI 客户端经 `/mcp` 调只读工具（频道 / 文章 / 日报），令牌在「设置 → MCP 接口」创建，与登录会话独立 |
 
 `PG_PASSWORD`、`WATCHTOWER_HTTP_API_TOKEN`、`ALLOW_PRIVATE_HOSTS`、`TRUST_PROXY` 沿用 1.x。
 

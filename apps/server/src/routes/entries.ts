@@ -33,83 +33,13 @@ import { classify } from '../lib/watch';
 import { scopeAllows } from '../lib/scope';
 import { userWatchRules, type PrefsBag } from '../lib/prefs';
 import { requireAuth, type AppEnv } from '../middleware/auth';
-
-/** 条目查询公共列（详情另加 content）。字段名与 CardRow 一一对应。 */
-const CARD_COLUMNS = {
-  id: entriesTable.id,
-  feedId: entriesTable.feedId,
-  title: entriesTable.title,
-  link: entriesTable.link,
-  pwd: entriesTable.pwd,
-  description: entriesTable.description,
-  size: entriesTable.size,
-  tags: entriesTable.tags,
-  image: entriesTable.image,
-  images: entriesTable.images,
-  links: entriesTable.links,
-  sourceUrl: entriesTable.sourceUrl,
-  publishedAt: entriesTable.publishedAt,
-  isRead: entriesTable.isRead,
-  isFavorite: entriesTable.isFavorite,
-  favoritedAt: entriesTable.favoritedAt,
-  bodyJson: entriesTable.bodyJson,
-  bodyVersion: entriesTable.bodyVersion,
-  feedName: feeds.title,
-};
+import { CARD_COLUMNS, entryConditions, parseFeedIds } from '../lib/entriesQuery';
 
 type Query = z.infer<typeof entriesQuery>;
 type FlagPatch = z.infer<typeof entryFlagPatchBody>;
 type ReadAll = z.infer<typeof readAllBody>;
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
-
-/** 解析 `feeds=1,2,3`；返回 null 表示「没传这个参数」。 */
-function parseFeedIds(raw: string | undefined): number[] | null {
-  if (raw === undefined) return null;
-  return raw
-    .split(',')
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isFinite(n) && n > 0)
-    .map((n) => Math.trunc(n));
-}
-
-/** 筛选条件（列表与「全部已读」共用）。owner 走子查询，因此 UPDATE 也能直接用。 */
-interface EntryFilter {
-  feedIds: number[] | null;
-  q?: string | undefined;
-  tag?: string | undefined;
-  watch?: 'watch' | 'block' | undefined;
-  unread?: boolean;
-  fav?: boolean;
-}
-
-function entryConditions(db: Db, uid: string, f: EntryFilter): SQL[] {
-  const conds: SQL[] = [
-    inArray(
-      entriesTable.feedId,
-      db.select({ id: feeds.id }).from(feeds).where(eq(feeds.ownerId, uid)),
-    ),
-  ];
-  if (f.feedIds !== null) conds.push(inArray(entriesTable.feedId, f.feedIds));
-  if (f.tag) conds.push(sql`${f.tag} = any(${entriesTable.tags})`);
-  if (f.q) {
-    const kw = f.q.trim();
-    if (kw) {
-      const pat = `%${kw}%`;
-      // 覆盖正文与标签：只搜标题/描述时，正文里的关键词搜不到（legacy v2.6.0 的同款修正）
-      conds.push(
-        sql`(${entriesTable.title} ilike ${pat}
-          or coalesce(${entriesTable.description}, '') ilike ${pat}
-          or coalesce(${entriesTable.content}, '') ilike ${pat}
-          or exists (select 1 from unnest(${entriesTable.tags}) t where t ilike ${pat}))`,
-      );
-    }
-  }
-  if (f.unread) conds.push(eq(entriesTable.isRead, false));
-  if (f.fav) conds.push(eq(entriesTable.isFavorite, true));
-  if (f.watch) conds.push(eq(entriesTable.watchState, f.watch));
-  return conds;
-}
 
 export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
   return new Hono<AppEnv>()

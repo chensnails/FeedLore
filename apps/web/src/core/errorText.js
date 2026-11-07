@@ -86,6 +86,13 @@ const CN = {
   E_IMPORT_TOO_LARGE: '上传的文件太大，请检查是否选错了包',
   E_ARCHIVE_IS_USER_EXPORT: '这是账号导出包，不能用于整站还原；请到「数据导入」上传',
   E_ARCHIVE_IS_SITE_BACKUP: '这是整站备份，不能用于账号导入；请到「整站还原」上传',
+
+  E_MCP_DISABLED: 'MCP 接口未开启（服务端 MCP_ENABLED=0）',
+  E_MCP_TOKEN_INVALID: 'MCP 令牌缺失或无效',
+  E_MCP_SCOPE_DENIED: '这个 MCP 令牌的权限档不够',
+  E_MCP_RATE_LIMITED: 'MCP 调用太频繁，请稍后再试',
+  E_MCP_TOKEN_LIMIT: 'MCP 令牌数量已达上限，请先吊销不用的',
+  E_MCP_TOKEN_NOT_FOUND: '找不到这个 MCP 令牌（可能已被吊销）',
   E_NO_FIELDS_TO_SAVE: '没有可保存的字段',
   E_BAD_REQUEST: '请求参数不合法',
   E_CONTRACT_VIOLATION: '服务响应不符合契约',

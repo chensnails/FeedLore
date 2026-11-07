@@ -22,6 +22,7 @@ FeedLore is a self-hosted RSS reader made primarily for personal use. It offers 
 - **Multi-user & roles**: each user has their own feeds, read state, stars, rules, and model configuration. Accounts are created by an admin; read-only accounts are supported. Public registration is off by default.
 - **Appearance & mobile**: 4 themes and 6 accent colors, with adjustable font size / typeface / line height / reading width / card density. On phones: full-screen sheets, pull-to-dismiss, and edge gestures; add to home screen works under HTTPS.
 - **AI daily digest**: configure a model per account to summarize the last 24 hours of new items into a concise Chinese digest; other features work fine without it.
+- **MCP endpoint**: external AI clients (Claude, Cherry Studio, ...) call read-only tools via `/mcp` — feeds, article search & full text, AI digest. Tokens are created and revoked in Settings - MCP, fully independent from browser sessions.
 - **One-click update**: check the version from the Settings page and update directly via Watchtower.
 
 ## Screenshots

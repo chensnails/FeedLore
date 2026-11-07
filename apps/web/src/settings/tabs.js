@@ -28,6 +28,11 @@ export const SETTINGS_TABS = [
     keywords: '账号 用户名 密码 用户 管理 权限 角色 只读 管理员 安装 手机 account user',
   },
   {
+    name: 'mcp', label: 'MCP 接口', group: '账户', icon: 'link',
+    desc: '外部 AI 接入令牌：创建、吊销与最近使用',
+    keywords: 'mcp ai 智能体 接口 令牌 token api 密钥 外部 客户端 claude 接入',
+  },
+  {
     name: 'appearance', label: '外观', group: '账户', icon: 'palette',
     desc: '主题、文章密度与阅读宽度',
     keywords: '外观 主题 深色 浅色 字号 字体 阅读宽度 行距 列表 密度 文章密度 紧凑 舒适 缩略图 摘要 appearance theme density compact comfortable thumbnail summary',

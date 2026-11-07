@@ -17,6 +17,7 @@ import { DigestPane } from './DigestPane.jsx';
 import { SourcePane } from './SourcePane.jsx';
 import { WatchPane } from './WatchPane.jsx';
 import { AccountPane } from './AccountPane.jsx';
+import { McpPane } from './McpPane.jsx';
 import { StatusPane } from './StatusPane.jsx';
 import { ADMIN_TABS, READONLY_TABS, TAB_BY_NAME, TAB_GROUPS, matchTabs, visibleTabs } from './tabs.js';
 import { provide, revoke, get } from '../kernel/bridge.js';
@@ -389,6 +390,7 @@ export function SettingsModal() {
           {tab === 'model' && open && !readonly && <ModelPane onDirtyChange={reportDirty} />}
           {tab === 'digest' && open && !readonly && <DigestPane onDirtyChange={reportDirty} />}
           {tab === 'account' && open && <AccountPane onDirtyChange={reportDirty} />}
+          {tab === 'mcp' && open && !readonly && <McpPane />}
           {tab === 'status' && open && <StatusPane />}
           {tab === 'about' && open && <AboutPane />}
         </div>

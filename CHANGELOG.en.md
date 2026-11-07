@@ -7,6 +7,21 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## Unreleased
+
+### Added
+
+- **MCP endpoint: external AI clients can now read your subscriptions**. A new `/mcp` endpoint
+  (Model Context Protocol, Streamable HTTP, stateless) exposes five read-only tools to
+  MCP-capable clients (Claude, Cherry Studio, ...): feed list with unread counts, article search
+  (keyword / tag / unread / starred, max 50 per page), single-article full text (auto-truncated
+  at 24,000 chars with a marker), digest date list, and digest by date. Auth uses Bearer tokens
+  created in Settings - MCP (`flm_` prefix, stored hashed, plaintext shown once, revocable,
+  last-used tracked) and is fully isolated from browser sessions — `/mcp` never reads cookies and
+  stays outside the CSRF / same-origin model. Admin endpoints (users / config / import / restore)
+  are never exposed over MCP; read-only accounts cannot create tokens. Set `MCP_ENABLED=0` to
+  turn it off (on by default; without a token the endpoint just answers 401).
+
 ## 2.4.0 — 2026-11-07
 
 ### Changed

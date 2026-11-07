@@ -102,6 +102,7 @@ curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-co
 | `UPGRADE_SKIP_IMAGE_CACHE` | No | Set `1` to skip copying the image cache (v2 re-fetches from the origin on demand) |
 | `UPGRADE_SKIP_BACKUP` | No | Bootstrap path only: set `1` to skip the `<dbname>_backup` snapshot |
 | `ADMIN_USER` / `ADMIN_PASS` | No | Initial admin for the first start of an empty site; if no password is given, a one-time random password is generated (appears once, in the startup log only) |
+| `MCP_ENABLED` | No | MCP endpoint switch (on by default). External AI clients call read-only tools via `/mcp`; create tokens in Settings - MCP, independent from browser sessions |
 
 `PG_PASSWORD`, `WATCHTOWER_HTTP_API_TOKEN`, `ALLOW_PRIVATE_HOSTS` and `TRUST_PROXY` carry over from 1.x.
 

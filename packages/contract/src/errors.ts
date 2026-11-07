@@ -97,6 +97,14 @@ export const API_ERROR_CODES = [
   'E_ARCHIVE_IS_USER_EXPORT',
   'E_ARCHIVE_IS_SITE_BACKUP',
 
+  // ---- MCP 接口 ----
+  'E_MCP_DISABLED',
+  'E_MCP_TOKEN_INVALID',
+  'E_MCP_SCOPE_DENIED',
+  'E_MCP_RATE_LIMITED',
+  'E_MCP_TOKEN_LIMIT',
+  'E_MCP_TOKEN_NOT_FOUND',
+
   // ---- 通用请求错误 ----
   'E_NO_FIELDS_TO_SAVE',
   'E_BAD_REQUEST',
@@ -227,6 +235,13 @@ export const API_ERROR_DEFAULTS = {
     status: 400,
     message: 'This archive is a site backup; upload it on the site restore entry',
   },
+
+  E_MCP_DISABLED: { status: 404, message: 'The MCP endpoint is disabled (MCP_ENABLED=0)' },
+  E_MCP_TOKEN_INVALID: { status: 401, message: 'Missing or invalid MCP token (Authorization: Bearer flm_...)' },
+  E_MCP_SCOPE_DENIED: { status: 403, message: 'The MCP token scope does not allow this operation' },
+  E_MCP_RATE_LIMITED: { status: 429, message: 'Too many MCP requests for this token' },
+  E_MCP_TOKEN_LIMIT: { status: 400, message: 'Too many MCP tokens for this account' },
+  E_MCP_TOKEN_NOT_FOUND: { status: 404, message: 'MCP token not found for this account' },
 
   E_NO_FIELDS_TO_SAVE: { status: 400, message: 'No field to save' },
   E_BAD_REQUEST: { status: 400, message: 'Malformed request' },

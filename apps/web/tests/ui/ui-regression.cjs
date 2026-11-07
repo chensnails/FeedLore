@@ -1585,7 +1585,7 @@ const withEFP = (el, fn) => {
   t('host.open 打开（hidden=false）', () => { if (mask().hidden !== false) throw new Error('未打开'); });
   t('__settingsOpen 同步=true', () => { if (w.__settingsOpen !== true) throw new Error('window.__settingsOpen=' + w.__settingsOpen); });
   t('打开时锁屏', () => { if (!callsOf('lockPageScroll').length) throw new Error('lockPageScroll 未调用'); });
-  t('8 个 tab（管理员）', () => { if (document.querySelectorAll('.tabs .tab').length !== 8) throw new Error('实际 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('9 个 tab（管理员）', () => { if (document.querySelectorAll('.tabs .tab').length !== 9) throw new Error('实际 ' + document.querySelectorAll('.tabs .tab').length); });
   t('设置导航含「规则」tab', () => {
     const w = [...document.querySelectorAll('.tabs .tab')].find((x) => x.textContent.trim() === '规则');
     if (!w || w.dataset.tab !== 'watch') throw new Error('规则 tab 缺失或 data-tab 不对');
@@ -1634,8 +1634,8 @@ const withEFP = (el, fn) => {
   });
   document.querySelector('.settings-search-clear').click();
   await sleep(40);
-  t('清除搜索：恢复 8 个 tab 且输入框清空', () => {
-    if (document.querySelectorAll('.tabs .tab').length !== 8) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length);
+  t('清除搜索：恢复 9 个 tab 且输入框清空', () => {
+    if (document.querySelectorAll('.tabs .tab').length !== 9) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length);
     if (document.querySelector('#settingsSearch').value !== '') throw new Error('输入框未清空');
   });
 
@@ -3293,7 +3293,7 @@ const withEFP = (el, fn) => {
   w.__settingsHost.open('status');
   await waitFor(() => tabBtn('数据源')?.classList.contains('active') && !!document.querySelector('.tab-pane[data-pane="source"]'), 2000);
   t('普通用户 open(status) 回落 source', () => { if (!tabBtn('数据源').classList.contains('active')) throw new Error('未回落 source'); });
-  t('普通用户无状态 tab', () => { if (tabBtn('状态')) throw new Error('状态 tab 仍渲染'); if (document.querySelectorAll('.tabs .tab').length !== 7) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('普通用户无状态 tab', () => { if (tabBtn('状态')) throw new Error('状态 tab 仍渲染'); if (document.querySelectorAll('.tabs .tab').length !== 8) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
   t('普通用户：无采集参数区 + 保存按钮隐藏', () => {
     if (document.querySelector('[data-sec="src-params"]')) throw new Error('采集参数区不应渲染');
     if (document.querySelector('#saveSourceBtn').hidden !== true) throw new Error('保存按钮应隐藏');
@@ -3347,7 +3347,7 @@ const withEFP = (el, fn) => {
 
   w.__settingsHost.setAdminFlag(true);
   await sleep(80);
-  t('setAdminFlag(true) 恢复 8 tab', () => { if (document.querySelectorAll('.tabs .tab').length !== 8) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
+  t('setAdminFlag(true) 恢复 9 tab', () => { if (document.querySelectorAll('.tabs .tab').length !== 9) throw new Error('tab 数 ' + document.querySelectorAll('.tabs .tab').length); });
   // 切回数据源会挂载新的 SourcePane，/api/config 由挂载副作用异步发起，轮询等它落地
   clickTab('数据源');
   await waitFor(() => countApi('/api/config') > cfgGetsBeforeUser && !!document.querySelector('[data-sec="src-params"]'));
@@ -3391,7 +3391,7 @@ const withEFP = (el, fn) => {
     const modal = document.querySelector('.settings-modal');
     if (!modal.classList.contains('mobile-home')) throw new Error('class: ' + modal.className);
     const descs = [...document.querySelectorAll('.tabs .tab .tab-desc')].map((x) => x.textContent);
-    if (descs.length !== 8) throw new Error('描述数 ' + descs.length);
+    if (descs.length !== 9) throw new Error('描述数 ' + descs.length);
     if (descs[0].indexOf('订阅') < 0) throw new Error('首项描述: ' + descs[0]);
   });
   clickTab('数据源');

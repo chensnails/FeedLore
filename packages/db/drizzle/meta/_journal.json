@@ -50,6 +50,13 @@
       "when": 1793669590896,
       "tag": "0006_nervous_photon",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794041265355,
+      "tag": "0007_misty_the_twelve",
+      "breakpoints": true
     }
   ]
 }

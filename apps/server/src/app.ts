@@ -36,6 +36,8 @@ import { exportRoutes } from './routes/export';
 import { importRoutes } from './routes/import';
 import { imgRoutes } from './routes/img';
 import { aiRoutes } from './routes/ai';
+import { mcpRoutes } from './routes/mcp';
+import { mcpTokenRoutes } from './routes/mcpTokens';
 import {
   adminAccountRoutes,
   adminConfigRoutes,
@@ -330,6 +332,8 @@ export function createApp({ db, auth }: AppDeps) {
     .route('/', importRoutes(db, auth))
     .route('/', imgRoutes(db, auth))
     .route('/', aiRoutes(db, auth))
+    .route('/', mcpRoutes(db))
+    .route('/', mcpTokenRoutes(db, auth))
     .route('/', adminStatusRoutes(db, auth))
     .route('/', adminConfigRoutes(db, auth))
     .route('/', adminImageCacheRoutes(db, auth))
