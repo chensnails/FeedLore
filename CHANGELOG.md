@@ -7,7 +7,7 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
-## 未发布
+## 2.4.1 — 2026-11-07
 
 ### 新增
 

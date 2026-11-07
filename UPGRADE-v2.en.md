@@ -98,7 +98,7 @@ curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-co
 | `AUTH_TRUSTED_ORIGINS` | No | Extra origins to trust, comma-separated |
 | `AUTH_SECURE_COOKIES` | No | Keep `0` on plain HTTP; set `1` behind an HTTPS reverse proxy |
 | `V2_DB_NAME` | No | New database name, default `feedlore_v2` |
-| `V2_IMAGE` | No | Default `ghcr.io/chensnails/feedlore:2.4.0`; set `:latest` if you want to roll with latest |
+| `V2_IMAGE` | No | Default `ghcr.io/chensnails/feedlore:2.4.1`; set `:latest` if you want to roll with latest |
 | `UPGRADE_SKIP_IMAGE_CACHE` | No | Set `1` to skip copying the image cache (v2 re-fetches from the origin on demand) |
 | `UPGRADE_SKIP_BACKUP` | No | Bootstrap path only: set `1` to skip the `<dbname>_backup` snapshot |
 | `ADMIN_USER` / `ADMIN_PASS` | No | Initial admin for the first start of an empty site; if no password is given, a one-time random password is generated (appears once, in the startup log only) |
