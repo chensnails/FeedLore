@@ -34,8 +34,10 @@ tests/ui/.build/
 .build/
 
 # docs 目录：产品文档、开发日志、发布稿等只留本地，不上 GitHub；截图除外（README 引用）
+# MCP.md 是面向用户的接入文档，随仓库发布
 /docs/*
 !/docs/screenshots/
+!/docs/MCP.md
 
 # 审计/验证临时产物（CDP 截图、Edge 临时配置）
 .audit-shots/

@@ -19,6 +19,7 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
   可随时吊销、记录最近使用），与登录会话完全隔离 —— `/mcp` 不读 Cookie，也就不进 CSRF/同源
   模型，网页登录与令牌互不影响。管理类接口（用户 / 配置 / 导入还原）不接受 MCP 调用；
   只读账户创建不了令牌。`MCP_ENABLED=0` 可整体关闭（默认开启，无令牌时端点只会 401）。
+  接入文档见 [docs/MCP.md](docs/MCP.md)。
 
 ## 2.4.0 — 2026-11-07
 
