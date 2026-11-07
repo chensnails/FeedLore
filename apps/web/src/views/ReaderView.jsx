@@ -896,7 +896,7 @@ export function ReaderView() {
           <div className="list-end">已经到底了</div>
         ) : null}
 
-        <footer className="foot">点标题展开全文，再点一次收起</footer>
+        <footer className="foot">点标题阅读全文，再点一次收起</footer>
       </section>
     </>
   );

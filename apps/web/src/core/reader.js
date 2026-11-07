@@ -504,7 +504,7 @@ export async function setEntryFlag(id, patch) {
   }
 }
 
-/** 展开全文 / 打开卡片详情即视为已读（只在还没读过时发请求）。
+/** 点开正文 / 打开卡片详情即视为已读（只在还没读过时发请求）。
  *  两页共用：不论条目此刻在哪个列表里，状态都同步到两边。 */
 export function markEntryRead(id) {
   const e = findEntry(id);
