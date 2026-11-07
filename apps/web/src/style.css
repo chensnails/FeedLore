@@ -3368,57 +3368,6 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   overflow: hidden;
 }
 
-/* ---------- 滚动方向感知：往下读时让开按钮 ----------
- * 由 ui/scrollChrome.js 判定（累计位移 + 贴顶到底强制显示），滚动容器上打
- * .is-chrome-down（文章页是 .reader-main），卡片详情的 × 直接挂 .is-chrome-hidden。
- *
- * 只收按钮，不动标题 / 频道条 / 吸顶条本身：
- *  - 标题是「我在读哪一篇」的定位信息，收掉会让人失去方位；
- *  - 吸顶条真的上移，--reader-head-h 的实测高度就会跟着变，sticky 顶边与
- *    scroll-margin-top 全得重算 —— 那是另一个量级的改动，收益也不对等。
- *
- * visibility 必须参与过渡：opacity:0 的按钮仍然能被 Tab 到，看不见的焦点比没有更糟。
- * 所以隐藏时把 visibility 延后到淡出结束（0s linear 一档时长），显示时立刻可交互。
- * 触屏上的 pointer-events 是第二道闸：淡出动画那 120ms 里不该还能点中它。 */
-.reader-head-tools,
-.art-item.open .art-acts {
-  transition:
-    opacity var(--dur-fast) var(--ease),
-    transform var(--dur-fast) var(--ease),
-    visibility 0s;
-}
-.reader-main.is-chrome-down .reader-head-tools,
-.reader-main.is-chrome-down .art-item.open .art-acts {
-  opacity: 0;
-  transform: translateY(-6px);
-  visibility: hidden;
-  pointer-events: none;
-  transition:
-    opacity var(--dur-fast) var(--ease),
-    transform var(--dur-fast) var(--ease),
-    visibility 0s linear var(--dur-fast);
-}
-/* 卡片详情右上角的 ×：.modal-close 原有的 background / color 过渡要一起带上，
-   否则 hover 反馈会因为这一条被覆盖而变成硬切 */
-.cd-close {
-  transition:
-    background var(--dur-fast), color var(--dur-fast),
-    opacity var(--dur-fast) var(--ease),
-    transform var(--dur-fast) var(--ease),
-    visibility 0s;
-}
-.cd-close.is-chrome-hidden {
-  opacity: 0;
-  transform: translateY(-6px);
-  visibility: hidden;
-  pointer-events: none;
-  transition:
-    background var(--dur-fast), color var(--dur-fast),
-    opacity var(--dur-fast) var(--ease),
-    transform var(--dur-fast) var(--ease),
-    visibility 0s linear var(--dur-fast);
-}
-
 /* 正文图片：跟随阅读栏宽度等比缩放、自适应屏幕、不变形、不溢出；点一下看大图。
    用 max-width:100% + height:auto 让大图填满栏宽、小图保持原尺寸；
    仅对特别高的长图用视口高度兜底，避免占满整屏。 */

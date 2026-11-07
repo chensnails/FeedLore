@@ -7116,52 +7116,6 @@ const withEFP = (el, fn) => {
     input.remove();
   });
 
-  /* 滚动方向感知（v2.5.2）：文章页吸顶条的工具按钮与「收起这篇」、卡片详情右上角的 ×，
-     往下读时收起、往上翻时回来。判据是纯函数，真实几何交给浏览器套件。 */
-  t('滚动收起：累积位移判定，贴顶到底强制显示', () => {
-    const api = w.__scrollChromeForTest;
-    if (!api || !api.createChromeTracker) throw new Error('ui-entry 未把 scrollChrome 挂到 window');
-    const box = (top) => ({ scrollTop: top, scrollHeight: 4000, clientHeight: 800 });   // max = 3200
-    let step = api.createChromeTracker();
-    if (step({ scrollTop: 0, scrollHeight: 800, clientHeight: 800 })) {
-      throw new Error('内容不足一屏时根本没有「往下翻」，不该收起按钮');
-    }
-    step = api.createChromeTracker();
-    step(box(0));                        // 基准：容器刚出现时位置在顶端
-    if (step(box(10))) throw new Error('距顶 32px 内是「刚打开」，必须显示');
-    if (!step(box(40))) throw new Error('向下累计超过 24px 应收起');
-    if (!step(box(60))) throw new Error('收起后应保持收起');
-    if (step(box(54))) throw new Error('向上 6px 就该回来（想退出的人不该先滑一大段）');
-    // 拖滚动条 / 深链一次跨过整屏：那不是「人在读」，别凭空把按钮收起来
-    if (step(box(1600))) throw new Error('一帧跨过整屏不该判成「向下读」');
-    if (!step(box(1660))) throw new Error('大跳之后继续正常滚动应照常判定');
-    if (step(box(3200))) throw new Error('读到底部是「读完了」，出口必须回来');
-  });
-
-  t('滚动收起：两处接线同源，reduced-motion 有降级', () => {
-    const root = path.join(__dirname, '..', '..');
-    const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');
-    const mod = read('src/ui/scrollChrome.js');
-    if (!/export function createChromeTracker/.test(mod)) throw new Error('缺共享判据');
-    if (!/export function mountScrollChrome/.test(mod)) throw new Error('缺文章页安装入口');
-    if (!/mountScrollChrome\(\)/.test(read('src/main.jsx'))) throw new Error('入口没装文章页的方向监听');
-    const cd = read('src/views/CardDetail.jsx');
-    if (!/useScrollChrome\(scrollEl\)/.test(cd)) throw new Error('卡片详情没接方向收起');
-    if (!/is-chrome-hidden/.test(cd)) throw new Error('× 缺收起态类名');
-    if ((cd.match(/ref=\{setScrollEl\}/g) || []).length !== 2) {
-      throw new Error('桌面与移动两个滚动容器都要接 setScrollEl');
-    }
-    const css = read('src/style.css');
-    if (!/\.reader-main\.is-chrome-down \.reader-head-tools/.test(css)) throw new Error('文章页工具按钮缺收起样式');
-    if (!/\.cd-close\.is-chrome-hidden/.test(css)) throw new Error('× 缺收起样式');
-    if (!/visibility 0s linear var\(--dur-fast\)/.test(css)) {
-      throw new Error('隐藏必须延后 visibility，否则 opacity:0 的按钮仍能被 Tab 到');
-    }
-    if (!/\.cd-close \{/.test(css)) throw new Error('× 的过渡要显式带上，别覆盖掉 hover 反馈');
-    const hig = read('src/hig.css');
-    if (!/\.cd-close \{/.test(hig)) throw new Error('reduced-motion 下要直接切换，不留淡出与位移');
-  });
-
   t('手势关闭：原生被动监听修复、callback ref 与脏态回弹契约', () => {
     const root = path.join(__dirname, '..', '..');
     const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');

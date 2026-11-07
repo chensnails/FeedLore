@@ -343,17 +343,12 @@ body { font-family: var(--font-ui); }
 @media (prefers-reduced-motion: reduce) {
   .btn, .icon-btn, .btn-primary, .btn-ghost, .btn-copy, .btn-open,
   .btn-fav, .btn-jump, .viewnav-btn, .mobile-tabbar .viewnav-btn,
-  .art-item, .card, .row-item, .modal, .toast, .new-pill,
-  /* 滚动方向感知的按钮收起（style.css）：不要淡出、不要位移，直接切换 */
-  .reader-head-tools, .art-item.open .art-acts, .cd-close {
+  .art-item, .card, .row-item, .modal, .toast, .new-pill {
     transition: none !important;
     animation: none !important;
   }
   .btn:active, .icon-btn:active, .btn-primary:active,
   .btn-copy:active, .btn-open:active { transform: none !important; }
-  .reader-main.is-chrome-down .reader-head-tools,
-  .reader-main.is-chrome-down .art-item.open .art-acts,
-  .cd-close.is-chrome-hidden { transform: none !important; }
   .grid > .card, .grid > .row-item { animation: none !important; }
 }
 

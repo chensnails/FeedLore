@@ -17,11 +17,7 @@ import './style.css';
 import './hig.css';
 import { mountAll } from './kernel/mounts.jsx';
 import { installAutofillGuard } from './ui/noAutofill.js';
-import { mountScrollChrome } from './ui/scrollChrome.js';
 
 // 浏览器会把登录页保存的账密启发式填进同源 SPA 的搜索框；全局哨兵只清非登录字段。
 installAutofillGuard();
-// 文章页的滚动容器是宿主 DOM（不在 React 树里），方向感知在这里挂一处捕获监听；
-// 卡片详情由组件自己用 useScrollChrome 接，两处共用同一套判据。
-mountScrollChrome();
 mountAll();
