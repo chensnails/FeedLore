@@ -83,6 +83,16 @@ pnpm -r typecheck
 pnpm -r test
 ```
 
+## Support the project
+
+FeedLore is a self-hosted open source project. Sponsorship is entirely voluntary and
+**unlocks no features** — the app stays fully functional either way. If it saves you
+a subscription fee, you can scan the QR code below (Alipay):
+
+<a href="docs/screenshots/sponsor-alipay.png"><img src="docs/screenshots/sponsor-alipay.png" width="260" alt="Alipay QR code for sponsorship" /></a>
+
+*Alipay QR code · click to enlarge*
+
 ## License
 
 [GPL-3.0](LICENSE).

@@ -96,6 +96,15 @@ pnpm -r typecheck
 pnpm -r test
 ```
 
+## 支持项目
+
+笺川是持续维护的开源自托管项目，赞赏完全自愿，**不解锁任何功能、不影响正常使用**。
+如果它帮你省下了订阅服务的钱，可以扫码请作者喝杯咖啡：
+
+<a href="docs/screenshots/sponsor-alipay.png"><img src="docs/screenshots/sponsor-alipay.png" width="260" alt="支付宝赞赏二维码" /></a>
+
+*支付宝赞赏码 · 点击图片查看大图*
+
 ## 许可
 
 [GPL-3.0](LICENSE)。
