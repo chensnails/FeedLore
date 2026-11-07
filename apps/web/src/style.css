@@ -3333,6 +3333,66 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 @keyframes artReveal { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 @media (max-width: 720px) { .art-inner { padding:var(--sp-4) var(--sp-5); gap:var(--sp-4); } }
 
+/* ---------- 长文折叠（v2.5.1） ----------
+ * 问题：正文没有高度上限，一篇 8000 字的文章一展开就是六到十屏；而唯一的「收起」
+ * 入口是标题行本身 —— 滚过一屏它就出了视口，读者想放弃只能一直滑到列表末尾。
+ * 解法：默认只铺约两屏（60vh），底部渐隐 + 「展开全文 · 共 N 字」，把「读不读」
+ * 这个决策放回点开的那一刻；展开后正文末尾有「收起全文」，标题行吸顶后另有「收起这篇」。
+ *
+ * 为什么按高度裁而不是按块数切：按块数切会把一段话拦腰截断，读者看到的最后一行是
+ * 半句话；按高度裁 + 渐隐，视觉上就是「后面还有」，与 iOS 阅读器同一套语言。
+ * 60vh 在手机上约两屏、桌面约一屏半，两边都够判断值不值得读。
+ */
+.art-clip { position: relative; }
+.art-clip:not(.is-open) { max-height: 60vh; overflow: hidden; }
+/* 渐隐遮罩只在「真的被裁到」时出现：正文本来就不到两屏时不该画一层假的渐隐，
+   那会让人以为下面还有内容，点了「展开」却什么都没变。 */
+.art-clip.is-clipped:not(.is-open)::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 96px;
+  background: linear-gradient(to bottom, transparent, var(--panel-2));
+  pointer-events: none;
+}
+/* 展开 / 收起：整行居中，命中区按 --hit-min（触屏 44px），不与正文粘连 */
+.art-more { display: flex; justify-content: center; padding: 0 var(--sp-6) var(--sp-5); }
+.art-more .btn { min-height: var(--hit-min); font-weight: 500; }
+
+/* 展开态的标题行吸顶：长文读到一半想退出时，标题行（点一下就是收起）必须还在手边。
+ * 吸在页面吸顶头部下方 —— 高度由 core/reader.js 每帧实测写入 --reader-sticky-offset，
+ * 与 .art-item 的 scroll-margin-top 同源，窄屏两行头部、横屏压缩都能自动跟随。
+ * ⚠️ 必须同时放开 .art-item 的 overflow:hidden 与 content-visibility:auto：
+ *    两者都会生成 containment，sticky 会被关在卡片里、只跟着卡片滚，等于没吸。 */
+.art-item.open { overflow: visible; content-visibility: visible; }
+.art-item.open .art-row {
+  position: sticky;
+  /* 贴住吸顶头部的**底边**，而不是 --reader-sticky-offset（那多留 8px 给 scroll-margin）。
+     留缝的话，正文会从缝里漏出一条，看起来像标题行浮在正文中间。 */
+  top: var(--reader-head-h, var(--head-h, 52px));
+  z-index: 2;
+  background: var(--panel);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  /* 吸附后正文的 border-top 已经跟着内容滚走，分隔线改由标题行自己带 */
+  box-shadow: 0 1px 0 var(--border);
+}
+/* 正在读的时候，来源 / 体积 / 日期让位给正文：这行是 chrome，越小越好 */
+.art-item.open .art-row .art-meta { display: none; }
+/* 吸顶条更矮一档：标题最多两行 + 三个动作，横排才塞得下 */
+.art-item.open .art-title { -webkit-line-clamp: 2; }
+.art-item.open .art-acts { flex-direction: row; }
+/* 竖排时给动作之间留的分隔外边距，横排后只会把标题行顶高，清掉 */
+.art-item.open .art-acts .art-star { margin: 0; }
+/* 收起是「退出这篇」的主动作，别和收藏星一样弱；实色不用 opacity（暗色下 4.5:1 会掉） */
+.art-collapse { color: var(--text-muted); }
+.art-collapse:hover { color: var(--accent-text); background: var(--hover); }
+/* overflow 放开了，卡片底部的圆角要由正文自己收口（art-body 自己不含 sticky 元素，
+   所以这里再开 overflow:hidden 是安全的，只裁背景与圆角） */
+.art-item.open .art-body {
+  border-top-color: transparent;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  overflow: hidden;
+}
+
 /* 正文图片：跟随阅读栏宽度等比缩放、自适应屏幕、不变形、不溢出；点一下看大图。
    用 max-width:100% + height:auto 让大图填满栏宽、小图保持原尺寸；
    仅对特别高的长图用视口高度兜底，避免占满整屏。 */

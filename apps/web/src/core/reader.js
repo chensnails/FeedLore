@@ -204,6 +204,9 @@ function readerHeadOffset() {
   }
   // 头部尚未挂载 / 被隐藏（首帧、抽屉态）时回退到令牌，别把标题顶到屏幕外
   if (!bottom) bottom = parseFloat(getComputedStyle(main).getPropertyValue('--head-h')) || 52;
+  // 吸顶头部的底边：展开态文章的标题行要**贴着**它吸住（见 style.css「长文折叠」段）。
+  // 留 8px 缝的话，正文会从这条缝里漏出一条字，看起来像是标题行浮在正文中间。
+  main.style.setProperty('--reader-head-h', Math.round(bottom) + 'px');
   const offset = Math.round(bottom) + 8;
   main.style.setProperty('--reader-sticky-offset', offset + 'px');
   return offset;

@@ -12,7 +12,7 @@
 import { core } from '@core';
 import { on, EVENT } from '../kernel/events.js';
 import { provide, revoke } from '../kernel/bridge.js';
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChannelList } from './ChannelList.jsx';
 import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
@@ -108,6 +108,23 @@ function blockText(b) {
 
 function blockHasText(b) {
   return blockText(b).trim().length > 0;
+}
+
+/* 正文折叠阈值（v2.5.1）：超过这个字数才给「展开全文 / 收起」。
+ *
+ * 按**字数**而不是按像素判断，是因为像素要等正文渲染完才知道（会先铺满再塌一下，
+ * 也就是闪一下）；字数在正文 JSON 到达时就能算出来，第一帧就是最终形态。
+ * 600 字 ≈ 手机上两屏多一点的纯文字，低于它的文章一屏能看完，折叠只会多一次点击。 */
+const CLIP_MIN_CHARS = 600;
+
+/** 正文总字数：与 ArtBody 的渲染口径一致（blockText 已递归 list / quote / table）。 */
+function bodyCharCount(e) {
+  if (!e) return 0;
+  const blocks = parseBlocks(e.bodyJson);
+  if (!blocks) return readerBodyText(e).length;
+  let n = 0;
+  for (const b of blocks) n += blockText(b).length;
+  return n;
 }
 
 /** 正文块是不是 v2（结构化）格式。服务端总会带 bodyVersion；
@@ -422,6 +439,14 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
      失败态记在组件本地：条目对象换新时（已读 / 收藏）不该把失败的图又试一遍。
      「紧凑」密度直接不渲染 <img>：不只是藏起来，连首图请求都不发。 */
   const [imgFailed, setImgFailed] = useState(false);
+  /* 「这篇的正文展开到全文了吗」——只影响正文高度，与 expanded（整条卡片展开）是两层。
+     状态留在组件本地：它不是账号偏好，也不必像 rdExpanded 那样进 core state、在
+     loadReader 里清理；切列表后组件重挂载自然回到折叠态。 */
+  const [bodyOpen, setBodyOpen] = useState(false);
+  const rootRef = useRef(null);
+  /* 整篇收起后再打开，回到折叠态 —— 否则「上次读到一半点了展开全文」会一直续着，
+     下次点开又是一屏半，等于折叠白做。 */
+  useEffect(() => { if (!expanded) setBodyOpen(false); }, [expanded]);
   const thumb = !expanded && comfortable && e.image && !imgFailed ? e.image : null;
   /* 摘要来自抓取时压平的 description（纯文本），展开后正文已经在读，不再重复一遍 */
   const desc = !expanded && comfortable && e.desc ? String(e.desc) : '';
@@ -431,6 +456,44 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
   // has-thumb 让样式知道图占了右下角：动作按钮要垫一层暗底，否则压在亮图上就看不见了
   const cls = 'art-item' + (e.isRead ? ' is-read' : ' is-unread') + (fav ? ' is-fav' : '') + (expanded ? ' open' : '')
     + (thumb ? ' has-thumb' : '') + (desc ? ' has-sum' : '') + (lineMode ? ' is-line' : '') + (flash ? ' is-flash' : '');
+
+  /* 长文折叠：只有「正在读 + 正文已到达 + 够长」三个条件同时成立才裁。
+     加载骨架与错误提示本来不到一屏，裁它们只会多出一次点击。 */
+  const charCount = expanded && full ? bodyCharCount(full) : 0;
+  const longBody = charCount >= CLIP_MIN_CHARS;
+  const clipId = 'artClip-' + e.id;
+  /* 「真的被裁到了吗」必须实测，不能只看字数：600 字在手机上两屏多，在桌面宽栏里
+     可能一屏就放下了；只按字数就出按钮，会出现「点了展开全文什么都没变」。
+     用 layout effect 在绘制前量，用户不会看到中间态；jsdom 不布局（clientHeight 恒 0），
+     此时退回按字数判断 —— 状态流转交给单测，几何交给浏览器套件。 */
+  const clipRef = useRef(null);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    if (!longBody || bodyOpen) return;   // 展开态量不出「溢出」（clientHeight == scrollHeight）
+    const el = clipRef.current;
+    if (!el) return;
+    const measure = () => {
+      if (el.clientHeight <= 0) { setClipped(true); return; }
+      setClipped(el.scrollHeight > el.clientHeight + 4);
+    };
+    measure();
+    if (typeof ResizeObserver !== 'function') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);   // 图片撑高时重量
+    return () => ro.disconnect();
+  }, [longBody, bodyOpen, full]);
+
+  const collapseBody = () => {
+    setBodyOpen(false);
+    /* 正文一塌陷，视口就停在原来的位置（可能正好是空白处）。滚回本条标题 ——
+       .art-item 的 scroll-margin-top 与吸顶头部同源（--reader-sticky-offset），
+       所以 block:'start' 的落点就是标题行，不必再量一次高度。 */
+    requestAnimationFrame(() => {
+      const el = rootRef.current;
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' });
+    });
+  };
 
   let inner = null;
   if (expanded) {
@@ -448,7 +511,7 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
   }
 
   return (
-    <article className={cls} data-id={e.id}>
+    <article className={cls} data-id={e.id} ref={rootRef}>
       <div className="art-row">
         <button className="art-head" type="button" aria-expanded={expanded ? 'true' : 'false'}
           aria-label={ariaLabel} onClick={() => onToggle(e.id)}>
@@ -473,6 +536,16 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
           ) : null}
         </button>
         <span className="art-acts">
+          {/* 收起这篇：长文读到一半时的退出按钮。标题行本身也能点（同一个 onToggle），
+              但滚了几屏之后没人会想到「再点一次标题」，显式按钮才让退出路径看得见。
+              它和正文末尾的「收起全文」是两件事：这个收起整条卡片，那个只回到两屏。 */}
+          {expanded ? (
+            <button className="art-star art-collapse" type="button"
+              aria-label="收起这篇" title="收起这篇"
+              onClick={(ev) => { ev.stopPropagation(); onToggle(e.id); }}>
+              <Icon n="chevrons-up" />
+            </button>
+          ) : null}
           <button className="art-star" type="button" data-fav={e.id} aria-pressed={fav ? 'true' : 'false'}
             aria-label={fav ? '取消收藏' : '收藏'} title={fav ? '取消收藏' : '收藏这篇'}
             onClick={(ev) => { ev.stopPropagation(); onFav(e.id); }}>
@@ -487,7 +560,24 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
           ) : null}
         </span>
       </div>
-      <div className="art-body" hidden={!expanded}>{inner}</div>
+      <div className="art-body" hidden={!expanded}>
+        {longBody
+          ? (
+            <div className={'art-clip' + (bodyOpen ? ' is-open' : '') + (clipped ? ' is-clipped' : '')}
+              id={clipId} ref={clipRef}>{inner}</div>
+          )
+          : inner}
+        {longBody && (clipped || bodyOpen) ? (
+          <div className="art-more">
+            <button className="btn btn-sm art-more-btn" type="button"
+              aria-expanded={bodyOpen ? 'true' : 'false'} aria-controls={clipId}
+              onClick={bodyOpen ? collapseBody : () => setBodyOpen(true)}>
+              <Icon n={bodyOpen ? 'chevrons-up' : 'chevrons-down'} />
+              <span>{bodyOpen ? '收起全文' : `展开全文 · 共 ${charCount.toLocaleString('zh-CN')} 字`}</span>
+            </button>
+          </div>
+        ) : null}
+      </div>
     </article>
   );
 });

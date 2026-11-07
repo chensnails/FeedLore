@@ -65,6 +65,17 @@
     监听绑在 null 上。抓手 / 头部可直接拖，正文区要先滚到顶；关闭判据是距离或
     `FLICK_MIN_MS` 之后的快甩。`onDismiss` 返回 `false`（如设置的「放弃更改」被取消）时
     面板回弹，新增弹层不要另写一套 touch 逻辑。
+12. **长文折叠与吸顶标题条是一套，不要拆开改**。展开态正文超过 `CLIP_MIN_CHARS`（600 字）
+    才包 `.art-clip`，CSS 只给 `max-height: 60vh`；**按钮与渐隐遮罩必须等实测溢出再出现**
+    （`useLayoutEffect` 量 `scrollHeight > clientHeight`，图片撑高由 `ResizeObserver` 补量）——
+    只看字数就在桌面宽栏里出按钮，会出现「点了展开全文什么都没变」。jsdom 不布局，
+    `clientHeight` 恒 0，此时退回按字数判断，几何交给浏览器套件。
+    展开态 `.art-row` 吸附的 `top` 用 `--reader-head-h`（头部底边），**不要用
+    `--reader-sticky-offset`** —— 那个多留了 8px，正文会从缝里漏出一条，看起来像标题行
+    浮在正文中间。同时必须放开 `.art-item.open` 的 `overflow: hidden` 与
+    `content-visibility: auto`：两者都生成 containment，sticky 会被关在卡片里、只跟着卡片滚。
+    两个「收起」语义不同，别合并：正文末尾的「收起全文」只回到两屏，吸顶条上的
+    「收起这篇」收起整条卡片（`onToggle`）。
 
 ## 2. 布局骨架
 
@@ -170,9 +181,9 @@
 corepack pnpm -r run typecheck                     # 类型
 corepack pnpm --filter @feedlore/web run build     # 构建
 node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算（49 项）
-DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归（511 项）
+DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归（517 项）
 node .workbuddy/ui-lab/verify.mjs --only=all --shots --no-build
-  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 手势 / 自动填充 / 多视口截图（63 项）
+  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 手势 / 自动填充 / 长文折叠 / 多视口截图（72 项）
 node .workbuddy/ui-lab/weaknet.mjs --scenario=all  # 弱网专项：悬挂 / 慢响应 / 503 / 连点（14 项）
 node .workbuddy/ui-lab/geometry.mjs                # 展开文章后标题与吸顶头部的遮挡量
 ```

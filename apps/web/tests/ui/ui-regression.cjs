@@ -900,10 +900,16 @@ w.feedlore = {
               },
             ]),
           })
-          : Object.assign(base, {
-            bodyVersion: 1,
-            content: '第一段正文。\n第二段正文。',
-          }));
+          : readerBodyMode === 'long'
+            ? Object.assign(base, {
+              bodyVersion: 1,
+              // 约 900 字，稳定越过 600 字的折叠阈值（别卡在边界上，改个标点就翻车）
+              content: Array.from({ length: 30 }, (_, i) => `这是第 ${i + 1} 段正文，用来验证长文的折叠与展开。`).join('\n'),
+            })
+            : Object.assign(base, {
+              bodyVersion: 1,
+              content: '第一段正文。\n第二段正文。',
+            }));
       }
     }
     readerTick();
@@ -4475,6 +4481,8 @@ const withEFP = (el, fn) => {
     if (!body.querySelector('.art-actions .btn-copy')) throw new Error('无复制按钮');
     // 展开后正文自己会出图：列表缩略图让位，不重复占位
     if (it1.querySelector('.art-thumb')) throw new Error('展开态不该再显示列表缩略图');
+    // 短正文（10 字）不该折叠：折叠只对「一屏放不下」的文章有意义
+    if (body.querySelector('.art-clip')) throw new Error('短正文不该折叠');
   });
   t('展开后「全部收起」出现', () => { if (R('#readerCollapseAll').hidden) throw new Error('应显示'); });
 
@@ -4492,7 +4500,7 @@ const withEFP = (el, fn) => {
   });
 
   // 收藏
-  R('#readerList .art-item[data-id="r1"] .art-star').click();
+  R('#readerList .art-item[data-id="r1"] .art-star[data-fav]').click();
   await sleep(30);
   t('收藏按钮 → readerToggleFav + 卡片加 is-fav', () => {
     if (!callsOf('readerToggleFav').some((c) => c[1] === 'r1')) throw new Error('未触发');
@@ -4509,6 +4517,58 @@ const withEFP = (el, fn) => {
     if (!it1.querySelector('.art-thumb')) throw new Error('收起后缩略图应回来');
   });
 
+  /* 长文折叠（v2.5.1）：正文超过 600 字默认只铺两屏 —— 点开那一刻就要能判断
+     「读不读」，而不是先滑六屏才发现读不完；阅读中途的出口是吸顶条上的「收起这篇」。 */
+  readerBodyMode = 'long';
+  w.feedlore.state.rdBody.delete('r1');
+  R('#readerList .art-item[data-id="r1"] .art-head').click();
+  await sleep(40);
+  t('长文：默认折叠，给「展开全文 · 共 N 字」而不是直接铺全文', () => {
+    const it1 = R('#readerList .art-item[data-id="r1"]');
+    const clip = it1.querySelector('.art-clip');
+    if (!clip) throw new Error('缺 .art-clip：长文没走折叠');
+    if (clip.classList.contains('is-open')) throw new Error('默认应折叠');
+    const btn = it1.querySelector('.art-more-btn');
+    if (!btn) throw new Error('缺展开按钮');
+    if (!/^展开全文 · 共 [\d,]+ 字$/.test(btn.textContent.trim())) throw new Error('文案: ' + btn.textContent);
+    if (btn.getAttribute('aria-expanded') !== 'false') throw new Error('aria-expanded 应为 false');
+    if (btn.getAttribute('aria-controls') !== clip.id) throw new Error('aria-controls 没指向正文');
+  });
+  t('长文：展开态另有一枚「收起这篇」在标题行（滚几屏后仍然够得着）', () => {
+    const btn = R('#readerList .art-item[data-id="r1"] .art-collapse');
+    if (!btn) throw new Error('缺收起按钮');
+    if (btn.getAttribute('aria-label') !== '收起这篇') throw new Error('可访问名缺失');
+  });
+  R('#readerList .art-item[data-id="r1"] .art-more-btn').click();
+  await sleep(40);
+  t('点「展开全文」→ is-open + 文案换成「收起全文」', () => {
+    const it1 = R('#readerList .art-item[data-id="r1"]');
+    if (!it1.querySelector('.art-clip.is-open')) throw new Error('未展开');
+    const btn = it1.querySelector('.art-more-btn');
+    if (btn.textContent.trim() !== '收起全文') throw new Error('文案: ' + btn.textContent);
+    if (btn.getAttribute('aria-expanded') !== 'true') throw new Error('aria-expanded 应为 true');
+  });
+  R('#readerList .art-item[data-id="r1"] .art-more-btn').click();
+  await sleep(40);
+  t('点「收起全文」→ 回到折叠，正文还在（不是卸载重拉）', () => {
+    const it1 = R('#readerList .art-item[data-id="r1"]');
+    if (it1.querySelector('.art-clip.is-open')) throw new Error('仍展开');
+    if (!it1.querySelector('.art-clip .art-inner')) throw new Error('正文被卸载了');
+    if (it1.querySelectorAll('.art-text p').length !== 30) throw new Error('段落数 ' + it1.querySelectorAll('.art-text p').length);
+  });
+  const toggleBefore = callsOf('readerToggleArt').length;
+  R('#readerList .art-item[data-id="r1"] .art-collapse').click();
+  await sleep(40);
+  t('「收起这篇」→ readerToggleArt 整条收起（中途终止阅读的出口）', () => {
+    if (callsOf('readerToggleArt').length !== toggleBefore + 1) throw new Error('未触发收起');
+    if (w.feedlore.state.rdExpanded.has('r1')) throw new Error('仍展开');
+    if (R('#readerList .art-item[data-id="r1"]').classList.contains('open')) throw new Error('仍 open');
+  });
+  t('短正文不折叠：不该凭空多一次点击', () => {
+    if (R('#readerList .art-item[data-id="r1"] .art-clip')) throw new Error('短正文也折叠了');
+  });
+  readerBodyMode = 'v1';
+  w.feedlore.state.rdBody.delete('r1');
   // bodyVersion 2：结构化正文（标题 / 链接 / 列表 / 引用 / 代码 / 图片）
   readerBodyMode = 'rich';
   w.feedlore.state.rdBody.delete('r1');

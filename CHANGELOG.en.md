@@ -11,6 +11,13 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Added
 
+- **Long articles no longer flood the screen on open**: past 600 characters the body now shows
+  roughly two screens by default, fading out into an "展开全文 · 共 N 字" button — you can decide
+  whether the piece is worth reading the moment you open it. Once expanded, the body ends with
+  "收起全文", and the title row sticks below the top toolbar so "收起这篇" stays one tap away at
+  any scroll depth. The 600-character figure is only a gate: the button appears only when the
+  content actually overflows, so a short article that already fits on one wide screen never gets
+  a button that does nothing. Short articles are untouched and still open straight to the full text.
 - **Swipe to dismiss on phones**: the settings sheet, card detail and channel drawer can all be
   pulled down from the grip / header. The panel follows the finger and the backdrop fades with it;
   releasing closes on distance or a quick flick, otherwise it springs back. Card detail also closes
