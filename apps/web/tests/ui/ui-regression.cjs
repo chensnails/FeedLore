@@ -6197,7 +6197,7 @@ const withEFP = (el, fn) => {
     const decls = (css.match(/backdrop-filter:/g) || []).length;
     if (decls !== 4) throw new Error(`backdrop-filter 声明应为 4 条（当前 ${decls}）`);
     // 回顶钮也走同一套浮层语言
-    const top = css.match(/\.scroll-top \{([^}]*)\}/);
+    const top = css.match(/^\.scroll-top \{([^}]*)\}/m);
     if (!top || !/var\(--float-shadow\), inset 0 1px 0 var\(--float-hi\)/.test(top[1])) {
       throw new Error('回顶钮应与底栏共用浮层阴影');
     }
@@ -6403,7 +6403,7 @@ const withEFP = (el, fn) => {
     if (!/SHOW_AFTER = 600/.test(st)) throw new Error('出现阈值应为 600px（滚过一屏）');
     if (!/addEventListener\('scroll'/.test(st)) throw new Error('缺滚动监听');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
-    const rule = css.match(/\.scroll-top \{([^}]*)\}/);
+    const rule = css.match(/^\.scroll-top \{([^}]*)\}/m);
     if (!rule) throw new Error('缺 .scroll-top 样式');
     if (!/position: fixed/.test(rule[1])) throw new Error('回顶钮应固定在视口');
     if (!/border-radius: 50%/.test(rule[1])) throw new Error('回顶钮应是圆形');
@@ -7138,6 +7138,89 @@ const withEFP = (el, fn) => {
     if (!/return false;/.test(sm) || !/return true;/.test(sm)) throw new Error('requestClose 要返回是否真的关闭');
     if (!/clearAutofilledInput\(el\)/.test(sm)) throw new Error('打开设置时要兜底清「已填好」的账号');
     if (!/allowHorizontal: true/.test(read('src/views/CardDetail.jsx'))) throw new Error('卡片详情要支持边缘横滑关闭');
+  });
+
+  t('底栏收展：方向判据 / 安全网 / 样式契约齐备', () => {
+    const root = path.join(__dirname, '..', '..');
+    const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');
+    const mod = read('src/ui/tabbarAutoHide.js');
+    if (!/export function installTabbarAutoHide/.test(mod)) throw new Error('缺底栏收展模块');
+    if (!/const HIDE_AFTER = 24/.test(mod) || !/const SHOW_AFTER = 6/.test(mod)) {
+      throw new Error('收起阈值必须大于展开阈值，否则会来回闪');
+    }
+    if (!/const EDGE = 32/.test(mod)) throw new Error('贴顶 / 贴底必须强制展开');
+    if (!/Math\.abs\(dy\) > el\.clientHeight/.test(mod)) {
+      throw new Error('拖滚动条 / 深链的一帧跨屏位移不能当作下滑，否则会莫名收起');
+    }
+    if (!/SCROLLERS = '\.reader-main, #cardsRoot > main\.wrap, #aiView'/.test(mod)) {
+      throw new Error('只认三个视图滚动容器，抽屉 / 弹层 / 详情里的滚动不该影响底栏');
+    }
+    // 断点只准存在于 CSS：JS 里再写一份 query 迟早跟 CSS 走散
+    if (/matchMedia/.test(mod)) throw new Error('断点判断不该进 JS，视觉规则只在移动断点里生效');
+    const css = read('src/style.css');
+    const rule = css.match(/body\.tabbar-tucked \.mobile-tabbar \.viewnav \{[\s\S]*?\n  \}/);
+    if (!rule) throw new Error('缺 body.tabbar-tucked 的收起规则');
+    for (const decl of ['transform: translateY', 'opacity: 0', 'visibility: hidden', 'pointer-events: none']) {
+      if (rule[0].indexOf(decl) < 0) throw new Error('收起规则缺 ' + decl + '（只写 opacity 会留看不见的可点区）');
+    }
+    if (!/body\.tabbar-tucked \.scroll-top/.test(css)) throw new Error('底栏收起时回顶钮要跟着落下去');
+    if (!/installTabbarAutoHide\(\)/.test(read('src/main.jsx'))) throw new Error('入口没装底栏收展');
+    if (!/\.mobile-tabbar \.viewnav, \.scroll-top \{\n    transition: none !important/.test(read('src/hig.css'))) {
+      throw new Error('减少动效时收展必须直接切换，不做位移动画');
+    }
+  });
+
+  t('底栏收展：运行时下滚收起、上滚立刻回、贴底与切视图强制展开', () => {
+    const api = w.__tabbarAutoHideForTest;
+    if (!api || !api.installTabbarAutoHide) throw new Error('ui-entry 未暴露底栏收展模块');
+    const doc = w.document;
+    const mk = (cls, id) => {
+      const el = doc.createElement('div');
+      el.className = cls;
+      if (id) el.id = id;
+      Object.defineProperty(el, 'scrollHeight', { value: 5000, configurable: true });
+      Object.defineProperty(el, 'clientHeight', { value: 800, configurable: true });
+      Object.defineProperty(el, 'scrollTop', { value: 0, writable: true, configurable: true });
+      doc.body.appendChild(el);
+      return el;
+    };
+    const scroll = (el, top) => { el.scrollTop = top; el.dispatchEvent(new w.Event('scroll')); };
+    const tucked = () => doc.body.classList.contains('tabbar-tucked');
+
+    const main = mk('reader-main');
+    const off = api.installTabbarAutoHide(doc, { cooldown: 0 });
+    try {
+      scroll(main, 100);
+      if (tucked()) throw new Error('第一次滚动只该记基准');
+      scroll(main, 130);
+      if (!tucked()) throw new Error('向下 30px 没收起底栏');
+      scroll(main, 122);
+      if (tucked()) throw new Error('向上 8px 没把底栏拿回来（安全网不能等冷却）');
+
+      scroll(main, 160);
+      if (!tucked()) throw new Error('回翻后再下滚没重新收起');
+
+      // 贴底：一帧跨过整屏属于「不可信方向」，但触底必须强制展开
+      scroll(main, 4200);
+      if (tucked()) throw new Error('贴底没强制展开');
+
+      // 大跳回中部只更新基准，不判方向
+      scroll(main, 2000);
+      if (tucked()) throw new Error('一帧跨屏的跳转不应当作上翻');
+      scroll(main, 2024);
+      if (!tucked()) throw new Error('中部下滚 24px 没收起');
+
+      // 抽屉 / 卡片详情里的滚动不属于这三个容器，不改变底栏状态
+      scroll(mk('dd-sheet-body'), 300);
+      if (!tucked()) throw new Error('非白名单滚动容器不该影响底栏');
+
+      // 切视图（换成另一个白名单容器）：直接展开，别让用户找不到入口
+      scroll(mk('aiScroll', 'aiView'), 100);
+      if (tucked()) throw new Error('切换滚动容器后必须展开底栏');
+    } finally {
+      off();
+    }
+    if (tucked()) throw new Error('卸载后必须还原展开态');
   });
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });

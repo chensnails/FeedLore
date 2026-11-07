@@ -5299,6 +5299,35 @@ body { overflow: hidden; }
     outline: none;
     box-shadow: inset 0 0 0 2px var(--focus-ring);
   }
+
+  /* 滚动收展（方案 A，判据在 src/ui/tabbarAutoHide.js）：下滚累计 24px 滑出，
+     上滚 6px 滑回；贴顶 / 贴底强制展开。
+     ⚠️ 隐藏必须同时给 visibility 与 pointer-events：只写 opacity 会留下
+     「看不见但点得中、Tab 进得去」的盲区。visibility 延后到淡出结束，
+     展开时立刻生效（0s 无延迟），否则回弹会先出现一块透明空栏。
+     只动 transform / opacity —— 内容区的 padding-bottom 保持原值，
+     收展全程不触发重排；代价是滚到最底时底下多出约 54px 空白，可接受。 */
+  .mobile-tabbar .viewnav {
+    will-change: transform;
+    transition: transform var(--dur-base) var(--ease), opacity var(--dur-base) linear,
+                visibility 0s linear 0s;
+  }
+  body.tabbar-tucked .mobile-tabbar .viewnav {
+    transform: translateY(calc(100% + 12px));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform var(--dur-base) var(--ease), opacity var(--dur-base) linear,
+                visibility 0s linear var(--dur-base);
+  }
+  /* 栏走了，回顶钮跟着落回页边距，不然它悬在原来栏的上方半空。
+     用 transform 跟手：bottom 过渡会走布局，transform 只跑合成层。
+     （过渡写在基础 .scroll-top 规则里 —— 这里不能再开一个 `.scroll-top {`
+     块，回归脚本按首个 `.scroll-top {` 取浮层阴影 / fixed 定位。） */
+  body.tabbar-tucked .scroll-top {
+    transform: translateY(calc(var(--tabbar-h) + var(--sp-5) - var(--sp-4)));
+  }
+
   /* toast 的默认底边（40px）落在这条常驻栏里，而 toast 的 z-index(400) 又压在
      栏之上 —— 结果是提示语骑在标签栏上。抬到栏顶 + 栏浮起的下边距 + 一档间距。
      「有新内容」浮标本来就在 92px，不受影响。 */
@@ -5327,6 +5356,9 @@ body { overflow: hidden; }
   color: var(--text-muted);
   box-shadow: var(--float-shadow), inset 0 1px 0 var(--float-hi);
   cursor: pointer;
+  /* 底栏收起 / 展开时这颗钮跟着上下让位（见 body.tabbar-tucked 规则）。
+     只补 transform 的过渡，不改入场动画 scrollTopIn。 */
+  transition: transform var(--dur-base) var(--ease);
   animation: scrollTopIn .18s ease-out;
 }
 .scroll-top:hover { color: var(--accent-text); border-color: var(--accent-text); }

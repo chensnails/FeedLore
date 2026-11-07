@@ -21,6 +21,12 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Added
 
+- **The bottom nav tucks away as you scroll**: on phones, scrolling down slides the 文章 / 卡片 /
+  日报 capsule out of the viewport so the last screen belongs to the article; scrolling up just
+  6px brings it straight back. All three ways back are kept — scroll up, reach the top, reach the
+  end of the list — and switching views or rotating the screen reveals it too, so the nav never
+  gets lost. The tuck only animates transform and opacity, content padding stays put, and nothing
+  reflows while scrolling. Desktop widths are unaffected.
 - **Swipe to dismiss on phones**: the settings sheet, card detail and channel drawer can all be
   pulled down from the grip / header. The panel follows the finger and the backdrop fades with it;
   releasing closes on distance or a quick flick, otherwise it springs back. Card detail also closes
