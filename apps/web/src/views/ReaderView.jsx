@@ -117,8 +117,9 @@ function blockHasText(b) {
  * 600 字 ≈ 手机上两屏多一点的纯文字，低于它的文章一屏能看完，折叠只会多一次点击。 */
 const CLIP_MIN_CHARS = 600;
 
-/** 正文总字数：与 ArtBody 的渲染口径一致（blockText 已递归 list / quote / table）。 */
-function bodyCharCount(e) {
+/** 正文总字数：与 ArtBody 的渲染口径一致（blockText 已递归 list / quote / table）。
+ *  导出给卡片详情弹窗：两处的折叠阈值必须同源，否则「文章页会折、弹窗不折」。 */
+export function bodyCharCount(e) {
   if (!e) return 0;
   const blocks = parseBlocks(e.bodyJson);
   if (!blocks) return readerBodyText(e).length;
@@ -337,10 +338,18 @@ export function OpenButton({ e }) {
   );
 }
 
+/** 正文底部那一排动作（复制 / 打开原文，弹窗再加收藏 / 在文章页查看）。
+ *  单独导出，是因为卡片详情要把这一排留在折叠区之外：折叠只裁正文，
+ *  不该把「复制链接」也一起裁进去（那会让长文卡片必须先展开才能拿链接）。 */
+export function ArtActions({ e, extraActions }) {
+  return <div className="art-actions"><CopyButton e={e} /><OpenButton e={e} />{extraActions}</div>;
+}
+
 /** 正文（对应旧 artBodyHtml）：图文按原顺序内联；老数据回退为图集 + 段落。
  *  导出给卡片详情弹窗（src/views/CardDetail.jsx）复用，两处正文渲染保持一套。
- *  extraActions：弹窗会把「收藏 / 在文章页查看」也塞进这条动作行，保证一个弹窗只有一排按钮。 */
-export function ArtBody({ e, onTag, extraActions }) {
+ *  extraActions：弹窗会把「收藏 / 在文章页查看」也塞进这条动作行，保证一个弹窗只有一排按钮。
+ *  showActions={false}：动作行改由调用方渲染在折叠区外面（只有卡片详情这么用）。 */
+export function ArtBody({ e, onTag, extraActions, showActions }) {
   const s = S();
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
   const parts = [];
@@ -399,7 +408,7 @@ export function ArtBody({ e, onTag, extraActions }) {
       </div>
     );
   }
-  parts.push(<div className="art-actions" key="acts"><CopyButton e={e} /><OpenButton e={e} />{extraActions}</div>);
+  if (showActions !== false) parts.push(<ArtActions key="acts" e={e} extraActions={extraActions} />);
   return <div className="art-inner">{parts}</div>;
 }
 
@@ -417,6 +426,78 @@ function useArticleListPrefs() {
     return on(EVENT.APPEARANCE, sync);
   }, []);
   return comfortable;
+}
+
+/* ---------- 长文折叠（文章页就地展开 + 卡片页详情共用这一份实现，v2.5.1） ----------
+ *
+ * 问题：正文没有高度上限，一篇 8000 字的文章一展开就是六到十屏；读者点开后才看到有多长，
+ * 已经无法中途撤退。解法：默认只铺约两屏（60vh），底部渐隐 +「展开全文 · 共 N 字」，
+ * 把「读不读」这个决策放回点开的那一刻。
+ *
+ * 两处必须一模一样，所以抽成一个组件而不是各写一套：
+ * - 阈值同源（CLIP_MIN_CHARS）；文案、图标、命中区、DOM 类名同源；
+ * - 点击行为同源：一次点击展开，再一次收起，没有二次确认、没有额外步骤；
+ * - 「真的被裁到了吗」由这里统一实测，两边都不会出现「点了没反应」的按钮。
+ *
+ * 为什么按高度裁而不是按块数切：按块数切会把一段话拦腰截断，最后一行是半句话；
+ * 按高度裁 + 渐隐，视觉上就是「后面还有」，与 iOS 阅读器同一套语言。
+ */
+export function ArtClip({ id, charCount, resetKey, onCollapse, children }) {
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  const ref = useRef(null);
+  const long = charCount >= CLIP_MIN_CHARS;
+
+  /* 整条收起 / 换一条 / 关掉弹窗再打开，都回到折叠态 ——
+     否则「上次读到一半点了展开全文」会一直续着，下次点开又是一屏半，等于折叠白做。 */
+  useEffect(() => { setOpen(false); }, [resetKey]);
+
+  /* 「真的被裁到了吗」必须实测，不能只看字数：600 字在手机上两屏多，在桌面宽栏里
+     可能一屏就放下了；只按字数就出按钮，会出现「点了展开全文什么都没变」。
+     用 layout effect 在绘制前量，用户不会看到中间态；jsdom 不布局（clientHeight 恒 0），
+     此时退回按字数判断 —— 状态流转交给单测，几何交给浏览器套件。 */
+  useLayoutEffect(() => {
+    if (!long || open) return;   // 展开态量不出「溢出」（clientHeight == scrollHeight）
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      if (el.clientHeight <= 0) { setClipped(true); return; }
+      setClipped(el.scrollHeight > el.clientHeight + 4);
+    };
+    measure();
+    if (typeof ResizeObserver !== 'function') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);   // 图片撑高时重量
+    return () => ro.disconnect();
+  }, [long, open, resetKey]);
+
+  if (!long) return children;   // 短正文原样渲染：不套容器、不多一次点击
+
+  const collapse = () => {
+    setOpen(false);
+    /* 正文一塌陷，视口会停在原处（常常正好是空白）。「回到这条的开头」由调用方决定：
+       文章页滚回标题行，卡片详情把弹窗自己的滚动容器归零 —— 两者的起点不是一个东西。 */
+    if (onCollapse) requestAnimationFrame(onCollapse);
+  };
+
+  return (
+    <>
+      <div className={'art-clip' + (open ? ' is-open' : '') + (clipped ? ' is-clipped' : '')}
+        id={id} ref={ref}>{children}</div>
+      {/* 两态同一枚按钮：折叠「展开全文 · 共 N 字」、展开「收起全文」，点一次就切换，不弹确认 */}
+      {clipped || open ? (
+        <div className="art-more">
+          <button className="btn btn-sm art-more-btn" type="button"
+            aria-expanded={open ? 'true' : 'false'} aria-controls={id}
+            onClick={open ? collapse : () => setOpen(true)}>
+            <Icon n={open ? 'chevrons-up' : 'chevrons-down'} />
+            <span>{open ? '收起全文' : `展开全文 · 共 ${charCount.toLocaleString('zh-CN')} 字`}</span>
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 /** 列表项（对应旧 artItemHtml + expandArt/collapseArt）。
@@ -439,14 +520,7 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
      失败态记在组件本地：条目对象换新时（已读 / 收藏）不该把失败的图又试一遍。
      「紧凑」密度直接不渲染 <img>：不只是藏起来，连首图请求都不发。 */
   const [imgFailed, setImgFailed] = useState(false);
-  /* 「这篇的正文展开到全文了吗」——只影响正文高度，与 expanded（整条卡片展开）是两层。
-     状态留在组件本地：它不是账号偏好，也不必像 rdExpanded 那样进 core state、在
-     loadReader 里清理；切列表后组件重挂载自然回到折叠态。 */
-  const [bodyOpen, setBodyOpen] = useState(false);
   const rootRef = useRef(null);
-  /* 整篇收起后再打开，回到折叠态 —— 否则「上次读到一半点了展开全文」会一直续着，
-     下次点开又是一屏半，等于折叠白做。 */
-  useEffect(() => { if (!expanded) setBodyOpen(false); }, [expanded]);
   const thumb = !expanded && comfortable && e.image && !imgFailed ? e.image : null;
   /* 摘要来自抓取时压平的 description（纯文本），展开后正文已经在读，不再重复一遍 */
   const desc = !expanded && comfortable && e.desc ? String(e.desc) : '';
@@ -457,42 +531,16 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
   const cls = 'art-item' + (e.isRead ? ' is-read' : ' is-unread') + (fav ? ' is-fav' : '') + (expanded ? ' open' : '')
     + (thumb ? ' has-thumb' : '') + (desc ? ' has-sum' : '') + (lineMode ? ' is-line' : '') + (flash ? ' is-flash' : '');
 
-  /* 长文折叠：只有「正在读 + 正文已到达 + 够长」三个条件同时成立才裁。
+  /* 长文折叠：只有「正在读 + 正文已到达」才把字数交给 ArtClip ——
      加载骨架与错误提示本来不到一屏，裁它们只会多出一次点击。 */
   const charCount = expanded && full ? bodyCharCount(full) : 0;
-  const longBody = charCount >= CLIP_MIN_CHARS;
-  const clipId = 'artClip-' + e.id;
-  /* 「真的被裁到了吗」必须实测，不能只看字数：600 字在手机上两屏多，在桌面宽栏里
-     可能一屏就放下了；只按字数就出按钮，会出现「点了展开全文什么都没变」。
-     用 layout effect 在绘制前量，用户不会看到中间态；jsdom 不布局（clientHeight 恒 0），
-     此时退回按字数判断 —— 状态流转交给单测，几何交给浏览器套件。 */
-  const clipRef = useRef(null);
-  const [clipped, setClipped] = useState(false);
-  useLayoutEffect(() => {
-    if (!longBody || bodyOpen) return;   // 展开态量不出「溢出」（clientHeight == scrollHeight）
-    const el = clipRef.current;
-    if (!el) return;
-    const measure = () => {
-      if (el.clientHeight <= 0) { setClipped(true); return; }
-      setClipped(el.scrollHeight > el.clientHeight + 4);
-    };
-    measure();
-    if (typeof ResizeObserver !== 'function') return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    if (el.firstElementChild) ro.observe(el.firstElementChild);   // 图片撑高时重量
-    return () => ro.disconnect();
-  }, [longBody, bodyOpen, full]);
 
-  const collapseBody = () => {
-    setBodyOpen(false);
-    /* 正文一塌陷，视口就停在原来的位置（可能正好是空白处）。滚回本条标题 ——
-       .art-item 的 scroll-margin-top 与吸顶头部同源（--reader-sticky-offset），
-       所以 block:'start' 的落点就是标题行，不必再量一次高度。 */
-    requestAnimationFrame(() => {
-      const el = rootRef.current;
-      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' });
-    });
+  /* 收起全文后正文塌陷，视口会停在一片空白里。滚回本条标题 ——
+     .art-item 的 scroll-margin-top 与吸顶头部同源（--reader-sticky-offset），
+     所以 block:'start' 的落点就是标题行，不必再量一次高度。 */
+  const scrollBackToHead = () => {
+    const el = rootRef.current;
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' });
   };
 
   let inner = null;
@@ -561,22 +609,8 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
         </span>
       </div>
       <div className="art-body" hidden={!expanded}>
-        {longBody
-          ? (
-            <div className={'art-clip' + (bodyOpen ? ' is-open' : '') + (clipped ? ' is-clipped' : '')}
-              id={clipId} ref={clipRef}>{inner}</div>
-          )
-          : inner}
-        {longBody && (clipped || bodyOpen) ? (
-          <div className="art-more">
-            <button className="btn btn-sm art-more-btn" type="button"
-              aria-expanded={bodyOpen ? 'true' : 'false'} aria-controls={clipId}
-              onClick={bodyOpen ? collapseBody : () => setBodyOpen(true)}>
-              <Icon n={bodyOpen ? 'chevrons-up' : 'chevrons-down'} />
-              <span>{bodyOpen ? '收起全文' : `展开全文 · 共 ${charCount.toLocaleString('zh-CN')} 字`}</span>
-            </button>
-          </div>
-        ) : null}
+        <ArtClip id={'artClip-' + e.id} charCount={charCount} resetKey={expanded}
+          onCollapse={scrollBackToHead}>{inner}</ArtClip>
       </div>
     </article>
   );

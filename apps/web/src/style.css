@@ -3346,12 +3346,15 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .art-clip { position: relative; }
 .art-clip:not(.is-open) { max-height: 60vh; overflow: hidden; }
 /* 渐隐遮罩只在「真的被裁到」时出现：正文本来就不到两屏时不该画一层假的渐隐，
-   那会让人以为下面还有内容，点了「展开」却什么都没变。 */
+   那会让人以为下面还有内容，点了「展开」却什么都没变。
+   遮罩压到「正文所在那一层表面的底色」上：文章页是 --panel-2，卡片详情桌面是玻璃面板
+   （--glass-bg-strong，半透明所以要保留 alpha），移动端整屏是 --bg —— 由所在容器覆写
+   --clip-fade，别在这里写死，否则弹窗里会浮出一条色带。 */
 .art-clip.is-clipped:not(.is-open)::after {
   content: '';
   position: absolute; left: 0; right: 0; bottom: 0;
   height: 96px;
-  background: linear-gradient(to bottom, transparent, var(--panel-2));
+  background: linear-gradient(to bottom, transparent, var(--clip-fade, var(--panel-2)));
   pointer-events: none;
 }
 /* 展开 / 收起：整行居中，命中区按 --hit-min（触屏 44px），不与正文粘连 */
@@ -4407,10 +4410,12 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
   overflow-y: auto; overscroll-behavior: contain;
   /* 给右上角悬浮的关闭键让位，否则正文首行 / 首图会被压在它下面 */
   padding-top: var(--sp-8);
+  /* 长文折叠的渐隐要压到玻璃面板自己的底色上（半透明，别换成实色 --panel） */
+  --clip-fade: var(--glass-bg-strong);
 }
 /* 移动端挂在 .dd-sheet-body 上：抹掉抽屉自带的一圈 padding，避免和下面的块叠加成双倍留白。
    同特异度，靠本块位于 .dd-sheet-body 之后取胜。 */
-.cd-body { padding: var(--sp-8) 0 0; }
+.cd-body { padding: var(--sp-8) 0 0; --clip-fade: var(--bg); }
 .cd-desc {
   margin: var(--sp-3) var(--sp-6) 0;
   font-size: var(--fs-md); line-height: 1.6; color: var(--text-muted);
@@ -4434,6 +4439,10 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 /* 正文块在弹窗里不再铺自己的底色：.art-body 的文章页样式（不透明 panel-2 + 顶部分隔线）
    放进玻璃面板就成了「一个卡片三种颜色」，撤掉后整个弹窗只剩一层底。 */
 .cd-art { border-top: none; background: transparent; }
+/* 动作行在 .art-inner 之外（折叠只裁正文，复制链接不跟着被裁）：横向留白与正文对齐，
+   四个图标仍然贴在这段正文的右边缘上，看起来还是「正文的最后一行」。 */
+.cd-art > .art-actions { padding: 0 var(--sp-7) var(--sp-6); }
+@media (max-width: 720px) { .cd-art > .art-actions { padding: 0 var(--sp-5) var(--sp-5); } }
 /* 统一的键盘可见焦点环（无障碍 + 现代观感）
  * 焦点环一律用实色主色：上面 6 套强调色 × 3 套主题各自定义的半透明
  * --focus-ring（.16 / .24）在白底只有 1.2~1.5:1，键盘 Tab 到按钮基本看不见。
