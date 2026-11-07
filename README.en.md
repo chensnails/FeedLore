@@ -2,43 +2,36 @@
 
 # FeedLore
 
-> Gather what's worth reading — a clean, comfortable **self-hosted RSS reader** with a resource Card Wall.
-> Multi-user, no ads, no telemetry; all data lives in your own PostgreSQL.
+> Gather what's worth reading — a **self-hosted RSS reader** with a resource Card Wall.
+> Multi-user · no ads · no telemetry · all data in your own PostgreSQL.
 
-**Live demo**: https://feedlore.669600.xyz · demo account `demo` / `demo`
-
+**Live demo**: https://feedlore.669600.xyz (`demo` / `demo`)
 Current version **2.4.0** · [Changelog](CHANGELOG.en.md) · [Upgrade & deployment](UPGRADE-v2.en.md)
 
-## What this is
+## Highlights
 
-FeedLore is a self-hosted RSS reader made primarily for personal use. It offers two reading modes — an Article view and a Card Wall — helping you spot worthwhile information quickly, jump straight to the original, and extract resource links from articles. It is especially handy for articles that share cloud-drive resources.
-
-## Features
-
-- **Reading**: channels on the left (organized by group), articles on the right; click a title to expand the full text in place. Read / unread / starred, server-side search, and auto-refresh are all built in.
-- **Card Wall**: grid or list layout, filter by channel or group, and search; jumps to and from the Article view with the landing item highlighted. Cards extract resource links from articles, let you copy them with one click, and recognize common cloud drives.
-- **Feed management**: OPML import/export (groups included, automatic deduplication), channel rename and URL change, drag-and-drop group ordering, per-channel fetch interval. Enable full-text fetching for channels that only publish summaries; channels that fail repeatedly are automatically disabled.
-- **Rules**: Watch / Block keywords tag items; watched items are collected in a smart group with configurable watch retention days before they drop out automatically. Pre-ingest filters match keywords or regex and act as "discard / keep only". Both rule types can be scoped to specific groups or channels.
-- **Multi-user & roles**: each user has their own feeds, read state, stars, rules, and model configuration. Accounts are created by an admin; read-only accounts are supported. Public registration is off by default.
-- **Appearance & mobile**: 4 themes and 6 accent colors, with adjustable font size / typeface / line height / reading width / card density. On phones: full-screen sheets, pull-to-dismiss, and edge gestures; add to home screen works under HTTPS.
-- **AI daily digest**: configure a model per account to summarize the last 24 hours of new items into a concise Chinese digest; other features work fine without it.
-- **MCP endpoint**: external AI clients (Claude, Cherry Studio, ...) call read-only tools via `/mcp` — feeds, article search & full text, AI digest. Tokens are created and revoked in Settings - MCP, fully independent from browser sessions.
-  See [docs/MCP.md](docs/MCP.md) for setup.
-- **One-click update**: check the version from the Settings page and update directly via Watchtower.
+- **Two ways to read**: expand any article in place, or browse the Card Wall where images and extracted resource links are laid out as a grid — copy links with one click, common cloud drives recognized.
+- **Feeds & rules**: OPML import/export, groups, per-feed intervals and full-text fetching; keyword / regex filters, Watch / Block rules scoped to groups or channels.
+- **AI digest & MCP**: a daily Chinese brief of the last 24 hours; external AI clients query feeds, full articles and digests through `/mcp` ([setup guide](docs/MCP.md)).
+- **Multi-user & roles**: separate feeds, read state, stars, rules and model config per account; read-only accounts supported, public registration off by default.
+- **Details that feel right**: 4 themes × 6 accent colors, adjustable type size / density / reading width; on phones, swipeable channel tabs, gesture-dismiss sheets and a bottom nav that tucks away while scrolling.
+- **Zero-fuss deployment**: one compose command to start; update via Watchtower or Settings → About.
 
 ## Screenshots
 
-| Article view (light) | Article view (dark) |
-| --- | --- |
-| ![Article view](docs/screenshots/02-reader.png) | ![Article view · dark](docs/screenshots/06-reader-dark.png) |
+Captured from the [live demo](https://feedlore.669600.xyz) (`demo` / `demo`).
 
-| Card Wall | Mobile |
+| Article view | Card Wall |
 | --- | --- |
-| ![Card Wall](docs/screenshots/03-cards.png) | ![Mobile full-screen detail](docs/screenshots/10-mobile-detail.png) |
+| ![Article view (light)](docs/screenshots/02-reader.png) | ![Card Wall (light)](docs/screenshots/03-cards.png) |
+
+| Dark theme | Mobile |
+| --- | --- |
+| ![Article view (dark)](docs/screenshots/06-reader-dark.png) | ![Mobile article list](docs/screenshots/10-mobile-detail.png) |
 
 ## Quick start
 
-Requires Docker 24+ with Compose v2 and one free port (default `3210`). No need to clone the source or prepare a `.env` in advance.
+Docker 24+ with Compose v2 and one free port (default `3210`). No clone, no `.env` needed:
 
 ```bash
 mkdir feedlore && cd feedlore
@@ -46,27 +39,26 @@ curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-co
 docker compose -f docker-compose.v2.release.yml up -d
 ```
 
-The first start pulls the image, creates the database, and initializes it, which may take a few minutes. To watch progress or debug failures, run
+The first start creates the database and may take a few minutes; check progress with
 `docker compose -f docker-compose.v2.release.yml logs upgrade`.
-
-A brand-new site creates the admin account `admin` with a one-time random password, printed exactly once in the startup log:
+A new site creates admin `admin` with a one-time random password printed once in the log:
 
 ```bash
 docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time password'
 ```
 
-Once you have the password, open `http://<host>:3210`, sign in, and change it immediately under Settings → Account. Then add RSS / Atom feeds or import an OPML file under Settings → Sources, and start reading.
+Open `http://<host>:3210`, sign in and change the password immediately, then add RSS / Atom feeds or import OPML under Settings → Sources.
 
 ## Configuration & upgrades
 
-The defaults work out of the box. To change the port, run behind an HTTPS reverse proxy, reuse a database password, or set the initial account, copy [`.env.example`](.env.example) to `.env` — every variable's meaning and default is documented in the file's comments. Re-run `up -d` after editing.
+Defaults work out of the box. To change the port, run behind an HTTPS reverse proxy, reuse a database password or set the initial account, copy [`.env.example`](.env.example) to `.env` (every variable is documented) and re-run `up -d`.
 
-- **Upgrading from 1.x**: sites running Watchtower need no action — the migration runs automatically and keeps your existing account password. For manual steps, rollback, and backups, see [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
-- **Updating**: images are pinned to a version by default; change `V2_IMAGE` to switch versions. Setting it to `:latest` follows Watchtower rolling upgrades, or use the one-click update under Settings → About.
+- **Upgrading from 1.x**: sites with Watchtower migrate automatically and keep their passwords; manual steps, rollback and backups in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
+- **Updating**: images are pinned to a version — change `V2_IMAGE` to switch; `:latest` follows Watchtower, or use the one-click update under Settings → About.
 
 ## Local development
 
-Requires Node ≥ 22.
+Node ≥ 22:
 
 ```bash
 pnpm install
@@ -76,7 +68,7 @@ pnpm --filter @feedlore/server dev   # http://127.0.0.1:3000
 pnpm --filter @feedlore/web dev      # Vite, 5173
 ```
 
-API definitions and validation live in `packages/contract`; fetching, rules, the daily digest, and image caching live in `apps/server`; the frontend lives in `apps/web`. Tests and type checks:
+Contracts live in `packages/contract`, the server in `apps/server`, the frontend in `apps/web`. Checks:
 
 ```bash
 pnpm -r typecheck
@@ -85,9 +77,7 @@ pnpm -r test
 
 ## Support the project
 
-FeedLore is a self-hosted open source project. Sponsorship is entirely voluntary and
-**unlocks no features** — the app stays fully functional either way. If it saves you
-a subscription fee, you can open the Alipay QR code:
+Sponsorship is entirely voluntary and **unlocks no features**. If FeedLore saves you a subscription fee, you can open the QR code:
 
 [Alipay QR code (click to open)](docs/screenshots/sponsor-alipay.png)
 

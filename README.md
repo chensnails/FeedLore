@@ -2,50 +2,36 @@ English: [README.en.md](README.en.md)
 
 # 笺川 · FeedLore
 
-> 拾取值得读的 —— 一个干净、顺手的**自托管 RSS 阅读器**，附资源卡片墙。
-> 多用户、无广告、无遥测，所有数据都在你自己的 PostgreSQL 里。
+> 拾取值得读的 —— 自托管 RSS 阅读器 + 资源卡片墙。
+> 多用户 · 无广告 · 无遥测 · 数据全在你自己的 PostgreSQL。
 
-**在线体验**：https://feedlore.669600.xyz · 演示账户 `demo` / `demo`
-
+**在线体验**：https://feedlore.669600.xyz（`demo` / `demo`）
 当前版本 **2.4.0** · [更新日志](CHANGELOG.md) · [升级与部署](UPGRADE-v2.md)
 
-## 这是什么
+## 亮点
 
-笺川是一款自托管、以个人自用为主的 RSS 阅读器。它提供文章列表与卡片墙两种阅读形态，
-帮助快速发现信息、直接跳转原文，并提取文章里的资源链接，尤其适合网盘资源类文章。
-
-## 功能
-
-- **阅读**：左频道（按分组）右文章，点标题就地展开全文；已读 / 未读 / 收藏、服务端搜索、
-  自动刷新一应俱全。
-- **卡片墙**：网格 / 列表两种排布，按频道、分组筛选与搜索，与文章页互相跳转并高亮落点；
-  卡片会提取文章内的资源链接，可一键复制，并识别常见网盘。
-- **订阅管理**：OPML 导入导出（含分组、自动去重）、频道重命名与改址、分组拖拽排序、
-  单频道抓取频率；可对只给摘要的频道开启全文抓取，连续失败的频道会自动停用。
-- **规则**：关注 / 屏蔽关键词给条目打标，关注条目集中在智能分组中，可设保留天数自动退出；
-  入库前可按关键词或正则「丢弃 / 只收」。两类规则都能限定到指定分组或频道。
-- **多用户与角色**：每人独立订阅源、已读、收藏、规则与模型配置；账号由管理员创建，
-  支持只读账户。默认不开放注册。
-- **外观与移动端**：4 套主题、6 套主色，字号 / 字体 / 行高 / 阅读宽度 / 卡片密度可调；
-  手机端支持整屏弹层、下拉关闭与侧缘手势，HTTPS 下可添加到主屏幕。
-- **AI 日报**：按账号配置模型，把过去 24 小时的新条目整理成中文简报；不配置不影响其它功能。
-- **MCP 接口**：外部 AI 客户端（Claude、Cherry Studio 等）经 `/mcp` 调用只读工具——频道列表、文章检索与全文、AI 日报；令牌在「设置 → MCP 接口」创建与吊销，与登录会话完全独立。接入方式见 [docs/MCP.md](docs/MCP.md)。
-- **一键更新**：设置页检查版本，配合 Watchtower 直接更新。
+- **两种读法**：文章页点标题就地展开全文；卡片墙把图片与资源链接铺成网格，一键复制、识别常见网盘。
+- **订阅与规则**：OPML 导入导出、分组排序、单频道抓取频率与全文抓取；关键词 / 正则过滤、关注 / 屏蔽规则。
+- **AI 日报与 MCP**：把 24 小时新条目整理成中文简报；外部 AI 客户端经 `/mcp` 直接检索频道、文章全文与日报（[接入文档](docs/MCP.md)）。
+- **多用户与角色**：每人独立订阅、已读、收藏、规则与模型配置；支持只读账户，默认不开放注册。
+- **顺手的细节**：4 套主题 × 6 档主色，字号 / 密度 / 阅读宽度可调；手机端横滑频道条、手势关闭弹层、底部导航随滚动收展。
+- **零折腾部署**：一条 compose 命令起服务；Watchtower 或「设置 → 关于」一键更新。
 
 ## 界面截图
 
-| 文章阅读页（浅色） | 文章阅读页（暗色） |
-| --- | --- |
-| ![文章阅读页](docs/screenshots/02-reader.png) | ![文章阅读页 · 暗色](docs/screenshots/06-reader-dark.png) |
+以下截图取自[在线体验站点](https://feedlore.669600.xyz)（演示账号 `demo` / `demo`）。
 
-| 卡片墙 | 手机端 |
+| 文章页 | 卡片墙 |
 | --- | --- |
-| ![卡片墙](docs/screenshots/03-cards.png) | ![手机端整屏详情](docs/screenshots/10-mobile-detail.png) |
+| ![文章页（浅色）](docs/screenshots/02-reader.png) | ![卡片墙（浅色）](docs/screenshots/03-cards.png) |
+
+| 暗色主题 | 手机端 |
+| --- | --- |
+| ![文章页（暗色）](docs/screenshots/06-reader-dark.png) | ![手机端文章列表](docs/screenshots/10-mobile-detail.png) |
 
 ## 快速开始
 
-要求 Docker 24+ 与 Compose v2，一个空闲端口（默认 `3210`）。不需要克隆源码，也不需要
-预先准备 `.env`。
+Docker 24+ 与 Compose v2，一个空闲端口（默认 `3210`）。无需克隆源码或准备 `.env`：
 
 ```bash
 mkdir feedlore && cd feedlore
@@ -53,32 +39,26 @@ curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-co
 docker compose -f docker-compose.v2.release.yml up -d
 ```
 
-首次启动会拉取镜像并建库、初始化数据库，可能需要几分钟；想看进度或排查失败可执行
-`docker compose -f docker-compose.v2.release.yml logs upgrade`。
-
-全新站点会创建管理员 `admin`，并生成一次性随机密码，只在启动日志里打印一次：
+首次启动建库需几分钟，进度看 `docker compose -f docker-compose.v2.release.yml logs upgrade`。
+全新站点创建管理员 `admin`，一次性随机密码只在启动日志打印一次：
 
 ```bash
 docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time password'
 ```
 
-拿到密码后访问 `http://<主机>:3210` 登录，并立即在「设置 → 账号」修改。随后在
-「设置 → 数据源」添加 RSS / Atom 或导入 OPML，即可开始阅读。
+访问 `http://<主机>:3210` 登录并立即改密，然后在「设置 → 数据源」添加 RSS / Atom 或导入 OPML 即可阅读。
 
 ## 配置与升级
 
-默认值开箱可用。需要改端口、走 HTTPS 反代、复用数据库密码或指定初始账号时，把
-[`.env.example`](.env.example) 复制为 `.env`，每个变量的含义与默认值都写在文件注释里，
-改完重新 `up -d` 即可。
+默认值开箱可用。改端口、走 HTTPS 反代、复用数据库密码或指定初始账号时，把 [`.env.example`](.env.example)
+复制为 `.env`（每项含义都在注释里），改完重新 `up -d`。
 
-- **从 1.x 升级**：开着 Watchtower 的站点无需操作，会自动迁移并保留原账号密码；
-  手动步骤、回滚与备份见 [UPGRADE-v2.md](UPGRADE-v2.md)。
-- **更新**：镜像默认钉版本号，换版本改 `V2_IMAGE`；设为 `:latest` 则跟随 Watchtower
-  滚动升级，也可在「设置 → 关于」一键更新。
+- **从 1.x 升级**：开着 Watchtower 的站点自动迁移并保留账号密码；手动步骤、回滚与备份见 [UPGRADE-v2.md](UPGRADE-v2.md)。
+- **更新**：镜像默认钉版本号，换版本改 `V2_IMAGE`；设为 `:latest` 跟随 Watchtower 滚动升级，也可在「设置 → 关于」一键更新。
 
 ## 本地开发
 
-需要 Node ≥ 22。
+Node ≥ 22：
 
 ```bash
 pnpm install
@@ -88,8 +68,7 @@ pnpm --filter @feedlore/server dev   # http://127.0.0.1:3000
 pnpm --filter @feedlore/web dev      # Vite，5173
 ```
 
-接口定义与校验集中在 `packages/contract`，采集、规则、日报与图片缓存位于 `apps/server`，
-前端位于 `apps/web`。测试与类型检查：
+接口契约在 `packages/contract`，服务端在 `apps/server`，前端在 `apps/web`。检查：
 
 ```bash
 pnpm -r typecheck
@@ -98,8 +77,7 @@ pnpm -r test
 
 ## 支持项目
 
-笺川是持续维护的开源自托管项目，赞赏完全自愿，**不解锁任何功能、不影响正常使用**。
-如果它帮你省下了订阅服务的钱，可以点开二维码请作者喝杯咖啡：
+赞赏完全自愿，**不解锁任何功能、不影响使用**。如果它帮你省下了订阅费，可以点开二维码请作者喝杯咖啡：
 
 [支付宝赞赏二维码（点击查看）](docs/screenshots/sponsor-alipay.png)
 
