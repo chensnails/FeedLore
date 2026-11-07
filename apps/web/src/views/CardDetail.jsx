@@ -6,12 +6,9 @@
  *   整屏没有「点遮罩关闭」这回事，出口是右上角悬浮 ×、Esc、往下拖或边缘横滑（useSwipeDismiss）。
  * 形态在打开瞬间定格，本次开合内不随窗口变化重排。
  *
- * 正文渲染直接复用文章页的 ArtBody / ArtClip / ArtActions（同一套 .art-* 样式与按钮），
- * 两处展示保持一份实现。长文折叠也走同一个 ArtClip（v2.5.1）：默认两屏 + 渐隐，
- * 底部「展开全文 · 共 N 字 / 收起全文」，与文章页的按钮、位置、点击行为完全一致，
- * 只是「收起后回到哪儿」不同 —— 这里把弹窗的滚动容器归零（文章页是滚回标题行）。
- * 动作行（复制 / 打开 / 收藏 / 在文章页查看）刻意留在折叠区外面：折叠只裁正文，
- * 让长文卡片仍然一点就能拿链接，不为折叠多付一步。
+ * 正文渲染直接复用文章页的 ArtBody（同一套 .art-* 样式与按钮），两处展示保持一份实现。
+ * 正文一次铺开、不做折叠（v2.5.2，与文章页一致）：真正的出口是右上角 ×、Esc、
+ * 往下拖 / 边缘横滑，以及文章页吸顶条上的「收起这篇」——不再额外要一次「展开全文」。
  * 打开弹窗即把该条记为已读：状态与卡片圆点、文章页列表同步，
  * 逻辑见 core 的 cardsDetailRead → reader.js markEntryRead。
  *
@@ -26,7 +23,7 @@ import { core } from '@core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isMobileMq } from './Dropdown.jsx';
 import { useSwipeDismiss } from './useSwipeDismiss.js';
-import { ArtActions, ArtBody, ArtClip, bodyCharCount, bodyShowsText } from './ReaderView.jsx';
+import { ArtActions, ArtBody, bodyShowsText } from './ReaderView.jsx';
 
 const S = () => core;
 
@@ -71,10 +68,6 @@ export function CardDetail({ e, onClose, onTag }) {
   const [mobile] = useState(isMobileMq());
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
-  /* 弹窗自己的滚动容器（桌面 .cd-scroll / 移动 .dd-sheet-body）。
-     「收起全文」后正文塌陷，视口会停在原处；把它归零就是这里的「回到这条的开头」，
-     对应文章页的滚回标题行。 */
-  const scrollRef = useRef(null);
   // CardsView 每次重绘都会传新的 onClose；存进 ref，避免它进入 effect 依赖导致重复拉正文 / 重复锁滚动
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -123,8 +116,6 @@ export function CardDetail({ e, onClose, onTag }) {
   };
 
   const showBody = !!full && hasBody(full);
-  /* 折叠阈值与文章页同源（bodyCharCount + CLIP_MIN_CHARS）：两页对「多长算长」的口径一致 */
-  const charCount = showBody ? bodyCharCount(full) : 0;
   /* 摘要与正文同源（rss.js 里 desc 就是 content 压平换行得来的），正文区自己会渲染文字时
    * 再列一行摘要就是把同一段话摆两遍，所以只在正文区没有文字（纯图正文 / 无正文）时才列摘要。 */
   const descIsSummary = showBody && !bodyShowsText(full);
@@ -153,10 +144,6 @@ export function CardDetail({ e, onClose, onTag }) {
   // 往下拖即可收起；从左右边缘横滑也能关（整屏没有遮罩可点，手势 + × + Esc 是全部出口）。
   // hook 走原生 passive:false touch 监听，接管后阻止默认，Android 的下拉刷新抢不走手势。
   const dismiss = useCallback(() => onCloseRef.current(), []);
-  const backToTop = useCallback(() => {
-    const box = scrollRef.current;
-    if (box) box.scrollTop = 0;
-  }, []);
   const { panelRef: sheetRef, setPanelRef, handlers: sheetHandlers } =
     useSwipeDismiss(dismiss, { allowHorizontal: true });
 
@@ -175,12 +162,8 @@ export function CardDetail({ e, onClose, onTag }) {
   else if (showBody) {
     inner = (
       <div className="art-body cd-art">
-        {/* 与文章页同一个折叠组件、同一段文案：默认两屏 + 渐隐，点一次展开、再点一次收起 */}
-        <ArtClip id={'cdClip-' + e.id} charCount={charCount} resetKey={e.id} onCollapse={backToTop}>
-          <ArtBody e={full} onTag={onTag} showActions={false} />
-        </ArtClip>
-        {/* 动作行留在折叠区外：长文卡片也能一点就拿链接，不因为折叠多出一步 */}
-        <ArtActions e={full} extraActions={extraActions} />
+        {/* 与文章页同一份 ArtBody：正文一次铺开，动作行在正文末尾（一个弹窗只有一排按钮） */}
+        <ArtBody e={full} onTag={onTag} extraActions={extraActions} />
       </div>
     );
   }
@@ -198,7 +181,7 @@ export function CardDetail({ e, onClose, onTag }) {
           aria-label={dialogLabel} onClick={(ev) => ev.stopPropagation()} {...sheetHandlers}>
           <div className="dd-sheet-grip" aria-hidden="true" />
           {closeBtn}
-          <div className="dd-sheet-body cd-body" ref={scrollRef}>
+          <div className="dd-sheet-body cd-body">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
             <p className="cd-read-tip">打开此详情已将它标记为已读（两页同步）</p>
@@ -213,7 +196,7 @@ export function CardDetail({ e, onClose, onTag }) {
       <div className="modal cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel} ref={dialogRef}>
         {closeBtn}
         <div className="modal-body">
-          <div className="cd-scroll" ref={scrollRef}>
+          <div className="cd-scroll">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
             <p className="cd-read-tip">打开此详情已将它标记为已读（两页同步）</p>

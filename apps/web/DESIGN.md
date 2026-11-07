@@ -65,27 +65,15 @@
     监听绑在 null 上。抓手 / 头部可直接拖，正文区要先滚到顶；关闭判据是距离或
     `FLICK_MIN_MS` 之后的快甩。`onDismiss` 返回 `false`（如设置的「放弃更改」被取消）时
     面板回弹，新增弹层不要另写一套 touch 逻辑。
-12. **长文折叠与吸顶标题条是一套，不要拆开改**。展开态正文超过 `CLIP_MIN_CHARS`（600 字）
-    才包 `.art-clip`，CSS 只给 `max-height: 60vh`；**按钮与渐隐遮罩必须等实测溢出再出现**
-    （`useLayoutEffect` 量 `scrollHeight > clientHeight`，图片撑高由 `ResizeObserver` 补量）——
-    只看字数就在桌面宽栏里出按钮，会出现「点了展开全文什么都没变」。jsdom 不布局，
-    `clientHeight` 恒 0，此时退回按字数判断，几何交给浏览器套件。
-    展开态 `.art-row` 吸附的 `top` 用 `--reader-head-h`（头部底边），**不要用
-    `--reader-sticky-offset`** —— 那个多留了 8px，正文会从缝里漏出一条，看起来像标题行
-    浮在正文中间。同时必须放开 `.art-item.open` 的 `overflow: hidden` 与
-    `content-visibility: auto`：两者都生成 containment，sticky 会被关在卡片里、只跟着卡片滚。
-    两个「收起」语义不同，别合并：正文末尾的「收起全文」只回到两屏，吸顶条上的
-    「收起这篇」收起整条卡片（`onToggle`）。
-13. **长文折叠只有一份实现：`ReaderView.jsx` 的 `ArtClip`**。文章页就地展开与卡片页详情
-    （`CardDetail.jsx`）都用它，阈值（`bodyCharCount` + `CLIP_MIN_CHARS`）、文案
-    （`展开全文 · 共 N 字` / `收起全文`）、图标、命中区、点击行为都必须同源 ——
-    两页各写一套必然走形。卡片详情只覆写「收起后回到哪儿」：`onCollapse` 把弹窗自己的
-    滚动容器（桌面 `.cd-scroll` / 移动 `.cd-body`）归零，文章页是滚回标题行。
-    折叠只裁正文，**动作行（复制 / 打开 / 收藏 / 跳文章页）必须留在折叠区外**
-    （`ArtBody` 传 `showActions={false}`，改由 `ArtActions` 渲染在 `.art-clip` 之后）：
-    否则长文卡片要先展开才能拿链接，等于给用户多一步。
-    渐隐遮罩的颜色走 `--clip-fade`，由所在表面覆写（文章页 `--panel-2`、桌面弹窗
-    `--glass-bg-strong` 要保留 alpha、移动整屏 `--bg`）；写死会让折叠区底部浮出一条色带。
+12. **长文一次铺开，退出全靠吸顶标题条**。正文不折叠（v2.5.2 起移除 `.art-clip` 与
+    「展开全文」）：点开即全文，不再要求用户先做一次「要不要读完」的选择，也不再有
+    两层「收起」语义互相干扰。展开态 `.art-row` 吸附的 `top` 用 `--reader-head-h`
+    （头部底边），**不要用 `--reader-sticky-offset`** —— 那个多留了 8px，正文会从缝里
+    漏出一条，看起来像标题行浮在正文中间。同时必须放开 `.art-item.open` 的
+    `overflow: hidden` 与 `content-visibility: auto`：两者都生成 containment，
+    sticky 会被关在卡片里、只跟着卡片滚。吸顶条上的「收起这篇」（`.art-collapse`）
+    收起整条卡片并滚回本条标题；卡片详情不另造出口，用常驻的右上角 ×、Esc 与手势关闭，
+    正文和动作行都和文章页共用同一个 `ArtBody`。
 
 ## 2. 布局骨架
 
@@ -191,9 +179,9 @@
 corepack pnpm -r run typecheck                     # 类型
 corepack pnpm --filter @feedlore/web run build     # 构建
 node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算（49 项）
-DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归（522 项）
+DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归（518 项）
 node .workbuddy/ui-lab/verify.mjs --only=all --shots --no-build
-  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 手势 / 自动填充 / 长文折叠（文章页 + 卡片页）/ 多视口截图（78 项）
+  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 手势 / 自动填充 / 长文一次铺开（文章页 + 卡片页）/ 多视口截图（76 项）
 node .workbuddy/ui-lab/weaknet.mjs --scenario=all  # 弱网专项：悬挂 / 慢响应 / 503 / 连点（14 项）
 node .workbuddy/ui-lab/geometry.mjs                # 展开文章后标题与吸顶头部的遮挡量
 ```

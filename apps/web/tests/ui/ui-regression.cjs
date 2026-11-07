@@ -256,8 +256,8 @@ const miniEntryDetail = (id) => {
   } else if (id === 'e1' && detailBodyMode === 'no-text') {
     d.content = '';
   } else if (id === 'e1' && detailBodyMode === 'long') {
-    // 约 750 字，稳定越过 600 字的折叠阈值（与文章页同一个常量）
-    d.content = Array.from({ length: 30 }, (_, i) => `这是第 ${i + 1} 段正文，用来验证卡片详情的折叠与展开。`).join('\n');
+    // 40 段长正文：用来验证「一次铺开 + 吸顶收起」，不再有折叠分支
+    d.content = Array.from({ length: 30 }, (_, i) => `这是第 ${i + 1} 段正文，用来验证卡片详情一次铺开后的阅读与关闭。`).join('\n');
   }
   return d;
 };
@@ -906,8 +906,8 @@ w.feedlore = {
           : readerBodyMode === 'long'
             ? Object.assign(base, {
               bodyVersion: 1,
-              // 约 900 字，稳定越过 600 字的折叠阈值（别卡在边界上，改个标点就翻车）
-              content: Array.from({ length: 30 }, (_, i) => `这是第 ${i + 1} 段正文，用来验证长文的折叠与展开。`).join('\n'),
+              // 40 段长正文：用来验证长文一次铺开，而不是折叠后分两次渲染
+              content: Array.from({ length: 30 }, (_, i) => `这是第 ${i + 1} 段正文，用来验证长文一次铺开后的阅读节奏。`).join('\n'),
             })
             : Object.assign(base, {
               bodyVersion: 1,
@@ -4046,52 +4046,37 @@ const withEFP = (el, fn) => {
   await sleep(40);
   detailBodyMode = 'text';
 
-  /* 长文折叠：卡片详情必须与文章页同一套（同一个 ArtClip、同一段文案、同一次点击切换），
-     两页只有「收起后回到哪儿」不同 —— 这里把弹窗的滚动容器归零，文章页滚回标题行。 */
+  /* 长文详情一次铺开（v2.5.2 起不再折叠）：读完全文不需要先点一次「展开全文」，
+     出口是右上角 ×、Esc、手势 —— 这三条在任何滚动位置都可用。 */
   detailBodyMode = 'long';
   C('#grid .card[data-id="e1"] .title-btn').click();
   await sleep(60);
-  t('长文详情默认折叠，按钮文案与文章页同一套', () => {
-    const clip = C('.cd-art .art-clip');
-    if (!clip) throw new Error('长文详情没进入折叠态');
-    if (clip.classList.contains('is-open')) throw new Error('默认不该展开');
-    const btn = C('.cd-art .art-more-btn');
-    if (!btn) throw new Error('缺展开按钮');
-    if (!/^展开全文 · 共 [\d,]+ 字$/.test(btn.textContent.trim())) throw new Error('文案与文章页不一致：' + btn.textContent);
-    if (btn.getAttribute('aria-expanded') !== 'false') throw new Error('aria-expanded 应为 false');
-    if (!clip.id || btn.getAttribute('aria-controls') !== clip.id) throw new Error('按钮没指向它控制的正文块');
+  t('长文详情一次铺开：没有折叠容器，也没有多余的「展开全文」', () => {
+    if (!C('.cd-art')) throw new Error('正文没渲染');
+    if (C('.cd-art .art-clip')) throw new Error('还在折叠');
+    if (C('.cd-art .art-more-btn')) throw new Error('不该再出现展开按钮');
+    if (!C('.cd-art .art-inner .art-text')) throw new Error('正文缺失');
   });
-  t('折叠只裁正文：动作行留在折叠区外，不用展开就能复制链接', () => {
-    const acts = C('.cd-art > .art-actions');
-    if (!acts) throw new Error('动作行不在 .art-clip 之外（会被一起裁掉）');
-    if (acts.closest('.art-clip')) throw new Error('动作行被裁进折叠区了');
+  t('动作行回到正文末尾，四个按钮齐备（与文章页同一套 ArtBody）', () => {
+    const acts = C('.cd-art .art-actions');
+    if (!acts) throw new Error('缺动作行');
+    if (!acts.closest('.art-inner')) throw new Error('动作行应在 .art-inner 内，两页 DOM 一致');
     if (!acts.querySelector('.btn-copy') || !acts.querySelector('.btn-open')) throw new Error('动作行缺复制 / 打开');
-    if (CA('.cd-art > .art-actions > *').length !== 4) throw new Error('动作行应有复制 / 打开 / 收藏 / 跳文章页四个');
+    if (CA('.cd-art .art-actions > *').length !== 4) throw new Error('动作行应有复制 / 打开 / 收藏 / 跳文章页四个');
   });
-  C('.cd-art .art-more-btn').click();
-  await sleep(40);
-  t('一次点击展开全文，按钮变成「收起全文」', () => {
-    if (!C('.cd-art .art-clip.is-open')) throw new Error('未展开');
-    const btn = C('.cd-art .art-more-btn');
-    if (btn.textContent.trim() !== '收起全文') throw new Error('按钮未切换：' + btn.textContent);
-    if (btn.getAttribute('aria-expanded') !== 'true') throw new Error('aria-expanded 未更新');
-  });
-  C('.cd-art .art-more-btn').click();
-  await sleep(40);
-  t('再点一次收起（没有二次确认），按钮回到展开态', () => {
-    if (C('.cd-art .art-clip.is-open')) throw new Error('未收起');
-    if (C('.cd-art .art-more-btn').textContent.trim().indexOf('展开全文') !== 0) throw new Error('按钮没回到展开态');
+  t('× 是常驻出口：长文铺满时仍在，不需要先收起正文', () => {
+    const btn = C('.cd-modal .cd-close');
+    if (!btn) throw new Error('缺关闭按钮');
+    if (btn.getAttribute('aria-label') !== '关闭详情') throw new Error('关闭按钮语义变了');
   });
   C('.modal-close').click();
   await sleep(40);
   detailBodyMode = 'text';
   C('#grid .card[data-id="e1"] .title-btn').click();
   await sleep(60);
-  t('短正文不折叠：详情不该凭空多一次点击', () => {
-    if (C('.cd-art .art-clip')) throw new Error('短正文也被折叠了');
-    if (C('.cd-art .art-more-btn')) throw new Error('短正文不该出现展开按钮');
-    // 动作行位置与长文一致（始终在正文外层）：DOM 不随正文长短变形，两种长度都不会被裁
-    if (!C('.cd-art > .art-actions')) throw new Error('动作行应始终在正文外层');
+  t('短正文同样一次铺开：两页对正文长度没有分支', () => {
+    if (C('.cd-art .art-clip') || C('.cd-art .art-more-btn')) throw new Error('不该有任何折叠残留');
+    if (!C('.cd-art .art-actions')) throw new Error('动作行缺失');
   });
   C('.modal-close').click();
   await sleep(40);
@@ -4570,55 +4555,31 @@ const withEFP = (el, fn) => {
     if (!it1.querySelector('.art-thumb')) throw new Error('收起后缩略图应回来');
   });
 
-  /* 长文折叠（v2.5.1）：正文超过 600 字默认只铺两屏 —— 点开那一刻就要能判断
-     「读不读」，而不是先滑六屏才发现读不完；阅读中途的出口是吸顶条上的「收起这篇」。 */
+  /* 长文（v2.5.2 起不再折叠）：一次铺开全文，退出靠标题行吸顶的「收起这篇」——
+     不再要求先点一次「展开全文」才能读完。 */
   readerBodyMode = 'long';
   w.feedlore.state.rdBody.delete('r1');
   R('#readerList .art-item[data-id="r1"] .art-head').click();
   await sleep(40);
-  t('长文：默认折叠，给「展开全文 · 共 N 字」而不是直接铺全文', () => {
+  t('长文一次铺开：没有折叠容器，也没有「展开全文」这一步', () => {
     const it1 = R('#readerList .art-item[data-id="r1"]');
-    const clip = it1.querySelector('.art-clip');
-    if (!clip) throw new Error('缺 .art-clip：长文没走折叠');
-    if (clip.classList.contains('is-open')) throw new Error('默认应折叠');
-    const btn = it1.querySelector('.art-more-btn');
-    if (!btn) throw new Error('缺展开按钮');
-    if (!/^展开全文 · 共 [\d,]+ 字$/.test(btn.textContent.trim())) throw new Error('文案: ' + btn.textContent);
-    if (btn.getAttribute('aria-expanded') !== 'false') throw new Error('aria-expanded 应为 false');
-    if (btn.getAttribute('aria-controls') !== clip.id) throw new Error('aria-controls 没指向正文');
+    if (it1.querySelector('.art-clip') || it1.querySelector('.art-more-btn')) throw new Error('还在折叠');
+    if (it1.querySelectorAll('.art-text p').length !== 30) throw new Error('段落数 ' + it1.querySelectorAll('.art-text p').length);
   });
-  t('长文：展开态另有一枚「收起这篇」在标题行（滚几屏后仍然够得着）', () => {
+  t('长文：标题行有「收起这篇」，滚几屏后仍然够得着', () => {
     const btn = R('#readerList .art-item[data-id="r1"] .art-collapse');
     if (!btn) throw new Error('缺收起按钮');
     if (btn.getAttribute('aria-label') !== '收起这篇') throw new Error('可访问名缺失');
   });
-  R('#readerList .art-item[data-id="r1"] .art-more-btn').click();
-  await sleep(40);
-  t('点「展开全文」→ is-open + 文案换成「收起全文」', () => {
-    const it1 = R('#readerList .art-item[data-id="r1"]');
-    if (!it1.querySelector('.art-clip.is-open')) throw new Error('未展开');
-    const btn = it1.querySelector('.art-more-btn');
-    if (btn.textContent.trim() !== '收起全文') throw new Error('文案: ' + btn.textContent);
-    if (btn.getAttribute('aria-expanded') !== 'true') throw new Error('aria-expanded 应为 true');
-  });
-  R('#readerList .art-item[data-id="r1"] .art-more-btn').click();
-  await sleep(40);
-  t('点「收起全文」→ 回到折叠，正文还在（不是卸载重拉）', () => {
-    const it1 = R('#readerList .art-item[data-id="r1"]');
-    if (it1.querySelector('.art-clip.is-open')) throw new Error('仍展开');
-    if (!it1.querySelector('.art-clip .art-inner')) throw new Error('正文被卸载了');
-    if (it1.querySelectorAll('.art-text p').length !== 30) throw new Error('段落数 ' + it1.querySelectorAll('.art-text p').length);
-  });
   const toggleBefore = callsOf('readerToggleArt').length;
   R('#readerList .art-item[data-id="r1"] .art-collapse').click();
   await sleep(40);
-  t('「收起这篇」→ readerToggleArt 整条收起（中途终止阅读的出口）', () => {
+  t('「收起这篇」→ readerToggleArt 整条收起，正文不再占高', () => {
     if (callsOf('readerToggleArt').length !== toggleBefore + 1) throw new Error('未触发收起');
     if (w.feedlore.state.rdExpanded.has('r1')) throw new Error('仍展开');
-    if (R('#readerList .art-item[data-id="r1"]').classList.contains('open')) throw new Error('仍 open');
-  });
-  t('短正文不折叠：不该凭空多一次点击', () => {
-    if (R('#readerList .art-item[data-id="r1"] .art-clip')) throw new Error('短正文也折叠了');
+    const it1 = R('#readerList .art-item[data-id="r1"]');
+    if (it1.classList.contains('open')) throw new Error('仍 open');
+    if (!it1.querySelector('.art-body').hidden) throw new Error('正文应隐藏');
   });
   readerBodyMode = 'v1';
   w.feedlore.state.rdBody.delete('r1');
@@ -5163,8 +5124,9 @@ const withEFP = (el, fn) => {
     const cd = fs.readFileSync(path.join(root, 'src', 'views', 'CardDetail.jsx'), 'utf8');
     if (cd.indexOf('ArtActions') < 0) throw new Error('卡片详情没复用 ArtActions，两处动作行会各改一半');
     if (/className="art-actions"/.test(cd)) throw new Error('卡片详情又手写了一行 .art-actions，应与文章页共用 ArtActions');
-    // 长文折叠同理：组件、阈值、文案都只能有一份，两页各写一套必然走形
-    if (!/ArtClip/.test(cd) || !/bodyCharCount/.test(cd)) throw new Error('卡片详情没复用文章页的 ArtClip / bodyCharCount');
+    // 正文也不再有两套长度分支：卡片详情直接用同一个 ArtBody，不许再造折叠容器
+    if (!/ArtBody/.test(cd)) throw new Error('卡片详情没复用文章页的 ArtBody');
+    if (/art-clip|art-more/.test(cd)) throw new Error('卡片详情又引入了折叠容器，两页表现会分叉');
   });
 
   // ============ 覆盖层：toast / 新内容浮标 / 灯箱（v2.1.0 React 化） ============

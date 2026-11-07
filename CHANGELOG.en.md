@@ -9,22 +9,18 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ## Unreleased
 
+### Changed
+
+- **Long articles now open in full, with no fold**: one tap and the whole piece is there. The
+  previous "two screens + 展开全文" avoided a ten-screen wall, but it added a tap before you could
+  finish reading and stacked a second "collapse" next to the sticky title row's 收起这篇, which
+  made the two easy to confuse. The article page now has exactly one exit — 收起这篇 in the sticky
+  title row (it collapses the card and scrolls back to that row, reachable at any scroll depth).
+  Card detail adds no exit of its own: the always-visible ×, Esc and swipe do that job. Both pages
+  render through the same ArtBody, so long and short articles no longer take different DOM paths.
+
 ### Added
 
-- **Long articles no longer flood the screen on open**: past 600 characters the body now shows
-  roughly two screens by default, fading out into an "展开全文 · 共 N 字" button — you can decide
-  whether the piece is worth reading the moment you open it. Once expanded, the body ends with
-  "收起全文", and the title row sticks below the top toolbar so "收起这篇" stays one tap away at
-  any scroll depth. The 600-character figure is only a gate: the button appears only when the
-  content actually overflows, so a short article that already fits on one wide screen never gets
-  a button that does nothing. Short articles are untouched and still open straight to the full text.
-- **Card detail uses the same fold**: opening a long card on the cards page now also shows about
-  two screens of body, ending in the same "展开全文 · 共 N 字" / "收起全文" button — one tap toggles
-  it, no confirmation step, and the copy, icon, position and 600-character threshold are identical
-  to the article page (both use one shared component). The only difference is where collapsing
-  lands: the article page scrolls back to its title row, the sheet scrolls back to the top. The
-  copy / open / favourite / view-in-reader action row stays outside the clipped area, so a long
-  card still hands you the link without expanding first.
 - **Swipe to dismiss on phones**: the settings sheet, card detail and channel drawer can all be
   pulled down from the grip / header. The panel follows the finger and the backdrop fades with it;
   releasing closes on distance or a quick flick, otherwise it springs back. Card detail also closes
