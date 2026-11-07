@@ -102,6 +102,14 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Fixed
 
+- **Channel search no longer blanks the page**: typing the first character into the sidebar's
+  channel search crashed — the title helper used for filtering was declared after the code that
+  called it, hitting the temporal dead zone (`ReferenceError: Cannot access 'titleOf' before
+  initialization`). With no error boundary, React unmounted the whole reader root, taking the
+  sidebar, list and header with it. The reader sidebar, the phone drawer and the cards drawer all
+  share this component, so all three were affected. The declarations now come first, with
+  regression coverage at both the jsdom and real-browser layers (including the empty state and
+  restoring the full list when cleared).
 - **Browsers no longer autofill credentials into search boxes**: Chrome / Edge on Android ignored
   `autocomplete="off"` and heuristically dropped the saved login name into the settings search
   field (the `admin` text and blue fill in the screenshot), leaving "no matching settings".

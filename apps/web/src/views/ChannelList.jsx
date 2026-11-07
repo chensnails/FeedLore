@@ -55,13 +55,17 @@ export const ChannelList = memo(function ChannelList({
   const qDeferred = useDeferredValue(q);
   const ql = qDeferred.trim().toLowerCase();
   const collapsedView = ql ? new Set() : collapsed;
+
+  // 这两个取名函数必须在 groupsView 之前声明：过滤要按频道名匹配，写成 const 箭头函数
+  // 就是暂时性死区 —— 一旦搜索词非空，groupsView 求值时抛 ReferenceError，
+  // 无错误边界时整个 ReaderView 根被卸载（白屏）。
+  const nameOf = (f) => (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(f) : f.title) : f.title);
+  const titleOf = (f) => (s.feedTitle ? s.feedTitle(f) : f.title);
+
   const groupsView = ql
     ? groups.map((g) => ({ ...g, feeds: g.feeds.filter((f) => (titleOf(f) || '').toLowerCase().includes(ql)) }))
       .filter((g) => g.feeds.length > 0)
     : groups;
-
-  const nameOf = (f) => (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(f) : f.title) : f.title);
-  const titleOf = (f) => (s.feedTitle ? s.feedTitle(f) : f.title);
 
   // 卡片页「全部频道」：徽标是未读总数，总量留到悬停提示（与单频道徽标同口径）
   const cardUnread = groups.reduce((n, g) => n + g.feeds.reduce((m, f) => m + Number(f.unreadCount || 0), 0), 0);

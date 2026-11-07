@@ -4352,6 +4352,34 @@ const withEFP = (el, fn) => {
     if (RA('#readerList .art-item').length !== 2) throw new Error('条目 ' + RA('#readerList .art-item').length);
     if (R('#readerSideN').textContent !== '2 个') throw new Error('sideN: ' + R('#readerSideN').textContent);
   });
+
+  // 频道内搜索回归：groupsView 曾引用下方才声明的 titleOf（const 箭头函数 → 暂时性死区），
+  // 搜索词一非空就抛 ReferenceError；没有错误边界时 React 卸掉整个 ReaderView 根（白屏）。
+  // 断言过滤结果本身 —— 渲染抛错时 DOM 不会更新，这里必然红。
+  setInput('#readerChannels .rd-ch-search-input', '例子');
+  await waitFor(() => RA('#readerChannels .rd-ch[data-feed]').length === 1, 800);
+  t('频道搜索：按名过滤频道、隐藏空分组，不再抛 TDZ', () => {
+    const feeds = RA('#readerChannels .rd-ch[data-feed]');
+    if (feeds.length !== 1) throw new Error('命中频道数 ' + feeds.length);
+    if (feeds[0].getAttribute('data-feed') !== '1') throw new Error('命中频道 id ' + feeds[0].getAttribute('data-feed'));
+    if (RA('#readerChannels .rd-ch-group').length !== 1) throw new Error('空分组未隐藏: ' + RA('#readerChannels .rd-ch-group').length);
+    if (R('#readerChannels .rd-ch-empty')) throw new Error('有结果时不该显示空态');
+    if (RA('#readerChannels .rd-ch[data-scope]').length !== 3) throw new Error('范围行被搜索误删');
+    if (!R('#readerChannels .rd-ch[data-watch="block"]')) throw new Error('屏蔽行被搜索误删');
+  });
+  setInput('#readerChannels .rd-ch-search-input', 'zzz');
+  await waitFor(() => !!R('#readerChannels .rd-ch-empty'), 800);
+  t('频道搜索：无命中显示空态且频道行全清', () => {
+    if (RA('#readerChannels .rd-ch[data-feed]').length !== 0) throw new Error('仍有频道行');
+    if (!R('#readerChannels .rd-ch-empty')) throw new Error('无空态');
+  });
+  setInput('#readerChannels .rd-ch-search-input', '');
+  await waitFor(() => RA('#readerChannels .rd-ch[data-feed]').length === 2, 800);
+  t('频道搜索：清空后恢复全部频道与分组', () => {
+    if (RA('#readerChannels .rd-ch[data-feed]').length !== 2) throw new Error('频道未恢复');
+    if (RA('#readerChannels .rd-ch-group').length !== 2) throw new Error('分组未恢复: ' + RA('#readerChannels .rd-ch-group').length);
+    if (R('#readerChannels .rd-ch-empty')) throw new Error('空态未清除');
+  });
   t('标题与工具按钮显隐', () => {
     if (R('#readerTitle').textContent !== '全部文章') throw new Error('title: ' + R('#readerTitle').textContent);
     if (R('#readerAccLabel').textContent !== '单篇') throw new Error('accLabel: ' + R('#readerAccLabel').textContent);
