@@ -87,7 +87,7 @@ pnpm -r test
 
 FeedLore is a self-hosted open source project. Sponsorship is entirely voluntary and
 **unlocks no features** — the app stays fully functional either way. If it saves you
-a subscription fee, you can scan the QR code below (Alipay):
+a subscription fee, you can open the Alipay QR code:
 
 [Alipay QR code (click to open)](docs/screenshots/sponsor-alipay.png)
 
