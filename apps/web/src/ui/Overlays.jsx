@@ -23,10 +23,13 @@ function ConfirmDialog({ c }) {
   const okRef = useRef(null);
   const formRef = useRef(null);
   const [value, setValue] = useState('');
+  // 打开它的那个元素：关闭后把焦点还回去（否则掉到 body，键盘用户要从头 Tab）
+  const openerRef = useRef(null);
 
   // 每次打开重置输入值，并把焦点放到该去的地方（有输入框 → 输入框，否则 → 主按钮）
   useEffect(() => {
     if (!c.open) return;
+    openerRef.current = document.activeElement;
     setValue('');
     const t = setTimeout(() => {
       if (c.input && valueRef.current) valueRef.current.focus();
@@ -34,6 +37,15 @@ function ConfirmDialog({ c }) {
     }, 0);
     return () => clearTimeout(t);
   }, [c.open, c.input]);
+
+  // 关闭后归还焦点。触发按钮可能已随弹层卸载（例如从命令面板发起后菜单已关），
+  // 所以先确认它还在文档里。
+  useEffect(() => {
+    if (c.open) return;
+    const op = openerRef.current;
+    openerRef.current = null;
+    if (op && op !== document.body && document.contains(op) && typeof op.focus === 'function') op.focus();
+  }, [c.open]);
 
   // Esc = 取消。用捕获阶段并阻断冒泡，避免同一击把设置弹层 / 命令面板也关掉。
   // Tab 也一并收在这个对话框里：它是叠在设置弹层之上的独立模态，焦点不能漏到背景。
@@ -210,12 +222,14 @@ function Lightbox({ box, close }) {
           <p className="lightbox-count" aria-live="polite">{box.index + 1} / {list.length}</p>
         </React.Fragment>
       ) : null}
+      {/* 根节点的 onClick 也是 close：关闭按钮必须拦住冒泡，否则一次点击调两次
+          （幂等，但会多走一遍状态与焦点归还） */}
       <button
         ref={closeRef}
         className="lightbox-close"
         type="button"
         aria-label="关闭预览"
-        onClick={close}
+        onClick={(ev) => { ev.stopPropagation(); close(); }}
       >
         <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
       </button>

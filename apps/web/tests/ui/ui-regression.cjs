@@ -3886,12 +3886,22 @@ const withEFP = (el, fn) => {
     if (!c2.querySelector('.card-meta .card-dot.is-read')) throw new Error('已读无图卡应藏掉圆点');
     if (c2.classList.contains('is-read') || c2.classList.contains('is-unread')) throw new Error('卡片本身不该带已读 / 未读态');
     if (!c2.classList.contains('is-fav')) throw new Error('缺 is-fav');
-    if (c1.getAttribute('aria-label').indexOf('未读，') !== 0) throw new Error('未读卡未在 aria-label 播报：' + c1.getAttribute('aria-label'));
-    if (c2.getAttribute('aria-label').indexOf('未读') === 0) throw new Error('已读卡不该播报未读');
+    if (c1.querySelector('.title-btn').getAttribute('aria-label').indexOf('未读，') !== 0) throw new Error('未读卡未在 aria-label 播报：' + c1.querySelector('.title-btn').getAttribute('aria-label'));
+    if (c2.querySelector('.title-btn').getAttribute('aria-label').indexOf('未读') === 0) throw new Error('已读卡不该播报未读');
     if (!c1.querySelector('.title-btn')) throw new Error('标题应是可聚焦按钮');
-    if (!c2.querySelector('.card-foot .btn-copy')) throw new Error('无图卡片复制按钮应在底部操作条');
-    // v2.2.4：无原文地址不再渲染置灰「打开」按钮（曾被误读为「上锁」）
+    /* 卡片外层不再冒充按钮：里面已经有真按钮与链接，ARIA 不允许嵌套交互控件。
+       未读信息与「打开」入口都由标题按钮承担。 */
+    if (c1.getAttribute('role') || c1.hasAttribute('tabindex')) throw new Error('卡片不应再声明 role/tabindex');
+    /* e2 没有任何链接：复制与打开都不渲染（两页统一为「没有链接就不渲染」，
+       之前卡片页会画一个置灰的复制图标），也不该留一条空白动作栏。 */
+    if (c2.querySelector('.btn-copy')) throw new Error('无链接卡片不该渲染复制按钮');
     if (c2.querySelector('.btn-open')) throw new Error('无原文地址不应渲染打开按钮');
+    if (c2.querySelector('.card-foot')) throw new Error('没有动作时不该留空的操作条');
+    // 有链接的无图卡片：动作条落在卡片底部（e1 有图，走媒体层，这里只验结构存在）
+    const foot = C('#grid .card[data-id="e1"] .card-media-actions');
+    if (!foot || !foot.querySelector('.btn-copy') || !foot.querySelector('.btn-open')) {
+      throw new Error('有链接的卡片应渲染复制 + 打开');
+    }
   });
   t('统一卡高：有图卡带 card-has-media，无图卡不带', () => {
     if (!C('#grid .card[data-id="e1"]').classList.contains('card-has-media')) throw new Error('有图卡缺 card-has-media');
@@ -3942,7 +3952,7 @@ const withEFP = (el, fn) => {
     if (st.rdFlags.unread !== 0) throw new Error('未读角标应减 1：' + st.rdFlags.unread);
     if (Number(st.feedList.find((f) => f.id === '1').unreadCount) !== 0) throw new Error('频道未读数应减 1');
     if (!C('#grid .card[data-id="e1"] .card-dot.is-read')) throw new Error('已读后卡片圆点应藏起来');
-    if (C('#grid .card[data-id="e1"]').getAttribute('aria-label').indexOf('未读') === 0) throw new Error('已读后 aria-label 仍在播报未读');
+    if (C('#grid .card[data-id="e1"] .title-btn').getAttribute('aria-label').indexOf('未读') === 0) throw new Error('已读后 aria-label 仍在播报未读');
     if (C('.cd-meta') || C('.cd-pwd')) throw new Error('弹窗顶部不该再重复列频道 / 大小 / 日期 / 提取码');
     if (!C('.art-inner')) throw new Error('有正文时应渲染正文区');
     if (!C('.modal-close')) throw new Error('无关闭按钮');
@@ -4155,8 +4165,9 @@ const withEFP = (el, fn) => {
     const r2 = C('#grid .row-item[data-id="e2"]');
     if (!r1.querySelector('.row-thumb .row-dot.is-read')) throw new Error('已读行圆点应藏起来');
     if (!r2.querySelector('.row-thumb .row-dot:not(.is-read)')) throw new Error('未读行缺圆点');
-    if (r2.getAttribute('aria-label').indexOf('未读，') !== 0) throw new Error('未读行未在 aria-label 播报：' + r2.getAttribute('aria-label'));
+    if (r2.querySelector('.title-btn').getAttribute('aria-label').indexOf('未读，') !== 0) throw new Error('未读行未在 aria-label 播报：' + r2.querySelector('.title-btn').getAttribute('aria-label'));
     if (r2.classList.contains('is-read') || r2.classList.contains('is-unread')) throw new Error('行本身不该带已读 / 未读态');
+    if (r2.getAttribute('role') || r2.hasAttribute('tabindex')) throw new Error('行不应再声明 role/tabindex');
   });
   // v1.7.0：列表行的宽度与按钮尺寸（列表视图溢出的两道防线）
   t('列表视图：行不超出容器 + 复制/打开按钮是同尺寸方块', () => {
@@ -5695,14 +5706,21 @@ const withEFP = (el, fn) => {
       const origFetch = sw.fetch;
       const pending = [];
       let n = 0;
-      sw.fetch = (url, opts) => new Promise((resolve, reject) => {
-        const k = ++n;
-        const sig = opts && opts.signal;
-        if (sig) sig.addEventListener('abort', () => {
-          const e = new Error('Aborted'); e.name = 'AbortError'; reject(e);
-        }, { once: true });
-        pending.push({ k, resolve });
-      });
+      sw.fetch = (url, opts) => {
+        /* 只接管卡片列表请求：上一条用例切频道后可能还有一次懒加载在飞，
+           混进计数就会变成「重试发了 3 次」的假警报。其余请求立刻给空响应。 */
+        if (!String(url).includes('scope=cards')) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ entries: [], hasMore: false, total: 0, tags: [] }) });
+        }
+        return new Promise((resolve, reject) => {
+          const k = ++n;
+          const sig = opts && opts.signal;
+          if (sig) sig.addEventListener('abort', () => {
+            const e = new Error('Aborted'); e.name = 'AbortError'; reject(e);
+          }, { once: true });
+          pending.push({ k, resolve });
+        });
+      };
       const ok = (id) => ({
         ok: true, status: 200,
         json: () => Promise.resolve({ entries: [{ id, name: id }], hasMore: false, total: 1, tags: [] }),
@@ -7250,6 +7268,42 @@ const withEFP = (el, fn) => {
     }
     if (tucked()) throw new Error('卸载后必须还原展开态');
   });
+
+  // ============ 审查修复回归（P1-2 / P1-7 / P1-13） ============
+
+  // P1-2：ViewNav 之前只把 view 存进 state，shell 快照每次 render 现读 —— digestVisible
+  // 变了不重绘，关掉日报后导航仍留着入口，点它被守卫改回文章页 = 「点了没反应」。
+  // 注意：阅读页的 React 根是测试自己建的一个 div（不是 #readerView），要从 readerEl 里找
+  const navViews = () => [...readerEl.querySelectorAll('.viewnav .viewnav-btn')]
+    .map((b) => b.getAttribute('data-view'));
+  w.feedlore.setDigestEnabled(true);
+  await sleep(60);
+  const navOn = navViews();
+  w.feedlore.setDigestEnabled(false);
+  await sleep(60);
+  const navOff = navViews();
+  t('P1-2 关闭日报后视图导航立即去掉「日报」入口', () => {
+    if (navOn.length !== 3 || navOn.indexOf('ai') < 0) throw new Error('开启时应有三项：' + navOn.join(','));
+    if (navOff.length !== 2 || navOff.indexOf('ai') >= 0) throw new Error('关闭后仍残留日报入口：' + navOff.join(','));
+  });
+  w.feedlore.setDigestEnabled(true);
+  await sleep(60);
+
+  // P1-13：「夜间模式」其实是四档循环，文案要改成「切换主题」并标出当前档位
+  {
+    const btn = document.querySelector('#readerView .overflow-btn') || document.querySelector('.overflow-btn');
+    btn.click();
+    await sleep(40);
+    const items = [...document.querySelectorAll('.overflow-menu .overflow-item')];
+    t('P1-13 主题项文案为「切换主题（当前档位）」', () => {
+      if (items.some((b) => b.textContent.indexOf('夜间模式') >= 0)) throw new Error('仍写着「夜间模式」');
+      const theme = items.find((b) => b.textContent.indexOf('切换主题') >= 0);
+      if (!theme) throw new Error('没有「切换主题」项');
+      if (!/切换主题（.+）/.test(theme.textContent)) throw new Error('没标当前档位：' + theme.textContent.trim());
+    });
+    btn.click();
+    await sleep(20);
+  }
 
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });
   console.log(`\n共 ${results.length} 项，通过 ${results.length - fail}，失败 ${fail}`);

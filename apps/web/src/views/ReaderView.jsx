@@ -21,12 +21,11 @@ import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthSrcSet } from '../imgSrc.js';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
+import { Icon } from '../ui/Icon.jsx';
+// 动作按钮由 ui/EntryActions 统一提供：卡片页、文章页、卡片详情用同一份实现
+import { ArtActions } from '../ui/EntryActions.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
-
-const Icon = ({ n }) => (
-  <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
-);
 
 /* ---------- 正文分层纯函数（自 app.js 迁移，纯函数、不依赖 DOM） ---------- */
 const LONG_LINE = 110;
@@ -283,50 +282,6 @@ function RichBlocks({ blocks }) {
   return out;
 }
 
-/** 复制链接（多条时弹选择菜单）。导出给卡片详情弹窗复用。 */
-export function CopyButton({ e }) {
-  const [copied, setCopied] = useState(false);
-  const urls = Array.isArray(e.links) ? e.links.filter(Boolean) : [];
-  const list = urls.length ? urls : (e.link ? [e.link] : []);
-  const doIt = async (url) => {
-    const ok = await S().copyText(url);
-    if (!ok) { S().toast('复制失败，请手动选择链接', false); return; }
-    setCopied(true);
-    S().toast('已复制：' + (S().linkLabel ? S().linkLabel(url) : url));
-    setTimeout(() => setCopied(false), 1600);
-  };
-  if (!list.length) return null;
-  const many = list.length > 1;
-  const onClick = (ev) => {
-    if (!many) { doIt(list[0]); return; }
-    if (S().openLinkMenu) S().openLinkMenu(ev.currentTarget, list, doIt);
-    else doIt(list[0]);
-  };
-  return (
-    <button type="button" className={'btn-copy' + (copied ? ' copied' : '')} onClick={onClick}
-      title={many ? `复制链接（${list.length} 条，可选择）` : '复制链接'} aria-label="复制链接">
-      {copied ? <><Icon n="check" /><span className="btn-label">已复制</span></> : <Icon n="copy" />}
-    </button>
-  );
-}
-
-export function OpenButton({ e }) {
-  const url = e.sourceUrl || e.link || null;
-  // 无原文地址时干脆不渲染：置灰的「打开」看起来像上了锁，反而引人误会（v2.2.4）
-  if (!url) return null;
-  return (
-    <a className="btn-open" href={url} target="_blank" rel="noopener noreferrer"
-      title="打开原文章" aria-label="打开原文章"><Icon n="external" /></a>
-  );
-}
-
-/** 正文底部那一排动作（复制 / 打开原文，弹窗再加收藏 / 在文章页查看）。
- *  ArtBody 内部用它；卡片详情在「没有正文」的分支也直接渲染这一排，
- *  保证两处都是同一组按钮、同一套间距。 */
-export function ArtActions({ e, extraActions }) {
-  return <div className="art-actions"><CopyButton e={e} /><OpenButton e={e} />{extraActions}</div>;
-}
-
 /** 正文（对应旧 artBodyHtml）：图文按原顺序内联；老数据回退为图集 + 段落。
  *  导出给卡片详情弹窗（src/views/CardDetail.jsx）复用，两处正文渲染保持一套。
  *  extraActions：弹窗会把「收藏 / 在文章页查看」也塞进这条动作行，保证一个弹窗只有一排按钮。 */
@@ -529,8 +484,10 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
  * 拖拽期间只写 :root 上的 --reader-side-w（一次拖拽几十帧，走 state 会把整棵阅读页重渲染），
  * 松手才落一次账号偏好；双击复位默认宽度；方向键微调（键盘也要能调，不能只有鼠标）。 */
 function ReaderSideResize() {
-  const ref = useRef(null);
   const dragRef = useRef(null);
+  // 当前宽度只用于 aria-valuenow：拖动时直接写 CSS 变量（不走 React），
+  // 所以这里同步维护一份，键盘调整后读屏能立刻读到新值。
+  const [width, setWidth] = useState(() => S().getReaderSideWidth());
 
   const onPointerDown = (ev) => {
     // 移动端抽屉宽度由 CSS 的 min(272px,84vw) 决定，拖了也没意义
@@ -547,6 +504,7 @@ function ReaderSideResize() {
       const w = Math.min(s.readerSideCap(), Math.max(s.READER_SIDE_MIN, startW + (e.clientX - startX)));
       dragRef.current = w;
       s.applyReaderSideWidth(w);
+      setWidth(w);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -563,6 +521,7 @@ function ReaderSideResize() {
   const onDoubleClick = () => {
     const s = S();
     s.setReaderSideWidth(s.READER_SIDE_DEFAULT);
+    setWidth(s.READER_SIDE_DEFAULT);
     s.toast('频道栏宽度已恢复默认');
   };
 
@@ -572,15 +531,23 @@ function ReaderSideResize() {
     const cur = s.getReaderSideWidth();
     if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
       ev.preventDefault();
-      s.setReaderSideWidth(cur + (ev.key === 'ArrowRight' ? step : -step));
+      const next = Math.min(s.readerSideCap(),
+        Math.max(s.READER_SIDE_MIN, cur + (ev.key === 'ArrowRight' ? step : -step)));
+      s.setReaderSideWidth(next);
+      setWidth(next);
     } else if (ev.key === 'Home') {
       ev.preventDefault();
       s.setReaderSideWidth(s.READER_SIDE_DEFAULT);
+      setWidth(s.READER_SIDE_DEFAULT);
     }
   };
 
   return (
-    <div ref={ref} className="reader-resize" id="readerResize" role="separator" aria-orientation="vertical"
+    /* role="separator" + tabIndex 让它成了可聚焦控件，那就必须有名字和当前值：
+       否则读屏只会念「分隔条」，用户不知道左右键在改什么。 */
+    <div className="reader-resize" id="readerResize" role="separator" aria-orientation="vertical"
+      aria-label="调整频道栏宽度" aria-valuenow={Math.round(width)}
+      aria-valuemin={S().READER_SIDE_MIN} aria-valuemax={S().readerSideCap()}
       tabIndex={0} title="拖动调整频道栏宽度，双击恢复默认"
       onPointerDown={onPointerDown} onDoubleClick={onDoubleClick} onKeyDown={onKeyDown} />
   );
@@ -725,8 +692,8 @@ export function ReaderView() {
     const v = ev.target.value;
     const box = searchRef.current;
     if (box) box.dataset.hasval = v ? '1' : '';
+    // setQDraft 本身就会触发重绘（清除按钮的显隐读它），不必再 bump 一次
     setQDraft(v);
-    bump((x) => x + 1);
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { if (s.readerSearch) s.readerSearch(v.trim()); }, 280);
   };

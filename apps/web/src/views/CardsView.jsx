@@ -29,59 +29,13 @@ import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthSrcSet, widthVariant } from '../imgSrc.js';
+import { Icon } from '../ui/Icon.jsx';
+// 复制 / 打开按钮与文章页共用一份实现（两页曾各写一套，空链接行为还相反）
+import { CopyButton, OpenButton, copyableLinks } from '../ui/EntryActions.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 const SKELETON_N = 8;
 
-const Icon = ({ n }) => (
-  <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
-);
-
-const copyableLinks = (e) => {
-  const list = Array.isArray(e.links) ? e.links.filter(Boolean) : [];
-  if (list.length) return list;
-  return e.link ? [e.link] : [];
-};
-
-/** 复制按钮：单条直接复制，多条弹选择菜单（复用 app.js 的 openLinkMenu） */
-function CopyButton({ e }) {
-  const [copied, setCopied] = useState(false);
-  const urls = copyableLinks(e);
-  const doIt = async (url) => {
-    const ok = await S().copyText(url);
-    if (!ok) { S().toast('复制失败，请手动选择链接', false); return; }
-    setCopied(true);
-    S().toast('已复制：' + (S().linkLabel ? S().linkLabel(url) : url));
-    setTimeout(() => setCopied(false), 1600);
-  };
-  if (!urls.length) {
-    return <button className="btn-copy" disabled title="无链接" aria-label="无链接"><Icon n="copy" /></button>;
-  }
-  const many = urls.length > 1;
-  const onClick = (ev) => {
-    if (!many) { doIt(urls[0]); return; }
-    if (S().openLinkMenu) S().openLinkMenu(ev.currentTarget, urls, doIt);
-    else doIt(urls[0]);
-  };
-  return (
-    <button type="button" className={'btn-copy' + (copied ? ' copied' : '')} onClick={onClick}
-      title={many ? `复制链接（${urls.length} 条，可选择）` : '复制链接'} aria-label="复制链接">
-      {/* 成功态的「已复制」用 .btn-label 包裹：图标方块按钮里这行字会被
-          CSS 隐藏（.btn-copy .btn-label{display:none}），文字由 toast 播报 */}
-      {copied ? <><Icon n="check" /><span className="btn-label">已复制</span></> : <Icon n="copy" />}
-    </button>
-  );
-}
-
-function OpenButton({ e }) {
-  const url = e.sourceUrl || e.link || null;
-  // 无原文地址时干脆不渲染：置灰的「打开」看起来像上了锁，反而引人误会（v2.2.4）
-  if (!url) return null;
-  return (
-    <a className="btn-open" href={url} target="_blank" rel="noopener noreferrer"
-      title="打开原文章" aria-label="打开原文章"><Icon n="external" /></a>
-  );
-}
 
 /** 懒加载图片：首次失败带 ?r=1 重试一次，再失败走兜底 */
 /**
@@ -143,6 +97,9 @@ const Card = memo(function Card({ e, onOpen, priority }) {
 
   const copyBtn = <CopyButton e={e} />;
   const openBtn = <OpenButton e={e} />;
+  /* 没有可复制的链接也没有原文地址时，整条动作栏都不渲染 ——
+     否则会留一条空白操作条（统一「没有链接就不渲染」之后的副作用）。 */
+  const hasActions = copyableLinks(e).length > 0 || !!(e.sourceUrl || e.link);
 
   const media = showMedia ? (
     <div className="card-media">
@@ -154,7 +111,7 @@ const Card = memo(function Card({ e, onOpen, priority }) {
       {srcName ? <span className="badge-source" title={e.feedName}>{srcName}</span> : null}
       {e.size ? <span className="badge-size">{e.size}</span> : null}
       {e.date ? <span className="badge-idx">{fmtDate(e.date)}</span> : null}
-      <div className="card-media-actions">{copyBtn}{openBtn}</div>
+      {hasActions ? <div className="card-media-actions">{copyBtn}{openBtn}</div> : null}
     </div>
   ) : null;
 
@@ -168,18 +125,22 @@ const Card = memo(function Card({ e, onOpen, priority }) {
   );
 
   return (
+    /* 外层不再是 role="button"：卡片里已经有真正的 <button>（标题）与 <a>（打开原文），
+       ARIA 不允许交互控件嵌套 —— 读屏只会暴露外层，里面的按钮读不出来，Tab 顺序也和
+       视觉顺序错位。现在标题按钮是唯一的「打开」入口（键盘可达、有名字），
+       点空白处仍是鼠标增强，但不再谎称自己是个按钮。 */
     <article className={'card' + (showMedia ? ' card-has-media' : '') + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
-      role="button" tabIndex={0} aria-label={(unread ? '未读，' : '') + (e.name || '卡片') + '，按 Enter 打开详情'}
-      onClick={(ev) => openFromClick(ev, e, onOpen)}
-      onKeyDown={(ev) => cardKeyOpen(ev, e, onOpen)}>
+      onClick={(ev) => openFromClick(ev, e, onOpen)}>
       {media}
       <div className="card-body">
         {metaRow}
         <h3 className="card-title" title={e.name}>
-          <button type="button" className="title-btn" onClick={() => onOpen(e)}>{e.name}</button>
+          <button type="button" className="title-btn"
+            aria-label={(unread ? '未读，' : '') + (e.name || '卡片')}
+            onClick={() => onOpen(e)}>{e.name}</button>
         </h3>
         {e.desc ? <p className="card-desc">{e.desc}</p> : null}
-        {showMedia ? null : <div className="card-foot">{copyBtn}{openBtn}</div>}
+        {showMedia || !hasActions ? null : <div className="card-foot">{copyBtn}{openBtn}</div>}
       </div>
     </article>
   );
@@ -192,10 +153,9 @@ const Row = memo(function Row({ e, onOpen }) {
   const metaHas = !!srcName;
   const unread = !e.isRead;
   return (
+    /* 与卡片同理：外层只做鼠标增强，不声明 role="button"（里面已有标题按钮与打开链接） */
     <article className={'row-item' + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
-      role="button" tabIndex={0} aria-label={(unread ? '未读，' : '') + (e.name || '卡片') + '，按 Enter 打开详情'}
-      onClick={(ev) => openFromClick(ev, e, onOpen)}
-      onKeyDown={(ev) => cardKeyOpen(ev, e, onOpen)}>
+      onClick={(ev) => openFromClick(ev, e, onOpen)}>
       <div className="row-thumb">
         <span className={'card-dot row-dot' + (unread ? '' : ' is-read')} aria-hidden="true" />
         {e.image
@@ -205,7 +165,9 @@ const Row = memo(function Row({ e, onOpen }) {
       <div className="row-main">
         <div className="row-head">
           <h3 className="row-title" title={e.name}>
-            <button type="button" className="title-btn" onClick={() => onOpen(e)}>{e.name}</button>
+            <button type="button" className="title-btn"
+              aria-label={(unread ? '未读，' : '') + (e.name || '卡片')}
+              onClick={() => onOpen(e)}>{e.name}</button>
           </h3>
           <span className="row-facts">
             {e.size ? <span className="meta-size">{e.size}</span> : null}
@@ -230,14 +192,6 @@ const Row = memo(function Row({ e, onOpen }) {
 /** 点卡片空白处打开详情；卡内的按钮 / 链接 / 标签有自己的动作，不劫持它们 */
 function openFromClick(ev, e, onOpen) {
   if (ev.target && ev.target.closest && ev.target.closest('button, a, [data-tag]')) return;
-  onOpen(e);
-}
-
-/** 键盘打开卡片：焦点在卡片本身（而非卡内按钮 / 链接）时，Enter / Space 打开详情 */
-function cardKeyOpen(ev, e, onOpen) {
-  if (ev.key !== 'Enter' && ev.key !== ' ') return;
-  if (ev.target !== ev.currentTarget) return; // 焦点在内层按钮时不重复触发
-  ev.preventDefault();
   onOpen(e);
 }
 
@@ -309,8 +263,14 @@ export function CardsView() {
     if (el) { el.focus(); if (typeof el.select === 'function') el.select(); }
   }, [searchOpen]);
 
-  // 外部（命令面板 / 深链）改了搜索词时同步草稿，并把搜索框展开
-  useEffect(() => { setQDraft(st.q || ''); if (st.q) setSearchOpen(true); }, [st.q]);
+  /* 外部（命令面板 / 深链）改了搜索词时同步草稿，并把搜索框展开。
+     输入框还有焦点时不回写：服务端存的是 trim 后的词，回写会吃掉用户正在打的
+     尾部空格（「OpenAI 」打到一半就被改成「OpenAI」）。与文章页同一套守卫。 */
+  useEffect(() => {
+    if (st.q) setSearchOpen(true);
+    if (searchRef.current && searchRef.current === document.activeElement) return;
+    setQDraft(st.q || '');
+  }, [st.q]);
 
   // 滚动到底部自动加载（v1.6.0-test5 统一版，与文章页同一套判据）：
   // App Shell 后卡片列表在 main.wrap 里滚动，window 的 scroll 事件收不到 ——

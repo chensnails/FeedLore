@@ -66,7 +66,7 @@
     </div>
 
     <button type="submit" id="submitBtn">登 录</button>
-    <div class="error" id="error"></div>
+    <div class="error" id="error" role="alert" aria-live="assertive"></div>
 
     <p class="tip">首次部署的初始密码见容器启动日志（也可用 <code>ADMIN_PASS</code> 指定），登录后请及时修改</p>
   </form>
@@ -159,9 +159,16 @@
     let entering = false;
 
     try {
+      /* 15s 硬超时：弱网 / 反代挂起时，没有这个上限按钮会永久停在「登录中…」，
+         用户既进不去也点不动，只能刷新。AbortSignal.timeout 不支持的旧内核由
+         catch 兜住（当作网络异常处理，同样会恢复按钮）。 */
+      const signal = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout)
+        ? AbortSignal.timeout(15000)
+        : undefined;
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal,
         body: JSON.stringify({
           username: document.getElementById('username').value,
           password: document.getElementById('password').value,
@@ -177,8 +184,10 @@
         return;
       }
       showError(window.errText(data, '登录失败'));
-    } catch (_) {
-      showError('网络异常，请重试');
+    } catch (e) {
+      showError((e && e.name === 'TimeoutError')
+        ? '登录超时（15 秒无响应），请检查网络后重试'
+        : '网络异常，请重试');
     } finally {
       if (!entering) {
         btn.disabled = false;

@@ -23,13 +23,12 @@ import { core } from '@core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isMobileMq } from './Dropdown.jsx';
 import { useSwipeDismiss } from './useSwipeDismiss.js';
-import { ArtActions, ArtBody, bodyShowsText } from './ReaderView.jsx';
+import { ArtBody, bodyShowsText } from './ReaderView.jsx';
+import { ArtActions } from '../ui/EntryActions.jsx';
+import { Icon } from '../ui/Icon.jsx';
+import { hasLayerAbove } from '../ui/layers.js';
 
 const S = () => core;
-
-const Icon = ({ n }) => (
-  <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
-);
 
 /** 把 Tab / Shift+Tab 圈在弹窗内：背景卡片仍在 DOM 里，不拦的话键盘会跑到弹层后面 */
 function trapTab(panel, ev) {
@@ -77,7 +76,14 @@ export function CardDetail({ e, onClose, onTag }) {
     if (c.cardsDetailRead) c.cardsDetailRead(e.id);
     if (c.lockPageScroll) c.lockPageScroll();
     const onKey = (ev) => {
-      if (ev.key === 'Escape') { onCloseRef.current(); return; }
+      if (ev.key === 'Escape') {
+        /* 分层：详情上面还压着设置弹层 / 确认框 / 命令面板 / 灯箱时，这一击归它们。
+           之前无条件 onClose()，设置弹层被 Esc 关掉的同时详情也一起关了。
+           传自己的面板节点，避免把自己渲染的 .modal-mask / .dd-mask 当成上层。 */
+        if (hasLayerAbove(mobile ? sheetRef.current : dialogRef.current)) return;
+        onCloseRef.current();
+        return;
+      }
       if (ev.key === 'Tab') trapTab(mobile ? sheetRef.current : dialogRef.current, ev);
     };
     document.addEventListener('keydown', onKey);

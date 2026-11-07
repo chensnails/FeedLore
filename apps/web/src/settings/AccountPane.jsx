@@ -572,7 +572,7 @@ export function AccountPane({ onDirtyChange }) {
         {admin && (
           <Section secKey="acc-users" id="accUsersSec" title="用户管理" sub={usersSub}>
               <div className="user-list" id="userList">
-                {!usersLoaded ? null
+                {!usersLoaded ? <div className="hint">正在读取用户…</div>
                   : usersError ? <div className="hint pane-msg">{usersError}</div>
                     : !users.length ? <div className="hint">还没有用户</div>
                       : users.map((u) => (
@@ -596,19 +596,22 @@ export function AccountPane({ onDirtyChange }) {
                               <option value="admin">管理员</option>
                             </select>
                           )}
-                          <button className="u-btn" data-act="pass" data-id={u.id}
+                          <button type="button" className="u-btn" data-act="pass" data-id={u.id}
                             onClick={() => userAction('pass', u)}>改密码</button>
                           {!u.isSelf && (
-                            <button className="u-btn danger" data-act="del" data-id={u.id}
+                            <button type="button" className="u-btn danger" data-act="del" data-id={u.id}
                               onClick={() => userAction('del', u)}>删除</button>
                           )}
                         </div>
                       ))}
               </div>
               <div className="user-add">
+                {/* 只有 placeholder 不够：读屏读不出字段用途，视觉上也一消失就没线索 */}
                 <input id="newUserName" type="text" placeholder="用户名" spellCheck="false"
+                  aria-label="新用户的用户名"
                   autoComplete="off" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
                 <input id="newUserPass" type="password" placeholder="密码（至少 4 位）"
+                  aria-label="新用户的密码"
                   autoComplete="new-password" value={newUserPass} onChange={(e) => setNewUserPass(e.target.value)} />
                 <select id="newUserRole" className="select" title="角色" value={newUserRole}
                   onChange={(e) => setNewUserRole(e.target.value)}>
@@ -617,7 +620,8 @@ export function AccountPane({ onDirtyChange }) {
                   <option value="admin">管理员</option>
                 </select>
                 <button className="btn btn-primary" id="addUserBtn" type="button"
-                  disabled={addingUser} onClick={addUser}>添加</button>
+                  disabled={addingUser} aria-busy={addingUser ? 'true' : undefined}
+                  onClick={addUser}>{addingUser ? '添加中…' : '添加'}</button>
               </div>
               <small className="form-tip">
                 每个用户拥有<b>自己独立</b>的订阅源、已读/收藏、日报与模型配置。普通用户可配置自己的订阅源、模型与日报，但看不到「状态 / 采集参数 / 用户管理」等站点级设置；管理员额外可管理用户与全局设置。只读用户只能阅读，不能修改订阅源、规则、模型、日报等配置，也不能自行修改用户名和密码，适合把账号借给别人阅读。
@@ -684,10 +688,11 @@ export function AccountPane({ onDirtyChange }) {
       </div>
 
       <PaneFoot dirty={dirty} lead={
-        <button className="btn btn-danger btn-sm" id="logoutBtn" onClick={logout}>退出登录</button>
+        <button type="button" className="btn btn-danger btn-sm" id="logoutBtn" onClick={logout}>退出登录</button>
       }>
         {!readonly && (
-          <button className="btn btn-primary" id="saveAccBtn" disabled={saving || !dirty} onClick={saveAccount}>
+          <button type="button" className="btn btn-primary" id="saveAccBtn" aria-busy={saving ? 'true' : undefined}
+            disabled={saving || !dirty} onClick={saveAccount}>
             {saving ? '保存中…' : '保存账号'}
           </button>
         )}

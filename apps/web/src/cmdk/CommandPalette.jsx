@@ -7,6 +7,8 @@ import { core } from '@core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { buildCommands, cmdkFilter } from './commands.js';
 import { provide, revoke, isOn } from '../kernel/bridge.js';
+import { hasLayerAbove } from '../ui/layers.js';
+import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 
 const BRIDGE = () => core;   // 核心逻辑单例（@core）
 
@@ -17,13 +19,22 @@ export function CommandPalette() {
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const panelRef = useRef(null);
+  // 命令面板是全局搜索框，不是登录框：名字要唯一且被密码管理器忽略（DESIGN 第 10 条）。
+  // 之前漏了这层防护，Chrome/Edge Android 会把保存的用户名填进来当成搜索词。
+  const noAutofillName = useNoAutofillName('cmdk');
 
-  // ⌘K (mac) / Ctrl+K (win) 开关面板（与原实现一致）
+  // ⌘K (mac) / Ctrl+K (win) 开关面板（与原实现一致）。
+  // 打开前先看有没有更上层的弹层：命令面板 z-index(500) 高于设置弹层(200)，
+  // 之前能在确认框 / 设置之上再叠一层模态，两层 Tab 陷阱互相抢焦点、Esc 关错层。
+  // 已经开着时永远允许关（这是「我就要退出」的意图）。
   useEffect(() => {
     const onKey = (ev) => {
       if ((ev.metaKey || ev.ctrlKey) && (ev.key === 'k' || ev.key === 'K')) {
         ev.preventDefault();
-        setOpen((o) => !o);
+        setOpen((o) => {
+          if (o) return false;
+          return hasLayerAbove('cmdk') ? false : true;
+        });
       }
     };
     document.addEventListener('keydown', onKey);
@@ -36,9 +47,12 @@ export function CommandPalette() {
     return () => { revoke('cmdkOpen'); };
   }, [open]);
 
-  // 打开时清空输入并聚焦；关闭时还给焦点
+  // 打开时清空输入并聚焦；关闭时把焦点还给打开它的那个按钮（与设置弹层 / 灯箱一致）。
+  // 不还的话焦点掉到 body，键盘用户得从头 Tab 回原来那块地方。
+  const openerRef = useRef(null);
   useEffect(() => {
     if (open) {
+      openerRef.current = document.activeElement;
       setQ('');
       setActive(0);
       const raf = requestAnimationFrame(() => {
@@ -46,6 +60,10 @@ export function CommandPalette() {
       });
       return () => cancelAnimationFrame(raf);
     }
+    const op = openerRef.current;
+    openerRef.current = null;
+    // 触发元素可能已随视图切换被卸载；只在还挂在文档里时归还
+    if (op && op !== document.body && document.contains(op) && typeof op.focus === 'function') op.focus();
   }, [open]);
 
   // 高亮项滚入可视区（与原 cmdkSetActive 的 scrollIntoView 一致）
@@ -149,9 +167,11 @@ export function CommandPalette() {
             ref={inputRef}
             className="cmdk-input"
             type="text"
+            name={noAutofillName}
             placeholder="输入命令或搜索…"
             autoComplete="off"
             spellCheck="false"
+            {...NO_AUTOFILL_PROPS}
             role="combobox"
             aria-label="搜索命令"
             aria-autocomplete="list"

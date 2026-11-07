@@ -17,12 +17,9 @@ import { core } from '@core';
 import { memo, useDeferredValue, useState } from 'react';
 import { ChannelAvatar } from './ChannelAvatar.jsx';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
+import { Icon } from '../ui/Icon.jsx';
 
 const S = () => core;
-
-const Icon = ({ n }) => (
-  <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
-);
 
 export const ChannelList = memo(function ChannelList({
   variant = 'reader',

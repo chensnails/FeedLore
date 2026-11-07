@@ -19,14 +19,18 @@ function readShell() {
 }
 
 export function ViewNav() {
-  const [view, setView] = useState(() => (core.state && core.state.tab) || 'reader');
+  /* 快照必须进 state：之前只存了 view，`digestVisible` 变了不会触发重绘 ——
+     在设置里关掉日报后，导航仍留着「日报」入口，点它被 switchView 的守卫改回
+     文章页，表现成「按钮点了没反应」。readShell() 每次都返回新对象，setSnap
+     因此必然触发一次渲染（与 OverflowMenu 的写法一致）。 */
+  const [snap, setSnap] = useState(readShell);
 
   useEffect(() => {
-    const onTick = () => setView((core.state && core.state.tab) || 'reader');
+    const onTick = () => setSnap(readShell());
     return onAny([EVENT.VIEW, EVENT.SHELL], onTick);
   }, []);
 
-  const snap = readShell();
+  const view = (core.state && core.state.tab) || 'reader';
   const views = snap.digestVisible === false ? VIEWS.filter((v) => v.id !== 'ai') : VIEWS;
 
   return (

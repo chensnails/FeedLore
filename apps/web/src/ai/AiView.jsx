@@ -17,34 +17,15 @@ import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthVariant } from '../imgSrc.js';
+import { Icon } from '../ui/Icon.jsx';
+import { CopyIconButton } from '../ui/EntryActions.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
-
-const Icon = ({ n }) => (
-  <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
-);
 
 function shanghaiToday() {
   return new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
-}
-
-/** 复制链接：统一为图标按钮（i-link → 复制成功后 i-check） */
-function CopyLink({ url }) {
-  const [copied, setCopied] = useState(false);
-  const onCopy = async () => {
-    const ok = await S().copyText(url);
-    if (!ok) { S().toast('复制失败，请手动选择链接', false); return; }
-    setCopied(true);
-    S().toast('已复制：' + (S().linkLabel ? S().linkLabel(url) : url));
-    setTimeout(() => setCopied(false), 1600);
-  };
-  return (
-    <button type="button" className={'icon-btn' + (copied ? ' ok' : '')} title="复制链接" onClick={onCopy}>
-      <Icon n={copied ? 'check' : 'link'} />
-    </button>
-  );
 }
 
 /** 日报里的一条条目 */
@@ -66,7 +47,7 @@ function DgItem({ it }) {
         </div>
         <div className="dg-item-name">{e.name || '(无标题)'}</div>
         <div className="dg-item-foot">
-          {e.link ? <CopyLink url={e.link} /> : null}
+          {e.link ? <CopyIconButton url={e.link} /> : null}
           {e.link ? <a className="icon-btn" title="打开" href={e.link} target="_blank" rel="noopener noreferrer"><Icon n="external" /></a> : null}
           {e.size ? <span className="dg-item-size">{e.size}</span> : null}
         </div>
@@ -151,6 +132,9 @@ export function AiView() {
   const [selected, setSelected] = useState(shanghaiToday);
   const [view, setView] = useState({ kind: 'loading' });
   const [generating, setGenerating] = useState(false);
+  /* 请求代际：日期切换是「点第二个日期时第一个可能还在飞」，慢响应回来会盖掉新内容，
+     日期选择器与正文对不上。回包时对不上代际就整包丢弃（与两页列表同一套做法）。 */
+  const reqGen = useRef(0);
   const [feedsInfo, setFeedsInfo] = useState({ total: 0, enabled: 0 });
   // 摘要范围读本账号的 prefs.digest（v1.4.0 起不再有站点级那一份）
   const [scope, setScope] = useState({ mode: 'enabled', feeds: [] });
@@ -208,19 +192,23 @@ export function AiView() {
   }
 
   async function showDigest(date) {
+    const gen = ++reqGen.current;
     setSelected(date);
     setView({ kind: 'loading' });
     try {
       const res = await s.apiFetch('/api/digest?date=' + encodeURIComponent(date));
       const data = await res.json();
+      if (gen !== reqGen.current) return;          // 已有更新的请求，丢弃这一包
       if (data && data.digest) setView({ kind: 'ready', digest: data.digest });
       else setView({ kind: 'empty', date });
     } catch (err) {
+      if (gen !== reqGen.current) return;          // 旧请求的失败不该盖掉新日期的加载态
       setView({ kind: 'error', msg: String((err && err.message) || err) });
     }
   }
 
   async function generate(force) {
+    const gen = ++reqGen.current;                 // 生成期间切日期：以最后一次操作为准
     setGenerating(true);
     setView({ kind: 'genLoading' });
     try {
@@ -231,13 +219,14 @@ export function AiView() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(s.errText(data, '生成失败'));
+      if (gen !== reqGen.current) return;          // 期间已经切到别的日期 / 又发起一次生成
       const d = data.digest;
       setDates((prev) => (prev.includes(d.date) ? prev : [d.date, ...prev]));
       setSelected(d.date);
       setView({ kind: 'ready', digest: d });
       s.toast(data.cached ? '已读取当日缓存摘要' : `摘要生成完成（${d.stats.kept} 条 / ${d.stats.feeds} 频道）`);
     } catch (err) {
-      setView({ kind: 'genError', msg: String((err && err.message) || err) });
+      if (gen === reqGen.current) setView({ kind: 'genError', msg: String((err && err.message) || err) });
     } finally {
       setGenerating(false);
     }
@@ -281,7 +270,7 @@ export function AiView() {
       {/* 二级导航随「日报设置」一起撤了：只剩一项的导航不传达信息。
           合并头部：标题 + 右侧 ⋮（视图切换 / 刷新 / 主题 / 设置）。AI 页无频道抽屉与搜索。 */}
       <div className="ai-head page-head view-toolbar" ref={headRef}>
-        <div className="ai-head-text"><h2 className="page-title vt-title">AI</h2></div>
+        <div className="ai-head-text"><h2 className="page-title vt-title">日报</h2></div>
         <div className="head-right vt-tools">
           <ViewNav />
           <OverflowMenu view="ai" />
@@ -298,9 +287,11 @@ export function AiView() {
             {writable ? (
               <>
                 <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"
-                  disabled={generating} onClick={() => generate(true)}>重新生成</button>
+                  disabled={generating} aria-busy={generating ? 'true' : undefined}
+                  onClick={() => generate(true)}>{generating ? '生成中…' : '重新生成'}</button>
                 <button className="btn btn-primary" id="genDigestBtn" type="button"
-                  disabled={generating} onClick={() => generate(false)}>生成摘要</button>
+                  disabled={generating} aria-busy={generating ? 'true' : undefined}
+                  onClick={() => generate(false)}>{generating ? '生成中…' : '生成摘要'}</button>
               </>
             ) : null}
           </div>

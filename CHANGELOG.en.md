@@ -102,6 +102,52 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Fixed
 
+- **Digest: switching dates no longer gets overwritten by a slow reply**: tapping two dates in a
+  row let the first (slower) response land on top of the second one, so the picker and the body
+  disagreed and it looked like the wrong date had been chosen. Late replies are now dropped by
+  generation. The page title also reads 日报 instead of AI — the nav, the settings tab and the
+  command palette all call it 日报.
+- **Turning the digest off no longer leaves a dead nav entry**: the view nav only re-rendered when
+  the current view changed, so the 日报 button stayed behind and did nothing when tapped.
+- **The command palette no longer stacks above modals**: its layer (500) sat above the settings
+  sheet (200), so ⌘K over a confirm or the settings sheet opened a second modal — two Tab traps
+  fighting and Esc closing the wrong one. It now ignores the shortcut while a higher layer is
+  open, and its input finally has the autofill guard (Chrome / Edge on Android used to drop the
+  saved username in as a search term).
+- **Login can no longer hang on "登录中…"**: the request has a hard 15s timeout, timeout and
+  network failure get different copy, the button always recovers, and the error box announces
+  itself with `role="alert"`.
+- **Closing a modal returns focus**: the confirm dialog and the command palette used to drop focus
+  on `body`; both now remember the opener and give focus back (skipped if it is gone).
+- **One focus ring**: sidebar channels, dropdown items and icon buttons used a 3px translucent
+  `box-shadow` with `outline: none`, next to the global 2px solid outline. They now inherit the
+  global ring; whole-card focus keeps its card-wide outline.
+- **Busy states everywhere**: digest generate / regenerate, the status refresh, the ⋮ refresh and
+  the "add user" button all disable themselves, report `aria-busy` and change their label, so
+  double taps no longer fire duplicate requests.
+- **Failed preference saves are no longer silent**: sort / collapse / sidebar width used to fail
+  without a word ("the settings reset themselves" on the next reload). They now go through the
+  shared request layer and report once.
+- **Cards no longer pretend to be buttons**: the card was `role="button"` while containing a real
+  title button and an "open original" link — ARIA does not allow nested interactive controls, so
+  screen readers only exposed the outer element. The title button is now the single keyboard
+  entry (it also announces unread), and clicking the blank area stays a mouse shortcut. With no
+  link at all the copy button and the whole action row are not rendered (the cards page used to
+  paint a disabled copy icon while the article page rendered nothing).
+- **Esc in card detail no longer closes two layers**: while the settings sheet, a confirm, the
+  palette or the lightbox sits on top, the keystroke belongs to them.
+- **The ⋮ theme item is no longer called "夜间模式"**: it cycles four modes (system → light →
+  dark → GitHub), so in dark mode it jumped to GitHub dark. It now reads "切换主题（当前档位）".
+- **Card search no longer eats trailing spaces**: the field is not overwritten while it still has
+  focus (same guard as the article page).
+- **No double clear buttons on Safari**: the cards search and channel search now hide the native
+  search cancel button.
+- **User management shows "正在读取用户…"** instead of a blank list, the new-user fields got
+  readable labels, the status pane's three duplicated footers collapsed into one, and the
+  sidebar width handle reports `aria-label` plus `aria-valuenow/min/max`.
+- **Internal cleanup**: `Icon` went from five copies to `ui/Icon.jsx`, copy / open buttons from
+  three implementations to `ui/EntryActions.jsx`, eleven `<button>`s got `type="button"`, and
+  `DESIGN.md` no longer hardcodes test counts.
 - **Channel search no longer blanks the page**: typing the first character into the sidebar's
   channel search crashed — the title helper used for filtering was declared after the code that
   called it, hitting the temporal dead zone (`ReferenceError: Cannot access 'titleOf' before

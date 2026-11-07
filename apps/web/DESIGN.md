@@ -186,13 +186,15 @@
 ```bash
 corepack pnpm -r run typecheck                     # 类型
 corepack pnpm --filter @feedlore/web run build     # 构建
-node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算（49 项）
-DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归（518 项）
+node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算
+DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归
 node .workbuddy/ui-lab/verify.mjs --only=all --shots --no-build
-  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 手势 / 自动填充 / 长文一次铺开（文章页 + 卡片页）/ 多视口截图（76 项）
-node .workbuddy/ui-lab/weaknet.mjs --scenario=all  # 弱网专项：悬挂 / 慢响应 / 503 / 连点（14 项）
+  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 手势 / 自动填充 / 长文一次铺开（文章页 + 卡片页）/ 频道搜索 / 多视口截图
+node .workbuddy/ui-lab/weaknet.mjs --scenario=all  # 弱网专项：悬挂 / 慢响应 / 503 / 连点
 node .workbuddy/ui-lab/geometry.mjs                # 展开文章后标题与吸顶头部的遮挡量
 ```
+
+条数以命令自己打印的为准，**不要写进文档** —— 每次加用例都会过期，读的人会以为回归漏了。
 
 两套浏览器脚本用不同 CDP 端口（9336/9337、9346/9347、9356/9357），**串行跑**更稳。
 `ui-lab/` 下的脚本与截图不入库，属本地验证工具。

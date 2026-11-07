@@ -132,15 +132,22 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
           {S().isWritable && S().isWritable() ? (
             <>
               <div className="overflow-sep" role="separator" />
-              <button type="button" role="menuitem" className="overflow-item" onClick={onRefresh} disabled={busy}>
+              {/* 忙碌三件套：禁用 + aria-busy + 文案（与设置面板的保存按钮同一套，
+                  否则读屏听不出「正在刷新」，用户还会连点重复发请求） */}
+              <button type="button" role="menuitem" className="overflow-item" onClick={onRefresh}
+                disabled={busy} aria-busy={busy ? 'true' : undefined}>
                 <svg className={'ico' + (busy ? ' spin' : '')} aria-hidden="true" focusable="false"><use href="#i-refresh" /></svg>
-                <span>刷新</span>
+                <span>{busy ? '刷新中…' : '刷新'}</span>
               </button>
             </>
           ) : null}
-          <button type="button" role="menuitem" className="overflow-item" onClick={() => { S().cycleTheme(); }}>
+          {/* 这一项是四档循环（跟随系统 → 浅色 → 深色 → GitHub），叫「夜间模式」会骗人：
+              在深色下再点会切到 GitHub 暗黑，再点回「跟随系统」，浅色系统下直接变亮。
+              文案改成「切换主题」并把当前档位写在括号里，点之前就知道会转到哪。 */}
+          <button type="button" role="menuitem" className="overflow-item" onClick={() => { S().cycleTheme(); }}
+            title={'当前：' + (snap.themeLabel || '跟随系统') + '（点击切到下一档）'}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + (snap.themeIco || 'theme-auto')} /></svg>
-            <span>夜间模式</span>
+            <span>{'切换主题（' + (snap.themeLabel || '跟随系统') + '）'}</span>
           </button>
           <button type="button" role="menuitem" className="overflow-item" onClick={() => { S().openSettings(); close(); }}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-settings" /></svg>

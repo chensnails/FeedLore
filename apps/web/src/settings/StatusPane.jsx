@@ -141,12 +141,15 @@ export function StatusPane() {
   const [data, setData] = useState(null);
   const [hint, setHint] = useState('');
   const [retrying, setRetrying] = useState({});
+  // 手动刷新的忙碌态（30 秒轮询不置忙，否则按钮每半分钟闪一次）
+  const [busy, setBusy] = useState(false);
   const [, tick] = useState(0);          // 每秒重绘，驱动「已运行」本地递增
   const baseRef = useRef(null);          // { sec, at } 用于推算当前 uptime
   const dataRef = useRef(null);          // 供复制诊断读取最新快照
   const aliveRef = useRef(true);
 
-  async function load() {
+  async function load(manual) {
+    if (manual) setBusy(true);
     try {
       const res = await s.apiFetch('/api/status');
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -161,6 +164,8 @@ export function StatusPane() {
       setHint('读取失败：' + String((err && err.message) || err));
       // 已有快照时保留旧内容（与旧实现一致：失败不清屏）
       if (!dataRef.current) setData({ __error: String((err && err.message) || err) });
+    } finally {
+      if (manual) setBusy(false);
     }
   }
 
@@ -227,16 +232,25 @@ export function StatusPane() {
   }
 
   /* ---------- 渲染 ---------- */
+  /* 三个分支（加载中 / 读取失败 / 正常）此前各渲染一份同样的页脚，id 重复、改一处漏两处。
+     现在只写一份：按钮带 type="button"，刷新走忙碌三件套（禁用 + aria-busy + 文案）。 */
+  const foot = (
+    <PaneFoot lead={<span className="hint" id="statusHint">{hint}</span>}>
+      <button type="button" className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
+      <button type="button" className="btn btn-primary" id="statusRefreshBtn"
+        onClick={() => load(true)} disabled={busy} aria-busy={busy ? 'true' : undefined}>
+        {busy ? '刷新中…' : '刷新'}
+      </button>
+    </PaneFoot>
+  );
+
   if (!data) {
     return (
       <div className="tab-pane" data-pane="status" ref={paneRef}>
         <div className="status-body" id="statusBody">
           <p className="stat-loading">正在读取运行状态…</p>
         </div>
-        <PaneFoot lead={<span className="hint" id="statusHint">{hint}</span>}>
-          <button className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
-          <button className="btn btn-primary" id="statusRefreshBtn" onClick={load}>刷新</button>
-        </PaneFoot>
+        {foot}
       </div>
     );
   }
@@ -247,10 +261,7 @@ export function StatusPane() {
         <div className="status-body" id="statusBody">
           <p className="stat-error">读取失败：{data.__error}</p>
         </div>
-        <PaneFoot lead={<span className="hint" id="statusHint">{hint}</span>}>
-          <button className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
-          <button className="btn btn-primary" id="statusRefreshBtn" onClick={load}>刷新</button>
-        </PaneFoot>
+        {foot}
       </div>
     );
   }
@@ -365,8 +376,9 @@ export function StatusPane() {
                   <span className="stat-problem-name" title={p.title}>{p.title}</span>
                   {p.enabled === false && <span className="stat-problem-off" title={`连续失败已达上限，已自动停止采集；重试成功会自动恢复`}>已自动停用</span>}
                   <span className="stat-problem-err" title={s.errText(p.error)}>{s.errText(p.error)}</span>
-                  <button className="btn btn-ghost btn-sm" data-retry={p.feedId}
-                    disabled={!!retrying[p.feedId]} onClick={() => retry(p.feedId)}>
+                  <button type="button" className="btn btn-ghost btn-sm" data-retry={p.feedId}
+                    disabled={!!retrying[p.feedId]} aria-busy={retrying[p.feedId] ? 'true' : undefined}
+                    onClick={() => retry(p.feedId)}>
                     {retrying[p.feedId] ? '抓取中…' : (p.enabled === false ? '重试并恢复' : '重试')}
                   </button>
                 </div>
@@ -390,10 +402,7 @@ export function StatusPane() {
         </StatSection>
       </div>
 
-      <PaneFoot lead={<span className="hint" id="statusHint">{hint}</span>}>
-        <button className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
-        <button className="btn btn-primary" id="statusRefreshBtn" onClick={load}>刷新</button>
-      </PaneFoot>
+      {foot}
     </div>
   );
 }

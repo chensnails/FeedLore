@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { toast, emitShell } from './util.js';
+import { toast, emitShell, apiFetch } from './util.js';
 import { emit, EVENT } from '../kernel/events.js';
 import { get } from '../kernel/bridge.js';
 
@@ -453,14 +453,23 @@ export function readAppearance() {
 
 // 布局仍按账号保存（跨设备一致），外观只落本机，两者不再共用一次写入
 export let prefsSaveTimer = null;
+/* 偏好没存上时必须让用户知道：排序 / 折叠 / 侧栏宽度看起来「改了」，下次刷新却变回去，
+ * 用户只会觉得设置自己漂移了。走统一的 apiFetch（写操作 30s 超时、绝不重试），
+ * 失败只提示一次，避免连续改几个开关时叠一串 toast。 */
+let prefsFailToast = false;
 export function saveUserPrefs() {
   clearTimeout(prefsSaveTimer);
   prefsSaveTimer = setTimeout(() => {
-    fetch('/api/prefs', {
+    apiFetch('/api/prefs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ layout: layoutPref }),
-    }).catch(() => { /* 离线 / 网络异常时静默，下次改动再试 */ });
+    }).then((res) => {
+      if (res && res.ok) { prefsFailToast = false; return; }
+      if (!prefsFailToast) { prefsFailToast = true; toast('界面设置没有同步到服务器，稍后会自动重试', false); }
+    }).catch(() => {
+      if (!prefsFailToast) { prefsFailToast = true; toast('界面设置没有同步到服务器，稍后会自动重试', false); }
+    });
   }, 150);
 }
 
