@@ -5002,7 +5002,7 @@ const withEFP = (el, fn) => {
     if (server !== client) throw new Error('服务端 ' + server + ' / 前端 ' + client);
     if (server.indexOf('digestEnabled') < 0) throw new Error('两边都缺 digestEnabled？');
   });
-  t('style.css：栏宽走 --reader-side-w，列表视图也跳过离屏渲染', () => {
+  t('style.css：栏宽走 --reader-side-w，列表行不复用 content-visibility', () => {
     const root = path.join(__dirname, '..', '..');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const m = css.match(/\.reader\s*>\s*#readerRoot\s*\{([^}]*)\}/);
@@ -5010,8 +5010,13 @@ const withEFP = (el, fn) => {
     if (m[1].indexOf('var(--reader-side-w)') < 0) throw new Error('#readerRoot 未引用栏宽变量：' + m[1].trim());
     if (/grid-template-columns:\s*232px/.test(css)) throw new Error('仍有写死的 232px 列宽');
     if (!/^\s*--reader-side-w:/m.test(css)) throw new Error(':root 缺 --reader-side-w 初值');
-    const row = css.match(/\.row-item\s*\{([^}]*)\}/);
-    if (!row || row[1].indexOf('content-visibility') < 0) throw new Error('.row-item 未做离屏跳过');
+    // content-visibility 曾用于「视口外跳过渲染」，实测在网格/列表里反而是负收益：
+    // 滚动期间每次「变相关」都要重算布局，卡片页掉帧 12.6% → 0.8% 全靠移除它。
+    // 断言前先剥掉注释：上面几条注释本身就写着 content-visibility（给后来人看的原因）
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const row = bare.match(/\.row-item\s*\{([^}]*)\}/);
+    if (!row) throw new Error('缺 .row-item 规则');
+    if (row[1].indexOf('content-visibility') >= 0) throw new Error('.row-item 不要用 content-visibility（滚动期重算布局，见 perf 实测）');
     const resize = css.match(/\.reader-resize\s*\{([^}]*)\}/);
     if (!resize) throw new Error('缺 .reader-resize 规则');
     if (resize[1].indexOf('col-resize') < 0) throw new Error('分隔条应有 col-resize 光标');
@@ -5052,8 +5057,10 @@ const withEFP = (el, fn) => {
     if (!/\.card-has-media \.card-desc \{[^}]*-webkit-line-clamp:\s*3/.test(css)) {
       throw new Error('带图卡的摘要应收在 3 行，剩余空间留给纯文字卡');
     }
-    if (!/contain-intrinsic-size:\s*auto var\(--card-h\)/.test(css)) {
-      throw new Error('离屏占位高度要跟卡高同一变量，避免滚动条抖动');
+    // 同理：卡片不要 content-visibility / contain-intrinsic-size。
+    // 网格项上的 CV 让每张卡「变相关」时重算轨道，实测 layout 716ms → 91ms 全靠移除。
+    if (/\.card \{[^}]*content-visibility/.test(css.replace(/\/\*[\s\S]*?\*\//g, ''))) {
+      throw new Error('.card 不要用 content-visibility（滚动期重算网格轨道，见 ui-lab/perf.mjs）');
     }
   });
   // 窄屏是 2–3 栏、卡宽只有 165–175px，沿用桌面 21.25rem 会把卡片拉成近 1:2 的长条。

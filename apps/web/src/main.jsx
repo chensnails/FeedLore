@@ -18,9 +18,12 @@ import './hig.css';
 import { mountAll } from './kernel/mounts.jsx';
 import { installAutofillGuard } from './ui/noAutofill.js';
 import { installTabbarAutoHide } from './ui/tabbarAutoHide.js';
+import { installScrollBusy } from './ui/scrollBusy.js';
 
 // 浏览器会把登录页保存的账密启发式填进同源 SPA 的搜索框；全局哨兵只清非登录字段。
 installAutofillGuard();
 mountAll();
 // 底部标签栏随滚动方向收展；纯 DOM 状态类，不参与 React 渲染。
 installTabbarAutoHide();
+// 滚动期间挂 `body.is-scrolling`，让列表项的悬停过渡让路（纯指针场景的重绘优化）。
+installScrollBusy();

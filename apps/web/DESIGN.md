@@ -70,8 +70,8 @@
     两层「收起」语义互相干扰。展开态 `.art-row` 吸附的 `top` 用 `--reader-head-h`
     （头部底边），**不要用 `--reader-sticky-offset`** —— 那个多留了 8px，正文会从缝里
     漏出一条，看起来像标题行浮在正文中间。同时必须放开 `.art-item.open` 的
-    `overflow: hidden` 与 `content-visibility: auto`：两者都生成 containment，
-    sticky 会被关在卡片里、只跟着卡片滚。吸顶条上的「收起这篇」（`.art-collapse`）
+    `overflow: hidden`（它生成 containment，sticky 会被关在卡片里、只跟着卡片滚）。
+    吸顶条上的「收起这篇」（`.art-collapse`）
     收起整条卡片并滚回本条标题；卡片详情不另造出口，用常驻的右上角 ×、Esc 与手势关闭，
     正文和动作行都和文章页共用同一个 `ArtBody`。
 13. **底部标签栏可以收起，但必须留三条回来的路**。`ui/tabbarAutoHide.js` 只负责给
@@ -82,6 +82,16 @@
     `visibility: hidden` 与 `pointer-events: none`（只写 `opacity: 0` 会留下看不见但点得中的
     盲区），并用 `translateY` 真的滑出视口。内容容器的 `padding-bottom` 保持原值：
     每帧改 padding 会触发重排，宁可让列表末尾多出约 54px 空白。
+
+14. **长列表的滚动开销要实测，不要凭直觉加「优化」**。`.card` / `.row-item` / `.art-item`
+    都**不许**加 `content-visibility: auto`：它们本身就是网格 / 列表项，每次「变为相关」
+    都要重算轨道或子树布局，滚动期布局时间反而暴涨（实测卡片页 layout 716ms → 91ms、
+    掉帧 12.6% → 0.8% 全靠移除；文章页 300 行省下 74ms）。同理，悬停过渡在**滚动期间**
+    一律关掉：`ui/scrollBusy.js` 给 `body` 挂 `is-scrolling`，CSS 里把三类列表项的
+    `transition` 置 none（指针停在列表上滚动时 `:hover` 会高频切换，每次切换都要逐帧
+    重绘带模糊的 `box-shadow`）。只关过渡、不改终值，滚完再移鼠标过渡照旧。
+    改这类东西一律先跑 `.workbuddy/ui-lab/perf.mjs` 拿真滚轮数据再动手。
+
 
 ## 2. 布局骨架
 

@@ -736,8 +736,8 @@ textarea:disabled {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
 }
-/* 卡片/列表行的入场规则在下方列表行主定义之后接入（守门正则取文件里第一个
-   该类规则块校验 content-visibility，这里若先出现会被它抓走）。 */
+/* 卡片/列表行的入场规则在下方列表行主定义之后接入（错峰延迟按 nth-child 序号，
+   必须排在主定义之后才不会被主定义的 padding/margin 覆盖）。 */
 .grid > :nth-child(2)  { animation-delay: .02s; }
 .grid > :nth-child(3)  { animation-delay: .04s; }
 .grid > :nth-child(4)  { animation-delay: .06s; }
@@ -991,9 +991,12 @@ textarea:disabled {
   box-shadow: var(--elevation-1);
   transition: transform var(--dur-slow) ease, box-shadow var(--dur-slow) ease, border-color var(--dur-slow);
   cursor: pointer;
-  /* 视口外的卡片跳过渲染：长列表滚动更顺滑（contain-intrinsic-size 预留高度避免滚动条抖动） */
-  content-visibility: auto;
-  contain-intrinsic-size: auto var(--card-h);
+  /* ⚠️ 这里**不要**加 content-visibility: auto。
+     曾经给每张卡都加了离屏跳过渲染 + contain-intrinsic-size，本意是长列表更顺，
+     实测正相反：卡片是网格项，CV 让每张卡「变相关」时都要重算网格轨道，
+     滚动期间布局时间暴涨。真滚轮实测（.workbuddy/ui-lab/perf.mjs，80 项）：
+     掉帧 12.6% → 0.8%、p95 48.6ms → 13.8ms、layout 716ms → 91ms，只改这一项。
+     卡片 DOM 很轻（十来个节点），省下的渲染远不值得这份布局开销。 */
 }
 .card:hover {
   transform: translateY(-2px);
@@ -1436,18 +1439,16 @@ textarea:disabled {
   box-shadow: var(--elevation-1);
   transition: background var(--dur-base), box-shadow var(--dur-slow) ease, border-color var(--dur-slow);
   cursor: pointer;
-  /* 与 .card / .art-item 同口径：视口外的行跳过渲染（此前只有卡片和文章页有） */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 76px;
+  /* 同 .card：不加 content-visibility —— 网格项上的 CV 会在滚动中反复重算轨道，
+     实测比不做离屏跳过还慢（见 .card 处的实测数字）。 */
   /* v1.7.0：行不得比容器宽。flex 子项默认 min-width:auto（= 内容最小宽），
      标题/摘要一长，行就会把 .grid 撑出视口。min-width:0 允许它收缩，
      文字侧靠 .row-main{min-width:0} + 省略号截断来适配。 */
   min-width: 0;
 }
-/* P1 动效：卡片/列表行入场（cardIn keyframes 在文件前段）。接在列表行主定义
-   之后 —— 守门正则取文件里第一个该类规则块校验 content-visibility，
-   入场规则若排在前面会被它抓走导致误报。离屏行滚入视口才开始渲染，动画随之起播，
-   正好成为「进入视口浮现」。 */
+/* P1 动效：卡片/列表行入场（cardIn keyframes 在文件前段）。接在列表行主定义之后。
+   以前靠 content-visibility 让离屏行「滚入视口才起播」，CV 已按实测移除 ——
+   现在入场动画在挂载时一次性跑完，滚动中不再新增动画。 */
 .grid > .card, .grid > .row-item {
   animation: cardIn var(--dur-slow) var(--ease) backwards;
 }
@@ -3135,9 +3136,8 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   box-shadow: var(--elevation-1);
   overflow: hidden;
   transition: border-color var(--dur-slow), box-shadow var(--dur-slow);
-  /* 视口外的文章项跳过渲染：阅读页几百条条目也不卡 */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 84px;
+  /* 不加 content-visibility：文章行同样是滚动容器里的布局项，CV 在滚动过程中
+     要反复判定「哪些行相关」，实测 300 行时 layout 74ms 白花（见 .card 处注释）。 */
   /* 让出下方那根吸顶工具条的高度，否则新文章的第一行正好被工具条盖住。
      进入文章的置顶由 core/reader.js#scrollReaderToArt 直接设 scrollTop 完成
      （用 scrollIntoView 会在手风琴收起的旧布局里测量，导致新文章被甩到视口上方）；
@@ -3147,6 +3147,22 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   scroll-margin-top: var(--reader-sticky-offset, calc(var(--head-h, 52px) + 8px));
 }
 .art-item:hover { border-color: var(--border-strong); box-shadow: var(--elevation-2); }
+
+/* 滚动期间让路：把列表项的悬停过渡关掉。
+ *
+ * 鼠标滚轮滚动时指针**一直停在列表上**，内容从指针底下穿过，:hover 就在行与行
+ * 之间高频切换；每条过渡都要逐帧重绘 box-shadow（带模糊半径，重绘里最贵的一项），
+ * 卡片还要叠加图片缩放，于是「滚起来发涩」。键盘与触屏没有这个问题。
+ *
+ * 只关过渡、不改终值：滚完松手再移鼠标，过渡照旧，观感与设计一致。
+ * 状态类由 ui/scrollBusy.js 挂在 body 上（滚动起止各一次，不参与 React 渲染）。
+ * 实测（ui-lab/perf.mjs，真滚轮、指针停在列表中段，80 项）：
+ *   卡片页 掉帧 12.6% → 0.8%，p95 48.6 → 13.8ms；文章页 300 行 style 153 → 61ms。 */
+body.is-scrolling .card,
+body.is-scrolling .row-item,
+body.is-scrolling .art-item,
+body.is-scrolling .card-media img,
+body.is-scrolling .card-media-actions { transition: none; }
 
 /* 展开态只把描边加深一档，不再抬阴影 / 换底色：
    卡片本来就是浮起的，读正文时不需要整块发亮抢视线。 */
@@ -3294,7 +3310,6 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 /* 紧凑密度 = 单行清单：标题单行省略，来源与时间并到同一行右侧，
    行高从「标题 + 元信息」的两段收成一条，扫标题时一屏能多看十几条。
    展开态在组件里就不加 is-line，正在读的那条仍按普通行式排版显示完整标题。 */
-.art-item.is-line { contain-intrinsic-size: auto 48px; }
 .art-item.is-line .art-head { padding: 10px var(--sp-4); align-items: center; }
 .art-item.is-line .art-dot { margin-top: 0; }
 .art-item.is-line .art-text { flex-direction: row; align-items: center; gap: var(--sp-3); }
@@ -3336,9 +3351,11 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 /* 展开态的标题行吸顶：长文读到一半想退出时，标题行（点一下就是收起）必须还在手边。
  * 吸在页面吸顶头部下方 —— 高度由 core/reader.js 每帧实测写入 --reader-sticky-offset，
  * 与 .art-item 的 scroll-margin-top 同源，窄屏两行头部、横屏压缩都能自动跟随。
- * ⚠️ 必须同时放开 .art-item 的 overflow:hidden 与 content-visibility:auto：
- *    两者都会生成 containment，sticky 会被关在卡片里、只跟着卡片滚，等于没吸。 */
-.art-item.open { overflow: visible; content-visibility: visible; }
+ * ⚠️ 必须放开 .art-item 的 overflow:hidden：`overflow:hidden` 生成 containment，
+ *    sticky 会被关在卡片里、只跟着卡片滚，等于没吸。（基线里曾另有
+ *    content-visibility:auto，同样是 containment 来源；它已按实测移除，
+ *    这里不必再放开，但注释留着 —— 谁再加回来就得把这一行一起改。） */
+.art-item.open { overflow: visible; }
 .art-item.open .art-row {
   position: sticky;
   /* 贴住吸顶头部的**底边**，而不是 --reader-sticky-offset（那多留 8px 给 scroll-margin）。
@@ -3837,7 +3854,6 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   /* 文章密度：手机上紧凑仍占两行 —— 标题一行（最多两行），来源与时间落到下一行，
      动作键垂直居中靠右收尾。桌面紧凑仍是一行；手机横向不够，标题与元信息挤在
      同一行会两头都截断。 */
-  .art-item.is-line { contain-intrinsic-size: auto 76px; }
   .art-item.is-line .art-head { align-items: flex-start; padding: var(--sp-3) var(--sp-4); }
   .art-item.is-line .art-dot { margin-top: 8px; }
   .art-item.is-line .art-caret { margin-top: 3px; }

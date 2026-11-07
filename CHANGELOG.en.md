@@ -102,6 +102,15 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Fixed
 
+- **No more stutter when scrolling with a mouse (reader and cards alike)**: two main-thread
+  costs were found and removed. First, `content-visibility: auto` on list items — meant to skip
+  offscreen rendering, but cards and rows *are* grid items, so every scroll-in re-ran track and
+  subtree layout; on the cards page layout alone dropped from 716ms to 91ms and dropped frames
+  from 12.6% to 0.8% once removed, i.e. the "optimisation" was slower than none. Second, hover
+  transitions — while wheel-scrolling the pointer stays over the list, so `:hover` flips between
+  rows continuously and each flip repaints a blurred shadow every frame. A temporary
+  `body.is-scrolling` state now turns those transitions off during scroll (restored 160ms after
+  it stops, so hover still animates exactly as designed).
 - **Digest: switching dates no longer gets overwritten by a slow reply**: tapping two dates in a
   row let the first (slower) response land on top of the second one, so the picker and the body
   disagreed and it looked like the wrong date had been chosen. Late replies are now dropped by
