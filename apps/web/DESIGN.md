@@ -74,6 +74,18 @@
     sticky 会被关在卡片里、只跟着卡片滚。吸顶条上的「收起这篇」（`.art-collapse`）
     收起整条卡片并滚回本条标题；卡片详情不另造出口，用常驻的右上角 ×、Esc 与手势关闭，
     正文和动作行都和文章页共用同一个 `ArtBody`。
+13. **固定按钮随滚动方向收起，且只收按钮、不收标题**。判据只有一份：`ui/scrollChrome.js`
+    的 `createChromeTracker`。文章页（宿主 DOM，不在 React 树里）由 `mountScrollChrome()`
+    在 `.reader-main` 上打 `.is-chrome-down`，收起吸顶工具条里的工具按钮与展开态标题行
+    右侧的「收起这篇 / 收藏」；卡片详情用 `useScrollChrome` 给 × 挂 `.is-chrome-hidden`。
+    三条硬约束：①判据是**累积位移**（向下攒 24px 收、向上 6px 就回），不是单次事件——
+    一次滚轮 tick 就是 40–120px，按单次判定会闪；②**贴顶 32px / 到底 32px 强制显示**，
+    这两个时刻用户最想找出口，不能让「收起这篇」和 × 还要先上翻一下；③一帧跨过整屏
+    （拖滚动条、深链定位、内容变短）**不判方向**，只跟基准。
+    隐藏必须同时写 `visibility: hidden` + `pointer-events: none`（visibility 延后到淡出
+    结束），只写 `opacity: 0` 的话按钮仍能被 Tab 到、被盲点中，比不隐藏更糟。
+    **标题、频道条、吸顶条本身一律不动**：标题是「我在读哪一篇」的定位信息；吸顶条真上移
+    还会改 `--reader-head-h` 的实测高度，sticky 顶边与 `scroll-margin-top` 都要跟着重算。
 
 ## 2. 布局骨架
 
@@ -179,9 +191,9 @@
 corepack pnpm -r run typecheck                     # 类型
 corepack pnpm --filter @feedlore/web run build     # 构建
 node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算（49 项）
-DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归（518 项）
+DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归（520 项）
 node .workbuddy/ui-lab/verify.mjs --only=all --shots --no-build
-  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 手势 / 自动填充 / 长文一次铺开（文章页 + 卡片页）/ 多视口截图（76 项）
+  # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 手势 / 自动填充 / 长文一次铺开（文章页 + 卡片页）/ 滚动收起 / 多视口截图（83 项）
 node .workbuddy/ui-lab/weaknet.mjs --scenario=all  # 弱网专项：悬挂 / 慢响应 / 503 / 连点（14 项）
 node .workbuddy/ui-lab/geometry.mjs                # 展开文章后标题与吸顶头部的遮挡量
 ```

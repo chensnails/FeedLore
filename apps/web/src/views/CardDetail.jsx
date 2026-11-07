@@ -23,6 +23,7 @@ import { core } from '@core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isMobileMq } from './Dropdown.jsx';
 import { useSwipeDismiss } from './useSwipeDismiss.js';
+import { useScrollChrome } from '../ui/useScrollChrome.js';
 import { ArtActions, ArtBody, bodyShowsText } from './ReaderView.jsx';
 
 const S = () => core;
@@ -68,6 +69,11 @@ export function CardDetail({ e, onClose, onTag }) {
   const [mobile] = useState(isMobileMq());
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
+  /* 滚动容器（桌面 .cd-scroll / 移动 .dd-sheet-body）：往下读时把右上角 × 收起来，
+     往上翻或读到底部再回来（判据见 ui/scrollChrome.js）。用 callback ref 提成 state：
+     两个容器分别挂在 mobile 分支里，普通 ref 在首帧可能还是空，effect 不会重跑。 */
+  const [scrollEl, setScrollEl] = useState(null);
+  const chromeHidden = useScrollChrome(scrollEl);
   // CardsView 每次重绘都会传新的 onClose；存进 ref，避免它进入 effect 依赖导致重复拉正文 / 重复锁滚动
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -136,7 +142,8 @@ export function CardDetail({ e, onClose, onTag }) {
   );
 
   const closeBtn = (
-    <button type="button" className="modal-close cd-close" ref={closeRef} aria-label="关闭详情" onClick={onClose}>
+    <button type="button" className={'modal-close cd-close' + (chromeHidden ? ' is-chrome-hidden' : '')}
+      ref={closeRef} aria-label="关闭详情" onClick={onClose}>
       <Icon n="x" />
     </button>
   );
@@ -181,7 +188,7 @@ export function CardDetail({ e, onClose, onTag }) {
           aria-label={dialogLabel} onClick={(ev) => ev.stopPropagation()} {...sheetHandlers}>
           <div className="dd-sheet-grip" aria-hidden="true" />
           {closeBtn}
-          <div className="dd-sheet-body cd-body">
+          <div className="dd-sheet-body cd-body" ref={setScrollEl}>
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
             <p className="cd-read-tip">打开此详情已将它标记为已读（两页同步）</p>
@@ -196,7 +203,7 @@ export function CardDetail({ e, onClose, onTag }) {
       <div className="modal cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel} ref={dialogRef}>
         {closeBtn}
         <div className="modal-body">
-          <div className="cd-scroll">
+          <div className="cd-scroll" ref={setScrollEl}>
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
             {inner}
             <p className="cd-read-tip">打开此详情已将它标记为已读（两页同步）</p>

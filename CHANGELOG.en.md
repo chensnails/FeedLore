@@ -18,6 +18,13 @@ This file records user-visible changes and deployment-related changes for 2.x.
   title row (it collapses the card and scrolls back to that row, reachable at any scroll depth).
   Card detail adds no exit of its own: the always-visible ×, Esc and swipe do that job. Both pages
   render through the same ArtBody, so long and short articles no longer take different DOM paths.
+- **Buttons step aside while you read, and return when you scroll up**: the article page's toolbar
+  buttons, the sticky title row's 收起这篇 / favourite, and the card detail's × fade out on a
+  downward scroll and come back after a short upward swipe. They always stay visible at the very
+  top (just opened) and at the very bottom (finished reading). Only the middle "reading" range is
+  affected, and a one-jump scrollbar drag is ignored, so buttons never vanish out of nowhere.
+  Titles, channel tabs and the sticky bars themselves never move — the title is how you know which
+  piece you are in.
 
 ### Added
 
