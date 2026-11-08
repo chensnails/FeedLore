@@ -6,6 +6,8 @@
 
 - 端点：`<你的站点地址>/mcp`
 - 传输：Streamable HTTP，**无状态**、纯 JSON 应答（反代零配置）
+- **无状态**：每个请求独立处理，不需要 `initialize` / `initialized` 会话握手；
+  顺带发一次 `initialize` 也完全可以（返回 serverInfo），但省略它不会让后续调用失效
 - 协议版本：2025-11-25 及兼容（SDK `@modelcontextprotocol/server@2.4.0`）
 - 默认开启；服务端设 `MCP_ENABLED=0` 可整体关闭
 
@@ -61,6 +63,21 @@ curl -s https://你的域名/mcp \
 
 约束：`limit` 默认 20、**硬上限 50**（控制 AI 上下文体积）；列表条目按令牌归属账号过滤，
 AI 只能看到这枚令牌主人自己的订阅。
+
+### 参数容错与响应结构
+
+- `feedlore_list_entries` 返回的 `id` / `feedId` 是**字符串**（与网页 API 一致）。
+  `feedlore_get_entry` 的 `id` 直接传这个字符串即可，也接受数字。
+- 数值参数（`limit` / `offset`）与布尔参数（`unread` / `fav`）都接受字符串形态，
+  例如 `{"limit":"5","unread":"false"}`；布尔按词面识别 `true/1/yes/on` 与
+  `false/0/no/off`，**不会**把 `"false"` 当成 true。越界或无法解析的值回落到默认值
+  （limit 20 / offset 0 / false），不会让整次调用失败。
+- **失败是结构化 JSON**：参数错误或服务端异常返回
+  `{"error":"E_MCP_…","message":"…"}` 文本并带 `isError: true`（HTTP 状态仍是 200）。
+  解析 `result.content[0].text` 即可区分「真的 0 条」与「调用失败」，不会误读成空列表。
+- 列表响应带 `diagnostics`：`account`（令牌归属账号）、`returned`、`total`、
+  `emptyReason`（`no_match` / `account_has_no_feeds` / `offset_beyond_total` /
+  `feed_ids_empty`）以及 `query`、`scope`。空结果时先读它，不用猜「接口是不是挂了」。
 
 ---
 
@@ -118,6 +135,14 @@ AI 只能看到这枚令牌主人自己的订阅。
 **Q：全文被截断了？**
 单篇超过 24000 字符会截断并带 `truncated: true`。这是为了控制模型上下文体积，
 属预期行为；可以让 AI 用关键词再检索相关段落。
+
+**Q：有时看起来「返回 0 条」，像接口时好时坏？**
+先看 `diagnostics.emptyReason` 与 `isError`。最常见的原因是客户端把 `limit`、`unread`
+写成了字符串，或把 `list_entries` 的字符串 id 传给要求数字的 `get_entry` —— 当前版本
+这些参数已全部容错。若仍看到 `Input validation error` 之类的**纯英文文本**（不是 JSON），
+说明客户端把 `isError: true` 的失败响应当成空数据解析了：请按 `result.content[0].text`
+解析、先判 `isError` 再取字段。另外 `/mcp` 是无状态的，不必补 `initialize` /
+`initialized` 会话，跳过握手不会导致空结果（实测连续多轮均正常）。
 
 **Q：数据是什么时候的？**
 与网页同一套数据库，实时一致。频道的新条目到达时间取决于抓取计划

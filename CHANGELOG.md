@@ -7,6 +7,18 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
+## 未发布
+
+### 修复
+
+- **MCP 工具不再把「参数不对」伪装成「查到 0 条」**。`list_entries` 返回的条目 id 是
+  字符串，而 `get_entry` 原先只收数字，AI 按文档把 id 直接传过去会收到
+  `Input validation error` 的英文纯文本（HTTP 200 / `isError: true`），客户端解析失败
+  后容易当成空结果，看起来就像 list 类接口时好时坏。现在 id、limit、offset、
+  unread/fav 都接受字符串形态（布尔按词面判定，`"false"` 不会被当成 true），越界值
+  回落默认值；所有失败一律返回结构化 JSON 错误，列表响应新增 `diagnostics`
+  （账号、命中数、`emptyReason`）。实测连续 24 轮调用与跳过 `initialize` 的请求全部稳定。
+
 ## 2.4.1 — 2026-11-07
 
 ### 新增

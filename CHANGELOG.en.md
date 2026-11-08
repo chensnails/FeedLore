@@ -7,6 +7,20 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## Unreleased
+
+### Fixed
+
+- **MCP tools no longer disguise a bad argument as "0 results"**. `list_entries` returns
+  string ids while `get_entry` previously required a number, so an AI following the docs
+  got a plain-English `Input validation error` (HTTP 200 / `isError: true`); clients that
+  failed to parse it showed an empty list, which looked like the list tools flapping.
+  `id`, `limit`, `offset`, `unread` and `fav` now accept string forms (booleans are matched
+  by word, so `"false"` never becomes true), and out-of-range values fall back to defaults.
+  Every failure now returns a structured JSON error, and list responses carry
+  `diagnostics` (account, returned count, `emptyReason`). Verified stable across 24
+  consecutive rounds plus requests that skip `initialize` entirely.
+
 ## 2.4.1 — 2026-11-07
 
 ### Added
