@@ -7,6 +7,23 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## 2.4.3 — 2026-11-09
+
+### Improved
+
+- **Failed images are no longer requested over and over**. The browser now remembers failed image
+  addresses for the session (10 minutes, 500 entries max, keyed without width or retry parameters so
+  every variant of one image shares a single record). Known-dead images go straight to the fallback
+  layout — text-only cards, icon rows, no placeholder for article images — so no extra requests are
+  sent and there are no gray blocks or layout jumps. A manual refresh or the network coming back
+  clears the memory and retries.
+- The server keeps a 120-second negative cache for upstream `404` / `410` on `/api/img`: multiple
+  width variants of the same source image hit the upstream only once, and a successful fetch clears
+  the entry immediately. `403` (hotlink protection), `5xx` and timeouts are never cached, so a
+  temporary failure is not mistaken for a dead link. This also removes the repeated 404s during fast
+  scroll-refresh, which used to trip the reverse proxy's 404 rate limit and show up as intermittent
+  520 responses.
+
 ## 2.4.2 — 2026-11-08
 
 ### Fixed
