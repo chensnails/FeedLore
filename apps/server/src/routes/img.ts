@@ -37,6 +37,7 @@ import { img as imgSpec } from '@feedlore/contract';
 import { ApiException } from '../lib/apiError';
 import { assertPublicHost, safeFetch } from '../lib/net';
 import { compressImage, imageVariantKey, normalizeImageWidth, isImageType, IMG_MAX_BYTES } from '../lib/image';
+import { negativeCacheGet, negativeCacheSet, negativeCacheDelete, resetNegativeCache } from '../lib/imgNegative';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 import { APP_VERSION } from '../env';
 import { sourceSnapshot } from '../lib/settings';
@@ -96,6 +97,7 @@ const inFlight = new Map<string, Promise<Cached | null>>();
 export function resetImageCache(): void {
   l1.clear();
   inFlight.clear();
+  resetNegativeCache();
 }
 
 /* ============================================================================
@@ -220,6 +222,9 @@ async function fetchAndCache(db: Db | null, key: string, url: string, width: num
     }
 
     l1Set(key, out);
+    // 真图写入时清掉该源图的负条目（负缓存按源图记，与宽度无关）：
+    // 图恢复了就不该继续按 404 回
+    negativeCacheDelete(imageVariantKey(url, 0));
     return out;
   } finally {
     clearTimeout(timer);
@@ -285,6 +290,10 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
       const hot = l1Get(key);
       if (hot) return imageResponse(hot);
 
+      // 负缓存按**源图**记、不带宽度：上游 404 与要哪个档位无关，而浏览器首屏请求的是
+      // `?w=320` 变体、前端重试的 `?r=1` 又不带 w —— 按宽度记的话重试必然穿透。
+      const negKey = imageVariantKey(url, 0);
+
       // ③ L2
       let l2: Cached | null = null;
       let fresh = false;
@@ -320,6 +329,13 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
         return imageResponse(l2);
       }
 
+      // ③.5 失败负缓存：只在 L1/L2 都没有时拦。
+      // 不能提到 L2 之前 —— 否则「新宽度变体 404」会把已缓存的其它宽度真图一起遮住。
+      const failedStatus = negativeCacheGet(negKey);
+      if (failedStatus) {
+        throw new ApiException('E_IMAGE_UPSTREAM_ERROR', { status: failedStatus });
+      }
+
       // ④ 未命中：并发去重后再回源
       let job = inFlight.get(key);
       if (!job) {
@@ -333,7 +349,10 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
       } catch (e) {
         // 上游给了明确状态码就透传（403/404 让前端一眼看出是谁的问题），否则 504
         const st = Number((e as UpstreamError)?.status);
-        throw new ApiException('E_IMAGE_UPSTREAM_ERROR', { status: st >= 400 && st <= 599 ? st : 504 });
+        const status = st >= 400 && st <= 599 ? st : 504;
+        // 只有 404/410 会真正落进负缓存（其余状态码由 negativeCacheSet 自行忽略）
+        negativeCacheSet(negKey, status);
+        throw new ApiException('E_IMAGE_UPSTREAM_ERROR', { status });
       }
       if (!out) throw new ApiException('E_IMAGE_FETCH_FAILED');
 

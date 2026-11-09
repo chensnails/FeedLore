@@ -20,6 +20,7 @@ import { ChannelTabs } from '../ui/ChannelTabs.jsx';
 import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthSrcSet } from '../imgSrc.js';
+import { isImgFailed, markImgFailed } from '../imgFail.js';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 import { Icon } from '../ui/Icon.jsx';
 // 动作按钮由 ui/EntryActions 统一提供：卡片页、文章页、卡片详情用同一份实现
@@ -165,14 +166,14 @@ const safeHref = (h) => {
 function ArtImg({ src, alt, w, h }) {
   const [failed, setFailed] = useState(false);
   const url = proxied(src);
-  if (failed || !url) return null;
+  if (failed || !url || isImgFailed(url)) return null;
   return (
     <img className="art-img" src={url} srcSet={widthSrcSet(url, [640, 960])}
       sizes="(max-width: 720px) 92vw, 720px" alt={alt || ''}
       width={w || undefined} height={h || undefined}
       loading="lazy" decoding="async" title="点击查看大图"
       onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}
-      onError={() => setFailed(true)} />
+      onError={() => { markImgFailed(url); setFailed(true); }} />
   );
 }
 
@@ -385,7 +386,7 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
      「紧凑」密度直接不渲染 <img>：不只是藏起来，连首图请求都不发。 */
   const [imgFailed, setImgFailed] = useState(false);
   const rootRef = useRef(null);
-  const thumb = !expanded && comfortable && e.image && !imgFailed ? e.image : null;
+  const thumb = !expanded && comfortable && e.image && !imgFailed && !isImgFailed(e.image) ? e.image : null;
   /* 摘要来自抓取时压平的 description（纯文本），展开后正文已经在读，不再重复一遍 */
   const desc = !expanded && comfortable && e.desc ? String(e.desc) : '';
   /* 紧凑密度 = 单行清单：标题单行省略，来源与时间并到同一行。
@@ -445,7 +446,8 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
           {thumb ? (
             <span className="art-thumb">
               <img src={thumb} srcSet={widthSrcSet(thumb, [200, 400])} sizes="104px"
-                alt="" loading="lazy" decoding="async" onError={() => setImgFailed(true)} />
+                alt="" loading="lazy" decoding="async"
+                onError={() => { markImgFailed(e.image); setImgFailed(true); }} />
             </span>
           ) : null}
         </button>

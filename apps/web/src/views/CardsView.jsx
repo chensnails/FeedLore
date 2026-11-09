@@ -29,6 +29,7 @@ import { BrandLogo } from '../ui/BrandLogo.jsx';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthSrcSet, widthVariant } from '../imgSrc.js';
+import { isImgFailed, markImgFailed } from '../imgFail.js';
 import { Icon } from '../ui/Icon.jsx';
 // 复制 / 打开按钮与文章页共用一份实现（两页曾各写一套，空链接行为还相反）
 import { CopyButton, OpenButton, copyableLinks } from '../ui/EntryActions.jsx';
@@ -47,7 +48,8 @@ const SKELETON_N = 8;
 function LazyImg({ src, srcSet, sizes, alt, fallbackClass, fbIcon, priority, onFail }) {
   const [state, setState] = useState('ok');   // ok | failed
   const triedRef = useRef(false);
-  if (!src || state === 'failed') {
+  // 已知死链直接出占位：重挂载 / 刷新列表时不再白发一轮请求
+  if (!src || state === 'failed' || isImgFailed(src)) {
     return fallbackClass === 'row-thumb-fb'
       ? <span className="row-thumb-fb"><Icon n={fbIcon} /></span>
       : <div className={fallbackClass}><Icon n={fbIcon} /></div>;
@@ -73,6 +75,7 @@ function LazyImg({ src, srcSet, sizes, alt, fallbackClass, fbIcon, priority, onF
           img.src = u;
           return;
         }
+        markImgFailed(src);
         setState('failed');
         if (onFail) onFail();
       }}
@@ -89,7 +92,9 @@ const Card = memo(function Card({ e, onOpen, priority }) {
   const hasImg = !!e.image;
   // 图片彻底拉不到时降级成纯文字卡：卡高本来就固定，少一块空占位比留一张灰图更干净
   const [imgFailed, setImgFailed] = useState(false);
-  const showMedia = hasImg && !imgFailed;
+  // 与 LazyImg 共用同一份失败记忆：首次失败降级为纯文字卡，重挂载后也保持纯文字，
+  // 不再先占一块灰图再塌掉（布局跳动）。
+  const showMedia = hasImg && !imgFailed && !isImgFailed(e.image);
   const fmtDate = s.fmtDate || ((d) => d || '');
   const unread = !e.isRead;
   // 已读时圆点只隐身、卡面不变淡：两页的「未读」是同一个概念，只是标记密度不同

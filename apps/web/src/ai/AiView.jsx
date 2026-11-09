@@ -17,6 +17,7 @@ import { OverflowMenu } from '../ui/OverflowMenu.jsx';
 import { ViewNav } from '../ui/ViewNav.jsx';
 import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthVariant } from '../imgSrc.js';
+import { isImgFailed, markImgFailed } from '../imgFail.js';
 import { Icon } from '../ui/Icon.jsx';
 import { CopyIconButton } from '../ui/EntryActions.jsx';
 
@@ -32,10 +33,10 @@ function shanghaiToday() {
 function DgItem({ it }) {
   const e = it.item || {};
   const [imgFailed, setImgFailed] = useState(false);
-  const thumb = (e.image && !imgFailed)
+  const thumb = (e.image && !imgFailed && !isImgFailed(e.image))
     ? <img className="dg-item-thumb" loading="lazy" src={widthVariant(e.image, 320) || e.image} alt=""
       onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}
-      onError={() => setImgFailed(true)} />
+      onError={() => { markImgFailed(e.image); setImgFailed(true); }} />
     : <div className="dg-item-thumb-fb"><Icon n="file" /></div>;
   return (
     <div className="dg-item">

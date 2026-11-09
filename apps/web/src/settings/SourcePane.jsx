@@ -25,18 +25,19 @@ import { core } from '@core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PaneFoot, Result, Section } from './primitives.jsx';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
+import { isImgFailed, markImgFailed } from '../imgFail.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
 /** 频道头像：图标加载失败（拉取 404 / 防盗链）时回退到首字母，避免破图标 */
 function FeedAvatar({ icon, name }) {
   const [failed, setFailed] = useState(false);
-  if (!icon || failed) {
+  if (!icon || failed || isImgFailed(icon)) {
     return <span className="feed-avatar feed-avatar-txt">{(name || '?').slice(0, 1)}</span>;
   }
   return (
     <img className="feed-avatar" src={icon} alt="" loading="lazy"
-      onError={() => setFailed(true)} />
+      onError={() => { markImgFailed(icon); setFailed(true); }} />
   );
 }
 

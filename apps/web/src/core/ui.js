@@ -10,6 +10,7 @@ import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScro
 import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
 import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, setEntryFlag, focusReaderArt, restoreReaderArt } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
+import { clearImgFail } from '../imgFail.js';
 import { emit, EVENT } from '../kernel/events.js';
 import { get, isOn } from '../kernel/bridge.js';
 
@@ -30,6 +31,8 @@ export async function refreshFeeds() {
   if (refreshing) return;
   refreshing = true;
   hideNewPill();   // 手动刷新了，自动刷新挂的那个「有新内容」提示就作废了
+  // 用户主动刷新 = 再给失败图一次机会（图源恢复、换了网络都会走到这里）
+  clearImgFail();
   try {
     // 服务端要逐个抓 RSS，本来就慢，给它单独的较长上限；POST 不自动重试。
     const r = await apiFetch('/api/feeds/refresh', { method: 'POST', timeoutMs: 60000 });

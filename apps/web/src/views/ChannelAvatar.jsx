@@ -8,6 +8,7 @@
  * 抽屉打开时由 IntersectionObserver 触发加载；用户看不到的东西不占带宽。
  */
 import { useState, useRef, useEffect } from 'react';
+import { isImgFailed, markImgFailed } from '../imgFail.js';
 
 export function ChannelAvatar({ icon, name }) {
   const [failed, setFailed] = useState(false);
@@ -29,14 +30,14 @@ export function ChannelAvatar({ icon, name }) {
     return () => io.disconnect();
   }, [visible, icon]);
 
-  if (!icon || failed) {
+  if (!icon || failed || isImgFailed(icon)) {
     return <span className="rd-ch-avatar rd-ch-avatar-txt">{String(name || '?').slice(0, 1)}</span>;
   }
   return (
     <span className="rd-ch-avatar-wrap" ref={ref}>
       {visible ? (
         <img className="rd-ch-avatar" src={icon} alt="" loading="lazy" decoding="async"
-          onError={() => setFailed(true)} />
+          onError={() => { markImgFailed(icon); setFailed(true); }} />
       ) : null}
     </span>
   );
