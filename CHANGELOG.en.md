@@ -24,6 +24,11 @@ This file records user-visible changes and deployment-related changes for 2.x.
   scroll-refresh, which used to trip the reverse proxy's 404 rate limit and show up as intermittent
   520 responses.
 
+### Maintenance
+
+- **Test infrastructure**: the static-hosting test now removes the temporary directory it creates
+  (commit `ce5b7b9`), so `feedlore-webroot-*` shells no longer pile up in the system temp directory.
+
 ## 2.4.2 — 2026-11-08
 
 ### Fixed
