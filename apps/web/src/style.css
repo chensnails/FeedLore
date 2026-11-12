@@ -3403,8 +3403,14 @@ body.is-scrolling .card-media-actions { transition: none; }
   transition: box-shadow var(--dur-base) ease;
 }
 .art-img:hover { box-shadow: var(--elevation-3); }
-/* 正在加载时给个占位比例，避免图片下载完页面突然跳动 */
-.art-img[src]:not([width]) { min-height: 1px; }
+/* 没有原始宽高的正文图（不少源站不写 width/height）：加载前按 16:9 预留一块，
+   图片到位后（.img-ready）这条规则自动让开，由真实比例接管。
+   先前的 1px 占位等于没占：每张图都是从 0 撑到原高的一次布局跳动，
+   会把恢复的阅读位置 / 置顶校正一起顶偏，看起来就是页面自己往下滚。 */
+.art-img[src]:not([width]):not(.img-ready) {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
 
 /* 多图文章：图片网格；单图仍是独立的 .art-img（上方规则不变） */
 .art-imgs {

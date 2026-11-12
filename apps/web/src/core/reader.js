@@ -22,8 +22,45 @@ import { emit, EVENT } from '../kernel/events.js';
 
 /** 当前「置顶目标」：文章列表内容变化后（翻页追加、正文异步到达）要重新对准它。
  *  列表一变动，之前算好的位置就失效了——翻页时列表总高会剧烈变化
- *  （实测 scrollHeight 21411 → 14797），不重校就会停在偏移处。 */
+ *  （实测 scrollHeight 21411 → 14797），不重校就会停在偏移处。
+ *
+ *  ⚠️ 只覆盖「我们自己的布局动作」那几百毫秒，不是长期状态。
+ *  早先它一直生效到收起为止：用户展开一篇、往下滚到列表深处，一次自动翻页
+ *  （loadReader 后按它重校）就把视口拽回那篇的标题，看起来是页面自己在快速滚动。
+ *  现在：时间窗（PIN_WINDOW_MS）+ 用户滚动意图立即作废 + 切走视图清空。 */
 let readerPinnedId = null;
+let readerPinnedAt = 0;
+
+const PIN_WINDOW_MS = 800;
+
+export function clearReaderPin() {
+  readerPinnedId = null;
+  readerPinnedAt = 0;
+}
+
+/** 只有刚发生的布局动作才值得重校；过期后列表再变一律不动滚动。 */
+function pinAlive() {
+  return readerPinnedId != null && Date.now() - readerPinnedAt < PIN_WINDOW_MS;
+}
+
+/* 用户接管滚动：置顶立刻作废。
+ * wheel / touchmove 覆盖滚轮与手指，键盘只认真正会滚动的键，pointerdown 兜住
+ * 拖滚动条（它既不发 wheel 也不发 touchmove）。这些事件只由用户输入产生，
+ * 置顶循环自己写 scrollTop 不会触发，所以不会误伤正在进行的对齐。 */
+const PIN_SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar']);
+function onPinUserIntent(ev) {
+  if (readerPinnedId == null || state.tab !== 'reader') return;
+  if (ev.type === 'keydown' && !PIN_SCROLL_KEYS.has(ev.key)) return;
+  clearReaderPin();
+}
+document.addEventListener('wheel', onPinUserIntent, { capture: true, passive: true });
+document.addEventListener('touchmove', onPinUserIntent, { capture: true, passive: true });
+document.addEventListener('keydown', onPinUserIntent, true);
+document.addEventListener('pointerdown', (ev) => {
+  if (readerPinnedId == null) return;
+  const main = readerScroller();
+  if (main && (ev.target === main || main.contains(ev.target))) clearReaderPin();
+}, true);
 
 /** 通知 ReaderView 重绘。
  *  ⚠️ 这里不要挂任何滚动副作用：renderReader() 在近 20 处被调用（含与置顶无关的
@@ -101,7 +138,7 @@ export async function loadReader({ reset = false } = {}) {
     state.rdBodyErr.clear();
     state.rdReadError = false;
     state.rdLoadMoreErr = false;
-    readerPinnedId = null;   // 列表重置 → 旧的置顶目标已不在列表里
+    clearReaderPin();   // 列表重置 → 旧的置顶目标已不在列表里
   } else {
     state.rdLoadMoreErr = false;
   }
@@ -146,8 +183,8 @@ export async function loadReader({ reset = false } = {}) {
     renderReader();
     // 翻页追加会让列表总高剧变（实测 scrollHeight 21411 → 14797），此前算好的
     // 置顶位置随之失效 —— 这里是唯一需要重校的另一处（另一处是正文异步到达）。
-    // 只在确实偏了的时候才动滚动，不打扰正常阅读。
-    if (readerPinnedId != null) scrollReaderToArt(readerPinnedId);
+    // 只在置顶窗口内才重校：用户已经滚走（或窗口过期）后再翻页，绝不能把视口拽回去。
+    if (pinAlive()) scrollReaderToArt(readerPinnedId);
     // 一屏没装满时哨兵本就贴着视口底 —— 不靠用户滚动也要接着拉，直到装满或没有更多。
     // 上一次翻页失败时停下，等用户点「重试」，否则会贴着哨兵反复失败、反复请求。
     if (state.rdHasMore && !state.rdLoadMoreErr && readerSentinelNear()) readerAutoLoad();
@@ -233,8 +270,13 @@ function scrollReaderToArt(id) {
   const main = readerScroller();
   if (!main) return;
   const want = String(id);
+  // 记下这次修正属于哪一次置顶：循环途中用户接管（置顶被清）就停手，
+  // 别在用户已经开始滚动后继续每帧写 scrollTop。
+  const token = readerPinnedId;
+  const takenOver = () => token != null && readerPinnedId !== token;
 
   const place = () => {
+    if (takenOver()) return true;
     // 每帧重算：正文异步到达 / 频道条换行都会改吸顶头部高度，静态量一次会偏
     const headOff = readerHeadOffset();
     // 页面级滚动一并归零：窄屏抽屉态等没有独立滚动容器的场合，
@@ -284,6 +326,7 @@ export async function expandReaderArt(id) {
 
   // 置顶：等 DOM 提交后按实际布局把这一篇顶到内容区顶部（详见 scrollReaderToArt）
   readerPinnedId = id;
+  readerPinnedAt = Date.now();
   scrollReaderToArt(id);
 
   if (state.rdBody.has(id) || state.rdBodyErr.has(id)) return;
@@ -329,7 +372,7 @@ export function readerReload() {
 export function collapseReaderArt(id) {
   state.rdExpanded.delete(id);
   // 收起后不再有「置顶目标」：否则列表变动时的重校会一直把这一条往回顶
-  if (String(readerPinnedId) === String(id)) readerPinnedId = null;
+  if (String(readerPinnedId) === String(id)) clearReaderPin();
   renderReader();
   writeHash('#reader');   // 收起后地址栏回到「文章」页，不再指着一篇
 }
@@ -341,7 +384,7 @@ export function readerToggleArt(id) {
 
 export function readerCollapseAll() {
   state.rdExpanded.clear();
-  readerPinnedId = null;   // 全部收起 → 没有置顶目标
+  clearReaderPin();   // 全部收起 → 没有置顶目标
   renderReader();
   toast('已全部收起');
 }

@@ -117,13 +117,37 @@ export function rememberViewScroll(tab = state.tab) {
 }
 
 export function restoreViewScroll(tab = state.tab) {
-  const el = activeScrollEl();
-  if (!el) return;
-  const top = viewScroll.get(tab) || 0;
-  if (!top) return;
-  // 与 scrollActiveTop 同一套兜底：jsdom / 老浏览器没有 Element.scrollTo
-  if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: 'auto' });
-  else el.scrollTop = top;
+  if (tab !== state.tab) return;
+  const want = viewScroll.get(tab) || 0;
+  if (!want) return;
+  let frames = 0;
+  const write = (el, top) => {
+    // 与 scrollActiveTop 同一套兜底：jsdom / 老浏览器没有 Element.scrollTo
+    if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: 'auto' });
+    else el.scrollTop = top;
+  };
+  const apply = () => {
+    // 途中又切走了：这次恢复作废，别把新页的容器滚走
+    if (tab !== state.tab) return;
+    const el = activeScrollEl();
+    if (!el) { window.scrollTo({ top: want, behavior: 'auto' }); return; }
+    const sh = el.scrollHeight || 0;
+    const ch = el.clientHeight || 0;
+    // 读不到布局（jsdom / 隐藏视图）：照旧写原值，由浏览器自己的夹取规则兜底
+    if (!sh && !ch) { write(el, want); return; }
+    /* 列表还没铺开（首屏在途 / 图片尚未占位）：此刻写进去会被夹到当前最大高度，
+       等布局随后撑开，停下的位置就不是离开时那一处 —— 用户看到「自己滚到了底部」。
+       等容器可滚动再落地，最多等约 0.5s；超时就按当前可达位置恢复。 */
+    const max = Math.max(0, sh - ch);
+    if (max <= 0 && frames < 30 && typeof requestAnimationFrame === 'function') {
+      frames += 1;
+      requestAnimationFrame(apply);
+      return;
+    }
+    // 恢复值夹在当前可达范围里：旧位置属于更长的列表时，硬写只会停在底部
+    write(el, Math.min(want, max));
+  };
+  apply();
 }
 
 /* ---------------- 频道栏宽度 ----------------

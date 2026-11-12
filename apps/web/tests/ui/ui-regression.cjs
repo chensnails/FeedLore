@@ -6738,6 +6738,30 @@ const withEFP = (el, fn) => {
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
     if (!/\.art-item\s*\{[^}]*scroll-margin-top/.test(css)) throw new Error('.art-item 缺 scroll-margin-top（置顶会被吸顶条盖住）');
   });
+  // 置顶必须是一次性动作：早先它一直生效到收起为止，用户滚到列表深处后
+  // 一次自动翻页就把视口拽回那篇的标题，表现为「页面自己在快速滚动」。
+  t('滚动策略：置顶只覆盖本次布局动作，用户滚动即失效', () => {
+    const root = path.join(__dirname, '..', '..');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8');
+    if (!/PIN_WINDOW_MS/.test(r) || !/function pinAlive/.test(r)) throw new Error('置顶缺时间窗（pinAlive）');
+    if (!/if \(pinAlive\(\)\) scrollReaderToArt\(readerPinnedId\)/.test(r)) {
+      throw new Error('翻页后的重校必须受置顶窗口约束，否则用户滚走后会被拽回');
+    }
+    if (!/takenOver/.test(r)) throw new Error('置顶校正循环必须能在用户接管后停手');
+    for (const ev of ['wheel', 'touchmove', 'keydown', 'pointerdown']) {
+      if (!new RegExp("addEventListener\\('" + ev + "'").test(r)) {
+        throw new Error('缺用户滚动接管监听：' + ev + '（置顶不会及时失效）');
+      }
+    }
+    const ui = fs.readFileSync(path.join(root, 'src', 'core', 'ui.js'), 'utf8');
+    if (!/if \(name !== 'reader'\) clearReaderPin\(\)/.test(ui)) throw new Error('切离文章页必须清掉置顶目标');
+    const st = fs.readFileSync(path.join(root, 'src', 'core', 'state.js'), 'utf8');
+    if (!/Math\.min\(want, max\)/.test(st)) throw new Error('恢复视图位置必须夹在当前可达范围（否则停在底部）');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/\.art-img\[src\]:not\(\[width\]\):not\(\.img-ready\)\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/.test(css)) {
+      throw new Error('无宽高的正文图必须有占位比例（1px 占位等于没有，图片到达会顶偏位置）');
+    }
+  });
   t('前后篇导航已彻底移除：组件、桥、样式、sprite 均无残留', () => {
     const root = path.join(__dirname, '..', '..');
     const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');

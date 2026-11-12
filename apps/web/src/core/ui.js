@@ -8,7 +8,7 @@
 import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, writeHash, parseHash } from './util.js';
 import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, scrollActiveTop, rememberViewScroll, restoreViewScroll, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
 import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
-import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, setEntryFlag, focusReaderArt, restoreReaderArt } from './reader.js';
+import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, setEntryFlag, focusReaderArt, restoreReaderArt, clearReaderPin } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
 import { clearImgFail } from '../imgFail.js';
 import { emit, EVENT } from '../kernel/events.js';
@@ -158,6 +158,8 @@ export function switchView(name, opts) {
     hideNewPill();   // 浮标里的新内容是上一个页面拉到的，切页就作废
     // 离开文章页时把频道抽屉收掉（否则它会盖在卡片/AI 页上，还占着页面滚动锁）
     if (name !== 'reader') setReaderDrawer(false);
+    // 置顶只管当前这一次进入：离开文章页就作废，回来后的翻页不该再按旧目标重校
+    if (name !== 'reader') clearReaderPin();
     // 卡片页的频道抽屉同理（v1.3.10）
     if (name !== 'cards') setCardsDrawer(false);
 
