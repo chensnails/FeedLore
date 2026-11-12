@@ -638,6 +638,16 @@ export async function focusReaderArt(id) {
    * 旧实现只把一条**收起**的行滚到视口中间，用户还得再点一次才看到文章，
    * 而且用的是原生 scrollIntoView —— 会连带滚所有祖先容器。 */
   await expandReaderArt(want);
+  /* 展开可能被随后落地的重置重载清掉（列表整体换一遍，rdExpanded 一起清空）。
+     用户点「在文章页查看」要的结果是「看到这篇的正文」，所以等加载彻底安静后确认一次：
+     目标还在列表里就补展开；换成别的频道（目标已不在）则说明是用户的新意图，不抢。
+     这道确认是给入口竞态兜底，不替代 jumpToFeed 里「只发一次首屏请求」的修正。 */
+  for (let guard = 0; guard < 200 && (state.rdLoading || readerPendingReset); guard++) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  if (!state.rdExpanded.has(want) && state.rdEntries.some((e) => String(e.id) === want)) {
+    await expandReaderArt(want);
+  }
   setTimeout(() => {
     if (state.rdFlashId !== want) return;   // 期间又跳了别处，交给那一次去收
     state.rdFlashId = null;

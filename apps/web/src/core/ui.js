@@ -174,9 +174,13 @@ export function switchView(name, opts) {
 
     if (name === 'reader') {
       renderReaderChannels();
+      /* skipReaderLoad：入口自己带了首屏请求（jumpToFeed 要等加载落地再展开目标篇）。
+         这里再补一次重置会排进同一轮加载，等它落地时把刚展开的文章整篇清掉 ——
+         表现为点了「在文章页查看」却停在一篇收起的行上。 */
+      if (o.skipReaderLoad) renderReader();
       // 已经有数据就不重新拉，避免来回切页面时列表闪一下
       // 首屏失败时也不要自动重拉：错误空态里已经给了「重试」，来回切页不该一直转圈
-      if (!state.rdEntries.length && !state.rdReadError) loadReader({ reset: true });
+      else if (!state.rdEntries.length && !state.rdReadError) loadReader({ reset: true });
       else renderReader();
     }
     // 卡片页同理：文章页里点掉的未读要在这里立刻反映（圆点 / 计数），已有数据不重拉
@@ -432,7 +436,8 @@ export function jumpToFeed(id, focusId) {
   state.rdGroup = null;
   state.rdWatch = null;   // 从关注/屏蔽视图点进具体频道，得退出聚合视图
   if (focusId != null) state.rdQ = '';   // 搜索框里的旧关键词会把目标文章筛掉
-  switchView('reader');
+  // 首屏请求由下面这一处发：让 switchView 别再补一次重置（见 apply 里的 skipReaderLoad）
+  switchView('reader', { skipReaderLoad: focusId != null });
   renderReaderChannels();
   emitShell();
   setReaderDrawer(false);

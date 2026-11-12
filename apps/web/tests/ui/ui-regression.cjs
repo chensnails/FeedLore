@@ -5914,6 +5914,62 @@ const withEFP = (el, fn) => {
       });
     }
 
+    // 卡片页「在文章页查看」只发一次首屏请求（v2.5.0 修正）：
+    // 切视图自身也会补一次重置重载，两次重置交错时后落地的那次会把刚展开的文章清掉 ——
+    // 用户点「在文章页查看」却停在一篇收起的行上。这里在真实 core 上验请求次数与展开态。
+    ta('冒烟：在文章页查看只发一次首屏请求，目标篇保持展开', async () => {
+      const c2 = sw.__coreForTest;
+      const st = c2.state;
+      const calls = [];
+      const origFetch = sw.fetch;
+      const entry = { id: 'e1', name: '目标文章', feedId: '7' };
+      sw.fetch = (url, opts) => {
+        const u = String(url);
+        calls.push(((opts && opts.method) || 'GET') + ' ' + u);
+        if (u.indexOf('/api/entries?') === 0) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ entries: [entry], hasMore: false, total: 1 }) });
+        }
+        if (u.indexOf('/api/entries/') === 0) {
+          return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ...entry, body: [] }) });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      };
+      const prev = { tab: st.tab, feedId: st.rdFeedId, entries: st.rdEntries, expanded: st.rdExpanded, body: st.rdBody };
+      // 冒烟环境不挂 React 列表：放一个最小 #readerList 让 core 能找到目标行，
+      // 否则 focusReaderArt 会按「目标不在列表里」提前返回，验不到展开。
+      const fakeList = sw.document.createElement('div');
+      fakeList.id = 'readerList';
+      const fakeItem = sw.document.createElement('article');
+      fakeItem.className = 'art-item';
+      fakeItem.dataset.id = 'e1';
+      fakeList.appendChild(fakeItem);
+      sw.document.body.appendChild(fakeList);
+      try {
+        for (let i = 0; i < 80 && st.rdLoading; i++) await sleep(25);
+        st.tab = 'cards';
+        st.rdEntries = [];
+        st.rdExpanded = new Set();
+        st.rdBody = new Map();
+        st.rdScope = 'all';
+        st.rdGroup = null;
+        st.rdQ = '';
+        st.rdWatch = null;
+        c2.jumpToFeed(7, 'e1');
+        for (let i = 0; i < 80 && !st.rdExpanded.has('e1'); i++) await sleep(25);
+        const resets = calls.filter((c) => c.indexOf('GET /api/entries?') === 0);
+        if (!st.rdExpanded.has('e1')) {
+          throw new Error('跳转后目标篇没有展开 / 请求：' + JSON.stringify(resets));
+        }
+        if (resets.length !== 1) {
+          throw new Error('一次跳转发起了 ' + resets.length + ' 次列表重置（重复请求会清掉展开态）：' + JSON.stringify(calls));
+        }
+      } finally {
+        sw.fetch = origFetch;
+        fakeList.remove();
+        Object.assign(st, prev);
+      }
+    });
+
     await pending;   // 异步用例跑完再关窗口，否则它们在已关闭的 jsdom 上继续跑
     sw.close();
   }
