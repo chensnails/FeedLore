@@ -5270,6 +5270,12 @@ body { overflow: hidden; }
   .reader-main.head-tucked .reader-head { transform: translateY(-100%); }
   /* 置顶前要把头部复位再量高度：这一步不播动画，否则量到的是过渡中间的位置 */
   .reader-main.head-instant .reader-head { transition: none; }
+  /* 头部收起后，展开文章的标题行跟着贴到顶端（让出安全区）。
+     否则它仍停在头部原来的高度：头部已经滑走了，它上方那条空档里却滚过正文，
+     看起来就是标题飘在正文中间、没钉住。用 top 而不是 transform ——
+     还没吸住的标题行不受影响，只有已经吸在旧位置的才上移。 */
+  .art-item.open .art-row { transition: top var(--dur-med) var(--ease); }
+  .reader-main.head-tucked .art-item.open .art-row { top: env(safe-area-inset-top, 0px); }
 }
 
 /* ============================================================

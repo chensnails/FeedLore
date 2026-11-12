@@ -225,6 +225,27 @@ function readerScroller() {
   return document.querySelector('#readerView .reader-main');
 }
 
+/** 头部高度不是常量：搜索展开、频道条换行、转屏、窗口缩放都会变。
+ *  只在置顶那一刻量一次，之后布局一变标题行就停在旧深度上，比头部低一截，
+ *  正文从它上方那条空档里滚过去 —— 看起来就是「标题没钉住」。
+ *  用 ResizeObserver 盯着头部：尺寸一变就重写两个变量（写的是 position:sticky 的
+ *  top 与 scroll-margin，不影响头部自身尺寸，不会自激）。
+ *  后台标签页不跑渲染步，回调会推迟到重新可见 —— 恢复时补量正好。 */
+let headRO = null;
+let headROEl = null;
+function trackReaderHeadChange(main) {
+  if (typeof ResizeObserver !== 'function') return;
+  const head = main.querySelector('.reader-head');
+  if (!head || (head === headROEl && headRO)) return;
+  if (headRO) headRO.disconnect();
+  headROEl = head;
+  headRO = new ResizeObserver(() => {
+    // 切到卡片页时头部被隐藏（尺寸 0），别把回退值写进阅读页的变量
+    if (state.tab === 'reader') readerHeadOffset();
+  });
+  headRO.observe(head);
+}
+
 /** 吸顶头部的真实高度：置顶时要让出它，否则新文章的第一行正好被盖住。
  *
  *  不要再读静态 `--head-h`：窄屏的吸顶头部是两行（工具行 44 + 频道条 44 = 88），
@@ -236,13 +257,17 @@ function readerScroller() {
 function readerHeadOffset() {
   const main = readerScroller();
   if (!main) return 56;
+  trackReaderHeadChange(main);
   const mainTop = main.getBoundingClientRect().top;
   let bottom = 0;
   for (const sel of ['.reader-head', '.chan-tabs', '.view-toolbar']) {
     for (const el of main.querySelectorAll(sel)) {
       const r = el.getBoundingClientRect();
-      if (r.height <= 0 || r.bottom <= mainTop) continue;
-      bottom = Math.max(bottom, r.bottom - mainTop);
+      if (r.height <= 0) continue;
+      /* 头部收起时 .reader-head 被 translateY(-100%)，bottom 落到滚动区上方，
+         只认「自身高度 + 相对滚动区顶的偏移（不取负）」：展开、收起量到的高度
+         一致，收展到一半时也不会量成 0 把标题行顶进头部。 */
+      bottom = Math.max(bottom, r.height + Math.max(0, r.top - mainTop));
     }
   }
   // 头部尚未挂载 / 被隐藏（首帧、抽屉态）时回退到令牌，别把标题顶到屏幕外

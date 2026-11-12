@@ -7081,8 +7081,17 @@ const withEFP = (el, fn) => {
     if (!/\.reader-main\.head-instant \.reader-head \{ transition: none; \}/.test(css)) {
       throw new Error('缺 head-instant 的免过渡规则');
     }
+    // 头部滑走后，展开文章的标题行必须跟着贴顶：否则它悬在头部原来的高度上，
+    // 上方那条空档里滚过正文（真机截图症状：标题像飘在正文中间）。
+    if (!/\.art-item\.open \.art-row \{ transition: top var\(--dur-med\)/.test(css)) {
+      throw new Error('标题行跟随头部收展要走同一条过渡');
+    }
+    if (!/\.reader-main\.head-tucked \.art-item\.open \.art-row \{ top: env\(safe-area-inset-top, 0px\); \}/.test(css)) {
+      throw new Error('头部收起时展开文章的标题行要贴顶（让出安全区）');
+    }
     const hig = fs.readFileSync(path.join(root, 'src', 'hig.css'), 'utf8').replace(/\r\n/g, '\n');
     if (!/\.new-pill, \.reader-head,/.test(hig)) throw new Error('减少动效时头部收展必须直接切换');
+    if (!/\.art-row,/.test(hig)) throw new Error('减少动效时标题行跟随收展也必须直接切换');
     // 断点只准存在于 CSS：桌面宽度下这个类不该改变任何像素
     if (/matchMedia/.test(r.slice(r.indexOf('function installReaderHeadTuck'), r.indexOf('installReaderHeadTuck();')))) {
       throw new Error('头部收展不该在 JS 里判断点');
@@ -7372,6 +7381,17 @@ const withEFP = (el, fn) => {
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
     if (!/scroll-margin-top: var\(--reader-sticky-offset,/.test(css)) {
       throw new Error('scroll-margin-top 要跟 JS 实测同源（窄屏头部两行会盖住标题）');
+    }
+    // 收起的头部 rect 整体上移：不能只认 bottom，否则收起时量成 0 / 落下再弹回
+    if (!/r\.height \+ Math\.max\(0, r\.top - mainTop\)/.test(body)) {
+      throw new Error('头部高度要按「自身高度 + 偏移（不取负）」量，收展过程中都稳定');
+    }
+    // 搜索展开 / 频道条换行 / 转屏都会改头部高度，只量一次会让标题行停在旧深度
+    if (!/new ResizeObserver\(/.test(reader) || !/headRO\.observe\(head\)/.test(reader)) {
+      throw new Error('头部尺寸变化要用 ResizeObserver 重写吸顶高度（否则标题行比头部低一截）');
+    }
+    if (!/if \(state\.tab === 'reader'\) readerHeadOffset\(\);/.test(reader)) {
+      throw new Error('切到别的视图时头部尺寸为 0，不能把回退值写进阅读页变量');
     }
   });
 
