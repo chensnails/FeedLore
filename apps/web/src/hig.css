@@ -343,7 +343,7 @@ body { font-family: var(--font-ui); }
 @media (prefers-reduced-motion: reduce) {
   .btn, .icon-btn, .btn-primary, .btn-ghost, .btn-copy, .btn-open,
   .btn-fav, .btn-jump, .viewnav-btn, .mobile-tabbar .viewnav-btn,
-  .art-item, .card, .row-item, .modal, .toast, .new-pill,
+  .art-item, .card, .row-item, .modal, .toast, .new-pill, .reader-head,
   .mobile-tabbar .viewnav, .scroll-top {
     transition: none !important;
     animation: none !important;

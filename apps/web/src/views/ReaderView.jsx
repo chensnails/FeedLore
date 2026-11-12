@@ -385,7 +385,6 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
      失败态记在组件本地：条目对象换新时（已读 / 收藏）不该把失败的图又试一遍。
      「紧凑」密度直接不渲染 <img>：不只是藏起来，连首图请求都不发。 */
   const [imgFailed, setImgFailed] = useState(false);
-  const rootRef = useRef(null);
   const thumb = !expanded && comfortable && e.image && !imgFailed && !isImgFailed(e.image) ? e.image : null;
   /* 摘要来自抓取时压平的 description（纯文本），展开后正文已经在读，不再重复一遍 */
   const desc = !expanded && comfortable && e.desc ? String(e.desc) : '';
@@ -396,18 +395,10 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
   const cls = 'art-item' + (e.isRead ? ' is-read' : ' is-unread') + (fav ? ' is-fav' : '') + (expanded ? ' open' : '')
     + (thumb ? ' has-thumb' : '') + (desc ? ' has-sum' : '') + (lineMode ? ' is-line' : '') + (flash ? ' is-flash' : '');
 
-  /* 收起时正文一塌陷，视口会停在原处（常常正好是空白）。滚回本条标题 ——
-     .art-item 的 scroll-margin-top 与吸顶头部同源（--reader-sticky-offset），
-     所以 block:'start' 的落点就是标题行，不必再量一次高度。
-     展开方向不滚：用户点标题的位置本来就在那里。 */
+  /* 收起后的滚动在 core（readerCollapseArt → scrollReaderToArt）里做：
+     只动 .reader-main，且按每帧真实布局修正；组件里不再碰原生 scrollIntoView。 */
   const toggle = () => {
-    const closing = expanded;
     onToggle(e.id);
-    if (!closing) return;
-    requestAnimationFrame(() => {
-      const el = rootRef.current;
-      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'start' });
-    });
   };
 
   let inner = null;
@@ -426,7 +417,7 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
   }
 
   return (
-    <article className={cls} data-id={e.id} ref={rootRef}>
+    <article className={cls} data-id={e.id}>
       <div className="art-row">
         <button className="art-head" type="button" aria-expanded={expanded ? 'true' : 'false'}
           aria-label={ariaLabel} onClick={toggle}>

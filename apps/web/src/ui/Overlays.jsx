@@ -246,7 +246,7 @@ export function Overlays() {
   }, []);
 
   const s = S();
-  const toast = (s && s.getToastState) ? s.getToastState() : { msg: '', ok: true, show: false };
+  const toast = (s && s.getToastState) ? s.getToastState() : { msg: '', ok: true, show: false, action: null, actionText: '' };
   const pill = (s && s.getNewPillState) ? s.getNewPillState() : { show: false, text: '' };
   const box = (s && s.getLightboxState) ? s.getLightboxState() : { src: '', show: false };
   const cfm = (s && s.getConfirmState) ? s.getConfirmState() : { open: false };
@@ -276,6 +276,11 @@ export function Overlays() {
           ? <svg className="ico toast-ico" aria-hidden="true" focusable="false"><use href="#i-check" /></svg>
           : <svg className="ico toast-ico err" aria-hidden="true" focusable="false"><use href="#i-alert" /></svg>}
         {toast.msg}
+        {/* 行内动作（批量已读的「撤销」）：toast 本身 pointer-events:none，
+            有按钮时样式才放开命中；按钮不抢焦点，避免打断正在进行的阅读操作。 */}
+        {toast.action
+          ? <button type="button" className="toast-act" tabIndex={-1} onClick={() => s.runToastAction && s.runToastAction()}>{toast.actionText || '撤销'}</button>
+          : null}
       </div>
 
       {/* 自动刷新发现了新内容、但用户已经滚下去了：点它才套用，避免列表在眼皮底下跳 */}

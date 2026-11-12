@@ -400,6 +400,14 @@ export const readAllBody = z.object({
 });
 export type ReadAllBody = z.infer<typeof readAllBody>;
 
+/* 批量已读的撤销：作用域必须和那次 read-all 完全一致，at 是服务端回执里的
+ * 批次时间戳（同一批 UPDATE 写进去的 read_at）。服务端只回滚「仍是已读且
+ * read_at 恰好等于这一批」的行，所以不会误伤之后单独标记的已读。 */
+export const readAllUndoBody = readAllBody.extend({
+  at: z.string().min(10).max(40),
+});
+export type ReadAllUndoBody = z.infer<typeof readAllUndoBody>;
+
 export const entryFlagPatchBody = z.object({
   isRead: z.boolean().optional(),
   isFavorite: z.boolean().optional(),
@@ -425,7 +433,20 @@ export const entries = {
     path: '/api/entries/read-all',
     auth: 'user',
     body: readAllBody,
-    response: z.object({ ok: z.boolean(), updated: z.number().int() }),
+    response: z.object({
+      ok: z.boolean(),
+      updated: z.number().int(),
+      /* 撤销凭据：这一批 UPDATE 的 read_at（ISO）。updated = 0 时也给，
+         客户端只在 updated > 0 时展示「撤销」。 */
+      undo: z.object({ at: z.string() }),
+    }),
+  },
+  readAllUndo: {
+    method: 'post',
+    path: '/api/entries/read-all/undo',
+    auth: 'user',
+    body: readAllUndoBody,
+    response: z.object({ ok: z.boolean(), reverted: z.number().int() }),
   },
   watchApply: {
     method: 'post',

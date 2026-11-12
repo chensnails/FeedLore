@@ -1356,6 +1356,22 @@ textarea:disabled {
 .toast.ok { box-shadow: inset 3px 0 0 var(--toast-ok), var(--elevation-toast); }
 /* 失败提示：左侧一道红边，比只换图标更醒目（toast-ok 之外唯一的状态色） */
 .toast.err { box-shadow: inset 3px 0 0 var(--toast-err), var(--elevation-toast); }
+/* 行内动作（批量已读的「撤销」）：toast 默认 pointer-events:none，
+   带按钮的这一种才放开命中，否则按钮点不动。 */
+.toast.show:has(.toast-act) { pointer-events: auto; }
+.toast-act {
+  flex: 0 0 auto;
+  margin-left: var(--sp-2);
+  padding: 2px var(--sp-2);
+  border: 0; border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--toast-ok);
+  font: inherit; font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.toast-act:hover { background: rgba(255, 255, 255, .12); }
+.toast-act:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* ---------- 无图卡片的紧凑信息行 ---------- */
 .card-meta {
@@ -5246,6 +5262,14 @@ body { overflow: hidden; }
     padding: 0 var(--sticky-pad, var(--sp-4));
   }
   .cards-sticky:has(.chan-tabs) { row-gap: 0; }
+
+  /* 阅读头部随滚动收展（v2.5.0）：两行吸顶头部在手机上长期占 88px。
+     类由 core/reader.js 的方向判据挂/摘；只动 transform，不改布局高度，
+     所以滚动中不会触发布局重排。贴顶 / 贴底 / 置顶期间会自动展开。 */
+  .reader-head { transition: transform var(--dur-med) var(--ease); }
+  .reader-main.head-tucked .reader-head { transform: translateY(-100%); }
+  /* 置顶前要把头部复位再量高度：这一步不播动画，否则量到的是过渡中间的位置 */
+  .reader-main.head-instant .reader-head { transition: none; }
 }
 
 /* ============================================================

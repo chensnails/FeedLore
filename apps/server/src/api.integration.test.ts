@@ -26,7 +26,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { gunzipSync } from 'node:zlib';
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { createDb, feeds as feedsTable, entries as entriesTable } from '@feedlore/db';
 import { createAuth } from '@feedlore/auth';
@@ -34,6 +34,7 @@ import { ENCRYPTED_PREFIX, decryptSecret, getCryptoSecret } from '@feedlore/ai';
 import {
   feedsListResponse,
   entriesListResponse,
+  entries as entriesContract,
   HealthSchema,
   SessionDeviceSchema,
   SessionSchema,
@@ -345,6 +346,68 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         'GET /api/entries?feeds=999999',
       );
       assert.equal(other.total, 0);
+    });
+
+    /* 批量已读的撤销：回执给一个批次时间戳，撤销只命中「仍是这一批」的行。
+     * 不能按「最近 N 秒标记的全部回滚」：用户可能在这期间单独标了别的文章。 */
+    await t.test('批量已读：回执带批次时间戳，撤销只回滚这一批', async () => {
+      const [feed] = await db
+        .insert(feedsTable)
+        .values({ ownerId: userId, url: 'https://example.com/itest-undo.xml', title: '撤销测试频道' })
+        .returning({ id: feedsTable.id });
+      assert.ok(feed);
+
+      try {
+        await db.insert(entriesTable).values([
+          { feedId: feed.id, guid: 'itest-undo-1', title: '撤销一' },
+          { feedId: feed.id, guid: 'itest-undo-2', title: '撤销二' },
+          { feedId: feed.id, guid: 'itest-undo-3', title: '撤销三' },
+        ]);
+
+        const r = await call('/api/entries/read-all', { method: 'POST', json: { feeds: [feed.id] } });
+        assert.equal(r.status, 200);
+        const body = parse(entriesContract.readAll.response, await r.json(), 'POST /api/entries/read-all');
+        assert.equal(body.updated, 3);
+        assert.ok(body.undo.at.length >= 10, '撤销凭据必须是批次时间戳');
+
+        // 批次之后单独标一条已读：read_at 不同，撤销不能把这条也翻回未读
+        const [later] = await db
+          .insert(entriesTable)
+          .values({ feedId: feed.id, guid: 'itest-undo-late', title: '批次之后标读' })
+          .returning({ id: entriesTable.id });
+        assert.ok(later);
+        const patch = await call(`/api/entries/${later.id}`, { method: 'PATCH', json: { isRead: true } });
+        assert.equal(patch.status, 200);
+
+        const u = await call('/api/entries/read-all/undo', {
+          method: 'POST',
+          json: { feeds: [feed.id], at: body.undo.at },
+        });
+        assert.equal(u.status, 200);
+        const ub = parse(entriesContract.readAllUndo.response, await u.json(), 'POST /api/entries/read-all/undo');
+        assert.equal(ub.reverted, 3);
+
+        const rows = await db
+          .select({ guid: entriesTable.guid, isRead: entriesTable.isRead, readAt: entriesTable.readAt })
+          .from(entriesTable)
+          .where(eq(entriesTable.feedId, feed.id));
+        const byGuid = new Map(rows.map((row) => [row.guid, row]));
+        for (const guid of ['itest-undo-1', 'itest-undo-2', 'itest-undo-3']) {
+          assert.equal(byGuid.get(guid)?.isRead, false, `${guid} 应被撤销`);
+          assert.equal(byGuid.get(guid)?.readAt, null, `${guid} 的 read_at 应清空`);
+        }
+        assert.equal(byGuid.get('itest-undo-late')?.isRead, true, '撤销误伤了批次之后单独标记的条目');
+
+        // 重复撤销：这一批已经回滚完，应返回 0 而不是再翻一遍别的行
+        const again = await call('/api/entries/read-all/undo', {
+          method: 'POST',
+          json: { feeds: [feed.id], at: body.undo.at },
+        });
+        assert.equal(again.status, 200);
+        assert.equal(parse(entriesContract.readAllUndo.response, await again.json(), 'undo ×2').reverted, 0);
+      } finally {
+        await db.execute(sql`delete from feeds where id = ${feed.id}`);
+      }
     });
 
     /* ---------------------------------------------------------------- 写接口的守卫 */

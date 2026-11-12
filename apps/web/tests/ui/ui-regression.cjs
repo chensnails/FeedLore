@@ -1134,6 +1134,16 @@ const withEFP = (el, fn) => {
   await sleep(60);
   const results = [];
   const t = (name, fn) => { try { fn(); results.push(['PASS', name]); } catch (e) { results.push(['FAIL', name + ' —— ' + e.message]); } };
+  /* 异步用例必须排队串行（用 ta 注册）：它们会临时替换 fetch 桩、改共享 state，
+     并发启动会互相踩桩 —— 表现为「同一份代码这次过、下次挂」的假失败。 */
+  let pending = Promise.resolve();
+  const ta = (name, fn) => {
+    pending = pending.then(async () => {
+      try { await fn(); results.push(['PASS', name]); }
+      catch (e) { results.push(['FAIL', name + ' —— ' + (e && e.message)]); }
+    });
+    return pending;
+  };
 
   // ============ index.html 挂载点（防「手术误删挂载点」回归） ============
   // 背景：v1.7.0 迁移 AI 视图时，替换区间跨过了 #settingsRoot，导致设置弹层不再挂载、
@@ -5648,7 +5658,7 @@ const withEFP = (el, fn) => {
     // 背景：卡片页一直是这个行为（cardsFilterFeed 每次都 loadPage(true)），
     // 文章页此前对同一频道直接 return，点第二下毫无反应 —— 两页行为不一致。
     // 这里在真实 core 上验：再点同一频道必须重新拉列表 + 滚回顶部，且不能早退。
-    t('冒烟：文章页再次点击同一频道 → 重载该频道最新列表（不再早退）', async () => {
+    ta('冒烟：文章页再次点击同一频道 → 重载该频道最新列表（不再早退）', async () => {
       const c2 = sw.__coreForTest;
       const doc = sw.document;
       // 装一个可控的 fetch：记录 /api/entries 的调用次数与参数
@@ -5681,7 +5691,10 @@ const withEFP = (el, fn) => {
         c2.readerSetFeed(7);
         await sleep(60);
         const second = calls.filter((c) => c.url.indexOf('/api/entries?') === 0);
-        if (second.length !== 1) throw new Error('再次点击同一频道没有重新拉取（应与卡片页一致）');
+        if (second.length !== 1) {
+          throw new Error('再次点击同一频道没有重新拉取（应与卡片页一致）：' + second.length + ' 次 / 本轮请求：'
+            + JSON.stringify(calls.map((c) => c.url)) + ' / loading=' + c2.state.rdLoading);
+        }
         // 再点一次必须仍然带着同一个频道的筛选条件
         if (second[0].url.indexOf('feeds=7') < 0) throw new Error('重载丢了频道筛选：' + second[0].url);
       } finally {
@@ -5689,7 +5702,7 @@ const withEFP = (el, fn) => {
       }
     });
 
-    t('冒烟：文章页再点同一频道时保持频道筛选（不清掉分组条件）', async () => {
+    ta('冒烟：文章页再点同一频道时保持频道筛选（不清掉分组条件）', async () => {
       const c2 = sw.__coreForTest;
       // 处于分组筛选状态时，再点一个频道 —— 走的是「切换」分支，必须切到该频道
       c2.state.rdGroup = '科技';
@@ -5707,7 +5720,7 @@ const withEFP = (el, fn) => {
     });
 
     // ---- 弱网守门：请求悬挂时「重试」必须真的生效，且旧慢响应不能覆盖新列表 ----
-    t('弱网：错误态下重试能打断悬挂请求，旧响应不覆盖新列表', async () => {
+    ta('弱网：错误态下重试能打断悬挂请求，旧响应不覆盖新列表', async () => {
       const c2 = sw.__coreForTest;
       const st = c2.state;
       const origFetch = sw.fetch;
@@ -5757,7 +5770,7 @@ const withEFP = (el, fn) => {
       }
     });
 
-    t('弱网：首屏失败后自动翻页不会无限重拉', async () => {
+    ta('弱网：首屏失败后自动翻页不会无限重拉', async () => {
       const c2 = sw.__coreForTest;
       const st = c2.state;
       const origFetch = sw.fetch;
@@ -5778,7 +5791,7 @@ const withEFP = (el, fn) => {
       }
     });
 
-    t('弱网：GET 5xx 自动重试一次，写操作绝不重试', async () => {
+    ta('弱网：GET 5xx 自动重试一次，写操作绝不重试', async () => {
       const c2 = sw.__coreForTest;
       const origFetch = sw.fetch;
       const calls = [];
@@ -5802,6 +5815,106 @@ const withEFP = (el, fn) => {
       }
     });
 
+    // 阅读页头部收展（v2.5.0）：判据与底部标签栏同一套，但类挂在 .reader-main 上。
+    // 模块在 core 顶层安装，这里直接派发真实 scroll 事件来验运行时行为。
+    {
+      const c2 = sw.__coreForTest;
+      const doc = sw.document;
+      const prevTab = c2.state.tab;
+      c2.state.tab = 'reader';
+      doc.dispatchEvent(new sw.Event('wheel'));   // 清掉可能残留的置顶（会强制展开）
+      const el = doc.createElement('div');
+      el.className = 'reader-main';
+      Object.defineProperty(el, 'scrollHeight', { value: 5000, configurable: true });
+      Object.defineProperty(el, 'clientHeight', { value: 800, configurable: true });
+      Object.defineProperty(el, 'scrollTop', { value: 0, writable: true, configurable: true });
+      doc.body.appendChild(el);
+      const tucked = () => el.classList.contains('head-tucked');
+      const scroll = (top) => { el.scrollTop = top; el.dispatchEvent(new sw.Event('scroll')); };
+      const seen = [];
+      try {
+        // 前面的用例可能刚触发过一次收起：先让 120ms 冷却过去，第一次下滚才不被压住
+        await sleep(140);
+        scroll(100); seen.push(['baseline', tucked()]);
+        scroll(140); seen.push(['down40', tucked()]);
+        scroll(4200); seen.push(['bottom', tucked()]);   // 贴底强制展开
+        scroll(3000); seen.push(['jump', tucked()]);     // 一帧跨屏：只更新基准
+        await sleep(140);                                // 收起冷却只压「再次收起」
+        scroll(3030); seen.push(['down30', tucked()]);   // 累计 30 < 32：还不够收
+        scroll(3035); seen.push(['down35', tucked()]);
+        scroll(3029); seen.push(['up6', tucked()]);
+        await sleep(140);
+        scroll(3105); seen.push(['down76', tucked()]);
+        sw.dispatchEvent(new sw.Event('resize')); seen.push(['resize', tucked()]);
+      } finally {
+        el.remove();
+        c2.state.tab = prevTab;
+      }
+      t('阅读头部收展：下滚收起、上滚 6px 立刻回、贴底与改尺寸强制展开', () => {
+        const want = {
+          baseline: false, down40: true, bottom: false, jump: false,
+          down30: false, down35: true, up6: false, down76: true, resize: false,
+        };
+        for (const [key, got] of seen) {
+          if (got !== want[key]) throw new Error(`${key}: 期望 ${want[key] ? '收起' : '展开'}，实际 ${got ? '收起' : '展开'}`);
+        }
+      });
+    }
+
+    // 全部已读撤销（v2.5.0）：真实 core 走一遍「确认 → read-all → 提示条撤销 → undo」。
+    {
+      const c2 = sw.__coreForTest;
+      const st = c2.state;
+      const calls = [];
+      const res = (body) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+      const origFetch = sw.fetch;
+      sw.fetch = (url, opts) => {
+        const u = String(url);
+        calls.push({ url: u, method: (opts && opts.method) || 'GET', body: opts && opts.body ? String(opts.body) : '' });
+        if (u.indexOf('/api/entries/read-all/undo') === 0) return res({ ok: true, reverted: 2 });
+        if (u.indexOf('/api/entries/read-all') === 0) return res({ ok: true, updated: 2, undo: { at: '2026-11-12T08:00:00.000Z' } });
+        if (u.indexOf('/api/feeds') === 0) return res({ feeds: [], groups: [], total: 0 });
+        return res({ entries: [], hasMore: false, total: 0, tags: [] });
+      };
+      const prev = { tab: st.tab, scope: st.rdScope, q: st.rdQ, watch: st.rdWatch };
+      st.tab = 'reader';
+      st.rdScope = 'favorite';
+      st.rdQ = '';
+      st.rdWatch = null;
+      let outcome;
+      try {
+        const p = c2.readerReadAll();
+        await sleep(0);
+        c2.settleConfirm(true);
+        await p;
+        const toast1 = c2.getToastState();
+        c2.runToastAction();
+        await sleep(60);
+        const readCall = calls.find((c) => c.url.indexOf('/api/entries/read-all') === 0 && c.url.indexOf('/undo') < 0);
+        const undoCall = calls.find((c) => c.url.indexOf('/api/entries/read-all/undo') === 0);
+        outcome = { readCall, undoCall, hasAction: !!(toast1 && typeof toast1.action === 'function'), toast2: c2.getToastState() };
+      } catch (err) {
+        outcome = { error: err };
+      } finally {
+        sw.fetch = origFetch;
+        Object.assign(st, prev);
+      }
+      t('全部已读撤销：收藏范围带 fav、提示条给撤销、undo 回传同一批次时间戳', () => {
+        if (outcome.error) throw outcome.error;
+        const { readCall, undoCall, hasAction, toast2 } = outcome;
+        if (!readCall) throw new Error('没发 read-all');
+        const readBody = JSON.parse(readCall.body);
+        if (readBody.fav !== '1') throw new Error('收藏视图的批量已读没带 fav：' + readCall.body);
+        if (!hasAction) throw new Error('提示条没有撤销动作');
+        if (!undoCall) throw new Error('点撤销没有发 undo 请求');
+        const undoBody = JSON.parse(undoCall.body);
+        if (undoBody.at !== '2026-11-12T08:00:00.000Z') throw new Error('undo 没用回执里的批次时间戳：' + undoCall.body);
+        if (undoBody.fav !== '1') throw new Error('undo 丢了作用域（fav）');
+        if (toast2 && toast2.action) throw new Error('撤销执行后不该还留着动作按钮');
+      });
+    }
+
+    await pending;   // 异步用例跑完再关窗口，否则它们在已关闭的 jsdom 上继续跑
     sw.close();
   }
 
@@ -6799,6 +6912,114 @@ const withEFP = (el, fn) => {
     if (!/readerControls/.test(rv)) throw new Error('ReaderView 未传 readerControls');
   });
 
+  // ============ 阅读体验收口（v2.5.0 五项） ============
+  t('卡片页「在文章页查看」一步到位：直接展开并置顶，不再原生 scrollIntoView', () => {
+    const root = path.join(__dirname, '..', '..');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8')
+      .split('\n').filter((l) => !/^\s*(\*|\/\/)/.test(l)).join('\n');
+    const body = r.slice(r.indexOf('export async function focusReaderArt'), r.indexOf('export async function restoreReaderArt'));
+    if (!/await expandReaderArt\(want\)/.test(body)) {
+      throw new Error('「在文章页查看」必须直接展开目标篇（否则用户还要再点一次才看到正文）');
+    }
+    if (/scrollIntoView/.test(body)) {
+      throw new Error('不应再用原生 scrollIntoView（会连带滚动所有祖先容器）');
+    }
+    // 注释里会提到 scrollIntoView（说明「不再用它」），只查代码本身
+    const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    if (/scrollIntoView/.test(rv)) throw new Error('组件层不应再直接操作 scrollIntoView');
+    if (/rootRef/.test(rv)) throw new Error('收起滚动的 ref 已下沉到 core，组件里不该再留 rootRef');
+  });
+
+  t('收起文章：统一走 core 的 scrollReaderToArt（只动 .reader-main，用户可打断）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8');
+    const start = r.indexOf('export function collapseReaderArt');
+    const body = r.slice(start, r.indexOf('export function readerToggleArt'));
+    if (!/scrollReaderToArt\(id\)/.test(body)) throw new Error('收起后没有把标题行钉回吸顶条下方（会停在空白处）');
+    if (!/dropReadPos\(id\)/.test(body)) throw new Error('收起后必须丢掉这篇的阅读位置记录');
+    if (!/readerPinnedId = id[\s\S]{0,80}scrollReaderToArt\(id\)/.test(body)) {
+      throw new Error('收起时的修正要立一个置顶标记，用户一动手才能打断');
+    }
+  });
+
+  t('篇内阅读位置：sessionStorage 记录、恢复前清置顶、按文章高度 clamp', () => {
+    const root = path.join(__dirname, '..', '..');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8');
+    if (!/const READ_POS_KEY = 'feedlore\.readPos\.v1'/.test(r)) throw new Error('缺阅读位置的会话级存储键');
+    if (!/sessionStorage\.setItem\(READ_POS_KEY/.test(r)) throw new Error('阅读位置应存 sessionStorage（换标签/新会话不假装记得）');
+    if (!/if \(state\.tab !== 'reader' \|\| readerPinnedId != null\) return;/.test(r)) {
+      throw new Error('置顶自己写的 scrollTop 不能当成阅读位置记下来');
+    }
+    if (!/const saved = readSavedOffset\(want\);/.test(r)) throw new Error('restoreReaderArt 未读取同一篇的阅读位置');
+    const restore = r.slice(r.indexOf('export async function restoreReaderArt'), r.indexOf('function replaceEntry'));
+    if (!/clearReaderPin\(\);[\s\S]{0,120}restoreReaderOffset\(want, saved\)/.test(restore)) {
+      throw new Error('恢复前必须先清掉置顶，否则展开的收敛循环会把视口拖回标题');
+    }
+    if (!/Math\.min\(itemTop \+ offset, limit, max\)/.test(r)) throw new Error('恢复位置必须夹在文章高度与滚动上限之内');
+    const all = r.slice(r.indexOf('export function readerCollapseAll'), r.indexOf('const FLASH_MS'));
+    if (!/dropReadPos\(id\)/.test(all)) throw new Error('全部收起时应清掉各篇的位置记录');
+  });
+
+  t('全部已读可撤销：契约 / 服务端批次时间戳 / 提示条动作三处一致', () => {
+    const root = path.join(__dirname, '..', '..');
+    const c = fs.readFileSync(path.join(root, '..', '..', 'packages', 'contract', 'src', 'endpoints.ts'), 'utf8');
+    if (!/export const readAllUndoBody = readAllBody\.extend\(\{\s*at:/.test(c)) throw new Error('撤销请求体必须复用 read-all 作用域并加批次时间戳');
+    if (!/path: '\/api\/entries\/read-all\/undo'/.test(c)) throw new Error('缺撤销端点');
+    if (!/undo: z\.object\(\{ at: z\.string\(\) \}\)/.test(c)) throw new Error('read-all 回执必须带撤销凭据');
+    const s = fs.readFileSync(path.join(root, '..', 'server', 'src', 'routes', 'entries.ts'), 'utf8');
+    if (!/const at = new Date\(\);/.test(s)) throw new Error('服务端要给这一批统一写一个批次时间戳');
+    if (!/update entries set is_read = true, read_at = \$\{at\}/.test(s)) throw new Error('read-all 必须写批次时间戳（不是 now()）');
+    if (!/entries\.read_at = \$\{at\}/.test(s)) throw new Error('撤销必须按批次时间戳精确命中');
+    if (!/if \(Number\.isNaN\(at\.getTime\(\)\)\)/.test(s)) throw new Error('撤销要拒绝非法时间戳（400 而不是 500）');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8');
+    if (!/\.\.\.\(p\.get\('fav'\) \? \{ fav: '1' \} : \{\}\)/.test(r)) {
+      throw new Error('收藏视图的批量已读必须带 fav（否则会标掉范围外所有未读）');
+    }
+    if (!/action: \(\) => undoReadAll\(scope, undoAt\)/.test(r)) throw new Error('提示条未接撤销动作');
+    const u = fs.readFileSync(path.join(root, 'src', 'core', 'util.js'), 'utf8');
+    if (!/export function runToastAction/.test(u)) throw new Error('util 缺行内动作执行器');
+    const o = fs.readFileSync(path.join(root, 'src', 'ui', 'Overlays.jsx'), 'utf8');
+    if (!/className="toast-act"/.test(o)) throw new Error('Overlays 未渲染撤销按钮');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
+    if (!/\.toast\.show:has\(\.toast-act\) \{ pointer-events: auto; \}/.test(css)) {
+      throw new Error('toast 默认 pointer-events:none，带动作时必须放开命中');
+    }
+  });
+
+  t('窄屏吸顶头部随滚动收展：阈值 / 断点隔离 / 置顶前先复位头部', () => {
+    const root = path.join(__dirname, '..', '..');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/const HEAD_HIDE_AFTER = 32/.test(r) || !/const HEAD_SHOW_AFTER = 6/.test(r)) {
+      throw new Error('头部收起阈值必须大于展开阈值（否则来回闪）');
+    }
+    if (!/const HEAD_EDGE = 24/.test(r)) throw new Error('贴顶 / 贴底必须强制展开');
+    if (!/Math\.abs\(dy\) > el\.clientHeight/.test(r)) throw new Error('一帧跨屏的跳转不能当作下滑');
+    // 置顶 / 恢复期间头部必须展开：收起后的 rect 少一个头部高度，落点会偏
+    const pin = r.slice(r.indexOf('function scrollReaderToArt'), r.indexOf('/* ---------- 篇内阅读位置'));
+    const revealAt = pin.indexOf('readerHeadReveal();');
+    const measureAt = pin.indexOf('const headOff = readerHeadOffset();');
+    if (revealAt < 0 || measureAt < 0 || revealAt > measureAt) {
+      throw new Error('scrollReaderToArt 必须先复位头部再量高度');
+    }
+    if (!/main\.classList\.add\('head-instant'\)/.test(pin)) {
+      throw new Error('复位头部这一步要不播过渡，否则量到过渡中间的位置');
+    }
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/\.reader-main\.head-tucked \.reader-head \{ transform: translateY\(-100%\); \}/.test(css)) {
+      throw new Error('缺头部落下规则');
+    }
+    if (!/\.reader-main\.head-instant \.reader-head \{ transition: none; \}/.test(css)) {
+      throw new Error('缺 head-instant 的免过渡规则');
+    }
+    const hig = fs.readFileSync(path.join(root, 'src', 'hig.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/\.new-pill, \.reader-head,/.test(hig)) throw new Error('减少动效时头部收展必须直接切换');
+    // 断点只准存在于 CSS：桌面宽度下这个类不该改变任何像素
+    if (/matchMedia/.test(r.slice(r.indexOf('function installReaderHeadTuck'), r.indexOf('installReaderHeadTuck();')))) {
+      throw new Error('头部收展不该在 JS 里判断点');
+    }
+  });
+
   /* 折叠状态必须能从 state 读到（1.7.2 回归，症状：点分组行毫无反应）。
    *
    * 这条是**静态**用例，刻意不跑组件：折叠集合的真身在 core 的 layoutPref 里，
@@ -7336,6 +7557,7 @@ const withEFP = (el, fn) => {
     await sleep(20);
   }
 
+  await pending;
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });
   console.log(`\n共 ${results.length} 项，通过 ${results.length - fail}，失败 ${fail}`);
   process.exit(fail ? 1 : 0);

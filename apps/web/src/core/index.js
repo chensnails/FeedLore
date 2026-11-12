@@ -33,6 +33,7 @@ export const core = {
   toast: U.toast, confirm: U.confirm,
   // —— 覆盖层（v2.1.0 起 React 化，组件 src/ui/Overlays.jsx） ——
   getToastState: () => U.toastState,
+  runToastAction: U.runToastAction,
   getConfirmState: () => U.confirmState,
   settleConfirm: U.settleConfirm, cancelConfirm: U.cancelConfirm,
   getNewPillState: () => AR.newPillState,

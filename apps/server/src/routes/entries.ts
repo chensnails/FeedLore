@@ -23,6 +23,7 @@ import {
   entriesListResponse,
   entryFlagPatchBody,
   readAllBody,
+  readAllUndoBody,
   EntryDetailSchema,
   EntryFlagsSchema,
 } from '@feedlore/contract';
@@ -38,6 +39,7 @@ import { CARD_COLUMNS, entryConditions, parseFeedIds } from '../lib/entriesQuery
 type Query = z.infer<typeof entriesQuery>;
 type FlagPatch = z.infer<typeof entryFlagPatchBody>;
 type ReadAll = z.infer<typeof readAllBody>;
+type ReadAllUndo = z.infer<typeof readAllUndoBody>;
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 
@@ -178,9 +180,12 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
         const uid = c.get('user').id;
         const body: ReadAll = c.req.valid('json');
         const feedIds = body.feeds ?? null;
+        /* 批次时间戳：所有行写同一个值，撤销据此精确命中这一批（不用把几万个
+         * id 拉回内存，也不依赖「几秒内没人再读」这种概率假设）。 */
+        const at = new Date();
 
         if (feedIds !== null && feedIds.length === 0) {
-          return c.json({ ok: true, updated: 0 });
+          return c.json({ ok: true, updated: 0, undo: { at: at.toISOString() } });
         }
 
         const conds = [
@@ -200,11 +205,53 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
          * `"entries"."feed_id"`（drizzle 按表名限定），一旦写成 `update entries e`
          * 就变成「引用不存在的 FROM 项」，整个语句 500。 */
         const res = await db.execute(sql`
-          update entries set is_read = true, read_at = now()
+          update entries set is_read = true, read_at = ${at}
            where ${sql.join(conds, sql` and `)} and entries.is_read = false
         `);
         const updated = Number((res as unknown as { rowCount?: number | null }).rowCount ?? 0);
-        return c.json({ ok: true, updated });
+        return c.json({ ok: true, updated, undo: { at: at.toISOString() } });
+      },
+    )
+
+    /* ---------------- POST /api/entries/read-all/undo ----------------
+     * 撤销一次批量已读：条件与那次 read-all 完全一致，外加
+     * 「read_at 恰好等于该批次时间戳」。之后单独标为已读的条目不会被误伤。 */
+    .post(
+      entriesSpec.readAllUndo.path,
+      requireAuth(auth, 'user'),
+      zValidator('json', readAllUndoBody, (result) => {
+        if (!result.success) throw new BadRequest('POST /api/entries/read-all/undo', result.error.issues);
+      }),
+      async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
+
+        const uid = c.get('user').id;
+        const body: ReadAllUndo = c.req.valid('json');
+        const at = new Date(body.at);
+        if (Number.isNaN(at.getTime())) {
+          throw new BadRequest('POST /api/entries/read-all/undo', [{ path: 'at', message: 'Invalid batch timestamp' }]);
+        }
+
+        const feedIds = body.feeds ?? null;
+        if (feedIds !== null && feedIds.length === 0) {
+          return c.json({ ok: true, reverted: 0 });
+        }
+
+        const conds = entryConditions(db, uid, {
+          feedIds,
+          q: body.q,
+          tag: body.tag,
+          watch: body.watch,
+          fav: body.fav === '1',
+        });
+        const res = await db.execute(sql`
+          update entries set is_read = false, read_at = null
+           where ${sql.join(conds, sql` and `)}
+             and entries.is_read = true
+             and entries.read_at = ${at}
+        `);
+        const reverted = Number((res as unknown as { rowCount?: number | null }).rowCount ?? 0);
+        return c.json({ ok: true, reverted });
       },
     )
 

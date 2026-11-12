@@ -185,17 +185,32 @@ export function fmtDate(ts) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
 }
 
-/** 轻提示。v2.1.0 起不再直接改 DOM，改为写状态 + 通知 src/ui/Overlays.jsx 重绘 */
+/** 轻提示。v2.1.0 起不再直接改 DOM，改为写状态 + 通知 src/ui/Overlays.jsx 重绘。
+ *  第三参可选 `{ action, actionText, ms }`：带一个行内动作按钮（批量已读的「撤销」）。
+ *  有动作时默认停留 6 秒，给用户留出反应时间；没有动作仍是最短的 1.9 秒。 */
 export let toastTimer = null;
-export let toastState = { msg: '', ok: true, show: false };
-export function toast(msg, ok = true) {
-  toastState = { msg, ok, show: true };
+export let toastState = { msg: '', ok: true, show: false, action: null, actionText: '' };
+export function toast(msg, ok = true, opts = {}) {
+  const action = opts && typeof opts.action === 'function' ? opts.action : null;
+  const actionText = (opts && opts.actionText) || '撤销';
+  const ms = (opts && opts.ms) || (action ? 6000 : 1900);
+  toastState = { msg, ok, show: true, action, actionText };
   emitOverlays();
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
-    toastState = { msg, ok, show: false };
+    toastState = { msg, ok, show: false, action: null, actionText: '' };
     emitOverlays();
-  }, 1900);
+  }, ms);
+}
+
+/** 点 toast 里的动作按钮：先收起提示（避免重复点），再执行动作 */
+export function runToastAction() {
+  const action = toastState.action;
+  if (typeof action !== 'function') return;
+  clearTimeout(toastTimer);
+  toastState = { msg: toastState.msg, ok: toastState.ok, show: false, action: null, actionText: '' };
+  emitOverlays();
+  action();
 }
 
 /* ---------------- 统一确认框（替代原生 confirm / prompt） ----------------
