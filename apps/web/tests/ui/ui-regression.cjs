@@ -6955,6 +6955,12 @@ const withEFP = (el, fn) => {
     if (!/export async function restoreReaderArt/.test(r)) throw new Error('缺 restoreReaderArt（深链恢复）');
     const b = fs.readFileSync(path.join(root, 'src', 'core', 'bootstrap.js'), 'utf8');
     if (!/#reader\/art\//.test(b)) throw new Error('bootstrap 未解析条目级深链');
+    // 深链目标优先于列表筛选：范围 / 关注视图 / 搜索词 / 频道筛选会把目标筛掉
+    // （打开即标已读，「未读」范围下刷新必然找不到刚读的那篇）。
+    const art = b.slice(b.indexOf("location.hash.startsWith('#reader/art/')"), b.indexOf("else if (location.hash.startsWith('#cards'))"));
+    for (const need of ["state.rdScope = 'all'", 'state.rdWatch = null', "state.rdQ = ''", 'state.rdFeedId = null', 'state.rdGroup = null']) {
+      if (art.indexOf(need) < 0) throw new Error('条目级深链未清掉列表筛选：' + need);
+    }
   });
   t('窄屏收纳：≤720 段把文章页三枚动作按钮收进 ⋮（.is-narrow-only）', () => {
     const root = path.join(__dirname, '..', '..');

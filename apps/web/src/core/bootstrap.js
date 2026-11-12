@@ -126,7 +126,18 @@ async function waitViewFirstPaint(tab) {
   //    白拉一整页用户看不到的卡片和图片请求。
   let tab = currentTab();
   let deepArtId = null;
-  if (location.hash.startsWith('#reader/art/')) { tab = 'reader'; deepArtId = location.hash.slice('#reader/art/'.length); }
+  if (location.hash.startsWith('#reader/art/')) {
+    tab = 'reader';
+    deepArtId = location.hash.slice('#reader/art/'.length);
+    /* 条目级深链必须保证目标一定在列表里：范围（未读 / 收藏）、关注视图、搜索词、
+       频道筛选都可能把它筛掉 —— 打开文章即标记已读，停在「未读」范围时刷新
+       必然找不到刚读的那篇，篇内位置自然也无从恢复。深链目标优先于列表筛选。 */
+    state.rdScope = 'all';
+    state.rdWatch = null;
+    state.rdQ = '';
+    state.rdFeedId = null;
+    state.rdGroup = null;
+  }
   else if (location.hash.startsWith('#cards')) tab = 'cards';
   else if (location.hash.startsWith('#favorite')) { tab = 'reader'; state.rdScope = 'favorite'; }
   else if (location.hash.startsWith('#unread')) { tab = 'reader'; state.rdScope = 'unread'; }
