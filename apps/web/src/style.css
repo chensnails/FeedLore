@@ -5270,12 +5270,20 @@ body { overflow: hidden; }
   .reader-main.head-tucked .reader-head { transform: translateY(-100%); }
   /* 置顶前要把头部复位再量高度：这一步不播动画，否则量到的是过渡中间的位置 */
   .reader-main.head-instant .reader-head { transition: none; }
-  /* 头部收起后，展开文章的标题行跟着贴到顶端（让出安全区）。
-     否则它仍停在头部原来的高度：头部已经滑走了，它上方那条空档里却滚过正文，
-     看起来就是标题飘在正文中间、没钉住。用 top 而不是 transform ——
-     还没吸住的标题行不受影响，只有已经吸在旧位置的才上移。 */
+  /* 头部收起后，展开文章的标题行跟着上移，但**不贴死屏顶**：
+     完全贴住时卡片像被切掉一刀（顶部圆角、留白都没了，截图被当成“卡片不完整”）。
+     留 8px 呼吸缝 + 安全区；上方那条缝由头部自己的 ::after 盖成页面底色，
+     否则上一张卡片 / 正文会从缝里滚过去，又变成“标题飘在正文中间”。
+     用 top 而不是 transform —— 还没吸住的标题行不受影响，只有已吸住的才上移。 */
   .art-item.open .art-row { transition: top var(--dur-med) var(--ease); }
-  .reader-main.head-tucked .art-item.open .art-row { top: env(safe-area-inset-top, 0px); }
+  .reader-main.head-tucked .art-item.open .art-row { top: calc(env(safe-area-inset-top, 0px) + 8px); }
+  .reader-main.head-tucked .reader-head::after {
+    content: '';
+    position: absolute; left: 0; right: 0; top: 100%;
+    height: calc(env(safe-area-inset-top, 0px) + 8px);
+    background: var(--bg);
+    pointer-events: none;
+  }
 }
 
 /* ============================================================

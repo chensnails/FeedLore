@@ -7086,8 +7086,13 @@ const withEFP = (el, fn) => {
     if (!/\.art-item\.open \.art-row \{ transition: top var\(--dur-med\)/.test(css)) {
       throw new Error('标题行跟随头部收展要走同一条过渡');
     }
-    if (!/\.reader-main\.head-tucked \.art-item\.open \.art-row \{ top: env\(safe-area-inset-top, 0px\); \}/.test(css)) {
-      throw new Error('头部收起时展开文章的标题行要贴顶（让出安全区）');
+    // 但不能贴死屏顶：贴住时卡片顶部的圆角和留白全被切掉，看起来像「卡片不完整」。
+    // 留 8px + 安全区，缝隙由头部 ::after 用页面底色盖住，否则正文会从缝里滚过去。
+    if (!/\.reader-main\.head-tucked \.art-item\.open \.art-row \{ top: calc\(env\(safe-area-inset-top, 0px\) \+ 8px\); \}/.test(css)) {
+      throw new Error('头部收起时标题行要上移，但留 8px 呼吸缝 + 安全区');
+    }
+    if (!/\.reader-main\.head-tucked \.reader-head::after \{[^}]*top: 100%;[^}]*height: calc\(env\(safe-area-inset-top, 0px\) \+ 8px\);[^}]*background: var\(--bg\);/s.test(css)) {
+      throw new Error('标题行上移后上方缝隙要用页面底色盖住（否则内容从缝里滚过）');
     }
     const hig = fs.readFileSync(path.join(root, 'src', 'hig.css'), 'utf8').replace(/\r\n/g, '\n');
     if (!/\.new-pill, \.reader-head,/.test(hig)) throw new Error('减少动效时头部收展必须直接切换');
