@@ -370,7 +370,10 @@ export const entriesQuery = z.object({
   fav: z.enum(['1']).optional(),
   watch: z.enum(['watch', 'block']).optional(),
   scope: z.enum(['all', 'cards']).optional(),
-  feeds: z.string().optional(),
+  /* feeds=1,2,3 频道 id 清单。加长度上限：这是唯一没设防的字符串参数，
+   * 不设限时可塞进任意长的串直达 SQL 的 inArray，纯耗资源。4000 字符足够
+   * 几百个频道（每个 id + 逗号约 10 字符），正常分组筛选远到不了。 */
+  feeds: z.string().max(4000).optional(),
   /* name = 按标题排。契约里必须有这一档：LEGACY 的 layout.sort 就写着 new/old/name，
    * 只让服务端支持前两档的话，v1 用户存了 name 的账号迁过来会静默退回「新→旧」——
    * 设置里显示「按名称」而列表按时间排，是最难查的那类不一致。 */

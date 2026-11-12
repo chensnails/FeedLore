@@ -767,6 +767,11 @@ w.feedlore = {
   fmtDate: (d) => (d ? String(d).slice(0, 10) : ''),
   copyText: (t) => { clipboardWrites.push(String(t)); return Promise.resolve(true); },
   openLinkMenu: (anchor, urls, onPick) => { calls.push(['openLinkMenu', urls.length]); onPick(urls[1] || urls[0]); },
+  // 与 core/feeds.js firstPageSize 同口径：窄屏一小批（≤20），桌面整批。骨架屏用它对齐首屏张数。
+  firstPageSize: () => {
+    const narrow = w.innerWidth <= 720;
+    return narrow ? Math.min(w.feedlore.state.pageSize, 20) : w.feedlore.state.pageSize;
+  },
   filterEntries: () => {
     const st = w.feedlore.state;
     let list = (st.entries || []).filter((e) => {
@@ -4270,12 +4275,131 @@ const withEFP = (el, fn) => {
     }
   });
 
+  // ============ 2026-11 全面审查改进项（P1–P3）逐项守门 ============
+  t('P1 排序/标签服务端化：loadPage 带 sort/tag，applyFilters 只透传不再前端筛排', () => {
+    const root = path.join(__dirname, '..', '..');
+    const feeds = fs.readFileSync(path.join(root, 'src', 'core', 'feeds.js'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/qs\.set\('sort', state\.sort \|\| 'new'\)/.test(feeds)) throw new Error('loadPage 没把排序交给服务端');
+    if (!/if \(state\.tag\) qs\.set\('tag', state\.tag\)/.test(feeds)) throw new Error('loadPage 没把标签筛选交给服务端');
+    // 前端再筛/再排会把服务端分页好的顺序打乱、漏掉后续页命中的条目
+    if (!/export function applyFilters\(\) \{\s*return state\.entries;\s*\}/.test(feeds)) {
+      throw new Error('applyFilters 应只透传 state.entries（排序/筛选已在服务端）');
+    }
+  });
+  t('P1 首屏批量 firstPageSize：窄屏≤20、桌面整批，loadPage 与骨架同源', () => {
+    const root = path.join(__dirname, '..', '..');
+    const feeds = fs.readFileSync(path.join(root, 'src', 'core', 'feeds.js'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/export function firstPageSize\(\)/.test(feeds)) throw new Error('缺 firstPageSize');
+    if (!/window\.innerWidth <= 720/.test(feeds) || !/Math\.min\(state\.pageSize, 20\)/.test(feeds)) {
+      throw new Error('firstPageSize 窄屏阈值/批量不对（720px、≤20）');
+    }
+    if (!/const want = firstPageSize\(\)/.test(feeds)) throw new Error('loadPage 首屏 limit 没用 firstPageSize');
+    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
+    if (!/s\.firstPageSize \? s\.firstPageSize\(\) : 8/.test(cards)) throw new Error('骨架张数没跟 firstPageSize 同源');
+    if (/const SKELETON_N = 8/.test(cards)) throw new Error('骨架仍写死 8 张');
+  });
+  t('P1 排序/标签切换=换列表：重置重载 + 瞬时回顶 + 同值不重拉', () => {
+    const root = path.join(__dirname, '..', '..');
+    const idx = fs.readFileSync(path.join(root, 'src', 'core', 'index.js'), 'utf8');
+    for (const name of ['cardsSort', 'cardsTag']) {
+      const start = idx.indexOf(name + ':');
+      if (start < 0) throw new Error('core/index.js 缺 ' + name);
+      const body = idx.slice(start, idx.indexOf('},', start) + 2);
+      if (!/F\.loadPage\(true\)/.test(body)) throw new Error(name + ' 改筛选没有重置重载（看到的还是旧页）');
+      if (!/scrollActiveTop\('auto'\)/.test(body)) throw new Error(name + ' 换列表没有瞬时回顶');
+      if (!/return;/.test(body)) throw new Error(name + ' 缺同值短路');
+    }
+    const sortBody = idx.slice(idx.indexOf('cardsSort:'), idx.indexOf('},', idx.indexOf('cardsSort:')) + 2);
+    if (!/if \(S\.state\.sort === v\) return;/.test(sortBody)) throw new Error('cardsSort 同值仍重拉');
+    const tagBody = idx.slice(idx.indexOf('cardsTag:'), idx.indexOf('},', idx.indexOf('cardsTag:')) + 2);
+    if (!/if \(S\.state\.tag === next\) return;/.test(tagBody)) throw new Error('cardsTag 同值仍重拉');
+  });
+  t('P1 后台重拉与首屏同口径：fetchHead 带 tag/sort，applyFresh 收闸 + 清错误文案', () => {
+    const root = path.join(__dirname, '..', '..');
+    const ar = fs.readFileSync(path.join(root, 'src', 'core', 'autorefresh.js'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/if \(state\.tag\) params\.set\('tag', state\.tag\)/.test(ar)) throw new Error('后台重拉丢了标签筛选');
+    if (!/params\.set\('sort', state\.sort \|\| 'new'\)/.test(ar)) throw new Error('后台重拉丢了排序');
+    if (!/state\.listEpoch = \(Number\(state\.listEpoch\) \|\| 0\) \+ 1/.test(ar)) throw new Error('后台重拉没递增 listEpoch 收闸');
+    if (!/state\.loadMoreErrMsg = ''/.test(ar)) throw new Error('后台重拉没清掉旧的错误文案');
+    if (!/forgetViewScroll\('cards'\)/.test(ar)) throw new Error('后台重拉没丢卡片页旧滚动记忆');
+    const st = fs.readFileSync(path.join(root, 'src', 'core', 'state.js'), 'utf8');
+    if (!/loadMoreErrMsg: ''/.test(st)) throw new Error('state 缺 loadMoreErrMsg 初始值');
+    if (!/listEpoch: 0/.test(st)) throw new Error('state 缺 listEpoch 初始值');
+  });
+  t('P2 搜索/频道同值守卫：词没变 / 再点同一频道不白闪骨架', () => {
+    const root = path.join(__dirname, '..', '..');
+    const idx = fs.readFileSync(path.join(root, 'src', 'core', 'index.js'), 'utf8');
+    const search = idx.slice(idx.indexOf('cardsSearch:'), idx.indexOf('},', idx.indexOf('cardsSearch:')) + 2);
+    if (!/if \(v === S\.state\.q && S\.state\.tag == null\) return;/.test(search)) throw new Error('cardsSearch 同值仍重拉');
+    const feed = idx.slice(idx.indexOf('cardsFilterFeed:'), idx.indexOf('},', idx.indexOf('cardsFilterFeed:')) + 2);
+    if (!/String\(next\) === String\(S\.state\.feedFilter\)/.test(feed)) throw new Error('频道 id 未按串比（number/string 两来源）');
+    if (!/if \(same && S\.state\.cardGroup == null\) return;/.test(feed)) throw new Error('cardsFilterFeed 再点同一频道仍重拉');
+  });
+  t('P2 标签筛选计数 chip：标签名 + 总数 + 一键清除，搜索态不重复计数', () => {
+    const root = path.join(__dirname, '..', '..');
+    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
+    if (!/\(st\.q \|\| st\.tag\) && !showSkeleton && !showEmpty/.test(cards)) throw new Error('计数行显示条件不对');
+    if (cards.indexOf('className="count-chip"') < 0) throw new Error('缺标签 chip');
+    if (cards.indexOf('className="count-clear"') < 0) throw new Error('缺清除按钮');
+    if (!/onClick=\{\(\) => s\.cardsTag\(null\)\}/.test(cards)) throw new Error('清除按钮没接 cardsTag(null)');
+    if (!/!st\.q \? <span className="count-chip-n">\{st\.total\} 条<\/span>/.test(cards)) throw new Error('搜索态不应再重复显示总数');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/\.count-chip \{/.test(css) || !/\.count-clear \{/.test(css)) throw new Error('缺 chip / 清除按钮样式');
+    if (!/\.list-count \{[^}]*display: flex/.test(css)) throw new Error('计数行应 flex 换行排布');
+  });
+  t('P2 链接安全兜底 safeHref：只放行 http(s)/mailto，三处共用一份', () => {
+    const root = path.join(__dirname, '..', '..');
+    const ea = fs.readFileSync(path.join(root, 'src', 'ui', 'EntryActions.jsx'), 'utf8');
+    if (!/export function safeHref\(h\)/.test(ea)) throw new Error('缺 safeHref 导出');
+    if (!/\/\^\(https\?:\|mailto:\)\/i\.test\(s\)/.test(ea)) throw new Error('safeHref 白名单不对（http(s)/mailto）');
+    if (!/safeHref\(e\.sourceUrl\) \|\| safeHref\(e\.link\)/.test(ea)) throw new Error('OpenButton 没过 safeHref');
+    const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
+    if (!/import \{ ArtActions, safeHref \} from '\.\.\/ui\/EntryActions\.jsx'/.test(rv)) throw new Error('阅读页应复用 safeHref');
+    if (/function safeHref\(/.test(rv)) throw new Error('阅读页不该再各写一份 safeHref');
+    if (!/safeHref\(n\.href\)/.test(rv)) throw new Error('正文链接没过 safeHref');
+    const ai = fs.readFileSync(path.join(root, 'src', 'ai', 'AiView.jsx'), 'utf8');
+    if (!/import \{ CopyIconButton, safeHref \} from '\.\.\/ui\/EntryActions\.jsx'/.test(ai)) throw new Error('日报应复用 safeHref');
+    if (!/safeHref\(e\.link\) \? <a/.test(ai)) throw new Error('日报「打开」链接没过 safeHref 兜底');
+  });
+  t('P2 输入上限与注入面：feeds 串≤4000，搜索 ILIKE 转义 \\\\ % _', () => {
+    const root = path.join(__dirname, '..', '..');
+    const c = fs.readFileSync(path.join(root, '..', '..', 'packages', 'contract', 'src', 'endpoints.ts'), 'utf8');
+    if (!/feeds: z\.string\(\)\.max\(4000\)\.optional\(\)/.test(c)) throw new Error('feeds 串缺上限（超长 URL 打爆服务端）');
+    const eq = fs.readFileSync(path.join(root, '..', 'server', 'src', 'lib', 'entriesQuery.ts'), 'utf8');
+    if (!/kw\.replace\(\/\[\\\\%_\]\/g, \(c\) => '\\\\' \+ c\)/.test(eq)) throw new Error('搜索词没转义 ILIKE 通配符（\\ % _）');
+    if (!/const pat = `%\$\{esc\}%`/.test(eq)) throw new Error('ILIKE 模式应基于转义后的词构造');
+  });
+  t('P3 闸门不误开：输入框/文本域/可编辑区里敲滚动键不算滚列表', () => {
+    const root = path.join(__dirname, '..', '..');
+    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
+    if (!/t\.tagName === 'INPUT' \|\| t\.tagName === 'TEXTAREA' \|\| t\.isContentEditable/.test(cards)) {
+      throw new Error('手势闸门没跳过可编辑目标（在搜索框敲空格会误开闸）');
+    }
+  });
+  t('P3 错误态说人话：错误空态 / 底部重试条都显示具体原因', () => {
+    const root = path.join(__dirname, '..', '..');
+    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
+    if (!/st\.loadMoreErrMsg \? `数据加载失败：\$\{st\.loadMoreErrMsg\}`/.test(cards)) throw new Error('错误空态没带具体原因');
+    if (!/加载失败\{st\.loadMoreErrMsg \? `：\$\{st\.loadMoreErrMsg\}`/.test(cards)) throw new Error('底部重试条没带具体原因');
+    const feeds = fs.readFileSync(path.join(root, 'src', 'core', 'feeds.js'), 'utf8');
+    if (!/state\.loadMoreErrMsg = errText\(err\)/.test(feeds)) throw new Error('失败时没记下译好的中文原因');
+  });
+  t('P3 文案收尾：搜索占位符说清范围、页脚品牌名统一', () => {
+    const root = path.join(__dirname, '..', '..');
+    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
+    if (cards.indexOf('搜索资源名称、描述、正文或标签…') < 0) throw new Error('卡片页搜索占位符未更新');
+    if (cards.indexOf('笺川 · FeedLore') < 0) throw new Error('卡片页页脚品牌名未统一');
+    const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
+    if (rv.indexOf('搜索标题、描述、正文或标签…') < 0) throw new Error('文章页搜索占位符未更新');
+  });
+
   // 骨架态
   w.feedlore.state.loading = true; w.feedlore.state.entries = []; cardsTick();
   await sleep(30);
-  t('骨架态：首屏加载显示 8 个骨架卡', () => {
+  t('骨架态：骨架张数与首屏批量 firstPageSize 一致（不再固定 8 张）', () => {
     if (!C('#skeleton')) throw new Error('无骨架');
-    if (CA('#skeleton .sk-card').length !== 8) throw new Error('骨架数 ' + CA('#skeleton .sk-card').length);
+    const want = w.feedlore.firstPageSize();
+    if (CA('#skeleton .sk-card').length !== want) throw new Error('骨架数 ' + CA('#skeleton .sk-card').length + '，期望 ' + want);
   });
   w.feedlore.state.loading = false; w.feedlore.state.entries = miniEntriesAll(); cardsTick();
   await sleep(30);
@@ -5428,7 +5552,7 @@ const withEFP = (el, fn) => {
         'readerCollapsedGroups', 'readerToggleGroupCollapse', 'readerToggleAllGroups',
         'getReaderSideWidth', 'setReaderSideWidth', 'applyReaderSideWidth', 'readerSideCap',
         'cardsSearch', 'cardsFilterFeed', 'cardsFilterGroup', 'cardsSort', 'cardsView', 'cardsTag',
-        'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'promptInstall',
+        'cardsLoadMore', 'cardsSetFlag', 'cardsDetailRead', 'filterEntries', 'firstPageSize', 'promptInstall',
         'cardsToggleDrawer', 'cardsCloseDrawer',
         'openSettings', 'toast', 'apiFetch', 'isAdmin', 'isReadonly', 'isWritable', 'exportOpml', 'bindSections', 'groupFeeds',
         'getToastState', 'getNewPillState', 'getLightboxState', 'applyPendingFresh',

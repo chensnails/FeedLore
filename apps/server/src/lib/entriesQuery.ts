@@ -64,7 +64,10 @@ export function entryConditions(db: Db, uid: string, f: EntryFilter): SQL[] {
   if (f.q) {
     const kw = f.q.trim();
     if (kw) {
-      const pat = `%${kw}%`;
+      // 转义 LIKE 通配符（% _）与转义符本身（\）：搜「100%」「a_b」要按字面命中，
+      // 而不是把 % 当任意串、_ 当任意单字符。PG 的 (I)LIKE 默认转义符就是反斜杠。
+      const esc = kw.replace(/[\\%_]/g, (c) => '\\' + c);
+      const pat = `%${esc}%`;
       // 覆盖正文与标签：只搜标题/描述时，正文里的关键词搜不到（legacy v2.6.0 的同款修正）
       conds.push(
         sql`(${entries.title} ilike ${pat}

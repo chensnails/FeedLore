@@ -19,7 +19,7 @@ import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthVariant } from '../imgSrc.js';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
 import { Icon } from '../ui/Icon.jsx';
-import { CopyIconButton } from '../ui/EntryActions.jsx';
+import { CopyIconButton, safeHref } from '../ui/EntryActions.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -49,7 +49,7 @@ function DgItem({ it }) {
         <div className="dg-item-name">{e.name || '(无标题)'}</div>
         <div className="dg-item-foot">
           {e.link ? <CopyIconButton url={e.link} /> : null}
-          {e.link ? <a className="icon-btn" title="打开" href={e.link} target="_blank" rel="noopener noreferrer"><Icon n="external" /></a> : null}
+          {safeHref(e.link) ? <a className="icon-btn" title="打开" href={safeHref(e.link)} target="_blank" rel="noopener noreferrer"><Icon n="external" /></a> : null}
           {e.size ? <span className="dg-item-size">{e.size}</span> : null}
         </div>
       </div>

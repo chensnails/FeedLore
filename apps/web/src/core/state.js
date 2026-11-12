@@ -24,6 +24,10 @@ export const state = {
   loading: false,
   loadError: false,   // 首屏加载失败（React 卡片视图据此显示错误空态）
   loadMoreErr: false, // 翻页失败（列表底部给重试按钮，并暂停自动加载）
+  loadMoreErrMsg: '', // 加载失败的具体原因（错误空态 / 底部重试条显示，errText 译好的中文）
+  /* 列表重置代数：每次 loadPage(reset) 自增。CardsView 的手势闸门用它收闸 ——
+     换了列表就要求先出现一次真实滚动输入才允许触底续拉。 */
+  listEpoch: 0,
   q: '',
   sort: 'new',        // 阅读页排序：new 最新 / old 最早 / name 名称（按账号持久化）
   tag: null,

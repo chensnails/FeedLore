@@ -6,7 +6,7 @@
  * ============================================================ */
 
 import { apiFetch, httpError, toast, emitShell, emitOverlays } from './util.js';
-import { state, activeScrollTop, scrollActiveTop } from './state.js';
+import { state, activeScrollTop, scrollActiveTop, forgetViewScroll } from './state.js';
 import { render, loadFeeds, cardGroupFeedIds } from './feeds.js';
 import { renderReader, readerFilterParams } from './reader.js';
 import { isOn } from '../kernel/bridge.js';
@@ -48,7 +48,7 @@ export function scheduleAutoRefresh() {
   }, mins * 60000);
 }
 
-/** 按当前页面的筛选条件拉一页首屏（卡片页的标签是前端过滤的，不用带 tag） */
+/** 按当前页面的筛选条件拉一页首屏（卡片页的 tag / sort 也已服务端化，须一并带上） */
 export async function fetchHead(view) {
   const params = new URLSearchParams();
   const loaded = view === 'reader' ? state.rdEntries.length : state.entries.length;
@@ -60,11 +60,13 @@ export async function fetchHead(view) {
     // 和 loadReader 用同一套条件，否则「新内容」会按错误的范围去数
     for (const [k, v] of readerFilterParams()) params.set(k, v);
   } else {
-    // 与 loadPage 用同一套条件，否则分组筛选下的「新内容」会按错误的范围去数
+    // 与 loadPage 用同一套条件，否则分组 / 标签 / 排序筛选下的「新内容」会按错误的范围去数
     if (state.cardGroup != null) params.set('feeds', cardGroupFeedIds().join(','));
     else if (state.feedFilter) params.set('feeds', String(state.feedFilter));
     else params.set('scope', 'cards');
     if (state.q) params.set('q', state.q);
+    if (state.tag) params.set('tag', state.tag);
+    params.set('sort', state.sort || 'new');
   }
 
   const res = await apiFetch('/api/entries?' + params.toString());
@@ -106,6 +108,10 @@ export function applyFresh({ view, data }) {
     state.total = Number(data.total) || 0;
     state.tags = data.tags || state.tags;
     state.loadMoreErr = false;
+    state.loadMoreErrMsg = '';
+    // 与 loadPage(reset) 同一约定：换了列表 = 旧滚动位置作废、手势闸门重新收闸
+    state.listEpoch = (Number(state.listEpoch) || 0) + 1;
+    forgetViewScroll('cards');
     render();
   }
   emitShell();

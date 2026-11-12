@@ -57,7 +57,11 @@ export const core = {
      浏览器夹到新内容的底部，底部哨兵一露头就自动续拉，越拉越贴底 —— 表现为
      切换频道后列表自己一直往下滚。 */
   filterEntries: () => F.applyFilters(),
+  firstPageSize: F.firstPageSize,
   cardsSearch: (v) => {
+    // 同值不重拉：去抖到期 / 回车时词没变，重拉只会白闪骨架并把页面拽回顶部。
+    // 但挂着标签时清标签本身就是变化，仍要重置。
+    if (v === S.state.q && S.state.tag == null) return;
     S.state.q = v;
     S.state.tag = null;
     const p = F.loadPage(true);
@@ -65,7 +69,15 @@ export const core = {
     return p;
   },
   cardsFilterFeed: (v) => {
-    S.state.feedFilter = v ? v : null;
+    const next = v ? v : null;
+    // 再点同一频道不重拉：ChannelTabs / 侧栏的 retap 会平滑回顶，重拉只会白闪骨架。
+    // 频道 id 有 number / string 两种来源（标签条传 id、下拉传 String(id)），按串比。
+    // 挂着分组筛选时点频道是「换筛选」，仍要重置。
+    const same = next == null
+      ? S.state.feedFilter == null
+      : S.state.feedFilter != null && String(next) === String(S.state.feedFilter);
+    if (same && S.state.cardGroup == null) return;
+    S.state.feedFilter = next;
     S.state.cardGroup = null;
     S.state.tag = null;
     const p = F.loadPage(true);
@@ -86,9 +98,25 @@ export const core = {
     S.scrollActiveTop('auto');
     return p;
   },
-  cardsSort: (v) => { S.state.sort = v; S.setLayout('sort', v); F.render(); },
+  /* 排序 / 标签都已是服务端筛选（loadPage 带 sort / tag）：改它们 = 换列表，
+     必须重置重载并瞬时回顶，与换频道 / 搜索同一套。只 render() 不重拉的话，
+     用户看到的还是旧顺序 / 旧标签的那一页。同值直接返回，不白闪骨架。 */
+  cardsSort: (v) => {
+    if (S.state.sort === v) return;
+    S.setLayout('sort', v);   // LAYOUT_MIRROR 会把值回填到 state.sort
+    const p = F.loadPage(true);
+    S.scrollActiveTop('auto');
+    return p;
+  },
   cardsView: (m) => F.setViewMode(m),
-  cardsTag: (t) => { S.state.tag = t || null; F.render(); S.scrollActiveTop(U.prefersReducedMotion() ? 'auto' : 'smooth'); },
+  cardsTag: (t) => {
+    const next = t || null;
+    if (S.state.tag === next) return;
+    S.state.tag = next;
+    const p = F.loadPage(true);
+    S.scrollActiveTop('auto');
+    return p;
+  },
   cardsLoadMore: () => F.loadPage(false),
   cardsRetryMore: () => { S.state.loadMoreErr = false; return F.loadPage(false); },
   // 窄屏频道抽屉（与文章页同一套交互，v1.3.10）

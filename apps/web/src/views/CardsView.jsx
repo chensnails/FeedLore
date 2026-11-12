@@ -35,7 +35,6 @@ import { Icon } from '../ui/Icon.jsx';
 import { CopyButton, OpenButton, copyableLinks } from '../ui/EntryActions.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
-const SKELETON_N = 8;
 
 
 /** 懒加载图片：首次失败带 ?r=1 重试一次，再失败走兜底 */
@@ -201,7 +200,11 @@ function openFromClick(ev, e, onOpen) {
 }
 
 const Skeletons = ({ view }) => {
-  const n = Array.from({ length: SKELETON_N }, (_, i) => i);
+  // 骨架数量与真实首屏批量一致（firstPageSize：窄屏 20 / 桌面 50），不再固定画 8 张 ——
+  // 否则首屏落地时卡片数从 8 猛跳到 50，布局一下子撑开，看着像闪了一下。
+  const s = S();
+  const count = s.firstPageSize ? s.firstPageSize() : 8;
+  const n = Array.from({ length: count }, (_, i) => i);
   if (view === 'list') {
     return n.map((i) => (
       <div className="sk-row" key={i}>
@@ -286,6 +289,9 @@ export function CardsView() {
   useEffect(() => {
     const arm = () => { autoLoadArmed.current = true; };
     const onKey = (ev) => {
+      // 在输入框 / 文本域 / 可编辑区里敲方向键、空格是在编辑内容，不是在滚列表，别开闸
+      const t = ev.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(ev.key)) arm();
     };
     document.addEventListener('pointerdown', arm, { capture: true, passive: true });
@@ -376,7 +382,7 @@ export function CardsView() {
   let emptyMsg = null;
   let emptyAction = null;
   if (st.loadError) {
-    emptyMsg = '数据加载失败，请稍后重试';
+    emptyMsg = st.loadMoreErrMsg ? `数据加载失败：${st.loadMoreErrMsg}` : '数据加载失败，请稍后重试';
     emptyAction = { label: '重试', run: () => s.loadPage(true) };
   } else if (noFeeds) {
     emptyMsg = writable ? '还没有订阅源，点右上角「设置 → 数据源」添加 RSS 地址' : '还没有订阅源；只读账户不能自行添加';
@@ -541,7 +547,7 @@ export function CardsView() {
             <div className={'search-box page-search vt-search' + (searchOpen ? ' is-open' : '')}>
               <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
               <input id="searchInput" name={searchName} type="search" ref={searchRef}
-                placeholder="搜索资源名称、描述、正文或标签…（服务端检索）" enterKeyHint="search" aria-label="搜索"
+                placeholder="搜索资源名称、描述、正文或标签…" enterKeyHint="search" aria-label="搜索"
                 value={qDraft} onChange={onSearchInput}
                 {...NO_AUTOFILL_PROPS}
                 onKeyDown={(ev) => {
@@ -571,8 +577,20 @@ export function CardsView() {
       </div>
 
       <main className="wrap">
-        {st.q && !showSkeleton && !showEmpty ? (
-          <div className="list-count" role="status">「{st.q}」找到 {st.total} 条结果</div>
+        {(st.q || st.tag) && !showSkeleton && !showEmpty ? (
+          <div className="list-count" role="status">
+            {st.q ? <span>「{st.q}」找到 {st.total} 条结果</span> : null}
+            {st.tag ? (
+              <span className="count-chip">
+                标签：{st.tag}
+                {!st.q ? <span className="count-chip-n">{st.total} 条</span> : null}
+                <button type="button" className="count-clear" aria-label="清除标签筛选"
+                  title="清除标签筛选" onClick={() => s.cardsTag(null)}>
+                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+                </button>
+              </span>
+            ) : null}
+          </div>
         ) : null}
         {showSkeleton ? (
           <div id="skeleton" className={'grid' + (view === 'list' ? ' list-mode' : '')}><Skeletons view={view} /></div>
@@ -603,7 +621,7 @@ export function CardsView() {
               这里只剩加载态圆点与滚动哨兵（几何判定用的隐形 1px 锚点）。 */}
           {st.loadMoreErr ? (
             <div className="load-retry" role="alert">
-              <span>加载失败</span>
+              <span>加载失败{st.loadMoreErrMsg ? `：${st.loadMoreErrMsg}` : ''}</span>
               <button type="button" className="btn" onClick={() => s.cardsRetryMore()}>重试</button>
             </div>
           ) : null}
@@ -615,7 +633,7 @@ export function CardsView() {
         ) : null}
 
         <footer className="foot">
-          笺川 · FeedLore · 数据存于 PostgreSQL
+          笺川 · FeedLore
         </footer>
       </main>
 

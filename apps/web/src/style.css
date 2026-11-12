@@ -1295,9 +1295,25 @@ textarea:disabled {
 
 /* 搜索命中数 / 列表到底：轻提示，不抢内容的注意力 */
 .list-count {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2);
   color: var(--text-faint); font-size: var(--fs-sm);
   padding: var(--sp-3) var(--sp-1) 0;
 }
+/* 标签筛选 chip：告诉用户当前挂着哪个标签、命中多少，× 一步清掉 */
+.count-chip {
+  display: inline-flex; align-items: center; gap: var(--sp-1);
+  padding: 2px var(--sp-2); border-radius: var(--radius-sm);
+  background: var(--panel-2, var(--panel)); border: 1px solid var(--border);
+  color: var(--text);
+}
+.count-chip-n { color: var(--text-faint); }
+.count-clear {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--text-faint); cursor: pointer;
+}
+.count-clear:hover { background: var(--border); color: var(--text); }
+.count-clear .ico { width: 12px; height: 12px; }
 .list-end {
   text-align: center; color: var(--text-faint); font-size: var(--fs-sm);
   padding: var(--sp-3) 0 var(--sp-2);

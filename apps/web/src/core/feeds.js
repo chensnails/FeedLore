@@ -5,7 +5,7 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { apiFetch, httpError, toast, emitShell, NET_TIMEOUT_MS } from './util.js';
+import { apiFetch, httpError, toast, errText, emitShell, NET_TIMEOUT_MS } from './util.js';
 import { state, layoutPref, setLayout, lockPageScroll, unlockPageScroll, forgetViewScroll } from './state.js';
 import { emit, EVENT } from '../kernel/events.js';
 
@@ -123,6 +123,14 @@ export function cancelPageLoad() {
   if (pageController) { pageController.abort(); pageController = null; }
 }
 
+/** 首屏批量：窄屏一屏只显示得下 6~8 张卡，一次拉 50 条会白渲染 40+ 张卡片
+ *  （DOM 节点翻倍）并多发 40 个图片请求，只取一小批，滚到底自动续拉。
+ *  骨架屏用同一个数（CardsView），占位与真实首屏一致，不会先画 8 张再跳成 50 张。 */
+export function firstPageSize() {
+  const narrow = typeof window !== 'undefined' && window.innerWidth <= 720;
+  return narrow ? Math.min(state.pageSize, 20) : state.pageSize;
+}
+
 export async function loadPage(reset = false) {
   // 错误空态里的「重试」：上一次可能还挂在半路，先让它失效、释放闸门再发新的。
   // 旧实现只往 pagePendingReset 排队，请求永不返回时就永远不会补跑 —— 按钮点了没反应。
@@ -147,6 +155,7 @@ export async function loadPage(reset = false) {
     state.hasMore = true;
     state.entries = [];
     state.loadMoreErr = false;
+    state.loadMoreErrMsg = '';
     state.loadError = false;
     /* 换列表 = 旧滚动位置作废（state.js 的约定）：留在内存里只会在切回视图时
        把新列表夹到底部，进而触底自动翻页。listEpoch 给卡片页收「手势闸门」用。 */
@@ -164,16 +173,19 @@ export async function loadPage(reset = false) {
   const stale = () => gen !== pageGeneration || !!(ctrl && ctrl.signal.aborted);
 
   try {
-    // 移动端首屏只取一小批（v1.5.0）：窄屏一屏只显示得下 6~8 张卡，
-    // 一次拉 50 条会白渲染 40+ 张卡片（DOM 节点翻倍）并多发 40 个图片请求。
-    // 滚动到底部会自动续拉（CardsView 的 scroll 监听），用户感知不到差别。
-    const narrow = typeof window !== 'undefined' && window.innerWidth <= 720;
-    const want = narrow ? Math.min(state.pageSize, 20) : state.pageSize;
+    // 首屏批量见 firstPageSize()：窄屏一小批，滚动到底自动续拉，用户感知不到差别。
+    const want = firstPageSize();
     const qs = new URLSearchParams({
       limit: String(want),
       offset: String(state.offset),
     });
     if (state.q) qs.set('q', state.q);
+    // 标签筛选交给服务端：前端过滤只能筛「已拉回来的这一页」，
+    // 命中的条目散在后续页里时，用户看到的是空列表或漏一堆。
+    if (state.tag) qs.set('tag', state.tag);
+    // 排序同理必须服务端做：分页列表前端只排当前页，「最早」会变成
+    // 「最新 50 条里最早的」，翻页后整体乱序。name 档服务端是码点序（见 routes/entries.ts）。
+    qs.set('sort', state.sort || 'new');
     // 分组筛选优先于频道：与文章页同一口径（传该组频道的 id 清单）
     if (state.cardGroup != null) qs.set('feeds', cardGroupFeedIds().join(','));
     // 没指定具体频道时，卡片页只取「卡片开关」打开的频道
@@ -198,8 +210,11 @@ export async function loadPage(reset = false) {
     state.total = Number(data.total) || 0;
     state.loadError = false;
     state.loadMoreErr = false;
+    state.loadMoreErrMsg = '';
   } catch (err) {
     if (stale()) return;                 // 主动取消 / 已被取代，不算失败
+    // 记下具体原因：底部重试条与错误空态都显示它，别让用户对着「加载失败」猜
+    state.loadMoreErrMsg = errText(err);
     if (first) state.loadError = true;   // 首屏失败 → React 显示错误空态
     else state.loadMoreErr = true;       // 翻页失败 → 列表底部给「重试」，不再只弹一下 toast
   } finally {
@@ -215,18 +230,12 @@ export async function loadPage(reset = false) {
   }
 }
 
-/* ---------------- 筛选与排序 ---------------- */
+/* ---------------- 筛选与排序 ----------------
+ * 标签筛选与排序都已交给服务端（loadPage 带 tag / sort 参数，见上）。
+ * 这里只做透传：前端再排一次会把服务端分页好的顺序打乱，
+ * 前端再筛一次会把后续页里命中的条目漏掉。保留函数名供 CardsView 调用。 */
 export function applyFilters() {
-  const list = state.entries.filter((e) => {
-    if (state.tag && !(e.tags || []).includes(state.tag)) return false;
-    return true;
-  });
-
-  if (state.sort === 'new') list.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-  else if (state.sort === 'old') list.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
-  else if (state.sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'zh'));
-
-  return list;
+  return state.entries;
 }
 
 /* ---------------- 渲染 ---------------- */

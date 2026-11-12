@@ -19,6 +19,14 @@ export function copyableLinks(e) {
   return e.link ? [e.link] : [];
 }
 
+/** 链接兜底清洗：只放行 http(s) / mailto，其余（javascript: / file: / data: …）一律返回空。
+ *  服务端入库前已清洗过，这里再兜一层，防历史脏数据或回归把危险协议塞进 <a href>。
+ *  卡片页 OpenButton、文章页正文链接、AI 日报条目共用这一份，别处不再各写一套。 */
+export function safeHref(h) {
+  const s = String(h || '');
+  return /^(https?:|mailto:)/i.test(s) ? s : '';
+}
+
 /** 复制 + 反馈的唯一实现：成功换勾 1.6s，失败 toast 提示。
  *  两个视觉（.btn-copy / .icon-btn）共用它，避免第三份复制逻辑再长出来。 */
 function useCopyAction() {
@@ -71,9 +79,10 @@ export function CopyIconButton({ url }) {
   );
 }
 
-/** 打开原文：只在有地址时出现，不做禁用态 */
+/** 打开原文：只在有「安全」地址时出现，不做禁用态。
+ *  sourceUrl / link 先过 safeHref：危险协议（javascript: 等）清洗成空 → 不渲染。 */
 export function OpenButton({ e }) {
-  const url = e.sourceUrl || e.link || null;
+  const url = safeHref(e.sourceUrl) || safeHref(e.link);
   if (!url) return null;
   return (
     <a className="btn-open" href={url} target="_blank" rel="noopener noreferrer"

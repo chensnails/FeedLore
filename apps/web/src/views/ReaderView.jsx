@@ -24,7 +24,7 @@ import { isImgFailed, markImgFailed } from '../imgFail.js';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 import { Icon } from '../ui/Icon.jsx';
 // 动作按钮由 ui/EntryActions 统一提供：卡片页、文章页、卡片详情用同一份实现
-import { ArtActions } from '../ui/EntryActions.jsx';
+import { ArtActions, safeHref } from '../ui/EntryActions.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -155,11 +155,7 @@ const proxied = (u) => {
   return '';
 };
 
-/** 正文链接只放行 http(s) / mailto（服务端已清洗，这里再兜一层，防历史数据或回归） */
-const safeHref = (h) => {
-  const s = String(h || '');
-  return /^(https?:|mailto:)/i.test(s) ? s : '';
-};
+/** 正文链接的安全兜底统一用 ui/EntryActions 的 safeHref（见上方 import），此处不再各写一份 */
 
 /** 正文图片：加载失败直接移除（旧行为）；点开走全局灯箱（app.js 的 document 委托）。
  *  v2 块会带 alt 与原始宽高，宽高只用于预留比例，最终尺寸仍由 CSS 决定。 */
@@ -794,7 +790,7 @@ export function ReaderView() {
             <div className={'reader-search page-search vt-search' + (searchOpen ? ' is-open' : '')}>
               <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
               <input id="readerSearch" name={searchName} type="search" ref={searchRef} defaultValue={q}
-                placeholder="搜索标题、描述、正文或标签…（服务端检索）" enterKeyHint="search" aria-label="搜索文章"
+                placeholder="搜索标题、描述、正文或标签…" enterKeyHint="search" aria-label="搜索文章"
                 onInput={onSearchInput} onKeyDown={onSearchKey} {...NO_AUTOFILL_PROPS} />
               <button className="reader-search-clear" id="readerSearchClear" type="button" hidden={!qDraft}
                 aria-label="清除搜索" onClick={onSearchClear}>
