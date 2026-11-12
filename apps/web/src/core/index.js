@@ -52,13 +52,25 @@ export const core = {
   promptInstall: UI.promptInstall,
   linkLabel: U.linkLabel,
   // —— 卡片视图（P3b） ——
+  /* 换频道 / 分组 / 搜索词都算「换了列表」，落筛选后立刻回顶（瞬时，与文章页
+     selectScope / jumpToFeed 的 scrollReaderTop 一致）。不回顶的话旧位置会被
+     浏览器夹到新内容的底部，底部哨兵一露头就自动续拉，越拉越贴底 —— 表现为
+     切换频道后列表自己一直往下滚。 */
   filterEntries: () => F.applyFilters(),
-  cardsSearch: (v) => { S.state.q = v; S.state.tag = null; return F.loadPage(true); },
+  cardsSearch: (v) => {
+    S.state.q = v;
+    S.state.tag = null;
+    const p = F.loadPage(true);
+    S.scrollActiveTop('auto');
+    return p;
+  },
   cardsFilterFeed: (v) => {
     S.state.feedFilter = v ? v : null;
     S.state.cardGroup = null;
     S.state.tag = null;
-    return F.loadPage(true);
+    const p = F.loadPage(true);
+    S.scrollActiveTop('auto');
+    return p;
   },
   /* 卡片页「只看这组」：与文章页 readerSetGroup 同一套交互 ——
    * 再点同一个组取消筛选；选中分组时清掉频道筛选、展开该组（否则点了却看不见）。 */
@@ -70,7 +82,9 @@ export const core = {
       S.state.tag = null;
       R.rdExpandGroup(next);
     }
-    return F.loadPage(true);
+    const p = F.loadPage(true);
+    S.scrollActiveTop('auto');
+    return p;
   },
   cardsSort: (v) => { S.state.sort = v; S.setLayout('sort', v); F.render(); },
   cardsView: (m) => F.setViewMode(m),

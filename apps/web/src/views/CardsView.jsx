@@ -277,6 +277,31 @@ export function CardsView() {
     setQDraft(st.q || '');
   }, [st.q]);
 
+  /* 自动翻页的手势闸门（方案二）：列表被重置后，必须出现过一次真实滚动输入
+     才允许续拉。浏览器在内容变短时会把 scrollTop 夹到新底部，随后滚动锚定又把
+     续拉的卡片「垫」回视口 —— 哨兵一直可见，自动翻页会连环把页面滚到底。
+     真实输入（触摸 / 滚轮 / 键盘 / 按下指针）才重新开闸；首屏不满一屏仍走
+     下面的 350ms 兜底，不需要用户先滚一下。 */
+  const autoLoadArmed = useRef(false);
+  useEffect(() => {
+    const arm = () => { autoLoadArmed.current = true; };
+    const onKey = (ev) => {
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(ev.key)) arm();
+    };
+    document.addEventListener('pointerdown', arm, { capture: true, passive: true });
+    document.addEventListener('touchmove', arm, { capture: true, passive: true });
+    document.addEventListener('wheel', arm, { capture: true, passive: true });
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('pointerdown', arm, { capture: true });
+      document.removeEventListener('touchmove', arm, { capture: true });
+      document.removeEventListener('wheel', arm, { capture: true });
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, []);
+  // 任何一次列表重置（换频道 / 分组 / 搜索 / 后台重拉）都重新收闸
+  useEffect(() => { autoLoadArmed.current = false; }, [st.listEpoch]);
+
   // 滚动到底部自动加载（v1.6.0-test5 统一版，与文章页同一套判据）：
   // App Shell 后卡片列表在 main.wrap 里滚动，window 的 scroll 事件收不到 ——
   // 之前只有手动「加载更多」能用就是这里失效。scroll 不冒泡但能被捕获，
@@ -295,6 +320,11 @@ export function CardsView() {
       if (host && host.hidden) return;
       const el = document.getElementById('cardsSentinel');
       if (el && el.getBoundingClientRect().top < window.innerHeight + 480) {
+        /* 重置后贴底续拉不是用户滚到底，而是浏览器夹取 + 滚动锚定的结果：
+           闸门没开就不续拉。列表还填不满一屏时不受限（首屏要能自己补页）。 */
+        const scroller = document.querySelector('#cardsRoot > main.wrap');
+        const shortList = !!scroller && scroller.scrollHeight - scroller.clientHeight <= 480;
+        if (!autoLoadArmed.current && !shortList) return;
         if (s.cardsLoadMore) s.cardsLoadMore();
       }
     };

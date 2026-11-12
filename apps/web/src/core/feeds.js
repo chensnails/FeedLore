@@ -6,7 +6,7 @@
  * ============================================================ */
 
 import { apiFetch, httpError, toast, emitShell, NET_TIMEOUT_MS } from './util.js';
-import { state, layoutPref, setLayout, lockPageScroll, unlockPageScroll } from './state.js';
+import { state, layoutPref, setLayout, lockPageScroll, unlockPageScroll, forgetViewScroll } from './state.js';
 import { emit, EVENT } from '../kernel/events.js';
 
 /** 按分组名把频道归类：未分组的排最前，其余按名称排序；组内保持原顺序 */
@@ -142,7 +142,17 @@ export async function loadPage(reset = false) {
   }
   state.loading = true;
 
-  if (reset) { state.offset = 0; state.hasMore = true; state.entries = []; state.loadMoreErr = false; state.loadError = false; }
+  if (reset) {
+    state.offset = 0;
+    state.hasMore = true;
+    state.entries = [];
+    state.loadMoreErr = false;
+    state.loadError = false;
+    /* 换列表 = 旧滚动位置作废（state.js 的约定）：留在内存里只会在切回视图时
+       把新列表夹到底部，进而触底自动翻页。listEpoch 给卡片页收「手势闸门」用。 */
+    state.listEpoch = (Number(state.listEpoch) || 0) + 1;
+    forgetViewScroll('cards');
+  }
   if (!reset) state.loadMoreErr = false;
 
   const first = state.entries.length === 0;

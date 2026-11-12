@@ -116,6 +116,12 @@ export function rememberViewScroll(tab = state.tab) {
   else viewScroll.delete(tab);
 }
 
+/* 列表被重置（换筛选 / 搜索 / 后台重拉）时调用：旧位置属于旧列表，
+   再恢复只会把新列表夹到底部，甚至触发触底自动翻页的连环。 */
+export function forgetViewScroll(tab = state.tab) {
+  viewScroll.delete(tab);
+}
+
 export function restoreViewScroll(tab = state.tab) {
   if (tab !== state.tab) return;
   const want = viewScroll.get(tab) || 0;

@@ -4237,6 +4237,38 @@ const withEFP = (el, fn) => {
     if (!/getElementById\('cardsView'\)[\s\S]{0,80}hidden/.test(src)) throw new Error('自动加载未检查 #cardsView 是否隐藏');
     if (!/EVENT\.VIEW/.test(src)) throw new Error('切回卡片页没有订阅内核的 EVENT.VIEW，隐藏期间跳过后会一直不加载');
   });
+  /* 换列表回顶 + 自动翻页手势闸门（2026-11「切换频道后列表自己一直往下滚」）：
+     重置后旧位置被浏览器夹到新列表底部，底部哨兵一直可见；滚动锚定又把续拉的
+     内容「垫」回视口，哨兵再度可见 → 无限续拉。回顶断掉触发条件，闸门兜住其它
+     重置路径（后台重拉 / 恢复旧位置）。 */
+  t('源码守卫：卡片页换频道/分组/搜索瞬时回顶，自动续拉需真实滚动输入', () => {
+    const root = path.join(__dirname, '..', '..');
+    const idx = fs.readFileSync(path.join(root, 'src', 'core', 'index.js'), 'utf8');
+    for (const name of ['cardsSearch', 'cardsFilterFeed', 'cardsFilterGroup']) {
+      const start = idx.indexOf(name + ':');
+      if (start < 0) throw new Error('core/index.js 缺 ' + name);
+      const body = idx.slice(start, idx.indexOf('},', start) + 2);
+      if (!/scrollActiveTop\('auto'\)/.test(body)) {
+        throw new Error(name + ' 换列表没有回顶：新列表会被夹到底部并触发续拉连环');
+      }
+    }
+    const feeds = fs.readFileSync(path.join(root, 'src', 'core', 'feeds.js'), 'utf8');
+    if (!/state\.listEpoch = \(Number\(state\.listEpoch\) \|\| 0\) \+ 1/.test(feeds)) {
+      throw new Error('重置列表没有递增 listEpoch，卡片页的闸门收不回去');
+    }
+    if (!/forgetViewScroll\('cards'\)/.test(feeds)) {
+      throw new Error('重置列表没丢掉卡片页旧滚动记忆：切回视图会夹到底部');
+    }
+    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
+    if (!/autoLoadArmed\.current = false/.test(cards) || !/\[st\.listEpoch\]/.test(cards)) {
+      throw new Error('列表重置后没有重新收闸');
+    }
+    if (!/!autoLoadArmed\.current && !shortList/.test(cards)) throw new Error('自动续拉没有经过手势闸门');
+    if (!/touchmove[\s\S]{0,200}wheel/.test(cards)) throw new Error('闸门没有监听真实滚动输入');
+    if (!/scrollHeight - scroller\.clientHeight <= 480/.test(cards)) {
+      throw new Error('首屏不满一屏的自动补页被闸门挡住了');
+    }
+  });
 
   // 骨架态
   w.feedlore.state.loading = true; w.feedlore.state.entries = []; cardsTick();
