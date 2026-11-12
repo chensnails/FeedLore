@@ -6437,6 +6437,19 @@ const withEFP = (el, fn) => {
     if (!/ArrowLeft[\s\S]{0,80}ArrowRight/.test(comp)) throw new Error('ChannelTabs 缺方向键切换');
     // 再点当前频道 = 回到列表顶部（与底栏 retap 同一套手感），不能点第二下毫无反应
     if (!/api\.scrollTop/.test(comp)) throw new Error('ChannelTabs 再点当前项应调用 scrollTop 回顶');
+    // 切换后的自动居中只许滚标签条自己，且目标已完整可见时不许动。
+    // 用 scrollIntoView 会连带祖先滚动，并和手指甩动的惯性互抢（卡片页「切换后频道条疯滚」）。
+    // 注释里会提到 scrollIntoView（说明为什么不用），只查真实调用。
+    const compCode = comp.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    if (/scrollIntoView/.test(compCode)) {
+      throw new Error('频道条居中不应再用 scrollIntoView（会连带滚动祖先并与惯性互抢）');
+    }
+    if (!/left >= viewLeft && right <= viewRight/.test(compCode)) {
+      throw new Error('频道条居中前要先判断选中项是否已完整可见（可见就不动，避免和甩动惯性打架）');
+    }
+    if (!/nav\.scrollLeft = Math\.max\(0, Math\.min\(nav\.scrollWidth - nav\.clientWidth/.test(compCode)) {
+      throw new Error('频道条居中只能改自己的 scrollLeft，并夹在可滚范围内');
+    }
     for (const v of ['ReaderView.jsx', 'CardsView.jsx']) {
       const src = fs.readFileSync(path.join(root, 'src', 'views', v), 'utf8');
       if (!/import \{ ChannelTabs \} from '\.\.\/ui\/ChannelTabs\.jsx'/.test(src)) throw new Error(v + ' 未引用 ChannelTabs');

@@ -47,13 +47,23 @@ export function ChannelTabs({
   if (activeWatch) activeKey = 'watch:' + activeWatch;
   if (feedId != null) activeKey = 'feed:' + feedId;
 
-  // 选中项可能在横向滚动区外（默认停在「全部」）：每次切换把它滚到中间。
-  // block:'nearest' 是必须的 —— 不写的话部分浏览器会顺带纵向滚动整页。
+  /* 选中项可能在横向滚动区外（默认停在「全部」）：切换后把它带回可视区中间，
+     但**只在自己滚，且只在它确实看不见时**。不用 scrollIntoView：它会连带滚动
+     祖先容器；而且标签已经完整可见时也会再补一次居中 —— 手指在条上快速甩动时
+     点另一个频道，这次补滚会和惯性互相抢，看起来就是「切换后频道条疯了」。 */
   useEffect(() => {
     const el = activeRef.current;
-    if (el && typeof el.scrollIntoView === 'function') {
-      try { el.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (_) { /* 老浏览器忽略 */ }
-    }
+    const nav = navRef.current;
+    if (!el || !nav) return;
+    const navRect = nav.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const left = elRect.left - navRect.left + nav.scrollLeft;
+    const right = left + elRect.width;
+    const viewLeft = nav.scrollLeft;
+    const viewRight = viewLeft + nav.clientWidth;
+    if (left >= viewLeft && right <= viewRight) return;
+    const target = left + elRect.width / 2 - nav.clientWidth / 2;
+    nav.scrollLeft = Math.max(0, Math.min(nav.scrollWidth - nav.clientWidth, target));
   }, [activeKey]);
 
   /* 右缘渐隐只在「右侧还有内容」时出现；滚到末尾就撤掉，否则最后一个标签
