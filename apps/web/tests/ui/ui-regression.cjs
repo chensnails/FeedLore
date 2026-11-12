@@ -7094,6 +7094,11 @@ const withEFP = (el, fn) => {
     if (!/\.reader-main\.head-tucked \.reader-head::after \{[^}]*top: 100%;[^}]*height: calc\(env\(safe-area-inset-top, 0px\) \+ 8px\);[^}]*background: var\(--bg\);/s.test(css)) {
       throw new Error('标题行上移后上方缝隙要用页面底色盖住（否则内容从缝里滚过）');
     }
+    // 正文滑到吸顶的标题行底下时只会在行底边被切一刀，半截字贴分隔线很扎眼；
+    // 行底边要有渐隐遮罩，让它淡出。必须是渐变到透明，不能是实色（实色等于把切口下移）。
+    if (!/\.art-item\.open \.art-row::after \{[^}]*top: 100%;[^}]*height: 8px;[^}]*linear-gradient\(to bottom, var\(--panel\), transparent\);[^}]*pointer-events: none;/s.test(css)) {
+      throw new Error('标题行底边要有 8px 渐隐遮罩（柔化正文切口）');
+    }
     const hig = fs.readFileSync(path.join(root, 'src', 'hig.css'), 'utf8').replace(/\r\n/g, '\n');
     if (!/\.new-pill, \.reader-head,/.test(hig)) throw new Error('减少动效时头部收展必须直接切换');
     if (!/\.art-row,/.test(hig)) throw new Error('减少动效时标题行跟随收展也必须直接切换');

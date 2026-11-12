@@ -3383,6 +3383,18 @@ body.is-scrolling .card-media-actions { transition: none; }
   /* 吸附后正文的 border-top 已经跟着内容滚走，分隔线改由标题行自己带 */
   box-shadow: 0 1px 0 var(--border);
 }
+/* 标题行底边的渐隐遮罩：正文滑到吸顶条底下时，是在行底边被「一刀切」的，
+   半截字贴在那条分隔线上很扎眼。在行底边铺一条 8px 的面板色渐变，
+   让滑上来的文字淡出而不是被切断。
+   始终存在、不随吸附状态切换：行未吸附时它盖的是正文的上内距（没有字），
+   已经吸附时才是切口；这样滚动中不会凭空多出一层要重绘的背景。 */
+.art-item.open .art-row::after {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 100%;
+  height: 8px;
+  background: linear-gradient(to bottom, var(--panel), transparent);
+  pointer-events: none;
+}
 /* 正在读的时候，来源 / 体积 / 日期让位给正文：这行是 chrome，越小越好 */
 .art-item.open .art-row .art-meta { display: none; }
 /* 吸顶条更矮一档：标题最多两行 + 三个动作，横排才塞得下 */
