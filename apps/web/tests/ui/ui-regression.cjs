@@ -7019,6 +7019,13 @@ const withEFP = (el, fn) => {
       throw new Error('恢复前必须先清掉置顶，否则展开的收敛循环会把视口拖回标题');
     }
     if (!/Math\.min\(itemTop \+ offset, limit, max\)/.test(r)) throw new Error('恢复位置必须夹在文章高度与滚动上限之内');
+    // 展开是 React 异步提交，首帧可能量到收起行高（clamp 偏小）；后台标签页 rAF 不跑，
+    // 不能只靠 requestAnimationFrame —— 必须有定时器重试，且用户动手可停。
+    const fn = r.slice(r.indexOf('function restoreReaderOffset'), r.indexOf('/* ---------- 窄屏阅读头部收展'));
+    if (!/for \(const delay of \[[^\]]+\]\)[\s\S]{0,160}setTimeout\([\s\S]{0,80}place\(\)/.test(fn)) {
+      throw new Error('恢复位置需要定时重试：rAF 在后台标签页不跑，首帧可能还是收起行高');
+    }
+    if (!/timers\.push\(setTimeout\(cleanup, 3000\)\)/.test(fn)) throw new Error('恢复重试必须 3 秒收口，不能一直改滚动');
     const all = r.slice(r.indexOf('export function readerCollapseAll'), r.indexOf('const FLASH_MS'));
     if (!/dropReadPos\(id\)/.test(all)) throw new Error('全部收起时应清掉各篇的位置记录');
   });

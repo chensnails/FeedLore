@@ -406,11 +406,12 @@ function restoreReaderOffset(id, offset) {
   if (!main) return;
   const want = String(id);
   let cancelled = false;
-  let timer = null;
+  const timers = [];
 
   const cleanup = () => {
     cancelled = true;
-    if (timer) clearTimeout(timer);
+    for (const t of timers) clearTimeout(t);
+    timers.length = 0;
     document.removeEventListener('wheel', onUser, true);
     document.removeEventListener('touchmove', onUser, true);
     document.removeEventListener('keydown', onUser, true);
@@ -441,9 +442,15 @@ function restoreReaderOffset(id, offset) {
 
   place();
   requestAnimationFrame(() => { if (!cancelled) place(); });
+  /* 展开是 React 异步提交：首帧量到的可能还是收起行（行高小 → clamp 把人停在
+   * 文章上方）。后台标签页 / PWA 被系统恢复时 rAF 根本不跑，只靠上面那一帧会
+   * 一直停在错误位置 —— 再用定时器逼近几次，3 秒内收敛，期间用户一动手即停。 */
+  for (const delay of [60, 200, 600, 1200, 2400]) {
+    timers.push(setTimeout(() => { if (!cancelled) place(); }, delay));
+  }
   const el = findArtItemEl(want);
   if (el) for (const img of el.querySelectorAll('img')) img.addEventListener('load', () => { if (!cancelled) place(); });
-  timer = setTimeout(cleanup, 3000);
+  timers.push(setTimeout(cleanup, 3000));
 }
 
 /* ---------- 窄屏阅读头部收展（v2.5.0） ----------
