@@ -6,7 +6,7 @@ English: [README.en.md](README.en.md)
 > 多用户 · 无广告 · 无遥测 · 数据全在你自己的 PostgreSQL。
 
 **在线体验**：https://feedlore.669600.xyz  （`demo` / `demo`）
-当前版本 **2.4.3** · [更新日志](CHANGELOG.md) · [升级与部署](UPGRADE-v2.md)
+当前版本 **2.4.5** · [更新日志](CHANGELOG.md) · [升级与部署](UPGRADE-v2.md)
 
 ## 亮点
 

@@ -7,6 +7,43 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## 2.4.5 — 2026-11-12
+
+### Added
+
+- **Five reader-experience refinements**. "View in article page" from a card now lands in one step;
+  in-article reading position is restored across refresh / deep links / background tabs; "mark all read"
+  is undoable; on mobile the reader header collapses on scroll and the title row truly sticks.
+- **Visible, dismissible tag filter on the cards page**. An active tag shows a chip with the match count
+  in the count row, cleared with one tap on ×; searching shows "「query」 found N results".
+
+### Fixed
+
+- **Cards-page scrolling no longer runs away**. Switching channel / group / search snaps back to top;
+  auto-load-more is gated by a gesture gate so flick-scrolling into another channel no longer keeps
+  scrolling; the channel strip centers by scrolling only itself and stays put when the target is visible.
+- **Sort / tag now run server-side**. They previously applied only to the loaded page, so ordering broke
+  after paging or background refresh; sort and tag are now query parameters, and narrow screens fetch a
+  small first batch (≤20) with a matching skeleton count.
+- **Reader sticky-title and deep-link details**. The title row re-measures as the header collapses, keeps
+  an 8px breathing gap and fades its bottom edge; entry-level deep links clear list filters; "view in
+  article page" issues a single first-page request; the read-pin lifecycle is tightened to fix auto-scroll
+  on entry.
+
+### Security
+
+- External links go through a shared `safeHref` allowlist (`https?:` / `mailto:` only), used by card
+  open-original, body links and AI results, blocking `javascript:`-style injection.
+- The `feeds` filter parameter is capped at 4000 characters; search keywords escape LIKE metacharacters
+  (`\ % _`) to avoid wildcard injection and false matches.
+
+### Improved
+
+- Re-submitting the same search / channel / sort / tag no longer fires redundant requests or resets scroll;
+  background auto-refresh carries the current sort and tag so filters survive.
+- Copy unified: cards / reader search placeholders and the footer brand "笺川 · FeedLore"; load failures now
+  show a concrete reason and a retry action.
+
 ## 2.4.3 — 2026-11-09
 
 ### Improved
