@@ -1,14 +1,15 @@
 /**
- * MCP 工具注册表（P1：全部只读）。
+ * MCP 工具注册表（只读工具 + P2 AI 写工具）。
  *
  * 原则：
  * - 入参 schema 在这里用 zod 现写（面向 AI 的形态：布尔代替 '1'、limit 上限 50），
  *   但**查询语义**全部复用 `lib/entriesQuery.ts` 与 `@feedlore/ai` 的既有实现，
  *   不另写一份筛选逻辑 —— 否则 MCP 与 HTTP 接口会悄悄漂移。
  * - 返回 text JSON（`enableJsonResponse` 的无状态服务 + AI 客户端消费的最稳形态）；
- *   structuredContent 留给需要 UI 呈现的 P2。
- * - 每个工具都带 `readOnlyHint`；写工具（flags / read-all）是 P2，且要求 token
- *   scope=write（届时在 handler 里查 `user.scope`）。
+ *   structuredContent 留给需要 UI 呈现的后续版本。
+ * - 只读工具带 `readOnlyHint: true`；AI 写工具（feedlore_summarize_entry /
+ *   feedlore_ask_entry）标注 `readOnlyHint: false`，且**首行校验** `user.scope === 'write'`，
+ *   否则返回结构化 `E_MCP_FORBIDDEN`。read scope 的 token 看不到这两个工具的能力。
  *
  * ⚠️ 两条「稳定性铁律」（2026-11-08 实测踩过的坑，别改回去）：
  * 1. **入参必须宽容**：LLM / Shell 拼出来的参数常把数字、布尔写成字符串，而
@@ -25,10 +26,21 @@ import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { entries as entriesTable, feeds, type Db } from '@feedlore/db';
-import { shanghaiDate, listDigestDates, readDigest } from '@feedlore/ai';
+import {
+  chat,
+  type ChatMessage,
+  getCryptoSecret,
+  listDigestDates,
+  readDigest,
+  resolveUserLlm,
+  shanghaiDate,
+  type ResolvedLlm,
+} from '@feedlore/ai';
 import { APP_VERSION } from '../env';
 import { toCard } from '../lib/dto';
 import { CARD_COLUMNS, entryConditions, parseFeedIds } from '../lib/entriesQuery';
+import { loadLlmRow } from '../lib/llm';
+import { assertPublicHost, safeFetch } from '../lib/net';
 import type { McpUser } from '../middleware/mcpAuth';
 
 /** 单篇正文给 AI 的上限：超出截断并标注，模型需要更多时可以分段检索关键词。 */
@@ -99,6 +111,44 @@ export function truncateContent(
 ): { content: string; truncated: boolean; totalChars: number } {
   if (content.length <= max) return { content, truncated: false, totalChars: content.length };
   return { content: content.slice(0, max), truncated: true, totalChars: content.length };
+}
+
+/**
+ * 单条目 AI 的系统提示词（与 routes/ai.ts 的 entryAiSystemPrompt 同义，不共享是为了
+ * 避免 mcp ↔ routes 形成环依赖；两处文案一致，改动时一起改）。
+ * 用户自定义只在此范围内生效，不接收外部 prompt 注入。
+ */
+export function mcpAiSystemPrompt(
+  action: 'summary' | 'keypoints' | 'translate' | 'explain',
+  targetLang: string,
+): string {
+  const lang = targetLang || '简体中文';
+  switch (action) {
+    case 'summary':
+      return '你是一个严谨的中文编辑。请为下面的文章生成一段摘要，3-5 句，抓住核心事实与结论。只输出摘要本身，不要加「摘要：」等前缀。';
+    case 'keypoints':
+      return '你是一个严谨的中文编辑。请提炼下面文章的关键要点，用 3-6 条无序列表（每条一行，以「- 」开头）呈现，每条一句话。只输出列表。';
+    case 'translate':
+      return `你是一个专业译者。请将下面文章全文翻译成${lang}，保留原有段落结构；正文里的专有名词可保留原文并在括号里给译文。只输出译文，不要加「译文：」等前缀。`;
+    case 'explain':
+      return `你是一个善于科普的讲解者。请用通俗易懂的语言向非专业读者解释下面这篇文章在讲什么、为什么重要，使用${lang}，3-5 句。只输出解释本身。`;
+  }
+}
+
+/**
+ * 为 MCP 写工具解析并校验模型配置。复用 routes/ai.ts 同一套：
+ * loadLlmRow → resolveUserLlm（解密）→ 三件套完整性 → assertPublicHost（SSRF）。
+ * 缺配置或地址非公网一律抛错，由 guard() 转成结构化错误。
+ */
+async function resolveMcpLlm(db: Db, uid: string): Promise<ResolvedLlm> {
+  const secret = await getCryptoSecret(db);
+  const llm = resolveUserLlm(await loadLlmRow(db, uid), secret);
+  if (!llm.baseUrl || !llm.apiKey || !llm.model) {
+    throw new Error('当前账号未配置可用的模型（baseUrl / apiKey / model 至少缺一项）');
+  }
+  // SSRF：模型地址必须先过出网校验，再交给 chat() 的 safeFetch
+  await assertPublicHost(llm.baseUrl);
+  return llm;
 }
 
 export function buildMcpServer(db: Db, user: McpUser): McpServer {
@@ -370,6 +420,139 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
       // 兜底截断：日报本身受生成参数约束，正常远小于此；真超了就把 sections 砍尾
       const trimmed = { ...digest, sections: digest.sections.slice(0, Math.max(1, Math.floor(digest.sections.length / 2))) };
       return textResult({ ...who, date: d, digest: trimmed, truncated: true });
+    }),
+  );
+
+  /* ---------------- feedlore_summarize_entry（写工具：需 write scope） ---------------- */
+  const aiActions = z.enum(['summary', 'keypoints', 'translate', 'explain']).optional().catch('summary')
+    .describe('summary=摘要 / keypoints=要点 / translate=翻译 / explain=通俗解释，默认 summary');
+
+  server.registerTool(
+    'feedlore_summarize_entry',
+    {
+      title: 'AI 处理单篇文章',
+      description:
+        '对指定文章调用当前账号配置的模型做摘要 / 要点 / 翻译 / 解释（动作由 action 决定）。' +
+        'id 来自 feedlore_list_entries / feedlore_get_entry（字符串，也接受数字）。' +
+        '这是写工具，需要 scope=write 的 MCP token（在设置 → MCP 接口创建时选 write）。',
+      inputSchema: z.object({
+        id: looseId.describe('条目 id（feedlore_list_entries 返回的字符串，也接受数字）'),
+        action: aiActions,
+        targetLang: z.string().max(20).optional().catch(undefined)
+          .describe('translate 时的目标语言，默认简体中文'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    },
+    async ({ id, action, targetLang }) => guard(async () => {
+      // 首行门禁：read scope 直接结构化拒绝，绝不走到模型调用（也省一次额度）
+      if (user.scope !== 'write') {
+        return errorResult(
+          'E_MCP_FORBIDDEN',
+          '需要 write 作用域的 MCP token 才能调用 AI 工具（在设置 → MCP 接口创建 token 时选 write）',
+          { ...who },
+        );
+      }
+      if (!id) {
+        return errorResult('E_MCP_BAD_ARGUMENTS', 'id 必须是正整数（可传数字字符串）', { ...who });
+      }
+
+      // owner 隔离：复用 feedlore_get_entry 的同形查询，id 猜对也读不到别人的正文
+      const [entry] = await db
+        .select({ content: entriesTable.content, title: entriesTable.title })
+        .from(entriesTable)
+        .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+        .where(and(eq(entriesTable.id, id), eq(feeds.ownerId, uid)))
+        .limit(1);
+      if (!entry) return errorResult('E_ENTRY_NOT_FOUND', `条目 ${id} 不存在或不属于当前账号`, { ...who });
+
+      const llm = await resolveMcpLlm(db, uid);
+      const cut = truncateContent(entry.content ?? '');
+      const messages: ChatMessage[] = [
+        { role: 'system', content: mcpAiSystemPrompt(action ?? 'summary', targetLang ?? '简体中文') },
+        { role: 'user', content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}` },
+      ];
+
+      try {
+        const result = await chat(messages, llm, { fetchImpl: safeFetch });
+        return textResult({
+          ...who,
+          id,
+          action: action ?? 'summary',
+          truncated: cut.truncated,
+          totalChars: cut.totalChars,
+          result,
+        });
+      } catch (e) {
+        // 模型失败也是结构化：客户端能区分「AI 报错」与「没查到数据」
+        return errorResult('E_AI_CALL_FAILED', (e as Error)?.message ?? 'AI 调用失败', { ...who });
+      }
+    }),
+  );
+
+  /* ---------------- feedlore_ask_entry（写工具：需 write scope） ---------------- */
+  server.registerTool(
+    'feedlore_ask_entry',
+    {
+      title: 'AI 问答单篇文章',
+      description:
+        '基于指定文章的全文，对用户的自然语言问题作答（「作者的主要观点是什么？」之类）。' +
+        '若文章未提及，会如实说明。id 同 feedlore_get_entry。' +
+        '这是写工具，需要 scope=write 的 MCP token。',
+      inputSchema: z.object({
+        id: looseId.describe('条目 id（feedlore_list_entries 返回的字符串，也接受数字）'),
+        question: z.string().min(1).max(500)
+          .describe('针对这篇文章的自然语言问题，例如「这篇文章的核心结论是什么？」'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    },
+    async ({ id, question }) => guard(async () => {
+      if (user.scope !== 'write') {
+        return errorResult(
+          'E_MCP_FORBIDDEN',
+          '需要 write 作用域的 MCP token 才能调用 AI 工具（在设置 → MCP 接口创建 token 时选 write）',
+          { ...who },
+        );
+      }
+      if (!id) {
+        return errorResult('E_MCP_BAD_ARGUMENTS', 'id 必须是正整数（可传数字字符串）', { ...who });
+      }
+
+      const [entry] = await db
+        .select({ content: entriesTable.content, title: entriesTable.title })
+        .from(entriesTable)
+        .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+        .where(and(eq(entriesTable.id, id), eq(feeds.ownerId, uid)))
+        .limit(1);
+      if (!entry) return errorResult('E_ENTRY_NOT_FOUND', `条目 ${id} 不存在或不属于当前账号`, { ...who });
+
+      const llm = await resolveMcpLlm(db, uid);
+      const cut = truncateContent(entry.content ?? '');
+      const messages: ChatMessage[] = [
+        {
+          role: 'system',
+          content:
+            '你是一个善于答疑的助手。下面是一篇 RSS 订阅文章的原文。请严格基于文章内容回答用户的问题；' +
+            '若文章未提及该信息，请如实说明「文章未涉及该信息」。使用简体中文，回答简洁准确。',
+        },
+        {
+          role: 'user',
+          content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}\n\n用户问题：${question}`,
+        },
+      ];
+
+      try {
+        const result = await chat(messages, llm, { fetchImpl: safeFetch });
+        return textResult({
+          ...who,
+          id,
+          question,
+          truncated: cut.truncated,
+          totalChars: cut.totalChars,
+          result,
+        });
+      } catch (e) {
+        return errorResult('E_AI_CALL_FAILED', (e as Error)?.message ?? 'AI 调用失败', { ...who });
+      }
     }),
   );
 

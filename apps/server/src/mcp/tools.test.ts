@@ -6,7 +6,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MCP_CONTENT_MAX_CHARS, truncateContent } from './tools';
+import { MCP_CONTENT_MAX_CHARS, mcpAiSystemPrompt, truncateContent } from './tools';
 
 test('truncateContent：短文原样返回，不标截断', () => {
   const r = truncateContent('hello 世界', 100);
@@ -27,4 +27,23 @@ test('truncateContent：恰好等于上限不截断', () => {
   const r = truncateContent(exact);
   assert.equal(r.truncated, false);
   assert.equal(r.totalChars, MCP_CONTENT_MAX_CHARS);
+});
+
+test('mcpAiSystemPrompt：四种动作都返回非空、不接收外部注入', () => {
+  const summary = mcpAiSystemPrompt('summary', '简体中文');
+  const keypoints = mcpAiSystemPrompt('keypoints', '简体中文');
+  const translate = mcpAiSystemPrompt('translate', 'English');
+  const explain = mcpAiSystemPrompt('explain', '简体中文');
+  for (const p of [summary, keypoints, translate, explain]) {
+    assert.ok(p.length > 0, '提示词不能为空');
+  }
+  assert.ok(summary.includes('摘要'), 'summary 应要求生成摘要');
+  assert.ok(keypoints.includes('要点'), 'keypoints 应要求提炼要点');
+  assert.ok(translate.includes('English'), 'translate 应带入目标语言 English');
+  assert.ok(explain.includes('通俗'), 'explain 应要求通俗解释');
+});
+
+test('mcpAiSystemPrompt：目标语言缺省回落简体中文', () => {
+  const t = mcpAiSystemPrompt('translate', '');
+  assert.ok(t.includes('简体中文'), 'translate 无目标语言时应回落简体中文');
 });
