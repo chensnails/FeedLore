@@ -845,8 +845,14 @@ textarea:disabled {
 .dd-group-filter:hover { color: var(--text); }
 .dd-group-filter:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 @media (hover: none) {
-  .dd-group-filter { opacity: 1; pointer-events: auto; }
+  .dd-group-filter { opacity: 1; pointer-events: auto; position: relative; }
   .dd-sheet-body .dd-group-filter { width: 30px; height: 30px; }
+  /* 视觉 22~30px，触屏落点统一补到 44px（与搜索清除键同一套做法） */
+  .dd-group-filter::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: var(--hit-min); height: var(--hit-min);
+    transform: translate(-50%, -50%);
+  }
 }
 .dd-item {
   display: flex; align-items: center; justify-content: space-between; gap:var(--sp-3);
@@ -1393,6 +1399,7 @@ textarea:disabled {
    带按钮的这一种才放开命中，否则按钮点不动。 */
 .toast.show:has(.toast-act) { pointer-events: auto; }
 .toast-act {
+  position: relative;
   flex: 0 0 auto;
   margin-left: var(--sp-2);
   padding: 2px var(--sp-2);
@@ -1403,9 +1410,16 @@ textarea:disabled {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+/* 视觉仍是紧凑行内按钮，触屏落点补到 44px；按钮不抢焦点但保留 Tab 可达 */
+.toast-act::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: var(--hit-min); height: var(--hit-min);
+  transform: translate(-50%, -50%);
+}
 /* 从反相的文字色派生：亮色主题深底取浅色、暗色主题浅底取深色，避免硬编码白半透明 */
 .toast-act:hover { background: color-mix(in srgb, var(--toast-text) 12%, transparent); }
-.toast-act:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* toast 底色反相，焦点环取状态色，深浅两版 toast 上都看得见 */
+.toast-act:focus-visible { outline: 2px solid var(--toast-ok); outline-offset: 2px; box-shadow: none; }
 
 /* ---------- 无图卡片的紧凑信息行 ---------- */
 .card-meta {
@@ -1655,6 +1669,13 @@ textarea:disabled {
   transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
 }
 .confirm-input:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
+/* 必填校验：错误框常驻 DOM 供读屏播报，空态只收高度；输入框同时给红边与 aria-invalid */
+.confirm-input[aria-invalid="true"] { border-color: var(--danger); }
+.confirm-err {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm); color: var(--danger);
+}
+.confirm-err:empty { height: 0; margin: 0; overflow: hidden; }
 .confirm-foot {
   display: flex; justify-content: flex-end; gap: var(--sp-2);
   flex: 0 0 auto;   /* 同 .tabs：按钮行不能被正文压扁 */
@@ -3169,7 +3190,14 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
   /* 触屏：漏斗没有悬停可依赖，就回到排版里占一格，未读徽标往左让位。
      底色去掉（填充方块在每行挂一颗太抢眼），平时只用弱化色的裸图标，
      命中筛选态才亮 accent + 底色，让「哪一组在筛选」一眼可见。 */
-  .rd-ch-filter { position: static; transform: none; opacity: 1; pointer-events: auto; background: transparent; }
+  /* relative 仍占排版位（等价于 static），但能给 44px 命中伪元素当定位参照；
+     right/top 必须一起清掉，否则桌面绝对定位的偏移会在触屏把漏斗推走。 */
+  .rd-ch-filter { position: relative; right: auto; top: auto; transform: none; opacity: 1; pointer-events: auto; background: transparent; }
+  .rd-ch-filter::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: var(--hit-min); height: var(--hit-min);
+    transform: translate(-50%, -50%);
+  }
   .rd-ch-filter.is-active { background: var(--hover); }
   .rd-ch-group-row:is(:hover, :focus-within) :is(.rd-ch-n, .rd-ch-group-empty, .rd-ch-group-n) { opacity: 1; }
 }

@@ -10,6 +10,12 @@ import { on, EVENT } from '../kernel/events.js';
 
 const S = () => core;
 
+/* 只有真正的悬停设备才用 hover 开子菜单：触屏 / 粗指针的点击会合成 mouseenter，
+   与 onClick 的 toggle 叠在一起会出现「点一下刚开、又立刻关掉」。
+   jsdom 没有 matchMedia，会落到只走 click 的分支（键盘路径不受影响）。 */
+const canHover = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
 const SORTS = [
   { v: 'new', label: '最新' },
   { v: 'old', label: '最早' },
@@ -191,8 +197,15 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
                 aria-expanded={subOpen}
                 data-subtrigger
                 className="overflow-item"
-                onMouseEnter={() => setSubOpen(true)}
-                onClick={() => setSubOpen((v) => !v)}
+                onMouseEnter={() => {
+                  // 触屏的合成 mouseenter 会抢在 onClick 之前，这一路只给悬停设备
+                  if (canHover()) setSubOpen(true);
+                }}
+                onClick={() => {
+                  // 桌面已由 hover 打开，再 toggle 一次反而关掉；触屏才需要点击开合
+                  if (canHover()) setSubOpen(true);
+                  else setSubOpen((v) => !v);
+                }}
                 onKeyDown={(e) => { if (e.key === 'ArrowRight') { e.preventDefault(); setSubOpen(true); } }}
               >
                 <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-sort" /></svg>

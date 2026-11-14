@@ -19,6 +19,10 @@
    看段数与位置，并注意同特异度下「后写者胜」。
 2. **触屏没有 hover**。只在 hover 出现的控件在手机上等于不存在；用 `@media (hover:none)` /
    `pointer:coarse` 做能力查询，不按宽度猜设备。产物校验会检查这两条查询还在 CSS 里。
+   新增「悬停才现身」的控件必须同时在该能力查询里补常显规则，并把自己加进
+   `ui-regression.cjs` 的「交互反馈」清单（否则手机上会悄悄消失）。同理，依赖 hover 打开的
+   子菜单要按 `(hover: hover) and (pointer: fine)` 分流：触屏点击会合成 `mouseenter`，
+   与 `onClick` 的 toggle 叠在一起会「刚开又关」。
 3. **玻璃模糊只给静止表面**（`.modal-mask` / `.cmdk-mask`）。sticky / fixed 的长列表元素
    禁用 `backdrop-filter`：每帧重采样必掉帧，这是 v1 实测换来的规矩。
 4. **字号与栏宽走令牌**：`--reader-fs` / `--reader-width` / `--reader-side-w`；

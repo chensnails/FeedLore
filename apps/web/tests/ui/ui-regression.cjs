@@ -7610,6 +7610,34 @@ const withEFP = (el, fn) => {
     }
   });
 
+  t('交互反馈：确认框内联校验 / 撤销键盘可达 / hover 与 click 分流 / 触屏命中', () => {
+    const root = path.join(__dirname, '..', '..');
+    const ov = fs.readFileSync(path.join(root, 'src', 'ui', 'Overlays.jsx'), 'utf8');
+    const om = fs.readFileSync(path.join(root, 'src', 'ui', 'OverflowMenu.jsx'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
+    if (!/className="confirm-err" id="confirmErr" role="alert"/.test(ov) || !/setErr\(c\.input\.label/.test(ov)) {
+      throw new Error('确认框必填校验缺常驻 role=alert 与内联错误');
+    }
+    if (!/aria-invalid=\{err/.test(ov) || !/\.confirm-input\[aria-invalid="true"\]/.test(css)) {
+      throw new Error('校验失败时输入框要同时给 aria-invalid 与红边');
+    }
+    if (/className="toast-act"[^>]*tabIndex=\{-1\}/.test(ov)) {
+      throw new Error('toast 撤销按钮不能移出 Tab 序列：键盘用户无法撤销');
+    }
+    if (!/\.toast-act::after/.test(css) || !/\.dd-group-filter::after/.test(css) || !/\.rd-ch-filter::after/.test(css)) {
+      throw new Error('行内动作 / 分组漏斗 / 频道漏斗缺 44px 命中补偿');
+    }
+    if (!/matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)/.test(om)
+      || !/if \(canHover\(\)\) setSubOpen\(true\)/.test(om)) {
+      throw new Error('排序子菜单要按 hover 能力分流，别让合成 mouseenter 与 click 互相打架');
+    }
+    // hover-only 控件必须有触屏常显出口；新增隐藏式控件时把选择器加进这份清单
+    const cap = css.split('@media (hover: none)').slice(1).map((s) => s.slice(0, 600)).join('\n');
+    for (const sel of ['.feed-group-rename', '.feed-row .drag-handle', '.dd-group-filter', '.rd-ch-filter']) {
+      if (cap.indexOf(sel) < 0) throw new Error(sel + ' 是 hover-only 控件，触屏段没有常显出口');
+    }
+  });
+
   t('首屏外观脚本覆盖两套密度，默认值与运行时一致（都是紧凑）', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
     if (!/pick\(ap\.density, \['cozy', 'compact'\], 'compact'\)/.test(html)) throw new Error('index.html 未写 data-density（默认紧凑）');

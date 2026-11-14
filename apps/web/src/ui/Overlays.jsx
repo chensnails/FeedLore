@@ -23,6 +23,8 @@ function ConfirmDialog({ c }) {
   const okRef = useRef(null);
   const formRef = useRef(null);
   const [value, setValue] = useState('');
+  // 必填校验的内联错误：常驻 role=alert 容器，空态只收掉视觉占位
+  const [err, setErr] = useState('');
   // 打开它的那个元素：关闭后把焦点还回去（否则掉到 body，键盘用户要从头 Tab）
   const openerRef = useRef(null);
 
@@ -31,6 +33,7 @@ function ConfirmDialog({ c }) {
     if (!c.open) return;
     openerRef.current = document.activeElement;
     setValue('');
+    setErr('');
     const t = setTimeout(() => {
       if (c.input && valueRef.current) valueRef.current.focus();
       else if (okRef.current) okRef.current.focus();
@@ -81,9 +84,12 @@ function ConfirmDialog({ c }) {
     ev.preventDefault();
     const raw = c.input ? (c.input.type === 'password' ? value : value.trim()) : true;
     if (c.input && c.input.required && !raw) {
+      // 空值以前只是把焦点塞回输入框，没有任何可见原因；改成与登录页同一套内联错误
+      setErr(c.input.label ? '请填写' + c.input.label : '此项不能为空');
       if (valueRef.current) valueRef.current.focus();
       return;
     }
+    setErr('');
     S().settleConfirm(true, raw);
   };
 
@@ -123,8 +129,12 @@ function ConfirmDialog({ c }) {
               placeholder={c.input.placeholder || ''}
               autoComplete={c.input.autoComplete || 'off'}
               value={value}
-              onChange={(ev) => setValue(ev.target.value)}
+              aria-invalid={err ? 'true' : undefined}
+              aria-describedby={err ? 'confirmErr' : undefined}
+              onChange={(ev) => { setValue(ev.target.value); if (err) setErr(''); }}
             />
+            {/* 常驻 DOM：从 display:none 切出来时部分读屏不播报，空态只收高度 */}
+            <p className="confirm-err" id="confirmErr" role="alert">{err}</p>
           </div>
         ) : null}
 
@@ -277,9 +287,10 @@ export function Overlays() {
           : <svg className="ico toast-ico err" aria-hidden="true" focusable="false"><use href="#i-alert" /></svg>}
         {toast.msg}
         {/* 行内动作（批量已读的「撤销」）：toast 本身 pointer-events:none，
-            有按钮时样式才放开命中；按钮不抢焦点，避免打断正在进行的阅读操作。 */}
+            有按钮时样式才放开命中。按钮不主动抢焦点（不打断阅读），但保留 Tab 可达，
+            键盘用户不必只能用鼠标撤销；触屏命中区由 CSS 补到 44px。 */}
         {toast.action
-          ? <button type="button" className="toast-act" tabIndex={-1} onClick={() => s.runToastAction && s.runToastAction()}>{toast.actionText || '撤销'}</button>
+          ? <button type="button" className="toast-act" onClick={() => s.runToastAction && s.runToastAction()}>{toast.actionText || '撤销'}</button>
           : null}
       </div>
 
