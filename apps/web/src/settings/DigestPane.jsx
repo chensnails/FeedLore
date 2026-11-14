@@ -11,7 +11,7 @@
 import { core } from '@core';
 import { useEffect, useRef, useState } from 'react';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
-import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
+import { EditSection, PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 
 const S = () => core;
 
@@ -311,7 +311,7 @@ export function DigestPane({ onDirtyChange }) {
         )}
         </Section>
 
-        <Section secKey="dig-limits" title="条数与保留"
+        <EditSection secKey="dig-limits" title="条数与保留" editText="修改条数与保留"
           sub={`每频道 ${form.maxPerFeed} · 总 ${form.maxTotal} · 留 ${form.keepDays} 天`}>
         <div className="form-grid form-grid-2">
           <div className="form-row">
@@ -332,9 +332,9 @@ export function DigestPane({ onDirtyChange }) {
           </div>
         </div>
 
-        </Section>
+        </EditSection>
 
-        <Section secKey="dig-style" title="风格要求"
+        <EditSection secKey="dig-style" title="风格要求" editText="修改风格要求"
           sub={form.style ? `已写 ${form.style.length} 字` : '未写'}>
         <div className="form-row">
           <label htmlFor="digPrompt">风格要求（可选）</label>
@@ -353,7 +353,7 @@ export function DigestPane({ onDirtyChange }) {
           </small>
         </div>
 
-        </Section>
+        </EditSection>
 
         {result ? <Result id="digResult" result={result} /> : null}
       </div>

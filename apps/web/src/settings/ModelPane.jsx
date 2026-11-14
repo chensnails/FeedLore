@@ -9,7 +9,7 @@
 
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
-import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
+import { EditSection, PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -192,7 +192,7 @@ export function ModelPane({ onDirtyChange }) {
   return (
     <div className="tab-pane" data-pane="model" ref={paneRef}>
       <div className="pane-scroll">
-        <Section secKey="llm-api" title="接口与密钥" sub={form.model || '未配置'} open>
+        <EditSection secKey="llm-api" title="接口与密钥" sub={form.model || '未配置'} editText="修改接口与密钥" open>
         <div className="form-row">
           <label htmlFor="llmBaseUrl">模型地址（OpenAI 兼容）</label>
           <input
@@ -277,7 +277,7 @@ export function ModelPane({ onDirtyChange }) {
             <small className="form-tip">越低越稳定保守，越高越发散。摘要建议 0.2 ~ 0.5</small>
           </div>
         </div>
-        </Section>
+        </EditSection>
 
         <Section secKey="llm-thinking" title="思考模式"
           sub={form.thinking ? `已开启 · 深度${DEPTH_LABEL[form.thinkingDepth]}` : '关闭'}>

@@ -50,6 +50,31 @@ export function Section({ secKey, title, sub, subId, open, id, children }) {
   );
 }
 
+/** 填写类分组的「默认只读」外壳：正文默认不渲染，点「修改」展开，再点「收起」折叠。
+ *  收起不清空已填内容 —— 保存仍走各面板底部的保存按钮，避免「收起 = 取消」的误解。
+ *  需要逐字段只读摘要的地方（登录信息）用 ReadonlyField，不必套这层。 */
+export function EditSection({ secKey, title, sub, subId, open, id, editText = '修改', children }) {
+  const [editing, setEditing] = useState(false);
+  return (
+    <Section secKey={secKey} title={title} sub={sub} subId={subId} open={open} id={id}>
+      {editing ? (
+        <>
+          {children}
+          <div className="ro-actions">
+            <EditToggle editing closeText="收起" editText={editText} onClick={() => setEditing(false)} />
+            <span className="ro-actions-hint">收起不会丢失已填内容，保存请点下方按钮</span>
+          </div>
+        </>
+      ) : (
+        <div className="ro-actions">
+          <EditToggle editText={editText} onClick={() => setEditing(true)} />
+          <span className="ro-actions-hint">默认只读，点上面按钮展开表单</span>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 /** 面板底部固定动作栏：左侧说明 / 次要动作，右侧主动作。
  *  dirty 时在保存按钮旁补一枚常驻提示：它和弹层标题、页签圆点说的是同一件事，
  *  但就在手边 —— 长面板滚到底时不必抬头找状态。这枚是纯视觉提示（aria-hidden），

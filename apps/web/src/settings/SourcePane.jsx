@@ -25,7 +25,7 @@
 
 import { core } from '@core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
+import { EditSection, PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 import { DetailSheet } from './DetailSheet.jsx';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
@@ -1310,7 +1310,8 @@ export function SourcePane({ admin, onDirtyChange }) {
 
         {/* 采集参数：设置一次就不常动，默认收起；收起时标题右侧直接显示当前值（仅管理员） */}
         {admin && (
-          <Section secKey="src-params" title="采集参数" sub={paramsSub} subId="srcParamsSub">
+          <EditSection secKey="src-params" title="采集参数" sub={paramsSub} subId="srcParamsSub"
+            editText="修改采集参数">
               <div className="source-opts">
                 <label htmlFor="srcRefresh">自动抓取{' '}
                   <select id="srcRefresh" className="select" value={cfg.refreshMinutes} onChange={setCfgField('refreshMinutes')}>
@@ -1452,7 +1453,7 @@ export function SourcePane({ admin, onDirtyChange }) {
                 「图片回源窗口」内的重复访问不再请求上游，超过窗口仍先返回旧图、后台静默刷新；「图片保留」到期后由每日清理删除。
                 改动保存后对之后新缓存的图片生效；点「清空图片缓存」可立即按新参数重新缓存全部图片。
               </small>
-          </Section>
+          </EditSection>
         )}
 
         {/* 列表工具条：搜索 + 批量入口，吸顶 */}
