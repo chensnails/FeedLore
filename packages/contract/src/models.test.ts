@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ArticleBlockSchema, ArticleInlineSchema, CardSchema, WatchRuleInputSchema } from './models';
+import { ArticleBlockSchema, ArticleInlineSchema, CardSchema, DigestItemSchema, WatchRuleInputSchema } from './models';
 
 /**
  * 正文块契约自检。
@@ -78,4 +78,14 @@ test('关注规则写入：keywords 兼容多行文本与数组', () => {
   assert.equal(WatchRuleInputSchema.safeParse({ ...base, keywords: 'OpenAI\nGPT-5' }).success, true);
   assert.equal(WatchRuleInputSchema.safeParse({ ...base, keywords: ['OpenAI', 'GPT-5'] }).success, true);
   assert.equal(WatchRuleInputSchema.safeParse({ ...base, keywords: 42 }).success, false);
+});
+
+test('日报条目：老数据没有 image 仍可通过，新数据带代理地址', () => {
+  // 早于 image 字段的日报 payload 存在库里，可选是「旧日报不能因为这次扩展被判成不合法」
+  const old = { name: '条目', feedName: '频道', tags: ['a'], size: '1G', link: 'https://e.com/a' };
+  assert.equal(DigestItemSchema.safeParse(old).success, true);
+  assert.equal(DigestItemSchema.safeParse({ ...old, image: null }).success, true);
+  const withImg = DigestItemSchema.safeParse({ ...old, image: '/api/img?u=https%3A%2F%2Fe.com%2Fa.png' });
+  assert.equal(withImg.success, true);
+  assert.equal(DigestItemSchema.safeParse({ ...old, image: 42 }).success, false);
 });

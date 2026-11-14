@@ -4172,6 +4172,15 @@ const withEFP = (el, fn) => {
     if (meta.indexOf('Qwen/Qwen3-8B') < 0 || meta.indexOf('精选 12 条') < 0) throw new Error('meta: ' + meta);
   });
 
+  t('条目缩略图走 /api/img 代理并带 w=320（有图才渲染 img，无图画兜底图标）', () => {
+    const b = Q('#digestBody');
+    const img = b.querySelector('.dg-item .dg-item-thumb');
+    if (!img) throw new Error('有 image 却没渲染缩略图');
+    if (img.getAttribute('src').indexOf('/api/img?u=') !== 0) throw new Error('缩略图未走代理: ' + img.getAttribute('src'));
+    if (img.getAttribute('src').indexOf('&w=320') < 0) throw new Error('缩略图未按 320 档取图: ' + img.getAttribute('src'));
+    if (img.getAttribute('alt') !== '') throw new Error('缩略图应是装饰图（alt 为空）');
+  });
+
   clipboardWrites.length = 0;
   Q('#digestBody .icon-btn').click();
   await sleep(60);

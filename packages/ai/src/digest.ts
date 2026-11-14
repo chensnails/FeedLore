@@ -15,7 +15,7 @@
 
 import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { digests, entries, feeds, type Db } from '@feedlore/db';
-import { DigestSchema, type Digest, type DigestItem } from '@feedlore/contract';
+import { DigestSchema, imgUrl, type Digest, type DigestItem } from '@feedlore/contract';
 import { chat, extractJson, type ChatMessage, type FetchLike, type ResolvedLlm } from './llm';
 
 const WINDOW_MS = 24 * 3600 * 1000;
@@ -64,6 +64,8 @@ interface PoolEntry {
   size: string;
   tags: string[];
   link: string | null;
+  /** 已改写成 `/api/img?u=…` 的缩略图；没有就是 null（前端画兜底图标）。 */
+  image: string | null;
 }
 
 function toLine(e: PoolEntry, idx: number | ''): string {
@@ -82,6 +84,7 @@ const itemOf = (e: PoolEntry): DigestItem => ({
   tags: e.tags,
   size: e.size,
   link: e.link,
+  image: e.image,
 });
 
 /* ============================ 提示词 ============================ */
@@ -170,6 +173,8 @@ async function collect(db: Db, ownerId: string, feedIds: number[] | null | undef
       size: entries.size,
       tags: entries.tags,
       link: entries.link,
+      image: entries.image,
+      sourceUrl: entries.sourceUrl,
     })
     .from(entries)
     .innerJoin(feeds, eq(feeds.id, entries.feedId))
@@ -186,6 +191,8 @@ async function collect(db: Db, ownerId: string, feedIds: number[] | null | undef
     size: r.size ?? '',
     tags: Array.isArray(r.tags) ? r.tags : [],
     link: r.link ?? null,
+    // base 与 toCard 对齐：先用条目落地页，再用源地址补全相对路径
+    image: imgUrl(r.image, r.link ?? r.sourceUrl ?? null),
   }));
 }
 
@@ -341,7 +348,7 @@ function ruleDigest(compact: PoolEntry[], reason: string): {
         // feedName 留空：这里的「条目」就是频道本身，两处都填会渲染成「IT之家 IT之家」
         items: topFeeds.slice(0, 6).map(([f, n]) => ({
           comment: `${n} 条更新`,
-          item: { name: f, feedName: '', tags: [], size: '', link: null },
+          item: { name: f, feedName: '', tags: [], size: '', link: null, image: null },
         })),
       },
       {
@@ -363,6 +370,58 @@ function ruleDigest(compact: PoolEntry[], reason: string): {
  * 这里用 `safeParse` 兜住：解析失败当作「没有这份日报」，而不是让接口 500 ——
  * 一份格式坏掉的旧日报不该把整个日报页面打死。
  */
+/**
+ * 老日报补图：早先生成的日报 payload 里没有 `image` 键（契约是后加的），
+ * 但条目 `link` 一定在 —— 按 link 回查自己的条目就能把缩略图补齐，
+ * 用户不必为了看图重新生成一份日报（重新生成要烧一次模型额度）。
+ *
+ * 只在**确有缺图条目**时才查库，且 IN 列表按条目数封顶（一份日报最多 6 + 8n 条）。
+ * 多租户边界与生成时一致：entries 没有 owner 列，必须 join feeds 过滤 owner。
+ */
+async function fillDigestImages(db: Db, ownerId: string, digest: Digest): Promise<Digest> {
+  type Holder = { item: DigestItem | null };
+  const holders: Holder[] = [
+    ...digest.highlights,
+    ...digest.sections.flatMap((s) => s.items),
+  ];
+  const missing = holders.filter((h) => h.item && !h.item.image && h.item.link);
+  if (!missing.length) return digest;
+
+  const links = [...new Set(missing.map((h) => String(h.item!.link)))]
+    .filter((l) => /^https?:\/\//i.test(l))
+    .slice(0, 80);
+  if (!links.length) return digest;
+
+  const rows = await db
+    .select({ link: entries.link, image: entries.image, sourceUrl: entries.sourceUrl })
+    .from(entries)
+    .innerJoin(feeds, eq(feeds.id, entries.feedId))
+    .where(and(eq(feeds.ownerId, ownerId), inArray(entries.link, links)));
+
+  const byLink = new Map<string, string>();
+  for (const r of rows) {
+    if (!r.link) continue;
+    const url = imgUrl(r.image, r.link ?? r.sourceUrl ?? null);
+    if (url && !byLink.has(r.link)) byLink.set(r.link, url);
+  }
+  if (!byLink.size) return digest;
+
+  const fill = (item: DigestItem | null): DigestItem | null => {
+    if (!item || item.image || !item.link) return item;
+    const url = byLink.get(item.link);
+    return url ? { ...item, image: url } : item;
+  };
+
+  return {
+    ...digest,
+    highlights: digest.highlights.map((h) => ({ ...h, item: fill(h.item) })),
+    sections: digest.sections.map((s) => ({
+      ...s,
+      items: s.items.map((it) => ({ ...it, item: fill(it.item) })),
+    })),
+  };
+}
+
 export async function readDigest(db: Db, ownerId: string, date: string): Promise<Digest | null> {
   const [row] = await db
     .select({ payload: digests.payload })
@@ -375,7 +434,7 @@ export async function readDigest(db: Db, ownerId: string, date: string): Promise
     console.error('[digest] the stored digest does not match the contract, treating it as missing:', parsed.error.issues[0]?.message);
     return null;
   }
-  return parsed.data;
+  return fillDigestImages(db, ownerId, parsed.data);
 }
 
 export async function listDigestDates(db: Db, ownerId: string): Promise<string[]> {

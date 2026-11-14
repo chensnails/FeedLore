@@ -339,6 +339,9 @@ export const DigestItemSchema = z.object({
   tags: z.array(z.string()),
   size: z.string(),
   link: z.string().nullable().optional(),
+  // 缩略图（本站 /api/img 代理地址）。老日报没有这个键，所以可选；
+  // 缺失时前端画兜底图标，不会因为旧数据把整份日报判成不合法。
+  image: z.string().nullable().optional(),
 });
 export type DigestItem = z.infer<typeof DigestItemSchema>;
 

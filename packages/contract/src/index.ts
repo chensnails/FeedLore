@@ -12,3 +12,4 @@ export * from './common';
 export * from './errors';
 export * from './models';
 export * from './endpoints';
+export * from './image';
