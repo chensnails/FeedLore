@@ -3176,13 +3176,34 @@ const withEFP = (el, fn) => {
   // ============ 账号面板（P2d React 化） ============
   clickTab('账号');
   await sleep(80);
-  t('账号面板渲染 + 登录信息回填', () => {
+  t('账号面板渲染：登录信息默认只读', () => {
     if (!document.querySelector('.tab-pane[data-pane="account"]')) throw new Error('无账号面板');
-    if (document.querySelector('#accUsername').value !== 'tester') throw new Error('用户名未回填: ' + document.querySelector('#accUsername').value);
-    if (document.querySelector('#accCurrent').value !== '') throw new Error('当前密码应留空');
-    if (document.querySelector('#accNew').value !== '') throw new Error('新密码应留空');
+    if (document.querySelector('#accUsername')) throw new Error('默认不应直接渲染账号输入框');
+    const ro = document.querySelector('[data-sec="acc-login"] .ro-field-value');
+    if (!ro || ro.textContent !== 'tester') throw new Error('用户名只读值: ' + (ro && ro.textContent));
+    if (!document.querySelector('#accEditNameBtn') || !document.querySelector('#accEditPassBtn')) {
+      throw new Error('缺修改用户名 / 修改密码入口');
+    }
     const sub = document.querySelector('[data-sec="acc-login"] .sec-sub').textContent;
     if (sub !== '当前用户 tester') throw new Error('副标题: ' + sub);
+  });
+  document.querySelector('#accEditPassBtn').click();
+  await sleep(40);
+  t('点「修改密码」才展开表单并可回填', () => {
+    if (!document.querySelector('#accUsername') || document.querySelector('#accUsername').value !== 'tester') {
+      throw new Error('用户名未回填');
+    }
+    if (document.querySelector('#accCurrent').value !== '') throw new Error('当前密码应留空');
+    if (document.querySelector('#accNew').value !== '') throw new Error('新密码应留空');
+    if (!document.querySelector('[data-sec="acc-login"] .ro-toggle[aria-expanded="true"]')) {
+      throw new Error('缺「收起」入口');
+    }
+  });
+  document.querySelector('[data-sec="acc-login"] .ro-toggle').click();
+  await sleep(40);
+  t('再点「收起」回到只读摘要', () => {
+    if (document.querySelector('#accUsername')) throw new Error('收起后不该再有输入框');
+    if (!document.querySelector('#accEditPassBtn')) throw new Error('收起后应回到修改入口');
   });
   t('管理员：用户管理区可见 + 拉取', () => {
     if (!document.querySelector('#accUsersSec')) throw new Error('用户管理区缺失');
@@ -3656,7 +3677,9 @@ const withEFP = (el, fn) => {
   clickTab('账号');
   await sleep(60);
 
-  // 保存账号（改用户名 + 密码）
+  // 保存账号（改用户名 + 密码）：先点「修改密码」展开表单
+  document.querySelector('#accEditPassBtn').click();
+  await sleep(40);
   setInput('#accUsername', 'tester2');
   setInput('#accCurrent', 'oldpass');
   setInput('#accNew', 'newpass1');
@@ -3669,7 +3692,7 @@ const withEFP = (el, fn) => {
     if (body.currentPassword !== 'oldpass' || body.newPassword !== 'newpass1' || body.username !== 'tester2') throw new Error(JSON.stringify(body));
     const r = document.querySelector('#accResult');
     if (!r.classList.contains('ok') || r.textContent.indexOf('账号已更新') < 0) throw new Error(r.className + '/' + r.textContent);
-    if (document.querySelector('#accCurrent').value !== '' || document.querySelector('#accNew').value !== '') throw new Error('密码未清空');
+    if (document.querySelector('#accCurrent') || document.querySelector('#accNew')) throw new Error('保存后应收起表单');
     if (w.feedlore.state.username !== 'tester2') throw new Error('state.username 未同步: ' + w.feedlore.state.username);
     if (!callsOf('toast').length) throw new Error('toast 未调用');
   });
@@ -3677,6 +3700,8 @@ const withEFP = (el, fn) => {
   // 保存账号失败（保存成功后回到干净态，按钮禁用；先填当前密码制造改动）
   accountPostOk = false;
   t('账号未改动时保存按钮禁用', () => { if (document.querySelector('#saveAccBtn').disabled !== true) throw new Error('应禁用'); });
+  document.querySelector('#accEditPassBtn').click();
+  await sleep(40);
   setInput('#accCurrent', 'wrongpass');
   await sleep(30);
   document.querySelector('#saveAccBtn').click();
@@ -3990,9 +4015,12 @@ const withEFP = (el, fn) => {
   });
   clickTab('账号'); await sleep(60);
   t('只读账户：用户名只读、无密码输入与保存按钮、无过滤规则', () => {
-    const name = document.querySelector('#accUsername');
-    if (!name || name.disabled !== true) throw new Error('用户名应禁用');
-    if (document.querySelector('#accCurrent') || document.querySelector('#accNew')) throw new Error('不应渲染密码输入');
+    const ro = document.querySelector('[data-sec="acc-login"] .ro-field-value');
+    if (!ro || !ro.textContent) throw new Error('只读账户应展示用户名文本');
+    if (document.querySelector('#accUsername') || document.querySelector('#accCurrent') || document.querySelector('#accNew')) {
+      throw new Error('只读账户不应渲染任何账号输入框');
+    }
+    if (document.querySelector('#accEditPassBtn')) throw new Error('只读账户不应有修改密码入口');
     if (document.querySelector('#saveAccBtn')) throw new Error('不应渲染保存按钮');
     if (document.querySelector('[data-sec="watch-filters"]')) throw new Error('过滤规则配置不应渲染');
     if (!document.querySelector('[data-sec="acc-login"] .hint')) throw new Error('缺少只读说明');
@@ -4020,6 +4048,8 @@ const withEFP = (el, fn) => {
 
   // 脏状态：徽标 + 切分区拦截（确认 / 取消两条路）
   clickTab('账号'); await sleep(60);
+  document.querySelector('#accEditPassBtn').click();
+  await sleep(40);
   setInput('#accCurrent', 'dirty-show');
   await sleep(40);
   t('有未保存改动：标题旁与 tab 上都有标记', () => {

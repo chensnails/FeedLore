@@ -10,7 +10,7 @@
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
 import { DetailSheet } from './DetailSheet.jsx';
-import { PaneFoot, Result, Section, useResult } from './primitives.jsx';
+import { EditToggle, PaneFoot, ReadonlyField, Result, Section, useResult } from './primitives.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -256,6 +256,8 @@ export function AccountPane({ onDirtyChange }) {
   const [savedName, setSavedName] = useState('');
   const [current, setCurrent] = useState('');
   const [newPass, setNewPass] = useState('');
+  // null = 只读摘要；'name' = 展开用户名；'pass' = 展开当前/新密码
+  const [editLogin, setEditLogin] = useState(null);
   const [saving, setSaving] = useState(false);
   const [accResult, showAccResult, clearAccResult] = useResult();
 
@@ -410,12 +412,31 @@ export function AccountPane({ onDirtyChange }) {
       setNewPass('');
       setUsername(data.username);
       setSavedName(data.username);
+      setEditLogin(null);   // 保存成功即回到只读摘要，不把输入框留在页面上
       if (s.state) s.state.username = data.username;   // 同步全局态（顶栏 / 其他面板共用）
     } catch (err) {
       showAccResult(false, '保存失败：' + String((err && err.message) || err));
     } finally {
       setSaving(false);
     }
+  }
+
+  /** 收起编辑态：有草稿先确认，避免「再点一次」把刚输入的内容静默丢掉。 */
+  async function closeEditLogin() {
+    const hasDraft = username !== savedName || current !== '' || newPass !== '';
+    if (hasDraft) {
+      const ok = await s.confirm({
+        title: '放弃未保存的更改？',
+        desc: '收起后，这次输入的内容不会保存。',
+        confirmText: '放弃',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setUsername(savedName);
+    setCurrent('');
+    setNewPass('');
+    setEditLogin(null);
   }
 
   async function logout() {
@@ -691,34 +712,47 @@ export function AccountPane({ onDirtyChange }) {
         <Section secKey="acc-login" title="登录信息" open
           sub={savedName ? `当前用户 ${savedName}` : ''}>
           {readonly ? (
-              <>
-                <div className="form-row">
-                  <label htmlFor="accUsername">用户名</label>
-                  <input id="accUsername" type="text" value={username} disabled />
-                </div>
-                <div className="hint">只读账户：只能阅读，不能修改订阅源、规则、模型或日报配置；用户名和密码由管理员维护。</div>
-              </>
-            ) : (
-              <>
-                <div className="form-row">
-                  <label htmlFor="accUsername">用户名</label>
-                  <input id="accUsername" type="text" spellCheck="false" value={username}
-                    onChange={(e) => setUsername(e.target.value)} />
-                </div>
-                <div className="form-row">
-                  <label htmlFor="accCurrent">当前密码 <span className="req">*</span></label>
-                  <input id="accCurrent" type="password" placeholder="修改前需验证当前密码"
-                    autoComplete="current-password" value={current}
-                    onChange={(e) => setCurrent(e.target.value)} />
-                </div>
-                <div className="form-row">
-                  <label htmlFor="accNew">新密码</label>
-                  <input id="accNew" type="password" placeholder="留空则不修改，至少 4 位"
-                    autoComplete="new-password" value={newPass}
-                    onChange={(e) => setNewPass(e.target.value)} />
-                </div>
-              </>
-            )}
+            <>
+              <ReadonlyField label="用户名" value={username} />
+              <div className="hint">只读账户：只能阅读，不能修改订阅源、规则、模型或日报配置；用户名和密码由管理员维护。</div>
+            </>
+          ) : !editLogin ? (
+            /* 默认只读：把「能改什么」摆出来，但输入框必须点一下才出现，
+               避免在设置页里随手就把账号信息改掉。 */
+            <>
+              <ReadonlyField label="用户名" value={savedName} />
+              <ReadonlyField label="密码" value="已设置" hint="修改时需要先验证当前密码" />
+              <div className="ro-actions">
+                <EditToggle id="accEditNameBtn" editText="修改用户名" onClick={() => setEditLogin('name')} />
+                <EditToggle id="accEditPassBtn" editText="修改密码" onClick={() => setEditLogin('pass')} />
+              </div>
+            </>
+          ) : (
+            /* 展开后一次能看到三项：想改哪个点哪个入口，分组只有一个编辑态 */
+            <>
+              <div className="form-row">
+                <label htmlFor="accUsername">用户名</label>
+                <input id="accUsername" type="text" spellCheck="false" value={username}
+                  onChange={(e) => setUsername(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label htmlFor="accCurrent">当前密码 <span className="req">*</span></label>
+                <input id="accCurrent" type="password" placeholder="修改密码时需验证当前密码"
+                  autoComplete="current-password" value={current}
+                  onChange={(e) => setCurrent(e.target.value)} />
+              </div>
+              <div className="form-row">
+                <label htmlFor="accNew">新密码</label>
+                <input id="accNew" type="password" placeholder="留空则不修改，至少 4 位"
+                  autoComplete="new-password" value={newPass}
+                  onChange={(e) => setNewPass(e.target.value)} />
+              </div>
+              <div className="ro-actions">
+                <EditToggle editing closeText="收起" onClick={closeEditLogin} editText="修改密码" />
+                <span className="ro-actions-hint">改完点下方「保存账号」生效</span>
+              </div>
+            </>
+          )}
         </Section>
 
         {/* 登录设备（会话）：紧凑列表，点行看详情 / 退出 */}

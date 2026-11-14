@@ -70,6 +70,28 @@ export function PaneFoot({ lead, note, children, dirty }) {
   );
 }
 
+/** 只读字段：默认态用文本表达当前值，需要修改时由外层展开输入框。
+ *  刻意不用 disabled input —— 它看起来仍像可点，复制文本也不方便。 */
+export function ReadonlyField({ label, value, hint, mono }) {
+  return (
+    <div className="ro-field">
+      <span className="ro-field-label">{label}</span>
+      <span className={'ro-field-value' + (mono ? ' is-mono' : '')}>{value || '未设置'}</span>
+      {hint ? <span className="ro-field-hint">{hint}</span> : null}
+    </div>
+  );
+}
+
+/** 编辑态开关：默认「修改…」，展开后变「收起」。aria-expanded 让读屏知道表单是否已展开。 */
+export function EditToggle({ editing, onClick, editText = '编辑', closeText = '收起', id }) {
+  return (
+    <button type="button" id={id} className="btn btn-ghost btn-sm ro-toggle"
+      aria-expanded={editing ? 'true' : 'false'} onClick={onClick}>
+      {editing ? closeText : editText}
+    </button>
+  );
+}
+
 /** 内联结果提示。ok 由调用方决定何时清除（多数面板 4 秒，err 常驻）。
  *  失败用 role=alert（隐含 assertive）：以前一律 polite，导入 / 还原失败会排在
  *  其它状态消息之后播报，读屏用户可能几分钟后才知道操作没成功。 */

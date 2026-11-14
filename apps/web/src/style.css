@@ -2119,6 +2119,23 @@ textarea:disabled {
   overflow-y: auto;
   flex: 1; min-height: 0;
 }
+/* ---------- 只读字段 / 编辑开关（设置页表单默认不可直接修改） ----------
+   默认态用文本展示当前值；点「修改…」才展开输入框，再点「收起」回到只读。
+   不用 disabled input：它看起来仍像可点，复制文本也不方便。 */
+.ro-field {
+  display: flex; align-items: baseline; flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.ro-field-label { flex: 0 0 auto; min-width: 5.5em; color: var(--text-muted); font-size: var(--fs-md); }
+.ro-field-value { min-width: 0; flex: 1 1 auto; color: var(--text); font-size: var(--fs-md); word-break: break-all; }
+.ro-field-value.is-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--fs-sm); }
+.ro-field-hint { flex: 1 1 100%; color: var(--text-faint); font-size: var(--fs-sm); }
+.ro-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding-top: var(--sp-3); }
+.ro-toggle { flex: 0 0 auto; }
+.ro-actions-hint { color: var(--text-faint); font-size: var(--fs-sm); }
+
 .form-row { margin-bottom:var(--sp-4); }
 .form-row label {
   display: block; font-size: var(--fs-md); font-weight: 600;
