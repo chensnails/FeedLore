@@ -378,7 +378,7 @@ function ruleDigest(compact: PoolEntry[], reason: string): {
  * 只在**确有缺图条目**时才查库，且 IN 列表按条目数封顶（一份日报最多 6 + 8n 条）。
  * 多租户边界与生成时一致：entries 没有 owner 列，必须 join feeds 过滤 owner。
  */
-async function fillDigestImages(db: Db, ownerId: string, digest: Digest): Promise<Digest> {
+export async function fillDigestImages(db: Db, ownerId: string, digest: Digest): Promise<Digest> {
   type Holder = { item: DigestItem | null };
   const holders: Holder[] = [
     ...digest.highlights,

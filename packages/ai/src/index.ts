@@ -46,6 +46,7 @@ export {
   shanghaiDate,
   generateDigest,
   readDigest,
+  fillDigestImages,
   listDigestDates,
   pruneDigests,
   type GenerateInput,
