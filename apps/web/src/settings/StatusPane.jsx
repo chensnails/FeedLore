@@ -139,7 +139,7 @@ export function StatusPane() {
   const s = S();
   const paneRef = useRef(null);
   const [data, setData] = useState(null);
-  const [hint, setHint] = useState('');
+  const [hint, setHint] = useState('正在读取运行状态…');
   const [retrying, setRetrying] = useState({});
   // 手动刷新的忙碌态（30 秒轮询不置忙，否则按钮每半分钟闪一次）
   const [busy, setBusy] = useState(false);
@@ -234,11 +234,14 @@ export function StatusPane() {
   /* ---------- 渲染 ---------- */
   /* 三个分支（加载中 / 读取失败 / 正常）此前各渲染一份同样的页脚，id 重复、改一处漏两处。
      现在只写一份：按钮带 type="button"，刷新走忙碌三件套（禁用 + aria-busy + 文案）。 */
+  // 无快照时正文已给出「读取失败：原因」，页脚不再复制一遍，改成行动引导
+  const footLead = data && data.__error ? '读取失败，点「刷新」重试' : hint;
   const foot = (
-    <PaneFoot lead={<span className="hint" id="statusHint">{hint}</span>}>
+    <PaneFoot lead={<span className="hint" id="statusHint">{footLead}</span>}>
       <button type="button" className="btn btn-ghost" id="statusCopyBtn" onClick={copyDiagnostics}>复制诊断</button>
       <button type="button" className="btn btn-primary" id="statusRefreshBtn"
-        onClick={() => load(true)} disabled={busy} aria-busy={busy ? 'true' : undefined}>
+        onClick={() => load(true)} disabled={busy} aria-busy={busy ? 'true' : undefined}
+        title="重试读取运行状态">
         {busy ? '刷新中…' : '刷新'}
       </button>
     </PaneFoot>

@@ -25,7 +25,7 @@
 
 import { core } from '@core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PaneFoot, Result, Section } from './primitives.jsx';
+import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 import { DetailSheet } from './DetailSheet.jsx';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
@@ -289,6 +289,8 @@ export function SourcePane({ admin, onDirtyChange }) {
   const [savedCfg, setSavedCfg] = useState('');        // 上次落库的指纹，用来算「改过没」
   const [cfgLoaded, setCfgLoaded] = useState(false);   // 复刻旧 srcFormReady
   const [loadError, setLoadError] = useState('');      // /api/feeds 拉取失败（列表区兜底）
+  const [feedsLoading, setFeedsLoading] = useState(true); // 首屏列表未到，不该显示「还没有订阅源」
+  const cfgGuard = useFormLoadGuard();                 // 采集参数：异步回填不许盖掉用户已改的字段
   const [imgStats, setImgStats] = useState({ count: 0, bytes: 0 });   // 图片缓存统计（v2.4.0）
 
   const [url, setUrl] = useState('');
@@ -343,7 +345,13 @@ export function SourcePane({ admin, onDirtyChange }) {
   const ownFreqCount = feeds.filter((f) => f.refreshMinutes != null).length;
 
   const selectedFeeds = feeds.filter((f) => selected.has(String(f.id)));
-  const allSelected = feeds.length > 0 && feeds.every((f) => selected.has(String(f.id)));
+  // 批量「全选」只作用在当前筛选可见的频道：搜出 2 个却选中全部 50 个，
+  // 紧接着「删除 / 关采集」会误伤看不见的频道。
+  const visibleIds = displayGroups.reduce(
+    (acc, g) => acc.concat((g.feeds || []).map((f) => String(f.id))), []);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const hiddenSelected = fq
+    ? selectedFeeds.filter((f) => visibleIds.indexOf(String(f.id)) < 0).length : 0;
   const sheetFeed = sheetId == null ? null : feeds.find((f) => String(f.id) === String(sheetId));
   let sheetOrder = 1;
   if (sheetFeed) {
@@ -385,8 +393,13 @@ export function SourcePane({ admin, onDirtyChange }) {
         imgQuality: String(src.imgQuality == null ? '' : src.imgQuality),
         feedFailLimit: String(src.feedFailLimit == null ? '' : src.feedFailLimit),
       };
-      setCfg(next);
-      setSavedCfg(JSON.stringify(next));
+      const applied = cfgGuard.apply(() => {
+        setCfg(next);
+        setSavedCfg(JSON.stringify(next));
+      });
+      // 用户已在回填前改过字段：保留输入，脏态基线按默认指纹算（与 ModelPane 同口径），
+      // 这样改动不会被静默吃掉，「有未保存的更改」也会立刻出现。
+      if (!applied) setSavedCfg((v) => v || JSON.stringify(CFG_DEFAULTS));
       setCfgLoaded(true);
       // 图片缓存统计失败不阻塞参数回填（面板照常可用，只是看不到张数）
       try {
@@ -642,14 +655,19 @@ export function SourcePane({ admin, onDirtyChange }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setFeedsLoading(true);
       try {
         await S().loadFeeds();
         if (cancelled) return;
         setLoadError('');
       } catch (err) {
-        if (!cancelled) setLoadError(String((err && err.message) || err));
+        if (!cancelled) {
+          setLoadError(String((err && err.message) || err));
+          setFeedsLoading(false);
+        }
         return;
       }
+      setFeedsLoading(false);
       bump();
       pushSummary();
       const s = S();
@@ -1007,7 +1025,11 @@ export function SourcePane({ admin, onDirtyChange }) {
     if (n.has(k)) n.delete(k); else n.add(k);
     return n;
   });
-  const toggleSelectAll = () => setSelected(allSelected ? new Set() : new Set(feeds.map((f) => String(f.id))));
+  const toggleSelectAll = () => setSelected((p) => {
+    const n = new Set(p);
+    for (const id of visibleIds) { if (allSelected) n.delete(id); else n.add(id); }
+    return n;
+  });
   const enterBulk = () => { setSheetId(null); setBulk(true); };
   const exitBulk = () => { setBulk(false); setSelected(new Set()); };
 
@@ -1233,7 +1255,7 @@ export function SourcePane({ admin, onDirtyChange }) {
     );
   };
 
-  const setCfgField = (k) => (ev) => setCfg((c) => Object.assign({}, c, { [k]: ev.target.value }));
+  const setCfgField = (k) => (ev) => { cfgGuard.mark(); setCfg((c) => Object.assign({}, c, { [k]: ev.target.value })); };
 
   const bulkDisabled = !selectedFeeds.length || busy === 'bulk';
 
@@ -1459,6 +1481,8 @@ export function SourcePane({ admin, onDirtyChange }) {
           {fq && !displayGroups.length ? <div className="hint pane-msg">没有匹配的频道</div> : null}
           {loadError ? (
             <div className="hint pane-msg lg">{`读取失败：${loadError}`}</div>
+          ) : (feedsLoading && !feeds.length ? (
+            <div className="hint pane-msg empty-tip">正在读取频道…</div>
           ) : (!feeds.length ? (
             <div className="hint pane-msg empty-tip">还没有订阅源，在上方粘贴一个 RSS 地址试试</div>
           ) : (
@@ -1541,7 +1565,7 @@ export function SourcePane({ admin, onDirtyChange }) {
                 </React.Fragment>
               );
             })
-          ))}
+          )))}
         </div>
         {/* 分组名建议列表：给详情层里的分组输入框用 */}
         <datalist id="groupList">
@@ -1551,7 +1575,11 @@ export function SourcePane({ admin, onDirtyChange }) {
       </div>
 
       <PaneFoot dirty={sourceDirty} lead={bulk ? (
-        <span className="hint bulk-lead">已选 <strong>{selectedFeeds.length}</strong>{` / ${total}`}</span>
+        <span className="hint bulk-lead">
+          已选 <strong>{selectedFeeds.length}</strong>{` / ${total}`}
+          {fq ? ` · 当前筛选 ${visibleIds.length} 个` : ''}
+          {hiddenSelected ? ` · 其中 ${hiddenSelected} 个不在筛选结果内` : ''}
+        </span>
       ) : (
         <span className="hint" id="settingsHint">
           {total ? (

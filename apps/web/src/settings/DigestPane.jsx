@@ -31,6 +31,8 @@ export function DigestPane({ onDirtyChange }) {
   // saved：服务端当前值（字符串化后比较，用来判断「有没有没保存的改动」）
   const [saved, setSaved] = useState(JSON.stringify(EMPTY));
   const [feedsList, setFeedsList] = useState([]);
+  const [feedsLoading, setFeedsLoading] = useState(true);
+  const [feedsError, setFeedsError] = useState('');
   const [result, setResult] = useState(null);   // { ok, msg } | null
   const [busy, setBusy] = useState(false);
   const [feedQ, setFeedQ] = useState('');
@@ -72,11 +74,21 @@ export function DigestPane({ onDirtyChange }) {
     } catch (err) {
       setResult({ ok: false, msg: '读取日报设置失败：' + String((err && err.message) || err) });
     }
-    // 频道清单只有「自定义范围」用得到，按需再拉，避免每次开面板都多一个请求
+    await loadFeedList();
+  }
+
+  /** 频道清单只有「自定义范围」用得到；失败必须给可重试的出口，不能一直停在「加载中」。 */
+  async function loadFeedList() {
+    setFeedsLoading(true);
+    setFeedsError('');
     try {
       const data = await S().loadFeeds();
       setFeedsList((data && data.feeds) || []);
-    } catch (_) { /* 列表拿不到时自定义区显示占位文案 */ }
+    } catch (err) {
+      setFeedsError('频道列表读取失败：' + String((err && err.message) || err));
+    } finally {
+      setFeedsLoading(false);
+    }
   }
 
   const setField = (k, v) => { guard.mark(); setForm((f) => Object.assign({}, f, { [k]: v })); };
@@ -113,12 +125,19 @@ export function DigestPane({ onDirtyChange }) {
     setForm((f) => Object.assign({}, f, { feeds: ids }));
   };
 
-  // 全选只作用在当前可见结果上：搜过之后再点不会把没显示的频道也一并选走
+  // 全选 / 清空都只作用在当前可见结果上：搜出 3 个再点「清空」，
+  // 不该把筛选外早已选中的频道一起清掉；筛选外的选择保持不变。
   const pickVisibleFeeds = () => {
     const ids = new Set(form.feeds);
     for (const f of visibleFeeds) ids.add(Number(f.id));
     setFeedIds([...ids]);
   };
+  const clearVisibleFeeds = () => {
+    const ids = new Set(visibleFeeds.map((f) => Number(f.id)));
+    setFeedIds(form.feeds.filter((id) => !ids.has(Number(id))));
+  };
+  const allVisiblePicked = visibleFeeds.length > 0
+    && visibleFeeds.every((f) => form.feeds.includes(Number(f.id)));
 
   const onSave = async () => {
     setBusy(true);
@@ -170,6 +189,8 @@ export function DigestPane({ onDirtyChange }) {
     if (!form.style && !JSON.parse(saved).style) { setResult({ ok: true, msg: '本来就没写自定义风格' }); return; }
     guard.mark();
     setForm((f) => Object.assign({}, f, { style: '' }));
+    // 这里只改本地表单：按钮变灰容易让人误以为已落库，明确告诉用户还要点保存
+    setResult({ ok: true, msg: '已清空风格，点「保存日报设置」后生效' });
   };
 
   const dirty = JSON.stringify(form) !== saved;
@@ -249,26 +270,40 @@ export function DigestPane({ onDirtyChange }) {
                   </div>
                 ) : null}
                 <button className="btn btn-ghost btn-sm" id="digFeedAllBtn" type="button"
-                  disabled={!visibleFeeds.length} onClick={pickVisibleFeeds}>全选</button>
+                  disabled={!visibleFeeds.length}
+                  title={allVisiblePicked ? '取消勾选当前筛选结果里的频道' : '只勾选当前筛选结果里的频道'}
+                  onClick={allVisiblePicked ? clearVisibleFeeds : pickVisibleFeeds}>
+                  {allVisiblePicked ? '全不选' : '全选'}
+                </button>
                 <button className="btn btn-ghost btn-sm" id="digFeedNoneBtn" type="button"
-                  disabled={!form.feeds.length} onClick={() => setFeedIds([])}>清空</button>
+                  disabled={!form.feeds.length} title="只移除当前筛选结果里的频道"
+                  onClick={clearVisibleFeeds}>清空</button>
               </div>
             ) : null}
+            {feedQuery && feedsList.length ? (
+              <small className="form-tip">全选 / 清空只作用于当前筛选的 {visibleFeeds.length} 个频道；筛选外的已选不会被改动</small>
+            ) : null}
             <div className="feed-pick">
-              {feedsList.length ? (visibleFeeds.length ? visibleFeeds.map((f) => {
-                const fid = Number(f.id);
-                const checked = form.feeds.includes(fid);
-                return (
-                  <label key={f.id} className={'feed-pick-row' + (checked ? ' on' : '')}
-                    title={feedName(f)}>
-                    <input type="checkbox" checked={checked}
-                      onChange={(ev) => onToggleFeed(fid, ev.target.checked)} />
-                    <span className="feed-pick-name">{feedName(f)}</span>
-                    {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
-                  </label>
-                );
-              }) : <div className="feed-pick-empty">没有匹配的频道</div>)
-                : <div className="feed-pick-empty">加载频道列表中…</div>}
+              {feedsError ? (
+                <div className="feed-pick-empty" role="alert">
+                  {feedsError}
+                  <button className="btn btn-ghost btn-sm ml-3" type="button" onClick={loadFeedList}>重试</button>
+                </div>
+              ) : feedsLoading ? <div className="feed-pick-empty">正在读取频道…</div>
+                : !feedsList.length ? <div className="feed-pick-empty">还没有订阅源，先到「设置 → 数据源」添加</div>
+                  : (visibleFeeds.length ? visibleFeeds.map((f) => {
+                    const fid = Number(f.id);
+                    const checked = form.feeds.includes(fid);
+                    return (
+                      <label key={f.id} className={'feed-pick-row' + (checked ? ' on' : '')}
+                        title={feedName(f)}>
+                        <input type="checkbox" checked={checked}
+                          onChange={(ev) => onToggleFeed(fid, ev.target.checked)} />
+                        <span className="feed-pick-name">{feedName(f)}</span>
+                        {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
+                      </label>
+                    );
+                  }) : <div className="feed-pick-empty">没有匹配的频道</div>)}
             </div>
             <small className="form-tip">一个都没勾时，日报会提示「没有可展示的条目」</small>
           </div>

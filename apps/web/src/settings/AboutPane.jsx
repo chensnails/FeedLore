@@ -165,7 +165,7 @@ export function AboutPane() {
         <div className="test-result show ok" role="status">已是最新版本（v{result.current}）</div>
       )}
       {result && result.kind === 'err' && (
-        <div className="test-result show err" role="status">{result.msg}</div>
+        <div className="test-result show err" role="alert" aria-live="assertive">{result.msg}</div>
       )}
       <p className="about-note">版本检测会向 GitHub 查询最新的 Release / Tag（结果缓存 10 分钟，不会频繁请求）。</p>
     </div>

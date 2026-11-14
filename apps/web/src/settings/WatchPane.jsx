@@ -304,6 +304,7 @@ export function WatchPane({ onDirtyChange }) {
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState('');               // rules | filters | webhook | expire | apply
   const [result, setResult] = useState(null);         // { ok, msg } | null —— #watchResult
+  const [prefsError, setPrefsError] = useState('');   // /api/prefs 读取失败（面板级，编辑动作要禁用）
   const [sheet, setSheet] = useState(null);           // { type: 'rule' | 'filter', value, isNew }
   const paneRef = useRef(null);
 
@@ -311,34 +312,40 @@ export function WatchPane({ onDirtyChange }) {
   const [feedsList, setFeedsList] = useState([]);
   const [groupOrder, setGroupOrder] = useState([]);
 
+  /** 进入面板与「重试」共用一份回填。读取失败时不能把空数组显示成「还没有规则」：
+   *  用户会以为服务端本来就没规则，新建一条后整组替换，把真实规则覆盖掉。 */
+  const loadPrefs = async (alive = () => true) => {
+    setPrefsError('');
+    try {
+      const res = await s.apiFetch('/api/prefs');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const d = await res.json();
+      if (!alive()) return;
+      setRules(fromServer(d.watchRules));
+      const w = typeof d.webhookUrl === 'string' ? d.webhookUrl : '';
+      const days = Number.isFinite(Number(d.watchExpireDays)) ? String(Number(d.watchExpireDays)) : '90';
+      setWebhook(w);
+      setSavedWebhook(w);
+      setExpireDays(days);
+      setSavedExpireDays(days);
+      setFilters(filtersFromServer(d.filters));
+    } catch (err) {
+      if (alive()) setPrefsError('读取失败：' + String((err && err.message) || err));
+    } finally {
+      if (alive()) setLoaded(true);
+    }
+    // 频道清单只有适用范围选择器用得到，失败时选择器里只剩「全部频道」
+    try {
+      const data = await s.loadFeeds();
+      if (!alive()) return;
+      setFeedsList((data && data.feeds) || []);
+      setGroupOrder((data && Array.isArray(data.groupOrder)) ? data.groupOrder : []);
+    } catch (_) { /* 拿不到频道清单时选择器仍可切「全部频道」 */ }
+  };
+
   useEffect(() => {
     let alive = true;
-    (async () => {
-      try {
-        const res = await s.apiFetch('/api/prefs');
-        const d = await res.json();
-        if (!alive) return;
-        setRules(fromServer(d.watchRules));
-        const w = typeof d.webhookUrl === 'string' ? d.webhookUrl : '';
-        const days = Number.isFinite(Number(d.watchExpireDays)) ? String(Number(d.watchExpireDays)) : '90';
-        setWebhook(w);
-        setSavedWebhook(w);
-        setExpireDays(days);
-        setSavedExpireDays(days);
-        setFilters(filtersFromServer(d.filters));
-      } catch (err) {
-        if (alive) setResult({ ok: false, msg: '读取失败：' + String((err && err.message) || err) });
-      } finally {
-        if (alive) setLoaded(true);
-      }
-      // 频道清单只有适用范围选择器用得到，失败时选择器里只剩「全部频道」
-      try {
-        const data = await s.loadFeeds();
-        if (!alive) return;
-        setFeedsList((data && data.feeds) || []);
-        setGroupOrder((data && Array.isArray(data.groupOrder)) ? data.groupOrder : []);
-      } catch (_) { /* 拿不到频道清单时选择器仍可切「全部频道」 */ }
-    })();
+    loadPrefs(() => alive);
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -660,16 +667,22 @@ export function WatchPane({ onDirtyChange }) {
   return (
     <div className="tab-pane" data-pane="watch" ref={paneRef}>
       <div className="pane-scroll">
+        {prefsError ? (
+          <div className="hint pane-msg lg" role="alert">
+            {prefsError}，规则和过滤暂时不能编辑
+            <button type="button" className="btn btn-ghost btn-sm ml-3" onClick={() => loadPrefs()}>重试</button>
+          </div>
+        ) : null}
         <Section secKey="watch-rules" title="关注 / 屏蔽规则" open
           sub={rules.length ? `${rules.length} 条` : '未配置'}>
           <div className="sl-toolbar">
             <button className="btn btn-ghost btn-sm" id="addWatchRuleBtn" type="button"
-              disabled={busy === 'rules' || rules.length >= 30} onClick={() => openRule(null, true)}>
+              disabled={busy === 'rules' || rules.length >= 30 || !!prefsError} onClick={() => openRule(null, true)}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
               添加规则
             </button>
             <button className="btn btn-ghost btn-sm" id="applyWatchBtn" type="button"
-              disabled={busy === 'apply' || !rules.length}
+              disabled={busy === 'apply' || !rules.length || !!prefsError}
               title="按当前规则重新判定全部已有文章" onClick={onApply}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-refresh" /></svg>
               {busy === 'apply' ? '回溯中…' : '应用到已有文章'}
@@ -679,6 +692,8 @@ export function WatchPane({ onDirtyChange }) {
 
           {rules.length ? (
             <div className="sl-list">{rules.map(renderRuleRow)}</div>
+          ) : prefsError ? (
+            <div className="sl-empty">规则读取失败，点上方「重试」后再编辑</div>
           ) : (
             <div className="sl-empty">还没有规则。点「添加规则」新建一条，比如把标题含「OpenAI」的文章加入关注。</div>
           )}
@@ -722,7 +737,7 @@ export function WatchPane({ onDirtyChange }) {
           sub={!loaded ? '读取中…' : (filters.length ? `${filters.length} 条` : '未配置')}>
           <div className="sl-toolbar">
             <button className="btn btn-ghost btn-sm" id="addFilterBtn" type="button"
-              disabled={busy === 'filters' || filters.length >= 50} onClick={() => openFilter(null, true)}>
+              disabled={busy === 'filters' || filters.length >= 50 || !!prefsError} onClick={() => openFilter(null, true)}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
               添加过滤规则
             </button>
@@ -730,7 +745,8 @@ export function WatchPane({ onDirtyChange }) {
           </div>
 
           {!loaded ? <div className="sl-empty">正在读取规则…</div>
-            : !filters.length ? <div className="sl-empty">还没有规则。点「添加过滤规则」试试，比如丢弃标题含「广告」的文章。</div>
+            : prefsError ? <div className="sl-empty">规则读取失败，点上方「重试」后再编辑</div>
+              : !filters.length ? <div className="sl-empty">还没有规则。点「添加过滤规则」试试，比如丢弃标题含「广告」的文章。</div>
               : <div className="sl-list">{filters.map(renderFilterRow)}</div>}
 
           <small className="form-tip">
