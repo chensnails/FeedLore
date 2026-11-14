@@ -1,17 +1,15 @@
 /* 设置弹层「账号」面板（v1.6.0 起 React 化，原 index.html 内联 DOM + app.js 绑定迁移至此，P2d）。
  *
- * 迁移说明（对照旧实现）：
- * - 登录信息（改用户名 / 密码）、用户管理（仅管理员）、添加到手机、退出登录，四块能力原样搬运；
- * - 表单由受控状态管理（旧实现裸读 DOM .value）；
- * - 结果提示内联在组件里（旧 showResult 的 test-result + 4s 自动清除语义保留）；
- * - 用户管理对同一份列表做乐观 UI：操作成功后重新拉取（与旧 loadUserList 一致），
- *   危险操作（删除）仍走浏览器 confirm，改密码走 prompt（保持与旧实现一致）；
- * - 类名 / ID / data 属性与旧 DOM 完全一致，样式零改动；可折叠分组（details.sec）
- *   的开合仍按账号持久化，经桥 bindSections 复用同一机制。
+ * 结构（v2.5.0 设置 A 方案）：
+ * - 登录信息 / 数据导出 / 导入 / 备份 / 还原 / 安装仍按折叠分组摆放（表单类，见 primitives.Section）；
+ * - 登录设备、用户管理改成「紧凑列表 + 详情层」：行只留头像 / 名称 / 状态，点行打开 DetailSheet
+ *   做逐台退出、改角色、改密码、删除；新增用户也收进详情层，列表不再被一排输入框撑长；
+ * - 行内与层内的操作都是「即改即生效」，失败直接写在层里 / 分组里的 Result。
  */
 
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
+import { DetailSheet } from './DetailSheet.jsx';
 import { PaneFoot, Result, Section, useResult } from './primitives.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -47,12 +45,211 @@ function fmtRel(iso) {
   return iso.slice(0, 10);
 }
 
+const openOnKey = (fn) => (ev) => {
+  if (ev.target !== ev.currentTarget) return;
+  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); fn(); }
+};
+
+/* ---------- 登录设备详情层 ---------- */
+function DeviceSheet({ device, busy, onClose, onRevoke }) {
+  const [err, setErr] = useState('');
+  const revoke = async () => {
+    const res = await onRevoke(device);
+    if (res && !res.ok) setErr(res.error || '退出失败');
+  };
+  return (
+    <DetailSheet
+      title={deviceLabel(device.userAgent)}
+      subtitle={device.ip || '未知地址'}
+      onClose={onClose}
+      foot={!device.current ? (
+        <button className="btn btn-danger" id="revokeDeviceBtn" type="button"
+          disabled={busy} onClick={revoke}>
+          {busy ? '退出中…' : '退出该设备'}
+        </button>
+      ) : null}>
+      <div className="ds-stat">
+        <div className="ds-stat-line">
+          {device.current ? '当前设备 · 就是你现在用的这台浏览器' : '其它设备 · 退出后需要重新输入密码'}
+        </div>
+        <div className="ds-stat-line" title={device.lastSeenAt}>
+          最近活跃 {fmtRel(device.lastSeenAt)}
+          {device.createdAt ? ` · 登录于 ${String(device.createdAt).slice(0, 10)}` : ''}
+        </div>
+      </div>
+      <small className="form-tip">
+        「本机」按当前浏览器的登录 Cookie 判断；同一浏览器多开窗口算同一台设备。
+        在这里退出只影响这台设备，其它设备与账号密码都不变。
+      </small>
+      <Result id="deviceSheetResult" result={err ? { ok: false, msg: err } : null} />
+    </DetailSheet>
+  );
+}
+
+/* ---------- 用户详情层（改角色 / 改密码 / 删除） ---------- */
+function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }) {
+  const [pass, setPass] = useState('');
+  const [err, setErr] = useState('');
+  const roleRef = useRef(null);
+  const self = !!user.isSelf;
+
+  const changeRole = async (ev) => {
+    const next = ev.target.value;
+    if (next === user.role) return;
+    setErr('');
+    const res = await onRole(user, next);
+    if (!res.ok) {
+      setErr(res.error || '角色修改失败');
+      if (roleRef.current) roleRef.current.value = user.role;
+    }
+  };
+
+  const removeUser = async () => {
+    setErr('');
+    const res = await onDelete(user);
+    if (res && !res.ok) setErr(res.error || '删除失败');
+  };
+
+  const submitPass = async () => {
+    if (pass.length < 4) { setErr('密码至少 4 位'); return; }
+    setErr('');
+    const res = await onPassword(user, pass);
+    if (res.ok) setPass('');
+    else setErr(res.error || '设置失败');
+  };
+
+  return (
+    <DetailSheet
+      title={user.username}
+      subtitle={`${ROLE_LABEL[user.role] || user.role}${self ? ' · 当前账号' : ''}`}
+      onClose={onClose}
+      foot={
+        <>
+          {!self ? (
+            <button className="btn btn-danger" id="delUserBtn" type="button"
+              disabled={busy} onClick={removeUser}>
+              删除用户
+            </button>
+          ) : null}
+          <button className="btn" type="button" onClick={onClose}>完成</button>
+        </>
+      }>
+      <div className="ds-stat">
+        <div className="ds-stat-line">{Number(user.feedCount) || 0} 个订阅源</div>
+      </div>
+
+      {self ? (
+        <p className="hint">
+          当前登录的账号不能在这里改角色或删除；换用户名、改密码请用上方「登录信息」。
+        </p>
+      ) : (
+        <>
+          <div className="form-row">
+            <label htmlFor="dsUserRole">角色</label>
+            <select id="dsUserRole" className="select" ref={roleRef} value={user.role}
+              disabled={busy} onChange={changeRole}>
+              <option value="user">普通</option>
+              <option value="readonly">只读</option>
+              <option value="admin">管理员</option>
+            </select>
+            <small className="form-tip">
+              管理员可管理用户与站点设置；普通用户管理自己的订阅源、模型与日报；只读只能阅读。改角色立即生效。
+            </small>
+          </div>
+
+          <div className="form-row">
+            <label htmlFor="dsUserPass">设置新密码</label>
+            <input id="dsUserPass" type="password" placeholder="至少 4 位"
+              autoComplete="new-password" value={pass}
+              onChange={(ev) => setPass(ev.target.value)}
+              onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submitPass(); } }} />
+            <button className="btn btn-ghost btn-sm" id="setUserPassBtn" type="button"
+              style={{ marginTop: 'var(--sp-2)' }}
+              disabled={busy || pass.length < 4} onClick={submitPass}>
+              设置密码
+            </button>
+            <small className="form-tip">保存后立即生效，对方已登录的设备会被要求重新登录。</small>
+          </div>
+
+          <small className="form-tip">
+            删除用户会一并删除其订阅源、条目与日报，且不可恢复。
+          </small>
+        </>
+      )}
+
+      <Result id="userSheetResult" result={err ? { ok: false, msg: err } : null} />
+    </DetailSheet>
+  );
+}
+
+/* ---------- 新增用户详情层 ---------- */
+function AddUserSheet({ busy, onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [pass, setPass] = useState('');
+  const [role, setRole] = useState('user');
+  const [err, setErr] = useState('');
+
+  const submit = async () => {
+    const n = name.trim();
+    if (!n) { setErr('请填写用户名'); return; }
+    if (pass.length < 4) { setErr('密码至少 4 位'); return; }
+    setErr('');
+    const res = await onCreate(n, pass, role);
+    if (!res.ok) setErr(res.error || '创建失败');
+  };
+
+  return (
+    <DetailSheet
+      title="添加用户"
+      subtitle="新账号从空白的订阅源开始"
+      onClose={onClose}
+      foot={
+        <>
+          <button className="btn" type="button" onClick={onClose}>取消</button>
+          <button className="btn btn-primary" id="createUserBtn" type="button"
+            disabled={busy} onClick={submit}>
+            {busy ? '添加中…' : '添加用户'}
+          </button>
+        </>
+      }>
+      <div className="form-row">
+        <label htmlFor="newUserName">用户名</label>
+        <input id="newUserName" type="text" placeholder="用户名" spellCheck="false"
+          aria-label="新用户的用户名" autoComplete="off" value={name}
+          onChange={(ev) => setName(ev.target.value)}
+          onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }} />
+      </div>
+      <div className="form-row">
+        <label htmlFor="newUserPass">密码</label>
+        <input id="newUserPass" type="password" placeholder="至少 4 位"
+          aria-label="新用户的密码" autoComplete="new-password" value={pass}
+          onChange={(ev) => setPass(ev.target.value)}
+          onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }} />
+      </div>
+      <div className="form-row">
+        <label htmlFor="newUserRole">角色</label>
+        <select id="newUserRole" className="select" value={role}
+          onChange={(ev) => setRole(ev.target.value)}>
+          <option value="user">普通用户</option>
+          <option value="readonly">只读用户</option>
+          <option value="admin">管理员</option>
+        </select>
+        <small className="form-tip">
+          每个用户拥有自己独立的订阅源、已读/收藏、日报与模型配置；角色之后还能改。
+        </small>
+      </div>
+      <Result id="userSheetResult" result={err ? { ok: false, msg: err } : null} />
+    </DetailSheet>
+  );
+}
+
 export function AccountPane({ onDirtyChange }) {
   const s = S();
   const admin = !!(s && s.isAdmin && s.isAdmin());
   // 只读账户：只能阅读；配置项全部由服务端拒绝，账号凭据由管理员掌握
   const readonly = !!(s && s.state && s.state.role === 'readonly');
   const paneRef = useRef(null);
+  const [sheet, setSheet] = useState(null);   // {type:'device'|'user'|'addUser', id?}
 
   // 登录信息
   const [username, setUsername] = useState('');
@@ -66,10 +263,7 @@ export function AccountPane({ onDirtyChange }) {
   const [users, setUsers] = useState([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [usersError, setUsersError] = useState('');
-  const [newUserName, setNewUserName] = useState('');
-  const [newUserPass, setNewUserPass] = useState('');
-  const [newUserRole, setNewUserRole] = useState('user');
-  const [addingUser, setAddingUser] = useState(false);
+  const [userBusy, setUserBusy] = useState('');   // '' | add | role | pass | del
   const [userResult, showUserResult] = useResult();
 
   // 登录设备（会话）：所有角色都能看自己的设备并逐台退出
@@ -160,10 +354,12 @@ export function AccountPane({ onDirtyChange }) {
       const res = await s.apiFetch('/api/sessions/' + encodeURIComponent(d.id), { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
+      setSheet(null);
       s.toast('已退出该设备');
       await loadDevices();
+      return { ok: true };
     } catch (err) {
-      showDevResult(false, '退出失败：' + String((err && err.message) || err));
+      return { ok: false, error: '退出失败：' + String((err && err.message) || err) };
     } finally {
       setRevoking('');
     }
@@ -192,8 +388,6 @@ export function AccountPane({ onDirtyChange }) {
       setRevoking('');
     }
   }
-
-  /* ---------- 条目过滤规则已迁至「规则」tab（WatchPane） ---------- */
 
   async function saveAccount() {
     setSaving(true);
@@ -229,89 +423,107 @@ export function AccountPane({ onDirtyChange }) {
     location.replace('/login.html');
   }
 
-  // 用户行操作：删除 / 改角色 / 改密码（与旧 userList 事件委托逐分支一致）
-  async function userAction(act, u, nextRole) {
+  /* 删除用户：不可恢复，走危险确认 */
+  async function deleteUser(u) {
+    const ok = await s.confirm({
+      title: `删除用户「${u.username}」？`,
+      desc: '其订阅源、条目与日报都会一并删除，且不可恢复。',
+      confirmText: '删除用户',
+      danger: true,
+    });
+    if (!ok) return;
+    setUserBusy('del');
     try {
-      if (act === 'del') {
-        const ok = await s.confirm({
-          title: `删除用户「${u.username}」？`,
-          desc: '其订阅源、条目与日报都会一并删除，且不可恢复。',
-          confirmText: '删除用户',
-          danger: true,
-        });
-        if (!ok) return;
-        const res = await s.apiFetch('/api/users/' + u.id, { method: 'DELETE' });
-        const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
-        showUserResult(true, `已删除 ${u.username}`);
-        s.toast(`已删除用户 ${u.username}`);
-        await loadUsers();
-      } else if (act === 'role') {
-        const next = nextRole || (u.role === 'admin' ? 'user' : 'admin');
-        const ok = await s.confirm({
-          title: `将「${u.username}」设为${ROLE_LABEL[next] || next}？`,
-          desc: next === 'admin'
-            ? '管理员可以管理用户与站点级设置。'
-            : next === 'readonly'
-              ? '只读用户只能阅读，不能修改订阅源、规则、模型或日报。'
-              : '普通用户可以管理自己的订阅源、模型与日报。',
-          confirmText: '修改角色',
-          danger: next === 'admin',
-        });
-        if (!ok) return false;
-        const res = await s.apiFetch('/api/users/' + u.id, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: next }),
-        });
-        const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
-        showUserResult(true, `已将 ${u.username} 设为${ROLE_LABEL[next] || next}`);
-        await loadUsers();
-        return true;
-      } else if (act === 'pass') {
-        const np = await s.confirm({
-          title: `为「${u.username}」设置新密码`,
-          desc: '至少 4 位，设置后立即生效。',
-          confirmText: '设置密码',
-          input: { label: '新密码', placeholder: '至少 4 位', type: 'password', autoComplete: 'new-password', required: true },
-        });
-        if (np == null) return;
-        if (np.length < 4) { showUserResult(false, '密码至少 4 位'); return; }
-        const res = await s.apiFetch('/api/users/' + u.id, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: np }),
-        });
-        const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
-        showUserResult(true, `已重置 ${u.username} 的密码`);
-      }
+      const res = await s.apiFetch('/api/users/' + u.id, { method: 'DELETE' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
+      setSheet(null);
+      showUserResult(true, `已删除 ${u.username}`);
+      s.toast(`已删除用户 ${u.username}`);
+      await loadUsers();
+      return { ok: true };
     } catch (err) {
-      showUserResult(false, '操作失败：' + String((err && err.message) || err));
+      return { ok: false, error: '删除失败：' + String((err && err.message) || err) };
+    } finally {
+      setUserBusy('');
     }
   }
 
-  async function addUser() {
-    const name = newUserName.trim();
-    if (!name) { showUserResult(false, '请填写用户名'); return; }
-    if (newUserPass.length < 4) { showUserResult(false, '密码至少 4 位'); return; }
-    setAddingUser(true);
+  /* 改角色：服务端立即生效，确认框里说明该角色能做什么；取消返回 false 让下拉回退 */
+  async function changeUserRole(u, next) {
+    const ok = await s.confirm({
+      title: `将「${u.username}」设为${ROLE_LABEL[next] || next}？`,
+      desc: next === 'admin'
+        ? '管理员可以管理用户与站点级设置。'
+        : next === 'readonly'
+          ? '只读用户只能阅读，不能修改订阅源、规则、模型或日报。'
+          : '普通用户可以管理自己的订阅源、模型与日报。',
+      confirmText: '修改角色',
+      danger: next === 'admin',
+    });
+    if (!ok) return { ok: false, canceled: true };
+    setUserBusy('role');
     try {
-      const res = await s.apiFetch('/api/users', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: name, password: newUserPass, role: newUserRole }),
+      const res = await s.apiFetch('/api/users/' + u.id, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: next }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
+      showUserResult(true, `已将 ${u.username} 设为${ROLE_LABEL[next] || next}`);
+      await loadUsers();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: '角色修改失败：' + String((err && err.message) || err) };
+    } finally {
+      setUserBusy('');
+    }
+  }
+
+  /* 管理员重置他人密码：不再用浏览器 prompt，输入框就在详情层里 */
+  async function setUserPassword(u, np) {
+    if (np.length < 4) return { ok: false, error: '密码至少 4 位' };
+    setUserBusy('pass');
+    try {
+      const res = await s.apiFetch('/api/users/' + u.id, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: np }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
+      showUserResult(true, `已重置 ${u.username} 的密码`);
+      s.toast(`已重置 ${u.username} 的密码，请告知对方新密码`);
+      return { ok: true };
+    } catch (err) {
+      const msg = '设置失败：' + String((err && err.message) || err);
+      showUserResult(false, msg);
+      return { ok: false, error: msg };
+    } finally {
+      setUserBusy('');
+    }
+  }
+
+  /* 新增用户：成功即关层并重拉列表（服务端会分配 id） */
+  async function createUser(name, pass, role) {
+    setUserBusy('add');
+    try {
+      const res = await s.apiFetch('/api/users', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: name, password: pass, role }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(s.errText(d, 'HTTP ' + res.status));
+      setSheet(null);
       showUserResult(true, `已创建用户 ${name}`);
       s.toast(`已创建用户 ${name}`);
-      setNewUserName('');
-      setNewUserPass('');
-      setNewUserRole('user');
       await loadUsers();
+      return { ok: true };
     } catch (err) {
-      showUserResult(false, '创建失败：' + String((err && err.message) || err));
+      const msg = '创建失败：' + String((err && err.message) || err);
+      showUserResult(false, msg);
+      return { ok: false, error: msg };
     } finally {
-      setAddingUser(false);
+      setUserBusy('');
     }
   }
 
@@ -416,14 +628,60 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   const usersSub = users.length ? `共 ${users.length} 个` : '';
-  // 登录信息草稿 + 新增用户表单；当前密码本身不是持久改动，但填了就该提醒
-  const dirty = !readonly && (
-    username !== savedName || current !== '' || newPass !== ''
-    || newUserName !== '' || newUserPass !== '' || newUserRole !== 'user'
-  );
+  const otherDevices = devices.filter((d) => !d.current).length;
+  // 登录信息草稿；用户 / 设备的改动都在各自详情层里即时生效，不计入面板脏态
+  const dirty = !readonly && (username !== savedName || current !== '' || newPass !== '');
   useEffect(() => {
     if (onDirtyChange) onDirtyChange(dirty);
   }, [dirty, onDirtyChange]);
+
+  const sheetDevice = sheet && sheet.type === 'device' ? devices.find((d) => d.id === sheet.id) : null;
+  const sheetUser = sheet && sheet.type === 'user' ? users.find((u) => u.id === sheet.id) : null;
+
+  const renderDeviceRow = (d) => (
+    <div className={'sl-row' + (d.current ? ' is-current' : '')} key={d.id} data-session-id={d.id}
+      role="button" tabIndex={0}
+      aria-label={`${deviceLabel(d.userAgent)}：查看设备详情`}
+      onClick={() => setSheet({ type: 'device', id: d.id })}
+      onKeyDown={openOnKey(() => setSheet({ type: 'device', id: d.id }))}>
+      <span className="sl-ava">
+        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-activity" /></svg>
+      </span>
+      <div className="sl-main">
+        <div className="sl-name">{deviceLabel(d.userAgent)}</div>
+        <div className="sl-sub" title={d.lastSeenAt}>
+          {d.ip || '未知地址'} · {fmtRel(d.lastSeenAt)}活跃
+        </div>
+      </div>
+      <span className="sl-side">
+        {d.current ? <span className="sl-badge muted">本机</span> : null}
+      </span>
+      <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+    </div>
+  );
+
+  const renderUserRow = (u) => (
+    <div className="sl-row" key={u.id} data-uid={u.id}
+      role="button" tabIndex={0} aria-label={`${u.username}：查看账号详情`}
+      onClick={() => setSheet({ type: 'user', id: u.id })}
+      onKeyDown={openOnKey(() => setSheet({ type: 'user', id: u.id }))}>
+      <span className="sl-ava">
+        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-user" /></svg>
+      </span>
+      <div className="sl-main">
+        <div className="sl-name">{u.username}</div>
+        <div className="sl-sub">
+          {Number(u.feedCount) || 0} 个源{u.isSelf ? ' · 当前账号' : ''}
+        </div>
+      </div>
+      <span className="sl-side">
+        <span className={'sl-badge' + (u.role === 'admin' ? '' : ' muted')}>
+          {ROLE_LABEL[u.role] || u.role}
+        </span>
+      </span>
+      <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+    </div>
+  );
 
   return (
     <div className="tab-pane" data-pane="account" ref={paneRef}>
@@ -463,7 +721,7 @@ export function AccountPane({ onDirtyChange }) {
             )}
         </Section>
 
-        {/* 登录设备（会话）：本机按当前 Cookie 标记，其余可逐台退出 */}
+        {/* 登录设备（会话）：紧凑列表，点行看详情 / 退出 */}
         <Section secKey="acc-devices" title="登录设备" open
           sub={!devicesLoaded ? '读取中…' : (devices.length ? `${devices.length} 台` : '仅本机')}>
           <Result id="devResult" result={devResult} />
@@ -476,38 +734,16 @@ export function AccountPane({ onDirtyChange }) {
             <div className="hint">正在读取登录设备…</div>
           ) : (
             <>
-              <div className="dev-list" id="deviceList">
-                {devices.map((d) => (
-                  <div className={'dev-row' + (d.current ? ' current' : '')} key={d.id}>
-                    <div className="dev-main">
-                      <span className="dev-name">
-                        {deviceLabel(d.userAgent)}
-                        {d.current ? <span className="dev-badge">本机</span> : null}
-                      </span>
-                      <span className="dev-meta" title={`最近活跃 ${d.lastSeenAt}`}>
-                        {d.ip || '未知地址'} · {fmtRel(d.lastSeenAt)}活跃
-                      </span>
-                    </div>
-                    {!d.current && (
-                      <button className="u-btn dev-revoke" type="button" disabled={revoking === d.id}
-                        onClick={() => revokeDevice(d)}>
-                        {revoking === d.id ? '退出中…' : '退出'}
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <small className="form-tip">
-                「本机」按当前浏览器判断。退出其它设备后它们需要重新输入密码；在这台设备上退出请用左下角的「退出登录」。
-              </small>
-              {devices.some((d) => !d.current) ? (
-                <div className="dev-actions">
+              <div className="sl-list" id="deviceList">{devices.map(renderDeviceRow)}</div>
+              <div className="sl-toolbar">
+                {otherDevices ? (
                   <button className="btn btn-ghost btn-sm" id="revokeOtherSessionsBtn" type="button"
                     disabled={revoking === 'others'} onClick={revokeOthers}>
-                    {revoking === 'others' ? '退出中…' : '退出其它设备'}
+                    {revoking === 'others' ? '退出中…' : `退出其它设备（${otherDevices} 台）`}
                   </button>
-                </div>
-              ) : null}
+                ) : null}
+                <span className="sl-toolbar-note">「本机」按当前浏览器判断；逐台退出用行详情</span>
+              </div>
             </>
           )}
         </Section>
@@ -568,66 +804,32 @@ export function AccountPane({ onDirtyChange }) {
           </Section>
         )}
 
-        {/* 用户管理：仅管理员可见 */}
+        {/* 用户管理：仅管理员可见，紧凑列表 + 详情层 */}
         {admin && (
-          <Section secKey="acc-users" id="accUsersSec" title="用户管理" sub={usersSub}>
-              <div className="user-list" id="userList">
-                {!usersLoaded ? <div className="hint">正在读取用户…</div>
-                  : usersError ? <div className="hint pane-msg">{usersError}</div>
-                    : !users.length ? <div className="hint">还没有用户</div>
-                      : users.map((u) => (
-                        <div className="user-row" data-id={u.id} key={u.id}>
-                          <span className="u-name">{u.username}</span>
-                          <span className={'u-badge' + (u.role === 'admin' ? '' : ' role-' + u.role)}>
-                            {ROLE_LABEL[u.role] || u.role}
-                          </span>
-                          <span className="u-meta">{Number(u.feedCount) || 0} 个源</span>
-                          {u.isSelf ? <span className="u-self">当前</span> : null}
-                          <span className="u-spacer" />
-                          {!u.isSelf && (
-                            <select className="select u-role" data-act="role" data-id={u.id}
-                              title="角色" aria-label={`${u.username} 的角色`} value={u.role}
-                              onChange={async (e) => {
-                                const ok = await userAction('role', u, e.target.value);
-                                if (ok !== true) e.target.value = u.role;
-                              }}>
-                              <option value="user">普通</option>
-                              <option value="readonly">只读</option>
-                              <option value="admin">管理员</option>
-                            </select>
-                          )}
-                          <button type="button" className="u-btn" data-act="pass" data-id={u.id}
-                            onClick={() => userAction('pass', u)}>改密码</button>
-                          {!u.isSelf && (
-                            <button type="button" className="u-btn danger" data-act="del" data-id={u.id}
-                              onClick={() => userAction('del', u)}>删除</button>
-                          )}
-                        </div>
-                      ))}
-              </div>
-              <div className="user-add">
-                {/* 只有 placeholder 不够：读屏读不出字段用途，视觉上也一消失就没线索 */}
-                <input id="newUserName" type="text" placeholder="用户名" spellCheck="false"
-                  aria-label="新用户的用户名"
-                  autoComplete="off" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} />
-                <input id="newUserPass" type="password" placeholder="密码（至少 4 位）"
-                  aria-label="新用户的密码"
-                  autoComplete="new-password" value={newUserPass} onChange={(e) => setNewUserPass(e.target.value)} />
-                <select id="newUserRole" className="select" title="角色" value={newUserRole}
-                  onChange={(e) => setNewUserRole(e.target.value)}>
-                  <option value="user">普通用户</option>
-                  <option value="readonly">只读用户</option>
-                  <option value="admin">管理员</option>
-                </select>
-                <button className="btn btn-primary" id="addUserBtn" type="button"
-                  disabled={addingUser} aria-busy={addingUser ? 'true' : undefined}
-                  onClick={addUser}>{addingUser ? '添加中…' : '添加'}</button>
-              </div>
-              <small className="form-tip">
-                每个用户拥有<b>自己独立</b>的订阅源、已读/收藏、日报与模型配置。普通用户可配置自己的订阅源、模型与日报，但看不到「状态 / 采集参数 / 用户管理」等站点级设置；管理员额外可管理用户与全局设置。只读用户只能阅读，不能修改订阅源、规则、模型、日报等配置，也不能自行修改用户名和密码，适合把账号借给别人阅读。
-                删除用户会一并删除其订阅源、条目与日报，且不可恢复。
-              </small>
-              <Result id="userResult" result={userResult} />
+          <Section secKey="acc-users" id="accUsersSec" title="用户管理" open sub={usersSub}>
+            <Result id="userResult" result={userResult} />
+            {!usersLoaded ? <div className="hint">正在读取用户…</div>
+              : usersError ? (
+                <div className="hint pane-msg">
+                  {usersError}
+                  <button className="btn btn-ghost btn-sm" type="button" onClick={loadUsers}>重试</button>
+                </div>
+              ) : !users.length ? <div className="sl-empty">还没有用户</div>
+                : <div className="sl-list" id="userList">{users.map(renderUserRow)}</div>}
+
+            <div className="sl-toolbar">
+              <button className="btn btn-ghost btn-sm" id="addUserBtn" type="button"
+                disabled={userBusy === 'add'} onClick={() => setSheet({ type: 'addUser' })}>
+                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
+                添加用户
+              </button>
+              <span className="sl-toolbar-note">每个账号的订阅源、已读与日报相互独立</span>
+            </div>
+
+            <small className="form-tip">
+              点行可改角色、重置密码或删除。管理员额外可管理用户与全局设置；普通用户管理自己的订阅源、模型与日报；
+              只读用户只能阅读，不能修改订阅源、规则、模型、日报等配置，也不能自行修改用户名和密码。
+            </small>
           </Section>
         )}
 
@@ -686,6 +888,20 @@ export function AccountPane({ onDirtyChange }) {
             </button>
         </Section>
       </div>
+
+      {sheetDevice ? (
+        <DeviceSheet key={'dev-' + sheetDevice.id} device={sheetDevice}
+          busy={revoking === sheetDevice.id} onClose={() => setSheet(null)}
+          onRevoke={revokeDevice} />
+      ) : null}
+      {sheetUser ? (
+        <UserSheet key={'user-' + sheetUser.id} user={sheetUser} busy={!!userBusy}
+          onClose={() => setSheet(null)}
+          onRole={changeUserRole} onPassword={setUserPassword} onDelete={deleteUser} />
+      ) : null}
+      {sheet && sheet.type === 'addUser' ? (
+        <AddUserSheet busy={userBusy === 'add'} onClose={() => setSheet(null)} onCreate={createUser} />
+      ) : null}
 
       <PaneFoot dirty={dirty} lead={
         <button type="button" className="btn btn-danger btn-sm" id="logoutBtn" onClick={logout}>退出登录</button>

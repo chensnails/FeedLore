@@ -80,7 +80,7 @@ export function useSwipeDismiss(onDismiss, options = {}) {
 
   const maskOf = useCallback((el) => {
     const m = el && el.parentElement;
-    return m && /(^|\s)(dd-mask|modal-mask)(\s|$)/.test(m.className || '') ? m : null;
+    return m && /(^|\s)(dd-mask|modal-mask|ds-mask)(\s|$)/.test(m.className || '') ? m : null;
   }, []);
 
   const springBack = useCallback((el) => {
@@ -117,6 +117,9 @@ export function useSwipeDismiss(onDismiss, options = {}) {
 
     const onStart = (ev) => {
       if (!enabledRef.current) return;
+      // 详情层 / 下拉层嵌在设置外壳里：手势归最内层，别让外层（同样挂了
+      // useSwipeDismiss）跟着拖一份，否则滑一次关两层。
+      ev.stopPropagation();
       const t = ev.touches && ev.touches[0];
       if (!t) return;
       const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { top: 0, left: 0, right: 0 };
@@ -142,6 +145,7 @@ export function useSwipeDismiss(onDismiss, options = {}) {
       const s = drag.current;
       const t = ev.touches && ev.touches[0];
       if (!t || s.block || !enabledRef.current) return;
+      ev.stopPropagation();
       const dx = t.clientX - s.x0;
       const dy = t.clientY - s.y0;
       // 一次拖拽内锁定方向：中途从横滑改成竖划会让面板左右横跳。

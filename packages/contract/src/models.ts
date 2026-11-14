@@ -228,6 +228,8 @@ export const LayoutSchema = z
     view: z.enum(['grid', 'list']),
     tab: z.enum(['reader', 'cards', 'ai']),
     collapsedGroups: z.array(z.string()),
+    /** 数据源面板显式展开的分组名（命名分组默认收起） */
+    srcGroupsOpen: z.array(z.string()),
     accordion: z.boolean(),
     /** 设置页各分组的展开状态：{ [key]: boolean } */
     sections: z.record(z.string(), z.boolean()),

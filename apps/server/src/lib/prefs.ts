@@ -20,6 +20,7 @@ export const LAYOUT_DEFAULTS = {
   view: 'grid',
   tab: 'reader',
   collapsedGroups: [] as string[],
+  srcGroupsOpen: [] as string[],
   accordion: true,
   sections: {} as Record<string, boolean>,
   sort: 'new',
@@ -55,7 +56,7 @@ function groupList(raw: unknown): string[] | null {
 export type Layout = typeof LAYOUT_DEFAULTS;
 
 export function sanitizeLayout(raw: unknown): Layout {
-  const out: Layout = { ...LAYOUT_DEFAULTS, collapsedGroups: [], sections: {}, rdCollapsedGroups: [] };
+  const out: Layout = { ...LAYOUT_DEFAULTS, collapsedGroups: [], srcGroupsOpen: [], sections: {}, rdCollapsedGroups: [] };
   if (!raw || typeof raw !== 'object') return out;
   const r = raw as Record<string, unknown>;
 
@@ -64,6 +65,9 @@ export function sanitizeLayout(raw: unknown): Layout {
 
   const cg = groupList(r.collapsedGroups);
   if (cg) out.collapsedGroups = cg;
+
+  const sgo = groupList(r.srcGroupsOpen);
+  if (sgo) out.srcGroupsOpen = sgo;
 
   // 只有显式 false 才关：undefined 不该把用户设置清掉
   out.accordion = r.accordion === false ? false : true;

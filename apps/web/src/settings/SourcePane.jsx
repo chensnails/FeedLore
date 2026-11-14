@@ -1,29 +1,32 @@
-/* 设置弹层「数据源」面板（v1.5.0 起 React 化，原 index.html 内联 DOM + app.js 绑定迁移至此）。
+/* 设置弹层「数据源」面板（v2.5.0 起按 A 方案重做：列表 + 详情两层）。
  *
- * 混合期约定（与模型 / 外观 / 关于面板一致）：
+ * 结构约定：
+ * - 列表只留紧凑行（头像 + 标题 + 状态，整行命中 ≥64px）；点行打开 DetailSheet
+ *   （桌面 = 面板内右侧抽屉，移动 = 贴底弹层），名称 / 地址 / 分组 / 频率 / 序号 /
+ *   采集 / 卡片 / 全文 / 立即抓取 / 删除全部收进详情层。
+ * - 桌面保留行内「采集 / 卡片」快捷开关（高频动作不必进详情）；移动端收进详情层。
+ * - 命名分组默认收起，展开态按账号持久化：桥 setLayout('srcGroupsOpen', …)；
+ *   搜索时强制展开命中分组；批量模式下全部展开便于勾选。
+ * - 行级修改即改即生效，toast 带「撤销」（6 秒）；删除可撤销（重建订阅，
+ *   条目需重抓，已读 / 收藏状态会丢失——确认框里明说）。
+ * - 批量模式：多选后在页脚统一 开/关采集、开/关卡片、移组、删除，均可撤销。
+ *
+ * 沿用旧实现的机制：
  * - 频道数据以 core.state 为单一数据源：组件每次渲染实时读 core.state
  *   （feedList / feedMeta / groupOrder 均原地修改、实时引用），原地改动后 bump tick
  *   触发重绘；服务端往返（增 / 删 / 改）统一走桥 loadFeeds() 刷新共享 state 再 bump。
  * - 采集参数（管理员专属）：进入面板拉 /api/config 回填；cfgLoaded 复刻旧 srcFormReady
  *   语义——没加载完禁止保存，避免把兜底值当成用户设置存下去。
- * - 折叠分组状态按账号持久化：桥 setLayout('collapsedGroups', …)（users.prefs.layout）。
- * - 可折叠分组（details.sec）的开合同样按账号持久化：挂载后经桥 bindSections(容器)
- *   套上已记住的状态并监听变化（与旧实现同一机制）。
- * - 拖拽排序：Pointer 事件移植自旧实现（桌面 + 触屏通用）；频道重排 / 跨组落库
- *   /api/feeds/reorder，分组重排落库 /api/prefs（groupOrder）。
- *
- * 相比旧实现的改进（用户原则：技术落后 / 体验不好的可丢弃）：
- * - 修复「出网代理」不回填的 bug：服务端 GET /api/config 原来漏返 source.proxyUrl，
- *   管理员重开面板时代理输入框是空的，再点保存会把我置成空——本次已在服务端补返该字段；
- * - 重命名由命令式就地改 innerHTML 改为受控编辑态（Enter 提交 / Esc 取消 / 失焦提交）；
- * - 排序 / 跨组后同步刷新工具栏频道下拉（旧实现漏更 renderFeedSelect）；
- * - 采集参数拉取失败不再连带把整个面板打成「读取失败」（ feeds 正常展示，参数区保持兜底值并禁止保存）；
- * - 增删频道后不再重复请求 /api/config（旧实现每次 add/delete 都重拉一遍全局配置）。
+ * - 可折叠分组（details.sec）的开合按账号持久化：挂载后经桥 bindSections(容器)。
+ * - 拖拽排序：Pointer 事件（桌面 + 触屏通用）；频道重排 / 跨组落库
+ *   /api/feeds/reorder，分组重排落库 /api/prefs（groupOrder）。拖拽结束 250ms 内
+ *   抑制行点击，避免松手误开详情层。
  */
 
 import { core } from '@core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PaneFoot, Result, Section } from './primitives.jsx';
+import { DetailSheet } from './DetailSheet.jsx';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
 
@@ -150,6 +153,132 @@ const jsonPost = (body) => ({
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
 });
+// 注意合并顺序：jsonPost 自带 method:'POST'，必须后覆盖回 PATCH
+const patchInit = (body) => Object.assign(jsonPost(body), { method: 'PATCH' });
+
+/** 删除撤销用的快照：重建订阅需要 url + 开关 + 分组，其余字段走 PATCH 补 */
+const snapshotFeed = (f) => ({
+  url: f.url, enabled: f.enabled, cardEnabled: f.cardEnabled,
+  groupName: f.groupName || '', fullText: f.fullText,
+  refreshMinutes: f.refreshMinutes, customTitle: f.customTitle,
+});
+
+/* ---------- 频道详情层（A 方案第二层） ----------
+ * 输入框用 defaultValue + key 绑服务端值：提交 / 撤销后服务端值变了，
+ * key 跟着变 → 自动重挂载回显新值，不需要手动同步草稿。 */
+function FeedSheet({ feed, order, globalMins, busyFeed, pending, onClose, onToggle, onFreq, onOrder, onName, onUrl, onGroup, onRefresh, onDelete }) {
+  const s = S();
+  const nameRef = useRef(null);
+  const urlRef = useRef(null);
+  const groupRef = useRef(null);
+  const name = s.shortFeedName(s.feedTitle(feed));
+
+  const editKeys = (resetVal) => (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); ev.currentTarget.blur(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); ev.currentTarget.value = resetVal; ev.currentTarget.blur(); }
+  };
+
+  const commitOrder = (ev) => {
+    const pos = parseInt(ev.target.value, 10);
+    if (!Number.isFinite(pos) || pos < 1) { ev.target.value = String(order); return; }
+    if (pos !== order) onOrder(feed.id, pos);
+  };
+
+  const swRow = (key, label, desc, checked, okOn, okOff, dataAttr) => (
+    <label className="ds-sw-row">
+      <span className="ds-sw-txt">
+        <span className="ds-sw-name">{label}</span>
+        <span className="ds-sw-desc">{desc}</span>
+      </span>
+      <span className="switch">
+        <input type="checkbox" {...{ [dataAttr]: feed.id }} aria-label={label}
+          checked={checked} disabled={pending}
+          onChange={(ev) => onToggle(feed, key, ev.target.checked, ev.target.checked ? okOn : okOff)} />
+        <span className="switch-slider" />
+      </span>
+    </label>
+  );
+
+  return (
+    <DetailSheet title={name} subtitle={prettyUrl(feed.url)} onClose={onClose}
+      foot={
+        <>
+          <button className="btn" type="button" disabled={busyFeed === feed.id} onClick={() => onRefresh(feed.id)}>
+            {busyFeed === feed.id ? '抓取中…' : '立即抓取'}
+          </button>
+          <button className="btn btn-danger" type="button" disabled={pending} onClick={() => onDelete(feed)}>
+            删除订阅
+          </button>
+        </>
+      }>
+      <div className="ds-stat">
+        <div className="ds-stat-line">{feedStatusText(feed)}</div>
+        {feed.status === 'error' ? (
+          <div className="ds-stat-line err"><Ico name="alert" /> {s.errText(feed.error)}</div>
+        ) : null}
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="dsName">名称</label>
+        <input id="dsName" key={'n-' + (feed.customTitle || '')} ref={nameRef}
+          type="text" maxLength={200} spellCheck={false} autoComplete="off"
+          data-sheet-title={feed.id} defaultValue={s.feedTitle(feed)}
+          onBlur={() => onName(feed, nameRef.current ? nameRef.current.value : '')}
+          onKeyDown={editKeys(s.feedTitle(feed))} />
+        <small className="form-tip">改完即保存；清空可恢复订阅源原标题</small>
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="dsUrl">订阅地址</label>
+        <input id="dsUrl" key={'u-' + feed.url} ref={urlRef}
+          type="text" inputMode="url" maxLength={600} spellCheck={false} autoComplete="off"
+          data-sheet-url={feed.id} defaultValue={feed.url}
+          onBlur={() => onUrl(feed, urlRef.current ? urlRef.current.value : '')}
+          onKeyDown={editKeys(feed.url)} />
+        <small className="form-tip">需以 http:// 或 https:// 开头，改完会立即按新地址试抓一次</small>
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="dsGroup">分组</label>
+        <input id="dsGroup" key={'g-' + (feed.groupName || '')} ref={groupRef}
+          type="text" list="groupList" maxLength={40} spellCheck={false} autoComplete="off"
+          placeholder="未分组" data-sheet-group={feed.id} defaultValue={feed.groupName || ''}
+          onBlur={() => onGroup(feed, groupRef.current ? groupRef.current.value : '')}
+          onKeyDown={editKeys(feed.groupName || '')} />
+        <small className="form-tip">留空移出分组；输入新名即建组</small>
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="dsFreq">抓取频率</label>
+        <select id="dsFreq" className={'select feed-freq' + (feed.refreshMinutes == null ? '' : ' own')}
+          data-sheet-freq={feed.id}
+          value={feed.refreshMinutes == null ? '' : String(feed.refreshMinutes)}
+          disabled={pending}
+          onChange={(ev) => onFreq(feed, ev.target.value === '' ? null : Number(ev.target.value))}>
+          <option value="">{`跟随全局（${fmtMinutes(globalMins)}）`}</option>
+          {FREQ_OPTIONS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+        </select>
+        <small className="form-tip">未设置则跟随全局自动抓取间隔</small>
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="dsOrder">组内序号</label>
+        <input id="dsOrder" className="feed-order" key={'o-' + order}
+          type="number" min="1" data-sheet-order={feed.id} defaultValue={order}
+          onBlur={commitOrder}
+          onKeyDown={(ev) => {
+            if (ev.key === 'Enter') { ev.preventDefault(); ev.currentTarget.blur(); }
+            else if (ev.key === 'Escape') { ev.preventDefault(); ev.currentTarget.value = String(order); ev.currentTarget.blur(); }
+          }} />
+        <small className="form-tip">填数字调整在本组内的顺序（与拖拽并存）</small>
+      </div>
+
+      {swRow('enabled', '采集', '开启后定时抓取这个频道的新条目', feed.enabled, '已开启采集', '已停止采集', 'data-sheet-toggle')}
+      {swRow('cardEnabled', '卡片', '开启后在「卡片」页展示这个频道的条目', feed.cardEnabled, '已在卡片页展示', '已从卡片页隐藏', 'data-sheet-card')}
+      {swRow('fullText', '全文', '订阅只给摘要时，抓取原文页面并提取完整正文（会增加抓取耗时）', feed.fullText, '已开启全文抓取（下轮抓取生效）', '已关闭全文抓取', 'data-sheet-fulltext')}
+    </DetailSheet>
+  );
+}
 
 export function SourcePane({ admin, onDirtyChange }) {
   /* ---- 状态 ---- */
@@ -164,30 +293,28 @@ export function SourcePane({ admin, onDirtyChange }) {
 
   const [url, setUrl] = useState('');
   const [result, setResult] = useState(null);          // { ok, msg } | null —— #feedResult
-  const [collapsed, setCollapsed] = useState(() => new Set((S() && S().state && S().state.collapsedGroups) || []));
-  const [renamingId, setRenamingId] = useState(null);  // 正在重命名的频道 id
-  const [editingUrlId, setEditingUrlId] = useState(null); // 正在改订阅地址的频道 id
-  const [groupDraft, setGroupDraft] = useState({});        // 频道分组输入草稿 { feedId: string }（提交式：打字不发请求）
-  const [renamingGroup, setRenamingGroup] = useState(null); // 正在重命名的分组名（v2.9.0 新增）
+  // A 方案：命名分组默认收起，这里记「显式展开」的组名（按账号持久化 srcGroupsOpen）
+  const [openGroups, setOpenGroups] = useState(() => new Set((S() && S().state && S().state.srcGroupsOpen) || []));
+  const [renamingGroup, setRenamingGroup] = useState(null); // 正在重命名的分组名
   const [renamingGroupDraft, setRenamingGroupDraft] = useState(''); // 组重命名草稿（提交式）
   const [busyFeed, setBusyFeed] = useState('');        // 单频道「立即抓取」中的 id
-  const [busy, setBusy] = useState('');                // '' | 'add' | 'import' | 'all' | 'save'
-  // 某个频道有保存中的请求时禁用该行控件（复刻旧实现的逐控件 disabled，防重复提交）
+  const [busy, setBusy] = useState('');                // '' | 'add' | 'import' | 'all' | 'save' | 'imgclear' | 'bulk'
+  // 某个频道有保存中的请求时禁用该行控件（防重复提交）
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [drop, setDrop] = useState(null);              // 拖拽落点指示 { type, id, group, before }
   const [dragging, setDragging] = useState(false);
   const [feedQuery, setFeedQuery] = useState('');      // 频道搜索（本地过滤，应对大量频道）
+  const [bulk, setBulk] = useState(false);             // 批量模式
+  const [selected, setSelected] = useState(() => new Set()); // 批量选中的频道 id（字符串）
+  const [sheetId, setSheetId] = useState(null);        // 打开详情层的频道 id
 
   const paneRef = useRef(null);
   const urlRef = useRef(null);
-  const renameInputRef = useRef(null);
-  const urlEditRef = useRef(null);
   const groupRenameInputRef = useRef(null);
-  const renameDone = useRef(false);
-  const urlEditDone = useRef(false);
   const dragRef = useRef(null);
   const moveRef = useRef(null);
   const endRef = useRef(null);
+  const lastDragEnd = useRef(0);                       // 拖拽松手时间戳：250ms 内抑制行点击
 
   /* ---- 实时读取共享 state（单一数据源） ---- */
   const st = (S() && S().state) || {};
@@ -215,14 +342,19 @@ export function SourcePane({ admin, onDirtyChange }) {
   const globalMins = meta.refreshMinutes || 30;
   const ownFreqCount = feeds.filter((f) => f.refreshMinutes != null).length;
 
-  /* ---- 未保存改动：采集参数 + 新增地址草稿 + 就地编辑态 ---- */
+  const selectedFeeds = feeds.filter((f) => selected.has(String(f.id)));
+  const allSelected = feeds.length > 0 && feeds.every((f) => selected.has(String(f.id)));
+  const sheetFeed = sheetId == null ? null : feeds.find((f) => String(f.id) === String(sheetId));
+  let sheetOrder = 1;
+  if (sheetFeed) {
+    const g = groups.find((x) => x.feeds.some((f) => String(f.id) === String(sheetId)));
+    if (g) sheetOrder = g.feeds.findIndex((f) => String(f.id) === String(sheetId)) + 1;
+  }
+
+  /* ---- 未保存改动：采集参数 + 新增地址草稿 + 组重命名编辑态 ----
+   * 详情层里的输入都是失焦即提交，没有跨开关的草稿，不计入 dirty。 */
   const cfgDirty = cfgLoaded && !!savedCfg && JSON.stringify(cfg) !== savedCfg;
-  const rowDraftDirty = Object.keys(groupDraft).some((id) => {
-    const f = feeds.find((x) => String(x.id) === id);
-    return f && String(groupDraft[id] == null ? '' : groupDraft[id]) !== (f.groupName || '');
-  });
-  const sourceDirty = cfgDirty || rowDraftDirty || url.trim() !== ''
-    || renamingId != null || editingUrlId != null || renamingGroup != null;
+  const sourceDirty = cfgDirty || url.trim() !== '' || renamingGroup != null;
   useEffect(() => {
     if (onDirtyChange) onDirtyChange(sourceDirty);
   }, [sourceDirty, onDirtyChange]);
@@ -278,15 +410,13 @@ export function SourcePane({ admin, onDirtyChange }) {
     pushSummary();
   }, [bump, pushSummary]);
 
-  /** 频道行的开关 / 分组 / 频率 / 重命名 / 订阅地址统一走这里（旧 patchFeed 的迁移）。
-   *  返回响应 JSON（改地址要用它带回的 probe 判断新地址能不能抓到）。 */
+  /** 频道 PATCH 统一走这里。返回响应 JSON（改地址要用它带回的 probe 判断新地址能不能抓到）。 */
   const patchFeed = useCallback(async (id, patch, okMsg) => {
     const s = S();
     const key = String(id);
     setPendingIds((p) => { const n = new Set(p); n.add(key); return n; });
     try {
-      // 注意合并顺序：jsonPost 自带 method:'POST'，必须后覆盖回 PATCH
-      const res = await s.apiFetch('/api/feeds/' + id, Object.assign(jsonPost(patch), { method: 'PATCH' }));
+      const res = await s.apiFetch('/api/feeds/' + id, patchInit(patch));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
       if (okMsg && s.toast) s.toast(okMsg);
@@ -299,6 +429,25 @@ export function SourcePane({ admin, onDirtyChange }) {
       setPendingIds((p) => { const n = new Set(p); n.delete(key); return n; });
     }
   }, [reloadFeeds]);
+
+  /** 即改即生效 + 撤销：先按新值落库，toast 挂 6 秒撤销（按旧值再落一次）。
+   *  失败时 bump 让受控控件回滚到服务端值。 */
+  const patchWithUndo = useCallback(async (f, patch, prevPatch, okMsg) => {
+    const s = S();
+    try {
+      await patchFeed(f.id, patch, null);
+      s.toast(okMsg, true, {
+        actionText: '撤销', ms: 6000,
+        action: async () => {
+          try { await patchFeed(f.id, prevPatch, '已撤销'); }
+          catch (e) { s.toast('撤销失败：' + (e.message || e), false); }
+        },
+      });
+    } catch (err) {
+      bump();
+      s.toast('保存失败：' + (err.message || err), false);
+    }
+  }, [patchFeed, bump]);
 
   // 按 groupOrder 把分组铺平为全局数组（组内保持相对顺序），并给每组重算 sort_order
   const flattenAndRenumber = useCallback((grouped) => {
@@ -463,7 +612,9 @@ export function SourcePane({ admin, onDirtyChange }) {
     setDragging(false);
     setDrop(null);
     if (ctx && ctx.el) ctx.el.style.pointerEvents = '';
-    if (!ctx || !ctx.moved || !ctx.target) return;
+    if (!ctx || !ctx.moved) return;
+    lastDragEnd.current = Date.now();   // 松手后短暂抑制行点击，避免误开详情层
+    if (!ctx.target) return;
     if (ctx.kind === 'feed') applyFeedReorder(ctx);
     else applyGroupReorder(ctx);
   }, [applyFeedReorder, applyGroupReorder]);
@@ -530,23 +681,7 @@ export function SourcePane({ admin, onDirtyChange }) {
     return () => clearTimeout(t);
   }, [result]);
 
-  // 重命名输入框：挂上即聚焦并全选
-  useEffect(() => {
-    if (renamingId && renameInputRef.current) {
-      renameInputRef.current.focus();
-      renameInputRef.current.select();
-    }
-  }, [renamingId]);
-
-  // 订阅地址输入框：同样挂上即聚焦并全选（改地址基本是整串替换）
-  useEffect(() => {
-    if (editingUrlId && urlEditRef.current) {
-      urlEditRef.current.focus();
-      urlEditRef.current.select();
-    }
-  }, [editingUrlId]);
-
-  // 分组重命名输入框（v2.9.0）：挂上即聚焦并全选
+  // 分组重命名输入框：挂上即聚焦并全选
   useEffect(() => {
     if (renamingGroup && groupRenameInputRef.current) {
       groupRenameInputRef.current.focus();
@@ -655,23 +790,53 @@ export function SourcePane({ admin, onDirtyChange }) {
     }
   };
 
+  /** 删除撤销：按快照重建订阅（POST 会立即抓一次），再补回个性化字段。
+   *  条目是重新抓的，已读 / 收藏状态回不来——确认框文案里已明说。 */
+  const restoreFeed = useCallback(async (snap) => {
+    const s = S();
+    const res = await s.apiFetch('/api/feeds', jsonPost({
+      url: snap.url, enabled: snap.enabled, cardEnabled: snap.cardEnabled, groupName: snap.groupName,
+    }));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(s.errText(data, '恢复失败'));
+    if (!data.existed && data.feed) {
+      const extra = {};
+      if (snap.fullText) extra.fullText = true;
+      if (snap.refreshMinutes != null) extra.refreshMinutes = snap.refreshMinutes;
+      if (snap.customTitle) extra.title = snap.customTitle;
+      if (Object.keys(extra).length) await s.apiFetch('/api/feeds/' + data.feed.id, patchInit(extra));
+    }
+  }, []);
+
   const onDelete = async (f) => {
     const s = S();
     const name = s.shortFeedName(s.feedTitle(f));
     const ok = await s.confirm({
       title: `删除订阅「${name}」？`,
-      desc: '该频道已抓取的条目会一并删除，且不可恢复。',
+      desc: '该频道已抓取的条目会一并删除。撤销可恢复订阅，但条目需重新抓取，已读 / 收藏状态会丢失。',
       confirmText: '删除订阅',
       danger: true,
     });
     if (!ok) return;
+    const snap = snapshotFeed(f);
     try {
       const res = await s.apiFetch('/api/feeds/' + f.id, { method: 'DELETE' });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      s.toast('订阅已删除');
+      if (sheetId != null && String(sheetId) === String(f.id)) setSheetId(null);
       await reloadFeeds();
       s.state.tag = null;
       if (s.loadPage) await s.loadPage(true);
+      s.toast('订阅已删除', true, {
+        actionText: '撤销', ms: 6000,
+        action: async () => {
+          try {
+            await restoreFeed(snap);
+            await reloadFeeds();
+            if (s.loadPage) await s.loadPage(true);
+            s.toast('已恢复订阅');
+          } catch (e) { s.toast('撤销失败：' + (e.message || e), false); }
+        },
+      });
     } catch (err) {
       s.toast('删除失败：' + (err.message || err), false);
     }
@@ -738,40 +903,46 @@ export function SourcePane({ admin, onDirtyChange }) {
     }
   };
 
-  /* ---- 频道行动作 ---- */
+  /* ---- 行级 / 详情层动作：即改即生效 + 撤销 ---- */
   const onToggle = async (f, key, next, okMsg) => {
-    const s = S();
-    try {
-      await patchFeed(f.id, { [key]: next }, okMsg);
-    } catch (err) {
-      bump();   // 受控控件回滚：强制重绘让 checked 回到服务端值（无重绘 DOM 会停留在错误态）
-      s.toast('保存失败：' + (err.message || err), false);
-    }
+    await patchWithUndo(f, { [key]: next }, { [key]: f[key] }, okMsg);
   };
 
-  /* ---- 频道分组：提交式（v2.9.0 重写） ----
-   * 旧实现是 onChange 即 PATCH：每敲一个字符就发一次请求 + reloadFeeds 全量刷新，
-   * 输入框 key 又随 groupName 变化被重挂载 —— 表现为「无法输入文字」。
-   * 现在打字只写本地草稿，失焦 / 回车才提交；Escape 清空草稿恢复原值。 */
-  const setGroupDraftFor = (id, v) => setGroupDraft((d) => Object.assign({}, d, { [id]: v }));
-  const clearGroupDraft = (id) => setGroupDraft((d) => { const n = Object.assign({}, d); delete n[id]; return n; });
+  const onCommitName = useCallback(async (f, raw) => {
+    const s = S();
+    const val = String(raw == null ? '' : raw).trim().slice(0, 200);
+    if (val === s.feedTitle(f)) return;          // 没变
+    if (!val && !f.customTitle) return;          // 本来就是原标题，无需清空
+    await patchWithUndo(f, { title: val }, { title: f.customTitle || '' },
+      val ? '名称已更新' : '已恢复原标题');
+  }, [patchWithUndo]);
 
-  const commitGroup = useCallback(async (f) => {
-    const id = String(f.id);
-    const draft = groupDraft[id];
-    clearGroupDraft(id);
-    if (draft === undefined) return;                    // 没编辑过（blur 也可能来自其它交互）
-    const val = String(draft || '').trim().slice(0, 40);
-    if (val === (f.groupName || '')) return;            // 没变
+  /* 改订阅地址：校验与「同用户 URL 唯一」判重都在后端（与新增共用 rss.assertFeedUrl）。
+   * 服务端改完会按新地址当场试抓一次，结果走 probe 反馈；地址变更不做撤销（试抓有副作用）。 */
+  const onCommitUrl = useCallback(async (f, raw) => {
+    const s = S();
+    const val = String(raw == null ? '' : raw).trim();
+    if (!val || val === f.url) return;
     try {
-      await patchFeed(f.id, { groupName: val }, val ? `已归入「${val}」` : '已移出分组');
+      const data = await patchFeed(f.id, { url: val }, '订阅地址已更新');
+      const probe = data && data.probe;
+      if (!probe) return;
+      if (!probe.ok) s.toast('新地址抓取失败：' + s.errText(probe, '未知错误') + '（地址已保存，下个周期自动重试）', false);
+      else if (probe.added) s.toast('新地址可用：本次新增 ' + probe.added + ' 条');
     } catch (err) {
-      const s = S();
-      if (s && s.toast) s.toast('保存失败：' + String((err && err.message) || err), false);
+      bump();
+      s.toast('地址未更新：' + (err.message || err), false);
     }
-  }, [groupDraft, patchFeed]);
+  }, [patchFeed, bump]);
 
-  /* ---- 分组重命名（v2.9.0 新增）：一次改组 + 同步分组顺序 ----
+  const onCommitGroup = useCallback(async (f, raw) => {
+    const val = String(raw == null ? '' : raw).trim().slice(0, 40);
+    if (val === (f.groupName || '')) return;
+    await patchWithUndo(f, { groupName: val }, { groupName: f.groupName || '' },
+      val ? `已归入「${val}」` : '已移出分组');
+  }, [patchWithUndo]);
+
+  /* ---- 分组重命名：一次改组 + 同步分组顺序 ----
    * 语义：把组内所有频道改到新组名；新名与已有组同名时相当于「合并分组」。
    * 逐个 PATCH（每组频道数有限），不新增批量接口。 */
   const startGroupRename = (g) => { setRenamingGroupDraft(g.name); setRenamingGroup(g.name); };
@@ -785,7 +956,7 @@ export function SourcePane({ admin, onDirtyChange }) {
     const members = (s.state.feedList || []).filter((f) => String(f.groupName || '').trim() === oldName);
     try {
       for (const f of members) {
-        await s.apiFetch('/api/feeds/' + f.id, Object.assign(jsonPost({ groupName: val }), { method: 'PATCH' }));
+        await s.apiFetch('/api/feeds/' + f.id, patchInit({ groupName: val }));
       }
       // 分组顺序里的旧名换新名（旧名不在顺序里就把新名追加到末尾）
       const order = (s.state.groupOrder || []).slice();
@@ -794,6 +965,14 @@ export function SourcePane({ admin, onDirtyChange }) {
       else if (order.indexOf(val) < 0) order.push(val);
       s.state.groupOrder = order;
       await s.apiFetch('/api/prefs', jsonPost({ groupOrder: order }));
+      // 展开态跟着旧名迁到新名：不然改完名分组会突然收起来
+      if (openGroups.has(oldName)) {
+        const nextOpen = new Set(openGroups);
+        nextOpen.delete(oldName);
+        nextOpen.add(val);
+        setOpenGroups(nextOpen);
+        if (s.setLayout) s.setLayout('srcGroupsOpen', [...nextOpen]);
+      }
       s.toast(`分组已改名「${val}」${members.length ? `（${members.length} 个频道）` : ''}`);
       await reloadFeeds();
       if (s.renderReaderChannels) s.renderReaderChannels();
@@ -802,75 +981,140 @@ export function SourcePane({ admin, onDirtyChange }) {
       if (s && s.toast) s.toast('分组改名失败：' + String((err && err.message) || err), false);
       await reloadFeeds().catch(() => {});
     }
-  }, [reloadFeeds]);
+  }, [reloadFeeds, openGroups]);
 
-  const onFreqChange = async (f, ev) => {
-    const s = S();
-    const next = ev.target.value === '' ? null : Number(ev.target.value);
+  const onFreqChange = useCallback(async (f, next) => {
     const cur = f.refreshMinutes == null ? null : Number(f.refreshMinutes);
     if (cur === next) return;
-    try {
-      await patchFeed(f.id, { refreshMinutes: next },
-        next == null ? '已改为跟随全局频率' : `该频道已设为每 ${fmtMinutes(next)}抓取`);
-    } catch (err) {
-      bump();   // 受控下拉回滚到服务端值
-      s.toast('保存失败：' + (err.message || err), false);
-    }
-  };
-
-  const onOrderChange = (f, order, ev) => {
-    const pos = parseInt(ev.target.value, 10);
-    if (!Number.isFinite(pos) || pos < 1) { ev.target.value = String(order); return; }   // 非法输入：恢复显示
-    applyNumericOrder(f.id, pos);
-  };
+    await patchWithUndo(f, { refreshMinutes: next }, { refreshMinutes: cur },
+      next == null ? '已改为跟随全局频率' : `该频道已设为每 ${fmtMinutes(next)}抓取`);
+  }, [patchWithUndo]);
 
   const onHeadClick = (ev, g) => {
     if (ev.target.closest('.drag-handle')) return;   // 手柄区域是拖拽，不触发折叠
-    const next = new Set(collapsed);
+    if (ev.target.closest('.feed-group-rename') || ev.target.closest('.feed-group-edit')) return;
+    if (!g.name || bulk) return;                     // 未分组常开；批量模式下全部展开
+    const next = new Set(openGroups);
     if (next.has(g.name)) next.delete(g.name); else next.add(g.name);
-    setCollapsed(next);
+    setOpenGroups(next);
     const s = S();
-    if (s.state) s.state.collapsedGroups = next;
-    if (s.setLayout) s.setLayout('collapsedGroups', [...next]);
+    if (s.setLayout) s.setLayout('srcGroupsOpen', [...next]);
   };
 
-  /* ---- 重命名（受控编辑态；旧实现是命令式就地改 innerHTML） ---- */
-  const startRename = (id) => { renameDone.current = false; setRenamingId(id); };
+  /* ---- 批量模式 ---- */
+  const toggleSelect = (id) => setSelected((p) => {
+    const n = new Set(p); const k = String(id);
+    if (n.has(k)) n.delete(k); else n.add(k);
+    return n;
+  });
+  const toggleSelectAll = () => setSelected(allSelected ? new Set() : new Set(feeds.map((f) => String(f.id))));
+  const enterBulk = () => { setSheetId(null); setBulk(true); };
+  const exitBulk = () => { setBulk(false); setSelected(new Set()); };
 
-  const finishRename = (f, commit) => {
-    if (renameDone.current) return;
-    renameDone.current = true;
-    const v = renameInputRef.current ? renameInputRef.current.value : '';
-    setRenamingId(null);
-    if (!commit) return;
-    const val = String(v || '').trim();
-    const cur = S().feedTitle(f);
-    if (!val || val === cur) return;
-    patchFeed(f.id, { title: val }, '名称已更新').catch(() => { /* 输入框已收回，无需恢复 */ });
+  /** 批量开关：只改与目标值不同的频道；撤销按原值（布尔取反）逐个还原 */
+  const bulkPatch = async (key, next, label) => {
+    const s = S();
+    const targets = selectedFeeds.filter((f) => !!f[key] !== next);
+    if (!targets.length) return;
+    setBusy('bulk');
+    try {
+      for (const f of targets) await s.apiFetch('/api/feeds/' + f.id, patchInit({ [key]: next }));
+      await reloadFeeds();
+      s.state.tag = null;
+      if (s.loadPage) await s.loadPage(true);
+      s.toast(`已${label} ${targets.length} 个频道`, true, {
+        actionText: '撤销', ms: 6000,
+        action: async () => {
+          try {
+            for (const f of targets) await s.apiFetch('/api/feeds/' + f.id, patchInit({ [key]: !next }));
+            await reloadFeeds();
+            if (s.loadPage) await s.loadPage(true);
+            s.toast('已撤销');
+          } catch (e) { s.toast('撤销失败：' + (e.message || e), false); }
+        },
+      });
+    } catch (err) {
+      s.toast('批量保存失败：' + (err.message || err), false);
+      await reloadFeeds().catch(() => {});
+    } finally {
+      setBusy('');
+    }
   };
 
-  /* ---- 改订阅地址 ----
-   * 校验与「同用户 URL 唯一」判重都在后端（与新增共用 rss.assertFeedUrl），这里只处理编辑态；
-   * 服务端改完会按新地址当场试抓一次，结果走 probe 反馈。 */
-  const startEditUrl = (id) => { urlEditDone.current = false; setEditingUrlId(id); };
-
-  const finishEditUrl = (f, commit) => {
-    if (urlEditDone.current) return;
-    urlEditDone.current = true;
-    const v = urlEditRef.current ? urlEditRef.current.value : '';
-    setEditingUrlId(null);
+  const bulkMove = async () => {
     const s = S();
-    if (!commit) return;
-    const val = String(v || '').trim();
-    if (!val || val === f.url) return;
-    patchFeed(f.id, { url: val }, '订阅地址已更新').then((data) => {
-      const probe = data && data.probe;
-      if (!probe) return;
-      if (!probe.ok) s.toast('新地址抓取失败：' + s.errText(probe, '未知错误') + '（地址已保存，下个周期自动重试）', false);
-      else if (probe.added) s.toast('新地址可用：本次新增 ' + probe.added + ' 条');
-    }).catch((err) => {
-      s.toast('地址未更新：' + (err.message || err), false);
+    if (!selectedFeeds.length) return;
+    const val = await s.confirm({
+      title: `移动 ${selectedFeeds.length} 个频道到分组`,
+      desc: '输入分组名（不存在会自动创建），留空则移出分组。',
+      input: { label: '分组名（留空移出分组）', placeholder: '未分组', required: false },
+      confirmText: '移动',
     });
+    if (val == null) return;
+    const group = String(val).trim().slice(0, 40);
+    const targets = selectedFeeds.filter((f) => (f.groupName || '') !== group);
+    if (!targets.length) return;
+    setBusy('bulk');
+    try {
+      for (const f of targets) await s.apiFetch('/api/feeds/' + f.id, patchInit({ groupName: group }));
+      await reloadFeeds();
+      s.toast(group ? `已移入「${group}」（${targets.length} 个频道）` : `已移出分组（${targets.length} 个频道）`, true, {
+        actionText: '撤销', ms: 6000,
+        action: async () => {
+          try {
+            for (const f of targets) await s.apiFetch('/api/feeds/' + f.id, patchInit({ groupName: f.groupName || '' }));
+            await reloadFeeds();
+            s.toast('已撤销');
+          } catch (e) { s.toast('撤销失败：' + (e.message || e), false); }
+        },
+      });
+    } catch (err) {
+      s.toast('移动失败：' + (err.message || err), false);
+      await reloadFeeds().catch(() => {});
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const bulkDelete = async () => {
+    const s = S();
+    if (!selectedFeeds.length) return;
+    const ok = await s.confirm({
+      title: `删除选中的 ${selectedFeeds.length} 个订阅？`,
+      desc: '这些频道已抓取的条目会一并删除。撤销可恢复订阅，但条目需重新抓取，已读 / 收藏状态会丢失。',
+      confirmText: '删除订阅',
+      danger: true,
+    });
+    if (!ok) return;
+    const snaps = selectedFeeds.map(snapshotFeed);
+    const ids = selectedFeeds.map((f) => f.id);
+    setBusy('bulk');
+    try {
+      for (const id of ids) {
+        const res = await s.apiFetch('/api/feeds/' + id, { method: 'DELETE' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+      }
+      exitBulk();
+      await reloadFeeds();
+      s.state.tag = null;
+      if (s.loadPage) await s.loadPage(true);
+      s.toast(`已删除 ${ids.length} 个订阅`, true, {
+        actionText: '撤销', ms: 6000,
+        action: async () => {
+          try {
+            for (const snap of snaps) await restoreFeed(snap);
+            await reloadFeeds();
+            if (s.loadPage) await s.loadPage(true);
+            s.toast('已恢复订阅');
+          } catch (e) { s.toast('撤销失败：' + (e.message || e), false); }
+        },
+      });
+    } catch (err) {
+      s.toast('批量删除失败：' + (err.message || err), false);
+      await reloadFeeds().catch(() => {});
+    } finally {
+      setBusy('');
+    }
   };
 
   /* ---- 采集参数摘要行（收起时也能看到当前值） ---- */
@@ -902,193 +1146,96 @@ export function SourcePane({ admin, onDirtyChange }) {
       : ''
   );
 
-  const renderRow = (f, order) => {
+  /* 紧凑行：整行命中开详情（批量模式下改为勾选）。
+   * 桌面保留「采集 / 卡片」快捷开关；拖拽手柄 hover 显现。 */
+  const renderRow = (f) => {
     const s = S();
-    // 该行有保存中的请求：禁用本行控件（复刻旧实现的逐控件 disabled，防重复提交）
     const pend = pendingIds.has(String(f.id));
     const name = s.shortFeedName(s.feedTitle(f));
-    const avatar = <FeedAvatar icon={f.icon} name={name} />;
+    const sel = selected.has(String(f.id));
+    const activate = () => {
+      if (Date.now() - lastDragEnd.current < 250) return;   // 拖拽松手抑制
+      if (bulk) toggleSelect(f.id);
+      else setSheetId(f.id);
+    };
     return (
       <div
         key={f.id}
-        className={'feed-row' + (f.enabled ? '' : ' off') + (f.cardEnabled ? '' : ' no-card') + rowDropCls(f)}
+        className={'feed-row' + (f.enabled ? '' : ' off') + (f.cardEnabled ? '' : ' no-card') + (sel ? ' selected' : '') + rowDropCls(f)}
         data-id={f.id}
+        {...(bulk ? {} : { role: 'button', tabIndex: 0, 'aria-label': `查看「${name}」详情` })}
+        onClick={activate}
+        onKeyDown={(ev) => {
+          if (ev.target !== ev.currentTarget) return;
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); activate(); }
+        }}
       >
-        <span
-          className="drag-handle"
-          title="拖动排序：组内重排，或拖到其它分组"
-          aria-label="拖动排序"
-          onPointerDown={(ev) => onGripDown(ev, 'feed', { id: f.id })}
-        >
-          {GRIP}
-        </span>
-        <input
-          className="feed-order"
-          type="number"
-          min="1"
-          key={order}
-          defaultValue={order}
-          data-order={f.id}
-          title="序号：填数字调整在本组内的顺序（与拖拽并存）"
-          aria-label="序号"
-          onChange={(ev) => onOrderChange(f, order, ev)}
-        />
-        {avatar}
+        {bulk ? (
+          <input className="feed-check" type="checkbox" checked={sel}
+            aria-label={`选择「${name}」`}
+            onClick={(ev) => ev.stopPropagation()}
+            onChange={() => toggleSelect(f.id)} />
+        ) : (
+          <span
+            className="drag-handle"
+            title="拖动排序：组内重排，或拖到其它分组"
+            aria-label="拖动排序"
+            onPointerDown={(ev) => onGripDown(ev, 'feed', { id: f.id })}
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            {GRIP}
+          </span>
+        )}
+        <FeedAvatar icon={f.icon} name={name} />
         <div className="feed-info">
-          {renamingId === f.id ? (
-            <input
-              ref={renameInputRef}
-              className="feed-title-edit"
-              type="text"
-              maxLength={200}
-              defaultValue={s.feedTitle(f)}
-              spellCheck={false}
-              autoComplete="off"
-              onKeyDown={(ev) => {
-                if (ev.key === 'Enter') { ev.preventDefault(); finishRename(f, true); }
-                else if (ev.key === 'Escape') { ev.preventDefault(); finishRename(f, false); }
-              }}
-              onBlur={() => finishRename(f, true)}
-            />
-          ) : (
-            <div className="feed-title" title={s.feedTitle(f)}>{name}</div>
-          )}
-          {editingUrlId === f.id ? (
-            <input
-              ref={urlEditRef}
-              className="feed-url-edit"
-              type="text"
-              inputMode="url"
-              maxLength={600}
-              defaultValue={f.url}
-              spellCheck={false}
-              autoComplete="off"
-              title="订阅地址：需以 http:// 或 https:// 开头，改完会立即按新地址试抓一次"
-              onKeyDown={(ev) => {
-                if (ev.key === 'Enter') { ev.preventDefault(); finishEditUrl(f, true); }
-                else if (ev.key === 'Escape') { ev.preventDefault(); finishEditUrl(f, false); }
-              }}
-              onBlur={() => finishEditUrl(f, true)}
-            />
-          ) : (
-            <div className="feed-url" title={f.url}>{prettyUrl(f.url)}</div>
-          )}
+          <div className="feed-title" title={s.feedTitle(f)}>{name}</div>
           <div className="feed-stat">
             {feedStatusText(f)}{' '}
             {f.status === 'error' ? (
               <span className="err" title={s.errText(f.error)}><Ico name="alert" /> 抓取失败</span>
             ) : null}
           </div>
-          <div className="feed-metas">
-            <label className="feed-group">
-              <span>分组</span>
-              <input
-                type="text"
-                list="groupList"
-                data-group={f.id}
-                key={'grp-' + f.id}
-                value={groupDraft[String(f.id)] !== undefined ? groupDraft[String(f.id)] : (f.groupName || '')}
-                placeholder="未分组"
-                maxLength={40}
-                spellCheck={false}
-                autoComplete="off"
-                disabled={pend}
-                onChange={(ev) => setGroupDraftFor(String(f.id), ev.target.value)}
-                onBlur={() => commitGroup(f)}
-                onKeyDown={(ev) => {
-                  if (ev.key === 'Enter') { ev.preventDefault(); ev.currentTarget.blur(); }
-                  else if (ev.key === 'Escape') { ev.preventDefault(); clearGroupDraft(String(f.id)); }}
-                }
-              />
+        </div>
+        {!bulk && (
+          <div className="feed-quick" onClick={(ev) => ev.stopPropagation()}>
+            <label className="feed-sw" title="采集：开启后定时抓取这个频道的新条目">
+              <span className="feed-sw-label">采集</span>
+              <span className="switch">
+                <input
+                  type="checkbox"
+                  data-toggle={f.id}
+                  aria-label="采集"
+                  checked={f.enabled}
+                  disabled={pend}
+                  onChange={(ev) => onToggle(f, 'enabled', ev.target.checked, ev.target.checked ? '已开启采集' : '已停止采集')}
+                />
+                <span className="switch-slider"></span>
+              </span>
             </label>
-            <label className="feed-group">
-              <span>频率</span>
-              <select
-                className={'feed-freq' + (f.refreshMinutes == null ? '' : ' own')}
-                data-freq={f.id}
-                value={f.refreshMinutes == null ? '' : String(f.refreshMinutes)}
-                title="这个频道多久抓一次；未设置则跟随全局"
-                disabled={pend}
-                onChange={(ev) => onFreqChange(f, ev)}
-              >
-                <option value="">{`跟随全局（${fmtMinutes(globalMins)}）`}</option>
-                {FREQ_OPTIONS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-              </select>
+            <label className="feed-sw" title="卡片：开启后在「卡片」页展示这个频道的条目">
+              <span className="feed-sw-label">卡片</span>
+              <span className="switch">
+                <input
+                  type="checkbox"
+                  data-card-toggle={f.id}
+                  aria-label="卡片"
+                  checked={f.cardEnabled}
+                  disabled={pend}
+                  onChange={(ev) => onToggle(f, 'cardEnabled', ev.target.checked, ev.target.checked ? '已在卡片页展示' : '已从卡片页隐藏')}
+                />
+                <span className="switch-slider"></span>
+              </span>
             </label>
           </div>
-        </div>
-        <div className="feed-actions">
-          <label className="feed-sw" title="采集：开启后定时抓取这个频道的新条目">
-            <span className="feed-sw-label">采集</span>
-            <span className="switch">
-              <input
-                type="checkbox"
-                data-toggle={f.id}
-                checked={f.enabled}
-                disabled={pend}
-                onChange={(ev) => onToggle(f, 'enabled', ev.target.checked, ev.target.checked ? '已开启采集' : '已停止采集')}
-              />
-              <span className="switch-slider"></span>
-            </span>
-          </label>
-          <label className="feed-sw" title="卡片：开启后在「卡片」页展示这个频道的条目">
-            <span className="feed-sw-label">卡片</span>
-            <span className="switch">
-              <input
-                type="checkbox"
-                data-card-toggle={f.id}
-                checked={f.cardEnabled}
-                disabled={pend}
-                onChange={(ev) => onToggle(f, 'cardEnabled', ev.target.checked, ev.target.checked ? '已在卡片页展示' : '已从卡片页隐藏')}
-              />
-              <span className="switch-slider"></span>
-            </span>
-          </label>
-          <label className="feed-sw" title="全文：订阅只给摘要时，抓取原文页面并提取完整正文（会增加抓取耗时）">
-            <span className="feed-sw-label">全文</span>
-            <span className="switch">
-              <input
-                type="checkbox"
-                data-fulltext-toggle={f.id}
-                checked={f.fullText}
-                disabled={pend}
-                onChange={(ev) => onToggle(f, 'fullText', ev.target.checked, ev.target.checked ? '已开启全文抓取（下轮抓取生效）' : '已关闭全文抓取')}
-              />
-              <span className="switch-slider"></span>
-            </span>
-          </label>
-          <button className="feed-icon-btn" data-rename={f.id} title="重命名" type="button" disabled={pend} onClick={() => startRename(f.id)}>
-            <Ico name="edit" />
-          </button>
-          <button
-            className="feed-icon-btn"
-            data-url={f.id}
-            title="修改订阅地址"
-            type="button"
-            disabled={pend}
-            onClick={() => startEditUrl(f.id)}
-          >
-            <Ico name="link" />
-          </button>
-          <button
-            className="feed-icon-btn"
-            data-refresh={f.id}
-            title="立即抓取"
-            type="button"
-            disabled={busyFeed === f.id}
-            onClick={() => onRefreshFeed(f.id)}
-          >
-            {busyFeed === f.id ? '…' : <Ico name="refresh" />}
-          </button>
-          <button className="feed-icon-btn danger" data-del={f.id} title="删除该订阅" type="button" disabled={pend} onClick={() => onDelete(f)}>
-            <Ico name="trash" />
-          </button>
-        </div>
+        )}
+        {!bulk && <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>}
       </div>
     );
   };
 
   const setCfgField = (k) => (ev) => setCfg((c) => Object.assign({}, c, { [k]: ev.target.value }));
+
+  const bulkDisabled = !selectedFeeds.length || busy === 'bulk';
 
   return (
     <div className="tab-pane" data-pane="source" ref={paneRef}>
@@ -1276,7 +1423,7 @@ export function SourcePane({ admin, onDirtyChange }) {
                 「每频道保留」填 0 表示无条数上限，只按时长清理；「最长保留」选「不限时长」则只按条数清理。两者都设上限才会同时生效。
                 收藏的条目不受这两条限制，不会被清理。
                 「自动抓取」是服务端去源站取新内容；「页面自动刷新」只是让打开的页面重新读一次列表，不触发抓取。
-                每个频道还能在下方单独指定抓取频率，未设置的跟随全局。
+                每个频道还能在详情层单独指定抓取频率，未设置的跟随全局。
                 「出网代理」抓 RSS 和代理图片都走这里；支持 <code>http://</code>、<code>https://</code>、<code>socks5://</code>（含账号可写 <code>http://user:pass@host:port</code>）；留空走默认出网。保存后下次抓取生效。
                 「连续失败自动停用」：频道连续抓取失败达到此次数就自动停止它的采集（不再每轮重试打扰源站），在「状态 → 异常频道」里重试成功会自动恢复采集，手动重新打开采集开关也会清零计数。
                 图片部分：全站图片（卡片图 / 阅读大图 / 频道头像 / 灯箱）走统一代理永久缓存在数据库，「图片最长边」「图片质量」控制 WebP 压缩强度——越小越省空间也越模糊；
@@ -1286,114 +1433,126 @@ export function SourcePane({ admin, onDirtyChange }) {
           </Section>
         )}
 
-        {/* 频道列表：日常最常看，默认展开 */}
-        <Section secKey="src-feeds" title="频道列表" open subId="feedToolbarHint"
-          sub={total
+        {/* 列表工具条：搜索 + 批量入口，吸顶 */}
+        <div className="src-toolbar">
+          <div className="feed-filter">
+            <svg className="feed-filter-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+            <input className="feed-filter-input" type="search" value={feedQuery}
+              placeholder="搜索频道（名称 / 地址 / 分组）" aria-label="搜索频道"
+              onChange={(ev) => setFeedQuery(ev.target.value)} {...NO_AUTOFILL_PROPS} />
+          </div>
+          <button className={'btn' + (bulk ? ' active' : '')} id="bulkToggleBtn" type="button"
+            aria-pressed={bulk} onClick={bulk ? exitBulk : enterBulk}>
+            {bulk ? '完成' : '批量'}
+          </button>
+        </div>
+        <div className="src-list-hint hint" id="feedToolbarHint">
+          {total
             ? `${total} 个频道${groupNames.length ? ` · ${groupNames.length} 个分组` : ''}`
               + `${ownFreqCount ? ` · ${ownFreqCount} 个单独设了频率` : ''}`
-              + ' · 改分组或频率后即保存'
-            : ''}>
-            <div className="feed-filter">
-              <svg className="feed-filter-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-              <input className="feed-filter-input" type="search" value={feedQuery}
-                placeholder="搜索频道（名称 / 地址 / 分组）" aria-label="搜索频道"
-                onChange={(ev) => setFeedQuery(ev.target.value)} {...NO_AUTOFILL_PROPS} />
-            </div>
-            <div className="feed-list" id="feedList">
-              {fq && !displayGroups.length ? <div className="hint pane-msg">没有匹配的频道</div> : null}
-              {loadError ? (
-                <div className="hint pane-msg lg">{`读取失败：${loadError}`}</div>
-              ) : (!feeds.length ? (
-                <div className="hint pane-msg empty-tip">还没有订阅源，在上方粘贴一个 RSS 地址试试</div>
-              ) : (
-                displayGroups.map((g) => {
-                  const isCollapsed = !!(g.name && collapsed.has(g.name));
-                  // 「未分组」标题只在确实存在命名分组时才渲染（否则一行标题挺突兀）
-                  const showHead = !!g.name || feeds.some((f) => String(f.groupName || '').trim());
-                  return (
-                    <React.Fragment key={g.name || '__ungrouped'}>
-                      {showHead && (
-                        <div
-                          className={'feed-group-head' + (isCollapsed ? ' collapsed' : '') + headDropCls(g)}
-                          data-group={g.name}
-                          /* 分组头是可点开关，得让键盘和读屏也能用：补按钮语义与展开态。
-                             重命名态下有 <input>，此时不能挂 role=button（button 套 input
-                             语义不合法），退化成普通容器，输入框自己处理按键。 */
-                          {...(renamingGroup === g.name ? {} : {
-                            role: 'button',
-                            tabIndex: 0,
-                            'aria-expanded': isCollapsed ? 'false' : 'true',
-                            'aria-label': (g.name || '未分组') + '，' + g.feeds.length + ' 个频道，' + (isCollapsed ? '已收起' : '已展开'),
-                          })}
-                          onClick={(ev) => onHeadClick(ev, g)}
-                          onKeyDown={(ev) => {
-                            if (ev.target !== ev.currentTarget) return;   // 手柄 / 重命名按钮 / 输入框各自处理
-                            if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onHeadClick(ev, g); }
-                          }}
-                        >
-                          {g.name && renamingGroup === g.name ? (
-                    <input
-                      ref={groupRenameInputRef}
-                      className="feed-group-edit"
-                      type="text"
-                      maxLength={40}
-                      value={renamingGroupDraft}
-                      spellCheck={false}
-                      autoComplete="off"
-                      aria-label="重命名分组"
-                      onChange={(ev) => setRenamingGroupDraft(ev.target.value)}
+              + (bulk ? ' · 勾选后在底部统一操作' : ' · 点行编辑')
+            : ''}
+        </div>
+
+        {/* 频道列表：紧凑行，点行开详情层 */}
+        <div className="feed-list" id="feedList">
+          {fq && !displayGroups.length ? <div className="hint pane-msg">没有匹配的频道</div> : null}
+          {loadError ? (
+            <div className="hint pane-msg lg">{`读取失败：${loadError}`}</div>
+          ) : (!feeds.length ? (
+            <div className="hint pane-msg empty-tip">还没有订阅源，在上方粘贴一个 RSS 地址试试</div>
+          ) : (
+            displayGroups.map((g) => {
+              // 命名分组默认收起；搜索命中 / 批量模式强制展开；未分组常开
+              const isOpen = bulk || !g.name || openGroups.has(g.name) || !!fq;
+              const isCollapsed = !isOpen;
+              // 「未分组」标题只在确实存在命名分组时才渲染（否则一行标题挺突兀）
+              const showHead = !!g.name || feeds.some((f) => String(f.groupName || '').trim());
+              return (
+                <React.Fragment key={g.name || '__ungrouped'}>
+                  {showHead && (
+                    <div
+                      className={'feed-group-head' + (isCollapsed ? ' collapsed' : '') + headDropCls(g)}
+                      data-group={g.name}
+                      /* 分组头是可点开关，得让键盘和读屏也能用：补按钮语义与展开态。
+                         重命名态下有 <input>，此时不能挂 role=button（button 套 input
+                         语义不合法），退化成普通容器，输入框自己处理按键。 */
+                      {...(renamingGroup === g.name ? {} : {
+                        role: 'button',
+                        tabIndex: 0,
+                        'aria-expanded': isCollapsed ? 'false' : 'true',
+                        'aria-label': (g.name || '未分组') + '，' + g.feeds.length + ' 个频道，' + (isCollapsed ? '已收起' : '已展开'),
+                      })}
+                      onClick={(ev) => onHeadClick(ev, g)}
                       onKeyDown={(ev) => {
-                        if (ev.key === 'Enter') { ev.preventDefault(); ev.currentTarget.blur(); }
-                        else if (ev.key === 'Escape') { ev.preventDefault(); setRenamingGroup(null); }
+                        if (ev.target !== ev.currentTarget) return;   // 手柄 / 重命名按钮 / 输入框各自处理
+                        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onHeadClick(ev, g); }
                       }}
-                      onBlur={(ev) => commitGroupRename(g, ev.target.value)}
-                      onClick={(ev) => ev.stopPropagation()}
-                    />
-                  ) : (
-                    <>
-                      {g.name ? (
-                        <span
-                          className="drag-handle"
-                          title="拖动排序分组"
-                          aria-label="拖动排序分组"
-                          onPointerDown={(ev) => onGripDown(ev, 'group', { group: g.name })}
-                        >
-                          {GRIP}
-                        </span>
-                      ) : null}
-                      <svg className="ico feed-group-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-down" /></svg>
-                      <span className={'feed-group-name' + (g.name ? '' : ' muted')}>{g.name || '未分组'}</span>
-                      <span className="feed-group-n">{g.feeds.length}</span>
-                      {g.name ? (
-                        <button
-                          className="feed-icon-btn feed-group-rename"
-                          data-group-rename={g.name}
-                          title="重命名分组（组内频道一并改名）"
-                          type="button"
-                          onClick={(ev) => { ev.stopPropagation(); startGroupRename(g); }}
-                        >
-                          <Ico name="edit" />
-                        </button>
-                      ) : null}
-                    </>
-                  )}
-                        </div>
+                    >
+                      {g.name && renamingGroup === g.name ? (
+                        <input
+                          ref={groupRenameInputRef}
+                          className="feed-group-edit"
+                          type="text"
+                          maxLength={40}
+                          value={renamingGroupDraft}
+                          spellCheck={false}
+                          autoComplete="off"
+                          aria-label="重命名分组"
+                          onChange={(ev) => setRenamingGroupDraft(ev.target.value)}
+                          onKeyDown={(ev) => {
+                            if (ev.key === 'Enter') { ev.preventDefault(); ev.currentTarget.blur(); }
+                            else if (ev.key === 'Escape') { ev.preventDefault(); setRenamingGroup(null); }
+                          }}
+                          onBlur={(ev) => commitGroupRename(g, ev.target.value)}
+                          onClick={(ev) => ev.stopPropagation()}
+                        />
+                      ) : (
+                        <>
+                          {g.name ? (
+                            <span
+                              className="drag-handle"
+                              title="拖动排序分组"
+                              aria-label="拖动排序分组"
+                              onPointerDown={(ev) => onGripDown(ev, 'group', { group: g.name })}
+                            >
+                              {GRIP}
+                            </span>
+                          ) : null}
+                          <svg className="ico feed-group-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-down" /></svg>
+                          <span className={'feed-group-name' + (g.name ? '' : ' muted')}>{g.name || '未分组'}</span>
+                          <span className="feed-group-n">{g.feeds.length}</span>
+                          {g.name ? (
+                            <button
+                              className="feed-icon-btn feed-group-rename"
+                              data-group-rename={g.name}
+                              title="重命名分组（组内频道一并改名）"
+                              type="button"
+                              onClick={(ev) => { ev.stopPropagation(); startGroupRename(g); }}
+                            >
+                              <Ico name="edit" />
+                            </button>
+                          ) : null}
+                        </>
                       )}
-                      {(!isCollapsed || fq) && g.feeds.map((f, i) => renderRow(f, i + 1))}
-                    </React.Fragment>
-                  );
-                })
-              ))}
-            </div>
-            {/* 分组名建议列表：给每个频道行里的分组输入框用 */}
-            <datalist id="groupList">
-              {groupNames.map((g) => <option key={g} value={g} />)}
-            </datalist>
-        </Section>
+                    </div>
+                  )}
+                  {isOpen && g.feeds.map((f) => renderRow(f))}
+                </React.Fragment>
+              );
+            })
+          ))}
+        </div>
+        {/* 分组名建议列表：给详情层里的分组输入框用 */}
+        <datalist id="groupList">
+          {groupNames.map((g) => <option key={g} value={g} />)}
+        </datalist>
 
       </div>
 
-      <PaneFoot dirty={sourceDirty} lead={
+      <PaneFoot dirty={sourceDirty} lead={bulk ? (
+        <span className="hint bulk-lead">已选 <strong>{selectedFeeds.length}</strong>{` / ${total}`}</span>
+      ) : (
         <span className="hint" id="settingsHint">
           {total ? (
             <>
@@ -1403,27 +1562,63 @@ export function SourcePane({ admin, onDirtyChange }) {
             </>
           ) : '添加一个 RSS 地址即可开始'}
         </span>
-      }>
-        <button
-          className="btn btn-ghost"
-          id="refreshAllFeedsBtn"
-          type="button"
-          disabled={busy === 'all'}
-          onClick={onRefreshAll}
-        >
-          {busy === 'all' ? '抓取中…' : '刷新全部'}
-        </button>
-        <button
-          className="btn btn-primary"
-          id="saveSourceBtn"
-          type="button"
-          hidden={!admin}
-          disabled={busy === 'save' || (cfgLoaded && !cfgDirty)}
-          onClick={onSaveCfg}
-        >
-          {busy === 'save' ? '保存中…' : '保存设置'}
-        </button>
+      )}>
+        {bulk ? (
+          <>
+            <button className="btn" type="button" onClick={toggleSelectAll}>
+              {allSelected ? '全不选' : '全选'}
+            </button>
+            <button className="btn" type="button" disabled={bulkDisabled} onClick={() => bulkPatch('enabled', true, '开启采集')}>开采集</button>
+            <button className="btn" type="button" disabled={bulkDisabled} onClick={() => bulkPatch('enabled', false, '停止采集')}>关采集</button>
+            <button className="btn" type="button" disabled={bulkDisabled} onClick={() => bulkPatch('cardEnabled', true, '加入卡片页')}>开卡片</button>
+            <button className="btn" type="button" disabled={bulkDisabled} onClick={() => bulkPatch('cardEnabled', false, '移出卡片页')}>关卡片</button>
+            <button className="btn" type="button" disabled={bulkDisabled} onClick={bulkMove}>移组</button>
+            <button className="btn btn-danger" type="button" disabled={bulkDisabled} onClick={bulkDelete}>删除</button>
+          </>
+        ) : (
+          <>
+            <button
+              className="btn btn-ghost"
+              id="refreshAllFeedsBtn"
+              type="button"
+              disabled={busy === 'all'}
+              onClick={onRefreshAll}
+            >
+              {busy === 'all' ? '抓取中…' : '刷新全部'}
+            </button>
+            <button
+              className="btn btn-primary"
+              id="saveSourceBtn"
+              type="button"
+              hidden={!admin}
+              disabled={busy === 'save' || (cfgLoaded && !cfgDirty)}
+              onClick={onSaveCfg}
+            >
+              {busy === 'save' ? '保存中…' : '保存设置'}
+            </button>
+          </>
+        )}
       </PaneFoot>
+
+      {sheetFeed && (
+        <FeedSheet
+          key={sheetId}
+          feed={sheetFeed}
+          order={sheetOrder}
+          globalMins={globalMins}
+          busyFeed={busyFeed}
+          pending={pendingIds.has(String(sheetId))}
+          onClose={() => setSheetId(null)}
+          onToggle={onToggle}
+          onFreq={onFreqChange}
+          onOrder={applyNumericOrder}
+          onName={onCommitName}
+          onUrl={onCommitUrl}
+          onGroup={onCommitGroup}
+          onRefresh={onRefreshFeed}
+          onDelete={onDelete}
+        />
+      )}
     </div>
   );
 }

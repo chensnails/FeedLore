@@ -8,8 +8,8 @@
  * 类名 / ID / data 属性与旧 DOM 完全一致，样式零改动。 */
 
 import { core } from '@core';
-import React, { useEffect, useState } from 'react';
-import { PaneFoot, Result, useFormLoadGuard } from './primitives.jsx';
+import React, { useEffect, useRef, useState } from 'react';
+import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -36,9 +36,11 @@ const parseTemp = (v) => {
    两边显式换算，别依赖服务端「数字转字符串」——契约里写的就是 number。 */
 const depthToNum = (d) => (d === 'low' ? 1 : d === 'high' ? 3 : 2);
 const numToDepth = (n) => (n === 1 ? 'low' : n === 3 ? 'high' : 'medium');
+const DEPTH_LABEL = { low: '轻', medium: '中', high: '深' };
 
 export function ModelPane({ onDirtyChange }) {
   const keyName = useNoAutofillName('llm-key');
+  const paneRef = useRef(null);
   const [form, setForm] = useState(EMPTY);
   const [savedForm, setSavedForm] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -60,6 +62,12 @@ export function ModelPane({ onDirtyChange }) {
   // 注意：不清 result——保存 / 清除成功后要保留「已保存」提示（与旧实现一致），
   // 读取失败时才在 catch 里置 err；初次进入时 result 本就为 null。
   useEffect(() => { load(); }, []);
+
+  // 折叠分组的开合按账号持久化（与其他设置面板同一机制）
+  useEffect(() => {
+    const s = S();
+    if (s && s.bindSections && paneRef.current) s.bindSections(paneRef.current);
+  }, []);
 
   // force：保存 / 清除成功后的主动重拉，属于「用户已确认」，必须允许回填并重置 touched；
   // 只有挂载那次（load() 无参）才受守卫保护，避免覆盖加载期间的输入。
@@ -182,8 +190,9 @@ export function ModelPane({ onDirtyChange }) {
   const saved = form.apiKeySet;
 
   return (
-    <div className="tab-pane" data-pane="model">
-      <div className="form">
+    <div className="tab-pane" data-pane="model" ref={paneRef}>
+      <div className="pane-scroll">
+        <Section secKey="llm-api" title="接口与密钥" sub={form.model || '未配置'} open>
         <div className="form-row">
           <label htmlFor="llmBaseUrl">模型地址（OpenAI 兼容）</label>
           <input
@@ -268,6 +277,10 @@ export function ModelPane({ onDirtyChange }) {
             <small className="form-tip">越低越稳定保守，越高越发散。摘要建议 0.2 ~ 0.5</small>
           </div>
         </div>
+        </Section>
+
+        <Section secKey="llm-thinking" title="思考模式"
+          sub={form.thinking ? `已开启 · 深度${DEPTH_LABEL[form.thinkingDepth]}` : '关闭'}>
         <div className="form-row">
           <label className="form-row-head">
             <span>开启模型思考</span>
@@ -295,6 +308,8 @@ export function ModelPane({ onDirtyChange }) {
           </select>
           <small className="form-tip">日报是每天一次的后台任务，「中」通常就够；只有条目很多、分类总跑偏时才值得上「深」</small>
         </div>
+        </Section>
+
         {result ? <Result id="llmResult" result={result} /> : null}
       </div>
       <PaneFoot dirty={dirty} lead={<span className="hint">模型配置完全跟随账号：这一份只对你自己生效，不会用上别人的地址或 Key，也没有站点默认值可回退——三项都填好才能生成日报</span>}>

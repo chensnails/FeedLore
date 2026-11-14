@@ -700,7 +700,7 @@ textarea:disabled {
 .ico,
 .search-ico, .sec-arrow, .art-caret, .new-pill-ico,
 .rd-ch-search-ico, .rd-ch-add-ico, .cmdk-ico,
-.dd-caret, .dd-check, .dd-icon, .dg-pin, .feed-group-caret, .toast-ico,
+.dd-caret, .dd-check, .dd-icon, .dg-pin, .feed-group-caret, .feed-caret, .toast-ico,
 .overflow-check, .overflow-caret, .feed-filter-ico {
   width: 1em; height: 1em;
   flex: 0 0 auto;
@@ -1947,7 +1947,7 @@ textarea:disabled {
   background: var(--panel-2);
   flex: 0 0 auto;
 }
-.pane-foot-btns { display: flex; gap:var(--sp-2); align-items: center; }
+.pane-foot-btns { display: flex; gap:var(--sp-2); align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .pane-foot-note { font-size: var(--fs-xs); color: var(--text-muted); }
 /* 未保存提示就贴在保存按钮左边：标题区那枚「未保存」和页签圆点在长面板里
    容易离开视线，这里保证动手时一定看得见。 */
@@ -2422,6 +2422,200 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .hint { font-size: var(--fs-sm); color: var(--text-faint); }
 .hint strong { color: var(--accent-text); }
 .hint .btn { margin-left: var(--sp-3); }
+
+/* ============================================================
+ * 设置 A 方案（v2.5.0）：列表 + 详情两层
+ * ------------------------------------------------------------
+ * 列表只留紧凑行（整行命中，≥64px），点行打开 DetailSheet：
+ * 桌面是内容区右侧抽屉（列表仍可见可对照），移动是贴底弹层（下滑关闭）。
+ * 行级修改即改即生效，toast 带撤销；批量模式多选后统一操作。
+ * ============================================================ */
+
+/* 详情层的定位锚：面板自身（盖住列表与页脚，不盖设置外壳的头部/导航） */
+.settings-modal .tab-pane { position: relative; }
+
+.ds-mask {
+  position: absolute; inset: 0; z-index: 8;
+  display: flex; justify-content: flex-end;
+  background: color-mix(in srgb, var(--overlay) 40%, transparent);
+  animation: fadeIn var(--dur-base) ease;
+}
+.ds-sheet {
+  display: flex; flex-direction: column;
+  width: min(420px, 100%); height: 100%;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--elevation-4);
+  animation: dsIn var(--dur-med) var(--ease);
+  outline: none;
+}
+@keyframes dsIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.ds-head {
+  display: flex; align-items: flex-start; gap: var(--sp-2);
+  flex: 0 0 auto;
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+}
+.ds-back {
+  display: none;
+  align-items: center; justify-content: center;
+  width: 30px; height: 30px; flex: 0 0 auto;
+  border: none; background: transparent; cursor: pointer;
+  color: var(--text-muted); border-radius: var(--radius-sm);
+}
+.ds-back:hover { background: var(--hover); color: var(--text); }
+.ds-back .ico { width: 1rem; height: 1rem; transform: rotate(180deg); }
+.ds-head-txt { flex: 1 1 auto; min-width: 0; }
+.ds-title {
+  margin: 0; font-size: var(--fs-lg); font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ds-sub {
+  margin: 2px 0 0; font-size: var(--fs-xs); color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ds-close {
+  border: none; background: transparent; cursor: pointer;
+  width: 30px; height: 30px; flex: 0 0 auto;
+  color: var(--text-faint); border-radius: var(--radius-sm);
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.ds-close:hover { background: var(--hover); color: var(--text); }
+.ds-close .ico { width: 1rem; height: 1rem; }
+.ds-body {
+  flex: 1; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--sp-4);
+}
+.ds-body .form-row:last-child { margin-bottom: 0; }
+.ds-foot {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+  background: var(--panel-2);
+}
+/* 详情层里的开关行：标题 + 说明在左，开关在右，整行可点 */
+.ds-sw-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none;
+}
+.ds-sw-row:last-child { border-bottom: 0; }
+.ds-sw-txt { min-width: 0; }
+.ds-sw-name { display: block; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.ds-sw-desc { display: block; margin-top: 2px; font-size: var(--fs-xs); color: var(--text-faint); }
+/* 详情层里的状态块（抓取状态 / 错误详情） */
+.ds-stat {
+  padding: var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--panel-2);
+  font-size: var(--fs-sm); color: var(--text-muted);
+  margin-bottom: var(--sp-4);
+}
+.ds-stat .err { color: var(--danger); }
+.ds-stat-line + .ds-stat-line { margin-top: var(--sp-1); }
+
+/* 列表工具条：搜索 + 批量入口，吸顶；分组头吸在它下面 */
+.src-toolbar {
+  position: sticky; top: 0; z-index: 4;
+  display: flex; align-items: center; gap: var(--sp-2);
+  height: var(--src-top-h, 56px);
+  padding: 0 var(--sp-3);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.src-toolbar .feed-filter {
+  position: static; flex: 1 1 auto; min-width: 0;
+  margin: 0; padding: 0;
+}
+.src-toolbar .btn { flex: 0 0 auto; }
+.src-toolbar .btn.active { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-text); }
+.src-list-hint { padding: var(--sp-2) var(--sp-3) 0; }
+
+/* 紧凑频道行：整行命中区；快捷开关仅桌面显示（移动收进详情层） */
+.feed-row { min-height: 64px; cursor: pointer; }
+.feed-row:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; border-radius: var(--radius-xs); }
+.feed-row.selected { background: var(--accent-soft); }
+.feed-caret { width: .875rem; height: .875rem; flex: 0 0 auto; color: var(--text-faint); }
+.feed-row:hover .feed-caret { color: var(--text-muted); }
+.feed-quick { display: flex; align-items: center; gap: var(--sp-3); flex: 0 0 auto; }
+.feed-check { flex: 0 0 auto; width: 18px; height: 18px; accent-color: var(--accent); cursor: pointer; }
+/* 行内拖拽手柄：桌面 hover 显现，触屏常显（排序是既有能力，不随 A 方案退场） */
+.feed-row .drag-handle { opacity: 0; transition: opacity var(--dur-base); }
+.feed-row:hover .drag-handle, .feed-row .drag-handle:focus-visible { opacity: 1; }
+@media (hover: none) { .feed-row .drag-handle { opacity: .55; } }
+body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
+
+/* 分组头吸顶（工具条之下），收起时也能看到组名与计数 */
+.feed-list .feed-group-head {
+  position: sticky; top: var(--src-top-h, 56px); z-index: 2;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.feed-group-on { font-size: var(--fs-2xs); font-weight: 500; color: var(--text-faint); }
+
+/* 批量动作提示（页脚 lead 位置） */
+.bulk-lead { font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap; }
+.bulk-lead strong { color: var(--accent-text); }
+
+/* 规则 / 用户 / 令牌共用的紧凑行（账号、MCP、规则面板） */
+.sl-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  min-height: 60px;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.sl-row:hover { background: var(--hover); }
+.sl-row:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.sl-row.is-off { opacity: .55; }
+.sl-ava {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex: 0 0 34px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft); color: var(--accent-text);
+}
+.sl-ava .ico { width: 1rem; height: 1rem; }
+.sl-ava.warn { background: var(--warn-bg); color: var(--warn-text); }
+.sl-ava.danger { background: var(--err-bg); color: var(--danger); }
+.sl-main { flex: 1 1 auto; min-width: 0; }
+.sl-name {
+  font-size: var(--fs-md); font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sl-sub {
+  margin-top: 1px; font-size: var(--fs-xs); color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sl-side { display: flex; align-items: center; gap: var(--sp-2); flex: 0 0 auto; }
+.sl-badge {
+  font-size: var(--fs-2xs); font-weight: 700;
+  padding: 1px var(--sp-2); border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--accent-text);
+}
+.sl-badge.block { background: var(--err-bg); color: var(--danger); }
+.sl-badge.muted { background: var(--chip-solid); color: var(--text-muted); }
+.sl-row .feed-caret { flex: 0 0 auto; }
+/* 列表分区标题（规则 / 用户 / 令牌）：不折叠，只做层级提示 */
+.sl-sec-h {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-3) var(--sp-2);
+  font-size: var(--fs-xs); font-weight: 700; letter-spacing: .03em;
+  color: var(--text-muted);
+}
+.sl-sec-h .feed-group-n { margin-left: auto; }
+.sl-empty { padding: var(--sp-5) var(--sp-3); text-align: center; color: var(--text-faint); font-size: var(--fs-sm); }
+/* 列表工具条（规则面板）：添加 / 一键动作 + 一句话说明 */
+.sl-toolbar {
+  display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  padding-bottom: var(--sp-2);
+}
+.sl-toolbar-note { font-size: var(--fs-xs); color: var(--text-faint); }
+/* 详情层底部：危险动作靠左，主保存靠右 */
+.ds-foot .btn-danger { margin-right: auto; }
 
 /* ---------- 响应式 ---------- */
 /* ============================================================
@@ -3865,16 +4059,39 @@ body.is-scrolling .card-media-actions { transition: none; }
   .source-add { padding:var(--sp-4) var(--sp-4) var(--sp-3); }
   .source-opts { gap:var(--sp-2) var(--sp-4); }
   .source-opts input[type="number"] { width: 76px; }
-  /* 开关与图标按钮挤不进一行，整块换到第二行；再窄时允许操作组内部换行 */
-  .feed-row { flex-wrap: wrap; padding:var(--sp-2) var(--sp-2); gap:var(--sp-2) var(--sp-2); }
+  /* A 方案紧凑行：不换行、整行命中；快捷开关收进详情层，标题让出宽度 */
+  .feed-row { flex-wrap: nowrap; padding:var(--sp-2); gap:var(--sp-2); }
+  .feed-quick { display: none; }
   .feed-avatar { width: 30px; height: 30px; flex-basis: 30px; }
   .feed-group input { width: 100%; }
-  .feed-actions { flex: 1 0 100%; flex-wrap: wrap; justify-content: flex-end; gap:var(--sp-2) var(--sp-4); }
-  /* 触屏命中区：图标按钮从 26px 抬到 40px，拖拽手柄 44px；排序框同步加高 */
+  /* 触屏命中区：图标按钮 40px、拖拽手柄 44px；排序框同步加高 */
   .feed-icon-btn { width: 40px; height: 40px; }
-  .feed-actions .drag-handle { width: 44px; height: 44px; margin: 0; }
+  .feed-row .drag-handle { width: 32px; height: 44px; margin: 0; opacity: .55; }
   .feed-order { width: 48px; height: 40px; }
   .feed-group-head { padding:var(--sp-3) var(--sp-2) var(--sp-1); }
+  .src-toolbar { padding: 0 var(--sp-2); }
+  .sl-row { padding: var(--sp-2); gap: var(--sp-2); }
+  .sl-side .feed-sw-label { display: none; }
+
+  /* 详情层在手机上 = 贴底整宽弹层（与设置外壳 / 卡片详情同一套手势语言） */
+  .ds-mask { align-items: flex-end; justify-content: stretch; background: var(--overlay); }
+  .ds-sheet {
+    width: 100%; height: auto; max-height: 100%;
+    border-left: 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    animation: sheetUp var(--dur-slow) var(--ease);
+  }
+  .ds-sheet::before {
+    content: '';
+    width: 38px; height: 4px; flex: 0 0 auto;
+    border-radius: var(--radius-pill);
+    background: var(--border-strong); opacity: .7;
+    margin: var(--sp-2) auto 0;
+  }
+  .ds-back { display: inline-flex; }
+  .ds-head { padding: var(--sp-3) var(--sp-3) var(--sp-2); }
+  .ds-body { padding: var(--sp-3); }
+  .ds-foot { padding: var(--sp-3); }
 
   .viewnav-btn { padding:var(--sp-1) var(--sp-3); }
   .stat small { display: none; }

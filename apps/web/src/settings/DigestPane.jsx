@@ -9,8 +9,8 @@
  * 让顶栏立刻收到 shell tick；服务端会保留 lastAuto（调度器独占字段），这里不用回传。 */
 
 import { core } from '@core';
-import { useEffect, useState } from 'react';
-import { PaneFoot, Result, useFormLoadGuard } from './primitives.jsx';
+import { useEffect, useRef, useState } from 'react';
+import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 
 const S = () => core;
 
@@ -24,6 +24,7 @@ const EMPTY = {
 };
 
 export function DigestPane({ onDirtyChange }) {
+  const paneRef = useRef(null);
   const [enabled, setEnabled] = useState(true);
   const [form, setForm] = useState(EMPTY);
   // saved：服务端当前值（字符串化后比较，用来判断「有没有没保存的改动」）
@@ -35,6 +36,12 @@ export function DigestPane({ onDirtyChange }) {
   const guard = useFormLoadGuard();
 
   useEffect(() => { load(); }, []);
+
+  // 折叠分组的开合按账号持久化（与其他设置面板同一机制）
+  useEffect(() => {
+    const s = S();
+    if (s && s.bindSections && paneRef.current) s.bindSections(paneRef.current);
+  }, []);
 
   async function load() {
     try {
@@ -150,8 +157,10 @@ export function DigestPane({ onDirtyChange }) {
       : '仅「采集」开启的频道';
 
   return (
-    <div className="tab-pane" data-pane="digest">
-      <div className="form">
+    <div className="tab-pane" data-pane="digest" ref={paneRef}>
+      <div className="pane-scroll">
+        <Section secKey="dig-basic" title="开关与时间"
+          sub={!enabled ? '日报已关闭' : form.auto ? `每天 ${form.time} · ${hintScope}` : '仅手动生成'} open>
         <div className="form-row">
           <label className="form-row-head">
             <span>使用日报</span>
@@ -219,7 +228,10 @@ export function DigestPane({ onDirtyChange }) {
             <small className="form-tip">一个都没勾时，日报会提示「没有可展示的条目」</small>
           </div>
         )}
+        </Section>
 
+        <Section secKey="dig-limits" title="条数与保留"
+          sub={`每频道 ${form.maxPerFeed} · 总 ${form.maxTotal} · 留 ${form.keepDays} 天`}>
         <div className="form-grid form-grid-2">
           <div className="form-row">
             <label htmlFor="digMaxPerFeed">每频道条数上限</label>
@@ -239,6 +251,10 @@ export function DigestPane({ onDirtyChange }) {
           </div>
         </div>
 
+        </Section>
+
+        <Section secKey="dig-style" title="风格要求"
+          sub={form.style ? `已写 ${form.style.length} 字` : '未写'}>
         <div className="form-row">
           <label htmlFor="digPrompt">风格要求（可选）</label>
           <textarea
@@ -255,6 +271,8 @@ export function DigestPane({ onDirtyChange }) {
             只影响选材、语气和篇幅；简报的 JSON 结构、点评长度上限等由系统固定，写了也不会打乱生成
           </small>
         </div>
+
+        </Section>
 
         {result ? <Result id="digResult" result={result} /> : null}
       </div>

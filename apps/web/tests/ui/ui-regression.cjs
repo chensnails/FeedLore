@@ -113,6 +113,8 @@ const miniFeeds = [
 let miniGroupOrder = ['科技'];
 // 关注保留天数（规则 panel 的自动退出设置）
 let miniWatchExpireDays = 90;
+// Webhook 通知地址（规则 panel 的「通知与保留」）
+let miniWebhook = '';
 // 条目过滤规则（v2.7.0）：WatchPane（规则 tab）读 /api/prefs 的 filters，保存后由 mock 的 sanitize 回填
 let miniFilters = [
   { id: 'f1', on: true, act: 'block', field: 'title', kind: 'kw', pattern: '广告' },
@@ -165,6 +167,12 @@ let miniSessions = [
   { id: 'sess-phone', current: false, ip: '192.0.2.44', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1', createdAt: '2026-11-02T10:00:00.000Z', lastSeenAt: '2026-11-04T09:00:00.000Z', expiresAt: '2026-12-02T10:00:00.000Z' },
 ];
 let accountPostOk = true;
+let sessionsDeleteFail = false;
+let tokenDeleteFail = false;
+// MCP 访问令牌（GET / POST / DELETE /api/mcp-tokens）
+let miniTokens = [
+  { id: 't1', name: '我的 Claude', prefix: 'flm_abc', createdAt: '2026-10-01T00:00:00.000Z', lastUsedAt: null },
+];
 let statusFailNext = false;
 let promptInstallResult = false;
 const clipboardWrites = [];
@@ -361,7 +369,7 @@ w.feedlore = {
         llm: prefsLlm, groupOrder: miniGroupOrder.slice(), filters: miniFilters.slice(),
         watchRules: miniWatchRules.slice(),
         layout: { digestEnabled: prefsDigestEnabled }, digest: Object.assign({}, prefsDigest),
-        watchExpireDays: miniWatchExpireDays,
+        watchExpireDays: miniWatchExpireDays, webhookUrl: miniWebhook,
       });
     }
     if (url === '/api/prefs' && method === 'POST') {
@@ -436,7 +444,13 @@ w.feedlore = {
         const n = Number(body.watchExpireDays);
         miniWatchExpireDays = Number.isFinite(n) ? Math.min(3650, Math.max(0, Math.round(n))) : 90;
       }
-      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), layout: {}, filters: miniFilters.slice(), watchRules: miniWatchRules.slice(), digest: Object.assign({}, prefsDigest), watchExpireDays: miniWatchExpireDays });
+      if (body && typeof body.webhookUrl === 'string') {
+        miniWebhook = body.webhookUrl.trim().slice(0, 600);
+      }
+      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), layout: {}, filters: miniFilters.slice(), watchRules: miniWatchRules.slice(), digest: Object.assign({}, prefsDigest), watchExpireDays: miniWatchExpireDays, webhookUrl: miniWebhook });
+    }
+    if (url === '/api/watch/apply' && method === 'POST') {
+      return ok({ ok: true, tagged: 20, watching: 5, blocked: 2, cleared: 1 });
     }
     if (url === '/api/digest/test-llm') return ok({ ok: true, reply: 'pong' });
     if (url === '/api/version') return ok(versionResponse);
@@ -577,7 +591,26 @@ w.feedlore = {
       const sess = miniSessions.find((x) => x.id === sid);
       if (!sess) return bad('E_SESSION_NOT_FOUND', 404);
       if (sess.current) return bad('E_CANNOT_REVOKE_CURRENT', 400);
+      if (sessionsDeleteFail) { sessionsDeleteFail = false; return bad('boom', 500); }
       miniSessions = miniSessions.filter((x) => x.id !== sid);
+      return ok({ ok: true });
+    }
+    // ---- MCP 访问令牌 ----
+    if (url === '/api/mcp-tokens' && method === 'GET') {
+      return ok({ tokens: miniTokens.map((x) => Object.assign({}, x)) });
+    }
+    if (url === '/api/mcp-tokens' && method === 'POST') {
+      const tn = String((body && body.name) || '').trim();
+      if (!tn) return bad('E_BAD_REQUEST');
+      const tk = { id: 't' + (miniTokens.length + 1), name: tn, prefix: 'flm_new', createdAt: '2026-11-14T00:00:00.000Z', lastUsedAt: null };
+      miniTokens.push(tk);
+      return ok({ ok: true, secret: 'flm_new_S3CR3T', token: Object.assign({}, tk) });
+    }
+    const tokRoute = url.match(/^\/api\/mcp-tokens\/([^/]+)$/);
+    if (tokRoute && method === 'DELETE') {
+      const tid = decodeURIComponent(tokRoute[1]);
+      if (tokenDeleteFail) { tokenDeleteFail = false; return bad('boom', 500); }
+      miniTokens = miniTokens.filter((x) => x.id !== tid);
       return ok({ ok: true });
     }
     // ---- 账号 / 用户管理 / 状态（P2d） ----
@@ -692,7 +725,7 @@ w.feedlore = {
 
   /* ---- 数据源面板桥（P2c，对齐 app.js 语义） ---- */
   state: {
-    feedList: [], feedMeta: {}, groupOrder: [], collapsedGroups: new Set(), tag: null, username: 'tester', role: 'admin',
+    feedList: [], feedMeta: {}, groupOrder: [], collapsedGroups: new Set(), srcGroupsOpen: [], tag: null, username: 'tester', role: 'admin',
     entries: [], tags: [], q: '', feedFilter: null, cardGroup: null, sort: 'new', size: 'all', view: 'grid', tab: 'reader',
     hasMore: false, loading: false, loadError: false, offset: 0, pageSize: 24,
     rdEntries: [], rdExpanded: new Set(), rdBody: new Map(), rdBodyErr: new Set(),
@@ -707,6 +740,7 @@ w.feedlore = {
     w.feedlore.state.feedMeta = data;
     w.feedlore.state.groupOrder = Array.isArray(data.groupOrder) ? data.groupOrder : [];
     w.feedlore.state.collapsedGroups = new Set(layoutStub.collapsedGroups);
+    w.feedlore.state.srcGroupsOpen = (layoutStub.srcGroupsOpen || []).slice();
     if (data.flags) w.feedlore.state.rdFlags = data.flags;
     calls.push(['loadFeeds']);
     w.feedlore.renderFeedSelect();
@@ -719,6 +753,10 @@ w.feedlore = {
   setLayout: (k, v) => {
     calls.push(['setLayout', k, v]);
     if (k === 'collapsedGroups') layoutStub.collapsedGroups = v;
+    if (k === 'srcGroupsOpen') {
+      layoutStub.srcGroupsOpen = v;
+      w.feedlore.state.srcGroupsOpen = v.slice();
+    }
   },
   bindSections: (root) => {
     calls.push(['bindSections']);
@@ -993,7 +1031,7 @@ w.feedlore = {
 // v2.0.0：组件改为 `import { core } from '@core'`，测试用 tests/ui/stub-core.js 顶上这个别名；
 // 替身读的是 Node 的 globalThis.__uiCore（bundle 在 Node 里执行），这里把同一份桩暴露出去。
 global.__uiCore = w.feedlore;
-const layoutStub = { collapsedGroups: [], sections: {} };
+const layoutStub = { collapsedGroups: [], srcGroupsOpen: [], sections: {} };
 
 /* 卡片视图（P3b）：复刻 app.js 的 loadPage 语义（数据归共享 state，UI 靠 __cardsTick 重绘） */
 const cardsTick = () => w.dispatchEvent(new w.Event('__cardsTick'));
@@ -1126,6 +1164,28 @@ const rowsByGroup = () => {
   }
   return out;
 };
+/* ---- A 方案（列表 + 详情两层）辅助 ---- */
+const sheetEl = () => document.querySelector('.ds-sheet');
+const openSheet = async (id) => { rowOf(id).click(); await sleep(50); };
+const closeSheet = async () => { document.querySelector('.ds-close').click(); await sleep(50); };
+/** 命名分组默认收起：把当前所有收起的组逐个点开（拖拽 / 行级用例的前置） */
+const expandAllGroups = async () => {
+  for (const h of [...document.querySelectorAll('#feedList .feed-group-head.collapsed')]) {
+    h.click();
+    await sleep(30);
+  }
+};
+/** 找最近一条带「撤销」动作的 toast（可按首参文案过滤），返回调用记录 */
+const undoToast = (msg) => {
+  const list = callsOf('toast').filter((c) => c[3] && typeof c[3].action === 'function'
+    && (msg == null || c[1] === msg));
+  return list[list.length - 1];
+};
+const fireBlur = (el) => el.dispatchEvent(new w.FocusEvent('focusout', { bubbles: true }));
+/** 详情层输入框按回车：先聚焦 —— jsdom 里未聚焦的元素 blur() 不会派发 focusout，
+ *  而真实浏览器里回车时输入框本来就是焦点态。 */
+const pressEnter = (sel) => { const el = document.querySelector(sel); el.focus(); keydown(el, 'Enter'); };
+const pressEsc = (sel) => { const el = document.querySelector(sel); el.focus(); keydown(el, 'Escape'); };
 const stubRect = (el, top, height) => {
   el.getBoundingClientRect = () => ({ top, height, bottom: top + height, left: 0, right: 100, width: 100, x: 0, y: top });
 };
@@ -1663,7 +1723,7 @@ const withEFP = (el, fn) => {
     if (document.querySelector('.tab-pane-legacy')) throw new Error('.tab-pane-legacy 仍在');
   });
 
-  // ============ 数据源面板（P2c React 化） ============
+  // ============ 数据源面板（A 方案：列表 + 详情两层） ============
   await sleep(40);
   t('数据源：分组头有按钮语义与展开态', () => {
     const heads = [...document.querySelectorAll('#feedList .feed-group-head')];
@@ -1696,7 +1756,21 @@ const withEFP = (el, fn) => {
   });
   t('bindSections 已套用（sec-bound 标记）', () => {
     if (document.querySelector('[data-sec="src-params"]').dataset.secBound !== '1') throw new Error('未绑定');
-    if (document.querySelector('[data-sec="src-feeds"]').dataset.secBound !== '1') throw new Error('未绑定');
+  });
+  t('A 方案：命名分组默认收起，未分组常开', () => {
+    const tech = document.querySelector('.feed-group-head[data-group="科技"]');
+    if (!tech.classList.contains('collapsed')) throw new Error('科技应默认收起');
+    if (tech.getAttribute('aria-expanded') !== 'false') throw new Error('aria-expanded 应为 false');
+    if (document.querySelector('.feed-group-head[data-group=""]').classList.contains('collapsed')) throw new Error('未分组不应收起');
+    if (rowIds().join(',') !== '3') throw new Error('初始只该露未分组行: ' + rowIds().join(','));
+  });
+  document.querySelector('.feed-group-head[data-group="科技"]').click();
+  await sleep(40);
+  t('点组头展开：srcGroupsOpen 持久化 + 行现身', () => {
+    const last = callsOf('setLayout').filter((c) => c[1] === 'srcGroupsOpen');
+    if (!last.length || last[last.length - 1][2].indexOf('科技') < 0) throw new Error(JSON.stringify(last));
+    if (w.feedlore.state.srcGroupsOpen.indexOf('科技') < 0) throw new Error('state 未写入');
+    if (rowIds().join(',') !== '1,2,3') throw new Error(rowIds().join(','));
   });
   t('3 个频道行', () => { if (rowIds().join(',') !== '1,2,3') throw new Error(rowIds().join(',')); });
   t('分组顺序：科技在前、未分组在后且渲染未分组头', () => {
@@ -1706,15 +1780,20 @@ const withEFP = (el, fn) => {
     if (heads[0].querySelector('.feed-group-n').textContent !== '2') throw new Error('科技计数');
     if (heads[1].querySelector('.feed-group-n').textContent !== '1') throw new Error('未分组计数');
   });
-  t('采集/卡片开关态与行样式', () => {
-    if (!rowOf('1').querySelector('[data-toggle="1"]').checked) throw new Error('f1 采集应开');
+  t('行是紧凑行：整行命中 + 桌面快捷开关（采集/卡片）', () => {
+    const r1 = rowOf('1');
+    if (r1.getAttribute('role') !== 'button' || r1.getAttribute('tabindex') !== '0') throw new Error('行缺按钮语义');
+    if (!r1.querySelector('.feed-caret')) throw new Error('缺进入详情的箭头');
+    if (!r1.querySelector('[data-toggle="1"]').checked) throw new Error('f1 采集应开');
     if (!rowOf('1').querySelector('[data-card-toggle="1"]').checked) throw new Error('f1 卡片应开');
     if (rowOf('2').querySelector('[data-card-toggle="2"]').checked) throw new Error('f2 卡片应关');
-    if (!rowOf('1').querySelector('[data-fulltext-toggle="1"]').checked) throw new Error('f1 全文应开');
-    if (rowOf('2').querySelector('[data-fulltext-toggle="2"]').checked) throw new Error('f2 全文应关');
     if (rowOf('3').querySelector('[data-toggle="3"]').checked) throw new Error('f3 采集应关');
     if (!rowOf('3').classList.contains('off')) throw new Error('f3 行应 off');
     if (!rowOf('2').classList.contains('no-card')) throw new Error('f2 行应 no-card');
+    // 重编辑控件（频率/分组/序号/全文/改名/改址/删除）收进详情层，不再摆在行里
+    if (r1.querySelector('.feed-freq, .feed-order, [data-fulltext-toggle], [data-rename], [data-del], [data-url], [data-group], [data-refresh]')) {
+      throw new Error('行里还残留重编辑控件');
+    }
   });
   t('状态文案（条目数 / 频率 / 抓取时间）', () => {
     const s = rowOf('1').querySelector('.feed-stat').textContent;
@@ -1726,21 +1805,76 @@ const withEFP = (el, fn) => {
     const err = rowOf('2').querySelector('.feed-stat .err');
     if (!err || err.textContent.indexOf('抓取失败') < 0) throw new Error('无 err 标记');
   });
-  t('单独频率 own 态', () => {
-    const sel = rowOf('2').querySelector('.feed-freq');
-    if (!sel.classList.contains('own') || sel.value !== '60') throw new Error(sel.className + '/' + sel.value);
-    const sel1 = rowOf('1').querySelector('.feed-freq');
-    if (sel1.classList.contains('own') || sel1.value !== '') throw new Error('f1 应跟随全局');
-    if (sel1.options[0].textContent.indexOf('跟随全局（30 分钟）') < 0) throw new Error('默认项: ' + sel1.options[0].textContent);
-  });
   t('底部计数', () => {
     const s = document.querySelector('#settingsHint').textContent;
     if (s.indexOf('2 / 3 个频道在定时采集') < 0 || s.indexOf('2 个在「卡片」页展示') < 0 || s.indexOf('1 个分组') < 0) throw new Error(s);
   });
   t('频道列表摘要行', () => {
     const s = document.querySelector('#feedToolbarHint').textContent;
-    if (s.indexOf('3 个频道') < 0 || s.indexOf('1 个分组') < 0 || s.indexOf('1 个单独设了频率') < 0) throw new Error(s);
+    if (s.indexOf('3 个频道') < 0 || s.indexOf('1 个分组') < 0 || s.indexOf('1 个单独设了频率') < 0 || s.indexOf('点行编辑') < 0) throw new Error(s);
   });
+
+  // ---- 详情层：点行打开，全部编辑控件收在层内 ----
+  await openSheet('1');
+  t('点行开详情层：dialog 语义 + 标题/副标题 + 手势区', () => {
+    const sh = sheetEl();
+    if (!sh) throw new Error('无 .ds-sheet');
+    if (sh.getAttribute('role') !== 'dialog' || sh.getAttribute('aria-modal') !== 'true') throw new Error('缺 dialog 语义');
+    if (sh.querySelector('.ds-title').textContent !== '例子星球') throw new Error(sh.querySelector('.ds-title').textContent);
+    if (sh.querySelector('.ds-sub').textContent.indexOf('example.com/feed.xml') < 0) throw new Error('副标题应是地址');
+    if (!sh.querySelector('.ds-head[data-sheet-grip]')) throw new Error('缺手势抓取区');
+  });
+  t('详情层回填：名称/地址/分组/频率/序号', () => {
+    if (document.querySelector('#dsName').value !== '例子星球') throw new Error('名称');
+    if (document.querySelector('#dsUrl').value !== 'https://example.com/feed.xml') throw new Error('地址');
+    if (document.querySelector('#dsGroup').value !== '科技') throw new Error('分组');
+    const sel = document.querySelector('#dsFreq');
+    if (sel.classList.contains('own') || sel.value !== '') throw new Error('f1 应跟随全局');
+    if (sel.options[0].textContent.indexOf('跟随全局（30 分钟）') < 0) throw new Error('默认项: ' + sel.options[0].textContent);
+    if (document.querySelector('#dsOrder').value !== '1') throw new Error('序号: ' + document.querySelector('#dsOrder').value);
+  });
+  t('详情层开关：采集/卡片/全文', () => {
+    if (!document.querySelector('[data-sheet-toggle="1"]').checked) throw new Error('采集');
+    if (!document.querySelector('[data-sheet-card="1"]').checked) throw new Error('卡片');
+    if (!document.querySelector('[data-sheet-fulltext="1"]').checked) throw new Error('全文');
+  });
+  document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await sleep(40);
+  t('Esc 先关详情层，设置外壳保持打开', () => {
+    if (sheetEl()) throw new Error('详情层未关');
+    if (mask().hidden !== false) throw new Error('外壳被连带关了');
+  });
+  keydown(rowOf('2'), 'Enter');
+  await sleep(50);
+  t('键盘 Enter 也能开行详情', () => { if (!sheetEl()) throw new Error('未打开'); });
+  t('单独频率 own 态（详情层内）', () => {
+    const sel = document.querySelector('#dsFreq');
+    if (!sel.classList.contains('own') || sel.value !== '60') throw new Error(sel.className + '/' + sel.value);
+    if (document.querySelector('[data-sheet-fulltext="2"]').checked) throw new Error('f2 全文应关');
+    if (document.querySelector('#dsName').value !== 'demo - Telegram Channel') throw new Error('名称框: ' + document.querySelector('#dsName').value);
+    if (document.querySelector('.ds-title').textContent !== 'demo') throw new Error('标题应是短名');
+  });
+  document.querySelector('[data-sheet-fulltext="2"]').click();
+  await sleep(80);
+  t('全文开关（详情层）：PATCH fullText + toast 带撤销', () => {
+    const body = lastPatchBody('/api/feeds/2');
+    if (!body || body.fullText !== true) throw new Error(JSON.stringify(body));
+    if (!document.querySelector('[data-sheet-fulltext="2"]').checked) throw new Error('未生效');
+    const u = undoToast();
+    if (!u || String(u[1]).indexOf('已开启全文抓取') !== 0) throw new Error('无撤销 toast');
+    if (u[3].actionText !== '撤销') throw new Error('动作文案');
+  });
+  await undoToast()[3].action();
+  await sleep(80);
+  t('撤销全文开关：按旧值再落库 + 控件回滚', () => {
+    const body = lastPatchBody('/api/feeds/2');
+    if (!body || body.fullText !== false) throw new Error(JSON.stringify(body));
+    if (document.querySelector('[data-sheet-fulltext="2"]').checked) throw new Error('未回滚');
+    if (!callsOf('toast').some((c) => c[1] === '已撤销')) throw new Error('无撤销 toast');
+  });
+  document.querySelector('[data-sheet-fulltext="2"]').click();
+  await sleep(80);   // 再开回去，保持后续用例的前置态
+  await closeSheet();
 
   // ---- 添加订阅 ----
   const postsBeforeEmpty = postsTo('/api/feeds').length;
@@ -1789,6 +1923,7 @@ const withEFP = (el, fn) => {
   Object.defineProperty(opmlInput, 'files', { value: [{ name: 'subs.opml', text: () => Promise.resolve(opmlText) }], configurable: true });
   opmlInput.dispatchEvent(new w.Event('change', { bubbles: true }));
   await sleep(80);
+  await expandAllGroups();   // 新导入的「甲组」默认收起，行级断言前先展开
   t('OPML 导入：POST 原样文本 + 新行 + 分组 + 计数', () => {
     if (!postsTo('/api/feeds/import').length) throw new Error('未 POST import');
     const body = lastPostBody('/api/feeds/import');
@@ -1812,14 +1947,14 @@ const withEFP = (el, fn) => {
     if (rowOf('13')) throw new Error('不应添加');
   });
 
-  // ---- 开关（采集 / 卡片） ----
+  // ---- 行内快捷开关（桌面）：即改即生效 + 撤销 ----
   rowOf('3').querySelector('[data-toggle="3"]').click();
   await sleep(80);
-  t('采集开关：PATCH enabled + off 移除 + toast', () => {
+  t('采集开关：PATCH enabled + off 移除 + toast 带撤销', () => {
     const body = lastPatchBody('/api/feeds/3');
     if (!body || body.enabled !== true) throw new Error(JSON.stringify(body));
     if (rowOf('3').classList.contains('off')) throw new Error('仍 off');
-    if (!callsOf('toast').some((c) => c[1] === '已开启采集')) throw new Error('无 toast');
+    if (!undoToast('已开启采集')) throw new Error('无撤销 toast');
   });
   rowOf('2').querySelector('[data-card-toggle="2"]').click();
   await sleep(80);
@@ -1827,15 +1962,7 @@ const withEFP = (el, fn) => {
     const body = lastPatchBody('/api/feeds/2');
     if (!body || body.cardEnabled !== true) throw new Error(JSON.stringify(body));
     if (rowOf('2').classList.contains('no-card')) throw new Error('仍 no-card');
-    if (!callsOf('toast').some((c) => c[1] === '已在卡片页展示')) throw new Error('无 toast');
-  });
-  rowOf('2').querySelector('[data-fulltext-toggle="2"]').click();
-  await sleep(80);
-  t('全文开关：PATCH fullText + toast', () => {
-    const body = lastPatchBody('/api/feeds/2');
-    if (!body || body.fullText !== true) throw new Error(JSON.stringify(body));
-    if (!rowOf('2').querySelector('[data-fulltext-toggle="2"]').checked) throw new Error('回滚了');
-    if (!callsOf('toast').some((c) => String(c[1]).startsWith('已开启全文抓取'))) throw new Error('无 toast');
+    if (!undoToast('已在卡片页展示')) throw new Error('无撤销 toast');
   });
 
   // ---- 保存期间禁用 + 失败回滚 ----
@@ -1844,22 +1971,29 @@ const withEFP = (el, fn) => {
   const pendCb = rowOf('3').querySelector('[data-toggle="3"]');
   pendCb.click();
   await sleep(30);
-  t('保存期间：本行控件禁用（pendingIds）', () => {
+  t('保存期间：行内快捷开关禁用（pendingIds）', () => {
     if (!pendCb.disabled) throw new Error('采集开关未禁用');
     if (!rowOf('3').querySelector('[data-card-toggle="3"]').disabled) throw new Error('卡片开关未禁用');
-    if (!rowOf('3').querySelector('[data-freq="3"]').disabled) throw new Error('频率未禁用');
-    if (!rowOf('3').querySelector('[data-group="3"]').disabled) throw new Error('分组未禁用');
-    if (!rowOf('3').querySelector('[data-rename="3"]').disabled) throw new Error('重命名未禁用');
-    if (!rowOf('3').querySelector('[data-del="3"]').disabled) throw new Error('删除未禁用');
+  });
+  await openSheet('3');
+  t('保存期间：详情层控件同步禁用', () => {
+    if (!document.querySelector('[data-sheet-freq="3"]').disabled) throw new Error('频率未禁用');
+    if (!document.querySelector('[data-sheet-toggle="3"]').disabled) throw new Error('采集未禁用');
+    if (!document.querySelector('[data-sheet-card="3"]').disabled) throw new Error('卡片未禁用');
+    if (!document.querySelector('[data-sheet-fulltext="3"]').disabled) throw new Error('全文未禁用');
+    const del = document.querySelector('.ds-foot .btn-danger');
+    if (!del || !del.disabled) throw new Error('删除未禁用');
   });
   miniFeeds.find((f) => f.id === '3').enabled = false;
   releasePatch({ ok: true, json: () => Promise.resolve({ ok: true, feed: null }) });
   await sleep(80);
   patchHold = null;
   t('保存后：解禁且状态生效', () => {
-    if (rowOf('3').querySelector('[data-toggle="3"]').disabled) throw new Error('未解禁');
+    if (document.querySelector('[data-sheet-toggle="3"]').disabled) throw new Error('未解禁');
+    if (document.querySelector('[data-sheet-toggle="3"]').checked) throw new Error('详情层开关应回到关');
     if (!rowOf('3').classList.contains('off')) throw new Error('未 off');
   });
+  await closeSheet();
   patchFailNext = true;
   rowOf('1').querySelector('[data-toggle="1"]').click();
   await sleep(80);
@@ -1872,202 +2006,223 @@ const withEFP = (el, fn) => {
     if (rowOf('1').querySelector('[data-toggle="1"]').disabled) throw new Error('未解禁');
   });
 
-  // ---- 频道分组：提交式（v2.9.0：打字不发请求，失焦才保存） ----
-  const fireBlur = (el) => el.dispatchEvent(new w.FocusEvent('focusout', { bubbles: true }));
+  // ---- 频道分组：详情层内提交式（打字不发请求，失焦才保存） ----
+  await openSheet('2');
   const patchesBeforeGrp = patchesTo('/api/feeds/2').length;
-  setVal(rowOf('2').querySelector('[data-group="2"]'), '甲组');
+  setVal(document.querySelector('#dsGroup'), '甲组');
   await sleep(50);
   t('分组输入：打字期间不发请求、草稿本地生效', () => {
     if (patchesTo('/api/feeds/2').length !== patchesBeforeGrp) throw new Error('打字即保存（旧 bug 复发）');
-    const inp = rowOf('2').querySelector('[data-group="2"]');
-    if (inp.value !== '甲组') throw new Error('草稿未本地生效: ' + inp.value);
+    if (document.querySelector('#dsGroup').value !== '甲组') throw new Error('草稿未本地生效');
   });
-  fireBlur(rowOf('2').querySelector('[data-group="2"]'));
+  fireBlur(document.querySelector('#dsGroup'));
   await sleep(80);
-  t('分组失焦提交：PATCH groupName + 新分组头 + toast', () => {
+  t('分组失焦提交：PATCH groupName + 新分组头 + toast 带撤销', () => {
     const body = lastPatchBody('/api/feeds/2');
     if (!body || body.groupName !== '甲组') throw new Error(JSON.stringify(body));
     if (headNames().indexOf('甲组') < 0) throw new Error('无甲组头');
-    const inp = rowOf('2').querySelector('[data-group="2"]');
-    if (inp.value !== '甲组') throw new Error('回写: ' + inp.value);
-    if (!callsOf('toast').some((c) => c[1] === '已归入「甲组」')) throw new Error('无 toast');
+    if (document.querySelector('#dsGroup').value !== '甲组') throw new Error('回写');
+    if (!undoToast('已归入「甲组」')) throw new Error('无撤销 toast');
   });
   // 无草稿再失焦：不发请求
   const patchesBeforeSame = patchesTo('/api/feeds/2').length;
-  fireBlur(rowOf('2').querySelector('[data-group="2"]'));
+  fireBlur(document.querySelector('#dsGroup'));
   await sleep(60);
   t('分组无草稿失焦：不发请求', () => {
     if (patchesTo('/api/feeds/2').length !== patchesBeforeSame) throw new Error('重复提交');
   });
-  // Escape：清草稿恢复原值、不发请求
+  // Escape：清草稿恢复原值、不发请求（第一击让字段消化，详情层不关）
   const patchesBeforeEsc = patchesTo('/api/feeds/2').length;
-  const grpEsc = rowOf('2').querySelector('[data-group="2"]');
-  setVal(grpEsc, '临时');
+  setVal(document.querySelector('#dsGroup'), '临时');
   await sleep(30);
-  grpEsc.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  await sleep(40);
+  document.querySelector('#dsGroup').dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await sleep(60);
   t('分组 Escape：清草稿恢复原值且不发请求', () => {
-    const inp = rowOf('2').querySelector('[data-group="2"]');
-    if (inp.value !== '甲组') throw new Error('未恢复: ' + inp.value);
+    if (document.querySelector('#dsGroup').value !== '甲组') throw new Error('未恢复');
     if (patchesTo('/api/feeds/2').length !== patchesBeforeEsc) throw new Error('发了请求');
+    if (!sheetEl()) throw new Error('Esc 不该连带关详情层');
   });
-  setSel('[data-freq="2"]', '720');
+  setSel('#dsFreq', '720');
   await sleep(80);
-  t('频率修改：PATCH refreshMinutes=720 + own 态 + toast', () => {
+  t('频率修改：PATCH refreshMinutes=720 + own 态 + toast 带撤销', () => {
     const body = lastPatchBody('/api/feeds/2');
     if (!body || body.refreshMinutes !== 720) throw new Error(JSON.stringify(body));
-    const sel = rowOf('2').querySelector('.feed-freq');
+    const sel = document.querySelector('#dsFreq');
     if (sel.value !== '720' || !sel.classList.contains('own')) throw new Error(sel.value + '/' + sel.className);
-    if (!callsOf('toast').some((c) => c[1] === '该频道已设为每 12 小时抓取')) throw new Error('无 toast');
+    if (!undoToast('该频道已设为每 12 小时抓取')) throw new Error('无撤销 toast');
   });
-  setSel('[data-freq="2"]', '');
+  setSel('#dsFreq', '');
   await sleep(80);
   t('频率跟随全局：PATCH null + 回落非 own', () => {
     const body = lastPatchBody('/api/feeds/2');
     if (!body || body.refreshMinutes !== null) throw new Error(JSON.stringify(body));
-    if (!callsOf('toast').some((c) => c[1] === '已改为跟随全局频率')) throw new Error('无 toast');
+    if (document.querySelector('#dsFreq').classList.contains('own')) throw new Error('仍 own');
+    if (!undoToast('已改为跟随全局频率')) throw new Error('无撤销 toast');
   });
   const reorderBefore = postsTo('/api/feeds/reorder').length;
-  setVal(rowOf('2').querySelector('.feed-order'), '3');
+  setVal(document.querySelector('#dsOrder'), '3');
+  fireBlur(document.querySelector('#dsOrder'));
   await sleep(80);
   t('序号重排：reorder POST + 序号回显', () => {
     if (postsTo('/api/feeds/reorder').length !== reorderBefore + 1) throw new Error('reorder 未发');
     const body = lastPostBody('/api/feeds/reorder');
     const f2 = body.feeds.find((x) => x.id === '2');
     if (!f2 || f2.sortOrder !== 3 || f2.groupName !== '甲组') throw new Error(JSON.stringify(body.feeds));
-    if (rowOf('2').querySelector('.feed-order').value !== '3') throw new Error('序号: ' + rowOf('2').querySelector('.feed-order').value);
+    if (document.querySelector('#dsOrder').value !== '3') throw new Error('序号: ' + document.querySelector('#dsOrder').value);
     const by = rowsByGroup().get('甲组');
     if (by.join(',') !== '11,12,2') throw new Error('甲组行序: ' + by.join(','));
   });
-  setVal(rowOf('12').querySelector('.feed-order'), '0');
+  await closeSheet();
+  await openSheet('12');
+  setVal(document.querySelector('#dsOrder'), '0');
+  fireBlur(document.querySelector('#dsOrder'));
   await sleep(40);
   t('非法序号：不发请求且恢复显示', () => {
     if (postsTo('/api/feeds/reorder').length !== reorderBefore + 1) throw new Error('不应发 reorder');
-    if (rowOf('12').querySelector('.feed-order').value !== '2') throw new Error('恢复值: ' + rowOf('12').querySelector('.feed-order').value);
+    if (document.querySelector('#dsOrder').value !== '2') throw new Error('恢复值: ' + document.querySelector('#dsOrder').value);
   });
-  clickEl('[data-rename="1"]');
-  await sleep(40);
-  t('重命名：编辑框出现且带原名', () => {
-    const inp = rowOf('1').querySelector('.feed-title-edit');
-    if (!inp) throw new Error('无编辑框');
-    if (inp.value !== '例子星球') throw new Error(inp.value);
+  await closeSheet();
+  // ---- 重命名：详情层名称框（失焦 / Enter 提交，Esc 取消） ----
+  await openSheet('1');
+  t('重命名：详情层名称框预填展示名', () => {
+    if (document.querySelector('#dsName').value !== '例子星球') throw new Error(document.querySelector('#dsName').value);
   });
-  setVal(rowOf('1').querySelector('.feed-title-edit'), '例子星球 Pro');
-  keydown(rowOf('1').querySelector('.feed-title-edit'), 'Enter');
+  setVal(document.querySelector('#dsName'), '例子星球 Pro');
+  pressEnter('#dsName');
   await sleep(80);
-  t('重命名提交：PATCH title + 展示名更新', () => {
+  t('重命名提交：PATCH title + 行标题更新 + toast 带撤销', () => {
     const body = lastPatchBody('/api/feeds/1');
     if (!body || body.title !== '例子星球 Pro') throw new Error(JSON.stringify(body));
     if (rowOf('1').querySelector('.feed-title').textContent !== '例子星球 Pro') throw new Error(rowOf('1').querySelector('.feed-title').textContent);
-    if (!callsOf('toast').some((c) => c[1] === '名称已更新')) throw new Error('无 toast');
+    if (!undoToast('名称已更新')) throw new Error('无撤销 toast');
+    if (document.querySelector('#dsName').value !== '例子星球 Pro') throw new Error('名称框未回写');
   });
-  clickEl('[data-rename="3"]');
-  await sleep(40);
-  keydown(rowOf('3').querySelector('.feed-title-edit'), 'Escape');
-  await sleep(40);
-  t('重命名取消：不 PATCH 且编辑框收回', () => {
+  setVal(document.querySelector('#dsName'), '');
+  fireBlur(document.querySelector('#dsName'));
+  await sleep(80);
+  t('清空名称：恢复订阅源原标题', () => {
+    const body = lastPatchBody('/api/feeds/1');
+    if (!body || body.title !== '') throw new Error(JSON.stringify(body));
+    if (rowOf('1').querySelector('.feed-title').textContent !== '例子星球') throw new Error('未恢复原标题');
+    if (!undoToast('已恢复原标题')) throw new Error('无撤销 toast');
+  });
+  await closeSheet();
+  await openSheet('3');
+  setVal(document.querySelector('#dsName'), '临时');
+  pressEsc('#dsName');
+  await sleep(60);
+  t('重命名取消：Esc 恢复原值、不 PATCH、层不关', () => {
     const bodies = patchesTo('/api/feeds/3').map((c) => JSON.parse(c[3]));
     if (bodies.some((b) => 'title' in b)) throw new Error('不应提交 title');
-    if (rowOf('3').querySelector('.feed-title-edit')) throw new Error('编辑框未收回');
+    if (document.querySelector('#dsName').value !== '某人的博客') throw new Error('未恢复: ' + document.querySelector('#dsName').value);
+    if (!sheetEl()) throw new Error('Esc 不该关详情层');
   });
-  /* ---- 改订阅地址：编辑态 / 服务端校验反馈 / 改完按新地址试抓（probe） ---- */
-  clickEl('[data-url="1"]');
-  await sleep(40);
-  t('改地址：编辑框出现且预填完整原地址', () => {
-    const inp = rowOf('1').querySelector('.feed-url-edit');
-    if (!inp) throw new Error('无编辑框');
-    if (inp.value !== 'https://example.com/feed.xml') throw new Error(inp.value);
+  await closeSheet();
+  /* ---- 改订阅地址：详情层内提交 / 服务端校验反馈 / 改完按新地址试抓（probe） ---- */
+  await openSheet('1');
+  t('改地址：地址框预填完整原地址', () => {
+    if (document.querySelector('#dsUrl').value !== 'https://example.com/feed.xml') throw new Error(document.querySelector('#dsUrl').value);
   });
-  setVal(rowOf('1').querySelector('.feed-url-edit'), 'ftp://example.com/feed.xml');
-  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Enter');
+  setVal(document.querySelector('#dsUrl'), 'ftp://example.com/feed.xml');
+  pressEnter('#dsUrl');
   await sleep(80);
   t('改地址：非法协议 → 失败 toast，原地址不动', () => {
     const body = lastPatchBody('/api/feeds/1');
     if (!body || body.url !== 'ftp://example.com/feed.xml') throw new Error(JSON.stringify(body));
-    if (rowOf('1').querySelector('.feed-url').textContent.indexOf('example.com/feed.xml') < 0) throw new Error('地址被改了');
+    const f1 = w.feedlore.state.feedList.find((f) => f.id === '1');
+    if (f1.url !== 'https://example.com/feed.xml') throw new Error('地址被改了');
     if (!callsOf('toast').some((c) => c[2] === false && /地址未更新/.test(c[1]))) throw new Error('无失败 toast');
   });
-  clickEl('[data-url="1"]');
-  await sleep(40);
-  setVal(rowOf('1').querySelector('.feed-url-edit'), 'https://tg.example/rss/channel/demo');
-  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Enter');
+  setVal(document.querySelector('#dsUrl'), 'https://tg.example/rss/channel/demo');
+  pressEnter('#dsUrl');
   await sleep(80);
   t('改地址：撞上自己另一个频道 → 判重文案进 toast', () => {
     if (!callsOf('toast').some((c) => /另一个频道/.test(c[1]))) throw new Error('无判重提示');
-    if (rowOf('1').querySelector('.feed-url').textContent.indexOf('example.com/feed.xml') < 0) throw new Error('地址不应变');
+    if (w.feedlore.state.feedList.find((f) => f.id === '1').url !== 'https://example.com/feed.xml') throw new Error('地址不应变');
   });
-  clickEl('[data-url="1"]');
-  await sleep(40);
-  setVal(rowOf('1').querySelector('.feed-url-edit'), 'https://example.com/feed.atom');
-  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Enter');
+  setVal(document.querySelector('#dsUrl'), 'https://example.com/feed.atom');
+  pressEnter('#dsUrl');
   await sleep(80);
-  t('改地址提交：PATCH url + 行内换成新地址 + 试抓成功反馈', () => {
+  t('改地址提交：PATCH url + 地址框回写 + 试抓成功反馈', () => {
     const body = lastPatchBody('/api/feeds/1');
     if (!body || body.url !== 'https://example.com/feed.atom') throw new Error(JSON.stringify(body));
-    if (rowOf('1').querySelector('.feed-url').textContent !== 'example.com/feed.atom') {
-      throw new Error(rowOf('1').querySelector('.feed-url').textContent);
-    }
+    if (document.querySelector('#dsUrl').value !== 'https://example.com/feed.atom') throw new Error('地址框未回写');
     if (!callsOf('toast').some((c) => c[1] === '订阅地址已更新')) throw new Error('无成功 toast');
     if (!callsOf('toast').some((c) => /新地址可用/.test(c[1]))) throw new Error('无试抓反馈');
   });
   const patchesBeforeSameUrl = patchesTo('/api/feeds/1').length;
-  clickEl('[data-url="1"]');
-  await sleep(40);
-  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Enter');
+  pressEnter('#dsUrl');
   await sleep(60);
   t('改地址：原值直接回车不发请求', () => {
     if (patchesTo('/api/feeds/1').length !== patchesBeforeSameUrl) throw new Error('重复提交');
-    if (rowOf('1').querySelector('.feed-url-edit')) throw new Error('编辑框未收回');
   });
   const patchesBeforeUrlEsc = patchesTo('/api/feeds/1').length;
-  clickEl('[data-url="1"]');
-  await sleep(40);
-  setVal(rowOf('1').querySelector('.feed-url-edit'), 'https://never.example/rss');
-  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Escape');
+  setVal(document.querySelector('#dsUrl'), 'https://never.example/rss');
+  pressEsc('#dsUrl');
   await sleep(60);
-  t('改地址取消：Esc 不 PATCH 且编辑框收回', () => {
+  t('改地址取消：Esc 恢复原值且不 PATCH', () => {
     if (patchesTo('/api/feeds/1').length !== patchesBeforeUrlEsc) throw new Error('发了请求');
-    if (rowOf('1').querySelector('.feed-url-edit')) throw new Error('编辑框未收回');
-    if (rowOf('1').querySelector('.feed-url').textContent !== 'example.com/feed.atom') throw new Error('值不该留下');
+    if (document.querySelector('#dsUrl').value !== 'https://example.com/feed.atom') throw new Error('值不该留下');
   });
   urlProbeFail = true;
-  clickEl('[data-url="1"]');
-  await sleep(40);
-  setVal(rowOf('1').querySelector('.feed-url-edit'), 'https://mirror.example.com/rss');
-  keydown(rowOf('1').querySelector('.feed-url-edit'), 'Enter');
+  setVal(document.querySelector('#dsUrl'), 'https://mirror.example.com/rss');
+  pressEnter('#dsUrl');
   await sleep(80);
   urlProbeFail = false;
   t('改地址：新地址当场抓不到 → 失败态提示但地址保留', () => {
-    if (rowOf('1').querySelector('.feed-url').textContent !== 'mirror.example.com/rss') throw new Error('地址应保留');
+    if (document.querySelector('#dsUrl').value !== 'https://mirror.example.com/rss') throw new Error('地址应保留');
     if (!callsOf('toast').some((c) => c[2] === false && /新地址抓取失败/.test(c[1]))) throw new Error('无试抓失败提示');
   });
-  clickEl('[data-refresh="1"]');
+  [...document.querySelectorAll('.ds-foot .btn')].find((b) => b.textContent === '立即抓取').click();
   await sleep(80);
-  t('立即抓取：POST :id/refresh + toast', () => {
+  t('立即抓取（详情层底栏）：POST :id/refresh + toast', () => {
     if (!postsTo('/api/feeds/1/refresh').length) throw new Error('未 POST');
     if (!callsOf('toast').some((c) => c[1] === '新增 3 条')) throw new Error('无 toast');
   });
+  await closeSheet();
   const toastCountBeforeDel = callsOf('toast').length;
-  clickEl('[data-del="10"]');
+  await openSheet('10');
+  [...document.querySelectorAll('.ds-foot .btn-danger')][0].click();
   await sleep(80);
-  t('删除订阅：DELETE + 行消失 + toast', () => {
+  t('删除订阅：危险确认 → DELETE + 行消失 + 层自动关 + toast 带撤销', () => {
+    if (!callsOf('confirm').some((c) => c[1] && c[1].danger === true && /删除订阅/.test(c[1].title))) throw new Error('未走危险确认');
     if (!deletesTo('/api/feeds/10').length) throw new Error('未 DELETE');
     if (rowOf('10')) throw new Error('行仍在');
+    if (sheetEl()) throw new Error('详情层应随删除关闭');
     if (callsOf('toast').length <= toastCountBeforeDel) throw new Error('无 toast');
+    if (!undoToast('订阅已删除')) throw new Error('无撤销 toast');
+  });
+  const postsBeforeRestore = postsTo('/api/feeds').length;
+  await undoToast('订阅已删除')[3].action();
+  await sleep(150);
+  t('删除撤销：按快照重建订阅（POST）+ 行回来', () => {
+    if (postsTo('/api/feeds').length !== postsBeforeRestore + 1) throw new Error('未重建');
+    const body = lastPostBody('/api/feeds');
+    if (body.url !== 'https://new.example.com/rss.xml') throw new Error(JSON.stringify(body));
+    if (!rowOf('13')) throw new Error('恢复的行未出现: ' + rowIds().join(','));
+    if (!callsOf('toast').some((c) => c[1] === '已恢复订阅')) throw new Error('无恢复 toast');
+  });
+  // 再删一次（不撤销）：未分组只剩 f3，供后面拖拽用例断言「未分组头消失」
+  await openSheet('13');
+  [...document.querySelectorAll('.ds-foot .btn-danger')][0].click();
+  await sleep(80);
+  t('重复删除稳定：再删恢复的订阅', () => {
+    if (!deletesTo('/api/feeds/13').length) throw new Error('未 DELETE');
+    if (rowOf('13')) throw new Error('行仍在');
   });
 
-  // ---- 折叠分组（按账号持久化） ----
+  // ---- 折叠分组（展开集合按账号持久化） ----
   const techHead = document.querySelector('.feed-group-head[data-group="科技"]');
   techHead.click();
   await sleep(40);
   t('折叠分组：setLayout 持久化 + 行隐藏', () => {
-    const last = callsOf('setLayout').filter((c) => c[1] === 'collapsedGroups');
-    if (!last.length || last[last.length - 1][2].indexOf('科技') < 0) throw new Error(JSON.stringify(last));
+    const last = callsOf('setLayout').filter((c) => c[1] === 'srcGroupsOpen');
+    if (!last.length || last[last.length - 1][2].indexOf('科技') >= 0) throw new Error(JSON.stringify(last));
     if (!document.querySelector('.feed-group-head[data-group="科技"]').classList.contains('collapsed')) throw new Error('未 collapsed');
     if (rowsByGroup().has('科技') && rowsByGroup().get('科技').length) throw new Error('行未隐藏');
   });
-  t('折叠态写入共享 state（collapsedGroups）', () => {
-    if (!w.feedlore.state.collapsedGroups.has('科技')) throw new Error('state 未写入');
+  t('折叠态写入共享 state（srcGroupsOpen）', () => {
+    if (w.feedlore.state.srcGroupsOpen.indexOf('科技') >= 0) throw new Error('state 未写入');
   });
   document.querySelector('.feed-group-head[data-group="科技"]').click();
   await sleep(40);
@@ -2163,6 +2318,8 @@ const withEFP = (el, fn) => {
     if (heads.indexOf('科技') >= 0) throw new Error('旧组头仍在');
     if (!callsOf('toast').some((c) => typeof c[1] === 'string' && c[1].indexOf('分组已改名「技术」') === 0)) throw new Error('toast 不符: ' + JSON.stringify(callsOf('toast').slice(-1)));
     if (!document.querySelector('.feed-group-head[data-group="技术"] .feed-group-n')) throw new Error('新组计数缺失');
+    // 改名要带走展开态：旧名在展开集合里，否则改完分组会突然收起来
+    if (document.querySelector('.feed-group-head[data-group="技术"]').classList.contains('collapsed')) throw new Error('改名后组被收起');
   });
 
   // ---- 采集参数保存（含 cfgLoaded 守卫） ----
@@ -2233,10 +2390,212 @@ const withEFP = (el, fn) => {
   });
   feedsEmptyNext = false;
 
+  // ============ A 方案：批量 / 搜索 / 移动端手势 ============
+  clickTab('外观'); await sleep(40);
+  clickTab('数据源');
+  await waitFor(() => !!rowOf('1'), 2000);
+  t('回到数据源：列表恢复正常', () => {
+    if (rowIds().length !== 5) throw new Error(rowIds().join(','));
+  });
+
+  // ---- 批量模式：勾选后统一操作，撤销按原值还原 ----
+  clickEl('#bulkToggleBtn');
+  await sleep(40);
+  const bulkBtn = (label) => [...document.querySelectorAll('.pane-foot-btns button')]
+    .find((b) => b.textContent === label);
+  const mustUndo = (msg) => {
+    const c = undoToast(msg);
+    if (!c) throw new Error('缺少撤销 toast：' + msg);
+    return c;
+  };
+  t('批量模式：行变勾选、快捷开关隐藏、底部动作条 + 分组强制展开', () => {
+    if (!document.querySelector('#bulkToggleBtn').classList.contains('active')) throw new Error('按钮未激活');
+    if (document.querySelector('#bulkToggleBtn').textContent !== '完成') throw new Error('#bulkToggleBtn 文案');
+    const row = rowOf('1');
+    if (row.getAttribute('role') === 'button') throw new Error('批量下行不该是按钮');
+    if (!row.querySelector('.feed-check')) throw new Error('缺勾选框');
+    if (row.querySelector('.feed-quick')) throw new Error('批量下应隐藏快捷开关');
+    if (!document.querySelector('.bulk-lead')) throw new Error('缺已选计数');
+    if (document.querySelector('#feedToolbarHint').textContent.indexOf('勾选后在底部统一操作') < 0) {
+      throw new Error(document.querySelector('#feedToolbarHint').textContent);
+    }
+    if (document.querySelector('.feed-group-head.collapsed')) throw new Error('批量下不应有收起的组');
+    const off = bulkBtn('关采集');
+    if (!off || off.disabled !== true) throw new Error('未选时动作应禁用');
+  });
+  const bulkP1 = patchesTo('/api/feeds/1').length;
+  bulkBtn('关采集').click();
+  await sleep(40);
+  t('批量动作：未勾选时点击无副作用', () => {
+    if (patchesTo('/api/feeds/1').length !== bulkP1) throw new Error('未选也发了请求');
+  });
+  rowOf('3').querySelector('.feed-check').click();
+  rowOf('1').querySelector('.feed-check').click();
+  await sleep(40);
+  t('勾选：行标 selected + 计数 + 动作解禁', () => {
+    if (!rowOf('3').classList.contains('selected') || !rowOf('1').classList.contains('selected')) throw new Error('未标 selected');
+    if (document.querySelector('.bulk-lead').textContent.indexOf('2') < 0) throw new Error(document.querySelector('.bulk-lead').textContent);
+    if (bulkBtn('关采集').disabled) throw new Error('动作仍禁用');
+  });
+  const p1BeforeBulk = patchesTo('/api/feeds/1').length;
+  const p3BeforeBulk = patchesTo('/api/feeds/3').length;
+  bulkBtn('关采集').click();
+  await sleep(120);
+  t('批量关采集：只改需要改的频道（f3 已关，不重复 PATCH）', () => {
+    if (patchesTo('/api/feeds/1').length !== p1BeforeBulk + 1) throw new Error('f1 未 PATCH');
+    if (patchesTo('/api/feeds/3').length !== p3BeforeBulk) throw new Error('f3 不该再 PATCH');
+    const body = lastPatchBody('/api/feeds/1');
+    if (!body || body.enabled !== false) throw new Error(JSON.stringify(body));
+    if (!rowOf('1').classList.contains('off')) throw new Error('行未 off');
+    if (!undoToast('已停止采集 1 个频道')) throw new Error('无撤销 toast');
+  });
+  await mustUndo('已停止采集 1 个频道')[3].action();
+  await sleep(150);
+  t('批量撤销：按原值还原', () => {
+    const body = lastPatchBody('/api/feeds/1');
+    if (!body || body.enabled !== true) throw new Error(JSON.stringify(body));
+    if (rowOf('1').classList.contains('off')) throw new Error('未还原');
+    if (!callsOf('toast').some((c) => c[1] === '已撤销')) throw new Error('无撤销完成 toast');
+  });
+  bulkBtn('全选').click();
+  await sleep(40);
+  t('全选：选中数跟随、按钮文案互换', () => {
+    if (document.querySelector('.bulk-lead').textContent.indexOf('5') < 0) throw new Error(document.querySelector('.bulk-lead').textContent);
+    if (!bulkBtn('全不选')) throw new Error('未变全不选');
+    if (!rowOf('2').classList.contains('selected')) throw new Error('未全选');
+  });
+  bulkBtn('全不选').click();
+  await sleep(40);
+  t('全不选：全部取消', () => {
+    if (document.querySelector('.bulk-lead').textContent.indexOf('0') < 0) throw new Error(document.querySelector('.bulk-lead').textContent);
+    if (!bulkBtn('全选')) throw new Error('未变回全选');
+  });
+  rowOf('11').querySelector('.feed-check').click();
+  rowOf('12').querySelector('.feed-check').click();
+  await sleep(40);
+  promptValue = '技术';
+  bulkBtn('移组').click();
+  await sleep(120);
+  t('批量移组：确认框输入组名 + 逐个 PATCH + 撤销 toast', () => {
+    if (!callsOf('confirm').some((c) => c[1] && c[1].input)) throw new Error('未弹输入确认');
+    const b11 = lastPatchBody('/api/feeds/11');
+    const b12 = lastPatchBody('/api/feeds/12');
+    if (!b11 || b11.groupName !== '技术') throw new Error(JSON.stringify(b11));
+    if (!b12 || b12.groupName !== '技术') throw new Error(JSON.stringify(b12));
+    if (!undoToast('已移入「技术」（2 个频道）')) throw new Error('无撤销 toast');
+    const tech = rowsByGroup().get('技术') || [];
+    if (tech.indexOf('11') < 0 || tech.indexOf('12') < 0) throw new Error('未移入: ' + tech.join(','));
+  });
+  await mustUndo('已移入「技术」（2 个频道）')[3].action();
+  await sleep(200);
+  promptValue = 'newpass9';
+  t('批量移组撤销：回到原分组', () => {
+    const b11 = lastPatchBody('/api/feeds/11');
+    if (!b11 || b11.groupName !== '甲组') throw new Error(JSON.stringify(b11));
+    if ((rowsByGroup().get('甲组') || []).indexOf('11') < 0) throw new Error('未回甲组');
+  });
+  const postsBeforeBulkRestore = postsTo('/api/feeds').length;
+  t('批量操作后勾选仍保留（移组撤销不清选择）', () => {
+    if (!rowOf('11').classList.contains('selected') || !rowOf('12').classList.contains('selected')) throw new Error('勾选丢失');
+  });
+  bulkBtn('删除').click();
+  await sleep(200);
+  t('批量删除：danger 确认 + 逐个 DELETE + 退出批量 + 撤销 toast', () => {
+    const lastConfirm = callsOf('confirm').slice(-1)[0];
+    if (!lastConfirm || lastConfirm[1].danger !== true) throw new Error('未走 danger 确认');
+    if (!deletesTo('/api/feeds/11').length || !deletesTo('/api/feeds/12').length) throw new Error('未 DELETE');
+    if (rowOf('11') || rowOf('12')) throw new Error('行仍在');
+    if (document.querySelector('#bulkToggleBtn').textContent !== '批量') throw new Error('未退出批量');
+    if (!undoToast('已删除 2 个订阅')) throw new Error('无撤销 toast');
+  });
+  await mustUndo('已删除 2 个订阅')[3].action();
+  await sleep(250);
+  t('批量删除撤销：按快照重建（保留原分组），新 id 行回来', () => {
+    if (rowOf('14') == null || rowOf('15') == null) throw new Error('恢复行缺失: ' + rowIds().join(','));
+    const posts = postsTo('/api/feeds').slice(postsBeforeBulkRestore);
+    if (posts.length < 2) throw new Error('未重建 2 个');
+    if (posts.some((c) => JSON.parse(c[3]).groupName !== '甲组')) {
+      throw new Error(JSON.stringify(posts.map((c) => JSON.parse(c[3]))));
+    }
+    if (!callsOf('toast').some((c) => c[1] === '已恢复订阅')) throw new Error('无恢复 toast');
+  });
+
+  // ---- 搜索：跨分组过滤 + 空结果 ----
+  setVal(document.querySelector('.feed-filter-input'), 'demo');
+  await sleep(40);
+  t('搜索：收起的分组命中时也展开，未命中分组整体不渲染', () => {
+    if (rowIds().join(',') !== '2') throw new Error(rowIds().join(','));
+    if (headNames().join('|') !== '甲组') throw new Error(headNames().join('|'));
+  });
+  setVal(document.querySelector('.feed-filter-input'), 'zzz');
+  await sleep(40);
+  t('搜索无结果：空状态文案', () => {
+    const msg = document.querySelector('#feedList .pane-msg');
+    if (!msg || msg.textContent.indexOf('没有匹配的频道') < 0) throw new Error(msg && msg.textContent);
+    if (rowIds().length) throw new Error('仍渲染行: ' + rowIds().join(','));
+  });
+  setVal(document.querySelector('.feed-filter-input'), '');
+  await sleep(40);
+  t('清空搜索：回到全部分组', () => {
+    // 批量删除撤销后 11/12 以 14/15 重建，原 id 已不在
+    if (rowIds().slice().sort().join(',') !== '1,14,15,2,3') throw new Error(rowIds().join(','));
+  });
+
+  // ---- 移动端（≤720）：详情层贴底 + 手势关闭 ----
+  setNarrow(true);
+  await sleep(40);
+  t('窄屏：设置外壳进下钻内容态', () => {
+    if (!document.querySelector('.settings-modal.mobile-pane')) throw new Error('未进移动内容态');
+  });
+  await openSheet('2');
+  t('窄屏：详情层仍是 dialog，带返回按钮', () => {
+    const sh = sheetEl();
+    if (!sh || sh.getAttribute('role') !== 'dialog') throw new Error('无详情层');
+    if (!sh.querySelector('.ds-back')) throw new Error('缺返回按钮');
+  });
+  clickEl('.ds-back');
+  await sleep(60);
+  t('窄屏：返回按钮关层', () => { if (sheetEl()) throw new Error('未关'); });
+  await openSheet('2');
+  const fireTouch = (type, y) => {
+    const ev = new w.Event(type, { bubbles: true, cancelable: true });
+    ev.touches = [{ clientX: 100, clientY: y }];
+    sheetEl().querySelector('.ds-head').dispatchEvent(ev);
+  };
+  fireTouch('touchstart', 10);
+  fireTouch('touchmove', 70);
+  fireTouch('touchmove', 130);
+  fireTouch('touchend', 130);
+  await sleep(320);
+  t('窄屏：下滑手势只关详情层，设置外壳留在原地', () => {
+    if (sheetEl()) throw new Error('手势未关闭');
+    // 两层都挂了 useSwipeDismiss：手势必须归最内层，否则滑一次关两层
+    if (mask().hidden !== false) throw new Error('设置外壳被连带关闭');
+    if (!document.querySelector('.settings-modal.mobile-pane')) throw new Error('外壳离开内容态');
+  });
+  setNarrow(false);
+  await sleep(60);
+  t('宽屏恢复：外壳回桌面布局', () => {
+    if (document.querySelector('.settings-modal.mobile-pane')) throw new Error('仍在移动态');
+  });
+
   // ============ 模型面板（P2b React 化） ============
   clickTab('模型');
   await sleep(80);
   t('模型面板渲染', () => { if (!document.querySelector('#llmBaseUrl')) throw new Error('无 #llmBaseUrl'); });
+  t('模型面板分组：接口与密钥常开 / 思考模式收起', () => {
+    const api = document.querySelector('[data-sec="llm-api"]');
+    const think = document.querySelector('[data-sec="llm-thinking"]');
+    if (!api || !think) throw new Error('缺分组');
+    if (!api.open) throw new Error('接口组应默认展开');
+    if (think.open) throw new Error('思考组应默认收起');
+    for (const id of ['#llmBaseUrl', '#llmApiKey', '#llmModel', '#llmTemp']) {
+      if (!api.contains(document.querySelector(id))) throw new Error(id + ' 不在接口组');
+    }
+    if (!think.contains(document.querySelector('#llmThinking'))) throw new Error('开关不在思考组');
+    if (!think.contains(document.querySelector('#llmDepth'))) throw new Error('深度不在思考组');
+    if (api.querySelector('.sec-sub').textContent !== 'Qwen/Qwen3-8B') throw new Error('模型摘要: ' + api.querySelector('.sec-sub').textContent);
+  });
   t('进入即拉 /api/prefs 回填', () => {
     if (!callsOf('apiFetch').some((c) => c[1] === '/api/prefs' && !c[2])) throw new Error('未 GET /api/prefs');
     if (document.querySelector('#llmBaseUrl').value !== 'https://api.siliconflow.cn/v1') throw new Error('baseUrl 未回填: ' + document.querySelector('#llmBaseUrl').value);
@@ -2269,6 +2628,8 @@ const withEFP = (el, fn) => {
     const vals = [...document.querySelectorAll('#llmDepth option')].map((o) => o.value);
     if (vals.join() !== 'low,medium,high') throw new Error('档位: ' + vals.join());
     if (document.querySelector('#llmDepth').value !== 'medium') throw new Error('默认档位: ' + document.querySelector('#llmDepth').value);
+    const sub = document.querySelector('[data-sec="llm-thinking"] .sec-sub').textContent;
+    if (sub !== '已开启 · 深度中') throw new Error('思考组摘要: ' + sub);
   });
   t('开思考后：模型名的提示跟着改口（不再宣称内置 /no_think）', () => {
     const tip = [...document.querySelectorAll('#llmModel ~ .form-tip, .form-tip')].map((e) => e.textContent).join(' | ');
@@ -2308,6 +2669,10 @@ const withEFP = (el, fn) => {
   setInput('#llmTemp', '0.4');
   setSel('#llmDepth', 'high');
   await sleep(30);
+  t('切换深度 → 思考组摘要同步', () => {
+    const sub = document.querySelector('[data-sec="llm-thinking"] .sec-sub').textContent;
+    if (sub !== '已开启 · 深度深') throw new Error('摘要: ' + sub);
+  });
   document.querySelector('#saveLlmBtn').click();
   await sleep(80);
   t('保存：POST /api/prefs（含 Key + 数值温度）', () => {
@@ -2392,6 +2757,20 @@ const withEFP = (el, fn) => {
       if (!head || head.tagName !== 'LABEL') throw new Error(id + ' 开关行不是 label，整行点不动');
     }
   });
+  t('日报面板分组：开关常开 / 条数与风格收起', () => {
+    const basic = document.querySelector('[data-sec="dig-basic"]');
+    const limits = document.querySelector('[data-sec="dig-limits"]');
+    const style = document.querySelector('[data-sec="dig-style"]');
+    if (!basic || !limits || !style) throw new Error('缺分组');
+    if (!basic.open) throw new Error('开关组应默认展开');
+    if (limits.open || style.open) throw new Error('条数 / 风格组应默认收起');
+    if (!basic.contains(document.querySelector('#digAuto'))) throw new Error('自动生成不在开关组');
+    if (!basic.contains(document.querySelector('#digMode'))) throw new Error('范围不在开关组');
+    if (!limits.contains(document.querySelector('#digMaxTotal'))) throw new Error('总条数不在条数组');
+    if (!style.contains(document.querySelector('#digPrompt'))) throw new Error('风格不在风格组');
+    if (basic.querySelector('.sec-sub').textContent !== '日报已关闭') throw new Error('开关组摘要: ' + basic.querySelector('.sec-sub').textContent);
+    if (style.querySelector('.sec-sub').textContent !== '已写 13 字') throw new Error('风格摘要: ' + style.querySelector('.sec-sub').textContent);
+  });
   t('进入即拉 /api/prefs 回填整组配置', () => {
     if (document.querySelector('#digEnable').checked !== false) throw new Error('使用日报应按账号偏好为关');
     if (document.querySelector('#digAuto').checked !== true) throw new Error('auto 未回填');
@@ -2418,6 +2797,10 @@ const withEFP = (el, fn) => {
     const tc = lastCall('toast');
     if (!tc || tc[1].indexOf('已开启日报') < 0) throw new Error('toast: ' + JSON.stringify(tc));
   });
+  t('开启后开关组摘要显示时间与范围', () => {
+    const sub = document.querySelector('[data-sec="dig-basic"] .sec-sub').textContent;
+    if (sub !== '每天 07:30 · 自定义 1 个频道') throw new Error('摘要: ' + sub);
+  });
 
   // 关掉自动生成 → 时间/范围行收起（这三项只在开自动时才有意义）
   document.querySelector('#digAuto ~ .switch-slider').click();
@@ -2427,15 +2810,19 @@ const withEFP = (el, fn) => {
     if (document.querySelector('#digMode').closest('.form-row').hidden !== true) throw new Error('范围行未收起');
     if (document.querySelector('.feed-pick')) throw new Error('清单未收起');
     if (document.querySelector('#digSaveBtn').disabled !== false) throw new Error('有改动时保存该可用');
+    const sub = document.querySelector('[data-sec="dig-basic"] .sec-sub').textContent;
+    if (sub !== '仅手动生成') throw new Error('开关组摘要: ' + sub);
   });
   document.querySelector('#digAuto ~ .switch-slider').click();
   await sleep(30);
 
   setArea('#digPrompt', '侧重新版影视，语气随意些。技术教程只挑有用的。');
   await sleep(30);
-  t('改动后：字数提示跟着涨', () => {
+  t('改动后：字数提示与风格组摘要跟着涨', () => {
     const tip = document.querySelector('#digPrompt ~ .form-tip');
     if (tip.textContent.indexOf('23 / 2000 字') < 0) throw new Error('字数提示: ' + tip.textContent);
+    const sub = document.querySelector('[data-sec="dig-style"] .sec-sub').textContent;
+    if (sub !== '已写 23 字') throw new Error('风格组摘要: ' + sub);
   });
   setInput('#digMaxPerFeed', '25');
   setSel('#digMode', 'all');
@@ -2454,6 +2841,10 @@ const withEFP = (el, fn) => {
     if (r.textContent.indexOf('日报设置已保存') < 0) throw new Error('文案: ' + r.textContent);
     if (prefsDigest.style !== '侧重新版影视，语气随意些。技术教程只挑有用的。') throw new Error('桩未落库');
     if (prefsDigest.maxPerFeed !== 25 || prefsDigest.mode !== 'all') throw new Error('桩: ' + JSON.stringify(prefsDigest));
+  });
+  t('条数组摘要跟随保存后的值', () => {
+    const sub = document.querySelector('[data-sec="dig-limits"] .sec-sub').textContent;
+    if (sub !== '每频道 25 · 总 150 · 留 30 天') throw new Error('摘要: ' + sub);
   });
   t('lastAuto 是服务端独占字段：客户端提交不改它', () => {
     if (prefsDigest.lastAuto !== '2026-10-25') throw new Error('lastAuto: ' + prefsDigest.lastAuto);
@@ -2737,43 +3128,68 @@ const withEFP = (el, fn) => {
     if (!document.querySelector('#accUsersSec')) throw new Error('用户管理区缺失');
     if (!countApi('/api/users')) throw new Error('未 GET /api/users');
   });
-  t('用户行渲染（自我标记 / 角色徽章 / 操作按钮）', () => {
-    const rows = document.querySelectorAll('#userList .user-row');
+  t('用户列表：紧凑行 + 角色徽章 + 当前账号标记', () => {
+    const rows = document.querySelectorAll('#userList .sl-row[data-uid]');
     if (rows.length !== 2) throw new Error('行数 ' + rows.length);
-    const self = document.querySelector('#userList .user-row[data-id="1"]');
-    if (!self.querySelector('.u-self')) throw new Error('自我标记缺失');
-    if (self.querySelector('[data-act="del"]') || self.querySelector('[data-act="role"]')) throw new Error('自己不应有删除/改角色按钮');
-    if (!self.querySelector('[data-act="pass"]')) throw new Error('应有改密码按钮');
-    const alice = document.querySelector('#userList .user-row[data-id="2"]');
-    if (!alice.querySelector('.u-badge.role-user')) throw new Error('alice 应为普通用户');
-    if (!alice.querySelector('[data-act="del"]')) throw new Error('alice 应有删除按钮');
+    const self = document.querySelector('#userList .sl-row[data-uid="1"]');
+    if (!self.querySelector('.sl-ava')) throw new Error('缺头像');
+    if (self.querySelector('.sl-sub').textContent.indexOf('当前账号') < 0) throw new Error('当前账号标记缺失: ' + self.querySelector('.sl-sub').textContent);
+    if (!self.querySelector('.sl-badge')) throw new Error('缺角色徽章');
+    const alice = document.querySelector('#userList .sl-row[data-uid="2"]');
+    if (alice.querySelector('.sl-badge').textContent !== '普通') throw new Error('alice 徽章: ' + alice.querySelector('.sl-badge').textContent);
+    if (!alice.querySelector('.feed-caret')) throw new Error('缺进入详情层的箭头');
     if (document.querySelector('#accUsersSec .sec-sub').textContent !== '共 2 个') throw new Error('计数: ' + document.querySelector('#accUsersSec .sec-sub').textContent);
   });
+  document.querySelector('#userList .sl-row[data-uid="1"]').click();
+  await sleep(60);
+  t('当前账号详情层：不能改角色 / 不能删除', () => {
+    if (!document.querySelector('.ds-sheet[role="dialog"]')) throw new Error('详情层未打开');
+    if (document.querySelector('#dsUserRole')) throw new Error('自己不应有角色下拉');
+    if (document.querySelector('#delUserBtn')) throw new Error('自己不应有删除按钮');
+  });
+  document.querySelector('.ds-close').click();
+  await sleep(60);
   t('安装指引显示当前域名', () => { if (document.querySelector('#installHost').textContent !== 'localhost:3000') throw new Error(document.querySelector('#installHost').textContent); });
 
   // 登录设备（会话）：本机徽章、UA 归并、逐台退出 / 一键退出其它
-  t('登录设备：本机标记 + 浏览器/系统归并 + 地址', () => {
-    const rows = document.querySelectorAll('[data-sec="acc-devices"] .dev-row');
+  t('登录设备：紧凑行 + 本机徽章 + 浏览器/系统归并 + 地址', () => {
+    const rows = document.querySelectorAll('[data-sec="acc-devices"] .sl-row[data-session-id]');
     if (rows.length !== 2) throw new Error('设备行数 ' + rows.length);
-    const cur = document.querySelector('[data-sec="acc-devices"] .dev-row.current');
-    if (!cur) throw new Error('缺本机行');
-    if (!cur.querySelector('.dev-badge')) throw new Error('缺「本机」徽章');
-    if (cur.querySelector('.dev-revoke')) throw new Error('本机不应有退出按钮');
-    const phone = Array.prototype.find.call(rows, (r) => !r.classList.contains('current'));
-    const label = phone.querySelector('.dev-name').textContent;
+    const cur = document.querySelector('[data-sec="acc-devices"] .sl-row.is-current');
+    if (!cur) throw new Error('缺本机行高亮');
+    if (!cur.querySelector('.sl-badge')) throw new Error('缺「本机」徽章');
+    const phone = Array.prototype.find.call(rows, (r) => !r.classList.contains('is-current'));
+    const label = phone.querySelector('.sl-name').textContent;
     if (label.indexOf('Safari') < 0 || label.indexOf('iOS') < 0) throw new Error('UA 归并: ' + label);
-    const meta = phone.querySelector('.dev-meta').textContent;
+    const meta = phone.querySelector('.sl-sub').textContent;
     if (meta.indexOf('192.0.2.44') < 0 || meta.indexOf('活跃') < 0) throw new Error('设备元信息: ' + meta);
     if (!document.querySelector('#revokeOtherSessionsBtn')) throw new Error('缺「退出其它设备」');
     if (document.querySelector('[data-sec="acc-devices"] .sec-sub').textContent !== '2 台') {
       throw new Error('设备计数: ' + document.querySelector('[data-sec="acc-devices"] .sec-sub').textContent);
     }
   });
-  document.querySelector('[data-sec="acc-devices"] .dev-row:not(.current) .dev-revoke').click();
+  document.querySelector('[data-sec="acc-devices"] .sl-row:not(.is-current)').click();
+  await sleep(60);
+  t('设备详情层：点行打开，含退出按钮', () => {
+    if (!document.querySelector('.ds-sheet[role="dialog"]')) throw new Error('详情层未打开');
+    if (!document.querySelector('#revokeDeviceBtn')) throw new Error('缺「退出该设备」');
+  });
+  // 失败时错误必须写在层里：层还盖着，写回分组里的 Result 用户看不见
+  sessionsDeleteFail = true;
+  document.querySelector('#revokeDeviceBtn').click();
   await sleep(80);
-  t('退出单台设备：DELETE /api/sessions/:id + 列表刷新', () => {
+  t('退出设备失败：错误就地显示在详情层，层不关闭', () => {
+    const r = document.querySelector('#deviceSheetResult');
+    if (!r || !r.classList.contains('err') || r.textContent.indexOf('退出失败') < 0) throw new Error('层内错误: ' + (r && r.className) + '/' + (r && r.textContent));
+    if (!document.querySelector('.ds-sheet')) throw new Error('失败后详情层不应关闭');
+    if (!document.querySelector('#revokeDeviceBtn')) throw new Error('失败后应能重试');
+  });
+  document.querySelector('#revokeDeviceBtn').click();
+  await sleep(80);
+  t('退出单台设备：DELETE /api/sessions/:id + 关层 + 列表刷新', () => {
     if (!deletesTo('/api/sessions/sess-phone').length) throw new Error('未 DELETE sess-phone');
-    if (document.querySelectorAll('[data-sec="acc-devices"] .dev-row').length !== 1) throw new Error('应只剩本机');
+    if (document.querySelector('.ds-sheet')) throw new Error('详情层应关闭');
+    if (document.querySelectorAll('[data-sec="acc-devices"] .sl-row[data-session-id]').length !== 1) throw new Error('应只剩本机');
     if (document.querySelector('#revokeOtherSessionsBtn')) throw new Error('只剩本机时不应再显示「退出其它设备」');
     if (!callsOf('toast').length) throw new Error('缺 toast');
   });
@@ -2788,13 +3204,13 @@ const withEFP = (el, fn) => {
   clickTab('账号');
   await sleep(80);
   t('重开账号面板：设备列表重新拉取', () => {
-    if (document.querySelectorAll('[data-sec="acc-devices"] .dev-row').length !== 2) throw new Error('设备行数未刷新');
+    if (document.querySelectorAll('[data-sec="acc-devices"] .sl-row[data-session-id]').length !== 2) throw new Error('设备行数未刷新');
   });
   document.querySelector('#revokeOtherSessionsBtn').click();
   await sleep(80);
   t('退出其它设备：POST revoke-others + 结果提示', () => {
     if (!postsTo('/api/sessions/revoke-others').length) throw new Error('未 POST revoke-others');
-    if (document.querySelectorAll('[data-sec="acc-devices"] .dev-row').length !== 1) throw new Error('应只剩本机');
+    if (document.querySelectorAll('[data-sec="acc-devices"] .sl-row[data-session-id]').length !== 1) throw new Error('应只剩本机');
     const r = document.querySelector('#devResult');
     if (!r.classList.contains('ok') || r.textContent.indexOf('已退出 1 台设备') < 0) throw new Error(r.className + '/' + r.textContent);
   });
@@ -2898,131 +3314,89 @@ const withEFP = (el, fn) => {
     if (!callsOf('goLogin').length) throw new Error('未回登录页');
   });
 
-  // 条目过滤规则（v2.7.0）：现位于「规则」tab 的独立分组（WatchPane 读 /api/prefs 的 filters）
+  // 规则面板（A 方案）：关注 / 屏蔽 + 入库前过滤都是「紧凑列表 + 详情层」
   clickTab('规则');
-  await sleep(120);
-  t('过滤规则区渲染：从 /api/prefs 回填', () => {
-    const rows = document.querySelectorAll('[data-sec="watch-filters"] .filter-row');
+  await sleep(150);
+
+  t('过滤规则列表：从 /api/prefs 回填摘要、徽标与开关', () => {
+    const rows = document.querySelectorAll('[data-sec="watch-filters"] .sl-row[data-fid]');
     if (rows.length !== 2) throw new Error('行数 ' + rows.length);
-    const r1 = rows[0], r2 = rows[1];
-    if (r1.querySelector('.filter-act').value !== 'block') throw new Error('r1 act');
-    if (r1.querySelector('.filter-field').value !== 'title') throw new Error('r1 field');
-    if (r1.querySelector('.filter-kind').value !== 'kw') throw new Error('r1 kind');
-    if (r1.querySelector('.filter-pattern').value !== '广告') throw new Error('r1 pattern');
-    if (!r1.querySelector('.filter-on').checked) throw new Error('r1 应勾选');
-    if (r2.querySelector('.filter-act').value !== 'allow') throw new Error('r2 act');
-    if (r2.querySelector('.filter-kind').value !== 're') throw new Error('r2 kind');
-    if (r2.querySelector('.filter-field').value !== 'desc') throw new Error('r2 field');
+    const r1 = rows[0];
+    if (r1.querySelector('.sl-name').textContent !== '广告') throw new Error('r1 名称: ' + r1.querySelector('.sl-name').textContent);
+    if (r1.querySelector('.sl-sub').textContent !== '丢弃 · 标题 · 关键词 · 全部频道') throw new Error('r1 摘要: ' + r1.querySelector('.sl-sub').textContent);
+    if (!r1.querySelector('.switch input').checked) throw new Error('r1 应启用');
+    if (r1.querySelector('.sl-badge').textContent !== '丢弃') throw new Error('r1 徽标');
+    const r2 = rows[1];
+    if (r2.querySelector('.sl-name').textContent !== 'sk-') throw new Error('r2 名称: ' + r2.querySelector('.sl-name').textContent);
+    if (r2.querySelector('.sl-badge').textContent !== '只收') throw new Error('r2 徽标');
     const sub = document.querySelector('[data-sec="watch-filters"] .sec-sub').textContent;
     if (sub !== '2 条') throw new Error('sub: ' + sub);
-    // v2.10.0：老规则没有 scope，按「全部频道」显示
-    if (r1.querySelector('.rule-scope-btn-value').textContent !== '全部频道') throw new Error('老过滤规则范围: ' + r1.querySelector('.rule-scope-btn-value').textContent);
-  });
-  // 添加一条规则（React 18：click 后 DOM 重绘在微任务，须移出 t() 再断言）
-  document.querySelector('#addFilterBtn').click();
-  await sleep(40);
-  t('添加规则：行数 +1，默认屏蔽/标题/关键词', () => {
-    const rows = document.querySelectorAll('[data-sec="watch-filters"] .filter-row');
-    if (rows.length !== 3) throw new Error('行数 ' + rows.length);
-    const r = rows[2];
-    if (r.querySelector('.filter-act').value !== 'block') throw new Error('默认 act');
-    if (r.querySelector('.filter-field').value !== 'title') throw new Error('默认 field');
-    if (r.querySelector('.filter-kind').value !== 'kw') throw new Error('默认 kind');
-    if (r.querySelector('.filter-pattern').value !== '') throw new Error('默认 pattern 应为空');
-    if (!r.querySelector('.filter-on').checked) throw new Error('默认应启用');
-    // 新规则默认一个范围都不选 = 不生效
-    if (r.querySelector('.rule-scope-btn-value').textContent !== '未选择（不生效）') throw new Error('默认范围: ' + r.querySelector('.rule-scope-btn-value').textContent);
-    if (!r.querySelector('.rule-scope-btn.is-empty')) throw new Error('缺未选警示样式');
-  });
-  // 改新行的动作/范围/方式/模式（受控更新同样需等微任务）
-  setSelEl(document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2].querySelector('.filter-act'), 'allow');
-  setSelEl(document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2].querySelector('.filter-field'), 'content');
-  setSelEl(document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2].querySelector('.filter-kind'), 're');
-  setVal(document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2].querySelector('.filter-pattern'), 'v\\d+');
-  await sleep(40);
-  t('改字段：动作/范围/方式/模式都走受控更新', () => {
-    const r2 = document.querySelectorAll('[data-sec="watch-filters"] .filter-row')[2];
-    if (r2.querySelector('.filter-act').value !== 'allow') throw new Error('act 未更新');
-    if (r2.querySelector('.filter-field').value !== 'content') throw new Error('field 未更新');
-    if (r2.querySelector('.filter-kind').value !== 're') throw new Error('kind 未更新');
-    if (r2.querySelector('.filter-pattern').value !== 'v\\d+') throw new Error('pattern 未更新');
-  });
-  // 删掉第一条（f1 屏蔽「广告」）
-  document.querySelector('[data-sec="watch-filters"] .filter-row .filter-del').click();
-  await sleep(40);
-  t('删除规则：行数 -1', () => {
-    if (document.querySelectorAll('[data-sec="watch-filters"] .filter-row').length !== 2) throw new Error('删除后行数');
-  });
-  // 保存：提交剩余 2 条 → mock 按内容定位校验新规则
-  document.querySelector('#saveFilterBtn').click();
-  await sleep(80);
-  t('保存：POST /api/prefs filters + toast + ok', () => {
-    const body = lastPostBody('/api/prefs');
-    if (!Array.isArray(body.filters) || body.filters.length !== 2) throw new Error('filters: ' + JSON.stringify(body.filters));
-    const saved = body.filters.find((f) => f.pattern === 'v\\d+');
-    if (!saved) throw new Error('未提交新规则: ' + JSON.stringify(body.filters));
-    if (saved.act !== 'allow' || saved.field !== 'content' || saved.kind !== 're') throw new Error('保存内容: ' + JSON.stringify(saved));
-    if (!saved.scope || saved.scope.all !== false || saved.scope.groups.length || saved.scope.feeds.length) throw new Error('新规则 scope: ' + JSON.stringify(saved.scope));
-    const legacy = body.filters.find((f) => f.pattern === 'sk-');
-    if (!legacy || legacy.scope.all !== true) throw new Error('老规则 scope 应为全部: ' + JSON.stringify(legacy));
-    const res = document.querySelector('#filterResult');
-    if (!res.classList.contains('ok') || res.textContent.indexOf('已保存') < 0) throw new Error(res.className + '/' + res.textContent);
-    if (!callsOf('toast').length) throw new Error('toast 未调用');
-  });
-  // 再造一条空模式规则：保存时服务端（mock sanitize）会丢弃，回填差量提示
-  document.querySelector('#addFilterBtn').click();
-  await sleep(40);
-  document.querySelector('#saveFilterBtn').click();
-  await sleep(80);
-  t('空模式被服务端丢弃：差量提示', () => {
-    const body = lastPostBody('/api/prefs');
-    if (!Array.isArray(body.filters) || body.filters.length !== 3) throw new Error('提交 3 条');
-    // mock 的 sanitize 丢掉空模式 → 回填 2 条 → 提示差量
-    const rows = document.querySelectorAll('[data-sec="watch-filters"] .filter-row');
-    if (rows.length !== 2) throw new Error('回填后行数 ' + rows.length);
-    const res = document.querySelector('#filterResult');
-    if (res.textContent.indexOf('1 条为空或非法，已丢弃') < 0) throw new Error('差量提示: ' + res.textContent);
   });
 
-  // 关注 / 屏蔽规则的适用范围（v2.10.0）：老规则 = 全部频道，新规则默认不生效
-  t('关注规则：老规则回填为「全部频道」，带 scope 的按分组显示', () => {
-    const cards = document.querySelectorAll('[data-sec="watch-rules"] .watch-rule');
-    if (cards.length !== 2) throw new Error('规则数 ' + cards.length);
-    const v0 = cards[0].querySelector('.rule-scope-btn-value').textContent;
-    if (v0 !== '全部频道') throw new Error('无 scope 老规则: ' + v0);
-    const v1 = cards[1].querySelector('.rule-scope-btn-value').textContent;
-    if (v1 !== '1 个分组') throw new Error('分组规则: ' + v1);
+  t('关注规则列表：老规则显示全部频道，带 scope 的显示分组', () => {
+    const rows = document.querySelectorAll('[data-sec="watch-rules"] .sl-row[data-rule-id]');
+    if (rows.length !== 2) throw new Error('规则数 ' + rows.length);
+    const r1 = rows[0];
+    if (r1.querySelector('.sl-name').textContent !== 'AI 关注') throw new Error('r1 名称: ' + r1.querySelector('.sl-name').textContent);
+    if (r1.querySelector('.sl-sub').textContent !== '关注 · 全部频道 · 1 个关键词') throw new Error('r1 摘要: ' + r1.querySelector('.sl-sub').textContent);
+    if (r1.querySelector('.sl-badge').textContent !== '关注') throw new Error('r1 徽标');
+    const r2 = rows[1];
+    if (r2.querySelector('.sl-sub').textContent !== '屏蔽 · 1 个分组 · 1 个关键词') throw new Error('r2 摘要: ' + r2.querySelector('.sl-sub').textContent);
+    if (!r2.querySelector('.sl-badge.block')) throw new Error('屏蔽徽标样式');
+    if (!r2.querySelector('.sl-ava.danger')) throw new Error('屏蔽头像样式');
+    if (!document.querySelector('#applyWatchBtn')) throw new Error('缺「应用到已有文章」入口');
   });
-  document.querySelector('[data-sec="watch-rules"] .form-row-head .btn').click();
-  await sleep(40);
-  t('新增关注规则：范围默认未选择（不生效）', () => {
-    const cards = document.querySelectorAll('[data-sec="watch-rules"] .watch-rule');
-    if (cards.length !== 3) throw new Error('规则数 ' + cards.length);
-    const last = cards[2];
-    if (last.querySelector('.rule-scope-btn-value').textContent !== '未选择（不生效）') throw new Error('默认范围');
-    if (!last.querySelector('.rule-scope-btn.is-empty')) throw new Error('缺未选警示样式');
+
+  document.querySelector('[data-sec="watch-rules"] .sl-row[data-rule-id="w1"] .switch input').click();
+  await sleep(80);
+  t('行内开关即改即存：POST 整组规则 + 撤销 toast', () => {
+    const body = lastPostBody('/api/prefs');
+    if (!Array.isArray(body.watchRules)) throw new Error('未提交 watchRules');
+    const w1 = body.watchRules.find((r) => r.id === 'w1');
+    if (!w1 || w1.on !== false) throw new Error('w1 未停用: ' + JSON.stringify(w1));
+    if (w1.scope.all !== true) throw new Error('老规则 scope 应提交为全部: ' + JSON.stringify(w1.scope));
+    if (!document.querySelector('[data-sec="watch-rules"] .sl-row[data-rule-id="w1"]').classList.contains('is-off')) throw new Error('行未进入 is-off');
+    if (!undoToast('AI 关注 已停用')) throw new Error('缺撤销 toast');
   });
-  let pickedScopeGroup = '';
-  document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.rule-scope-btn').click();
-  await sleep(40);
-  t('范围浮层树：列出分组 / 未分组，全部频道默认不勾', () => {
+  await undoToast('AI 关注 已停用')[3].action();
+  await sleep(80);
+  t('撤销停用：重新提交并恢复开关', () => {
+    const body = lastPostBody('/api/prefs');
+    const w1 = body.watchRules.find((r) => r.id === 'w1');
+    if (!w1 || w1.on !== true) throw new Error('撤销后 w1: ' + JSON.stringify(w1));
+    if (document.querySelector('[data-sec="watch-rules"] .sl-row[data-rule-id="w1"]').classList.contains('is-off')) throw new Error('撤销后仍是 is-off');
+  });
+
+  document.querySelector('#addWatchRuleBtn').click();
+  await sleep(60);
+  t('新增规则：打开空白详情层，未填关键词时保存禁用', () => {
+    if (!document.querySelector('.ds-sheet')) throw new Error('详情层未打开');
+    if (document.querySelector('.ds-title').textContent !== '新建规则') throw new Error('标题');
+    if (document.querySelector('#ruleKeywords').value !== '') throw new Error('关键词应为空');
+    if (!document.querySelector('#saveRuleBtn').disabled) throw new Error('空关键词时保存应禁用');
+    if (!document.querySelector('.rule-scope-btn.is-empty')) throw new Error('范围应默认未选');
+  });
+  document.querySelector('.ds-sheet .rule-scope-btn').click();
+  await sleep(50);
+  let scopeGroup = '';
+  t('详情层内的范围浮层：分组齐全，未选时提示不生效', () => {
     const pop = document.querySelector('.rule-scope-pop');
-    if (!pop) throw new Error('弹层未打开');
+    if (!pop) throw new Error('浮层未打开');
     if (pop.querySelector('.rule-scope-all input').checked) throw new Error('全部频道不应勾选');
+    if (!pop.querySelector('.rule-scope-warn')) throw new Error('缺未选提示');
     const names = Array.from(pop.querySelectorAll('.rule-scope-group-row .rule-scope-name')).map((x) => x.textContent);
     if (names.length < 2) throw new Error('分组过少: ' + names.join(','));
-    pickedScopeGroup = names[0] === '未分组' ? '' : names[0];
-    if (!pop.querySelector('.rule-scope-warn')) throw new Error('未选时应提示不生效');
+    scopeGroup = names[0] === '未分组' ? '' : names[0];
   });
   document.querySelectorAll('.rule-scope-pop .rule-scope-group-row input[type="checkbox"]')[0].click();
-  await sleep(40);
+  await sleep(50);
   t('勾选分组：摘要 1 个分组，组内频道整组已选', () => {
-    const value = document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.rule-scope-btn-value').textContent;
+    const value = document.querySelector('.ds-sheet .rule-scope-btn-value').textContent;
     if (value !== '1 个分组') throw new Error('摘要: ' + value);
-    if (document.querySelector('.rule-scope-pop .rule-scope-warn')) throw new Error('已选后不应再警示');
+    if (document.querySelector('.rule-scope-pop .rule-scope-warn')) throw new Error('已选后不应警示');
     document.querySelectorAll('.rule-scope-pop .rule-scope-caret')[0].click();
   });
-  await sleep(40);
+  await sleep(50);
   t('分组展开：组内频道勾选并禁用（整组已选）', () => {
     const first = document.querySelectorAll('.rule-scope-pop .rule-scope-group')[0];
     const feeds = first.querySelectorAll('.rule-scope-feed input');
@@ -3033,64 +3407,191 @@ const withEFP = (el, fn) => {
       if (!el.disabled) throw new Error('组内频道应禁用');
     }
   });
-  // 再单勾第二组里的一个频道，验证分组 + 单频道能并存
   document.querySelectorAll('.rule-scope-pop .rule-scope-caret')[1].click();
-  await sleep(40);
+  await sleep(50);
   document.querySelectorAll('.rule-scope-pop .rule-scope-group')[1].querySelector('.rule-scope-feed input').click();
-  await sleep(40);
+  await sleep(50);
   t('分组 + 单频道：摘要 1 个分组 · 1 个频道', () => {
-    const value = document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.rule-scope-btn-value').textContent;
+    const value = document.querySelector('.ds-sheet .rule-scope-btn-value').textContent;
     if (value !== '1 个分组 · 1 个频道') throw new Error('摘要: ' + value);
     document.querySelector('.rule-scope-pop .rule-scope-foot .btn-primary').click();
   });
+  await sleep(50);
+  setAreaEl(document.querySelector('#ruleKeywords'), '测试关键词');
   await sleep(40);
-  setAreaEl(document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.watch-rule-kw'), '测试关键词');
-  await sleep(40);
-  document.querySelector('[data-sec="watch-rules"] .watch-actions .btn-primary').click();
+  document.querySelector('#saveRuleBtn').click();
   await sleep(80);
-  t('保存关注规则：scope 随规则提交并回填', () => {
+  t('保存新规则：scope 随规则提交，列表多一行', () => {
     const body = lastPostBody('/api/prefs');
     const mine = (body.watchRules || []).find((r) => String(r.keywords).indexOf('测试关键词') >= 0);
     if (!mine) throw new Error('未提交新规则: ' + JSON.stringify(body.watchRules));
     if (!mine.scope || mine.scope.all !== false) throw new Error('新规则 all: ' + JSON.stringify(mine.scope));
-    if (mine.scope.groups.join(',') !== pickedScopeGroup || mine.scope.feeds.length !== 1) throw new Error('新规则范围: ' + JSON.stringify(mine.scope));
-    const legacy = body.watchRules.find((r) => r.id === 'w1');
-    if (!legacy || legacy.scope.all !== true) throw new Error('老规则应提交为全部: ' + JSON.stringify(legacy));
-    const cards = document.querySelectorAll('[data-sec="watch-rules"] .watch-rule');
-    const value = cards[cards.length - 1].querySelector('.rule-scope-btn-value').textContent;
-    if (value !== '1 个分组 · 1 个频道') throw new Error('回填摘要: ' + value);
+    if (mine.scope.groups.join(',') !== scopeGroup || mine.scope.feeds.length !== 1) throw new Error('新规则范围: ' + JSON.stringify(mine.scope));
+    if (document.querySelector('.ds-sheet')) throw new Error('保存后详情层应关闭');
+    const rows = document.querySelectorAll('[data-sec="watch-rules"] .sl-row[data-rule-id]');
+    if (rows.length !== 3) throw new Error('列表行数 ' + rows.length);
+    const last = rows[2];
+    if (last.querySelector('.sl-name').textContent !== '测试关键词') throw new Error('默认名: ' + last.querySelector('.sl-name').textContent);
+    if (last.querySelector('.sl-sub').textContent.indexOf('1 个频道') < 0) throw new Error('摘要未回填: ' + last.querySelector('.sl-sub').textContent);
+    if (!undoToast('规则已添加，只对之后新抓取的文章生效')) throw new Error('缺撤销 toast');
   });
-  // 「全部频道」开关：勾上变全部，取消后回到未选并给出警示
-  document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.rule-scope-btn').click();
-  await sleep(40);
-  document.querySelector('.rule-scope-pop .rule-scope-all input').click();
-  await sleep(40);
-  t('全部频道：勾选后摘要变化，取消后回到未选', () => {
-    const value = () => document.querySelectorAll('[data-sec="watch-rules"] .watch-rule')[2].querySelector('.rule-scope-btn-value').textContent;
-    if (value() !== '全部频道') throw new Error('勾全部: ' + value());
-    document.querySelector('.rule-scope-pop .rule-scope-all input').click();
-    if (value() !== '未选择（不生效）') throw new Error('取消全部: ' + value());
-    if (!document.querySelector('.rule-scope-pop .rule-scope-warn')) throw new Error('缺未选警示');
-    document.querySelector('.rule-scope-pop .rule-scope-foot .btn-ghost').click();
-    document.querySelector('.rule-scope-pop .rule-scope-foot .btn-primary').click();
+  await undoToast('规则已添加，只对之后新抓取的文章生效')[3].action();
+  await sleep(80);
+  t('撤销新增规则：列表回到 2 行', () => {
+    if (document.querySelectorAll('[data-sec="watch-rules"] .sl-row[data-rule-id]').length !== 2) throw new Error('撤销后行数');
   });
+  document.querySelector('[data-sec="watch-rules"] .sl-row[data-rule-id="w1"]').click();
+  await sleep(60);
+  t('点行打开详情层：带回名称 / 关键词 / 动作', () => {
+    if (!document.querySelector('.ds-sheet')) throw new Error('未打开');
+    if (document.querySelector('#ruleName').value !== 'AI 关注') throw new Error('名称未回填');
+    if (document.querySelector('#ruleKeywords').value !== 'OpenAI') throw new Error('关键词未回填: ' + document.querySelector('#ruleKeywords').value);
+    if (!document.querySelector('.ds-sheet .seg-btn.active')) throw new Error('动作未回填');
+  });
+  setAreaEl(document.querySelector('#ruleKeywords'), 'OpenAI\nClaude');
   await sleep(40);
+  document.querySelector('.ds-close').click();
+  await sleep(80);
+  t('关层自动保存：详情层改动直接落库', () => {
+    const body = lastPostBody('/api/prefs');
+    const w1 = body.watchRules.find((r) => r.id === 'w1');
+    if (!w1 || w1.keywords.length !== 2) throw new Error('未保存新关键词: ' + JSON.stringify(w1));
+    if (document.querySelector('.ds-sheet')) throw new Error('层未关闭');
+    const row = document.querySelector('[data-sec="watch-rules"] .sl-row[data-rule-id="w1"]');
+    if (row.querySelector('.sl-sub').textContent.indexOf('2 个关键词') < 0) throw new Error('摘要未更新: ' + row.querySelector('.sl-sub').textContent);
+    if (!undoToast('规则已保存，只对之后新抓取的文章生效')) throw new Error('缺撤销 toast');
+  });
 
-  t('关注自动退出：默认 90 天回填', () => {
-    const el = document.querySelector('#watchExpireDays');
-    if (!el) throw new Error('缺关注保留天数输入框');
-    if (el.value !== '90') throw new Error('默认天数: ' + el.value);
+  document.querySelector('[data-sec="watch-filters"] .sl-row[data-fid="f1"]').click();
+  await sleep(60);
+  t('过滤详情层：带回动作 / 范围 / 方式 / 模式', () => {
+    if (document.querySelector('#filterAct').value !== 'block') throw new Error('act');
+    if (document.querySelector('#filterField').value !== 'title') throw new Error('field');
+    if (document.querySelector('#filterKind').value !== 'kw') throw new Error('kind');
+    if (document.querySelector('#filterPattern').value !== '广告') throw new Error('pattern');
   });
+  const confirmsBeforeFilterDel = callsOf('confirm').length;
+  document.querySelector('#delFilterBtn').click();
+  await sleep(80);
+  t('删除过滤规则：危险确认 + POST + 撤销 toast', () => {
+    const cs = callsOf('confirm').slice(confirmsBeforeFilterDel);
+    if (cs.length !== 1 || !cs[0][1].danger) throw new Error('确认次数/危险标记不符: ' + cs.length);
+    const body = lastPostBody('/api/prefs');
+    if (!Array.isArray(body.filters) || body.filters.length !== 1) throw new Error('提交条数 ' + (body.filters || []).length);
+    if (document.querySelector('.ds-sheet')) throw new Error('删除后应关层');
+    if (document.querySelectorAll('[data-sec="watch-filters"] .sl-row[data-fid]').length !== 1) throw new Error('行数未减少');
+    if (!undoToast('过滤规则已删除')) throw new Error('缺撤销 toast');
+  });
+  await undoToast('过滤规则已删除')[3].action();
+  await sleep(80);
+  t('撤销删除：过滤规则恢复', () => {
+    if (document.querySelectorAll('[data-sec="watch-filters"] .sl-row[data-fid]').length !== 2) throw new Error('撤销后行数');
+  });
+  document.querySelector('#addFilterBtn').click();
+  await sleep(60);
+  t('新增过滤：默认丢弃 / 标题 / 关键词，空模式保存禁用', () => {
+    if (document.querySelector('.ds-title').textContent !== '新建过滤规则') throw new Error('标题');
+    if (!document.querySelector('#saveFilterBtn').disabled) throw new Error('空模式应禁用保存');
+    if (document.querySelector('#filterAct').value !== 'block') throw new Error('默认 act');
+    if (document.querySelector('#filterField').value !== 'title') throw new Error('默认 field');
+    if (document.querySelector('#filterKind').value !== 'kw') throw new Error('默认 kind');
+    if (!document.querySelector('.rule-scope-btn.is-empty')) throw new Error('默认范围应未选');
+  });
+  setSelEl(document.querySelector('#filterAct'), 'allow');
+  setSelEl(document.querySelector('#filterField'), 'content');
+  setSelEl(document.querySelector('#filterKind'), 're');
+  setVal(document.querySelector('#filterPattern'), 'v\d+');
+  await sleep(50);
+  t('改字段：动作 / 范围 / 方式 / 模式都走受控更新', () => {
+    if (document.querySelector('#filterAct').value !== 'allow') throw new Error('act');
+    if (document.querySelector('#filterField').value !== 'content') throw new Error('field');
+    if (document.querySelector('#filterKind').value !== 're') throw new Error('kind');
+    if (document.querySelector('#filterPattern').value !== 'v\d+') throw new Error('pattern');
+  });
+  document.querySelector('#saveFilterBtn').click();
+  await sleep(80);
+  t('保存过滤规则：scope 默认未选随规则提交，列表多一行', () => {
+    const body = lastPostBody('/api/prefs');
+    const saved = (body.filters || []).find((f) => f.pattern === 'v\d+');
+    if (!saved) throw new Error('未提交新规则: ' + JSON.stringify(body.filters));
+    if (saved.act !== 'allow' || saved.field !== 'content' || saved.kind !== 're') throw new Error('内容: ' + JSON.stringify(saved));
+    if (!saved.scope || saved.scope.all !== false || saved.scope.groups.length || saved.scope.feeds.length) throw new Error('scope: ' + JSON.stringify(saved.scope));
+    const rows = document.querySelectorAll('[data-sec="watch-filters"] .sl-row[data-fid]');
+    if (rows.length !== 3) throw new Error('行数 ' + rows.length);
+    if (rows[2].querySelector('.sl-name').textContent !== 'v\d+') throw new Error('名称: ' + rows[2].querySelector('.sl-name').textContent);
+    if (!undoToast('过滤规则已添加，对之后新抓取的文章生效')) throw new Error('缺撤销 toast');
+  });
+  await undoToast('过滤规则已添加，对之后新抓取的文章生效')[3].action();
+  await sleep(80);
+  t('撤销新增过滤：回到 2 行', () => {
+    if (document.querySelectorAll('[data-sec="watch-filters"] .sl-row[data-fid]').length !== 2) throw new Error('撤销后行数');
+  });
+  t('通知与保留：webhook 回填空、保留天数 90', () => {
+    if (document.querySelector('#watchWebhook').value !== '') throw new Error('webhook 回填: ' + document.querySelector('#watchWebhook').value);
+    if (document.querySelector('#watchExpireDays').value !== '90') throw new Error('天数 ' + document.querySelector('#watchExpireDays').value);
+    const sub = document.querySelector('[data-sec="watch-notify"] .sec-sub').textContent;
+    if (sub.indexOf('未配置 Webhook') < 0 || sub.indexOf('90 天') < 0) throw new Error('摘要: ' + sub);
+  });
+  setVal(document.querySelector('#watchWebhook'), 'https://hooks.example.com/feed');
+  await sleep(30);
+  pressEnter('#watchWebhook');
+  await sleep(80);
+  t('webhook 失焦即存：只提交 webhookUrl + 撤销 toast', () => {
+    const body = lastPostBody('/api/prefs');
+    if (body.webhookUrl !== 'https://hooks.example.com/feed') throw new Error('提交: ' + JSON.stringify(body));
+    if (body.watchRules || body.filters) throw new Error('不应顺带提交其它键: ' + JSON.stringify(body));
+    if (!undoToast('Webhook 已保存，关注规则命中的新文章会推送到这个地址')) throw new Error('缺撤销 toast');
+  });
+  await undoToast('Webhook 已保存，关注规则命中的新文章会推送到这个地址')[3].action();
+  await sleep(80);
+  t('撤销 webhook：地址回空', () => {
+    if (miniWebhook !== '') throw new Error('mock 地址 ' + miniWebhook);
+    if (document.querySelector('#watchWebhook').value !== '') throw new Error('仍是 ' + document.querySelector('#watchWebhook').value);
+  });
+
   setVal(document.querySelector('#watchExpireDays'), '30');
   await sleep(30);
-  document.querySelector('[data-sec="watch-rules"] .watch-actions .btn-primary').click();
+  pressEnter('#watchExpireDays');
   await sleep(80);
-  t('关注自动退出：保存 30 天并回填', () => {
+  t('保留天数失焦即存：POST 30 并回填', () => {
     const body = lastPostBody('/api/prefs');
     if (body.watchExpireDays !== 30) throw new Error('提交天数: ' + body.watchExpireDays);
-    if (document.querySelector('#watchExpireDays').value !== '30') throw new Error('回填天数: ' + document.querySelector('#watchExpireDays').value);
+    if (document.querySelector('#watchExpireDays').value !== '30') throw new Error('回填: ' + document.querySelector('#watchExpireDays').value);
+    if (!undoToast('关注保留 30 天')) throw new Error('缺撤销 toast');
+  });
+  await undoToast('关注保留 30 天')[3].action();
+  await sleep(80);
+  t('撤销保留天数：回到 90 天', () => {
+    if (miniWatchExpireDays !== 90) throw new Error('mock 天数 ' + miniWatchExpireDays);
+    if (document.querySelector('#watchExpireDays').value !== '90') throw new Error('回填 ' + document.querySelector('#watchExpireDays').value);
   });
 
+  const confirmsBeforeApply = callsOf('confirm').length;
+  document.querySelector('#applyWatchBtn').click();
+  await sleep(80);
+  t('应用到已有文章：确认后 POST /api/watch/apply 并回显计数', () => {
+    const cs = callsOf('confirm').slice(confirmsBeforeApply);
+    if (cs.length !== 1) throw new Error('确认次数 ' + cs.length);
+    if (!postsTo('/api/watch/apply').length) throw new Error('未 POST apply');
+    const r = document.querySelector('#watchResult');
+    if (!r.classList.contains('ok') || r.textContent.indexOf('关注命中 5 篇') < 0) throw new Error(r.className + '/' + r.textContent);
+  });
+
+  setNarrow(true);
+  await sleep(60);
+  document.querySelector('[data-sec="watch-rules"] .sl-row[data-rule-id="w1"]').click();
+  await sleep(60);
+  t('窄屏：详情层仍以 dialog 弹出，可正常关闭', () => {
+    const sheet = document.querySelector('.ds-sheet');
+    if (!sheet) throw new Error('未打开');
+    if (sheet.getAttribute('role') !== 'dialog') throw new Error('缺 dialog 语义');
+    if (!sheet.querySelector('.ds-head[data-sheet-grip]')) throw new Error('缺下滑把手');
+    if (!sheet.querySelector('#ruleKeywords')) throw new Error('层内缺编辑控件');
+    document.querySelector('.ds-close').click();
+  });
+  await sleep(60);
+  setNarrow(false);
+  await sleep(60);
   // 回到账号面板继续后面的账号保存用例
   clickTab('账号');
   await sleep(60);
@@ -3126,71 +3627,95 @@ const withEFP = (el, fn) => {
   });
   accountPostOk = true;
 
-  // 添加用户
+  // 添加用户：工具栏按钮打开详情层，提交后关层
+  document.querySelector('#addUserBtn').click();
+  await sleep(60);
+  t('添加用户：详情层打开 + 角色下拉含只读', () => {
+    if (!document.querySelector('.ds-sheet[role="dialog"]')) throw new Error('详情层未打开');
+    const sel = document.querySelector('#newUserRole');
+    if (!sel || !sel.querySelector('option[value="readonly"]')) throw new Error('角色下拉缺少只读');
+  });
   setInput('#newUserName', 'bob');
   setInput('#newUserPass', 'bobpass');
   await sleep(30);
-  document.querySelector('#addUserBtn').click();
+  document.querySelector('#createUserBtn').click();
   await sleep(80);
-  t('添加用户：POST /api/users + ok + 表单清空 + 重拉列表', () => {
+  t('添加用户：POST /api/users + ok + 关层 + 重拉列表', () => {
     if (!postsTo('/api/users').length) throw new Error('未 POST');
     const body = lastPostBody('/api/users');
     if (body.username !== 'bob' || body.password !== 'bobpass' || body.role !== 'user') throw new Error(JSON.stringify(body));
     const r = document.querySelector('#userResult');
     if (!r.classList.contains('ok') || r.textContent.indexOf('已创建用户 bob') < 0) throw new Error(r.className + '/' + r.textContent);
-    if (document.querySelector('#newUserName').value !== '' || document.querySelector('#newUserPass').value !== '') throw new Error('表单未清空');
-    if (!document.querySelector('#newUserRole option[value="readonly"]')) throw new Error('角色下拉缺少只读');
-    if (document.querySelectorAll('#userList .user-row').length !== 3) throw new Error('未重拉列表');
+    if (document.querySelector('.ds-sheet')) throw new Error('创建成功后详情层应关闭');
+    if (document.querySelectorAll('#userList .sl-row[data-uid]').length !== 3) throw new Error('未重拉列表');
   });
 
   // 添加用户校验：空用户名不发请求
-  setInput('#newUserName', '');
-  await sleep(30);
-  const postsBefore = postsTo('/api/users').length;
   document.querySelector('#addUserBtn').click();
+  await sleep(60);
+  const postsBefore = postsTo('/api/users').length;
+  document.querySelector('#createUserBtn').click();
   await sleep(40);
-  t('添加用户校验：空用户名不发请求 + err', () => {
+  t('添加用户校验：空用户名不发请求 + 层内 err', () => {
     if (postsTo('/api/users').length !== postsBefore) throw new Error('不应 POST');
-    const r = document.querySelector('#userResult');
+    const r = document.querySelector('#userSheetResult');
     if (!r.classList.contains('err') || r.textContent.indexOf('请填写用户名') < 0) throw new Error(r.className + '/' + r.textContent);
   });
+  document.querySelector('.ds-close').click();
+  await sleep(40);
 
-  // 改角色（alice → 只读 → admin）
-  const aliceRoleSel = document.querySelector('#userList .user-row[data-id="2"] [data-act="role"]');
+  // 改角色（alice → 只读 → admin）：详情层下拉即改即存
+  document.querySelector('#userList .sl-row[data-uid="2"]').click();
+  await sleep(60);
+  const aliceRoleSel = document.querySelector('#dsUserRole');
   aliceRoleSel.value = 'readonly';
   aliceRoleSel.dispatchEvent(new w.Event('change', { bubbles: true }));
   await sleep(80);
-  t('改角色：PATCH /api/users/2 {role:readonly}', () => {
+  t('改角色：PATCH /api/users/2 {role:readonly} + 徽章更新', () => {
     const p = patchesTo('/api/users/2');
     if (!p.length) throw new Error('未 PATCH');
     if (JSON.parse(p[p.length - 1][3]).role !== 'readonly') throw new Error('body 不符');
-    if (!document.querySelector('#userList .user-row[data-id="2"] .u-badge.role-readonly')) throw new Error('徽章未更新为只读');
+    if (document.querySelector('#userList .sl-row[data-uid="2"] .sl-badge').textContent.indexOf('只读') < 0) throw new Error('徽章未更新为只读');
+    if (!document.querySelector('.ds-sheet')) throw new Error('改角色后详情层应保持打开');
+    if (document.querySelector('#dsUserRole').value !== 'readonly') throw new Error('下拉未回显新角色');
   });
-  const aliceRoleSel2 = document.querySelector('#userList .user-row[data-id="2"] [data-act="role"]');
+  const aliceRoleSel2 = document.querySelector('#dsUserRole');
   aliceRoleSel2.value = 'admin';
   aliceRoleSel2.dispatchEvent(new w.Event('change', { bubbles: true }));
   await sleep(80);
   t('改角色：PATCH /api/users/2 {role:admin}', () => {
     if (JSON.parse(patchesTo('/api/users/2').pop()[3]).role !== 'admin') throw new Error('body 不符');
-    if (document.querySelector('#userList .user-row[data-id="2"] .u-badge.role-user')) throw new Error('徽章仍为普通');
+    const badge = document.querySelector('#userList .sl-row[data-uid="2"] .sl-badge').textContent;
+    if (badge !== '管理员') throw new Error('徽章仍为' + badge);
   });
+  document.querySelector('.ds-close').click();
+  await sleep(40);
 
-  // 改密码（bob）
-  promptValue = 'bobpass2';
-  document.querySelector('#userList .user-row[data-id="102"] [data-act="pass"]').click();
+  // 改密码（bob）：详情层输入框代替浏览器 prompt
+  document.querySelector('#userList .sl-row[data-uid="102"]').click();
+  await sleep(60);
+  setInput('#dsUserPass', 'bobpass2');
+  await sleep(30);
+  document.querySelector('#setUserPassBtn').click();
   await sleep(80);
-  t('改密码：prompt 取值 + PATCH password', () => {
+  t('改密码：详情层输入 + PATCH password', () => {
     const p = patchesTo('/api/users/102');
     if (!p.length) throw new Error('未 PATCH');
     if (JSON.parse(p[p.length - 1][3]).password !== 'bobpass2') throw new Error('body: ' + p[p.length - 1][3]);
+    if (document.querySelector('#dsUserPass').value !== '') throw new Error('密码框未清空');
   });
+  document.querySelector('.ds-close').click();
+  await sleep(40);
 
-  // 删除用户（alice）
-  document.querySelector('#userList .user-row[data-id="2"] [data-act="del"]').click();
+  // 删除用户（alice）：详情层危险动作
+  document.querySelector('#userList .sl-row[data-uid="2"]').click();
+  await sleep(60);
+  document.querySelector('#delUserBtn').click();
   await sleep(80);
-  t('删除用户：DELETE + 列表刷新', () => {
+  t('删除用户：确认 + DELETE + 关层 + 列表刷新', () => {
     if (!deletesTo('/api/users/2').length) throw new Error('未 DELETE');
-    if (document.querySelector('#userList .user-row[data-id="2"]')) throw new Error('用户仍在');
+    if (document.querySelector('#userList .sl-row[data-uid="2"]')) throw new Error('用户仍在');
+    if (document.querySelector('.ds-sheet')) throw new Error('删除后详情层应关闭');
   });
 
   // 一键安装
@@ -3207,6 +3732,67 @@ const withEFP = (el, fn) => {
   await sleep(40);
   t('一键安装：promptInstall=true → 不再提示', () => { if (callsOf('toast').length !== toastN) throw new Error('不应新增 toast'); });
   promptInstallResult = false;
+
+  // ============ MCP 面板（A 方案：令牌紧凑列表 + 详情层） ============
+  clickTab('MCP 接口');
+  await sleep(100);
+  t('MCP 面板：令牌紧凑行 + 前缀 / 最近使用 + 计数', () => {
+    if (!document.querySelector('.tab-pane[data-pane="mcp"]')) throw new Error('无 MCP 面板');
+    const rows = document.querySelectorAll('#mcpTokenList .sl-row[data-token-id]');
+    if (rows.length !== 1) throw new Error('行数 ' + rows.length);
+    if (rows[0].querySelector('.sl-name').textContent !== '我的 Claude') throw new Error('名称');
+    const sub = rows[0].querySelector('.sl-sub').textContent;
+    if (sub.indexOf('flm_abc…') < 0 || sub.indexOf('从未使用') < 0) throw new Error('副标题: ' + sub);
+    if (!document.querySelector('#newMcpTokenBtn')) throw new Error('缺创建入口');
+    if (document.querySelector('[data-sec="mcp-tokens"] .sec-sub').textContent !== '1 枚') throw new Error('计数');
+  });
+  document.querySelector('#mcpTokenList .sl-row[data-token-id]').click();
+  await sleep(60);
+  t('令牌详情层：点行打开 + 含权限说明与吊销按钮', () => {
+    if (!document.querySelector('.ds-sheet[role="dialog"]')) throw new Error('详情层未打开');
+    if (!document.querySelector('#revokeTokenBtn')) throw new Error('缺吊销按钮');
+    if (document.querySelector('.ds-body').textContent.indexOf('只读权限') < 0) throw new Error('缺权限说明');
+  });
+  tokenDeleteFail = true;
+  document.querySelector('#revokeTokenBtn').click();
+  await sleep(80);
+  t('吊销令牌失败：错误就地显示在详情层，层不关闭', () => {
+    const r = document.querySelector('#tokenSheetResult');
+    if (!r || !r.classList.contains('err') || r.textContent.indexOf('吊销失败') < 0) throw new Error('层内错误: ' + (r && r.className) + '/' + (r && r.textContent));
+    if (!document.querySelector('.ds-sheet')) throw new Error('失败后详情层不应关闭');
+  });
+  document.querySelector('#revokeTokenBtn').click();
+  await sleep(80);
+  t('吊销令牌：DELETE + 关层 + 列表刷新到空态', () => {
+    if (!deletesTo('/api/mcp-tokens/t1').length) throw new Error('未 DELETE');
+    if (document.querySelector('.ds-sheet')) throw new Error('详情层应关闭');
+    if (document.querySelectorAll('#mcpTokenList .sl-row[data-token-id]').length !== 0) throw new Error('列表未刷新');
+    if (!document.querySelector('[data-sec="mcp-tokens"] .sl-empty')) throw new Error('缺空态提示');
+  });
+  document.querySelector('#newMcpTokenBtn').click();
+  await sleep(60);
+  t('新建令牌：详情层 + 名称输入', () => {
+    if (!document.querySelector('#newTokenName')) throw new Error('缺名称输入');
+    if (!document.querySelector('#createTokenBtn')) throw new Error('缺创建按钮');
+  });
+  setInput('#newTokenName', '我的 Cherry');
+  document.querySelector('#createTokenBtn').click();
+  await sleep(80);
+  t('新建令牌：POST + 同层展示明文 + 列表刷新', () => {
+    const body = lastPostBody('/api/mcp-tokens');
+    if (!body || body.name !== '我的 Cherry' || body.scope !== 'read') throw new Error('body: ' + JSON.stringify(body));
+    const secret = document.querySelector('#freshTokenSecret');
+    if (!secret || secret.textContent !== 'flm_new_S3CR3T') throw new Error('明文未展示');
+    if (!document.querySelector('#copyTokenBtn')) throw new Error('缺复制按钮');
+    if (document.querySelector('#newTokenName')) throw new Error('创建后不应再显示名称输入');
+    if (document.querySelectorAll('#mcpTokenList .sl-row[data-token-id]').length !== 1) throw new Error('列表未刷新');
+  });
+  document.querySelector('.ds-close').click();
+  await sleep(40);
+  t('关闭创建层：明文随层消失', () => {
+    if (document.querySelector('.ds-sheet')) throw new Error('创建层未关闭');
+    if (document.querySelector('#freshTokenSecret')) throw new Error('明文不应再可见');
+  });
 
   // ============ 状态面板（P2d React 化） ============
   clickTab('状态');

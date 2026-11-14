@@ -41,6 +41,7 @@ export const state = {
   feedMeta: null,     // /api/feeds 的整体信息（total / enabled / cardEnabled / groups）
   groupOrder: [],     // 分组顺序（显式保存的串名数组，未分组不计入）
   collapsedGroups: new Set(),  // 分组折叠状态（折叠的分组名集合，按账号持久化）
+  srcGroupsOpen: [],  // 数据源面板「展开的分组名」集合（A 方案：命名分组默认收起，展开态按账号持久化）
   tags: [],           // 服务端返回的标签计数
   username: null,
   role: null,         // 'admin' | 'user' | 'readonly' —— 决定设置里哪些 tab / 分组可见
@@ -201,7 +202,7 @@ export function setReaderSideWidth(px) {
  * 统一按账号维度持久化到服务端（users.prefs.layout），不再落浏览器 localStorage，
  * 换设备也一致。首屏初值由 server.js 注入的 window.__LAYOUT__ 提供。
  * 单一可信源是 window.__LAYOUT__（缺省回落默认）。 */
-export const LAYOUT_DEFAULTS = { view: 'grid', tab: 'reader', collapsedGroups: [], accordion: true, sections: {}, sort: 'new', rdScope: 'all', rdCollapsedGroups: [], readerSideWidth: READER_SIDE_DEFAULT, digestEnabled: true };
+export const LAYOUT_DEFAULTS = { view: 'grid', tab: 'reader', collapsedGroups: [], srcGroupsOpen: [], accordion: true, sections: {}, sort: 'new', rdScope: 'all', rdCollapsedGroups: [], readerSideWidth: READER_SIDE_DEFAULT, digestEnabled: true };
 export const LAYOUT_VALUES = { view: ['grid', 'list'], tab: ['reader', 'cards', 'ai'], sort: ['new', 'old', 'name'], rdScope: ['all', 'unread', 'favorite'] };
 export function sanitizeLayoutLocal(raw) {
   const out = Object.assign({}, LAYOUT_DEFAULTS);
@@ -210,6 +211,10 @@ export function sanitizeLayoutLocal(raw) {
     if (LAYOUT_VALUES.tab.indexOf(raw.tab) >= 0) out.tab = raw.tab;
     if (Array.isArray(raw.collapsedGroups)) {
       out.collapsedGroups = raw.collapsedGroups.filter((g) => typeof g === 'string').map((g) => g.slice(0, 40));
+    }
+    // 数据源面板展开的分组（A 方案默认收起，这里记「显式展开」的组名）
+    if (Array.isArray(raw.srcGroupsOpen)) {
+      out.srcGroupsOpen = raw.srcGroupsOpen.filter((g) => typeof g === 'string').map((g) => g.slice(0, 40));
     }
     out.accordion = raw.accordion === false ? false : true;
     if (raw.sections && typeof raw.sections === 'object') {
@@ -241,6 +246,8 @@ state.sort = layoutPref.sort;
 state.rdScope = layoutPref.rdScope;
 // 频道栏折叠集合同理（React 侧把它当 memo key，必须能在 state 上读到）
 state.rdCollapsedGroups = layoutPref.rdCollapsedGroups;
+// 数据源面板展开的分组（A 方案）：初值取自账号偏好，缺省空数组 = 命名分组全收起
+state.srcGroupsOpen = layoutPref.srcGroupsOpen;
 
 /* ============================================================
  * 设置面板
@@ -512,7 +519,7 @@ export function saveUserPrefs() {
  * 渲染层做即时判断（排序、默认范围、频道栏折叠集合）。只写 layoutPref 不回填
  * state 的话，读 state 的一方永远看不到变化 —— 折叠点击「写进去了但界面不动」
  * 就是这么来的（1.7.2 回归）。新增同类项请一并登记在这里。 */
-const LAYOUT_MIRROR = ['sort', 'rdScope', 'rdCollapsedGroups'];
+const LAYOUT_MIRROR = ['sort', 'rdScope', 'rdCollapsedGroups', 'srcGroupsOpen'];
 
 export function setLayout(key, value) {
   layoutPref = sanitizeLayoutLocal(Object.assign({}, layoutPref, { [key]: value }));
