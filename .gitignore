@@ -42,6 +42,8 @@ tests/ui/.build/
 # 审计/验证临时产物（CDP 截图、Edge 临时配置）
 .audit-shots/
 .audit-*
+# UI 走查时临时截的对比图（体积大、随时可重拍）
+.tmp-shots/
 # scripts/ui-check.mjs 的截图落盘位置（脚本写到 cwd）
 /ui-*.png
 # scripts/ui-shots.mjs（响应式三档实拍）同样写 cwd
