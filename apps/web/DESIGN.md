@@ -116,7 +116,10 @@
 - 主题：`html[data-theme]` = `light` / `dark` / `github`，另有 `auto` 跟随系统。
 - 强调色：`html[data-accent]`，6 档（默认蓝 / violet / teal / green / amber / rose）。
 - 外观（主题 / 强调色 / 字号 / 文章密度 / 正文排版）只存本机 `localStorage['feedlore.appearance.v2']`，
-  `index.html` 内联脚本在首帧前应用；登录页读同一键的 `theme` 字段。
+  `index.html` 内联脚本在首帧前应用；登录页读同一键的 `theme` 与 `fontSize` 字段
+  （登录页字号全为 rem，与主页共用 s/m/l 三档根字号）。登录页三套主题的基础色值逐项对齐
+  `style.css` 的 `html[data-theme]`，渐变 / 光晕 / 焦点环从 `:root` 派生，不另立色板；
+  运行时 `theme-color` 与主站一样取 `--bg` 的计算值，首屏两条 meta + 字典只是样式表到达前的兜底。
 - 列表密度（`listDensity`）与卡片密度（`density`）是两套独立两档、**默认都紧凑**，「文章密度」
   放在「界面」组里与「卡片密度」并排。它是结构性偏好，不是纯 CSS：`ReaderView` 订阅
   `__appearanceChanged` 重绘整列。文章条目恢复为圆角卡片行（面板底 + 细边 + `--elevation-1`

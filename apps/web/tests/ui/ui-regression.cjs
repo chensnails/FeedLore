@@ -7586,6 +7586,30 @@ const withEFP = (el, fn) => {
     if (norm(dark.color) !== norm(bgDark)) throw new Error('登录页深色 meta(' + dark.color + ') 应为 --bg(' + bgDark + ')');
   });
 
+  t('登录页：同源字号 / 统一校验出口 / 提交忙态', () => {
+    const root = path.join(__dirname, '..', '..');
+    const html = fs.readFileSync(path.join(root, 'login.html'), 'utf8').replace(/\r\n/g, '\n');
+    const css = fs.readFileSync(path.join(root, 'src', 'login.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/novalidate/.test(html) || !/请输入用户名和密码/.test(html)) {
+      throw new Error('登录页空值校验要统一走常驻 role=alert 红框，不要原生气泡');
+    }
+    if (!/setAttribute\('aria-busy', 'true'\)/.test(html) || !/removeAttribute\('aria-busy'\)/.test(html)) {
+      throw new Error('登录提交缺 aria-busy 置忙 / 复位');
+    }
+    if (!/button\[aria-busy="true"\]::after/.test(css) || !/@keyframes loginSpin/.test(css)) {
+      throw new Error('登录按钮缺转圈指示');
+    }
+    if (!/setAttribute\('data-font-size', fontSize\)/.test(html) || !/html\[data-font-size="l"\]/.test(css)) {
+      throw new Error('登录页未响应界面字号');
+    }
+    if (!/getPropertyValue\('--bg'\)/.test(html)) {
+      throw new Error('运行时 theme-color 必须从 CSS 计算值取 --bg');
+    }
+    if (/font-size:\s*(12|13|14|20)px/.test(css)) {
+      throw new Error('登录页仍有组件字号写死 px，界面字号开关会是死的');
+    }
+  });
+
   t('首屏外观脚本覆盖两套密度，默认值与运行时一致（都是紧凑）', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
     if (!/pick\(ap\.density, \['cozy', 'compact'\], 'compact'\)/.test(html)) throw new Error('index.html 未写 data-density（默认紧凑）');

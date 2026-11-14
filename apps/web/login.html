@@ -8,12 +8,12 @@
 <title>登录 · 笺川</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <!-- 首屏 theme-color：JS 还没跑时按系统深浅兜底（颜色 = login.css 各主题的 --bg）。
-     运行时 applyTheme() 会把所有条目改成当前主题的 --bg。 -->
+     运行时 applyTheme() 会从 CSS 计算值取 --bg 改写全部条目。 -->
 <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#1b1d21" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#242424" media="(prefers-color-scheme: dark)">
 <script>
-/* 主题：与主站共用同一份本机外观偏好（feedlore.appearance.v2 的 theme 字段），
-   首屏前定好 data-theme 避免闪白。四档与主站一致：auto / light / dark / github。 */
+/* 主题与界面字号：与主站共用同一份本机外观偏好 feedlore.appearance.v2。
+   首屏前定好 data-theme / data-font-size，避免闪白与字号跳动。四档主题与主站一致。 */
 (function () {
   var KEY = 'feedlore.appearance.v2';
   var MODES = ['auto', 'light', 'dark', 'github'];
@@ -25,9 +25,13 @@
   var el = document.documentElement;
   el.setAttribute('data-theme', eff);
   el.setAttribute('data-theme-mode', mode);
+  /* 登录页字号全是 rem，和主站一样按根字号缩放；缺省 m 与运行时默认值一致。 */
+  var fontSize = ['s', 'm', 'l'].indexOf(ap && ap.fontSize) >= 0 ? ap.fontSize : 'm';
+  el.setAttribute('data-font-size', fontSize);
 
-  /* theme-color 的两条 media 只跟系统深浅；显式选了主题时按实际主题改写（颜色 = login.css 的 --bg）。 */
-  var THEME_COLORS = { light: '#f4f5f7', dark: '#1b1d21', github: '#0d1117' };
+  /* 首屏脚本跑在样式表之前，读不到计算值，只能硬编码三档；
+     值必须与 login.css 的 --bg 逐字一致（回归守着），运行时再由 applyTheme 校正。 */
+  var THEME_COLORS = { light: '#f4f5f7', dark: '#242424', github: '#0d1117' };
   var tcs = document.querySelectorAll('meta[name="theme-color"]');
   var tcColor = THEME_COLORS[eff] || '#f4f5f7';
   for (var ti = 0; ti < tcs.length; ti++) tcs[ti].setAttribute('content', tcColor);
@@ -48,7 +52,7 @@
     <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2.2a9.8 9.8 0 0 0-3.1 19.1c.49.09.67-.21.67-.47v-1.86c-2.73.6-3.3-1.17-3.3-1.17-.45-1.13-1.1-1.43-1.1-1.43-.9-.61.07-.6.07-.6 1 .07 1.53 1.02 1.53 1.02.88 1.51 2.32 1.07 2.88.82.09-.64.35-1.08.63-1.33-2.18-.25-4.47-1.09-4.47-4.85 0-1.07.38-1.95 1.02-2.63-.1-.25-.45-1.26.1-2.63 0 0 .83-.27 2.72 1a9.4 9.4 0 0 1 4.94 0c1.89-1.27 2.71-1 2.71-1 .55 1.37.2 2.38.1 2.63.64.68 1.02 1.56 1.02 2.63 0 3.77-2.3 4.6-4.49 4.84.35.31.67.9.67 1.82v2.7c0 .26.18.57.68.47A9.8 9.8 0 0 0 12 2.2Z"/></symbol>
   </svg>
 
-  <form class="login-card" id="loginForm" autocomplete="on">
+  <form class="login-card" id="loginForm" autocomplete="on" novalidate>
     <button type="button" class="theme-toggle" id="themeBtn" title="主题：跟随系统" aria-label="切换主题">
       <svg class="ico" aria-hidden="true" focusable="false"><use href="#i-theme-auto"/></svg>
     </button>
@@ -118,7 +122,10 @@
     themeBtn.setAttribute('aria-label', '主题：' + THEME_META[m].label);
     // 兜底是两条 theme-color（亮 / 暗各一条带 media），必须一起改，
     // 否则系统深浅与当前主题相反时，浏览器命中的那条还留着旧色。
-    const tcColor = eff === 'light' ? '#f4f5f7' : (eff === 'github' ? '#0d1117' : '#1b1d21');
+    // 与主站 state.js 同源：颜色取 CSS 里 --bg 的计算值，主题块改色不必再改这里。
+    const cssBg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    // 三目只是「样式表尚未就绪」时的兜底，正常路径始终取上面的计算值
+    const tcColor = cssBg || (eff === 'github' ? '#0d1117' : (eff === 'light' ? '#f4f5f7' : '#242424'));
     document.querySelectorAll('meta[name="theme-color"]').forEach((tc) => tc.setAttribute('content', tcColor));
   }
 
@@ -136,6 +143,9 @@
   /* ---------- 登录 ---------- */
   function showError(msg) {
     errBox.textContent = msg;
+    // 连续两次失败也要重播抖动：class 一直在的话动画不会重新触发
+    errBox.classList.remove('show');
+    void errBox.offsetWidth;
     errBox.classList.add('show');
   }
 
@@ -154,7 +164,17 @@
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     errBox.classList.remove('show');
+    /* 统一校验出口：novalidate 关掉浏览器原生气泡，空值也走常驻的 role=alert 红框，
+       否则「空值」与「登录失败」是两套完全不同的反馈。凭据字段仍保留 required 语义。 */
+    const userEl = document.getElementById('username');
+    const passEl = document.getElementById('password');
+    if (!userEl.value.trim() || !passEl.value) {
+      showError('请输入用户名和密码');
+      (!userEl.value.trim() ? userEl : passEl).focus();
+      return;
+    }
     btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
     btn.textContent = '登录中…';
     let entering = false;
 
@@ -191,6 +211,7 @@
     } finally {
       if (!entering) {
         btn.disabled = false;
+        btn.removeAttribute('aria-busy');
         btn.textContent = '登 录';
       }
     }
