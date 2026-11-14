@@ -237,7 +237,8 @@ body { font-family: var(--font-ui); }
 .art-thumb, .row-thumb, .card-media { border-radius: var(--radius-sm); }
 
 /* 元信息胶囊：半径统一到 pill，字重降到 500（600 在小字上偏重） */
-.src-pill, .meta-size, .mini-tag, .badge-size {
+/* 计数 / 筛选 chip 与来源、尺寸、标签同属「元信息胶囊」，圆角与字重并入同一组 */
+.src-pill, .meta-size, .mini-tag, .badge-size, .count-chip {
   border-radius: var(--radius-pill);
   font-weight: 500;
 }
@@ -325,7 +326,9 @@ body { font-family: var(--font-ui); }
  * （浏览器守门会实测），这里只调形态，不动任何宽度约束。
  */
 .toast {
-  border: 1px solid var(--hig-separator-strong);
+  /* toast 底色反相（亮色主题深底 / 暗色主题浅底），描边必须从 --toast-text 派生：
+     --hig-separator-strong 取自 --text，在暗色主题近白，浅底 toast 上等于没有边。 */
+  border: 1px solid color-mix(in srgb, var(--toast-text) 19%, transparent);
   border-radius: var(--radius-lg);
 }
 .new-pill, .scroll-top { border-radius: var(--radius-pill); }

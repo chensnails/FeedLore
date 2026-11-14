@@ -7157,7 +7157,8 @@ const withEFP = (el, fn) => {
     if (!/height: calc\(var\(--tabbar-h\) - 4px\)/.test(btn[1]) || !/margin: 2px 0/.test(btn[1])) {
       throw new Error('底栏按钮应 44px 高（48 - 上下各 2），触屏命中不能跟着外框一起缩');
     }
-    if (!/gap: 2px/.test(btn[1]) || !/border-radius: 12px/.test(btn[1])) {
+    // 间距刻度统一后允许走 --sp-0 令牌（=2px），断言仍守住「必须收紧到 2px」这一事实
+    if (!/gap: (2px|var\(--sp-0\))/.test(btn[1]) || !/border-radius: 12px/.test(btn[1])) {
       throw new Error('底栏按钮内间距/圆角未同步收紧');
     }
     if (!/\.mobile-tabbar \.viewnav-btn \.ico \{ width: 18px; height: 18px; font-size: 18px; \}/.test(block)) {
