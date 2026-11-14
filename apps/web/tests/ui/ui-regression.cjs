@@ -7638,6 +7638,23 @@ const withEFP = (el, fn) => {
     }
   });
 
+  t('日报：说明行与操作行分层、状态块共用外壳', () => {
+    const root = path.join(__dirname, '..', '..');
+    const ai = fs.readFileSync(path.join(root, 'src', 'ai', 'AiView.jsx'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
+    const sb = fs.readFileSync(path.join(root, 'src', 'ui', 'StateBlock.jsx'), 'utf8');
+    const head = ai.match(/<div className="digest-head">([\s\S]*?)<\/div>/);
+    if (!head || /digest-actions/.test(head[1])) throw new Error('日报说明行应独立，操作行另起一行');
+    if ((ai.match(/<StateBlock/g) || []).length < 6) throw new Error('日报 6 处加载/空态/失败态应复用 StateBlock');
+    if (!/className=\{/.test(sb) || !/role=\{alert/.test(sb)) {
+      throw new Error('共用外壳要保留旧类名并支持失败态播报');
+    }
+    if (!/\.state-block > p/.test(css) || !/\.digest-actions \{[^}]*flex-wrap: wrap/.test(css)) {
+      throw new Error('共用外壳间距 / 操作行换行规则缺失');
+    }
+    if (!/\.digest-actions \.select \{ flex: 1 1 100%/.test(css)) throw new Error('窄屏日期选择应独占一行');
+  });
+
   t('首屏外观脚本覆盖两套密度，默认值与运行时一致（都是紧凑）', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
     if (!/pick\(ap\.density, \['cozy', 'compact'\], 'compact'\)/.test(html)) throw new Error('index.html 未写 data-density（默认紧凑）');

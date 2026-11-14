@@ -19,6 +19,7 @@ import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { widthVariant } from '../imgSrc.js';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
 import { Icon } from '../ui/Icon.jsx';
+import { StateBlock } from '../ui/StateBlock.jsx';
 import { CopyIconButton, safeHref } from '../ui/EntryActions.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -112,10 +113,9 @@ function DigestView({ digest }) {
           <div className="dg-items">{s.items.map((it, j) => <DgItem it={it} key={j} />)}</div>
         </div>
       )) : (
-        <div className="dg-empty">
-          <div className="dg-empty-ico"><Icon n="inbox" /></div>
+        <StateBlock className="dg-empty" icon="inbox">
           <p>没有可展示的条目</p>
-        </div>
+        </StateBlock>
       )}
     </>
   );
@@ -240,40 +240,36 @@ export function AiView() {
 
   let body = null;
   if (view.kind === 'loading') {
-    body = <div className="dg-loading"><div className="dg-spinner" />读取中…</div>;
+    body = <StateBlock className="dg-loading" spinner>读取中…</StateBlock>;
   } else if (view.kind === 'genLoading') {
     body = (
-      <div className="dg-loading">
-        <div className="dg-spinner" />
+      <StateBlock className="dg-loading" spinner>
         正在采集过去 24 小时的新条目并生成摘要…
         <div className="hint mt-2">首次生成约需 30~60 秒，请勿关闭页面</div>
-      </div>
+      </StateBlock>
     );
   } else if (view.kind === 'error') {
     body = (
-      <div className="dg-error" role="alert">
-        <div className="dg-empty-ico"><Icon n="alert" /></div>
+      <StateBlock className="dg-error" icon="alert" alert>
         <p>读取失败：{view.msg}</p>
         <button className="btn btn-ghost" type="button" onClick={() => showDigest(selected)}>重试</button>
-      </div>
+      </StateBlock>
     );
   } else if (view.kind === 'genError') {
     body = (
-      <div className="dg-error" role="alert">
-        <div className="dg-empty-ico"><Icon n="alert" /></div>
+      <StateBlock className="dg-error" icon="alert" alert>
         <p>生成失败：{view.msg}</p>
         <p className="hint">请在「设置 → 模型」检查模型地址与 Key 是否正确</p>
         {writable ? <button className="btn btn-ghost" type="button" onClick={() => generate(false)}>重新生成</button> : null}
-      </div>
+      </StateBlock>
     );
   } else if (view.kind === 'empty') {
     body = (
-      <div className="dg-empty">
-        <div className="dg-empty-ico"><Icon n="calendar" /></div>
+      <StateBlock className="dg-empty" icon="calendar">
         <p><strong>{view.date}</strong> 还没有摘要</p>
         <p className="hint">{writable ? '把所选频道过去 24 小时的新内容整理成简报' : '只读账户不能手动生成摘要'}</p>
         {writable ? <button className="btn btn-primary" type="button" onClick={() => generate(false)}>生成摘要</button> : null}
-      </div>
+      </StateBlock>
     );
   } else if (view.kind === 'ready') {
     body = <DigestView digest={view.digest} />;
@@ -292,24 +288,25 @@ export function AiView() {
         </div>
       </div>
       <section className="ai-pane" data-ai-pane="digest">
+        {/* 说明行与操作行分层：标题 → 说明 → 日期/动作，窄屏操作行自己换行 */}
         <div className="digest-head">
           <p className="ai-sub" id="digestSub">{subtitle}</p>
-          <div className="digest-actions">
-            <select id="digestDate" className="select" title="选择日期" value={selected}
-              onChange={(e) => showDigest(e.target.value)}>
-              {dateOptions.map((d) => <option key={d} value={d}>{d === today ? '今天 · ' : ''}{d}</option>)}
-            </select>
-            {writable ? (
-              <>
-                <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"
-                  disabled={generating} aria-busy={generating ? 'true' : undefined}
-                  onClick={() => generate(true)}>{generating ? '生成中…' : '重新生成'}</button>
-                <button className="btn btn-primary" id="genDigestBtn" type="button"
-                  disabled={generating} aria-busy={generating ? 'true' : undefined}
-                  onClick={() => generate(false)}>{generating ? '生成中…' : '生成摘要'}</button>
-              </>
-            ) : null}
-          </div>
+        </div>
+        <div className="digest-actions">
+          <select id="digestDate" className="select" title="选择日期" value={selected}
+            onChange={(e) => showDigest(e.target.value)}>
+            {dateOptions.map((d) => <option key={d} value={d}>{d === today ? '今天 · ' : ''}{d}</option>)}
+          </select>
+          {writable ? (
+            <>
+              <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"
+                disabled={generating} aria-busy={generating ? 'true' : undefined}
+                onClick={() => generate(true)}>{generating ? '生成中…' : '重新生成'}</button>
+              <button className="btn btn-primary" id="genDigestBtn" type="button"
+                disabled={generating} aria-busy={generating ? 'true' : undefined}
+                onClick={() => generate(false)}>{generating ? '生成中…' : '生成摘要'}</button>
+            </>
+          ) : null}
         </div>
         <div id="digestBody">{body}</div>
         <footer className="foot">

@@ -2723,13 +2723,15 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 /* ============================================================
  * 日报
  * ============================================================ */
-/* 说明行 + 日期/按钮。顶部留白交给 .ai-head，这里只留底距 */
-.digest-head {
-  display: flex; align-items: flex-end; justify-content: space-between;
-  gap:var(--sp-4); flex-wrap: wrap;
-  padding:0 0 var(--sp-5);
+/* 说明行与操作行分成两级，与文章 / 卡片页「标题行 → 筛选行」同一节奏：
+   说明文字不再和三个控件挤同一个 flex 行，窄屏操作行可以自己换行。
+   顶部留白交给 .ai-head，两级底距相加仍等于原来的一档 --sp-5。 */
+.digest-head { padding: 0 0 var(--sp-3); }
+.digest-head .ai-sub { margin: 0; }
+.digest-actions {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: var(--sp-2); padding: 0 0 var(--sp-5);
 }
-.digest-actions { display: flex; gap:var(--sp-2); align-items: center; }
 .digest-actions .select { width: auto; min-width: 130px; }
 
 .dg-card {
@@ -4205,9 +4207,11 @@ body.is-scrolling .card-media-actions { transition: none; }
 
   .viewnav-btn { padding:var(--sp-1) var(--sp-3); }
   .stat small { display: none; }
-  .digest-head { padding:var(--sp-5) 0 var(--sp-4); }
-  .digest-actions { width: 100%; }
-  .digest-actions .select { flex: 1; min-width: 0; }
+  /* ≤360 也不挤：日期选择独占一行，两枚动作按钮平分下一行 */
+  .digest-head { padding:var(--sp-5) 0 var(--sp-3); }
+  .digest-actions { width: 100%; flex-wrap: wrap; }
+  .digest-actions .select { flex: 1 1 100%; min-width: 0; }
+  .digest-actions .btn { flex: 1 1 auto; }
   .dg-card { padding:var(--sp-5) var(--sp-4); }
   .form-grid { grid-template-columns: 1fr; gap:var(--sp-3); }
   .dg-item-thumb, .dg-item-thumb-fb { width: 52px; height: 52px; }
@@ -4987,6 +4991,12 @@ textarea:focus-visible { outline: none; }
 }
 .empty, .dg-empty, .dg-loading, .dg-error { padding: var(--empty-pad-y) var(--empty-pad-x); }
 .empty-ico, .dg-empty-ico { font-size: var(--empty-ico); margin-bottom: var(--empty-ico-gap); line-height: 0; }
+/* 共用外壳（ui/StateBlock.jsx）：段落、图标与动作出口的间距只在这里定一次 */
+.state-block > p { margin: 0 0 var(--sp-2); }
+.state-block > p:last-child { margin-bottom: 0; }
+.state-block .dg-empty-ico { font-size: var(--empty-ico); margin-bottom: var(--empty-ico-gap); line-height: 0; }
+.state-block .hint { margin-top: var(--sp-2); }
+.state-block .btn { margin-top: var(--sp-3); }
 .stat-loading, .cmdk-empty { padding: var(--sp-6); font-size: var(--fs-md); }
 .feed-pick-empty { padding: var(--sp-3); font-size: var(--fs-md); }
 
