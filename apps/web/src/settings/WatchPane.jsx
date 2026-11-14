@@ -716,7 +716,8 @@ export function WatchPane({ onDirtyChange }) {
               onBlur={commitWebhook}
               onKeyDown={blurOnEnter} />
             <small className="form-tip">
-              新抓取的文章命中关注规则时，向该地址 POST 一条 JSON；同一轮多条合并成一条。留空则不推送。改完自动保存。
+              新抓取的文章命中关注规则时，向该地址 POST 一条 JSON；同一轮多条合并成一条。
+              <br />留空则不推送；改完自动保存。
             </small>
           </div>
 
@@ -730,7 +731,8 @@ export function WatchPane({ onDirtyChange }) {
               onKeyDown={blurOnEnter} />
             <span className="muted">天后自动取消关注（0 表示永久保留，默认 90 天）</span>
             <small className="form-tip">
-              只取消「关注」标记，文章仍留在原频道，已读 / 收藏状态不变；屏蔽不受影响。改完自动保存。
+              只取消「关注」标记：文章仍留在原频道，已读 / 收藏状态不变，屏蔽不受影响。
+              <br />改完自动保存。
             </small>
           </div>
         </EditSection>

@@ -785,8 +785,8 @@ export function AccountPane({ onDirtyChange }) {
         {/* 数据导出：账号级存档，换机或长期留存用 */}
         <Section secKey="acc-export" title="数据导出" sub="tar.gz">
           <p className="hint">
-            把本账号的订阅源、全部文章（含已读 / 收藏 / 关注标记）、日报与偏好设置打包下载；
-            不含登录会话、图片缓存与全文抓取缓存。
+            <b>包含</b>：本账号的订阅源、全部文章（含已读 / 收藏 / 关注标记）、日报与偏好设置。
+            <br /><b>不含</b>：登录会话、图片缓存与全文抓取缓存。
           </p>
           {!readonly && (
             <div className="form-row">
@@ -816,9 +816,9 @@ export function AccountPane({ onDirtyChange }) {
         {!readonly && (
           <Section secKey="acc-import" title="数据导入" sub="tar.gz">
             <p className="hint">
-              上传本账号的导出包，把频道、文章标记、日报与偏好合并进来；
-              已存在的频道与文章会跳过，现有文章的已读 / 收藏 / 关注状态不会被改动。
-              包里若带模型配置（导出时勾选），只在这个账号还没配过模型时写入，并用本机主密钥重新加密。
+              上传本账号的导出包，把频道、文章标记、日报与偏好合并进来。
+              <br /><b>合并规则</b>：已存在的频道与文章会跳过，现有文章的已读 / 收藏 / 关注状态不会被改动。
+              <br /><b>模型配置</b>：包里若带（导出时勾选），只在这个账号还没配过模型时写入，并用本机主密钥重新加密。
             </p>
             <div className="dev-actions">
               <button className="btn btn-ghost btn-sm" id="importBtn" type="button" disabled={importing}
@@ -831,9 +831,9 @@ export function AccountPane({ onDirtyChange }) {
             </div>
             <Result id="importResult" result={importMsg} />
             <small className="form-tip">
-              导入只做增量合并，不会删除现有数据；模型 API Key 只有在导出时勾选才会在包里，
-              写入时用的是本机的加密主密钥，不是包里的那份。
-              这里只收「数据导出」的账号包，整站备份请到下方「整站还原」上传。
+              导入只做增量合并，不会删除现有数据。
+              <br />模型 API Key 只有在导出时勾选才会在包里；写入时用的是本机的加密主密钥，不是包里的那份。
+              <br />这里只收「数据导出」的账号包，整站备份请到下方「整站还原」上传。
             </small>
           </Section>
         )}
@@ -861,8 +861,10 @@ export function AccountPane({ onDirtyChange }) {
             </div>
 
             <small className="form-tip">
-              点行可改角色、重置密码或删除。管理员额外可管理用户与全局设置；普通用户管理自己的订阅源、模型与日报；
-              只读用户只能阅读，不能修改订阅源、规则、模型、日报等配置，也不能自行修改用户名和密码。
+              点行可改角色、重置密码或删除。
+              <br /><b>管理员</b>：额外可管理用户与全局设置。
+              <br /><b>普通用户</b>：管理自己的订阅源、模型与日报。
+              <br /><b>只读用户</b>：只能阅读，不能修改订阅源、规则、模型、日报等配置，也不能自行修改用户名和密码。
             </small>
           </Section>
         )}
@@ -871,8 +873,9 @@ export function AccountPane({ onDirtyChange }) {
         {admin && (
           <Section secKey="acc-backup" title="整站备份" sub="仅管理员">
             <p className="hint">
-              打包全站数据：所有账号（含密码哈希）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
-              这是敏感文件，请只保存在受控位置；包内不含登录会话，恢复后所有人需要重新登录。
+              <b>包含</b>：所有账号（含密码哈希）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
+              <br /><b>敏感</b>：这是敏感文件，请只保存在受控位置。
+              <br /><b>不含</b>：登录会话；恢复后所有人需要重新登录。
             </p>
             <div className="dev-actions">
               <button className="btn btn-danger btn-sm" id="backupBtn" type="button"
@@ -890,8 +893,8 @@ export function AccountPane({ onDirtyChange }) {
         {admin && (
           <Section secKey="acc-restore" title="整站还原" sub="仅管理员">
             <p className="hint">
-              上传整站备份包，用它<b>整体替换</b>当前全站数据：账号（含密码）、订阅源与文章、
-              日报、模型配置、站点设置与图片缓存。还原期间站点短暂不可用，结束后所有登录会话失效。
+              上传整站备份包，用它<b>整体替换</b>当前全站数据：账号（含密码）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
+              <br /><b>影响</b>：还原期间站点短暂不可用，结束后所有登录会话失效。
             </p>
             <div className="dev-actions">
               <button className="btn btn-danger btn-sm" id="restoreBtn" type="button" disabled={restoring}

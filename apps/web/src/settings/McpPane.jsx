@@ -244,8 +244,8 @@ export function McpPane() {
             ，请求头加 <code>Authorization: Bearer 你的令牌</code>。
           </p>
           <p className="hint" style={{ margin: 0 }}>
-            令牌与登录会话完全独立，吊销不影响网页登录。当前版本只开放只读工具
-            （频道列表、文章检索与全文、日报）；管理类操作不接受 MCP 调用。
+            令牌与登录会话完全独立，吊销不影响网页登录。
+            <br />当前版本只开放只读工具（频道列表、文章检索与全文、日报）；管理类操作不接受 MCP 调用。
           </p>
         </Section>
 

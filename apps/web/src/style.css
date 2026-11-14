@@ -2196,7 +2196,9 @@ textarea:disabled {
   border-color: var(--accent-text);
   box-shadow: 0 0 0 3px var(--focus-halo);
 }
-.form-tip { display: block; margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-faint); }
+.form-tip { display: block; margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-faint); line-height: 1.75; }
+/* 长说明里的小标题：比正文略深一档，分段靠 <br> + 这一组样式，长段落不再糊成一团 */
+.form-tip b { color: var(--text-muted); font-weight: 600; }
 /* 表单错误态：:user-invalid 只在用户交互过之后才标红（不会一进页面就满屏红框），无需任何 JS 参与 */
 input:user-invalid,
 textarea:user-invalid {

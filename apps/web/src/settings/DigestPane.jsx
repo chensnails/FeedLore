@@ -216,7 +216,7 @@ export function DigestPane({ onDirtyChange }) {
           </label>
           <small className="form-tip">
             关掉后顶栏不再有「日报」入口，命令面板里也搜不到；到点的自动生成会跳过你这个账号（不再消耗模型额度）。
-            已生成的历史日报不会删，重新开启就能看到。
+            <br />已生成的历史日报不会删，重新开启就能看到。
           </small>
         </div>
 
@@ -231,7 +231,7 @@ export function DigestPane({ onDirtyChange }) {
           </label>
           <small className="form-tip">
             默认关：开一次就每天烧一份模型额度，所以得你主动拨开。
-            {form.auto ? `已开启，每天 ${form.time}（北京时间）· ${hintScope}` : '关闭时随时可在「日报」页手动生成'}
+            <br />{form.auto ? `已开启，每天 ${form.time}（北京时间）· ${hintScope}` : '关闭时随时可在「日报」页手动生成'}
           </small>
         </div>
 
@@ -348,8 +348,8 @@ export function DigestPane({ onDirtyChange }) {
             onChange={(ev) => setField('style', ev.target.value)}
           />
           <small className="form-tip">
-            {form.style.length} / {PROMPT_MAX} 字 · 这段会作为「额外要求」附在日报提示词后面，
-            只影响选材、语气和篇幅；简报的 JSON 结构、点评长度上限等由系统固定，写了也不会打乱生成
+            {form.style.length} / {PROMPT_MAX} 字 · 这段会作为「额外要求」附在日报提示词后面，只影响选材、语气和篇幅。
+            <br />简报的 JSON 结构、点评长度上限等由系统固定，写了也不会打乱生成。
           </small>
         </div>
 
