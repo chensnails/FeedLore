@@ -10,6 +10,7 @@
 
 import { core } from '@core';
 import { useEffect, useRef, useState } from 'react';
+import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 
 const S = () => core;
@@ -32,6 +33,8 @@ export function DigestPane({ onDirtyChange }) {
   const [feedsList, setFeedsList] = useState([]);
   const [result, setResult] = useState(null);   // { ok, msg } | null
   const [busy, setBusy] = useState(false);
+  const [feedQ, setFeedQ] = useState('');
+  const feedSearchName = useNoAutofillName('dig-feed-q');
   // 异步回填守卫：/api/prefs 还没回来时用户已改动，就不能拿服务端旧值盖掉本地编辑
   const guard = useFormLoadGuard();
 
@@ -94,6 +97,27 @@ export function DigestPane({ onDirtyChange }) {
       if (on) set.add(fid); else set.delete(fid);
       return Object.assign({}, f, { feeds: [...set] });
     });
+  };
+
+  const feedName = (f) => f.customTitle || f.title || f.url;
+
+  // 频道多了以后一屏放不下，按名称 / 地址 / 分组过滤；已勾选但被过滤掉的仍保留
+  const feedQuery = feedQ.trim().toLowerCase();
+  const visibleFeeds = feedQuery
+    ? feedsList.filter((f) => [feedName(f), f.url, f.groupName]
+      .some((t) => String(t || '').toLowerCase().includes(feedQuery)))
+    : feedsList;
+
+  const setFeedIds = (ids) => {
+    guard.mark();
+    setForm((f) => Object.assign({}, f, { feeds: ids }));
+  };
+
+  // 全选只作用在当前可见结果上：搜过之后再点不会把没显示的频道也一并选走
+  const pickVisibleFeeds = () => {
+    const ids = new Set(form.feeds);
+    for (const f of visibleFeeds) ids.add(Number(f.id));
+    setFeedIds([...ids]);
   };
 
   const onSave = async () => {
@@ -210,20 +234,41 @@ export function DigestPane({ onDirtyChange }) {
 
         {form.auto && form.mode === 'custom' && (
           <div className="form-row form-row-block">
-            <label>纳入日报的频道</label>
+            <div className="feed-pick-head">
+              <span className="feed-pick-title">纳入日报的频道</span>
+              <span className="feed-pick-count">{form.feeds.length} / {feedsList.length} 已选</span>
+            </div>
+            {feedsList.length ? (
+              <div className="feed-pick-tools">
+                {feedsList.length > 8 ? (
+                  <div className="feed-pick-search">
+                    <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
+                    <input type="search" name={feedSearchName} value={feedQ}
+                      placeholder="搜索频道" aria-label="搜索频道"
+                      onChange={(ev) => setFeedQ(ev.target.value)} {...NO_AUTOFILL_PROPS} />
+                  </div>
+                ) : null}
+                <button className="btn btn-ghost btn-sm" id="digFeedAllBtn" type="button"
+                  disabled={!visibleFeeds.length} onClick={pickVisibleFeeds}>全选</button>
+                <button className="btn btn-ghost btn-sm" id="digFeedNoneBtn" type="button"
+                  disabled={!form.feeds.length} onClick={() => setFeedIds([])}>清空</button>
+              </div>
+            ) : null}
             <div className="feed-pick">
-              {feedsList.length ? feedsList.map((f) => {
+              {feedsList.length ? (visibleFeeds.length ? visibleFeeds.map((f) => {
                 const fid = Number(f.id);
                 const checked = form.feeds.includes(fid);
                 return (
-                  <label key={f.id} className={'feed-pick-row' + (checked ? ' on' : '')}>
+                  <label key={f.id} className={'feed-pick-row' + (checked ? ' on' : '')}
+                    title={feedName(f)}>
                     <input type="checkbox" checked={checked}
                       onChange={(ev) => onToggleFeed(fid, ev.target.checked)} />
-                    <span className="feed-pick-name">{f.customTitle || f.title || f.url}</span>
+                    <span className="feed-pick-name">{feedName(f)}</span>
                     {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
                   </label>
                 );
-              }) : <div className="feed-pick-empty">加载频道列表中…</div>}
+              }) : <div className="feed-pick-empty">没有匹配的频道</div>)
+                : <div className="feed-pick-empty">加载频道列表中…</div>}
             </div>
             <small className="form-tip">一个都没勾时，日报会提示「没有可展示的条目」</small>
           </div>

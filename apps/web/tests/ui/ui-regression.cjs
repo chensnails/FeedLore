@@ -2802,6 +2802,66 @@ const withEFP = (el, fn) => {
     if (sub !== '每天 07:30 · 自定义 1 个频道') throw new Error('摘要: ' + sub);
   });
 
+  // 频道清单是 A 方案的紧凑行：整行是 label（点名字就勾）、勾选框在左、标题旁带已选计数。
+  // 行数随前面数据源用例增删过，按实际行数算，不写死。
+  const pickRows = () => Array.prototype.slice.call(document.querySelectorAll('.feed-pick-row'));
+  const pickCount = () => (document.querySelector('.feed-pick-count') || {}).textContent;
+  t('日报频道清单：紧凑行 / 已选计数 / 工具行', () => {
+    const pick = document.querySelector('.feed-pick');
+    if (!pick) throw new Error('无频道清单');
+    const rows = pickRows();
+    if (rows.length < 3) throw new Error('行数: ' + rows.length);
+    if (pickCount() !== `1 / ${rows.length} 已选`) throw new Error('计数: ' + pickCount());
+    for (const row of rows) {
+      if (row.tagName !== 'LABEL') throw new Error('行不是 label，整行点不动');
+      if (!row.querySelector('input[type="checkbox"]')) throw new Error('行内缺勾选框');
+      if (!row.querySelector('.feed-pick-name')) throw new Error('行内缺频道名');
+    }
+    const onRows = rows.filter((r) => r.classList.contains('on'));
+    if (onRows.length !== 1 || onRows[0].querySelector('.feed-pick-name').textContent !== '某人的博客') {
+      throw new Error('已选高亮不对: ' + onRows.map((r) => r.textContent).join('|'));
+    }
+    if (!document.querySelector('#digFeedAllBtn') || !document.querySelector('#digFeedNoneBtn')) throw new Error('缺全选 / 清空');
+    // 不到 8 个频道不该出现搜索框
+    if (document.querySelector('.feed-pick-search')) throw new Error('短清单不该有搜索框');
+  });
+
+  // 点名字（不是勾选框）也应该命中：行本身是 label
+  pickRows()[0].querySelector('.feed-pick-name').click();
+  await sleep(30);
+  t('点频道名（整行命中）勾选并更新计数', () => {
+    const n = pickRows().length;
+    if (pickCount() !== `2 / ${n} 已选`) throw new Error('计数: ' + pickCount());
+    if (!pickRows()[0].classList.contains('on')) throw new Error('行未点亮');
+  });
+
+  t('有选中时清空可用', () => {
+    if (document.querySelector('#digFeedNoneBtn').disabled !== false) throw new Error('清空按钮该可用');
+  });
+  document.querySelector('#digFeedAllBtn').click();
+  await sleep(30);
+  t('全选：整张清单全勾上', () => {
+    const n = pickRows().length;
+    if (pickCount() !== `${n} / ${n} 已选`) throw new Error('全选后: ' + pickCount());
+    if (pickRows().some((r) => !r.classList.contains('on'))) throw new Error('有行没点亮');
+  });
+  document.querySelector('#digFeedNoneBtn').click();
+  await sleep(30);
+  t('清空：计数归零、清空禁用、保存解禁', () => {
+    const n = pickRows().length;
+    if (pickCount() !== `0 / ${n} 已选`) throw new Error('清空后: ' + pickCount());
+    if (document.querySelector('#digFeedNoneBtn').disabled !== true) throw new Error('清空后按钮该禁用');
+    if (document.querySelector('#digSaveBtn').disabled !== false) throw new Error('选择变化后保存该可用');
+  });
+  // 勾回原来那一条，后面的摘要与保存用例仍按 feeds=[3] 断言
+  pickRows().find((r) => r.querySelector('.feed-pick-name').textContent === '某人的博客')
+    .querySelector('.feed-pick-name').click();
+  await sleep(30);
+  t('重新勾回单条', () => {
+    const n = pickRows().length;
+    if (pickCount() !== `1 / ${n} 已选`) throw new Error('回勾后: ' + pickCount());
+  });
+
   // 关掉自动生成 → 时间/范围行收起（这三项只在开自动时才有意义）
   document.querySelector('#digAuto ~ .switch-slider').click();
   await sleep(30);
