@@ -7,6 +7,32 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## Unreleased
+
+### Improved
+
+- **Settings edge states and misclick guards**: the digest feed picker now has four states
+  (loading / read failure with retry / no feeds / ready); "select all" and "clear" are symmetric
+  and both act only on the current filtered results, with the button flipping to "deselect all"
+  when everything visible is selected. The source pane shows a loading state, bulk select-all only
+  picks visible feeds (with hidden selections called out in the footer), and the collection form
+  uses `useFormLoadGuard`. A failed `/api/prefs` read in the rules pane is now a pane-level error
+  with a retry and disables editing actions, so real server-side rules cannot be overwritten.
+- **Detail sheet focus, geometry and duplicate exits**: Esc inside an input blurs on the first
+  press and closes on the second; the settings shell defers to the sheet. Focus falls back to the
+  always-visible close button, Tab skips roving tabs, and mobile keeps a single in-sheet exit.
+  Rule/filter sheets now state that closing saves. Desktop padding matches the section baseline,
+  the sheet is narrower at 721–820px, and bulk "Delete" is separated from neighbouring actions.
+- **Consistency across the main views**: two render-time throws that could blank the app were
+  fixed (invalid article dates, a digest response without `stats`). Digest reads now distinguish
+  5xx from "no digest yet", and read/generate/empty states all offer a clickable way out. Search
+  Esc returns focus in both views, clearing a search no longer focuses a hidden input, and the
+  command palette closes on Esc from anywhere. Card empty states include the query, drop a
+  direction hint that is wrong on mobile, and give read-only users a "switch to reader" action.
+  The login error box stays in the DOM so screen readers announce it.
+
+No features added or removed, no request body or persistence format changes, no migrations.
+
 ## 2.4.5 — 2026-11-12
 
 ### Added
