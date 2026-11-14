@@ -9,7 +9,18 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ## Unreleased
 
+### Fixed
+
+- **Digest thumbnails are back**: digest items now carry `image`, populated at generation time with
+  the same `/api/img` proxy address the card wall uses; previously the digest payload had no image
+  field, so every item rendered the fallback file icon. **Existing digests** are backfilled on read
+  by looking the item up through its link, so no regeneration (and no LLM cost) is needed.
+
 ### Improved
+
+- **Theme slot names**: "CommaFeed Dark" / "GitHub Dark" are now "Warm Gray" / "Dark" in the
+  appearance settings; descriptions, accent hints, the quick toggle and command-palette keywords
+  follow. **Palettes are unchanged.**
 
 - **Settings edge states and misclick guards**: the digest feed picker now has four states
   (loading / read failure with retry / no feeds / ready); "select all" and "clear" are symmetric

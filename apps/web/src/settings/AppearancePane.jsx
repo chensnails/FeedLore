@@ -20,8 +20,8 @@ const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块�
 const ROWS = {
   theme: {
     key: 'theme', label: '主题', attr: 'data-theme-mode',
-    small: '前三套可跟随系统；GitHub 暗黑是整套配色包，主色固定为 GitHub 蓝',
-    options: [['auto', '跟随系统'], ['light', '浅色'], ['dark', 'CommaFeed 暗色'], ['github', 'GitHub 暗黑']],
+    small: '前三套可跟随系统；「暗黑」是整套配色包，主色固定为蓝色',
+    options: [['auto', '跟随系统'], ['light', '浅色'], ['dark', '暖灰'], ['github', '暗黑']],
   },
   fontSize: {
     key: 'fontSize', label: '界面字号', attr: 'data-font-size',
@@ -76,7 +76,7 @@ const ACCENTS = [
 ];
 
 const ACCENT_HINT_DEFAULT = '中性底色只有一套且已校准，这里只换强调色';
-const ACCENT_HINT_FIXED = 'GitHub 暗黑是整套配色包，主色固定为 GitHub 蓝，切换主题后即可调整';
+const ACCENT_HINT_FIXED = '「暗黑」是整套配色包，主色固定为蓝色，切换主题后即可调整';
 
 // 与 style.css 的 720px 断点保持一致：窄屏下所有阅读宽度档位都大于屏宽，调了也没区别
 const NARROW_QUERY = '(max-width: 720px)';

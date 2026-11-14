@@ -26,7 +26,7 @@ export function buildCommands(S) {
     const meta = (S.THEME_META && S.THEME_META[m]) ? S.THEME_META[m] : { label: m };
     cmds.push({
       group: '主题', icon: 'theme-auto', label: '主题：' + meta.label, hint: meta.label,
-      keywords: 'theme dark light 暗色 浅色 外观', run: () => S.applyTheme(m, true),
+      keywords: 'theme dark light 主题 暖灰 暗黑 暗色 浅色 外观', run: () => S.applyTheme(m, true),
     });
   });
   visibleTabs(admin, readonly).forEach((t) => {

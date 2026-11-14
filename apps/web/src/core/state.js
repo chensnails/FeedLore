@@ -345,15 +345,15 @@ export function setSettingsSummary(text) {
  * 首屏由 index.html <head> 的内联脚本先定好 data-theme，这里只负责
  * 后续切换、持久化，以及「跟随系统」时响应系统偏好变化。
  * ============================================================ */
-// 4 档：跟随系统 / 浅色 / CommaFeed 暗色 / GitHub 暗黑。
-// 前两档保持原样（dark 是 CommaFeed 中性灰），github 是整包主题，不进「跟随系统」
-// —— 跟随系统只在浅色与 CommaFeed 暗之间切，想要 GitHub 暗黑必须显式选。
+// 4 档：跟随系统 / 浅色 / 暖灰 / 暗黑。
+// 前两档保持原样（dark 是中性偏暖的一档），github 是整包主题，不进「跟随系统」
+// —— 跟随系统只在浅色与暖灰之间切，想要暗黑必须显式选。
 export const THEME_MODES = ['auto', 'light', 'dark', 'github'];
 export const THEME_META = {
   auto: { ico: 'theme-auto', label: '跟随系统' },
   light: { ico: 'sun', label: '浅色' },
-  dark: { ico: 'moon', label: 'CommaFeed 暗色' },
-  github: { ico: 'github', label: 'GitHub 暗黑' },
+  dark: { ico: 'moon', label: '暖灰' },
+  github: { ico: 'github', label: '暗黑' },
 };
 // 每档主题实际写进 data-theme 的值：github 主题另外用一套 CSS 变量块，
 // 主色固定 GitHub 蓝（不对应 6 套 accent，所以外观页要把主色调板禁掉）。

@@ -3067,7 +3067,7 @@ const withEFP = (el, fn) => {
     const sw = document.querySelector('#apprAccent');
     if (!sw.classList.contains('disabled')) throw new Error('未加 disabled');
     const hint = document.querySelector('.appr-label small');   // 主色调行的 small
-    if (!hint || hint.textContent.indexOf('固定为 GitHub 蓝') < 0) throw new Error('hint 未切换: ' + (hint && hint.textContent));
+    if (!hint || hint.textContent.indexOf('主色固定为蓝色') < 0) throw new Error('hint 未切换: ' + (hint && hint.textContent));
     if (!document.querySelector('.swatch[aria-disabled="true"]')) throw new Error('swatch 未标 aria-disabled');
   });
   document.querySelector('.swatch[data-accent="teal"]').click();

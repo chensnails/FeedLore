@@ -148,8 +148,8 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
               </button>
             </>
           ) : null}
-          {/* 这一项是四档循环（跟随系统 → 浅色 → 深色 → GitHub），叫「夜间模式」会骗人：
-              在深色下再点会切到 GitHub 暗黑，再点回「跟随系统」，浅色系统下直接变亮。
+          {/* 这一项是四档循环（跟随系统 → 浅色 → 暖灰 → 暗黑），叫「夜间模式」会骗人：
+              在「暖灰」下再点会切到「暗黑」，再点回「跟随系统」，浅色系统下直接变亮。
               文案改成「切换主题」并把当前档位写在括号里，点之前就知道会转到哪。 */}
           <button type="button" role="menuitem" className="overflow-item" onClick={() => { S().cycleTheme(); }}
             title={'当前：' + (snap.themeLabel || '跟随系统') + '（点击切到下一档）'}>

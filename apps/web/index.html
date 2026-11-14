@@ -43,7 +43,7 @@
   var dark = mode === 'dark' || (mode === 'auto' && mq.matches);
   el.setAttribute('data-theme', mode === 'github' ? 'github' : (dark ? 'dark' : 'light'));
 
-  /* HTML 里两条 <meta theme-color> 只跟系统深浅走；用户显式选了浅色 / 暗色 / GitHub
+  /* HTML 里两条 <meta theme-color> 只跟系统深浅走；用户显式选了浅色 / 暖灰 / 暗黑
      时系统偏好不作数，这里按实际主题立刻改写（颜色 = style.css 各主题的 --bg）。
      不改的话：系统深色 + 用户选浅色，首屏会先按深色兜底再被 JS 翻成浅色。 */
   var THEME_COLORS = { light: '#f4f5f7', dark: '#242424', github: '#0d1117' };
