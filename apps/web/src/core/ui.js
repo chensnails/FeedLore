@@ -121,6 +121,10 @@ export function downloadUrl(url) {
 document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape' || !isOn('settingsOpen')) return;
   if (document.querySelector('.dd-mask')) return;                    // 移动端整屏下拉
+  // 设置里的详情层（列表 → 详情）自己处理 Esc：输入框里第一击只失焦、第二击才关层。
+  // 不让位的话，这一击会穿过详情层把整个设置弹层关掉。
+  if (document.querySelector('.ds-sheet')) return;
+  if (document.querySelector('.rule-scope-pop')) return;              // 规则适用范围浮层
   const cmdk = document.querySelector('.cmdk-mask:not([hidden])');
   if (cmdk) return;                                                  // 命令面板
   if (document.querySelector('.lightbox')) return;                   // 图片灯箱

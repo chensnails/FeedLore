@@ -5,8 +5,10 @@
  *  - 桌面（>720px）：设置弹层内容区右侧抽屉，左边的列表仍可见、可对照；
  *  - 移动（≤720px）：贴底整宽弹层，下滑手势关闭（useSwipeDismiss，与卡片详情同一套）。
  *
- * 层内的修改都是「即改即生效」，没有未保存草稿，所以关闭不需要脏态确认；
- * Esc 级联：先关详情层，再轮到设置外壳（外壳的 escape 宿主处理返回 / 关闭）。
+ * 层内多数修改「即改即生效」；规则/过滤这类带草稿的编辑在关闭时保存，
+ * 用 saveHint 明说，免得用户把 Esc 当成取消。
+ * Esc 级联：输入框里第一击只失焦（字段可自行还原草稿），第二击才关层；
+ * 关层先于设置外壳（外壳已对 .ds-sheet 让位）。
  * 确认框 / 灯箱 / 范围选择浮层叠在上面时，Esc 让位给它们（捕获阶段先检查）。
  */
 
@@ -15,7 +17,7 @@ import { useSwipeDismiss } from '../views/useSwipeDismiss.js';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
-export function DetailSheet({ title, subtitle, onClose, foot, children }) {
+export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint }) {
   const [isMobile, setIsMobile] = useState(() =>
     !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches));
   const openerRef = useRef(null);
@@ -42,7 +44,9 @@ export function DetailSheet({ title, subtitle, onClose, foot, children }) {
     const t = setTimeout(() => {
       const el = panelRef.current;
       if (!el) return;
-      const first = el.querySelector('.ds-body ' + FOCUSABLE) || el.querySelector('.ds-back') || el;
+      // .ds-back 在桌面与移动端都不显示，focus() 是空操作；正文没有可聚焦元素时
+      // 焦点必须落在恒可见的 .ds-close 上，而不是 tabIndex=-1 的容器（读屏只念「详情」）。
+      const first = el.querySelector('.ds-body ' + FOCUSABLE) || el.querySelector('.ds-close') || el;
       if (first && first.focus) first.focus();
     }, 0);
     return () => {
@@ -65,8 +69,18 @@ export function DetailSheet({ title, subtitle, onClose, foot, children }) {
       const t = ev.target;
       if (t && t.closest && t.closest('.rule-scope-pop')) return;
       if (ev.key === 'Escape') {
-        // 输入控件里的 Esc 先让字段自己消化（取消草稿并失焦），再按一次才关层
-        if (t && t.closest && root.contains(t) && t.closest('input, textarea, select')) return;
+        // 输入控件里的 Esc：第一击只失焦，第二击才关层。不能在这里 stopPropagation ——
+        // 有的字段自己监听 Esc 还原草稿（数据源的名称 / 地址）；也不能当场 blur ——
+        // 那会抢在字段的 onKeyDown 之前触发 onBlur，把草稿当成提交发出 PATCH。
+        // 等同一击的冒泡处理跑完，焦点仍在输入框里才说明没人接管，我们再补一次失焦。
+        // 设置外壳已对 .ds-sheet 让位，首击不会误关整个设置弹层。
+        if (t && t.closest && root.contains(t) && t.closest('input, textarea, select')) {
+          const field = t;
+          setTimeout(() => {
+            if (document.activeElement === field && field.blur) field.blur();
+          }, 0);
+          return;
+        }
         ev.preventDefault();
         ev.stopPropagation();
         closeRef.current();
@@ -89,13 +103,16 @@ export function DetailSheet({ title, subtitle, onClose, foot, children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const label = typeof title === 'string' ? title : '详情';
+  const sub = typeof subtitle === 'string' ? subtitle : '';
+
   return (
     <div className="ds-mask" onClick={(ev) => { if (ev.target === ev.currentTarget) closeRef.current(); }}>
       <div
         className="ds-sheet"
         role="dialog"
         aria-modal="true"
-        aria-label={typeof title === 'string' ? title : '详情'}
+        aria-label={sub ? label + ' · ' + sub : label}
         ref={setPanelRef}
         tabIndex={-1}
         {...handlers}
@@ -108,11 +125,14 @@ export function DetailSheet({ title, subtitle, onClose, foot, children }) {
             <h3 className="ds-title">{title}</h3>
             {subtitle ? <p className="ds-sub">{subtitle}</p> : null}
           </div>
-          <button className="ds-close" type="button" aria-label="关闭详情" onClick={() => closeRef.current()}>
+          <button className="ds-close" type="button" aria-label="关闭详情，返回列表" onClick={() => closeRef.current()}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
           </button>
         </div>
-        <div className="ds-body">{children}</div>
+        <div className="ds-body">
+          {children}
+          {saveHint ? <small className="form-tip ds-save-hint">{saveHint}</small> : null}
+        </div>
         {foot ? <div className="ds-foot">{foot}</div> : null}
       </div>
     </div>

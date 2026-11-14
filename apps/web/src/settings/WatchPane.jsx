@@ -114,6 +114,7 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
       title={isNew ? '新建规则' : ruleName(rule)}
       subtitle={isNew ? '设好关键词与适用范围后保存' : ruleSummary(rule)}
       onClose={requestClose}
+      saveHint="关闭本层会保存已有规则的改动；新建请点「保存」"
       foot={
         <>
           {isNew ? null : (
@@ -218,6 +219,7 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
       title={isNew ? '新建过滤规则' : (filter.pattern || '过滤规则')}
       subtitle={isNew ? '保存后对之后新抓取的文章生效' : filterSummary(filter)}
       onClose={requestClose}
+      saveHint="关闭本层会保存已有规则的改动；新建请点「保存」"
       foot={
         <>
           {isNew ? null : (

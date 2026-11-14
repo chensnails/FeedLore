@@ -220,7 +220,10 @@ export function SettingsModal() {
       const root = modalRef.current;
       if (!root) return;
       const nodes = root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-      const list = Array.prototype.filter.call(nodes, (el) => !el.disabled && el.offsetParent !== null);
+      // roving tabIndex 的非激活页签不该进 Tab 序：它们是 button，会被上面的选择器命中，
+      // 但按一次 Tab 要穿过 8 个「不可激活」的页签才到内容区。
+      const list = Array.prototype.filter.call(nodes,
+        (el) => !el.disabled && el.offsetParent !== null && el.getAttribute('tabindex') !== '-1');
       if (!list.length) return;
       const first = list[0];
       const last = list[list.length - 1];
@@ -347,6 +350,11 @@ export function SettingsModal() {
               </button>
             ) : null}
           </div>
+          {query && !activeVisible && matched.length ? (
+            <p className="settings-search-miss hint">
+              当前「{activeTab ? activeTab.label : ''}」不在搜索结果中，点上方结果切换
+            </p>
+          ) : null}
           <div className="tabs" id="tabs" role="tablist" aria-label="设置分区" aria-orientation="vertical" onKeyDown={onTabsKey}>
             {navGroups.map(({ group, items }) => (
               <div className="tab-group" key={group} role="presentation">

@@ -52,14 +52,16 @@ export function Section({ secKey, title, sub, subId, open, id, children }) {
 
 /** 面板底部固定动作栏：左侧说明 / 次要动作，右侧主动作。
  *  dirty 时在保存按钮旁补一枚常驻提示：它和弹层标题、页签圆点说的是同一件事，
- *  但就在手边 —— 长面板滚到底时不必抬头找状态。动作栏本身在滚动容器之外，恒可见。 */
+ *  但就在手边 —— 长面板滚到底时不必抬头找状态。这枚是纯视觉提示（aria-hidden），
+ *  播报交给标题那枚 role=status，避免读屏把同一句「未保存」连念三遍。
+ *  动作栏本身在滚动容器之外，恒可见。 */
 export function PaneFoot({ lead, note, children, dirty }) {
   return (
     <div className={'pane-foot' + (dirty ? ' is-dirty' : '')}>
       {lead != null ? lead : null}
       {children ? (
         <div className="pane-foot-btns">
-          {dirty ? <span className="pane-foot-dirty" role="status">有未保存的更改</span> : null}
+          {dirty ? <span className="pane-foot-dirty" aria-hidden="true">有未保存的更改</span> : null}
           {children}
         </div>
       ) : null}

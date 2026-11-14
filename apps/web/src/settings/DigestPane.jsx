@@ -40,7 +40,8 @@ export function DigestPane({ onDirtyChange }) {
   // 异步回填守卫：/api/prefs 还没回来时用户已改动，就不能拿服务端旧值盖掉本地编辑
   const guard = useFormLoadGuard();
 
-  useEffect(() => { load(); }, []);
+  // 两份数据互不依赖，并行发：频道清单不必等 /api/prefs 回来才开拉
+  useEffect(() => { load(); loadFeedList(); }, []);
 
   // 折叠分组的开合按账号持久化（与其他设置面板同一机制）
   useEffect(() => {
@@ -74,7 +75,6 @@ export function DigestPane({ onDirtyChange }) {
     } catch (err) {
       setResult({ ok: false, msg: '读取日报设置失败：' + String((err && err.message) || err) });
     }
-    await loadFeedList();
   }
 
   /** 频道清单只有「自定义范围」用得到；失败必须给可重试的出口，不能一直停在「加载中」。 */
@@ -284,26 +284,27 @@ export function DigestPane({ onDirtyChange }) {
               <small className="form-tip">全选 / 清空只作用于当前筛选的 {visibleFeeds.length} 个频道；筛选外的已选不会被改动</small>
             ) : null}
             <div className="feed-pick">
-              {feedsError ? (
-                <div className="feed-pick-empty" role="alert">
-                  {feedsError}
-                  <button className="btn btn-ghost btn-sm ml-3" type="button" onClick={loadFeedList}>重试</button>
-                </div>
-              ) : feedsLoading ? <div className="feed-pick-empty">正在读取频道…</div>
-                : !feedsList.length ? <div className="feed-pick-empty">还没有订阅源，先到「设置 → 数据源」添加</div>
-                  : (visibleFeeds.length ? visibleFeeds.map((f) => {
-                    const fid = Number(f.id);
-                    const checked = form.feeds.includes(fid);
-                    return (
-                      <label key={f.id} className={'feed-pick-row' + (checked ? ' on' : '')}
-                        title={feedName(f)}>
-                        <input type="checkbox" checked={checked}
-                          onChange={(ev) => onToggleFeed(fid, ev.target.checked)} />
-                        <span className="feed-pick-name">{feedName(f)}</span>
-                        {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
-                      </label>
-                    );
-                  }) : <div className="feed-pick-empty">没有匹配的频道</div>)}
+              {/* 已有清单优先渲染：一次重拉失败不该把用户正在看的频道行整片抹掉 */}
+              {feedsList.length ? (visibleFeeds.length ? visibleFeeds.map((f) => {
+                const fid = Number(f.id);
+                const checked = form.feeds.includes(fid);
+                return (
+                  <label key={f.id} className={'feed-pick-row' + (checked ? ' on' : '')}
+                    title={feedName(f)}>
+                    <input type="checkbox" checked={checked}
+                      onChange={(ev) => onToggleFeed(fid, ev.target.checked)} />
+                    <span className="feed-pick-name">{feedName(f)}</span>
+                    {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
+                  </label>
+                );
+              }) : <div className="feed-pick-empty">没有匹配的频道</div>)
+                : feedsError ? (
+                  <div className="feed-pick-empty" role="alert">
+                    {feedsError}
+                    <button className="btn btn-ghost btn-sm ml-3" type="button" onClick={loadFeedList}>重试</button>
+                  </div>
+                ) : feedsLoading ? <div className="feed-pick-empty">正在读取频道…</div>
+                  : <div className="feed-pick-empty">还没有订阅源，先到「设置 → 数据源」添加</div>}
             </div>
             <small className="form-tip">一个都没勾时，日报会提示「没有可展示的条目」</small>
           </div>
