@@ -16,7 +16,9 @@
  *    视图切换仍只有 `.viewnav` + `ViewNav` 一份；`--tabbar-h` 派生所有底部留白。
  * 2. **不新增 `backdrop-filter`**：常驻 fixed 表面逐帧重采样会掉帧，模糊预算
  *    （≤4 条活跃声明）只留给 `.modal-mask` / `.cmdk-mask`，由 verify-dist 守门。
- * 3. **焦点环保持 2px 实色 `--accent`**，不退回半透明 `--focus-ring` 光环（亮色仅 1.26:1）。
+ * 3. **焦点描边保持 2px 实色 `--focus-ring`**（= `--accent`）；输入框柔光走
+ *    `--focus-halo`（22% 派生）。两者都定义在 `style.css :root`，视觉层只引用，
+ *    不退回「半透明描边」那种亮色仅 1.26:1 的写法。
  * 4. **次要文字禁用 opacity 弱化**：全部走实色语义令牌，对比度 ≥4.5:1。
  * 5. **颜色一律派生自现有主题变量**，自动适配 light / dark / github × 6 档主色，
  *    不在这里复制一套色板（主题真源仍是 style.css 的 `html[data-theme]`）。
@@ -32,18 +34,13 @@
  * 1. 令牌
  * ---------------------------------------------------------------------------
  * 形状 / 动效令牌在这里统一收口；颜色令牌只派生，不覆盖主题块。
- * `--radius-*` 与 `--ease` 在 style.css 的主题块里没有被重定义，所以在 :root
- * 覆盖即可全局生效；`--shadow-*` 会被暗色主题块覆盖，**故意不动**。
+ * 圆角 / 焦点反馈 / 颜色的真源都在 `style.css :root`，这里只补形状与动效语义令牌
+ * 并引用它们；`--shadow-*` 会被暗色主题块覆盖，**故意不动**。
  */
 :root {
-  /* 连续圆角（continuous corner）：半径随容器层级递增，
-     小控件 8 → 按钮 12 → 卡片 18 → 弹层 24，避免全站一个 10px 用到底。 */
-  --radius-xs: 8px;
-  --radius-sm: 10px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-xl: 24px;
-  --radius: 16px;          /* 卡片 / 内容块 */
+  /* 连续圆角：半径随容器层级递增（小控件 8 → 按钮 12 → 卡片 18 → 弹层 24）。
+     **刻度只在 style.css :root 定义一份**，视觉层不再重定义，否则「后写者胜」
+     会把基础层的值变成死规则；登录页是独立入口，另带一份同源的简化层。 */
 
   /* Apple 常用的「快出慢收」：起步利落、收尾柔和，比线性 ease-out 更有弹性感。
      全站过渡与入场动画共用；--dur-* 保持原值，避免打乱已有的等待时序。 */
@@ -67,7 +64,7 @@
   --hig-tint-strong: var(--accent-strong);
   --hig-tint-text: var(--accent-text);
   --hig-tint-soft: var(--accent-soft);
-  --hig-tint-halo: color-mix(in srgb, var(--accent) 22%, transparent);
+  --hig-tint-halo: var(--focus-halo);   /* 与 style.css :root 同一个焦点光环真源 */
 }
 
 /* ---------------------------------------------------------------------------

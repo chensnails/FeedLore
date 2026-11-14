@@ -25,7 +25,9 @@
   --page-grad: radial-gradient(1200px 600px at 50% -10%,
     color-mix(in srgb, var(--accent) 7%, var(--bg)) 0%, var(--bg) 55%);
   --card-shadow: 0 1px 2px rgba(20, 24, 30, .04), 0 4px 16px rgba(20, 24, 30, .05);
-  --focus-ring: color-mix(in srgb, var(--accent) 22%, transparent);
+  /* 与主站同一组语义：实色描边 / 22% 派生光环，登录页也只定义一次 */
+  --focus-ring: var(--accent);
+  --focus-halo: color-mix(in srgb, var(--accent) 22%, transparent);
   --accent-glow: color-mix(in srgb, var(--accent) 28%, transparent);
   --logo-shadow: color-mix(in srgb, var(--accent) 26%, transparent);
   --code-bg: #eef1f7;
@@ -34,9 +36,7 @@
   --fs-md: 0.8125rem;  /* 13px */
   --fs-base: 0.875rem; /* 14px */
   --fs-xl: 1.25rem;    /* 20px */
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-sm: 8px;
+  /* 圆角刻度不在这里定义：下方 HIG 层是登录页这一份唯一真源（与主站同值） */
   --dur-base: .15s;
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
 }
@@ -129,7 +129,7 @@ input {
   outline: none; background: var(--panel-2);
   transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
 }
-input:focus { border-color: var(--accent); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
+input:focus { border-color: var(--accent); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-halo); }
 
 button {
   width: 100%; margin-top: 8px;
@@ -206,15 +206,16 @@ button[aria-busy="true"]::after {
  * 颜色仍全部取自本文件 :root / 主题块，不另立一套色板。
  */
 :root {
+  /* 登录页独立入口的圆角真源：与主站 style.css :root 同名同值 */
   --radius-xs: 8px;
   --radius-sm: 10px;
   --radius-md: 12px;
-  --radius-lg: 20px;
+  --radius-lg: 18px;
   --hig-fill: color-mix(in srgb, var(--text) 5%, var(--panel));
   --hig-fill-2: color-mix(in srgb, var(--text) 9%, var(--panel));
   --hig-separator: color-mix(in srgb, var(--text) 11%, transparent);
-  --hig-tint-halo: color-mix(in srgb, var(--accent) 22%, transparent);
-  --hig-ease: cubic-bezier(.32, .72, 0, 1);
+  --hig-tint-halo: var(--focus-halo);
+  --ease: cubic-bezier(.32, .72, 0, 1);
 }
 html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 .login-card { border-radius: var(--radius-lg); border-color: var(--hig-separator); }
@@ -222,9 +223,9 @@ input {
   border-color: var(--hig-separator);
   border-radius: var(--radius-md);
   background: var(--hig-fill);
-  transition: border-color var(--dur-base) var(--hig-ease),
-              box-shadow var(--dur-base) var(--hig-ease),
-              background var(--dur-base) var(--hig-ease);
+  transition: border-color var(--dur-base) var(--ease),
+              box-shadow var(--dur-base) var(--ease),
+              background var(--dur-base) var(--ease);
 }
 input:focus {
   border-color: var(--accent);
@@ -235,8 +236,8 @@ button {
   border-radius: var(--radius-md);
   font-weight: 600;
   letter-spacing: -.01em;
-  transition: background var(--dur-base) var(--hig-ease),
-              transform .12s var(--hig-ease);
+  transition: background var(--dur-base) var(--ease),
+              transform .12s var(--ease);
 }
 button:not(:disabled):active { transform: scale(.975); }
 .theme-toggle { border-radius: var(--radius-sm); border-color: var(--hig-separator); }

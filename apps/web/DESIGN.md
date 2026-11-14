@@ -45,7 +45,10 @@
    材质、圆角、字阶、按压反馈、控件形态。视觉层**不改** grid 列数、`--hit-min`、字号下限、
    断点数值，也不新增 `backdrop-filter`（模糊预算仍是 4 条）。颜色一律用 `color-mix()` 从现有
    主题变量派生，自动适配 light / dark / github × 6 档主色，别在视觉层复制一套色板。
-   焦点环保持 2px 实色 `--accent`，次要文字禁用 opacity 弱化。移动端覆盖规则必须写进
+   焦点反馈只有一组真源：`--focus-ring`（2px 实色描边，= `--accent`）与 `--focus-halo`
+   （22% 派生光环，供输入框 `box-shadow`），都定义在 `style.css :root`；主题块不再各写
+   半透明值，也不靠 `html[data-theme][data-accent]` 覆盖洗色。圆角刻度同理只在基础层
+   `:root` 定义一份，`hig.css` 只引用不重定义。次要文字禁用 opacity 弱化。移动端覆盖规则必须写进
    `@media (max-width:720px), (max-height:500px) and (pointer:coarse)` 同一个断点里。
 8. **展开文章的置顶按实测吸顶高度让位**。`core/reader.js#readerHeadOffset` 每帧量
    `.reader-head` / `.chan-tabs` / `.view-toolbar` 的底边，写回 `--reader-sticky-offset`，

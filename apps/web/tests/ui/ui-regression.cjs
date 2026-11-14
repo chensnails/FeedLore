@@ -1508,7 +1508,7 @@ const withEFP = (el, fn) => {
       throw new Error('文本域也要纳入统一外观');
     }
     if (!rules.some((r) => /:where\(input/.test(r.sel) && /:focus/.test(r.sel)
-      && /var\(--focus-ring\)/.test(r.body))) {
+      && /var\(--focus-(ring|halo)\)/.test(r.body))) {
       throw new Error('设置面板控件应有统一焦点环');
     }
     if (!rules.some((r) => /:where\(input, textarea\)::placeholder/.test(r.sel))) {
@@ -1524,7 +1524,7 @@ const withEFP = (el, fn) => {
     }
     if (!/box-shadow:\s*none/.test(sel.body)) throw new Error('设置面板下拉应压掉拟物投影');
     if (!rules.some((r) => /\.select:not\(\.feed-freq\):not\(\.u-role\):focus/.test(r.sel)
-      && /var\(--focus-ring\)/.test(r.body))) {
+      && /var\(--focus-(ring|halo)\)/.test(r.body))) {
       throw new Error('设置面板下拉也要有统一焦点环');
     }
 
@@ -8016,7 +8016,9 @@ const withEFP = (el, fn) => {
     }
     const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
     if (!/\.btn\[aria-busy="true"\]::after/.test(css)) throw new Error('置忙按钮缺转圈指示');
-    if (!/@keyframes btnSpin/.test(css)) throw new Error('缺 btnSpin 动画');
+    if (!/@keyframes spin/.test(css) || /@keyframes btnSpin/.test(css)) {
+      throw new Error('旋转关键帧应只有 spin 一份（置忙按钮与刷新图标共用）');
+    }
   });
 
   /* 排版刻度：字重只用四档、元信息最小 12px、小图标按钮命中补到 44px。 */
@@ -8280,9 +8282,22 @@ const withEFP = (el, fn) => {
     const iHig = main.indexOf("import './hig.css';");
     if (iBase < 0 || iHig < 0 || iHig <= iBase) throw new Error('hig.css 必须在 style.css 之后导入（后写者胜）');
     const hig = fs.readFileSync(path.join(root, 'src', 'hig.css'), 'utf8').replace(/\r\n/g, '\n');
-    for (const token of ['--radius-xs:', '--radius-lg:', '--radius-xl:', '--hig-separator:',
-      '--hig-fill:', '--hig-tint:', '--hig-press-scale:', '--ease:']) {
+    for (const token of ['--hig-separator:', '--hig-fill:', '--hig-tint:',
+      '--hig-press-scale:', '--ease:']) {
       if (!hig.includes(token)) throw new Error('设计令牌缺失：' + token);
+    }
+    // 圆角 / 焦点反馈只在基础层定义一份：视觉层重定义会让「后写者胜」把基础层变成死规则
+    const baseCss = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
+    for (const token of ['--radius-xs: 8px', '--radius-sm: 10px', '--radius-md: 12px',
+      '--radius-lg: 18px', '--radius-xl: 24px', '--focus-ring: var(--accent)',
+      '--focus-halo: color-mix']) {
+      if (!baseCss.includes(token)) throw new Error('基础层缺设计令牌真源：' + token);
+    }
+    if (/--radius-(xs|sm|md|lg|xl):\s*\d+px/.test(hig)) {
+      throw new Error('视觉层不该再定义 --radius-* 刻度（真源在 style.css :root）');
+    }
+    if (/--focus-ring: rgba\(/.test(baseCss) || /html\[data-theme\]\[data-accent\]\s*\{\s*--focus-ring/.test(baseCss)) {
+      throw new Error('主题块不该再各写半透明 --focus-ring，也不该靠覆盖洗色');
     }
     // 只看真实声明：契约注释里会提到这个属性名，别把说明文字当成违规
     if (/backdrop-filter\s*:/.test(hig)) throw new Error('视觉层不得新增 backdrop-filter（模糊预算 ≤4，fixed 表面会掉帧）');

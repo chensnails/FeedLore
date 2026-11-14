@@ -64,7 +64,11 @@
   --accent-soft-2: #dbe5fb;
   --accent-glow: rgba(31, 92, 232, 0.3);
   --accent-glow-soft: rgba(31, 92, 232, 0.26);
-  --focus-ring: rgba(31, 92, 232, 0.16);
+  /* 焦点反馈拆两档、只在这里定义一次：
+     --focus-ring = 2px 实色描边（outline / inset），--focus-halo = 22% 派生光环（box-shadow）。
+     各主题块不再各写一份半透明值，换主色 / 换主题自动跟随。 */
+  --focus-ring: var(--accent);
+  --focus-halo: color-mix(in srgb, var(--accent) 22%, transparent);
   --logo-shadow: rgba(31, 92, 232, 0.26);
   --on-accent: #ffffff;
   /* MD3 状态层：on-color 低透明度叠加，跨主题/主色自动适配（hover/focus/press/drag） */
@@ -81,16 +85,18 @@
   --shadow-lg: 0 20px 60px rgba(16, 18, 22, .28);
   --shadow-sm: 0 1px 3px rgba(20, 24, 30, .1);
   --shadow-toast: 0 8px 28px rgba(16, 18, 22, .3);
-  --radius: 12px;
+  --radius: 16px;
 
   /* ---------- 统一设计规范（v1.1.12） ----------
      下面这组令牌把散落各处的取值收敛成可复用的刻度；组件一律引用令牌，不再硬编码。 */
   /* 圆角层级：由小到大，同一语义的圆角只用一个令牌 */
-  --radius-xs: 6px;      /* 行内编辑框、代码块等极小元素 */
-  --radius-sm: 8px;      /* 小控件：图标按钮、小标签 */
-  --radius-md: 10px;     /* 默认控件：按钮、输入框、下拉、Toast */
-  --radius-lg: 12px;     /* 容器：卡片、内容块（= --radius） */
-  --radius-xl: 16px;     /* 弹层：模态窗 */
+  /* 圆角唯一真源：视觉层 / 登录页不再各写一份（后者有独立入口，另带简化层）。
+     值与原 hig.css 的覆盖值一致，收口后生效结果不变，但改这里就能全站生效。 */
+  --radius-xs: 8px;      /* 行内编辑框、代码块等极小元素 */
+  --radius-sm: 10px;     /* 小控件：图标按钮、小标签 */
+  --radius-md: 12px;     /* 默认控件：按钮、输入框、下拉、Toast */
+  --radius-lg: 18px;     /* 容器：卡片、内容块 */
+  --radius-xl: 24px;     /* 弹层：模态窗 */
   --radius-pill: 999px;  /* 胶囊：标签、徽标 */
   /* 字号阶梯（由既有取值收敛，覆盖 11px ~ 21px；阶梯外取值一律并入相邻档） */
   --fs-2xs: 0.6875rem;   /* 11px  角标 / 元信息 */
@@ -209,7 +215,6 @@ html[data-accent="violet"] {
   --accent-soft-2: #e7e0fa;
   --accent-glow: rgba(106, 63, 224, 0.3);
   --accent-glow-soft: rgba(106, 63, 224, 0.26);
-  --focus-ring: rgba(106, 63, 224, 0.16);
   --logo-shadow: rgba(106, 63, 224, 0.26);
   --on-accent: #ffffff;
 }
@@ -221,7 +226,6 @@ html[data-accent="teal"] {
   --accent-soft-2: #d8e8e9;
   --accent-glow: rgba(11, 111, 116, 0.3);
   --accent-glow-soft: rgba(11, 111, 116, 0.26);
-  --focus-ring: rgba(11, 111, 116, 0.16);
   --logo-shadow: rgba(11, 111, 116, 0.26);
   --on-accent: #ffffff;
 }
@@ -233,7 +237,6 @@ html[data-accent="green"] {
   --accent-soft-2: #d8e9e0;
   --accent-glow: rgba(14, 116, 64, 0.3);
   --accent-glow-soft: rgba(14, 116, 64, 0.26);
-  --focus-ring: rgba(14, 116, 64, 0.16);
   --logo-shadow: rgba(14, 116, 64, 0.26);
   --on-accent: #ffffff;
 }
@@ -245,7 +248,6 @@ html[data-accent="amber"] {
   --accent-soft-2: #efe2d7;
   --accent-glow: rgba(154, 74, 6, 0.3);
   --accent-glow-soft: rgba(154, 74, 6, 0.26);
-  --focus-ring: rgba(154, 74, 6, 0.16);
   --logo-shadow: rgba(154, 74, 6, 0.26);
   --on-accent: #ffffff;
 }
@@ -257,7 +259,6 @@ html[data-accent="rose"] {
   --accent-soft-2: #f5dce5;
   --accent-glow: rgba(192, 37, 92, 0.3);
   --accent-glow-soft: rgba(192, 37, 92, 0.26);
-  --focus-ring: rgba(192, 37, 92, 0.16);
   --logo-shadow: rgba(192, 37, 92, 0.26);
   --on-accent: #ffffff;
 }
@@ -316,7 +317,6 @@ html[data-theme="dark"] {
   --accent-soft-2: #424c64;
   --accent-glow: rgba(122, 162, 255, 0.3);
   --accent-glow-soft: rgba(122, 162, 255, 0.26);
-  --focus-ring: rgba(122, 162, 255, 0.24);
   --logo-shadow: rgba(122, 162, 255, 0.3);
   --on-accent: #111111;
   --select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%23999999' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
@@ -359,7 +359,6 @@ html[data-theme="dark"][data-accent="violet"] {
   --accent-soft-2: #4d4664;
   --accent-glow: rgba(166, 139, 255, 0.3);
   --accent-glow-soft: rgba(166, 139, 255, 0.26);
-  --focus-ring: rgba(166, 139, 255, 0.24);
   --logo-shadow: rgba(166, 139, 255, 0.3);
   --on-accent: #111111;
 }
@@ -371,7 +370,6 @@ html[data-theme="dark"][data-accent="teal"] {
   --accent-soft-2: #375855;
   --accent-glow: rgba(79, 209, 197, 0.3);
   --accent-glow-soft: rgba(79, 209, 197, 0.26);
-  --focus-ring: rgba(79, 209, 197, 0.24);
   --logo-shadow: rgba(79, 209, 197, 0.3);
   --on-accent: #111111;
 }
@@ -383,7 +381,6 @@ html[data-theme="dark"][data-accent="green"] {
   --accent-soft-2: #3a5a47;
   --accent-glow: rgba(94, 214, 143, 0.3);
   --accent-glow-soft: rgba(94, 214, 143, 0.26);
-  --focus-ring: rgba(94, 214, 143, 0.24);
   --logo-shadow: rgba(94, 214, 143, 0.3);
   --on-accent: #111111;
 }
@@ -395,7 +392,6 @@ html[data-theme="dark"][data-accent="amber"] {
   --accent-soft-2: #60513b;
   --accent-glow: rgba(240, 180, 95, 0.3);
   --accent-glow-soft: rgba(240, 180, 95, 0.26);
-  --focus-ring: rgba(240, 180, 95, 0.24);
   --logo-shadow: rgba(240, 180, 95, 0.3);
   --on-accent: #111111;
 }
@@ -407,7 +403,6 @@ html[data-theme="dark"][data-accent="rose"] {
   --accent-soft-2: #644750;
   --accent-glow: rgba(255, 143, 177, 0.3);
   --accent-glow-soft: rgba(255, 143, 177, 0.26);
-  --focus-ring: rgba(255, 143, 177, 0.24);
   --logo-shadow: rgba(255, 143, 177, 0.3);
   --on-accent: #111111;
 }
@@ -464,7 +459,6 @@ html[data-theme="github"] {
   --accent-soft-2: #172c4b;
   --accent-glow: rgba(31, 111, 235, 0.3);
   --accent-glow-soft: rgba(31, 111, 235, 0.26);
-  --focus-ring: rgba(31, 111, 235, 0.24);
   --logo-shadow: rgba(31, 111, 235, 0.3);
   --on-accent: #ffffff;
   --select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%238b949e' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
@@ -657,9 +651,9 @@ body.modal-open {
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: btnSpin .7s linear infinite;
+  animation: spin .7s linear infinite;
 }
-@keyframes btnSpin { to { transform: rotate(360deg); } }
+/* 旋转关键帧只留下面 @keyframes spin 一份（顶栏刷新 .ico.spin 与置忙按钮共用） */
 @media (prefers-reduced-motion: reduce) {
   .btn[aria-busy="true"]::after { animation: none; }
 }
@@ -1668,7 +1662,7 @@ textarea:disabled {
   outline: none;
   transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
 }
-.confirm-input:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
+.confirm-input:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-halo); }
 /* 必填校验：错误框常驻 DOM 供读屏播报，空态只收高度；输入框同时给红边与 aria-invalid */
 .confirm-input[aria-invalid="true"] { border-color: var(--danger); }
 .confirm-err {
@@ -1790,7 +1784,7 @@ textarea:disabled {
 .settings-search:focus-within {
   border-color: var(--accent-text);
   background: var(--panel);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--focus-halo);
 }
 .settings-search > .ico { width: .9rem; height: .9rem; flex: 0 0 auto; color: var(--text-faint); }
 .settings-search input {
@@ -1983,7 +1977,7 @@ textarea:disabled {
   outline: none;
   transition: border-color var(--dur-base), box-shadow var(--dur-base);
 }
-.feed-filter-input:focus { border-color: var(--accent-text); box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-ring); }
+.feed-filter-input:focus { border-color: var(--accent-text); box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-halo); }
 .feed-filter-input::placeholder { color: var(--text-faint); }
 
 .pane-foot {
@@ -2152,7 +2146,7 @@ textarea:disabled {
 .form-row textarea { min-height: 96px; resize: vertical; line-height: 1.6; }
 .form-row .select { width: 100%; }
 .form-row input:focus,
-.form-row textarea:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
+.form-row textarea:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-halo); }
 /* 设置面板里的文本类控件统一走同一套外观（v2.10.0）。
    此前只有 .form-row 内的控件有完整样式，数据源「添加订阅」、用户添加、规则卡片
    等位置落到浏览器默认控件 —— 同一面板里高度、圆角、底色、焦点环各不相同。
@@ -2170,7 +2164,7 @@ textarea:disabled {
 .settings-modal :where(textarea) { line-height: 1.6; }
 .settings-modal :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="search"]):not(.feed-order):not(.feed-group-edit):not(.feed-title-edit):not(.feed-url-edit)):focus,
 .settings-modal :where(textarea):focus {
-  border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring);
+  border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-halo);
 }
 .settings-modal :where(input, textarea)::placeholder { color: var(--text-faint); }
 
@@ -2183,7 +2177,7 @@ textarea:disabled {
 }
 .settings-modal .select:not(.feed-freq):not(.u-role):focus {
   border-color: var(--accent-text);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--focus-halo);
 }
 .form-tip { display: block; margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-faint); }
 /* 表单错误态：:user-invalid 只在用户交互过之后才标红（不会一进页面就满屏红框），无需任何 JS 参与 */
@@ -2328,7 +2322,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   outline: none; transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
 }
 .feed-order:hover { border-color: var(--border-strong); }
-.feed-order:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-ring); }
+.feed-order:focus { border-color: var(--accent-text); background: var(--panel); box-shadow: 0 0 0 3px var(--focus-halo); }
 .feed-order::-webkit-outer-spin-button, .feed-order::-webkit-inner-spin-button { -webkit-appearance: none; margin:0; }
 .feed-order { -moz-appearance: textfield; }
 
@@ -2368,7 +2362,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
   font-size: var(--fs-md); font-weight: 600; font-family: inherit; color: var(--text-muted);
   background: var(--panel);
   outline: none; cursor: text;
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--focus-halo);
 }
 
 /* 频道行里的分组输入框 */
@@ -2391,7 +2385,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
 .feed-group input:hover { border-color: var(--border-strong); }
 .feed-group input:focus {
   border-color: var(--accent-text); background: var(--panel);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--focus-halo);
 }
 
 .feed-avatar {
@@ -2862,7 +2856,7 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
   background: var(--surface-soft-2); color: var(--text-faint);
   transition: border-color var(--dur-base), box-shadow var(--dur-base);
 }
-.feed-pick-search:focus-within { border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--focus-ring); }
+.feed-pick-search:focus-within { border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--focus-halo); }
 .feed-pick-search .ico { width: .85rem; height: .85rem; flex: 0 0 auto; }
 .form-row .feed-pick-search input,
 .form-row .feed-pick-search input:focus {
@@ -2892,7 +2886,7 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
   margin: 0; padding: 0; border: none; border-radius: var(--radius-xs);
   background: none; box-shadow: none; accent-color: var(--accent); cursor: pointer;
 }
-.form-row .feed-pick-row input[type="checkbox"]:focus { box-shadow: 0 0 0 3px var(--focus-ring); }
+.form-row .feed-pick-row input[type="checkbox"]:focus { box-shadow: 0 0 0 3px var(--focus-halo); }
 .feed-pick-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed-pick-off { flex: 0 0 auto; font-size: var(--fs-2xs); color: var(--text-faint); }
 .feed-pick-empty { padding:var(--sp-3); }
@@ -3272,7 +3266,8 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 }
 .reader-resize:hover::after, .reader-resize:active::after { background: var(--accent-soft); }
 .reader-resize:focus-visible { outline: none; }
-.reader-resize:focus-visible::after { background: var(--accent-soft); box-shadow: var(--focus-ring); }
+/* 旧写法 box-shadow: var(--focus-ring) 缺长度与模糊半径，是无效声明，等于没有反馈 */
+.reader-resize:focus-visible::after { background: var(--accent-soft); box-shadow: 0 0 0 2px var(--focus-halo); }
 
 /* ---------- 右侧文章 ---------- */
 /* 内容区：自己的滚动容器（App Shell）；.reader-head 在其内部 sticky top:0 钉住 */
@@ -3357,7 +3352,7 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
   transition: border-color var(--dur-base), box-shadow var(--dur-base);
 }
 .reader-search input::placeholder { color: var(--text-faint); }
-.reader-search input:focus { border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--focus-ring); }
+.reader-search input:focus { border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--focus-halo); }
 /* 去掉浏览器自带的小叉，统一用下面的清除按钮 */
 .reader-search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 .reader-search-clear {
@@ -4569,7 +4564,7 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
 }
 .feed-group select:focus {
   border-color: var(--accent-text);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--focus-halo);
 }
 /* 单独设过频率的频道用主色标出来，一眼能看出哪些没跟随全局 */
 .feed-freq.own {
@@ -4809,12 +4804,10 @@ body { padding-bottom:env(safe-area-inset-bottom, 0px); }
    放进玻璃面板就成了「一个卡片三种颜色」，撤掉后整个弹窗只剩一层底。 */
 .cd-art { border-top: none; background: transparent; }
 /* 统一的键盘可见焦点环（无障碍 + 现代观感）
- * 焦点环一律用实色主色：上面 6 套强调色 × 3 套主题各自定义的半透明
- * --focus-ring（.16 / .24）在白底只有 1.2~1.5:1，键盘 Tab 到按钮基本看不见。
- * 这里用同特异度、靠后的一条规则一次性覆盖，避免逐块改 13 处变量定义。
+ * --focus-ring（实色描边）与 --focus-halo（22% 光环）已在 :root 定义一次，
+ * 6 套强调色 × 3 套主题不再各写半透明值：换主色自动跟随，也无需靠后的覆盖规则。
  * 另：焦点指示不能用 box-shadow —— .viewnav-btn.active 等后写的规则会把它盖掉，
- * 所以下面统一走 outline（见 WCAG 1.4.11 非文本对比 ≥3:1）。 */
-html[data-theme][data-accent] { --focus-ring: var(--accent); }
+ * 所以全局统一走 outline（见 WCAG 1.4.11 非文本对比 ≥3:1）。 */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -4827,7 +4820,7 @@ textarea:focus-visible { outline: none; }
    原先这一段写的是 outline:none + box-shadow 淡环，既被 .active 的拟物阴影盖掉，
    半透明环本身也不达标。统一继承上面的 2px 实色描边即可。 */
 /* 开关：隐藏的 input 获得焦点时，把光环画在滑块上 */
-.switch input:focus-visible + .switch-slider { box-shadow: 0 0 0 3px var(--focus-ring); }
+.switch input:focus-visible + .switch-slider { box-shadow: 0 0 0 3px var(--focus-halo); }
 
 /* ---------- 关于页（版本信息与更新检测） ---------- */
 .about-body { padding:var(--sp-5) var(--sp-6) var(--sp-6); }
@@ -4893,7 +4886,7 @@ textarea:focus-visible { outline: none; }
 /* 自定义下拉触发器：去掉 .select 内嵌箭头（已有 .dd-caret），避免双箭头 */
 .dd-trigger { background-image: none; padding-right:var(--sp-3); }
 .search-box input { background: var(--surface-soft-2); box-shadow: var(--neu-inset); border-color: var(--border); }
-.search-box input:focus { box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-ring); }
+.search-box input:focus { box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-halo); }
 
 /* 视图模式分段控件 */
 .viewmode { background: var(--surface-soft-2); box-shadow: var(--neu-inset); border-color: var(--border); }
@@ -5009,7 +5002,7 @@ textarea:focus-visible { outline: none; }
   box-shadow: var(--neu-inset);
   border-color: var(--border);
 }
-.reader-search input:focus { box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-ring); }
+.reader-search input:focus { box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-halo); }
 .reader-search-clear {
   width: 24px; height: 24px; right: 8px;
   border-radius: var(--radius-pill);
@@ -5424,7 +5417,7 @@ body { overflow: hidden; }
 .reader-search input:focus,
 .search-box input:focus {
   border-color: var(--accent-text);
-  box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-ring);
+  box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-halo);
 }
 /* 图标跟着胶囊的端头走（左 36px 内边距 → 图标中心 21px）。
    ⚠️ position:absolute 不能缺：搜索框是 flex 容器，图标若留在流里就是一个 flex item，
@@ -5458,7 +5451,7 @@ body { overflow: hidden; }
 .rule-scope-btn:hover { border-color: var(--accent-text); color: var(--text); }
 .rule-scope-btn[aria-expanded="true"] {
   border-color: var(--accent-text); background: var(--panel); color: var(--text);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--focus-halo);
 }
 .rule-scope-btn .ico { width: .85rem; height: .85rem; flex: 0 0 auto; }
 .rule-scope-btn.compact .ico { width: .75rem; height: .75rem; }
@@ -5795,7 +5788,8 @@ body { overflow: hidden; }
   animation: scrollTopIn .18s ease-out;
 }
 .scroll-top:hover { color: var(--accent-text); border-color: var(--accent-text); }
-.scroll-top:focus-visible { outline: none; box-shadow: var(--float-shadow), 0 0 0 3px var(--focus-ring); }
+/* 回顶钮是浮动按钮：光环之外保留 2px 实色 outline，光环变柔后键盘焦点仍清晰 */
+.scroll-top:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; box-shadow: var(--float-shadow), 0 0 0 3px var(--focus-halo); }
 .scroll-top .ico { width: 20px; height: 20px; }
 @keyframes scrollTopIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 /* toast 和回顶钮共用同一条底部高度带；长文案会一直延伸到右侧。
