@@ -6,7 +6,7 @@
 > Multi-user · no ads · no telemetry · all data in your own PostgreSQL.
 
 **Live demo**: https://feedlore.669600.xyz (`demo` / `demo`)
-Current version **2.4.5** · [Changelog](CHANGELOG.en.md) · [Upgrade & deployment](UPGRADE-v2.en.md)
+Current version **2.4.6** · [Changelog](CHANGELOG.en.md) · [Upgrade & deployment](UPGRADE-v2.en.md)
 
 ## Highlights
 

@@ -7,7 +7,7 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
-## Unreleased
+## 2.4.6 — 2026-11-14
 
 ### Fixed
 
@@ -21,6 +21,34 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - **Theme slot names**: "CommaFeed Dark" / "GitHub Dark" are now "Warm Gray" / "Dark" in the
   appearance settings; descriptions, accent hints, the quick toggle and command-palette keywords
   follow. **Palettes are unchanged.**
+- **Settings forms are read-only until you ask to edit**: login info, collection parameters,
+  watch notifications/retention, digest limits and style, and the model endpoint/key now show a
+  one-line summary; "Edit …" reveals the fields, "Collapse" hides them again. Login info is
+  triggered by "Change password" / "Change username", collapsing with unsaved input asks first, and
+  saving collapses automatically. Requests, validation and save semantics are untouched; list-style
+  sections (rules / filters / users / sessions) already edited per row and stay as they were.
+- **Settings copy rewritten**: wall-of-text hints are now short sentences under bold sub-headings
+  with nothing dropped — collection parameters split into retention / fetching / egress proxy /
+  image cache; import, backup and restore split into contains / excludes / merge rules / impact;
+  user management split by admin / regular / read-only.
+- **Visual language unified**: new `--sp-0` / `--empty-*` tokens replace hard-coded gaps and empty
+  state padding; meta chips, sheet close buttons and toast border/hover now derive from theme
+  variables; decorative icons and carets use solid semantic tokens instead of opacity; press
+  displacement lives in one place.
+- **Design tokens collapsed to a single source**: focus feedback split into `--focus-ring` (2px
+  solid outline) and `--focus-halo` (22% derived halo), removing 12 translucent per-theme
+  definitions; radius scale lives in `style.css :root` only; spin keyframes and easing names merged.
+  Effective values are unchanged.
+- **Login page consistency**: the three theme palettes now match the main app item by item, sizes
+  are in rem and follow the UI font-size setting, `theme-color` reads the computed `--bg`, and
+  validation/submit states share one persistent error box plus spinner and `aria-busy`.
+- **Interaction feedback and touch targets**: required fields in confirm dialogs get inline errors
+  and `aria-invalid`; the toast "Undo" is reachable with Tab again; the sort submenu forks on hover
+  capability; tag chips, paging retry, group and channel funnels and undo all get 44px touch areas.
+- **Digest page hierarchy**: the description line and the date/action row are layered like the
+  reader and cards pages, with the date on its own line and two buttons sharing the next on narrow
+  screens; loading / empty / error states share `ui/StateBlock.jsx` while keeping old class names
+  and every escape hatch.
 
 - **Settings edge states and misclick guards**: the digest feed picker now has four states
   (loading / read failure with retry / no feeds / ready); "select all" and "clear" are symmetric
