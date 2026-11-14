@@ -4011,7 +4011,24 @@ body.is-scrolling .card-media-actions { transition: none; }
 /* 复制成功态自带「已复制」文字，在这一排方块里会溢出到按钮外，只留勾图标（文字靠 toast 播报） */
 .art-actions .btn-label { display: none; }
 
-.art-loading { display: inline-flex; gap:var(--sp-2); padding:var(--sp-2) 0; }
+/* 单条目 AI 动作条：挂在 ArtBody 正文末尾，文章页与卡片详情共用。
+   复用 .btn 体系与 --sp 令牌，视觉上与前一排 .art-actions 拉开一档间距，避免误读成同一组。 */
+.entry-ai { display: flex; flex-direction: column; gap: var(--sp-3); padding-top: var(--sp-3);
+  border-top: 1px solid var(--line); margin-top: var(--sp-2); }
+.entry-ai-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.entry-ai-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--text-faint);
+  padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; }
+.entry-ai-result { display: flex; flex-direction: column; gap: var(--sp-2);
+  background: var(--surface-2, var(--bg-soft)); border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--sp-4); }
+.entry-ai-res-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  font-size: 13px; font-weight: 600; color: var(--text); }
+.entry-ai-res-body { white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 14px; color: var(--text); }
+.entry-ai-error { color: var(--danger, #c0392b); }
+
+@media (max-width: 720px) {
+  .entry-ai { padding-top: var(--sp-2); }
+  .entry-ai-result { padding: var(--sp-3); }
+}
 .art-loading i {
   width: 7px; height: 7px; border-radius: 50%;
   background: var(--accent); opacity: .4;

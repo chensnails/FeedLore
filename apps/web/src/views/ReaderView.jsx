@@ -25,6 +25,8 @@ import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 import { Icon } from '../ui/Icon.jsx';
 // 动作按钮由 ui/EntryActions 统一提供：卡片页、文章页、卡片详情用同一份实现
 import { ArtActions, safeHref } from '../ui/EntryActions.jsx';
+// 单条目 AI 动作条（摘要/要点/翻译/解释），挂到 ArtBody 出口，文章页与卡片详情共用
+import { EntryAiBar } from '../ui/EntryAiBar.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -346,6 +348,8 @@ export function ArtBody({ e, onTag, extraActions }) {
     );
   }
   parts.push(<ArtActions key="acts" e={e} extraActions={extraActions} />);
+  // 单条目 AI 动作条：文章页与卡片详情共用 ArtBody，加这里两处同时生效
+  parts.push(<EntryAiBar key="ai" entryId={e.id} />);
   return <div className="art-inner">{parts}</div>;
 }
 
