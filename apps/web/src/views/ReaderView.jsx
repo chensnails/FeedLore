@@ -327,10 +327,14 @@ export function ArtBody({ e, onTag, extraActions }) {
   }
 
   if (e.date) {
+    // 脏数据里的非法日期不能在这里抛 RangeError：React 19 没有错误边界，
+    // 渲染期一抛会卸掉整个根（文章页 / 卡片详情共用这个 ArtBody，两处一起白屏）。
+    const d = new Date(e.date);
+    const iso = Number.isFinite(d.getTime()) ? d.toISOString() : undefined;
     parts.push(
       <p className="art-pub" key="pub">
         <span className="art-pub-label">发布时间</span>
-        <time dateTime={new Date(e.date).toISOString()}>{fmtFull(e.date)}</time>
+        <time dateTime={iso}>{fmtFull(e.date)}</time>
       </p>
     );
   }
@@ -684,7 +688,8 @@ export function ReaderView() {
     // setQDraft 本身就会触发重绘（清除按钮的显隐读它），不必再 bump 一次
     setQDraft(v);
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => { if (s.readerSearch) s.readerSearch(v.trim()); }, 280);
+    // 与卡片页同为 300ms（卡片页注释以此为准），两页输入手感一致
+    debounceRef.current = setTimeout(() => { if (s.readerSearch) s.readerSearch(v.trim()); }, 300);
   };
   const onSearchClear = () => {
     if (searchRef.current) {
@@ -698,7 +703,14 @@ export function ReaderView() {
   const onSearchKey = (ev) => {
     if (ev.key === 'Enter') { clearTimeout(debounceRef.current); if (s.readerSearch) s.readerSearch(String(ev.target.value).trim()); }
     // Esc 收起搜索（与 iOS 搜索框一致）；有词时先清词再收，避免「看不见却生效」的过滤
-    if (ev.key === 'Escape') { ev.stopPropagation(); if (qDraft) onSearchClear(); setSearchOpen(false); }
+    if (ev.key === 'Escape') {
+      ev.stopPropagation();
+      if (qDraft) onSearchClear();
+      setSearchOpen(false);
+      // 收起后输入框在窄屏是 display:none，焦点会掉到 body；还给放大镜按钮
+      const toggle = document.querySelector('.reader-search-toggle');
+      if (toggle && toggle.focus) toggle.focus();
+    }
   };
   // 标题栏放大镜：展开 / 收起。收起时若有关键词一并清掉 —— 留着一个看不见的过滤条件，
   // 表现成「列表莫名少了一半」，比直接清空更难排查。

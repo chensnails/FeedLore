@@ -98,13 +98,15 @@ export function CommandPalette() {
     if (ev.key === 'ArrowDown') { ev.preventDefault(); setActive((i) => (items.length ? (i + 1) % items.length : 0)); }
     else if (ev.key === 'ArrowUp') { ev.preventDefault(); setActive((i) => (items.length ? (i - 1 + items.length) % items.length : 0)); }
     else if (ev.key === 'Enter') { ev.preventDefault(); runCmdk(active); }
-    else if (ev.key === 'Escape') { ev.preventDefault(); if (!isOn('confirmOpen')) close(); }
   };
 
   const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) close(); };
 
   // Tab 不跑出面板：否则模态对话框会把焦点送到背后的页面上
   const onPanelKeyDown = (ev) => {
+    // Esc 挂在面板而不是输入框：Tab 到某条命令按钮后按 Esc 也要能关，
+    // 否则只能用 ⌘K 或点遮罩（确认框叠在上面时仍让位给它）。
+    if (ev.key === 'Escape') { ev.preventDefault(); if (!isOn('confirmOpen')) close(); return; }
     if (ev.key !== 'Tab') return;
     const root = panelRef.current;
     if (!root) return;

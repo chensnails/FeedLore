@@ -158,13 +158,16 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   stroke-linecap: round; stroke-linejoin: round;
 }
 
+/* aria-live 容器常驻 DOM：从 display:none 切到 block 时部分读屏不播报 assertive 内容，
+   密码错误 / 限流提示会静默。空内容只收掉视觉占位，容器本身一直可见。 */
 .error {
   margin-top: 14px; padding: 10px 13px;
   background: var(--err-bg); border: 1px solid var(--err-border);
   color: var(--danger); border-radius: var(--radius-md);
-  font-size: 13px; display: none;
+  font-size: 13px; display: block;
 }
-.error.show { display: block; animation: shake .3s; }
+.error:empty { height: 0; padding: 0; margin: 0; border: 0; overflow: hidden; }
+.error.show { animation: shake .3s; }
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-4px); }

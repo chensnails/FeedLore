@@ -20,7 +20,7 @@ function readShell() {
   try { return core.getShell(); } catch (_) { return {}; }
 }
 
-export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, readerControls = false, readerState }) {
+export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, readerControls = false, readerState, refreshLabel, refreshHint }) {
   const [open, setOpen] = useState(false);
   const [subOpen, setSubOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -135,9 +135,10 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
               {/* 忙碌三件套：禁用 + aria-busy + 文案（与设置面板的保存按钮同一套，
                   否则读屏听不出「正在刷新」，用户还会连点重复发请求） */}
               <button type="button" role="menuitem" className="overflow-item" onClick={onRefresh}
-                disabled={busy} aria-busy={busy ? 'true' : undefined}>
+                disabled={busy} aria-busy={busy ? 'true' : undefined}
+                title={refreshHint}>
                 <svg className={'ico' + (busy ? ' spin' : '')} aria-hidden="true" focusable="false"><use href="#i-refresh" /></svg>
-                <span>{busy ? '刷新中…' : '刷新'}</span>
+                <span>{busy ? '刷新中…' : (refreshLabel || '刷新')}</span>
               </button>
             </>
           ) : null}

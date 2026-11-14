@@ -385,16 +385,20 @@ export function CardsView() {
     emptyMsg = st.loadMoreErrMsg ? `数据加载失败：${st.loadMoreErrMsg}` : '数据加载失败，请稍后重试';
     emptyAction = { label: '重试', run: () => s.loadPage(true) };
   } else if (noFeeds) {
-    emptyMsg = writable ? '还没有订阅源，点右上角「设置 → 数据源」添加 RSS 地址' : '还没有订阅源；只读账户不能自行添加';
+    // 窄屏「设置」收在 ⋮ 菜单里，屏幕右上角并没有可见控件，别写方位词
+    emptyMsg = writable ? '还没有订阅源，去「设置 → 数据源」添加 RSS 地址' : '还没有订阅源；只读账户不能自行添加';
     emptyAction = writable ? { label: '添加订阅源', run: () => s.readerOpenSource() } : null;
   } else if (noCards) {
+    // 文案给几条路，就得给几个出口：只读账户不能改开关，直接给「切到文章页」
     emptyMsg = writable
-      ? '所有频道的「卡片」开关都关掉了。去「设置 → 数据源」打开，或切到「文章」页阅读'
+      ? '所有频道的「卡片」开关都关掉了，去「设置 → 数据源」打开即可在卡片页阅读'
       : '所有频道的「卡片」开关都关掉了，可切到「文章」页阅读';
-    emptyAction = writable ? { label: '去数据源设置', run: () => s.readerOpenSource() } : null;
+    emptyAction = writable
+      ? { label: '去数据源设置', run: () => s.readerOpenSource() }
+      : { label: '切到文章页', run: () => { if (s.switchView) s.switchView('reader'); } };
   } else if (!list.length) {
     if (st.q) {
-      emptyMsg = '没有找到匹配的资源';
+      emptyMsg = `没有找到匹配「${st.q}」的资源`;
       emptyAction = { label: '清除搜索', run: () => onSearchClear() };
     } else if (st.tag) {
       emptyMsg = '该标签下暂无内容';
@@ -433,7 +437,9 @@ export function CardsView() {
     clearTimeout(debounceRef.current);
     setQDraft('');
     if (s.cardsSearch) s.cardsSearch('');
-    if (searchRef.current) searchRef.current.focus();
+    // 空态里的「清除搜索」按钮在列表中部：窄屏搜索框收起时是 display:none，
+    // 无条件 focus 会把焦点拽到一个看不见的元素上（文章页同名函数不 focus）。
+    if (searchOpen && searchRef.current) searchRef.current.focus();
   };
   // 标题栏放大镜：展开 / 收起；收起时把关键词一起清掉（看不见却生效的过滤最难排查）
   const toggleSearch = () => {
@@ -551,7 +557,13 @@ export function CardsView() {
                 value={qDraft} onChange={onSearchInput}
                 {...NO_AUTOFILL_PROPS}
                 onKeyDown={(ev) => {
-                  if (ev.key === 'Escape') { ev.stopPropagation(); toggleSearch(); return; }
+                  if (ev.key === 'Escape') {
+                    ev.stopPropagation();
+                    toggleSearch();
+                    const toggle = document.querySelector('.cards-search-toggle');
+                    if (toggle && toggle.focus) toggle.focus();
+                    return;
+                  }
                   onSearchKey(ev);
                 }} />
               <button className="search-clear" id="searchClear" type="button" hidden={!qDraft}

@@ -49,7 +49,7 @@ function DgItem({ it }) {
         <div className="dg-item-name">{e.name || '(无标题)'}</div>
         <div className="dg-item-foot">
           {e.link ? <CopyIconButton url={e.link} /> : null}
-          {safeHref(e.link) ? <a className="icon-btn" title="打开" href={safeHref(e.link)} target="_blank" rel="noopener noreferrer"><Icon n="external" /></a> : null}
+          {safeHref(e.link) ? <a className="icon-btn" title="打开原文章" aria-label="打开原文章" href={safeHref(e.link)} target="_blank" rel="noopener noreferrer"><Icon n="external" /></a> : null}
           {e.size ? <span className="dg-item-size">{e.size}</span> : null}
         </div>
       </div>
@@ -198,13 +198,15 @@ export function AiView() {
     setView({ kind: 'loading' });
     try {
       const res = await s.apiFetch('/api/digest?date=' + encodeURIComponent(date));
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      // 500 / 网关 HTML 不能当成「今天还没有摘要」，否则引导用户去点生成重试一个坏接口
+      if (!res.ok) throw new Error(s.errText(data, '读取失败'));
       if (gen !== reqGen.current) return;          // 已有更新的请求，丢弃这一包
       if (data && data.digest) setView({ kind: 'ready', digest: data.digest });
       else setView({ kind: 'empty', date });
     } catch (err) {
       if (gen !== reqGen.current) return;          // 旧请求的失败不该盖掉新日期的加载态
-      setView({ kind: 'error', msg: String((err && err.message) || err) });
+      setView({ kind: 'error', msg: s.errText(err, '读取失败') });
     }
   }
 
@@ -225,7 +227,10 @@ export function AiView() {
       setDates((prev) => (prev.includes(d.date) ? prev : [d.date, ...prev]));
       setSelected(d.date);
       setView({ kind: 'ready', digest: d });
-      s.toast(data.cached ? '已读取当日缓存摘要' : `摘要生成完成（${d.stats.kept} 条 / ${d.stats.feeds} 频道）`);
+      // 服务端偶尔不给 stats：不能在已经生成成功之后抛 TypeError 把 ready 态改写成「生成失败」
+      const kept = (d.stats && d.stats.kept) || 0;
+      const feeds = (d.stats && d.stats.feeds) || 0;
+      s.toast(data.cached ? '已读取当日缓存摘要' : `摘要生成完成（${kept} 条 / ${feeds} 频道）`);
     } catch (err) {
       if (gen === reqGen.current) setView({ kind: 'genError', msg: String((err && err.message) || err) });
     } finally {
@@ -245,13 +250,20 @@ export function AiView() {
       </div>
     );
   } else if (view.kind === 'error') {
-    body = <div className="dg-error">读取失败：{view.msg}</div>;
+    body = (
+      <div className="dg-error" role="alert">
+        <div className="dg-empty-ico"><Icon n="alert" /></div>
+        <p>读取失败：{view.msg}</p>
+        <button className="btn btn-ghost" type="button" onClick={() => showDigest(selected)}>重试</button>
+      </div>
+    );
   } else if (view.kind === 'genError') {
     body = (
-      <div className="dg-error">
+      <div className="dg-error" role="alert">
         <div className="dg-empty-ico"><Icon n="alert" /></div>
         <p>生成失败：{view.msg}</p>
         <p className="hint">请在「设置 → 模型」检查模型地址与 Key 是否正确</p>
+        {writable ? <button className="btn btn-ghost" type="button" onClick={() => generate(false)}>重新生成</button> : null}
       </div>
     );
   } else if (view.kind === 'empty') {
@@ -259,7 +271,8 @@ export function AiView() {
       <div className="dg-empty">
         <div className="dg-empty-ico"><Icon n="calendar" /></div>
         <p><strong>{view.date}</strong> 还没有摘要</p>
-        <p className="hint">{writable ? '点击右上角「生成摘要」，把所选频道过去 24 小时的新内容整理成简报' : '只读账户不能手动生成摘要'}</p>
+        <p className="hint">{writable ? '把所选频道过去 24 小时的新内容整理成简报' : '只读账户不能手动生成摘要'}</p>
+        {writable ? <button className="btn btn-primary" type="button" onClick={() => generate(false)}>生成摘要</button> : null}
       </div>
     );
   } else if (view.kind === 'ready') {
@@ -274,7 +287,8 @@ export function AiView() {
         <div className="ai-head-text"><h2 className="page-title vt-title">日报</h2></div>
         <div className="head-right vt-tools">
           <ViewNav />
-          <OverflowMenu view="ai" />
+          <OverflowMenu view="ai" refreshLabel="刷新订阅"
+            refreshHint="只更新订阅内容；重算日报请用「重新生成」" />
         </div>
       </div>
       <section className="ai-pane" data-ai-pane="digest">
