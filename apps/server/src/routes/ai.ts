@@ -15,10 +15,12 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, eq } from 'drizzle-orm';
-import { feeds, userLlm, users, type Db } from '@feedlore/db';
+import { entries as entriesTable, feeds, users, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
-import { ai as aiSpec, type LlmConfig } from '@feedlore/contract';
+import { ai as aiSpec, type EntryAiBody, type LlmConfig } from '@feedlore/contract';
 import {
+  chat,
+  type ChatMessage,
   getCryptoSecret,
   generateDigest,
   listDigestDates,
@@ -28,6 +30,7 @@ import {
   testLlm,
   type ResolvedLlm,
 } from '@feedlore/ai';
+import { loadLlmRow } from '../lib/llm';
 import { assertResponse, BadRequest } from '../lib/validate';
 import { apiError, ApiException, apiErrorBody, apiErrorKey } from '../lib/apiError';
 import { assertPublicHost, safeFetch } from '../lib/net';
@@ -43,21 +46,29 @@ function isRealDate(s: string): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
-/** 读该账号的模型配置行。 */
-async function loadLlmRow(db: Db, uid: string) {
-  const [row] = await db
-    .select({
-      encryptedKey: userLlm.encryptedKey,
-      baseUrl: userLlm.baseUrl,
-      model: userLlm.model,
-      temperature: userLlm.temperature,
-      thinking: userLlm.thinking,
-      thinkingDepth: userLlm.thinkingDepth,
-    })
-    .from(userLlm)
-    .where(eq(userLlm.userId, uid))
-    .limit(1);
-  return row;
+/** 单条目 AI 喂给模型的正文上限：与 MCP 工具保持一致（24000 字符）。 */
+const ENTRY_AI_MAX_CHARS = 24_000;
+function truncateForAi(text: string): { content: string; truncated: boolean } {
+  if (text.length <= ENTRY_AI_MAX_CHARS) return { content: text, truncated: false };
+  return { content: text.slice(0, ENTRY_AI_MAX_CHARS), truncated: true };
+}
+
+/**
+ * 按动作构造系统提示词。用户自定义只在此范围内生效（不接收外部 prompt 注入），
+ * 保证输出是「对本人订阅内容的安全摘要」，不会把任意指令透传给模型。
+ */
+function entryAiSystemPrompt(action: EntryAiBody['action'], targetLang: string): string {
+  const lang = targetLang || '简体中文';
+  switch (action) {
+    case 'summary':
+      return '你是一个严谨的中文编辑。请为下面的文章生成一段摘要，3-5 句，抓住核心事实与结论。只输出摘要本身，不要加「摘要：」等前缀。';
+    case 'keypoints':
+      return '你是一个严谨的中文编辑。请提炼下面文章的关键要点，用 3-6 条无序列表（每条一行，以「- 」开头）呈现，每条一句话。只输出列表。';
+    case 'translate':
+      return `你是一个专业译者。请将下面文章全文翻译成${lang}，保留原有段落结构；正文里的专有名词可保留原文并在括号里给译文。只输出译文，不要加「译文：」等前缀。`;
+    case 'explain':
+      return `你是一个善于科普的讲解者。请用通俗易懂的语言向非专业读者解释下面这篇文章在讲什么、为什么重要，使用${lang}，3-5 句。只输出解释本身。`;
+  }
 }
 
 export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
@@ -185,6 +196,66 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
             'POST /api/digest/generate',
           ),
         );
+      },
+    )
+
+    /* ---------------- POST /api/entry/:id/ai ---------------- */
+    .post(
+      aiSpec.entryAi.path,
+      requireAuth(auth, 'write'),
+      zValidator('json', aiSpec.entryAi.body, (r) => {
+        if (!r.success) throw new BadRequest('POST /api/entry/:id/ai', r.error.issues);
+      }),
+      async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
+        const uid = c.get('user').id;
+
+        // 路径上的 id 是字符串，LLM/客户端可能传数字字符串；非正整数一律当「找不到」
+        const idNum = Number(c.req.param('id'));
+        if (!Number.isInteger(idNum) || idNum <= 0) throw new ApiException('E_ENTRY_NOT_FOUND');
+
+        // owner 隔离：经 feeds join，id 猜对了也读不到别人的条目
+        const [entry] = await db
+          .select({ content: entriesTable.content, title: entriesTable.title })
+          .from(entriesTable)
+          .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+          .where(and(eq(entriesTable.id, idNum), eq(feeds.ownerId, uid)))
+          .limit(1);
+        if (!entry) throw new ApiException('E_ENTRY_NOT_FOUND');
+
+        const secret = await getCryptoSecret(db);
+        const llm = resolveUserLlm(await loadLlmRow(db, uid), secret);
+        // 地址不可用先拦下，别等 180 秒超时（与日报生成一致）
+        if (llm.baseUrl) {
+          try {
+            await assertPublicHost(llm.baseUrl);
+          } catch (e) {
+            throw new ApiException('E_MODEL_URL_UNREACHABLE', { detail: (e as Error)?.message ?? String(e) });
+          }
+        }
+
+        const body = c.req.valid('json');
+        const cut = truncateForAi(entry.content ?? '');
+        const messages: ChatMessage[] = [
+          { role: 'system', content: entryAiSystemPrompt(body.action, body.targetLang ?? '简体中文') },
+          { role: 'user', content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}` },
+        ];
+
+        try {
+          const result = await chat(messages, llm, { fetchImpl: safeFetch });
+          return c.json(
+            assertResponse(aiSpec.entryAi.response, { ok: true, result }, 'POST /api/entry/:id/ai'),
+          );
+        } catch (e) {
+          // 降级可读：模型失败返回 200，ok:false + 原因，前端直接呈现，不 500
+          return c.json(
+            assertResponse(
+              aiSpec.entryAi.response,
+              { ok: false, result: (e as Error)?.message ?? 'AI 调用失败' },
+              'POST /api/entry/:id/ai',
+            ),
+          );
+        }
       },
     );
 }

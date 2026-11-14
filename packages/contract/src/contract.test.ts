@@ -77,3 +77,31 @@ test('path 参数写成 :name，且同一条路径里不重复', () => {
     assert.ok(!spec.path.includes('{'), `${where}: 参数请用 :name 而不是 {name}`);
   }
 });
+
+test('ai.entryAi：body 只接受四种动作、response 含 ok/result', () => {
+  for (const action of ['summary', 'keypoints', 'translate', 'explain']) {
+    const ok = contract.ai.entryAi.body.safeParse({ action });
+    assert.equal(ok.success, true, `action=${action} 应被接受`);
+  }
+  // translate 允许带 targetLang，其余动作忽略它
+  assert.equal(
+    contract.ai.entryAi.body.safeParse({ action: 'translate', targetLang: 'English' }).success,
+    true,
+    'translate 带 targetLang 应通过',
+  );
+  assert.equal(
+    contract.ai.entryAi.body.safeParse({ action: 'nope' }).success,
+    false,
+    '非法 action 应被拒绝',
+  );
+  assert.equal(
+    contract.ai.entryAi.response.safeParse({ ok: true, result: 'x' }).success,
+    true,
+    '合法 response 应通过',
+  );
+  assert.equal(
+    contract.ai.entryAi.response.safeParse({ result: 'x' }).success,
+    false,
+    '缺少 ok 的 response 应被拒绝',
+  );
+});

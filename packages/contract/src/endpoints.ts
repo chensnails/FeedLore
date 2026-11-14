@@ -646,6 +646,16 @@ export const digestGenerateBody = z.object({
 });
 export type DigestGenerateBody = z.infer<typeof digestGenerateBody>;
 
+/** 单条目 AI 动作。不落库缓存（Phase 1：按需调用，见 ai-feature-plan.md）。 */
+export const entryAiBody = z.object({
+  action: z.enum(['summary', 'keypoints', 'translate', 'explain']).describe(
+    'summary=摘要 / keypoints=关键要点 / translate=翻译 / explain=通俗解释',
+  ),
+  /** translate 时的目标语言，默认简体中文；其余动作忽略。 */
+  targetLang: z.string().max(20).optional(),
+});
+export type EntryAiBody = z.infer<typeof entryAiBody>;
+
 export const ai = {
   testLlm: {
     method: 'post',
@@ -674,6 +684,18 @@ export const ai = {
     auth: 'user',
     body: digestGenerateBody,
     response: z.object({ ok: z.boolean(), cached: z.boolean(), digest: M.DigestSchema }),
+  },
+  /**
+   * 单条目 AI（按需调用，不落库）。
+   * 权限 write：调用模型消耗用户额度，与日报生成同档；读接口只给 user。
+   * 失败不 500：ok:false 并把原因写进 result，前端直接呈现（降级可读）。
+   */
+  entryAi: {
+    method: 'post',
+    path: '/api/entry/:id/ai',
+    auth: 'user',
+    body: entryAiBody,
+    response: z.object({ ok: z.boolean(), result: z.string() }),
   },
 } as const satisfies Record<string, EndpointSpec>;
 
