@@ -1150,6 +1150,14 @@ textarea:disabled {
 }
 .mini-tag:hover { background: var(--accent-soft-2); }
 
+/* AI 自动标签：与手动 tags 物理隔离，视觉上用细描边 + 弱化底区分，不抢手动标签的视觉权重 */
+.mini-tag-ai {
+  background: transparent;
+  border: 1px solid var(--accent-line, var(--accent-soft-2));
+  color: var(--text-2, var(--text));
+}
+.mini-tag-ai:hover { background: var(--accent-soft); }
+
 .card-foot {
   margin-top:auto;
   display: flex; gap:var(--sp-2); justify-content: flex-end;
@@ -4000,6 +4008,8 @@ body.is-scrolling .card-media-actions { transition: none; }
 }
 
 .art-tags { display: flex; align-items: center; flex-wrap: wrap; gap:var(--sp-2); }
+.art-tags-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--text-faint); }
+.art-tags-ai { margin-top: var(--sp-1); }
 /* 动作键靠右下：正文读完后视线落在末尾，复制 / 打开就在落点处等着，不用再扫回左边。
    卡片详情弹窗复用同一族 .art-* 样式，所以一处改动两处生效。 */
 .art-actions { display: flex; align-items: center; gap:var(--sp-2); flex-wrap: wrap; justify-content: flex-end; }
@@ -4023,6 +4033,8 @@ body.is-scrolling .card-media-actions { transition: none; }
 .entry-ai-res-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
   font-size: 13px; font-weight: 600; color: var(--text); }
 .entry-ai-res-body { white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 14px; color: var(--text); }
+.entry-ai-tags { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.entry-ai-tags-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--text-faint); }
 .entry-ai-error { color: var(--danger, #c0392b); }
 
 @media (max-width: 720px) {

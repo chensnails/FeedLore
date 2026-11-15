@@ -57,6 +57,13 @@
       "when": 1794041265355,
       "tag": "0007_misty_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794700152049,
+      "tag": "0008_ai_entry_tags",
+      "breakpoints": true
     }
   ]
 }

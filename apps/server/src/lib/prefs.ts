@@ -305,6 +305,25 @@ export const userWatchExpireDays = (prefs: PrefsBag) => sanitizeWatchExpireDays(
 export const userWebhook = (prefs: PrefsBag) => sanitizeWebhook(bag(prefs, 'webhookUrl'));
 export const userDigest = (prefs: PrefsBag) => sanitizeDigest(bag(prefs, 'digest'));
 
+/* ---------------- AI 智能标签 ---------------- */
+
+export const AITAGS_DEFAULTS = {
+  enabled: false,
+};
+
+export type AiTagsConfig = typeof AITAGS_DEFAULTS;
+
+/** 默认关：开一次就每篇条目烧一份模型额度，所以得用户主动拨开（与日报 auto 同思路）。 */
+export function sanitizeAiTags(raw: unknown): AiTagsConfig {
+  const out: AiTagsConfig = { ...AITAGS_DEFAULTS };
+  if (!raw || typeof raw !== 'object') return out;
+  const r = raw as Record<string, unknown>;
+  out.enabled = r.enabled === true;
+  return out;
+}
+
+export const userAiTags = (prefs: PrefsBag) => sanitizeAiTags(bag(prefs, 'aiTags'));
+
 export function userGroupOrder(prefs: PrefsBag): string[] {
   const raw = bag(prefs, 'groupOrder');
   if (!Array.isArray(raw)) return [];

@@ -1,0 +1,174 @@
+/**
+ * AI 智能标签的执行器与调度器（Phase 2 · 智能标签）。
+ *
+ * 与日报调度同款「进程内每分钟 tick」哲学（单进程够用、少一个故障点）：
+ * - 只把 `prefs.aiTags.enabled = true` 的账号捞出来；
+ * - 每个账号每 tick 最多处理 `AI_TAG_BATCH_PER_TICK` 篇「还没有 AI 标签」的条目
+ *   （用 left join 判缺失，已打过的自然跳过 → 天然幂等，也兼顾历史条目回填）；
+ * - 复用 `chat` / `safeFetch`（SSRF 三道闸）/ 按账号隔离 / `llmComplete` 前置守卫；
+ * - 模型失败写入 status='failed'（避免每 tick 空转重试），用户改好 Key 后可按需 POST 重算。
+ */
+
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { entries, entryAiTags, feeds, userLlm, users, type Db } from '@feedlore/db';
+import {
+  AI_TAG_PROMPT_VERSION,
+  getCryptoSecret,
+  llmComplete,
+  resolveUserLlm,
+  suggestEntryTags,
+  type ResolvedLlm,
+} from '@feedlore/ai';
+import { assertPublicHost, safeFetch } from './net';
+import { userAiTags } from './prefs';
+
+const TICK_MS = 60 * 1000;
+/** 每账号每 tick 最多处理的篇数：控制单次模型调用量，避免一上来把整库额度烧光。 */
+const AI_TAG_BATCH_PER_TICK = 20;
+
+interface UntaggedEntry {
+  id: number;
+  title: string;
+  content: string | null;
+}
+
+/** 取该用户「还没有 AI 标签」的若干条目（owner 隔离 + 按发布时间倒序）。 */
+export async function findUntaggedEntries(db: Db, uid: string, limit: number): Promise<UntaggedEntry[]> {
+  return db
+    .select({ id: entries.id, title: entries.title, content: entries.content })
+    .from(entries)
+    .innerJoin(feeds, eq(feeds.id, entries.feedId))
+    .leftJoin(entryAiTags, and(eq(entryAiTags.entryId, entries.id), eq(entryAiTags.userId, uid)))
+    .where(and(eq(feeds.ownerId, uid), isNull(entryAiTags.id)))
+    .orderBy(sql`${entries.publishedAt} desc nulls last`, desc(entries.id))
+    .limit(limit);
+}
+
+/** 为单篇生成并落库 AI 标签；返回最终状态。模型失败返回 'failed'（带上错误，不抛）。 */
+export async function tagEntry(
+  db: Db,
+  uid: string,
+  entry: UntaggedEntry,
+  llm: ResolvedLlm,
+): Promise<{ status: 'done' | 'failed'; tags: string[]; error?: string }> {
+  const id = crypto.randomUUID();
+  try {
+    const { tags } = await suggestEntryTags(entry.title, entry.content ?? '', llm, safeFetch);
+    await db
+      .insert(entryAiTags)
+      .values({
+        id,
+        userId: uid,
+        entryId: entry.id,
+        tags,
+        model: llm.model,
+        promptVersion: AI_TAG_PROMPT_VERSION,
+        status: 'done',
+      })
+      .onConflictDoUpdate({
+        target: [entryAiTags.userId, entryAiTags.entryId],
+        set: { tags, model: llm.model, promptVersion: AI_TAG_PROMPT_VERSION, status: 'done', error: null, updatedAt: sql`now()` },
+      });
+    return { status: 'done', tags };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    await db
+      .insert(entryAiTags)
+      .values({
+        id,
+        userId: uid,
+        entryId: entry.id,
+        tags: [],
+        model: llm.model,
+        promptVersion: AI_TAG_PROMPT_VERSION,
+        status: 'failed',
+        error: message.slice(0, 500),
+      })
+      .onConflictDoUpdate({
+        target: [entryAiTags.userId, entryAiTags.entryId],
+        set: { status: 'failed', error: message.slice(0, 500), updatedAt: sql`now()` },
+      });
+    return { status: 'failed', tags: [], error: message };
+  }
+}
+
+/**
+ * 一次 tick：找出「此刻该打标签」的账号并逐个处理。
+ * 只把 `aiTags.enabled` 为 true 的账号捞出来（SQL 过滤），否则每分钟要把全表 prefs 拉回 JS。
+ */
+export async function runAiTagTick(db: Db, _now: Date = new Date()): Promise<number> {
+  const rows = await db
+    .select({ id: users.id, prefs: users.prefs })
+    .from(users)
+    .where(sql`${users.prefs}->'aiTags'->>'enabled' = 'true'`);
+  if (!rows.length) return 0;
+
+  const secret = await getCryptoSecret(db);
+  let done = 0;
+
+  for (const u of rows) {
+    try {
+      // pref 里 enabled 不是严格 true 就跳过（与 SQL 过滤双保险）
+      if (userAiTags(u.prefs).enabled !== true) continue;
+
+      const [llmRow] = await db
+        .select({
+          encryptedKey: userLlm.encryptedKey,
+          baseUrl: userLlm.baseUrl,
+          model: userLlm.model,
+          temperature: userLlm.temperature,
+          thinking: userLlm.thinking,
+          thinkingDepth: userLlm.thinkingDepth,
+        })
+        .from(userLlm)
+        .where(eq(userLlm.userId, u.id))
+        .limit(1);
+
+      const llm = resolveUserLlm(llmRow ?? null, secret);
+      if (!llmComplete(llm)) continue; // 没配模型：跳过这一账号（不会无限重试）
+
+      // 地址不可用先拦下，别等 180 秒超时（与日报生成一致）
+      if (llm.baseUrl) {
+        try {
+          await assertPublicHost(llm.baseUrl);
+        } catch {
+          continue;
+        }
+      }
+
+      const batch = await findUntaggedEntries(db, u.id, AI_TAG_BATCH_PER_TICK);
+      if (!batch.length) continue;
+
+      for (const e of batch) {
+        const r = await tagEntry(db, u.id, e, llm);
+        done += 1;
+        if (r.status === 'failed') {
+          console.warn(`[ai-tags] user ${u.id} entry ${e.id} tagging failed: ${r.error}`);
+        }
+      }
+      console.log(`[ai-tags] user ${u.id} tagged ${batch.length} entries`);
+    } catch (e) {
+      console.error(`[ai-tags] tick failed for user ${u.id}: ` + ((e as Error)?.message ?? e));
+    }
+  }
+
+  return done;
+}
+
+let timer: ReturnType<typeof setInterval> | null = null;
+
+export function startAiTagScheduler(db: Db): void {
+  if (timer) clearInterval(timer);
+  timer = setInterval(() => {
+    void runAiTagTick(db).catch((e: unknown) =>
+      console.error('[ai-tags] scheduler tick failed: ', (e as Error)?.message ?? e),
+    );
+  }, TICK_MS);
+  timer.unref?.();
+  console.log('[ai-tags] scheduled per account: untagged entries tagged every minute (enabled accounts only)');
+}
+
+export function stopAiTagScheduler(): void {
+  if (timer) clearInterval(timer);
+  timer = null;
+}

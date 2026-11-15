@@ -494,6 +494,7 @@ export const prefsResponse = z.object({
   watchExpireDays: z.number().int().min(0).max(3650),
   webhookUrl: z.string(),
   digest: M.DigestConfigSchema,
+  aiTags: M.AiTagsConfigSchema,
   llm: M.LlmViewSchema,
 });
 export type PrefsResponse = z.infer<typeof prefsResponse>;
@@ -507,6 +508,7 @@ export const prefsPatchBody = z.object({
   watchExpireDays: z.number().int().min(0).max(3650).optional(),
   webhookUrl: z.string().optional(),
   digest: M.DigestConfigSchema.partial().optional(),
+  aiTags: M.AiTagsConfigSchema.partial().optional(),
   llm: M.LlmConfigSchema.partial().optional(),
 });
 export type PrefsPatchBody = z.infer<typeof prefsPatchBody>;
@@ -520,6 +522,7 @@ export const prefsUpdateResponse = z.object({
   watchExpireDays: z.number().int().min(0).max(3650),
   webhookUrl: z.string(),
   digest: M.DigestConfigSchema,
+  aiTags: M.AiTagsConfigSchema,
 });
 export type PrefsUpdateResponse = z.infer<typeof prefsUpdateResponse>;
 
@@ -696,6 +699,37 @@ export const ai = {
     auth: 'user',
     body: entryAiBody,
     response: z.object({ ok: z.boolean(), result: z.string() }),
+  },
+  /**
+   * 单条目 AI 标签（Phase 2 · 智能标签）。
+   * GET：读本人该条的 AI 标签（owner 隔离；无记录则返回空数组 + status 'pending'），
+   *   主要由列表/详情里的 toCard 顺带带出，这里供「手动重算后即时回读」用。
+   * POST：按需重算（auth 标 user，但路由用 requireAuth 'write' 拦截，消耗模型额度；
+   *   降级可读——模型失败返回 ok:false + error，不 500）。
+   */
+  entryAiTags: {
+    method: 'get',
+    path: '/api/entry/:id/ai-tags',
+    auth: 'user',
+    response: z.object({
+      id: z.string(),
+      tags: z.array(z.string()),
+      status: z.string(),
+      model: z.string().nullable(),
+    }),
+  },
+  entryAiTagsSet: {
+    method: 'post',
+    path: '/api/entry/:id/ai-tags',
+    auth: 'user',
+    response: z.object({
+      ok: z.boolean(),
+      id: z.string(),
+      tags: z.array(z.string()),
+      status: z.string(),
+      model: z.string().nullable(),
+      error: z.string().optional(),
+    }),
   },
 } as const satisfies Record<string, EndpointSpec>;
 

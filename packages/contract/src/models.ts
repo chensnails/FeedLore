@@ -133,6 +133,8 @@ export const CardSchema = z.object({
   desc: z.string(),
   size: z.string(),
   tags: z.array(z.string()),
+  /** AI 自动生成的标签（与手动 tags 物理隔离），无则空数组 */
+  aiTags: z.array(z.string()),
   link: z.string().nullable(),
   pwd: z.string().nullable(),
   /** 所有可复制链接（主链接优先），不做图片代理 */
@@ -317,6 +319,12 @@ export const LlmConfigSchema = z.object({
   thinkingDepth: z.number().int().min(0).max(3).optional(),
 });
 export type LlmConfig = z.infer<typeof LlmConfigSchema>;
+
+/** AI 智能标签配置（按账号）。默认关：开一次就每篇条目烧一份模型额度。 */
+export const AiTagsConfigSchema = z.object({
+  enabled: z.boolean(),
+});
+export type AiTagsConfig = z.infer<typeof AiTagsConfigSchema>;
 
 /** 偏好 GET 视图里回显的模型形态（apiKey 不回明文，只给掩码提示）。 */
 export const LlmViewSchema = z.object({

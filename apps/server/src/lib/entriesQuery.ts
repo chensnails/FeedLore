@@ -7,7 +7,7 @@
  */
 
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
-import { entries, feeds, type Db } from '@feedlore/db';
+import { entries, entryAiTags, feeds, type Db } from '@feedlore/db';
 
 /** 条目查询公共列（详情另加 content）。字段名与 CardRow 一一对应。 */
 export const CARD_COLUMNS = {
@@ -19,6 +19,9 @@ export const CARD_COLUMNS = {
   description: entries.description,
   size: entries.size,
   tags: entries.tags,
+  // AI 标签：与手动 tags 物理隔离；按 (entry_id, feeds.owner_id) 取本人那份。
+  // 列表/详情都 innerJoin(feeds)，所以 feeds.ownerId 在此可见。
+  aiTags: sql<string[]>`coalesce((select ${entryAiTags.tags} from ${entryAiTags} where ${entryAiTags.entryId} = ${entries.id} and ${entryAiTags.userId} = ${feeds.ownerId}), ARRAY[]::text[])`,
   image: entries.image,
   images: entries.images,
   links: entries.links,

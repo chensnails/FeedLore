@@ -14,8 +14,8 @@
 
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, eq } from 'drizzle-orm';
-import { entries as entriesTable, feeds, users, type Db } from '@feedlore/db';
+import { and, eq, sql } from 'drizzle-orm';
+import { entries as entriesTable, entryAiTags, feeds, users, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import { ai as aiSpec, type EntryAiBody, type LlmConfig } from '@feedlore/contract';
 import {
@@ -27,6 +27,8 @@ import {
   readDigest,
   resolveUserLlm,
   shanghaiDate,
+  suggestEntryTags,
+  AI_TAG_PROMPT_VERSION,
   testLlm,
   type ResolvedLlm,
 } from '@feedlore/ai';
@@ -254,6 +256,99 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
               { ok: false, result: (e as Error)?.message ?? 'AI 调用失败' },
               'POST /api/entry/:id/ai',
             ),
+          );
+        }
+      },
+    )
+
+    /* ---------------- GET /api/entry/:id/ai-tags ---------------- */
+    .get(
+      aiSpec.entryAiTags.path,
+      requireAuth(auth, 'user'),
+      async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
+        const uid = c.get('user').id;
+
+        const idNum = Number(c.req.param('id'));
+        if (!Number.isInteger(idNum) || idNum <= 0) throw new ApiException('E_ENTRY_NOT_FOUND');
+
+        // owner 隔离：entry_ai_tags 自带 userId，猜对 id 也读不到别人的标签
+        const [row] = await db
+          .select({ tags: entryAiTags.tags, status: entryAiTags.status, model: entryAiTags.model })
+          .from(entryAiTags)
+          .where(and(eq(entryAiTags.entryId, idNum), eq(entryAiTags.userId, uid)))
+          .limit(1);
+
+        const payload = assertResponse(
+          aiSpec.entryAiTags.response,
+          {
+            id: String(idNum),
+            tags: row?.tags ?? [],
+            status: row?.status ?? 'pending',
+            model: row?.model ?? null,
+          },
+          'GET /api/entry/:id/ai-tags',
+        );
+        return c.json(payload);
+      },
+    )
+
+    /* ---------------- POST /api/entry/:id/ai-tags ---------------- */
+    .post(
+      aiSpec.entryAiTagsSet.path,
+      requireAuth(auth, 'write'),
+      async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
+        const uid = c.get('user').id;
+
+        const idNum = Number(c.req.param('id'));
+        if (!Number.isInteger(idNum) || idNum <= 0) throw new ApiException('E_ENTRY_NOT_FOUND');
+
+        // owner 隔离：经 feeds join，id 猜对了也读不到别人的正文
+        const [entry] = await db
+          .select({ content: entriesTable.content, title: entriesTable.title })
+          .from(entriesTable)
+          .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+          .where(and(eq(entriesTable.id, idNum), eq(feeds.ownerId, uid)))
+          .limit(1);
+        if (!entry) throw new ApiException('E_ENTRY_NOT_FOUND');
+
+        const secret = await getCryptoSecret(db);
+        const llm = resolveUserLlm(await loadLlmRow(db, uid), secret);
+        if (llm.baseUrl) {
+          try {
+            await assertPublicHost(llm.baseUrl);
+          } catch (e) {
+            throw new ApiException('E_MODEL_URL_UNREACHABLE', { detail: (e as Error)?.message ?? String(e) });
+          }
+        }
+
+        const id = crypto.randomUUID();
+        const base = { id: String(idNum), model: llm.model };
+        try {
+          const { tags } = await suggestEntryTags(entry.title, entry.content ?? '', llm, safeFetch);
+          await db
+            .insert(entryAiTags)
+            .values({ id, userId: uid, entryId: idNum, tags, model: llm.model, promptVersion: AI_TAG_PROMPT_VERSION, status: 'done' })
+            .onConflictDoUpdate({
+              target: [entryAiTags.userId, entryAiTags.entryId],
+              set: { tags, model: llm.model, promptVersion: AI_TAG_PROMPT_VERSION, status: 'done', error: null, updatedAt: sql`now()` },
+            });
+          return c.json(
+            assertResponse(aiSpec.entryAiTagsSet.response, { ok: true, ...base, tags, status: 'done' }, 'POST /api/entry/:id/ai-tags'),
+          );
+        } catch (e) {
+          // 降级可读：模型失败返回 200，ok:false + 原因（标记 failed 便于重试），不 500
+          const message = e instanceof Error ? e.message : String(e);
+          await db
+            .insert(entryAiTags)
+            .values({ id, userId: uid, entryId: idNum, tags: [], model: llm.model, promptVersion: AI_TAG_PROMPT_VERSION, status: 'failed', error: message.slice(0, 500) })
+            .onConflictDoUpdate({
+              target: [entryAiTags.userId, entryAiTags.entryId],
+              set: { status: 'failed', error: message.slice(0, 500), updatedAt: sql`now()` },
+            });
+          return c.json(
+            assertResponse(aiSpec.entryAiTagsSet.response, { ok: false, ...base, tags: [], status: 'failed', error: message }, 'POST /api/entry/:id/ai-tags'),
           );
         }
       },

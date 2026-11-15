@@ -347,6 +347,15 @@ export function ArtBody({ e, onTag, extraActions }) {
       </div>
     );
   }
+  // AI 自动标签（与手动 tags 物理隔离，独立成组，避免和手动机标混淆）
+  if (e.aiTags && e.aiTags.length) {
+    parts.push(
+      <div className="art-tags art-tags-ai" key="aiTags">
+        <span className="art-tags-label">AI 标签</span>
+        {e.aiTags.map((t) => <button className="mini-tag mini-tag-ai" type="button" data-tag={t} key={t} onClick={() => onTag(t)}>#{t}</button>)}
+      </div>
+    );
+  }
   parts.push(<ArtActions key="acts" e={e} extraActions={extraActions} />);
   // 单条目 AI 动作条：文章页与卡片详情共用 ArtBody，加这里两处同时生效
   parts.push(<EntryAiBar key="ai" entryId={e.id} />);

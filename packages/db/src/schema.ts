@@ -265,6 +265,38 @@ export const mcpTokens = pgTable('mcp_tokens', {
   createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
 });
 
+/**
+ * AI 自动生成的条目标签（Phase 2 · 智能标签）。
+ *
+ * 与手动 `entries.tags` **物理隔离**：AI 误标不会污染用户手动标签，且可整账号重算/关闭。
+ * - `user_id`：按账号隔离（删除用户级联清）；
+ * - `entry_id`：指向条目（删除条目级联清）；
+ * - 每 (user_id, entry_id) 唯一，重复生成只更新 `tags` 与 `updated_at`；
+ * - `status`：pending / done / failed（失败保留空 tags 与 error，便于前端提示与重试）。
+ */
+export const entryAiTags = pgTable(
+  'entry_ai_tags',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    entryId: bigint('entry_id', { mode: 'number' })
+      .notNull()
+      .references(() => entries.id, { onDelete: 'cascade' }),
+    tags: text('tags').array().notNull().default([]),
+    model: text('model'),
+    promptVersion: integer('prompt_version').notNull().default(1),
+    status: text('status').notNull().default('done'),
+    error: text('error'),
+    createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('entry_ai_tags_user_entry_key').on(t.userId, t.entryId),
+  ],
+);
+
 /* ============================================================================
  * 索引（镜像 legacy 高频路径）
  * ----------------------------------------------------------------------------
@@ -322,6 +354,11 @@ export const userLlmRelations = relations(userLlm, ({ one }) => ({
   user: one(users, { fields: [userLlm.userId], references: [users.id] }),
 }));
 
+export const entryAiTagsRelations = relations(entryAiTags, ({ one }) => ({
+  user: one(users, { fields: [entryAiTags.userId], references: [users.id] }),
+  entry: one(entries, { fields: [entryAiTags.entryId], references: [entries.id] }),
+}));
+
 /* ============================================================================
  * 类型导出（供 apps/server、packages/ai 等消费，避免重复定义）
  * ==========================================================================*/
@@ -341,3 +378,4 @@ export type Setting = typeof settings.$inferSelect;
 export type UserLlm = typeof userLlm.$inferSelect;
 export type NewUserLlm = typeof userLlm.$inferInsert;
 export type McpToken = typeof mcpTokens.$inferSelect;
+export type EntryAiTags = typeof entryAiTags.$inferSelect;

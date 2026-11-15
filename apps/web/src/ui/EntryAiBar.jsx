@@ -32,6 +32,8 @@ export function EntryAiBar({ entryId }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(false);
+  const [tagResult, setTagResult] = useState(null);
+  const [tagError, setTagError] = useState(null);
 
   if (!writable || id == null) return null;
 
@@ -66,6 +68,30 @@ export function EntryAiBar({ entryId }) {
     }
   }
 
+  // 按需为单篇生成 AI 标签（POST /api/entry/:id/ai-tags，后端落库并回写）
+  async function runTags() {
+    if (busy) return;
+    if (!s || typeof s.apiFetch !== 'function') {
+      if (s && s.toast) s.toast('AI 功能当前不可用', false);
+      return;
+    }
+    setBusy(true);
+    setTagError(null);
+    setTagResult(null);
+    try {
+      const res = await s.apiFetch('/api/entry/' + encodeURIComponent(id) + '/ai-tags', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(s.errText ? s.errText(data, '生成失败') : '生成失败');
+      if (data && data.ok) setTagResult(Array.isArray(data.tags) ? data.tags : []);
+      else setTagError((data && data.error) || '生成失败');
+    } catch (err) {
+      const msg = s && s.errText ? s.errText(err, '生成失败') : String((err && err.message) || err);
+      setTagError(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="entry-ai">
       <div className="entry-ai-actions">
@@ -78,6 +104,12 @@ export function EntryAiBar({ entryId }) {
             {busy ? '…' : a.label}
           </button>
         ))}
+        <button key="tags" type="button" className="btn btn-ghost btn-sm"
+          disabled={busy} aria-busy={busy ? 'true' : undefined}
+          aria-label="AI 标签"
+          onClick={runTags}>
+          {busy ? '…' : '标签'}
+        </button>
       </div>
       {open && result != null ? (
         <div className="entry-ai-result" role="region" aria-live="polite">
@@ -88,7 +120,20 @@ export function EntryAiBar({ entryId }) {
           <div className="entry-ai-res-body">{result}</div>
         </div>
       ) : null}
+      {tagResult ? (
+        <div className="entry-ai-tags" role="region" aria-live="polite">
+          <span className="entry-ai-tags-label">AI 标签</span>
+          {tagResult.length ? (
+            tagResult.map((t) => (
+              <span key={t} className="mini-tag mini-tag-ai">#{t}</span>
+            ))
+          ) : (
+            <span className="hint">未生成标签</span>
+          )}
+        </div>
+      ) : null}
       {error ? <div className="entry-ai-error hint" role="alert">{error}</div> : null}
+      {tagError ? <div className="entry-ai-error hint" role="alert">{tagError}</div> : null}
     </div>
   );
 }

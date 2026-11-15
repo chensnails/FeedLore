@@ -20,6 +20,7 @@ import { createApp } from './app';
 import { bootstrap } from './bootstrap';
 import { startScheduler } from './lib/fetcher';
 import { startDigestScheduler } from './lib/digest';
+import { startAiTagScheduler } from './lib/aiTag';
 import { undiciVersionMismatch, undiciVersions } from './lib/net';
 import { reloadSource } from './lib/settings';
 import { pruneImageCache } from './routes/img';
@@ -85,6 +86,10 @@ async function main(): Promise<void> {
    * 理由相同（单进程够用、少一个故障点）。账号没配模型时会先落「今天已处理」再跳过，
    * 所以不会每分钟重复烧额度。 */
   if (db) startDigestScheduler(db);
+
+  /* AI 智能标签调度：每分钟给「开启该功能的账号」打一批未打标条目。与抓取器/日报同款
+   * 进程内调度（单进程够用、少一个故障点）；没配模型的账号会被跳过，不会无限重试。 */
+  if (db) startAiTagScheduler(db);
 
   /* 图片缓存清理：`image_cache` 随阅读量线性增长，不清会悄悄吃掉磁盘。
    * 首次延迟 10 分钟（别在冷启动和第一轮抓取抢数据库），之后每 6 小时一次。 */

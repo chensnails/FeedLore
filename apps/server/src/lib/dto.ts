@@ -76,6 +76,8 @@ export interface CardRow {
   description: string | null;
   size: string | null;
   tags: string[] | null;
+  /** AI 自动生成的标签（与手动 tags 隔离），无则 null（toCard 归一为空数组） */
+  aiTags: string[] | null;
   image: string | null;
   images: string[] | null;
   links: string[] | null;
@@ -101,6 +103,7 @@ export function toCard(row: CardRow): Card {
     desc: row.description ?? '',
     size: row.size ?? '',
     tags: Array.isArray(row.tags) ? row.tags : [],
+    aiTags: Array.isArray(row.aiTags) ? row.aiTags : [],
     link: row.link ?? null,
     pwd: row.pwd ?? null,
     links: Array.isArray(row.links) ? row.links : [],

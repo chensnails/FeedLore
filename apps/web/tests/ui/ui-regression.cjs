@@ -2901,9 +2901,9 @@ const withEFP = (el, fn) => {
   await sleep(30);
   document.querySelector('#digSaveBtn').click();
   await sleep(80);
-  t('保存：POST /api/prefs 只带 digest 整组', () => {
+  t('保存：POST /api/prefs 只带 digest 整组与 aiTags', () => {
     const body = lastPostBody('/api/prefs');
-    if (Object.keys(body).join() !== 'digest') throw new Error('不该顺带别的键: ' + Object.keys(body).join());
+    if (Object.keys(body).join() !== 'digest,aiTags') throw new Error('只该带 digest 与 aiTags: ' + Object.keys(body).join());
     if (body.digest.style !== '侧重新版影视，语气随意些。技术教程只挑有用的。') throw new Error('style: ' + JSON.stringify(body.digest.style));
     if (body.digest.maxPerFeed !== 25 || body.digest.mode !== 'all') throw new Error('body: ' + JSON.stringify(body.digest));
     // 切回 all 时不该把上一次的自定义频道留着

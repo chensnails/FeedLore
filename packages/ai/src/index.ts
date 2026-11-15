@@ -52,3 +52,12 @@ export {
   type GenerateInput,
   type GenerateResult,
 } from './digest';
+
+export {
+  AI_TAG_PROMPT_VERSION,
+  AI_TAG_MAX,
+  entryTagSystemPrompt,
+  parseTagList,
+  suggestEntryTags,
+  type SuggestTagsResult,
+} from './tagging';

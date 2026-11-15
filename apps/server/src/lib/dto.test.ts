@@ -39,6 +39,7 @@ const row = (over: Partial<CardRow> = {}): CardRow => ({
   description: null,
   size: null,
   tags: [],
+  aiTags: null,
   image: null,
   images: [],
   links: [],
