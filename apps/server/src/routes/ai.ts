@@ -24,6 +24,7 @@ import {
   getCryptoSecret,
   generateDigest,
   listDigestDates,
+  listModels,
   readDigest,
   resolveUserLlm,
   shanghaiDate,
@@ -38,7 +39,13 @@ import { apiError, ApiException, apiErrorBody, apiErrorKey } from '../lib/apiErr
 import { assertPublicHost, safeFetch } from '../lib/net';
 import { userDigest, userLayout } from '../lib/prefs';
 import { resolveDigestScope } from '../lib/digest';
-import { readAiUsageSummary, recordAiUsage } from '../lib/aiUsage';
+import {
+  AI_REQUEST_KEEP,
+  AI_REQUEST_KEEP_DAYS,
+  readAiRequests,
+  readAiUsageSummary,
+  recordAiUsage,
+} from '../lib/aiUsage';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /** 真实日期判定：格式对不代表日期存在（`2026-02-30` 也是「格式合法」）。 */
@@ -133,15 +140,87 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
 
         // 测试模型也算消耗：成功失败都记一次，用量由 onUsage 带出来
         let testUsage: { promptTokens: number; completionTokens: number; totalTokens: number } | null = null;
+        const testStarted = Date.now();
         const payload = assertResponse(
           aiSpec.testLlm.response,
           await testLlm(llm, safeFetch, (u) => { testUsage = u; }),
           'POST /api/digest/test-llm',
         );
-        await recordAiUsage(db, uid, 'test', testUsage, payload.ok === true);
+        await recordAiUsage(db, uid, 'test', testUsage, payload.ok === true, 1, {
+          model: llm.model,
+          label: '测试连接',
+          durationMs: Date.now() - testStarted,
+          error: payload.ok ? '' : payload.error,
+        });
         return c.json(payload);
       },
     )
+
+    /* ---------------- POST /api/llm/models ---------------- */
+    /**
+     * 拉上游模型列表，给「模型名称」下拉用。
+     * 与 test-llm 同口径：可临时带未保存的 baseUrl / apiKey；失败返回 ok:false + error，
+     * 前端退回手填并说明原因（不兼容的上游很常见，不该做成 4xx 让人以为填错了）。
+     */
+    .post(
+      aiSpec.llmModels.path,
+      requireAuth(auth, 'write'),
+      zValidator('json', aiSpec.llmModels.body, (r) => {
+        if (!r.success) throw new BadRequest('POST /api/llm/models', r.error.issues);
+      }),
+      async (c) => {
+        if (!db) return c.json({ ok: false, models: [], error: apiErrorBody('E_DB_NOT_READY').error });
+        const uid = c.get('user').id;
+        const body = c.req.valid('json') as { llm?: Partial<LlmConfig> };
+
+        const secret = await getCryptoSecret(db);
+        const base = resolveUserLlm(await loadLlmRow(db, uid), secret);
+        const llm = { baseUrl: base.baseUrl, apiKey: base.apiKey };
+        if (body.llm?.baseUrl?.trim()) llm.baseUrl = body.llm.baseUrl.trim().replace(/\/+$/, '');
+        if (body.llm?.apiKey?.trim()) llm.apiKey = body.llm.apiKey.trim();
+
+        if (!llm.baseUrl || !llm.apiKey) {
+          return c.json({ ok: false, models: [], error: apiErrorBody('E_MODEL_INCOMPLETE').error });
+        }
+        // 同一个 SSRF 闸门：模型地址是用户可控的出网目标，不能跳过
+        try {
+          await assertPublicHost(llm.baseUrl);
+        } catch (e) {
+          return c.json({
+            ok: false,
+            models: [],
+            error: apiErrorKey(new ApiException('E_MODEL_URL_UNREACHABLE', { detail: (e as Error)?.message ?? String(e) })),
+          });
+        }
+
+        try {
+          const models = await listModels(llm, safeFetch);
+          return c.json({ ok: true, models });
+        } catch (e) {
+          return c.json({ ok: false, models: [], error: (e as Error)?.message ?? String(e) });
+        }
+      },
+    )
+
+    /* ---------------- GET /api/ai-requests ---------------- */
+    /** 最近调用明细（只读本人）。读失败就返回空数组 —— 这块是参考信息，不该让面板报错。 */
+    .get(aiSpec.requests.path, requireAuth(auth, 'user'), async (c) => {
+      if (!db) return c.json({ requests: [], keep: AI_REQUEST_KEEP, keepDays: AI_REQUEST_KEEP_DAYS });
+      const uid = c.get('user').id;
+      let limit = 50;
+      try {
+        const raw = Number(c.req.query('limit'));
+        if (Number.isFinite(raw) && raw > 0) limit = raw;
+      } catch { /* 用默认值 */ }
+      const requests = await readAiRequests(db, uid, limit);
+      return c.json(
+        assertResponse(
+          aiSpec.requests.response,
+          { requests, keep: AI_REQUEST_KEEP, keepDays: AI_REQUEST_KEEP_DAYS },
+          'GET /api/ai-requests',
+        ),
+      );
+    })
 
     /* ---------------- GET /api/digests ---------------- */
     .get(aiSpec.dates.path, requireAuth(auth, 'user'), async (c) => {
@@ -199,21 +278,38 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
 
         const scope = await resolveDigestScope(db, uid, body.feeds ?? null, cfg);
 
-        const result = await generateDigest({
-          db,
-          ownerId: uid,
-          feedIds: scope,
-          date,
-          force: body.force === true,
-          llm,
-          style: cfg.style,
-          limits: { maxPerFeed: cfg.maxPerFeed, maxTotal: cfg.maxTotal, keepDays: cfg.keepDays },
-          fetchImpl: safeFetch,
-        });
+        const digestStarted = Date.now();
+        let result: Awaited<ReturnType<typeof generateDigest>>;
+        try {
+          result = await generateDigest({
+            db,
+            ownerId: uid,
+            feedIds: scope,
+            date,
+            force: body.force === true,
+            llm,
+            style: cfg.style,
+            limits: { maxPerFeed: cfg.maxPerFeed, maxTotal: cfg.maxTotal, keepDays: cfg.keepDays },
+            fetchImpl: safeFetch,
+          });
+        } catch (e) {
+          // 手动生成失败也要留痕：模型状态里最需要看到的就是「昨天点了生成，为什么没出来」
+          await recordAiUsage(db, uid, 'digest', null, false, 1, {
+            model: llm.model,
+            label: `日报 ${date}`,
+            durationMs: Date.now() - digestStarted,
+            error: (e as Error)?.message ?? String(e),
+          });
+          throw e;
+        }
 
         // 日报一轮可能调多次（map-reduce 分批），按实际次数记账；cached 不动用量
         if (!result.cached && result.usage.calls > 0) {
-          await recordAiUsage(db, uid, 'digest', result.usage, true, result.usage.calls);
+          await recordAiUsage(db, uid, 'digest', result.usage, true, result.usage.calls, {
+            model: llm.model,
+            label: `日报 ${date}`,
+            durationMs: Date.now() - digestStarted,
+          });
         }
 
         // 自动生成跑过这一轮就记下「今天已处理」，避免同一分钟内被 tick 重复触发
@@ -269,14 +365,25 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
           { role: 'user', content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}` },
         ];
 
+        const entryLabel = (entry.title ?? '').trim() || '单篇 AI';
+        const started = Date.now();
         try {
           const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
-          await recordAiUsage(db, uid, 'entry_ai', usage, true);
+          await recordAiUsage(db, uid, 'entry_ai', usage, true, 1, {
+            model: llm.model,
+            label: entryLabel,
+            durationMs: Date.now() - started,
+          });
           return c.json(
             assertResponse(aiSpec.entryAi.response, { ok: true, result }, 'POST /api/entry/:id/ai'),
           );
         } catch (e) {
-          await recordAiUsage(db, uid, 'entry_ai', null, false);
+          await recordAiUsage(db, uid, 'entry_ai', null, false, 1, {
+            model: llm.model,
+            label: entryLabel,
+            durationMs: Date.now() - started,
+            error: (e as Error)?.message ?? String(e),
+          });
           // 降级可读：模型失败返回 200，ok:false + 原因，前端直接呈现，不 500
           return c.json(
             assertResponse(

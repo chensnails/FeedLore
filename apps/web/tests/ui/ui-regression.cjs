@@ -109,6 +109,18 @@ let aiUsagePayload = {
   ],
   series: [{ date: '2026-11-15', calls: 3, totalTokens: 1500 }],
 };
+// AI 请求明细（GET /api/ai-requests）——「模型状态」列表
+let aiRequestsPayload = {
+  requests: [
+    { id: 2, kind: 'entry_ai', model: 'Qwen/Qwen3-8B', label: '例子条目：一次把阅读器做对', ok: true, calls: 1, durationMs: 1200, promptTokens: 800, completionTokens: 200, totalTokens: 1000, error: '', createdAt: new Date(Date.now() - 60e3).toISOString() },
+    { id: 1, kind: 'digest', model: 'Qwen/Qwen3-8B', label: '日报 2026-11-15', ok: false, calls: 1, durationMs: 4200, promptTokens: 0, completionTokens: 0, totalTokens: 0, error: 'The model request timed out', createdAt: new Date(Date.now() - 3600e3).toISOString() },
+  ],
+  keep: 200,
+  keepDays: 30,
+};
+// 上游 /models 返回的模型名（POST /api/llm/models）
+let modelsPayload = ['Qwen/Qwen3-8B', 'deepseek-ai/DeepSeek-V3'];
+let modelsFailNext = false;
 
 /* ---------- 迷你服务端（内存版，契约对齐 server.js / db.js） ---------- */
 let miniNextId = 10;
@@ -378,6 +390,11 @@ w.feedlore = {
 
     // ---- 模型 / 关于 / 偏好 ----
     if (url.indexOf('/api/ai-usage') === 0 && method === 'GET') return ok(aiUsagePayload);
+    if (url.indexOf('/api/ai-requests') === 0 && method === 'GET') return ok(aiRequestsPayload);
+    if (url === '/api/llm/models' && method === 'POST') {
+      if (modelsFailNext) { modelsFailNext = false; return ok({ ok: false, models: [], error: 'The upstream returned 404 for /models' }); }
+      return ok({ ok: true, models: modelsPayload.slice() });
+    }
     if (url === '/api/prefs' && method === 'GET') {
       return ok({
         llm: prefsLlm, groupOrder: miniGroupOrder.slice(), filters: miniFilters.slice(),
@@ -2654,6 +2671,52 @@ const withEFP = (el, fn) => {
   });
   t('模型预设 datalist 5 项', () => { if (document.querySelectorAll('#modelPresets option').length !== 5) throw new Error('实际 ' + document.querySelectorAll('#modelPresets option').length); });
   t('温度输入为 number 0~1.5', () => { const el = document.querySelector('#llmTemp'); if (el.type !== 'number' || el.min !== '0' || el.max !== '1.5') throw new Error(el.type + '/' + el.min + '/' + el.max); });
+
+  // ---- 模型状态（最近调用明细 + 上游模型列表）----
+  t('模型状态：区块 + 今日三格 + 状态徽标 + 当前模型名', () => {
+    const sec = document.querySelector('[data-sec="llm-status"]');
+    if (!sec) throw new Error('无模型状态区块');
+    if (document.querySelectorAll('#modelStatusStats .ms-stat').length !== 3) throw new Error('统计格数不对');
+    if (!sec.querySelector('.ms-badge')) throw new Error('缺状态徽标');
+    const model = sec.querySelector('.ms-model');
+    if (!model || model.textContent.trim() !== 'Qwen/Qwen3-8B') throw new Error('当前模型名: ' + (model ? model.textContent : 'null'));
+  });
+  t('模型状态：历史请求逐条列出，失败行带原因', () => {
+    const rows = [...document.querySelectorAll('#modelRequestList .ms-row')];
+    if (rows.length !== aiRequestsPayload.requests.length) throw new Error('行数 ' + rows.length);
+    if (rows[0].getAttribute('data-kind') !== 'entry_ai') throw new Error('首行功能: ' + rows[0].getAttribute('data-kind'));
+    const fail = document.querySelector('#modelRequestList .ms-row.is-fail .ms-err');
+    if (!fail || fail.textContent.indexOf('timed out') < 0) throw new Error('失败行缺原因');
+  });
+  t('模型状态：如实写出保留口径（200 条 / 30 天）', () => {
+    const note = document.querySelector('.ms-list-note');
+    if (!note) throw new Error('缺保留口径说明');
+    if (note.textContent.indexOf('200') < 0 || note.textContent.indexOf('30') < 0) throw new Error(note.textContent);
+  });
+  t('模型名称：有「获取模型」按钮且贴在输入框旁', () => {
+    const b = document.querySelector('#fetchModelsBtn');
+    if (!b) throw new Error('无获取按钮');
+    const input = document.querySelector('#llmModel');
+    if (!input || !input.closest('.input-with-btn')) throw new Error('按钮应贴在输入框旁');
+  });
+  document.querySelector('#fetchModelsBtn').click();
+  await sleep(80);
+  t('模型名称：获取后 datalist 换成上游模型并给出数量提示', () => {
+    const opts = [...document.querySelectorAll('#modelPresets option')].map((o) => o.value);
+    if (opts.length !== modelsPayload.length || opts.indexOf('deepseek-ai/DeepSeek-V3') < 0) throw new Error(opts.join(','));
+    const hint = document.querySelector('#modelListHint');
+    if (!hint || hint.textContent.indexOf(String(modelsPayload.length)) < 0) throw new Error('提示: ' + (hint ? hint.textContent : 'null'));
+  });
+  // 失败路径：上游不实现 /models 时退回手填，只在这一块标红说明，不影响保存
+  modelsFailNext = true;
+  document.querySelector('#fetchModelsBtn').click();
+  await sleep(80);
+  t('模型名称：获取失败退回手填并标红说明原因', () => {
+    const hint = document.querySelector('#modelListHint');
+    if (!hint.classList.contains('is-warn')) throw new Error('提示未标红');
+    if (hint.textContent.indexOf('404') < 0) throw new Error('提示: ' + hint.textContent);
+    if (!document.querySelector('#llmModel')) throw new Error('输入框应仍在（手填不能丢）');
+  });
 
   // 思考模式：默认关，档位行平时不显示（关着还摆一档 = 让人以为在发）
   const depthRow = () => document.querySelector('#llmDepth').closest('.form-row');

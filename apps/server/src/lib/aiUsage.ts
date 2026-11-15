@@ -9,14 +9,18 @@
  * - **用量只在上游返回 usage 时累加**，没回就是 0，所以 tokens 可能小于 calls 的预期。
  */
 
-import { and, eq, gte } from 'drizzle-orm';
+import { and, desc, eq, gte } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { aiUsageDaily, type Db } from '@feedlore/db';
+import { aiRequestLog, aiUsageDaily, type Db } from '@feedlore/db';
 import { shanghaiDate } from '@feedlore/ai';
 
 /** 功能分类。新增调用点时必须在这里登记，否则前端「按功能」里看不到。 */
 export const AI_USAGE_KINDS = ['digest', 'entry_ai', 'ai_tags', 'mcp', 'test'] as const;
 export type AiUsageKind = (typeof AI_USAGE_KINDS)[number];
+
+/** 明细保留口径：每个账号最近 200 条、且不超过 30 天（写入后顺带裁剪）。 */
+export const AI_REQUEST_KEEP = 200;
+export const AI_REQUEST_KEEP_DAYS = 30;
 
 export interface UsageLike {
   promptTokens: number;
@@ -32,9 +36,27 @@ export function shiftDate(date: string, deltaDays: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** 一次调用附带的明细字段（可选：调用方没传就只落聚合）。 */
+export interface AiRequestMeta {
+  /** 实际使用的模型名（列表里显示「当时用哪个模型跑出来的」） */
+  model?: string;
+  /** 这次在做什么：文章标题 / 日报日期 / MCP 工具名 / 「测试连接」 */
+  label?: string;
+  /** 端到端耗时（毫秒） */
+  durationMs?: number;
+  /** 失败原因（成功留空） */
+  error?: string;
+}
+
+const clip = (s: unknown, n: number): string => {
+  const t = String(s ?? '').replace(/\s+/g, ' ').trim();
+  return t.length > n ? t.slice(0, n) + '…' : t;
+};
+
 /**
- * 记一次调用。`ok=false` 时 calls 与 fails 同时 +1（失败也是一次尝试）。
- * 不抛错：调用方不需要 try/catch。
+ * 记一次调用：日聚合 + 明细一行，写明细后顺带裁剪。
+ * `ok=false` 时 calls 与 fails 同时 +1（失败也是一次尝试）。
+ * 不抛错：调用方不需要 try/catch —— 统计与日志都是旁路。
  */
 export async function recordAiUsage(
   db: Db,
@@ -44,6 +66,8 @@ export async function recordAiUsage(
   ok = true,
   /** 本次要记的调用次数（日报 map-reduce 一轮会调多次；失败一次传 1 即可） */
   calls = 1,
+  /** 明细字段（模型 / 在做什么 / 耗时 / 失败原因）；不传就只记聚合 */
+  meta?: AiRequestMeta,
 ): Promise<void> {
   const promptTokens = Math.max(0, Math.round(usage?.promptTokens ?? 0));
   const completionTokens = Math.max(0, Math.round(usage?.completionTokens ?? 0));
@@ -73,6 +97,95 @@ export async function recordAiUsage(
   } catch {
     /* 旁路：统计失败不影响业务 */
   }
+
+  // 明细与裁剪同样吞错：日志写不进去，模型调用照样算成功
+  try {
+    await db.insert(aiRequestLog).values({
+      userId,
+      kind,
+      model: clip(meta?.model, 120),
+      label: clip(meta?.label, 160),
+      ok,
+      calls: n,
+      durationMs: Math.max(0, Math.round(meta?.durationMs ?? 0)),
+      promptTokens,
+      completionTokens,
+      error: ok ? '' : clip(meta?.error, 300),
+    });
+    // 每个账号只留最近 200 条 / 30 天：溢出的一两条在每次写入后顺带清掉，表大小有上界
+    await db.execute(sql`
+      delete from ${aiRequestLog}
+      where ${aiRequestLog.userId} = ${userId}
+        and (
+          ${aiRequestLog.createdAt} < now() - make_interval(days => ${AI_REQUEST_KEEP_DAYS})
+          or ${aiRequestLog.id} not in (
+            select id from ${aiRequestLog}
+            where ${aiRequestLog.userId} = ${userId}
+            order by ${aiRequestLog.id} desc
+            limit ${AI_REQUEST_KEEP}
+          )
+        )
+    `);
+  } catch {
+    /* 旁路 */
+  }
+}
+
+export interface AiRequestView {
+  id: number;
+  kind: string;
+  model: string;
+  label: string;
+  ok: boolean;
+  calls: number;
+  durationMs: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  error: string;
+  createdAt: string;
+}
+
+/** 读最近 `limit` 条明细（本人），新的在前。 */
+export async function readAiRequests(db: Db, userId: string, limit = 50): Promise<AiRequestView[]> {
+  const n = Math.max(1, Math.min(AI_REQUEST_KEEP, Math.round(limit)));
+  const rows = await db
+    .select({
+      id: aiRequestLog.id,
+      kind: aiRequestLog.kind,
+      model: aiRequestLog.model,
+      label: aiRequestLog.label,
+      ok: aiRequestLog.ok,
+      calls: aiRequestLog.calls,
+      durationMs: aiRequestLog.durationMs,
+      promptTokens: aiRequestLog.promptTokens,
+      completionTokens: aiRequestLog.completionTokens,
+      error: aiRequestLog.error,
+      createdAt: aiRequestLog.createdAt,
+    })
+    .from(aiRequestLog)
+    .where(eq(aiRequestLog.userId, userId))
+    .orderBy(desc(aiRequestLog.createdAt), desc(aiRequestLog.id))
+    .limit(n);
+
+  return rows.map((r) => {
+    const promptTokens = Number(r.promptTokens);
+    const completionTokens = Number(r.completionTokens);
+    return {
+      id: Number(r.id),
+      kind: r.kind,
+      model: r.model,
+      label: r.label,
+      ok: r.ok,
+      calls: r.calls,
+      durationMs: r.durationMs,
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+      error: r.error,
+      createdAt: (r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt)).toISOString(),
+    };
+  });
 }
 
 export interface UsageTotal {

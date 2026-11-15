@@ -52,6 +52,32 @@ const parseTemp = (v) => {
   return Number.isFinite(n) ? n : 0.3;
 };
 
+/* ---- 请求明细的时间 / 耗时呈现 ---- */
+const pad2 = (n) => String(n).padStart(2, '0');
+/** 当天只给 HH:MM，跨天补 MM-DD —— 列表里全是「今天 16:02」会看不出是哪一天。 */
+const fmtReqTime = (iso) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const hm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  return d.toDateString() === new Date().toDateString() ? hm : `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hm}`;
+};
+/** 相对时间：状态徽标旁只放「2 分钟前」这种短说法。 */
+const fmtRel = (iso) => {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '—';
+  const diff = Date.now() - t;
+  if (diff < 60e3) return '刚刚';
+  if (diff < 3600e3) return Math.floor(diff / 60e3) + ' 分钟前';
+  if (diff < 86400e3) return Math.floor(diff / 3600e3) + ' 小时前';
+  return Math.floor(diff / 86400e3) + ' 天前';
+};
+const fmtDur = (ms) => {
+  const v = Number(ms || 0);
+  if (!v) return '—';
+  if (v < 1000) return v + 'ms';
+  return v >= 10000 ? Math.round(v / 1000) + 's' : (v / 1000).toFixed(1) + 's';
+};
+
 /* 思考深度：界面用 low/medium/high 三档，v2 落库是 1/2/3 的整数（0 表示未设置）。
    两边显式换算，别依赖服务端「数字转字符串」——契约里写的就是 number。 */
 const depthToNum = (d) => (d === 'low' ? 1 : d === 'high' ? 3 : 2);
@@ -76,6 +102,17 @@ export function ModelPane({ onDirtyChange }) {
   /* AI 用量：进页面拉一次，之后手动刷新。读接口不消耗额度。 */
   const [usage, setUsage] = useState(null);
   const [usageBusy, setUsageBusy] = useState(false);
+  /* 模型状态：最近调用明细 + 上游模型列表。
+     - requests 为 null = 读取中；读取失败只影响这一块（下方仍可改配置）。
+     - modelList 为 null = 还没拉过上游列表，输入框照旧手填 + 预设。 */
+  const [requests, setRequests] = useState(null);
+  const [reqError, setReqError] = useState('');
+  const [reqBusy, setReqBusy] = useState(false);
+  const [reqLimit, setReqLimit] = useState(20);
+  const [keepInfo, setKeepInfo] = useState({ keep: 200, days: 30 });
+  const [modelList, setModelList] = useState(null);
+  const [modelBusy, setModelBusy] = useState(false);
+  const [modelErr, setModelErr] = useState('');
   // 与日报面板同一条守卫：GET 回来前用户已输入，就不能用服务端旧值覆盖表单
   const guard = useFormLoadGuard();
 
@@ -89,7 +126,7 @@ export function ModelPane({ onDirtyChange }) {
   // 进入「模型」页拉一次配置（旧 loadModelForm 的迁移）；面板随 tab 切换挂载/卸载。
   // 注意：不清 result——保存 / 清除成功后要保留「已保存」提示（与旧实现一致），
   // 读取失败时才在 catch 里置 err；初次进入时 result 本就为 null。
-  useEffect(() => { load(); loadUsage(); }, []);
+  useEffect(() => { load(); loadUsage(); loadRequests(); }, []);
 
   // 折叠分组的开合按账号持久化（与其他设置面板同一机制）
   useEffect(() => {
@@ -184,6 +221,10 @@ export function ModelPane({ onDirtyChange }) {
       // 表单保存只用内联结果，不再叠一层 toast（列表级动作才用 toast）
       setResult({ ok: true, msg });
       await load(true);
+      // 保存成功后自动拉一次上游模型列表（Key 都没配就别白跑一趟）
+      if (typedKey || form.apiKeySet) refreshModels(true);
+      // 配置可能已经能用了，顺手刷新状态区，别让「最近失败」停在旧结论上
+      loadRequests();
     } catch (err) {
       setResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
     } finally {
@@ -210,6 +251,9 @@ export function ModelPane({ onDirtyChange }) {
       if (!res.ok) { setResult({ ok: false, msg: S().errText(data, '清除失败') }); return; }
       setResult({ ok: true, msg: 'API Key 已清除' });
       await load(true);
+      // Key 没了就拉不到模型列表，把上一次的结果一并清掉，免得下拉里还留着过期的名字
+      setModelList(null);
+      setModelErr('');
     } catch (err) {
       setResult({ ok: false, msg: '清除失败：' + String((err && err.message) || err) });
     } finally {
@@ -263,7 +307,91 @@ export function ModelPane({ onDirtyChange }) {
     }
   }
 
+  /* 最近调用明细：只读接口。读失败只在「模型状态」区里报，不影响上面的配置表单。 */
+  async function loadRequests(limit = reqLimit) {
+    setReqBusy(true);
+    setReqError('');
+    try {
+      const res = await S().apiFetch('/api/ai-requests?limit=' + encodeURIComponent(String(limit)));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(S().errText(data, 'HTTP ' + res.status));
+      setRequests(Array.isArray(data.requests) ? data.requests : []);
+      setKeepInfo({
+        keep: Number(data.keep) > 0 ? Number(data.keep) : 200,
+        days: Number(data.keepDays) > 0 ? Number(data.keepDays) : 30,
+      });
+    } catch (err) {
+      setReqError(String((err && err.message) || err));
+      setRequests((prev) => (Array.isArray(prev) ? prev : []));
+    } finally {
+      setReqBusy(false);
+    }
+  }
+
+  /* 拉上游模型列表（OpenAI 兼容 GET {base}/models）。
+     - 临时带上输入框刚填的 baseUrl / Key：还没保存也该能拉；
+     - auto=true 是保存成功后自动跑一次：失败只在这块提示，不打断保存结果；
+     - 失败一律退回手填，不做成阻塞。 */
+  async function refreshModels(auto = false) {
+    if (modelBusy) return;
+    setModelBusy(true);
+    setModelErr('');
+    try {
+      const typedKey = apiKey.trim();
+      const res = await S().apiFetch('/api/llm/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          llm: Object.assign({ baseUrl: form.baseUrl }, typedKey ? { apiKey: typedKey } : {}),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(S().errText(data, '获取模型列表失败'));
+      if (!data.ok) {
+        setModelList(null);
+        setModelErr(data.error || '上游没有返回模型列表，请手动填写模型名称');
+        return;
+      }
+      const list = Array.isArray(data.models) ? data.models : [];
+      setModelList(list.length ? list : null);
+      if (!list.length) setModelErr('上游没有返回模型列表，请手动填写模型名称');
+    } catch (err) {
+      setModelList(null);
+      setModelErr((auto ? '自动获取模型列表失败：' : '') + String((err && err.message) || err));
+    } finally {
+      setModelBusy(false);
+    }
+  }
+
   const saved = form.apiKeySet;
+
+  /* ---- 模型状态：只用本地记录推断，不额外打一次模型（看状态不烧 token） ---- */
+  const recent = Array.isArray(requests) ? requests : [];
+  const lastReq = recent[0] || null;
+  const status = (() => {
+    if (!saved || !String(form.model || '').trim()) {
+      return { cls: 'is-off', label: '未配置', detail: '地址 / Key / 模型名三项齐了才能调用' };
+    }
+    if (requests === null && !reqError) return { cls: 'is-idle', label: '读取中…', detail: '' };
+    if (reqError && !recent.length) return { cls: 'is-fail', label: '状态未知', detail: reqError };
+    if (!lastReq) return { cls: 'is-idle', label: '未测试', detail: '还没有调用记录，可以用底部的「测试模型」先验一次' };
+    if (lastReq.ok) {
+      return {
+        cls: 'is-ok',
+        label: '可用',
+        detail: `最近一次成功 · ${fmtRel(lastReq.createdAt)} · ${USAGE_KINDS[lastReq.kind] || lastReq.kind}`,
+      };
+    }
+    return { cls: 'is-fail', label: '最近失败', detail: `${fmtRel(lastReq.createdAt)} · ${lastReq.error || '调用失败'}` };
+  })();
+  const avgMs = (() => {
+    const ok = recent.filter((r) => r.ok && Number(r.durationMs) > 0);
+    if (!ok.length) return 0;
+    return Math.round(ok.reduce((a, r) => a + Number(r.durationMs), 0) / ok.length);
+  })();
+  const todayCalls = usage?.today?.calls || 0;
+  const todayFails = usage?.today?.fails || 0;
+  const reqLoading = requests === null && !reqError;
 
   return (
     <div className="tab-pane" data-pane="model" ref={paneRef}>
@@ -323,21 +451,45 @@ export function ModelPane({ onDirtyChange }) {
         <div className="form-grid form-grid-2">
           <div className="form-row">
             <label htmlFor="llmModel">模型名称</label>
-            <input
-              id="llmModel"
-              type="text"
-              placeholder="Qwen/Qwen3-8B"
-              spellCheck="false"
-              list="modelPresets"
-              value={form.model}
-              onChange={set('model')}
-            />
+            {/* 输入框保持可手填：/models 拉不到（或上游不实现）时照样能填名字。
+                拉到列表后 datalist 里会多出上游的真实模型名，点一下就选上。 */}
+            <div className="input-with-btn">
+              <input
+                id="llmModel"
+                type="text"
+                placeholder="Qwen/Qwen3-8B"
+                spellCheck="false"
+                list="modelPresets"
+                value={form.model}
+                onChange={set('model')}
+              />
+              <button
+                className="btn btn-ghost btn-sm"
+                id="fetchModelsBtn"
+                type="button"
+                disabled={modelBusy}
+                aria-busy={modelBusy ? 'true' : undefined}
+                title="向当前模型地址请求 /models，拉取可用模型名"
+                onClick={() => refreshModels(false)}
+              >
+                {modelBusy ? '获取中…' : modelList ? '重新获取' : '获取模型'}
+              </button>
+            </div>
             <datalist id="modelPresets">
-              {MODEL_PRESETS.map((m) => <option key={m} value={m} />)}
+              {(modelList && modelList.length ? modelList : MODEL_PRESETS).map((m) => <option key={m} value={m} />)}
             </datalist>
-            <small className="form-tip">免费额度推荐 <strong>Qwen/Qwen3-8B</strong>；{form.thinking
+            {modelErr ? (
+              <small className="form-tip is-warn" id="modelListHint" role="status">{modelErr}</small>
+            ) : modelList ? (
+              <small className="form-tip" id="modelListHint" role="status">
+                已从上游获取 {modelList.length} 个模型，输入框里点一下就能选；也可以继续手填。
+              </small>
+            ) : null}
+            {/* 思考模式的说明与「列表状态」分开两条：拉到列表后这条不该消失 */}
+            <small className="form-tip" id="llmModelTip">免费额度推荐 <strong>Qwen/Qwen3-8B</strong>；{form.thinking
               ? '已开启思考：系统提示改用 /think，并随请求下发思考预算'
-              : '系统提示内置 /no_think 关闭思考模式，速度更快'}</small>
+              : '系统提示内置 /no_think 关闭思考模式，速度更快'}
+            </small>
           </div>
           <div className="form-row">
             <label htmlFor="llmTemp">温度</label>
@@ -410,6 +562,86 @@ export function ModelPane({ onDirtyChange }) {
             只想给某一篇打标时，用文章页的「AI · 标签」按钮即可，不必开这个开关。
           </small>
         </div>
+        </Section>
+
+        {/* 模型状态：当前模型是谁、现在能不能用、最近都请求了什么。
+            状态用本地调用记录推断（最近一次结果），再点一次模型验证放在底部「测试模型」，
+            这样「看一眼状态」不会消耗额度。 */}
+        <Section secKey="llm-status" title="模型状态"
+          sub={status.label + (lastReq ? ' · ' + fmtRel(lastReq.createdAt) : '')}>
+          <div className="ms-head">
+            <span className={'ms-badge ' + status.cls}>{status.label}</span>
+            <span className="ms-model" title={String(form.model || '').trim() || '未设置模型'}>
+              {String(form.model || '').trim() || '未设置模型'}
+            </span>
+            {status.detail ? <span className="ms-head-note">{status.detail}</span> : null}
+          </div>
+
+          <div className="ms-stats" id="modelStatusStats">
+            <div className="ms-stat">
+              <span className="ms-stat-label">今日调用</span>
+              <strong className="ms-stat-value">{fmtNum(todayCalls)}</strong>
+            </div>
+            <div className="ms-stat">
+              <span className="ms-stat-label">今日失败</span>
+              <strong className={'ms-stat-value' + (todayFails ? ' is-fail' : '')}>{fmtNum(todayFails)}</strong>
+            </div>
+            <div className="ms-stat">
+              <span className="ms-stat-label">最近成功平均耗时</span>
+              <strong className="ms-stat-value">{avgMs ? fmtDur(avgMs) : '—'}</strong>
+            </div>
+          </div>
+
+          <div className="ms-list-head">
+            <span className="ms-list-title">历史请求</span>
+            <span className="ms-list-note">只保留最近 {keepInfo.keep} 条 · {keepInfo.days} 天</span>
+            <select className="select ms-limit" id="aiRequestsLimit" value={reqLimit}
+              aria-label="显示条数"
+              onChange={(ev) => { const n = Number(ev.target.value) || 20; setReqLimit(n); loadRequests(n); }}>
+              <option value={20}>20 条</option>
+              <option value={50}>50 条</option>
+            </select>
+            <button className="btn btn-ghost btn-sm" id="aiRequestsRefresh" type="button"
+              disabled={reqBusy} aria-busy={reqBusy ? 'true' : undefined} onClick={() => loadRequests()}>
+              {reqBusy ? '刷新中…' : '刷新'}
+            </button>
+          </div>
+
+          {reqLoading ? (
+            <div className="ms-skeleton" id="modelRequestLoading" aria-hidden="true">
+              <div className="ms-skeleton-row" />
+              <div className="ms-skeleton-row" />
+              <div className="ms-skeleton-row" />
+            </div>
+          ) : reqError && !recent.length ? (
+            <div className="ms-empty is-err" id="modelRequestError" role="alert">
+              <span>读取请求记录失败：{reqError}</span>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={() => loadRequests()}>重试</button>
+            </div>
+          ) : recent.length === 0 ? (
+            <div className="ms-empty" id="modelRequestEmpty">
+              还没有请求记录。生成日报、用单篇 AI、打标签或点底部「测试模型」之后，
+              每次调用都会记在这里（时间 · 功能 · 内容 · 耗时 · tokens · 结果）。
+            </div>
+          ) : (
+            <ul className="ms-list" id="modelRequestList">
+              {recent.map((r) => (
+                <li className={'ms-row' + (r.ok ? '' : ' is-fail')} key={r.id} data-kind={r.kind}>
+                  <span className="ms-time" title={new Date(r.createdAt).toLocaleString('zh-CN')}>{fmtReqTime(r.createdAt)}</span>
+                  <span className="ms-kind">{USAGE_KINDS[r.kind] || r.kind}</span>
+                  <span className="ms-label" title={r.label || ''}>{r.label || '—'}</span>
+                  <span className="ms-dur">{fmtDur(r.durationMs)}</span>
+                  <span className="ms-tok">{r.totalTokens ? fmtTokens(r.totalTokens) : '—'}</span>
+                  <span className={'ms-state' + (r.ok ? '' : ' is-fail')}>{r.ok ? '成功' : '失败'}</span>
+                  {!r.ok && r.error ? <span className="ms-err" title={r.error}>{r.error}</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          <small className="form-tip">
+            状态按最近一次调用推断：成功即「可用」，失败即「最近失败」并给出原因。
+            想立刻确认，点底部「测试模型」——那会真的调一次并在列表里留一条记录。
+          </small>
         </Section>
 
         <Section secKey="llm-usage" title="AI 用量"

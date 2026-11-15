@@ -327,6 +327,37 @@ export const entryAiTags = pgTable(
   ],
 );
 
+/**
+ * AI 请求明细（设置 → 模型 →「模型状态」的数据源）。
+ *
+ * 与 `ai_usage_daily` 的分工：那张表回答「哪天、哪项功能烧了多少」，这张表回答
+ * 「最近这次调用在做什么、成没成、多慢」。明细只保留每个账号最近
+ * `AI_REQUEST_KEEP`(200) 条且不超过 `AI_REQUEST_KEEP_DAYS`(30) 天，写入时顺带裁剪
+ * （见 apps/server/src/lib/aiUsage.ts），所以行数有上界，不会随调用量无限长。
+ *
+ * 不存提示词正文：`label` 只记「这次在做什么」（文章标题 / 日报日期 / MCP 工具名），
+ * 够列表辨认即可，不把用户正文搬进日志表。
+ */
+export const aiRequestLog = pgTable('ai_request_log', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** digest / entry_ai / ai_tags / mcp / test，与 ai_usage_daily.kind 同一套取值 */
+  kind: text('kind').notNull(),
+  model: text('model').notNull().default(''),
+  label: text('label').notNull().default(''),
+  ok: boolean('ok').notNull().default(true),
+  /** 一轮业务调用实际打了几次模型（日报 map-reduce 会分批），明细只落一行 */
+  calls: integer('calls').notNull().default(1),
+  durationMs: integer('duration_ms').notNull().default(0),
+  promptTokens: bigint('prompt_tokens', { mode: 'number' }).notNull().default(0),
+  completionTokens: bigint('completion_tokens', { mode: 'number' }).notNull().default(0),
+  /** 失败原因（已收敛成短句）；成功时为空串 */
+  error: text('error').notNull().default(''),
+  createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+});
+
 /* ============================================================================
  * 索引（镜像 legacy 高频路径）
  * ----------------------------------------------------------------------------
@@ -409,4 +440,5 @@ export type UserLlm = typeof userLlm.$inferSelect;
 export type NewUserLlm = typeof userLlm.$inferInsert;
 export type McpToken = typeof mcpTokens.$inferSelect;
 export type AiUsageDailyRow = typeof aiUsageDaily.$inferSelect;
+export type AiRequestLogRow = typeof aiRequestLog.$inferSelect;
 export type EntryAiTags = typeof entryAiTags.$inferSelect;

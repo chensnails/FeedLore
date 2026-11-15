@@ -53,9 +53,15 @@ export async function tagEntry(
   llm: ResolvedLlm,
 ): Promise<{ status: 'done' | 'failed'; tags: string[]; error?: string }> {
   const id = crypto.randomUUID();
+  const started = Date.now();
+  const label = (entry.title ?? '').trim() || 'AI 标签';
   try {
     const { tags, usage } = await suggestEntryTags(entry.title, entry.content ?? '', llm, safeFetch);
-    await recordAiUsage(db, uid, 'ai_tags', usage, true);
+    await recordAiUsage(db, uid, 'ai_tags', usage, true, 1, {
+      model: llm.model,
+      label,
+      durationMs: Date.now() - started,
+    });
     await db
       .insert(entryAiTags)
       .values({
@@ -74,7 +80,12 @@ export async function tagEntry(
     return { status: 'done', tags };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    await recordAiUsage(db, uid, 'ai_tags', null, false);
+    await recordAiUsage(db, uid, 'ai_tags', null, false, 1, {
+      model: llm.model,
+      label,
+      durationMs: Date.now() - started,
+      error: message,
+    });
     await db
       .insert(entryAiTags)
       .values({

@@ -689,6 +689,36 @@ export const aiUsageResponse = z.object({
 });
 export type AiUsageResponse = z.infer<typeof aiUsageResponse>;
 
+/** 拉取上游模型列表（OpenAI 兼容 `GET {base}/models`）。
+ *  可临时带未保存的 baseUrl / apiKey —— 与「测试连接」同口径，刚填完就能试。 */
+export const llmModelsBody = z.object({ llm: M.LlmConfigSchema.partial().optional() });
+export type LlmModelsBody = z.infer<typeof llmModelsBody>;
+
+/** 一条请求明细。`kind` 原样回，中文名由前端词典映射（与 AI 用量同一套）。 */
+export const aiRequestItem = z.object({
+  id: z.number().int(),
+  kind: z.string(),
+  model: z.string(),
+  label: z.string(),
+  ok: z.boolean(),
+  calls: z.number().int(),
+  durationMs: z.number().int(),
+  promptTokens: z.number().int(),
+  completionTokens: z.number().int(),
+  totalTokens: z.number().int(),
+  error: z.string(),
+  createdAt: z.string(),
+});
+export type AiRequestItem = z.infer<typeof aiRequestItem>;
+
+export const aiRequestsResponse = z.object({
+  requests: z.array(aiRequestItem),
+  /** 明细保留口径（条数 / 天数），界面上如实写出来 */
+  keep: z.number().int(),
+  keepDays: z.number().int(),
+});
+export type AiRequestsResponse = z.infer<typeof aiRequestsResponse>;
+
 export const ai = {
   /** AI 消耗量统计（只读本人）。days 控制按天序列与合计的窗口，默认 30。 */
   apiUsage: {
@@ -768,6 +798,26 @@ export const ai = {
       model: z.string().nullable(),
       error: z.string().optional(),
     }),
+  },
+  /**
+   * 拉上游模型列表，供设置页「模型名称」下拉。
+   * 失败不 500：ok:false + error（上游不兼容 / Key 无效 / 网络不通都可能），
+   * 前端退回手填并说明原因。
+   */
+  llmModels: {
+    method: 'post',
+    path: '/api/llm/models',
+    auth: 'user',
+    body: llmModelsBody,
+    response: z.object({ ok: z.boolean(), models: z.array(z.string()), error: z.string().optional() }),
+  },
+  /** 最近调用明细（只读本人）。limit 默认 50，上限 200（= 表的保留上限）。 */
+  requests: {
+    method: 'get',
+    path: '/api/ai-requests',
+    auth: 'user',
+    query: z.object({ limit: z.coerce.number().int().min(1).max(200).optional() }),
+    response: aiRequestsResponse,
   },
 } as const satisfies Record<string, EndpointSpec>;
 

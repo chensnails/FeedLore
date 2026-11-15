@@ -473,9 +473,15 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
         { role: 'user', content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}` },
       ];
 
+      const started = Date.now();
+      const label = (entry.title ?? '').trim() || 'MCP 单篇摘要';
       try {
         const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
-        await recordAiUsage(db, user.id, 'mcp', usage, true);
+        await recordAiUsage(db, user.id, 'mcp', usage, true, 1, {
+          model: llm.model,
+          label,
+          durationMs: Date.now() - started,
+        });
         return textResult({
           ...who,
           id,
@@ -485,7 +491,13 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
           result,
         });
       } catch (e) {
-        // 模型失败也是结构化：客户端能区分「AI 报错」与「没查到数据」
+        // 模型失败也是结构化：客户端能区分「AI 报错」与「没查到数据」；明细里同样留痕
+        await recordAiUsage(db, user.id, 'mcp', null, false, 1, {
+          model: llm.model,
+          label,
+          durationMs: Date.now() - started,
+          error: (e as Error)?.message ?? String(e),
+        });
         return errorResult('E_AI_CALL_FAILED', (e as Error)?.message ?? 'AI 调用失败', { ...who });
       }
     }),
@@ -542,9 +554,15 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
         },
       ];
 
+      const started = Date.now();
+      const label = (entry.title ?? '').trim() || 'MCP 单篇问答';
       try {
         const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
-        await recordAiUsage(db, user.id, 'mcp', usage, true);
+        await recordAiUsage(db, user.id, 'mcp', usage, true, 1, {
+          model: llm.model,
+          label,
+          durationMs: Date.now() - started,
+        });
         return textResult({
           ...who,
           id,
@@ -554,7 +572,12 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
           result,
         });
       } catch (e) {
-        await recordAiUsage(db, user.id, 'mcp', null, false);
+        await recordAiUsage(db, user.id, 'mcp', null, false, 1, {
+          model: llm.model,
+          label,
+          durationMs: Date.now() - started,
+          error: (e as Error)?.message ?? String(e),
+        });
         return errorResult('E_AI_CALL_FAILED', (e as Error)?.message ?? 'AI 调用失败', { ...who });
       }
     }),

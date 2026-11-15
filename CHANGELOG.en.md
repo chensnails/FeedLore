@@ -7,6 +7,40 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## Unreleased
+
+### Added
+
+- **Model status (Settings → Model)**: a dedicated block showing the current model and recent calls —
+  a status badge (available / last call failed / not tested / not configured), today's calls and
+  failures, the average duration of recent successful calls, and a per-request history
+  (time · feature · label · duration · tokens · result, with the failure reason inline).
+  Status is inferred from local call records, so looking at it costs nothing; records keep the most
+  recent 200 entries per account and expire after 30 days.
+- **Model names fetched automatically**: a "Fetch models" button next to the model name requests the
+  OpenAI-compatible `/models` endpoint and fills the candidate list; it also runs once after a
+  successful save. When the upstream does not implement it, the field falls back to manual entry with
+  an explanation.
+- **AI tags**, **rule engine**, **AI usage statistics** and the **MCP write tools**
+  (`feedlore_summarize_entry` / `feedlore_ask_entry`, `write` scope required).
+
+### Improved
+
+- **Settings forms are shown directly**: the 2.4.6 "read-only until you click Edit" layer is gone —
+  every section is editable as soon as it opens. Only Account → Login info keeps the
+  "Change username" / "Change password" buttons.
+- **Settings layering**: common sections stay expanded; collection parameters, thinking mode, digest
+  style and watch notifications/retention live under "Advanced" and start collapsed.
+- **Button busy states are per action**: in the AI action bar and the digest generator only the
+  clicked button enters its loading state; siblings are merely disabled. Previously one click turned
+  the whole row into "…" spinners.
+
+### Removed
+
+- **Smart deduplication**: cross-feed folding could make entries disappear from a channel; the
+  cost/benefit never worked out, so it is gone (the "include duplicates" toggle, the "N duplicates"
+  chip and the related columns were removed; listing and filtering semantics are unchanged).
+
 ## 2.4.6 — 2026-11-14
 
 ### Fixed

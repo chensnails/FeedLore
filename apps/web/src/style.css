@@ -2215,6 +2215,8 @@ textarea:disabled {
   box-shadow: 0 0 0 3px var(--focus-halo);
 }
 .form-tip { display: block; margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-faint); line-height: 1.75; }
+/* 带告警意味的说明（模型列表拉取失败等）：只改颜色，排版与普通说明一致 */
+.form-tip.is-warn { color: var(--err-text); }
 /* 长说明里的小标题：比正文略深一档，分段靠 <br> + 这一组样式，长段落不再糊成一团 */
 .form-tip b { color: var(--text-muted); font-weight: 600; }
 /* 表单错误态：:user-invalid 只在用户交互过之后才标红（不会一进页面就满屏红框），无需任何 JS 参与 */
@@ -2714,6 +2716,63 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 @media (max-width: 560px) {
   .usage-grid { grid-template-columns:1fr; }
   .usage-cell { flex-direction:row; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2); }
+}
+
+/* ---- 模型状态（设置 · 模型页）：状态徽标 + 今日汇总 + 历史请求列表 ---- */
+.ms-head { display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-2) var(--sp-3); }
+.ms-badge { flex:0 0 auto; font-size:var(--fs-2xs); font-weight:600; padding:1px 8px; border-radius:999px;
+  border:1px solid var(--line); background:var(--surface-2); color:var(--text-muted); }
+.ms-badge.is-ok { background:var(--ok-bg); border-color:var(--ok-border); color:var(--ok-text); }
+.ms-badge.is-fail { background:var(--err-bg); border-color:var(--err-border); color:var(--err-text); }
+.ms-badge.is-idle { background:var(--warn-bg); border-color:var(--warn-border); color:var(--warn-text); }
+.ms-badge.is-off { color:var(--text-faint); }
+.ms-model { font-size:var(--fs-sm); font-weight:600; color:var(--text);
+  max-width:22em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ms-head-note { flex:1 1 100%; font-size:var(--fs-xs); color:var(--text-faint); line-height:1.6; }
+
+.ms-stats { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:var(--sp-2); margin-top:var(--sp-3); }
+.ms-stat { display:flex; flex-direction:column; gap:2px; padding:var(--sp-2) var(--sp-3);
+  border-radius:var(--radius-md); background:var(--surface-2); border:1px solid var(--line); }
+.ms-stat-label { font-size:var(--fs-2xs); color:var(--text-faint); }
+.ms-stat-value { font-size:var(--fs-md); font-weight:600; color:var(--text); font-variant-numeric:tabular-nums; }
+.ms-stat-value.is-fail { color:var(--err-text); }
+
+.ms-list-head { display:flex; align-items:center; flex-wrap:wrap; gap:var(--sp-2); margin-top:var(--sp-4); }
+.ms-list-title { font-size:var(--fs-sm); font-weight:600; color:var(--text); }
+.ms-list-note { flex:1 1 auto; font-size:var(--fs-2xs); color:var(--text-faint); }
+.ms-limit { width:auto; min-width:5.5em; }
+
+.ms-list { list-style:none; margin:var(--sp-2) 0 0; padding:0; }
+/* 时间列要放得下跨天的「11-14 14:18」（单行不折行），其余列按内容定宽，剩下的都给内容摘要 */
+.ms-row { display:grid; grid-template-columns:84px 66px minmax(0,1fr) 56px 52px 42px;
+  gap:var(--sp-2); align-items:center; padding:var(--sp-2) 0;
+  border-top:1px solid var(--line); font-size:var(--fs-sm); }
+.ms-row:first-child { border-top:0; }
+.ms-time, .ms-dur, .ms-tok { color:var(--text-muted); font-size:var(--fs-xs); font-variant-numeric:tabular-nums; }
+.ms-time { white-space:nowrap; }
+.ms-kind { color:var(--text-muted); font-size:var(--fs-xs); }
+.ms-label { color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ms-row.is-fail .ms-label { color:var(--text-muted); }
+.ms-state { font-size:var(--fs-2xs); text-align:right; color:var(--ok-text); }
+.ms-state.is-fail { color:var(--err-text); font-weight:600; }
+.ms-err { grid-column:1 / -1; color:var(--err-text); font-size:var(--fs-2xs); line-height:1.55;
+  overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+
+.ms-empty { margin-top:var(--sp-3); padding:var(--sp-4) var(--sp-3); text-align:center;
+  color:var(--text-faint); font-size:var(--fs-sm); line-height:1.8;
+  border:1px dashed var(--line); border-radius:var(--radius-md); }
+.ms-empty.is-err { display:flex; align-items:center; justify-content:center; gap:var(--sp-3); color:var(--err-text); }
+.ms-skeleton { margin-top:var(--sp-3); display:flex; flex-direction:column; gap:var(--sp-2); }
+.ms-skeleton-row { height:20px; border-radius:var(--radius-sm); background:var(--surface-2);
+  animation:ms-pulse 1.2s ease-in-out infinite; }
+@keyframes ms-pulse { 0%, 100% { opacity:.55; } 50% { opacity:1; } }
+@media (prefers-reduced-motion: reduce) { .ms-skeleton-row { animation:none; } }
+/* 窄屏：只留「时间 · 内容 · 结果」，耗时 / tokens / 功能名换行看完整错误 */
+@media (max-width: 560px) {
+  .ms-stats { grid-template-columns:1fr; }
+  .ms-stat { flex-direction:row; align-items:baseline; gap:var(--sp-2); }
+  .ms-row { grid-template-columns:74px minmax(0,1fr) 40px; }
+  .ms-kind, .ms-dur, .ms-tok { display:none; }
 }
 /* 自动化规则（when→then）卡片：设置「规则」页底部 */
 .rule-card { border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-3); background: var(--surface-2, var(--bg-soft)); }

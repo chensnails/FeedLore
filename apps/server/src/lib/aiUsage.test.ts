@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseChatUsage } from '@feedlore/ai';
+import { parseChatUsage, modelsEndpoint, parseModelList } from '@feedlore/ai';
 import { shiftDate } from './aiUsage';
 
 /* ---------------- usage 解析（上游不返回时必须是 null，且不能抛） ---------------- */
@@ -45,4 +45,35 @@ test('shiftDate: 跨月/跨年都按日历算', () => {
 
 test('shiftDate: 非法输入原样返回（不抛）', () => {
   assert.equal(shiftDate('not-a-date', -1), 'not-a-date');
+});
+
+/* ---------------- 上游模型列表（设置 · 模型 → 模型名称自动获取） ---------------- */
+
+test('modelsEndpoint: base / /v1 / 完整对话路径都落到同一个 /models', () => {
+  assert.equal(modelsEndpoint('https://api.example.com'), 'https://api.example.com/v1/models');
+  assert.equal(modelsEndpoint('https://api.example.com/'), 'https://api.example.com/v1/models');
+  assert.equal(modelsEndpoint('https://api.example.com/v1'), 'https://api.example.com/v1/models');
+  assert.equal(modelsEndpoint('https://api.example.com/v1/'), 'https://api.example.com/v1/models');
+  assert.equal(modelsEndpoint('https://api.example.com/v1/chat/completions'), 'https://api.example.com/v1/models');
+  assert.throws(() => modelsEndpoint(''));
+});
+
+test('parseModelList: OpenAI 的 {data:[{id}]}', () => {
+  assert.deepEqual(
+    parseModelList({ object: 'list', data: [{ id: 'b-model' }, { id: 'a-model' }] }),
+    ['a-model', 'b-model'],
+  );
+});
+
+test('parseModelList: {models:[...]} / 裸数组 / 纯字符串都能认', () => {
+  assert.deepEqual(parseModelList({ models: ['m1', { name: 'm2' }] }), ['m1', 'm2']);
+  assert.deepEqual(parseModelList(['m1', { id: 'm2' }]), ['m1', 'm2']);
+  assert.deepEqual(parseModelList([{ model: 'm3' }]), ['m3']);
+});
+
+test('parseModelList: 去重 + 丢掉空值；完全不认识就返回空数组（让上层报「列表为空」）', () => {
+  assert.deepEqual(parseModelList([{ id: 'x' }, { id: 'x' }, '', { id: '' }, 42, null]), ['x']);
+  assert.deepEqual(parseModelList({ foo: 1 }), []);
+  assert.deepEqual(parseModelList(null), []);
+  assert.deepEqual(parseModelList('oops'), []);
 });

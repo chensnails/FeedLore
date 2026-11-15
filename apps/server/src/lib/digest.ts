@@ -132,6 +132,7 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
       }
 
       const scope = await resolveDigestScope(db, u.id, null, cfg);
+      const started = Date.now();
       const r = await generateDigest({
         db,
         ownerId: u.id,
@@ -144,7 +145,11 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
       });
 
       if (!r.cached && r.usage.calls > 0) {
-        await recordAiUsage(db, u.id, 'digest', r.usage, true, r.usage.calls);
+        await recordAiUsage(db, u.id, 'digest', r.usage, true, r.usage.calls, {
+          model: llm.model,
+          label: `日报 ${r.digest.date}（定时）`,
+          durationMs: Date.now() - started,
+        });
       }
       done += 1;
       console.log(

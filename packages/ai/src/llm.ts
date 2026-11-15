@@ -315,6 +315,89 @@ export function extractJson(text: string): Record<string, unknown> {
 }
 
 /**
+ * 模型列表地址：与 `llmEndpoint` 同源推导（`/chat/completions` → `/models`）。
+ * 用户填 base、`/v1` 还是完整对话路径，都落到同一个列表地址上。
+ */
+export function modelsEndpoint(baseUrl: string): string {
+  const base = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (!base) throw new Error('Model base URL is not configured');
+  const chat = base.replace(/\/chat\/completions$/i, '');
+  if (chat !== base) return chat + '/models';
+  if (/\/v\d+$/i.test(base)) return base + '/models';
+  return base + '/v1/models';
+}
+
+/** 上游模型列表的容错解析：OpenAI 是 `{data:[{id}]}`，也有服务回 `{models:[...]}` 或裸数组。 */
+export function parseModelList(raw: unknown): string[] {
+  const pick = (v: unknown): string | null => {
+    if (typeof v === 'string') return v.trim() || null;
+    if (v && typeof v === 'object') {
+      const o = v as Record<string, unknown>;
+      const id = o.id ?? o.name ?? o.model;
+      return typeof id === 'string' && id.trim() ? id.trim() : null;
+    }
+    return null;
+  };
+  let arr: unknown = raw;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>;
+    arr = Array.isArray(o.data) ? o.data : Array.isArray(o.models) ? o.models : [];
+  }
+  if (!Array.isArray(arr)) return [];
+  const out = new Set<string>();
+  for (const item of arr) {
+    const id = pick(item);
+    if (id) out.add(id);
+  }
+  return [...out].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * 拉一次上游模型列表。失败抛错（由路由收敛成 `ok:false + error`）：
+ * 不兼容的上游、Key 无效、网络不通是三种常见失败，这里只负责带上足够辨识的信息。
+ */
+export async function listModels(
+  llm: Pick<ResolvedLlm, 'baseUrl' | 'apiKey'>,
+  fetchImpl: FetchLike,
+  timeoutMs = 20_000,
+): Promise<string[]> {
+  const { baseUrl, apiKey } = llm;
+  if (!baseUrl || !apiKey) {
+    throw new Error('Model is not configured: base URL and API key are both required');
+  }
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const resp = await fetchImpl(modelsEndpoint(baseUrl), {
+      method: 'GET',
+      headers: { Authorization: 'Bearer ' + apiKey, Accept: 'application/json' },
+      signal: ctl.signal,
+    });
+    const text = await resp.text();
+    if (!resp.ok) {
+      if (resp.status === 401 || resp.status === 403) {
+        throw new Error(`The model rejected authentication (${resp.status}): the API key is invalid or lacks permission`);
+      }
+      throw new Error(`The upstream returned ${resp.status} for /models: ${cleanUpstreamError(text)}`);
+    }
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error('The upstream /models response is not valid JSON');
+    }
+    const models = parseModelList(data);
+    if (!models.length) throw new Error('The upstream returned an empty model list');
+    return models;
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') throw new Error('The model list request timed out');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * 连通性测试：真的走一遍保存后的请求形态（含思考指令）。
  * 失败不抛，返回 `{ok:false,error}` —— 这是给用户看的诊断，不是异常。
  */
