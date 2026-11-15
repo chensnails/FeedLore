@@ -36,6 +36,8 @@ export {
   parseModelList,
   listModels,
   chat,
+  aiError,
+  isAbortError,
   extractJson,
   parseChatUsage,
   testLlm,

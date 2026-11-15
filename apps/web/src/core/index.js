@@ -29,6 +29,9 @@ export const core = {
   activeScrollTop: S.activeScrollTop,
   // —— 设置弹层 / 外观 / 关于（v1.3.0 起 React 化） ——
   apiFetch: U.apiFetch, httpError: U.httpError, errText: U.errText, uploadArchive: U.uploadArchive, goLogin: U.goLogin,
+  // 模型调用的前端上限（200s）：AI 相关 POST 一律传 timeoutMs: core.AI_TIMEOUT_MS，
+  // 否则会被 30s 写超时误杀（服务端一次调用允许 180s）
+  AI_TIMEOUT_MS: U.NET_AI_TIMEOUT_MS,
   isAdmin: S.isAdmin, isReadonly: S.isReadonly, isWritable: S.isWritable,
   toast: U.toast, confirm: U.confirm,
   // —— 覆盖层（v2.1.0 起 React 化，组件 src/ui/Overlays.jsx） ——

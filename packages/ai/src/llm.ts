@@ -149,7 +149,7 @@ export function userLlmForStore(
 /** 模型地址补全到 `/chat/completions`（用户填 base 或完整路径都认）。 */
 export function llmEndpoint(baseUrl: string): string {
   const base = String(baseUrl || '').trim().replace(/\/+$/, '');
-  if (!base) throw new Error('Model base URL is not configured');
+  if (!base) throw aiError('E_AI_NOT_CONFIGURED', 'the model base URL is empty');
   if (/\/chat\/completions$/i.test(base)) return base;
   if (/\/v\d+$/i.test(base)) return base + '/chat/completions';
   return base + '/v1/chat/completions';
@@ -169,6 +169,35 @@ const clamp = (s: string, n: number): string => {
  * （截图验证过：降级摘要的告警和概览里各来一遍，占掉半屏）。
  * HTML 就只取 `<title>`，其余按纯文本截断。
  */
+/**
+ * 失败原因统一带稳定错误码：`E_AI_XXX: <英文补充>`。
+ *
+ * 这些消息会原样进「模型状态」列表、单篇 AI 的结果区、MCP 的错误体 —— 只给英文，
+ * 用户看不懂；只给中文，又丢掉了上游细节。所以码归前端词典（apps/web/src/core/errorText.js），
+ * 英文补充作为冒号后缀拼在中文后面。**新增码必须两边同步。**
+ */
+export function aiError(code: string, detail?: string): Error {
+  return new Error(detail ? `${code}: ${detail}` : code);
+}
+
+/**
+ * 中断 / 超时的稳健判定。
+ *
+ * 踩过的坑：Node 的 undici 在 signal 被 abort 时抛的未必是 `name === 'AbortError'`——
+ * 读取响应体途中中断会变成 `TypeError: terminated`，某些版本直接把
+ * `signal is aborted without reason` 当 message 抛出来。只比 name 会漏，
+ * 于是底层英文原样漏到界面上（用户截图反馈过）。
+ */
+export function isAbortError(e: unknown, depth = 0): boolean {
+  if (!e || typeof e !== 'object' || depth > 2) return false;
+  const err = e as { name?: unknown; message?: unknown; code?: unknown; cause?: unknown };
+  if (err.name === 'AbortError' || err.name === 'TimeoutError' || err.code === 'ABORT_ERR') return true;
+  const msg = typeof err.message === 'string' ? err.message : '';
+  // undici 读响应体时中断会抛 `TypeError: terminated`，同样归到「请求被中断」
+  if (/\babort(ed)?\b/i.test(msg) || /\btimed? ?out\b/i.test(msg) || /\bterminated\b/i.test(msg)) return true;
+  return isAbortError(err.cause, depth + 1);
+}
+
 function cleanUpstreamError(text: string): string {
   const t = String(text ?? '').trim();
   if (!t) return 'The upstream returned an empty response';
@@ -239,7 +268,7 @@ export async function chat(
 ): Promise<ChatResult> {
   const { baseUrl, apiKey, model } = llm;
   if (!baseUrl || !apiKey || !model) {
-    throw new Error('Model is not configured: base URL, API key and model name are all required — complete them in Settings · Model');
+    throw aiError('E_AI_NOT_CONFIGURED', 'base URL, API key and model name are all required');
   }
 
   const temperature =
@@ -273,19 +302,19 @@ export async function chat(
     if (!resp.ok) {
       // 401/403 单独说清楚：这类错误 90% 是 Key 失效，让用户去改 Key 而不是查网络
       if (resp.status === 401 || resp.status === 403) {
-        throw new Error(`The model rejected authentication (${resp.status}): the API key is invalid or lacks permission`);
+        throw aiError('E_AI_AUTH', `${resp.status}, the API key is invalid or lacks permission`);
       }
-      throw new Error(`The model returned ${resp.status}: ${cleanUpstreamError(text)}`);
+      throw aiError('E_AI_HTTP', `${resp.status} ${cleanUpstreamError(text)}`);
     }
 
     let data: { choices?: Array<{ message?: { content?: string } }>; usage?: unknown };
     try {
       data = JSON.parse(text) as typeof data;
     } catch {
-      throw new Error('The model response is not valid JSON');
+      throw aiError('E_AI_BAD_RESPONSE', 'the response is not valid JSON');
     }
     const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error('The model response has no content');
+    if (!content) throw aiError('E_AI_NO_CONTENT', 'the response has no content');
     const usage = parseChatUsage(data.usage);
     if (usage) {
       // 统计是旁路：回调里抛错不能把已经成功的模型调用变成失败
@@ -293,7 +322,10 @@ export async function chat(
     }
     return { content, usage };
   } catch (e) {
-    if ((e as Error)?.name === 'AbortError') throw new Error('The model request timed out');
+    if (isAbortError(e)) {
+      // 超时是最常见的失败：把「等了多少秒」写进补充信息，用户才知道该不该重试
+      throw aiError('E_AI_TIMEOUT', `no response within ${Math.round(timeoutMs / 1000)}s`);
+    }
     throw e;
   } finally {
     clearTimeout(timer);
@@ -310,8 +342,12 @@ export function extractJson(text: string): Record<string, unknown> {
     .trim();
   const start = t.indexOf('{');
   const end = t.lastIndexOf('}');
-  if (start < 0 || end <= start) throw new Error('The model returned no JSON');
-  return JSON.parse(t.slice(start, end + 1)) as Record<string, unknown>;
+  if (start < 0 || end <= start) throw aiError('E_AI_BAD_RESPONSE', 'the model returned no JSON');
+  try {
+    return JSON.parse(t.slice(start, end + 1)) as Record<string, unknown>;
+  } catch {
+    throw aiError('E_AI_BAD_RESPONSE', 'the model returned malformed JSON');
+  }
 }
 
 /**
@@ -320,7 +356,7 @@ export function extractJson(text: string): Record<string, unknown> {
  */
 export function modelsEndpoint(baseUrl: string): string {
   const base = String(baseUrl || '').trim().replace(/\/+$/, '');
-  if (!base) throw new Error('Model base URL is not configured');
+  if (!base) throw aiError('E_AI_NOT_CONFIGURED', 'the model base URL is empty');
   const chat = base.replace(/\/chat\/completions$/i, '');
   if (chat !== base) return chat + '/models';
   if (/\/v\d+$/i.test(base)) return base + '/models';
@@ -363,7 +399,7 @@ export async function listModels(
 ): Promise<string[]> {
   const { baseUrl, apiKey } = llm;
   if (!baseUrl || !apiKey) {
-    throw new Error('Model is not configured: base URL and API key are both required');
+    throw aiError('E_AI_NOT_CONFIGURED', 'base URL and API key are both required');
   }
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
@@ -376,21 +412,23 @@ export async function listModels(
     const text = await resp.text();
     if (!resp.ok) {
       if (resp.status === 401 || resp.status === 403) {
-        throw new Error(`The model rejected authentication (${resp.status}): the API key is invalid or lacks permission`);
+        throw aiError('E_AI_AUTH', `${resp.status}, the API key is invalid or lacks permission`);
       }
-      throw new Error(`The upstream returned ${resp.status} for /models: ${cleanUpstreamError(text)}`);
+      throw aiError('E_AI_HTTP', `${resp.status} on /models, ${cleanUpstreamError(text)}`);
     }
     let data: unknown;
     try {
       data = JSON.parse(text);
     } catch {
-      throw new Error('The upstream /models response is not valid JSON');
+      throw aiError('E_AI_BAD_RESPONSE', 'the /models response is not valid JSON');
     }
     const models = parseModelList(data);
-    if (!models.length) throw new Error('The upstream returned an empty model list');
+    if (!models.length) throw aiError('E_AI_NO_MODELS', 'the upstream returned an empty model list');
     return models;
   } catch (e) {
-    if ((e as Error)?.name === 'AbortError') throw new Error('The model list request timed out');
+    if (isAbortError(e)) {
+      throw aiError('E_AI_TIMEOUT', `no response within ${Math.round(timeoutMs / 1000)}s`);
+    }
     throw e;
   } finally {
     clearTimeout(timer);

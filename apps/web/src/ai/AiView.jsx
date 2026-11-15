@@ -224,6 +224,8 @@ export function AiView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force: !!force }),
+        // 日报是多次模型调用的 map-reduce，30s 写超时必然误杀（服务端上限 180s/批）
+        timeoutMs: (s && s.AI_TIMEOUT_MS) || 200000,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(s.errText(data, '生成失败'));

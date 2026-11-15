@@ -21,6 +21,11 @@ export { errorText as errText };
  */
 export const NET_TIMEOUT_MS = 8000;
 export const NET_WRITE_TIMEOUT_MS = 30000;
+/* AI 类长任务（单篇生成 / 日报 / 测试模型 / 拉模型列表）单独放宽：
+ * 服务端一次模型调用允许 180s，前端若还按 30s 写超时，就会在服务端还在跑的时候先掐断，
+ * 用户看到「失败」但几分钟后明细里其实成功了（实测截图：前端 30s 报错，服务端 99s 成功）。
+ * 留 20s 余量，保证「服务端先返回」的顺序。 */
+export const NET_AI_TIMEOUT_MS = 200000;
 export const NET_RETRY_DELAY_MS = 400;
 
 function isRetryableStatus(status) {
@@ -45,20 +50,37 @@ function fetchOnce(url, opts, timeoutMs, outerSignal) {
   const req = fetch(url, clean);
   req.catch(() => {});   // 超时胜出后，被 abort 的请求可能晚一步 reject，别留悬空 rejection
   let timer = null;
+  let timeoutErr = null;
   const timeout = timeoutMs > 0
     ? new Promise((_, reject) => {
       timer = setTimeout(() => {
-        const err = new Error('网络请求超时，请检查网络后重试');
+        /* 顺序很重要：先把可读错误交给 race，再 abort 真实请求。
+         * 反过来的话，abort 会让 fetch 立刻 reject 一个底层英文
+         * （Chrome 是 `signal is aborted without reason`），它抢在中文提示前面，
+         * 用户看到的就是这句天书 —— 实测线上截图就是这个。 */
+        const err = new Error(`网络请求超时（${Math.round(timeoutMs / 1000)} 秒），请稍后重试`);
         err.name = 'TimeoutError';
-        if (ctrl) ctrl.abort();
+        timeoutErr = err;
         reject(err);
+        if (ctrl) {
+          // 带 reason 的 abort：个别实现即使同步 reject，拿到的也是我们的可读错误
+          try { ctrl.abort(err); } catch { ctrl.abort(); }
+        }
       }, timeoutMs);
     })
     : null;
-  return (timeout ? Promise.race([req, timeout]) : req).finally(() => {
-    if (timer) clearTimeout(timer);
-    if (ctrl && outerSignal) outerSignal.removeEventListener('abort', onOuterAbort);
-  });
+
+  const raced = timeout ? Promise.race([req, timeout]) : req;
+  return raced
+    .catch((err) => {
+      // 兜一层：某些实现对 abort 是同步 reject，仍可能抢在中文错误前面
+      if (timeoutErr && err !== timeoutErr) throw timeoutErr;
+      throw err;
+    })
+    .finally(() => {
+      if (timer) clearTimeout(timer);
+      if (ctrl && outerSignal) outerSignal.removeEventListener('abort', onOuterAbort);
+    });
 }
 
 /** 带登录态处理的 fetch：401 时跳登录页；GET 失败有限重试；所有请求都有超时上限。 */

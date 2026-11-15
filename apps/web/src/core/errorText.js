@@ -76,6 +76,17 @@ const CN = {
   E_MODEL_INCOMPLETE: '模型未配置完整：地址、API Key、模型名都要在本账号填写后才能测试',
   E_MODEL_URL_UNREACHABLE: '模型地址不可用',
 
+  /* 模型调用失败（packages/ai/src/llm.ts 统一带 E_AI_* 码，冒号后是上游原文）。
+   * 这些码会出现在单篇 AI 结果区、日报、模型状态列表、MCP 错误体里 —— 没有它们，
+   * 用户看到的就是 `signal is aborted without reason` 这类底层英文。 */
+  E_AI_NOT_CONFIGURED: '模型未配置完整：地址、API Key、模型名都要填好',
+  E_AI_TIMEOUT: '模型响应超时（上游一直没回），可以重试或换一个更快的模型',
+  E_AI_AUTH: '模型拒绝鉴权：API Key 无效或没有调用权限',
+  E_AI_HTTP: '模型接口返回错误',
+  E_AI_BAD_RESPONSE: '模型返回的内容无法解析',
+  E_AI_NO_CONTENT: '模型没有返回内容（可能是被内容过滤或截断）',
+  E_AI_NO_MODELS: '上游没有返回任何模型，请手动填写模型名称',
+
   E_WEBHOOK_URL_UNREACHABLE: 'Webhook 地址不可用',
   E_UPDATE_CHANNEL_UNSET: '未配置更新通道（UPDATE_WEBHOOK_URL / UPDATE_WEBHOOK_TOKEN）',
   E_UPDATE_CHANNEL_URL_BAD: '更新通道地址协议非法',
@@ -120,6 +131,10 @@ export function errorText(input, fallbackText = '') {
     if (input.params && typeof input.params === 'object') params = input.params;
   }
 
+  /* Error 实例（`new Error(s.errText(...))`、`throw httpError(res)`）没有 `error` 字段，
+   * 码在 message 里。不认这条，二次翻译就会把 `E_AI_TIMEOUT: ...` 原样吐给用户。 */
+  if (!code && english && CODE_RE.test(english)) code = english;
+
   const m = CODE_RE.exec(code);
   if (m) {
     code = m[1];
@@ -127,7 +142,7 @@ export function errorText(input, fallbackText = '') {
     if (entry) {
       const base = typeof entry === 'function' ? entry(params) : entry;
       // 补充信息：持久化错误码的冒号后缀（HTTP 状态），或服务端透传的上游原文
-      const detail = String(params.detail ?? m[2] ?? '');
+      const detail = String(params.detail ?? m[2] ?? '').trim();
       return detail && !base.includes(detail) ? `${base}：${detail}` : base;
     }
   }

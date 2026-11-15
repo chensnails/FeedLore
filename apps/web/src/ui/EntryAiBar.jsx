@@ -1,9 +1,10 @@
 /* 单条目 AI 动作条（Phase 1 首发）：
- * 在文章详情 / 卡片详情的正文末尾提供「摘要 / 要点 / 翻译 / 解释」四个动作，
+ * 在文章标题正下方（正文之前）提供「摘要 / 要点 / 翻译 / 解释」四个动作，
  * 点按调 POST /api/entry/:id/ai（后端按需调用模型，不落库缓存），结果就地展开。
  *
- * 为什么放这里：文章页（ReaderView 展开）与卡片详情（CardDetail）共用同一个 ArtBody，
- * 加在 ArtBody 里两处同时生效，避免再长一份 AI 入口。
+ * 位置：由 ArtBody 决定（views/ReaderView.jsx 的 parts 首位）。文章页（ReaderView 展开）
+ * 与卡片详情（CardDetail）共用同一个 ArtBody，所以两处同时生效，不必再长一份 AI 入口。
+ * 早先放在正文末尾，用户反馈「读完才知道有 AI」，故移到标题下方、正文之前。
  *
  * 防御式约束（无错误边界，渲染期一抛就白屏）：
  * - 只读账户 / 没有条目 id → 直接返回 null，不渲染任何东西；
@@ -12,7 +13,7 @@
  */
 
 import { core } from '@core';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const S = () => core;
 
@@ -41,6 +42,24 @@ export function EntryAiBar({ entryId }) {
   };
   const end = () => { busyRef.current = null; setBusyKey(null); };
   const anyBusy = busyKey !== null;
+
+  /* 已等待秒数：单篇生成实测可能跑 1~2 分钟（长文 + 慢上游），只显示一个「…」
+   * 用户会以为卡死并重复点击。超过 3 秒才亮出来，避免快请求闪一下。 */
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!anyBusy) {
+      setElapsed(0);
+      return undefined;
+    }
+    const t0 = Date.now();
+    const iv = setInterval(() => setElapsed(Math.round((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(iv);
+  }, [anyBusy]);
+
+  /* AI 调用必须吃长超时：服务端一次模型调用允许 180s，走默认 30s 写超时会在
+   * 中途掐断并报错，服务端其实还在跑（实测前端 30s 报错、服务端 99s 成功）。 */
+  const aiTimeout = (s && s.AI_TIMEOUT_MS) || 200000;
+
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(false);
@@ -63,6 +82,7 @@ export function EntryAiBar({ entryId }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: k }),
+        timeoutMs: aiTimeout,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(s.errText ? s.errText(data, 'AI 调用失败') : 'AI 调用失败');
@@ -70,7 +90,8 @@ export function EntryAiBar({ entryId }) {
         setResult(typeof data.result === 'string' ? data.result : '');
         setOpen(true);
       } else {
-        setError((data && data.result) || 'AI 调用失败');
+        // 失败原因回来的是 `E_AI_TIMEOUT: ...` 这类稳定码，交给词典翻译
+        setError(s.errText ? s.errText(data && data.result ? data.result : data, 'AI 调用失败') : 'AI 调用失败');
       }
     } catch (err) {
       const msg = s && s.errText ? s.errText(err, 'AI 调用失败') : String((err && err.message) || err);
@@ -91,11 +112,14 @@ export function EntryAiBar({ entryId }) {
     setTagError(null);
     setTagResult(null);
     try {
-      const res = await s.apiFetch('/api/entry/' + encodeURIComponent(id) + '/ai-tags', { method: 'POST' });
+      const res = await s.apiFetch('/api/entry/' + encodeURIComponent(id) + '/ai-tags', {
+        method: 'POST',
+        timeoutMs: aiTimeout,
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(s.errText ? s.errText(data, '生成失败') : '生成失败');
       if (data && data.ok) setTagResult(Array.isArray(data.tags) ? data.tags : []);
-      else setTagError((data && data.error) || '生成失败');
+      else setTagError(s.errText ? s.errText(data && data.error ? data.error : data, '生成失败') : '生成失败');
     } catch (err) {
       const msg = s && s.errText ? s.errText(err, '生成失败') : String((err && err.message) || err);
       setTagError(msg);
@@ -122,6 +146,9 @@ export function EntryAiBar({ entryId }) {
           onClick={runTags}>
           {busyKey === 'tags' ? '…' : '标签'}
         </button>
+        {anyBusy && elapsed >= 3 ? (
+          <span className="entry-ai-wait" role="status">已等待 {elapsed}s</span>
+        ) : null}
       </div>
       {open && result != null ? (
         <div className="entry-ai-result" role="region" aria-live="polite">

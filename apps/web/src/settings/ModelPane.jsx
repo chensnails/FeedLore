@@ -179,6 +179,8 @@ export function ModelPane({ onDirtyChange }) {
       const res = await S().apiFetch('/api/digest/test-llm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // 测试连接真的发一次模型请求（服务端上限 45s），别被 30s 写超时先掐断
+        timeoutMs: S().AI_TIMEOUT_MS || 200000,
         body: JSON.stringify({
           llm: {
             baseUrl: form.baseUrl, apiKey, model: form.model,
@@ -341,6 +343,8 @@ export function ModelPane({ onDirtyChange }) {
       const res = await S().apiFetch('/api/llm/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // 上游拉列表可能慢（服务端 20s 上限），留出余量
+        timeoutMs: S().AI_TIMEOUT_MS || 200000,
         body: JSON.stringify({
           llm: Object.assign({ baseUrl: form.baseUrl }, typedKey ? { apiKey: typedKey } : {}),
         }),
@@ -349,7 +353,7 @@ export function ModelPane({ onDirtyChange }) {
       if (!res.ok) throw new Error(S().errText(data, '获取模型列表失败'));
       if (!data.ok) {
         setModelList(null);
-        setModelErr(data.error || '上游没有返回模型列表，请手动填写模型名称');
+        setModelErr(S().errText(data, '上游没有返回模型列表，请手动填写模型名称'));
         return;
       }
       const list = Array.isArray(data.models) ? data.models : [];
@@ -382,7 +386,8 @@ export function ModelPane({ onDirtyChange }) {
         detail: `最近一次成功 · ${fmtRel(lastReq.createdAt)} · ${USAGE_KINDS[lastReq.kind] || lastReq.kind}`,
       };
     }
-    return { cls: 'is-fail', label: '最近失败', detail: `${fmtRel(lastReq.createdAt)} · ${lastReq.error || '调用失败'}` };
+    // 失败原因可能是 `E_AI_TIMEOUT: ...` 这类稳定码，过一遍词典；英文原文留在列表行的 title 里
+    return { cls: 'is-fail', label: '最近失败', detail: `${fmtRel(lastReq.createdAt)} · ${S().errText(lastReq.error || '', '调用失败')}` };
   })();
   const avgMs = (() => {
     const ok = recent.filter((r) => r.ok && Number(r.durationMs) > 0);
@@ -633,7 +638,7 @@ export function ModelPane({ onDirtyChange }) {
                   <span className="ms-dur">{fmtDur(r.durationMs)}</span>
                   <span className="ms-tok">{r.totalTokens ? fmtTokens(r.totalTokens) : '—'}</span>
                   <span className={'ms-state' + (r.ok ? '' : ' is-fail')}>{r.ok ? '成功' : '失败'}</span>
-                  {!r.ok && r.error ? <span className="ms-err" title={r.error}>{r.error}</span> : null}
+                  {!r.ok && r.error ? <span className="ms-err" title={r.error}>{S().errText(r.error, '调用失败')}</span> : null}
                 </li>
               ))}
             </ul>

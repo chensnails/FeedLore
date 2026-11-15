@@ -52,6 +52,24 @@ test('持久化的抓取失败：E_CODE:补充信息', () => {
   assert.equal(errorText('E_FETCH_HTTP_STATUS:403'), '站点返回错误：403');
 });
 
+test('模型调用的稳定码出中文（E_AI_*）', () => {
+  assert.equal(errorText('E_AI_TIMEOUT'), '模型响应超时（上游一直没回），可以重试或换一个更快的模型');
+  assert.equal(errorText({ error: 'E_AI_AUTH', status: 401 }), '模型拒绝鉴权：API Key 无效或没有调用权限');
+  assert.equal(errorText('E_AI_HTTP:502 bad gateway'), '模型接口返回错误：502 bad gateway');
+  assert.equal(errorText('E_AI_NOT_CONFIGURED'), '模型未配置完整：地址、API Key、模型名都要填好');
+});
+
+test('Error 实例的 message 里带码也能翻译（二次 errText 不再吐裸码）', () => {
+  // 调用方常见写法：throw new Error(errText(data)) → 再 errText(err) 一次
+  assert.equal(errorText(new Error('E_AI_NO_MODELS')), '上游没有返回任何模型，请手动填写模型名称');
+  assert.equal(
+    errorText(new Error('E_AI_TIMEOUT: no response within 180s')),
+    '模型响应超时（上游一直没回），可以重试或换一个更快的模型：no response within 180s',
+  );
+  // 不是码的普通 Error 仍然原样透出，不能被词典吞掉
+  assert.equal(errorText(new Error('signal is aborted without reason')), 'signal is aborted without reason');
+});
+
 test('没在码表里的值按原样回退', () => {
   // 网关 HTML / 旧数据里的中文串：原样显示，不能变成裸码
   assert.equal(errorText('拿不到该地址的 feed'), '拿不到该地址的 feed');
