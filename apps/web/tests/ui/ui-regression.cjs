@@ -96,6 +96,8 @@ const DIGEST_CFG_DEFAULT = {
   maxPerFeed: 20, maxTotal: 150, keepDays: 30, style: '', lastAuto: '',
 };
 let prefsDigest = Object.assign({}, DIGEST_CFG_DEFAULT);
+// AI 智能标签开关（账号级，现在挂在「模型」页）
+let prefsAiTagsEnabled = false;
 
 /* ---------- 迷你服务端（内存版，契约对齐 server.js / db.js） ---------- */
 let miniNextId = 10;
@@ -369,6 +371,7 @@ w.feedlore = {
         llm: prefsLlm, groupOrder: miniGroupOrder.slice(), filters: miniFilters.slice(),
         watchRules: miniWatchRules.slice(),
         layout: { digestEnabled: prefsDigestEnabled }, digest: Object.assign({}, prefsDigest),
+        aiTags: { enabled: prefsAiTagsEnabled },
         watchExpireDays: miniWatchExpireDays, webhookUrl: miniWebhook,
       });
     }
@@ -404,6 +407,11 @@ w.feedlore = {
           style: typeof merged.style === 'string' ? merged.style.trim().slice(0, 2000) : '',
           lastAuto: prefsDigest.lastAuto,   // 客户端提交一律不影响
         };
+      }
+      // AI 智能标签开关：与 lib/prefs.js sanitizeAiTags 同口径，只认严格布尔
+      if (body && body.aiTags && typeof body.aiTags === 'object'
+        && typeof body.aiTags.enabled === 'boolean') {
+        prefsAiTagsEnabled = body.aiTags.enabled;
       }
       // v2.7.0：过滤规则 —— 复刻服务端 sanitizeFilters 的清洗口径（空模式丢弃）后回填
       if (Array.isArray(body && body.filters)) {
@@ -447,7 +455,7 @@ w.feedlore = {
       if (body && typeof body.webhookUrl === 'string') {
         miniWebhook = body.webhookUrl.trim().slice(0, 600);
       }
-      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), layout: {}, filters: miniFilters.slice(), watchRules: miniWatchRules.slice(), digest: Object.assign({}, prefsDigest), watchExpireDays: miniWatchExpireDays, webhookUrl: miniWebhook });
+      return ok({ ok: true, groupOrder: miniGroupOrder.slice(), layout: {}, filters: miniFilters.slice(), watchRules: miniWatchRules.slice(), digest: Object.assign({}, prefsDigest), aiTags: { enabled: prefsAiTagsEnabled }, watchExpireDays: miniWatchExpireDays, webhookUrl: miniWebhook });
     }
     if (url === '/api/watch/apply' && method === 'POST') {
       return ok({ ok: true, tagged: 20, watching: 5, blocked: 2, cleared: 1 });
@@ -2746,6 +2754,39 @@ const withEFP = (el, fn) => {
   clickTab('数据源'); await sleep(40); clickTab('模型'); await sleep(80);
   t('模型二次进入重新拉取', () => { if (callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length !== 5) throw new Error('GET 次数=' + callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length); });
 
+  // ---- AI 智能标签开关（从「日报」页挪到「模型」页；点一下即时保存，不参与模型表单脏态） ----
+  t('AI 标签开关在模型页、默认关', () => {
+    const sec = document.querySelector('[data-sec="llm-aitags"]');
+    if (!sec) throw new Error('模型页缺 [data-sec="llm-aitags"]');
+    const sw = document.querySelector('#aiTagsEnable');
+    if (!sw) throw new Error('无 #aiTagsEnable');
+    if (!sec.contains(sw)) throw new Error('开关不在 AI 标签组');
+    if (sw.checked !== false) throw new Error('默认应关闭');
+    if (sec.querySelector('.sec-sub').textContent !== '关闭') throw new Error('摘要: ' + sec.querySelector('.sec-sub').textContent);
+  });
+  const aiPostsBefore = postsTo('/api/prefs').length;
+  document.querySelector('#aiTagsEnable').click();
+  await sleep(80);
+  t('AI 标签开：POST /api/prefs 只带 aiTags 且开关翻开', () => {
+    if (postsTo('/api/prefs').length !== aiPostsBefore + 1) throw new Error('未 POST prefs');
+    const body = lastPostBody('/api/prefs');
+    if (JSON.stringify(body) !== '{"aiTags":{"enabled":true}}') throw new Error('body: ' + JSON.stringify(body));
+    if (document.querySelector('#aiTagsEnable').checked !== true) throw new Error('开关未翻开');
+    const r = document.querySelector('#llmResult');
+    if (!r || r.textContent.indexOf('已开启 AI 智能标签') < 0) throw new Error('文案: ' + (r && r.textContent));
+  });
+  t('AI 标签开：不把模型表单标脏（即时保存的开关不该要人再点保存）', () => {
+    if (!document.querySelector('#saveLlmBtn').disabled) throw new Error('保存模型应保持禁用');
+  });
+  document.querySelector('#aiTagsEnable').click();
+  await sleep(80);
+  t('AI 标签关：POST false 且开关回位', () => {
+    const body = lastPostBody('/api/prefs');
+    if (!body.aiTags || body.aiTags.enabled !== false) throw new Error('body: ' + JSON.stringify(body));
+    if (document.querySelector('#aiTagsEnable').checked !== false) throw new Error('开关未回位');
+    if (document.querySelector('[data-sec="llm-aitags"] .sec-sub').textContent !== '关闭') throw new Error('摘要未回落');
+  });
+
   // ============ 日报面板（整组按账号：开关 / 自动生成 / 范围 / 上限 / 风格） ============
   // 造一个「已关掉 + 写过要求 + 自定义范围」的账号态，一次覆盖回填、脏态、开关、保存、清空
   prefsDigestEnabled = false;
@@ -2754,6 +2795,9 @@ const withEFP = (el, fn) => {
   });
   clickTab('日报');
   await sleep(80);
+  t('日报页不再放 AI 标签开关（已挪去模型页）', () => {
+    if (document.querySelector('[data-pane="digest"] #aiTagsEnable')) throw new Error('日报页仍有 AI 标签开关');
+  });
   // 条数与保留 / 风格要求默认只读：先展开这两组再断言
   document.querySelector('[data-sec="dig-limits"] .ro-toggle').click();
   document.querySelector('[data-sec="dig-style"] .ro-toggle').click();
@@ -2901,9 +2945,9 @@ const withEFP = (el, fn) => {
   await sleep(30);
   document.querySelector('#digSaveBtn').click();
   await sleep(80);
-  t('保存：POST /api/prefs 只带 digest 整组与 aiTags', () => {
+  t('保存：POST /api/prefs 只带 digest 整组', () => {
     const body = lastPostBody('/api/prefs');
-    if (Object.keys(body).join() !== 'digest,aiTags') throw new Error('只该带 digest 与 aiTags: ' + Object.keys(body).join());
+    if (Object.keys(body).join() !== 'digest') throw new Error('只该带 digest: ' + Object.keys(body).join());
     if (body.digest.style !== '侧重新版影视，语气随意些。技术教程只挑有用的。') throw new Error('style: ' + JSON.stringify(body.digest.style));
     if (body.digest.maxPerFeed !== 25 || body.digest.mode !== 'all') throw new Error('body: ' + JSON.stringify(body.digest));
     // 切回 all 时不该把上一次的自定义频道留着

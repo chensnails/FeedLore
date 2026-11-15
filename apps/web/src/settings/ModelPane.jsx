@@ -5,6 +5,9 @@
  *   apiKeySet + 掩码），留空 = 不修改；temperature 数值化后发送（旧实现传字符串，
  *   依赖服务端 clampNum 容错）；
  * - 保存 / 测试 / 清除三个动作的请求体与旧实现逐字段一致，成功后重新拉取刷新掩码态。
+ * - v2.7.x 追加「AI 智能标签」组（原挂在日报页）：它是幂等开关，点一下即 POST
+ *   `{ aiTags: { enabled } }` 落库、失败回滚，**不进 llm 表单的脏态**——否则
+ *   「拨了开关没点保存模型就走人」会静默丢失。
  * 类名 / ID / data 属性与旧 DOM 完全一致，样式零改动。 */
 
 import { core } from '@core';
@@ -48,6 +51,11 @@ export function ModelPane({ onDirtyChange }) {
   // result: { ok, msg } | null
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState('');   // '' | 'test' | 'save' | 'clear'
+  /* AI 智能标签开关：与上面那份模型表单分开管。
+     它是幂等开关（点一下即生效），即时保存、失败回滚，不参与 dirty 判定——
+     否则「改了开关没点保存模型就走人」会变成静默丢失。 */
+  const [aiTagsEnabled, setAiTagsEnabled] = useState(false);
+  const [aiTagsBusy, setAiTagsBusy] = useState(false);
   // 与日报面板同一条守卫：GET 回来前用户已输入，就不能用服务端旧值覆盖表单
   const guard = useFormLoadGuard();
 
@@ -94,6 +102,8 @@ export function ModelPane({ onDirtyChange }) {
         // Key 输入框每次回填都清空并回到掩码态：留空 = 不修改
         setApiKey('');
         setShowKey(false);
+        // AI 标签开关随 prefs 一起回填（同一个 GET，省一次请求）
+        setAiTagsEnabled((data.aiTags && data.aiTags.enabled) === true);
       });
       if (!applied) setSavedForm((s) => s || JSON.stringify(EMPTY));
     } catch (err) {
@@ -184,6 +194,38 @@ export function ModelPane({ onDirtyChange }) {
       setResult({ ok: false, msg: '清除失败：' + String((err && err.message) || err) });
     } finally {
       setBusy('');
+    }
+  };
+
+  /* AI 智能标签：点一下立刻落库。先乐观切换让开关不掉帧，失败再翻回原状态并报错。 */
+  const onToggleAiTags = async (ev) => {
+    const on = ev.target.checked;
+    const prev = aiTagsEnabled;
+    if (aiTagsBusy) return;
+    setAiTagsEnabled(on);
+    setAiTagsBusy(true);
+    setResult(null);
+    try {
+      const res = await S().apiFetch('/api/prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aiTags: { enabled: on } }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAiTagsEnabled(prev);
+        setResult({ ok: false, msg: S().errText(data, '保存 AI 标签开关失败') });
+        return;
+      }
+      // 以服务端回包为准（服务端可能对 aiTags 做过归一）；
+      // 老服务端/代理不回这个字段时按本次请求值算，免得开关「点了又弹回去」
+      setAiTagsEnabled(data.aiTags ? data.aiTags.enabled === true : on);
+      setResult({ ok: true, msg: on ? '已开启 AI 智能标签' : '已关闭 AI 智能标签' });
+    } catch (err) {
+      setAiTagsEnabled(prev);
+      setResult({ ok: false, msg: '保存 AI 标签开关失败：' + String((err && err.message) || err) });
+    } finally {
+      setAiTagsBusy(false);
     }
   };
 
@@ -307,6 +349,32 @@ export function ModelPane({ onDirtyChange }) {
             <option value="high">深 · 充分推理，长清单时更明显</option>
           </select>
           <small className="form-tip">日报是每天一次的后台任务，「中」通常就够；只有条目很多、分类总跑偏时才值得上「深」</small>
+        </div>
+        </Section>
+
+        <Section secKey="llm-aitags" title="AI 智能标签"
+          sub={aiTagsEnabled ? (saved ? '已开启' : '已开启 · 但还没配 Key') : '关闭'}>
+        <div className="form-row">
+          <label className="form-row-head">
+            <span>启用 AI 智能标签</span>
+            <span className="switch">
+              <input
+                id="aiTagsEnable"
+                type="checkbox"
+                checked={aiTagsEnabled}
+                disabled={aiTagsBusy}
+                onChange={onToggleAiTags}
+              />
+              <span className="switch-slider" />
+            </span>
+          </label>
+          <small className="form-tip">
+            开启后系统会自动为你的条目生成语义标签，文章页里单独显示成「AI 标签」一组——
+            <b>与你手打的标签物理隔离</b>，不覆盖也不混淆。开关点一下即生效，不用点「保存模型」。
+            <br />每篇打标消耗一次模型额度，用的是上面这份模型配置；
+            {saved ? '当前 Key 已配好。' : '现在还没填 API Key，开了也不会真的打标，先在上面填好再开。'}
+            只想给某一篇打标时，用文章页的「AI · 标签」按钮即可，不必开这个开关。
+          </small>
         </div>
         </Section>
 

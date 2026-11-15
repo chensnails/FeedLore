@@ -19,8 +19,8 @@ export const SETTINGS_TABS = [
   },
   {
     name: 'model', label: '模型', group: '智能', icon: 'sparkle',
-    desc: '模型地址、Key 与思考深度',
-    keywords: '模型 llm 地址 api key 密钥 温度 思考 深度 qwen deepseek model',
+    desc: '模型地址、Key、思考深度与 AI 标签',
+    keywords: '模型 llm 地址 api key 密钥 温度 思考 深度 qwen deepseek model 标签 智能标签 打标 aitags 自动标签',
   },
   {
     name: 'account', label: '账号', group: '账户', icon: 'user',

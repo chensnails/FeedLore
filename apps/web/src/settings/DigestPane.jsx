@@ -27,8 +27,6 @@ const EMPTY = {
 export function DigestPane({ onDirtyChange }) {
   const paneRef = useRef(null);
   const [enabled, setEnabled] = useState(true);
-  const [aiTagsEnabled, setAiTagsEnabled] = useState(false);
-  const [aiTagsSaved, setAiTagsSaved] = useState(false);
   const [form, setForm] = useState(EMPTY);
   // saved：服务端当前值（字符串化后比较，用来判断「有没有没保存的改动」）
   const [saved, setSaved] = useState(JSON.stringify(EMPTY));
@@ -73,8 +71,6 @@ export function DigestPane({ onDirtyChange }) {
         setForm(next);
         setSaved(JSON.stringify(next));
         setEnabled((data.layout && data.layout.digestEnabled) !== false);
-        setAiTagsEnabled((data.aiTags && data.aiTags.enabled) === true);
-        setAiTagsSaved((data.aiTags && data.aiTags.enabled) === true);
       });
     } catch (err) {
       setResult({ ok: false, msg: '读取日报设置失败：' + String((err && err.message) || err) });
@@ -104,13 +100,6 @@ export function DigestPane({ onDirtyChange }) {
     // 关掉时如果正停在日报页，桥里会把人带回文章页（入口没了页面还杵着最怪）
     S().setDigestEnabled(on);
     S().toast(on ? '已开启日报，顶栏恢复入口' : '已关闭日报，顶栏不再显示入口');
-  };
-
-  const onToggleAiTags = (ev) => {
-    const on = ev.target.checked;
-    guard.mark();
-    setAiTagsEnabled(on);
-    S().toast(on ? '已开启 AI 智能标签' : '已关闭 AI 智能标签');
   };
 
   const onToggleFeed = (fid, on) => {
@@ -169,7 +158,6 @@ export function DigestPane({ onDirtyChange }) {
             keepDays: Number(form.keepDays) || 0,
             style: form.style.trim(),
           },
-          aiTags: { enabled: aiTagsEnabled },
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -188,7 +176,6 @@ export function DigestPane({ onDirtyChange }) {
       };
       setForm(next);
       setSaved(JSON.stringify(next));
-      setAiTagsSaved(aiTagsEnabled);
       setResult({ ok: true, msg: '日报设置已保存，下次生成生效' });
     } catch (err) {
       setResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
@@ -206,7 +193,7 @@ export function DigestPane({ onDirtyChange }) {
     setResult({ ok: true, msg: '已清空风格，点「保存日报设置」后生效' });
   };
 
-  const dirty = JSON.stringify(form) !== saved || aiTagsEnabled !== aiTagsSaved;
+  const dirty = JSON.stringify(form) !== saved;
   useEffect(() => {
     if (onDirtyChange) onDirtyChange(dirty);
   }, [dirty, onDirtyChange]);
@@ -322,24 +309,6 @@ export function DigestPane({ onDirtyChange }) {
             <small className="form-tip">一个都没勾时，日报会提示「没有可展示的条目」</small>
           </div>
         )}
-        </Section>
-
-        <Section secKey="dig-aitags" title="AI 智能标签"
-          sub={aiTagsEnabled ? '已开启：新条目与历史条目将自动打标签' : '关闭'} open>
-          <div className="form-row">
-            <label className="form-row-head">
-              <span>启用 AI 智能标签</span>
-              <span className="switch">
-                <input id="aiTagsEnable" type="checkbox" checked={aiTagsEnabled} onChange={onToggleAiTags} />
-                <span className="switch-slider" />
-              </span>
-            </label>
-            <small className="form-tip">
-              开启后，系统会为你的条目自动生成 AI 标签（<b>与手动标签物理隔离</b>，可整账号重算，不会污染你手打的标签）。
-              每篇条目都会消耗一次模型额度，建议先在「设置 → 模型」里配好 Key 再开。
-              <br />文章页点「AI · 标签」可随时为单篇手动重新生成。
-            </small>
-          </div>
         </Section>
 
         <EditSection secKey="dig-limits" title="条数与保留" editText="修改条数与保留"
