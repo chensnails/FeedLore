@@ -29,6 +29,7 @@ import {
   date,
   customType,
   uniqueIndex,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -266,6 +267,35 @@ export const mcpTokens = pgTable('mcp_tokens', {
 });
 
 /**
+ * AI 用量按天按功能聚合（AI 消耗量统计）。
+ *
+ * 为什么聚合而不是逐次明细：统计只需要「谁、哪天、哪项功能、调了几次、烧多少 token」，
+ * 聚合后行数是 账号数 × 天数 × 功能数（可控），查询永远是索引命中；
+ * 逐次明细会让表随调用量线性增长，却没有对应的分析需求。
+ *
+ * - `kind`：digest（日报）/ entry_ai（单篇 AI）/ ai_tags（自动打标）/ mcp（外部调用）/ test（测试模型）
+ * - `calls` / `fails`：调用次数与失败次数（失败也计入 calls，同时单独记 fails）
+ * - token 只有上游返回 usage 时才累加，所以可能与 calls 不成比例（上游没回 usage 就是 0）
+ */
+export const aiUsageDaily = pgTable(
+  'ai_usage_daily',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    date: date('date', { mode: 'string' }).notNull(), // YYYY-MM-DD（Asia/Shanghai）
+    kind: text('kind').notNull(),
+    calls: integer('calls').notNull().default(0),
+    fails: integer('fails').notNull().default(0),
+    promptTokens: bigint('prompt_tokens', { mode: 'number' }).notNull().default(0),
+    completionTokens: bigint('completion_tokens', { mode: 'number' }).notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.date, t.kind] }),
+  ],
+);
+
+/**
  * AI 自动生成的条目标签（Phase 2 · 智能标签）。
  *
  * 与手动 `entries.tags` **物理隔离**：AI 误标不会污染用户手动标签，且可整账号重算/关闭。
@@ -378,4 +408,5 @@ export type Setting = typeof settings.$inferSelect;
 export type UserLlm = typeof userLlm.$inferSelect;
 export type NewUserLlm = typeof userLlm.$inferInsert;
 export type McpToken = typeof mcpTokens.$inferSelect;
+export type AiUsageDailyRow = typeof aiUsageDaily.$inferSelect;
 export type EntryAiTags = typeof entryAiTags.$inferSelect;

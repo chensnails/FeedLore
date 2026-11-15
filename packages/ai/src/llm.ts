@@ -184,7 +184,36 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * 一次调用的 token 用量（OpenAI 兼容 `usage` 字段）。
+ * 上游不返回 usage 时为 null —— 缺字段不能让整次调用失败。
+ */
+export interface ChatUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface ChatResult {
+  content: string;
+  usage: ChatUsage | null;
+}
+
+/** 容错解析 `usage`：字段名兼容 OpenAI（prompt_tokens / completion_tokens）。 */
+export function parseChatUsage(raw: unknown): ChatUsage | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const u = raw as Record<string, unknown>;
+  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : 0);
+  const promptTokens = num(u.prompt_tokens);
+  const completionTokens = num(u.completion_tokens);
+  const totalTokens = num(u.total_tokens) || promptTokens + completionTokens;
+  if (!promptTokens && !completionTokens && !totalTokens) return null;
+  return { promptTokens, completionTokens, totalTokens };
+}
+
 export interface ChatOptions {
+  /** 拿到 usage 后的回调（用于用量统计；不抛错、不影响调用结果） */
+  onUsage?: (usage: ChatUsage) => void;
   /** 覆盖配置里的温度；不传则用 `llm.temperature`。 */
   temperature?: number;
   timeoutMs?: number;
@@ -194,17 +223,20 @@ export interface ChatOptions {
 export const LLM_TIMEOUT_MS = 180_000;
 
 /**
- * 调一次 OpenAI 兼容接口，只取 `choices[0].message.content`。
+ * 调一次 OpenAI 兼容接口，取 `choices[0].message.content` 与 token 用量。
  *
  * 思考链（`reasoning_content`）是过程产物，日报不需要留档，所以丢掉。
  * 失败信息统一收敛成英文短句：上游的错误体常常是一大坨 HTML 或 JSON，
  * 原样抛给用户只会让人更困惑。
+ *
+ * 返回 `{ content, usage }`：usage 供「AI 用量」统计；上游不返回时是 null，
+ * 不影响本次调用结果。
  */
 export async function chat(
   messages: ChatMessage[],
   llm: ResolvedLlm,
   opts: ChatOptions & { fetchImpl: FetchLike },
-): Promise<string> {
+): Promise<ChatResult> {
   const { baseUrl, apiKey, model } = llm;
   if (!baseUrl || !apiKey || !model) {
     throw new Error('Model is not configured: base URL, API key and model name are all required — complete them in Settings · Model');
@@ -246,7 +278,7 @@ export async function chat(
       throw new Error(`The model returned ${resp.status}: ${cleanUpstreamError(text)}`);
     }
 
-    let data: { choices?: Array<{ message?: { content?: string } }> };
+    let data: { choices?: Array<{ message?: { content?: string } }>; usage?: unknown };
     try {
       data = JSON.parse(text) as typeof data;
     } catch {
@@ -254,7 +286,12 @@ export async function chat(
     }
     const content = data.choices?.[0]?.message?.content;
     if (!content) throw new Error('The model response has no content');
-    return content;
+    const usage = parseChatUsage(data.usage);
+    if (usage) {
+      // 统计是旁路：回调里抛错不能把已经成功的模型调用变成失败
+      try { opts.onUsage?.(usage); } catch { /* ignore */ }
+    }
+    return { content, usage };
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') throw new Error('The model request timed out');
     throw e;
@@ -284,16 +321,17 @@ export function extractJson(text: string): Record<string, unknown> {
 export async function testLlm(
   llm: ResolvedLlm,
   fetchImpl: FetchLike,
+  onUsage?: (usage: ChatUsage) => void,
 ): Promise<{ ok: boolean; error?: string; reply?: string }> {
   try {
-    const content = await chat(
+    const { content } = await chat(
       [
         // 带上思考指令，让「测试模型」真的走一遍保存后的实际请求形态
         { role: 'system', content: '你是一个测试助手，只输出 JSON。' + (llm.thinking ? ' /think' : ' /no_think') },
         { role: 'user', content: '输出 {"ok": true, "msg": "连接正常"}' },
       ],
       llm,
-      { temperature: 0, fetchImpl, timeoutMs: 45_000 },
+      { temperature: 0, fetchImpl, timeoutMs: 45_000, onUsage },
     );
     const j = extractJson(content);
     return { ok: true, reply: typeof j.msg === 'string' ? j.msg : '连接正常' };

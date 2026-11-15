@@ -662,7 +662,42 @@ export const entryAiBody = z.object({
 });
 export type EntryAiBody = z.infer<typeof entryAiBody>;
 
+/** 用量口径：一次「总览」= 今日 / 近 7 天 / 近 30 天 + 按功能拆分 + 按天序列。 */
+export const aiUsageTotal = z.object({
+  calls: z.number().int(),
+  fails: z.number().int(),
+  promptTokens: z.number().int(),
+  completionTokens: z.number().int(),
+  totalTokens: z.number().int(),
+});
+
+export const aiUsageResponse = z.object({
+  today: aiUsageTotal,
+  days7: aiUsageTotal,
+  days30: aiUsageTotal,
+  byKind: z.array(z.object({
+    kind: z.string(),
+    calls: z.number().int(),
+    fails: z.number().int(),
+    totalTokens: z.number().int(),
+  })),
+  series: z.array(z.object({
+    date: z.string(),
+    calls: z.number().int(),
+    totalTokens: z.number().int(),
+  })),
+});
+export type AiUsageResponse = z.infer<typeof aiUsageResponse>;
+
 export const ai = {
+  /** AI 消耗量统计（只读本人）。days 控制按天序列与合计的窗口，默认 30。 */
+  apiUsage: {
+    method: 'get',
+    path: '/api/ai-usage',
+    auth: 'user',
+    query: z.object({ days: z.coerce.number().int().min(1).max(365).optional() }),
+    response: aiUsageResponse,
+  },
   testLlm: {
     method: 'post',
     path: '/api/digest/test-llm',

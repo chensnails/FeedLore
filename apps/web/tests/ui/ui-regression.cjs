@@ -98,6 +98,17 @@ const DIGEST_CFG_DEFAULT = {
 let prefsDigest = Object.assign({}, DIGEST_CFG_DEFAULT);
 // AI 智能标签开关（账号级，现在挂在「模型」页）
 let prefsAiTagsEnabled = false;
+// AI 用量（GET /api/ai-usage）
+let aiUsagePayload = {
+  today: { calls: 3, fails: 1, promptTokens: 1000, completionTokens: 500, totalTokens: 1500 },
+  days7: { calls: 9, fails: 1, promptTokens: 3000, completionTokens: 1500, totalTokens: 4500 },
+  days30: { calls: 21, fails: 2, promptTokens: 9000, completionTokens: 4500, totalTokens: 13500 },
+  byKind: [
+    { kind: 'digest', calls: 12, fails: 0, totalTokens: 10000 },
+    { kind: 'entry_ai', calls: 9, fails: 2, totalTokens: 3500 },
+  ],
+  series: [{ date: '2026-11-15', calls: 3, totalTokens: 1500 }],
+};
 
 /* ---------- 迷你服务端（内存版，契约对齐 server.js / db.js） ---------- */
 let miniNextId = 10;
@@ -366,6 +377,7 @@ w.feedlore = {
     const bad = (error, status = 400) => Promise.resolve({ ok: false, status, json: () => Promise.resolve({ error }) });
 
     // ---- 模型 / 关于 / 偏好 ----
+    if (url.indexOf('/api/ai-usage') === 0 && method === 'GET') return ok(aiUsagePayload);
     if (url === '/api/prefs' && method === 'GET') {
       return ok({
         llm: prefsLlm, groupOrder: miniGroupOrder.slice(), filters: miniFilters.slice(),
@@ -2785,6 +2797,26 @@ const withEFP = (el, fn) => {
     if (!body.aiTags || body.aiTags.enabled !== false) throw new Error('body: ' + JSON.stringify(body));
     if (document.querySelector('#aiTagsEnable').checked !== false) throw new Error('开关未回位');
     if (document.querySelector('[data-sec="llm-aitags"] .sec-sub').textContent !== '关闭') throw new Error('摘要未回落');
+  });
+
+  // ---- AI 用量（模型页）：展示三个窗口 + 按功能明细，刷新会重新拉 ----
+  t('AI 用量：模型页有「AI 用量」组，三窗口与明细齐备', () => {
+    const sec = document.querySelector('[data-sec="llm-usage"]');
+    if (!sec) throw new Error('缺 [data-sec="llm-usage"]');
+    const cells = sec.querySelectorAll('.usage-cell');
+    if (cells.length !== 3) throw new Error('窗口数 ' + cells.length);
+    if (cells[0].textContent.indexOf('3') < 0) throw new Error('今日次数未渲染: ' + cells[0].textContent);
+    if (cells[0].textContent.indexOf('1.5k') < 0) throw new Error('今日 token 未渲染: ' + cells[0].textContent);
+    const rows = sec.querySelectorAll('.usage-list li');
+    if (rows.length !== 2) throw new Error('功能明细行数 ' + rows.length);
+    if (rows[0].textContent.indexOf('日报生成') < 0) throw new Error('明细文案: ' + rows[0].textContent);
+  });
+  const usageGetsBefore = callsOf('apiFetch').filter((c) => String(c[1]).indexOf('/api/ai-usage') === 0).length;
+  document.querySelector('#aiUsageRefresh').click();
+  await sleep(80);
+  t('AI 用量：点刷新重新拉一次（读接口不记账）', () => {
+    const after = callsOf('apiFetch').filter((c) => String(c[1]).indexOf('/api/ai-usage') === 0).length;
+    if (after !== usageGetsBefore + 1) throw new Error('GET 次数 ' + usageGetsBefore + ' -> ' + after);
   });
 
   // ============ 日报面板（整组按账号：开关 / 自动生成 / 范围 / 上限 / 风格） ============

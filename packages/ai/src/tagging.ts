@@ -6,7 +6,7 @@
  * 本文件不碰数据库，也不自己出网（fetch 由调用方注入 `safeFetch`）。
  */
 
-import { chat, type ChatMessage, type FetchLike, type ResolvedLlm } from './llm';
+import { chat, type ChatMessage, type ChatUsage, type FetchLike, type ResolvedLlm } from './llm';
 
 /** 提示词版本：标签生成逻辑变了就 +1，落库以便之后按版本重算。 */
 export const AI_TAG_PROMPT_VERSION = 1;
@@ -74,6 +74,8 @@ function cleanTags(input: unknown[]): string[] {
 export interface SuggestTagsResult {
   tags: string[];
   raw: string;
+  /** 本次调用的 token 用量（上游不返回 usage 时为 null），供「AI 用量」统计 */
+  usage: ChatUsage | null;
 }
 
 /** 调用模型为单篇生成标签；模型失败直接抛出，由调用方降级（不 500）。 */
@@ -88,6 +90,6 @@ export async function suggestEntryTags(
     { role: 'system', content: entryTagSystemPrompt() },
     { role: 'user', content: `文章标题：${title || '(无标题)'}\n\n正文：\n${cut}` },
   ];
-  const raw = await chat(messages, llm, { fetchImpl });
-  return { tags: parseTagList(raw), raw };
+  const { content: raw, usage } = await chat(messages, llm, { fetchImpl });
+  return { tags: parseTagList(raw), raw, usage };
 }

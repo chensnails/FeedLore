@@ -2684,6 +2684,27 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 }
 .sl-sec-h .feed-group-n { margin-left: auto; }
 .sl-empty { padding: var(--sp-5) var(--sp-3); text-align: center; color: var(--text-faint); font-size: var(--fs-sm); }
+
+/* ---- AI 用量（设置 · 模型页） ---- */
+.usage-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:var(--sp-2); }
+.usage-cell { display:flex; flex-direction:column; gap:2px; padding:var(--sp-3); border-radius:var(--radius-md);
+  background:var(--surface-2); border:1px solid var(--line); }
+.usage-cell-label { font-size:var(--fs-2xs); color:var(--text-faint); }
+.usage-cell-value { font-size:var(--fs-lg); font-weight:600; font-variant-numeric:tabular-nums; color:var(--text); }
+.usage-cell-sub { font-size:var(--fs-2xs); color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.usage-cell-fail { font-size:var(--fs-2xs); color:var(--accent-text); }
+.usage-list { list-style:none; margin:var(--sp-3) 0 0; padding:0; display:flex; flex-direction:column; gap:2px; }
+.usage-list li { display:flex; align-items:center; gap:var(--sp-3); font-size:var(--fs-sm); padding:var(--sp-2) 0;
+  border-top:1px solid var(--line); }
+.usage-list li:first-child { border-top:0; }
+.usage-kind { flex:1; color:var(--text); }
+.usage-num { color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.usage-foot { display:flex; align-items:flex-start; gap:var(--sp-3); margin-top:var(--sp-3); }
+.usage-foot .form-tip { flex:1; margin:0; }
+@media (max-width: 560px) {
+  .usage-grid { grid-template-columns:1fr; }
+  .usage-cell { flex-direction:row; flex-wrap:wrap; align-items:baseline; gap:var(--sp-2); }
+}
 /* 自动化规则（when→then）卡片：设置「规则」页底部 */
 .rule-card { border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-3); background: var(--surface-2, var(--bg-soft)); }
 .rule-card-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }

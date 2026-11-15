@@ -30,6 +30,23 @@ const EMPTY = {
   thinking: false, thinkingDepth: 'medium',
 };
 
+const USAGE_SPANS = { today: '今日', days7: '近 7 天', days30: '近 30 天' };
+const USAGE_KINDS = {
+  digest: '日报生成',
+  entry_ai: '单篇 AI',
+  ai_tags: 'AI 标签',
+  mcp: 'MCP 调用',
+  test: '测试模型',
+};
+
+const fmtNum = (n) => Number(n || 0).toLocaleString('zh-CN');
+const fmtTokens = (n) => {
+  const v = Number(n || 0);
+  if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
+  if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
+  return String(v);
+};
+
 const parseTemp = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0.3;
@@ -56,6 +73,9 @@ export function ModelPane({ onDirtyChange }) {
      否则「改了开关没点保存模型就走人」会变成静默丢失。 */
   const [aiTagsEnabled, setAiTagsEnabled] = useState(false);
   const [aiTagsBusy, setAiTagsBusy] = useState(false);
+  /* AI 用量：进页面拉一次，之后手动刷新。读接口不消耗额度。 */
+  const [usage, setUsage] = useState(null);
+  const [usageBusy, setUsageBusy] = useState(false);
   // 与日报面板同一条守卫：GET 回来前用户已输入，就不能用服务端旧值覆盖表单
   const guard = useFormLoadGuard();
 
@@ -69,7 +89,7 @@ export function ModelPane({ onDirtyChange }) {
   // 进入「模型」页拉一次配置（旧 loadModelForm 的迁移）；面板随 tab 切换挂载/卸载。
   // 注意：不清 result——保存 / 清除成功后要保留「已保存」提示（与旧实现一致），
   // 读取失败时才在 catch 里置 err；初次进入时 result 本就为 null。
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadUsage(); }, []);
 
   // 折叠分组的开合按账号持久化（与其他设置面板同一机制）
   useEffect(() => {
@@ -229,6 +249,20 @@ export function ModelPane({ onDirtyChange }) {
     }
   };
 
+  async function loadUsage() {
+    setUsageBusy(true);
+    try {
+      const res = await S().apiFetch('/api/ai-usage?days=30');
+      const data = await res.json().catch(() => ({}));
+      // 读失败不打扰用户：这一块是参考信息，静默留空即可
+      if (res.ok) setUsage(data);
+    } catch {
+      /* 忽略 */
+    } finally {
+      setUsageBusy(false);
+    }
+  }
+
   const saved = form.apiKeySet;
 
   return (
@@ -375,6 +409,43 @@ export function ModelPane({ onDirtyChange }) {
             {saved ? '当前 Key 已配好。' : '现在还没填 API Key，开了也不会真的打标，先在上面填好再开。'}
             只想给某一篇打标时，用文章页的「AI · 标签」按钮即可，不必开这个开关。
           </small>
+        </div>
+        </Section>
+
+        <Section secKey="llm-usage" title="AI 用量"
+          sub={usage && usage.today ? `${fmtNum(usage.today.calls)} 次 · ${fmtTokens(usage.today.totalTokens)} tokens（今日）` : '暂无调用'}>
+        <div className="usage-grid" id="aiUsageGrid" aria-live="polite">
+          {['today', 'days7', 'days30'].map((k) => (
+            <div className="usage-cell" key={k}>
+              <span className="usage-cell-label">{USAGE_SPANS[k]}</span>
+              <span className="usage-cell-value">{fmtNum(usage?.[k]?.calls || 0)} 次</span>
+              <span className="usage-cell-sub">{fmtTokens(usage?.[k]?.totalTokens || 0)} tokens</span>
+              {usage?.[k]?.fails ? <span className="usage-cell-fail">失败 {fmtNum(usage[k].fails)} 次</span> : null}
+            </div>
+          ))}
+        </div>
+        {usage && usage.byKind && usage.byKind.length ? (
+          <ul className="usage-list" id="aiUsageKinds">
+            {usage.byKind.map((r) => (
+              <li key={r.kind}>
+                <span className="usage-kind">{USAGE_KINDS[r.kind] || r.kind}</span>
+                <span className="usage-num">{fmtNum(r.calls)} 次</span>
+                <span className="usage-num">{fmtTokens(r.totalTokens)} tokens</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <small className="form-tip">近 30 天还没有调用记录。生成日报、用单篇 AI 或开启 AI 标签后会出现在这里。</small>
+        )}
+        <div className="usage-foot">
+          <small className="form-tip">
+            统计口径：每次真实调用记一次（失败的也计入次数）。token 只在模型返回 usage 时累加，
+            所以上游不回 usage 时次数会增加而 token 不变。
+          </small>
+          <button className="btn btn-ghost btn-sm" id="aiUsageRefresh" type="button"
+            disabled={usageBusy} onClick={loadUsage}>
+            {usageBusy ? '刷新中…' : '刷新'}
+          </button>
         </div>
         </Section>
 

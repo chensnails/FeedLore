@@ -16,7 +16,7 @@
 import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { digests, entries, feeds, type Db } from '@feedlore/db';
 import { DigestSchema, imgUrl, type Digest, type DigestItem } from '@feedlore/contract';
-import { chat, extractJson, type ChatMessage, type FetchLike, type ResolvedLlm } from './llm';
+import { chat, extractJson, type ChatMessage, type ChatUsage, type FetchLike, type ResolvedLlm } from './llm';
 
 const WINDOW_MS = 24 * 3600 * 1000;
 const COLLECT_LIMIT = 3000;
@@ -150,7 +150,19 @@ export interface GenerateInput {
 export interface GenerateResult {
   digest: Digest;
   cached: boolean;
+  /** 本次生成累计的模型用量（含 map-reduce 的每一批；命中缓存时为 0） */
+  usage: AiUsageTotal;
 }
+
+/** 一次生成里所有模型调用的用量合计。 */
+export interface AiUsageTotal {
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export const EMPTY_USAGE: AiUsageTotal = { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
 /** 采集：过去 24 小时、该账号自己频道里的条目。 */
 async function collect(db: Db, ownerId: string, feedIds: number[] | null | undefined, sinceMs: number): Promise<PoolEntry[]> {
@@ -231,15 +243,16 @@ async function singlePass(
   llm: ResolvedLlm,
   style: string,
   fetchImpl: FetchLike,
+  onUsage?: (usage: ChatUsage) => void,
 ): Promise<Record<string, unknown>> {
   const lines = compact.map((e, i) => toLine(e, i + 1));
-  const content = await chat(
+  const { content } = await chat(
     [
       { role: 'system', content: systemPrompt(llm) },
       { role: 'user', content: buildFinalPrompt(lines, meta, style) },
     ] as ChatMessage[],
     llm,
-    { fetchImpl },
+    { fetchImpl, onUsage },
   );
   return extractJson(content);
 }
@@ -256,6 +269,7 @@ async function mapReduce(
   llm: ResolvedLlm,
   style: string,
   fetchImpl: FetchLike,
+  onUsage?: (usage: ChatUsage) => void,
 ): Promise<Record<string, unknown>> {
   const chunks: PoolEntry[][] = [];
   for (let i = 0; i < compact.length; i += CHUNK) chunks.push(compact.slice(i, i + CHUNK));
@@ -263,7 +277,7 @@ async function mapReduce(
   const mini: Array<{ base: PoolEntry[]; data: { summary?: unknown; notable?: Array<{ ref?: unknown; why?: unknown }> } }> = [];
   for (const ch of chunks) {
     const lines = ch.map((e, i) => toLine(e, i + 1));
-    const content = await chat(
+    const { content } = await chat(
       [
         { role: 'system', content: systemPrompt(llm) },
         {
@@ -281,7 +295,7 @@ async function mapReduce(
         },
       ] as ChatMessage[],
       llm,
-      { fetchImpl },
+      { fetchImpl, onUsage },
     );
     try {
       mini.push({ base: ch, data: extractJson(content) as (typeof mini)[number]['data'] });
@@ -304,15 +318,15 @@ async function mapReduce(
   });
 
   // 全部批次都没挑出东西（模型全在胡说）→ 退回单轮，拿前 90 条直出
-  if (!flat.length) return singlePass(compact.slice(0, SINGLE_LIMIT), meta, llm, style, fetchImpl);
+  if (!flat.length) return singlePass(compact.slice(0, SINGLE_LIMIT), meta, llm, style, fetchImpl, onUsage);
 
-  const content = await chat(
+  const { content } = await chat(
     [
       { role: 'system', content: systemPrompt(llm) },
       { role: 'user', content: buildFinalPrompt(digestLines, meta, style) },
     ] as ChatMessage[],
     llm,
-    { fetchImpl },
+    { fetchImpl, onUsage },
   );
   const out = extractJson(content);
   // 终稿的 ref 指向 flat，而 ref 解析用的是 compact … 这里把 flat 一并带出去
@@ -474,7 +488,7 @@ export async function generateDigest(input: GenerateInput): Promise<GenerateResu
       .limit(1);
     if (row && !row.fallback) {
       const cached = await readDigest(db, ownerId, date);
-      if (cached) return { digest: cached, cached: true };
+      if (cached) return { digest: cached, cached: true, usage: { ...EMPTY_USAGE } };
     }
   }
 
@@ -488,6 +502,15 @@ export async function generateDigest(input: GenerateInput): Promise<GenerateResu
     feedCount,
   };
 
+  // 用量只统计「真的调了模型」的轮次：map-reduce 有几批就记几次
+  const usage: AiUsageTotal = { ...EMPTY_USAGE };
+  const onUsage = (u: ChatUsage): void => {
+    usage.calls += 1;
+    usage.promptTokens += u.promptTokens;
+    usage.completionTokens += u.completionTokens;
+    usage.totalTokens += u.totalTokens;
+  };
+
   let raw: Record<string, unknown>;
   let llmError: string | null = null;
   let pool: PoolEntry[] = compact;
@@ -498,8 +521,8 @@ export async function generateDigest(input: GenerateInput): Promise<GenerateResu
   } else {
     try {
       const used = compact.length > SINGLE_LIMIT
-        ? await mapReduce(compact, meta, llm, style, fetchImpl)
-        : await singlePass(compact, meta, llm, style, fetchImpl);
+        ? await mapReduce(compact, meta, llm, style, fetchImpl, onUsage)
+        : await singlePass(compact, meta, llm, style, fetchImpl, onUsage);
       // map-reduce 会把「终稿候选池」塞在 __pool 里带出来，ref 要按它解析
       const carried = used.__pool;
       if (Array.isArray(carried)) pool = carried as PoolEntry[];
@@ -574,5 +597,5 @@ export async function generateDigest(input: GenerateInput): Promise<GenerateResu
     });
 
   await pruneDigests(db, ownerId, keepDays).catch(() => 0);
-  return { digest, cached: false };
+  return { digest, cached: false, usage };
 }

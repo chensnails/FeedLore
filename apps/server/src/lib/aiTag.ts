@@ -21,6 +21,7 @@ import {
 } from '@feedlore/ai';
 import { assertPublicHost, safeFetch } from './net';
 import { userAiTags } from './prefs';
+import { recordAiUsage } from './aiUsage';
 
 const TICK_MS = 60 * 1000;
 /** 每账号每 tick 最多处理的篇数：控制单次模型调用量，避免一上来把整库额度烧光。 */
@@ -53,7 +54,8 @@ export async function tagEntry(
 ): Promise<{ status: 'done' | 'failed'; tags: string[]; error?: string }> {
   const id = crypto.randomUUID();
   try {
-    const { tags } = await suggestEntryTags(entry.title, entry.content ?? '', llm, safeFetch);
+    const { tags, usage } = await suggestEntryTags(entry.title, entry.content ?? '', llm, safeFetch);
+    await recordAiUsage(db, uid, 'ai_tags', usage, true);
     await db
       .insert(entryAiTags)
       .values({
@@ -72,6 +74,7 @@ export async function tagEntry(
     return { status: 'done', tags };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    await recordAiUsage(db, uid, 'ai_tags', null, false);
     await db
       .insert(entryAiTags)
       .values({

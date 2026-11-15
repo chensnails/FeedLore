@@ -39,6 +39,7 @@ import {
 import { APP_VERSION } from '../env';
 import { toCard } from '../lib/dto';
 import { CARD_COLUMNS, entryConditions, parseFeedIds } from '../lib/entriesQuery';
+import { recordAiUsage } from '../lib/aiUsage';
 import { loadLlmRow } from '../lib/llm';
 import { assertPublicHost, safeFetch } from '../lib/net';
 import type { McpUser } from '../middleware/mcpAuth';
@@ -473,7 +474,8 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
       ];
 
       try {
-        const result = await chat(messages, llm, { fetchImpl: safeFetch });
+        const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
+        await recordAiUsage(db, user.id, 'mcp', usage, true);
         return textResult({
           ...who,
           id,
@@ -541,7 +543,8 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
       ];
 
       try {
-        const result = await chat(messages, llm, { fetchImpl: safeFetch });
+        const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
+        await recordAiUsage(db, user.id, 'mcp', usage, true);
         return textResult({
           ...who,
           id,
@@ -551,6 +554,7 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
           result,
         });
       } catch (e) {
+        await recordAiUsage(db, user.id, 'mcp', null, false);
         return errorResult('E_AI_CALL_FAILED', (e as Error)?.message ?? 'AI 调用失败', { ...who });
       }
     }),

@@ -38,6 +38,7 @@ import { apiError, ApiException, apiErrorBody, apiErrorKey } from '../lib/apiErr
 import { assertPublicHost, safeFetch } from '../lib/net';
 import { userDigest, userLayout } from '../lib/prefs';
 import { resolveDigestScope } from '../lib/digest';
+import { readAiUsageSummary, recordAiUsage } from '../lib/aiUsage';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /** 真实日期判定：格式对不代表日期存在（`2026-02-30` 也是「格式合法」）。 */
@@ -75,6 +76,23 @@ function entryAiSystemPrompt(action: EntryAiBody['action'], targetLang: string):
 
 export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
   return new Hono<AppEnv>()
+    /* ---------------- GET /api/ai-usage ---------------- */
+    /* AI 消耗量：只读本人，按「今日 / 近 7 天 / 近 30 天」+ 按功能 + 按天序列。
+     * 读接口不记账——看统计本身不该消耗额度。 */
+    .get(
+      aiSpec.apiUsage.path,
+      requireAuth(auth, 'user'),
+      zValidator('query', aiSpec.apiUsage.query, (r) => {
+        if (!r.success) throw new BadRequest('GET /api/ai-usage', r.error.issues);
+      }),
+      async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
+        const uid = c.get('user').id;
+        const q = c.req.valid('query') as { days?: number };
+        const summary = await readAiUsageSummary(db, uid, q.days ?? 30);
+        return c.json(assertResponse(aiSpec.apiUsage.response, summary, 'GET /api/ai-usage'));
+      },
+    )
     /* ---------------- POST /api/digest/test-llm ---------------- */
     .post(
       aiSpec.testLlm.path,
@@ -113,11 +131,14 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
           });
         }
 
+        // 测试模型也算消耗：成功失败都记一次，用量由 onUsage 带出来
+        let testUsage: { promptTokens: number; completionTokens: number; totalTokens: number } | null = null;
         const payload = assertResponse(
           aiSpec.testLlm.response,
-          await testLlm(llm, safeFetch),
+          await testLlm(llm, safeFetch, (u) => { testUsage = u; }),
           'POST /api/digest/test-llm',
         );
+        await recordAiUsage(db, uid, 'test', testUsage, payload.ok === true);
         return c.json(payload);
       },
     )
@@ -190,6 +211,11 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
           fetchImpl: safeFetch,
         });
 
+        // 日报一轮可能调多次（map-reduce 分批），按实际次数记账；cached 不动用量
+        if (!result.cached && result.usage.calls > 0) {
+          await recordAiUsage(db, uid, 'digest', result.usage, true, result.usage.calls);
+        }
+
         // 自动生成跑过这一轮就记下「今天已处理」，避免同一分钟内被 tick 重复触发
         return c.json(
           assertResponse(
@@ -244,11 +270,13 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
         ];
 
         try {
-          const result = await chat(messages, llm, { fetchImpl: safeFetch });
+          const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
+          await recordAiUsage(db, uid, 'entry_ai', usage, true);
           return c.json(
             assertResponse(aiSpec.entryAi.response, { ok: true, result }, 'POST /api/entry/:id/ai'),
           );
         } catch (e) {
+          await recordAiUsage(db, uid, 'entry_ai', null, false);
           // 降级可读：模型失败返回 200，ok:false + 原因，前端直接呈现，不 500
           return c.json(
             assertResponse(

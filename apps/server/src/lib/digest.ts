@@ -20,6 +20,7 @@ import {
 } from '@feedlore/ai';
 import { userDigest, userLayout } from './prefs';
 import { safeFetch } from './net';
+import { recordAiUsage } from './aiUsage';
 
 const TICK_MS = 60 * 1000;
 
@@ -142,6 +143,9 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
         fetchImpl: safeFetch,
       });
 
+      if (!r.cached && r.usage.calls > 0) {
+        await recordAiUsage(db, u.id, 'digest', r.usage, true, r.usage.calls);
+      }
       done += 1;
       console.log(
         `[digest] user ${u.id} generated digest for ${r.digest.date}: ` +
