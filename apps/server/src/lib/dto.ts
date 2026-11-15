@@ -89,10 +89,6 @@ export interface CardRow {
   bodyJson: string | null;
   bodyVersion: number | null;
   feedName: string | null;
-  /** 智能去重：主条目 id（null = 本条即主条目） */
-  duplicateOf: number | null;
-  /** 作为主条目时挂的重复条数 */
-  dupCount: number;
 }
 
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
@@ -122,8 +118,6 @@ export function toCard(row: CardRow): Card {
     isRead: Boolean(row.isRead),
     isFavorite: Boolean(row.isFavorite),
     favoritedAt: iso(row.favoritedAt),
-    duplicateOf: row.duplicateOf == null ? null : String(row.duplicateOf),
-    dupCount: Number(row.dupCount) || 0,
   };
 }
 

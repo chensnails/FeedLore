@@ -1655,20 +1655,6 @@ const withEFP = (el, fn) => {
     }
   });
 
-  // 去重开关：前端必须两种状态都**显式**发 dedup。曾经「含重复」时干脆不发参数，
-  // 而服务端缺参数就按 hide 兜底 → 两个状态请求一模一样，按钮点了没反应。
-  t('核心：去重开关两种状态都显式发 dedup（漏发 all = 按钮没反应）', () => {
-    const js = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'core', 'reader.js'), 'utf8');
-    const start = js.indexOf('function readerFilterParams');
-    const end = js.indexOf('return params;', start);
-    const fn = start >= 0 && end > start ? js.slice(start, end) : '';
-    if (!fn) throw new Error('找不到 readerFilterParams');
-    const m = fn.match(/params\.set\('dedup',\s*state\.rdShowDup\s*\?\s*'all'\s*:\s*'hide'\)/);
-    if (!m) throw new Error('dedup 参数不是两种状态都发：' + fn.split('\n').filter((l) => l.indexOf('dedup') >= 0).join(' | '));
-    const api = fs.readFileSync(path.join(__dirname, '..', '..', '..', '..', 'apps', 'server', 'src', 'routes', 'entries.ts'), 'utf8');
-    if (!/q\.dedup\s*\?\?\s*'hide'/.test(api)) throw new Error('服务端列表未对 dedup 兜底 hide');
-  });
-
   // ============ 外壳与宿主 ============
   t('初始：遮罩常驻但 hidden', () => { const m = mask(); if (!m) throw new Error('无遮罩'); if (m.hidden !== true) throw new Error('初始应隐藏'); });
   t('初始：__settingsOpen 未定义/false', () => { if (w.__settingsOpen) throw new Error('__settingsOpen=' + w.__settingsOpen); });

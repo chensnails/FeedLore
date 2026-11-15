@@ -51,8 +51,6 @@ const row = (over: Partial<CardRow> = {}): CardRow => ({
   bodyJson: null,
   bodyVersion: 1,
   feedName: '源',
-  duplicateOf: null,
-  dupCount: 0,
   ...over,
 });
 

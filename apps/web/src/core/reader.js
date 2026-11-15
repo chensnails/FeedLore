@@ -99,10 +99,6 @@ export function readerFilterParams() {
   if (state.rdScope === 'unread') params.set('unread', '1');
   if (state.rdScope === 'favorite') params.set('fav', '1');
   if (state.rdQ) params.set('q', state.rdQ);
-  /* 智能去重（T-B）：**显式**两种都发。
-   * 服务端在参数缺失时按 hide 兜底，所以「含重复」时漏发参数 = 两个状态请求一模一样，
-   * 按钮点了没反应（这个坑踩过一次）。 */
-  params.set('dedup', state.rdShowDup ? 'all' : 'hide');
   return params;
 }
 
@@ -611,13 +607,6 @@ export function readerRetryMore() {
 
 /** 空态 / 错误态上的「再试一次」：整个列表重置重拉 */
 export function readerReload() {
-  return loadReader({ reset: true });
-}
-
-/** 智能去重（T-B）：切换「含重复」——会话级，不落库；切换后重载列表。 */
-export function readerToggleDup() {
-  state.rdShowDup = !state.rdShowDup;
-  renderReader();
   return loadReader({ reset: true });
 }
 

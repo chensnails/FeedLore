@@ -154,10 +154,6 @@ export const CardSchema = z.object({
   isRead: z.boolean(),
   isFavorite: z.boolean(),
   favoritedAt: IsoDateTime.nullable(),
-  /** 智能去重：非 null 表示本条是主条目 id 的重复报道（软链接） */
-  duplicateOf: z.string().nullable(),
-  /** 本条作为主条目时挂的重复条数（列表「N 重复」提示） */
-  dupCount: z.number().int(),
 });
 export type Card = z.infer<typeof CardSchema>;
 
