@@ -34,6 +34,13 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - **Button busy states are per action**: in the AI action bar and the digest generator only the
   clicked button enters its loading state; siblings are merely disabled. Previously one click turned
   the whole row into "…" spinners.
+- **AI action bar moved**: it now sits right under the article title (above the body) instead of at
+  the end of the body, with a hairline rule separating the toolbar from the text.
+- **Model call timeouts and messages**: AI requests use a 200-second timeout (the server allows 180 s
+  per call) and are no longer cut off by the 30-second write timeout — which used to show an error in
+  the UI while the request actually succeeded a minute later. A "waiting N s" counter is shown while
+  in flight, and model failures are reported in plain language (timeout / auth / upstream error /
+  unparsable response) instead of raw text such as `signal is aborted without reason`.
 
 ### Removed
 
