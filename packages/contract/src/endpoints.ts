@@ -497,6 +497,7 @@ export const prefsResponse = z.object({
   webhookUrl: z.string(),
   digest: M.DigestConfigSchema,
   aiTags: M.AiTagsConfigSchema,
+  rules: z.array(M.RuleSchema),
   llm: M.LlmViewSchema,
 });
 export type PrefsResponse = z.infer<typeof prefsResponse>;
@@ -511,6 +512,7 @@ export const prefsPatchBody = z.object({
   webhookUrl: z.string().optional(),
   digest: M.DigestConfigSchema.partial().optional(),
   aiTags: M.AiTagsConfigSchema.partial().optional(),
+  rules: z.array(M.RuleSchema).optional(),
   llm: M.LlmConfigSchema.partial().optional(),
 });
 export type PrefsPatchBody = z.infer<typeof prefsPatchBody>;
@@ -525,6 +527,7 @@ export const prefsUpdateResponse = z.object({
   webhookUrl: z.string(),
   digest: M.DigestConfigSchema,
   aiTags: M.AiTagsConfigSchema,
+  rules: z.array(M.RuleSchema),
 });
 export type PrefsUpdateResponse = z.infer<typeof prefsUpdateResponse>;
 

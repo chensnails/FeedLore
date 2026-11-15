@@ -296,6 +296,31 @@ export const WatchRuleInputSchema = WatchRuleSchema.extend({
 });
 export type WatchRuleInput = z.infer<typeof WatchRuleInputSchema>;
 
+/**
+ * 自动化规则（when → then）：入库时对新条目执行。
+ * 条件：来源/分组范围 + 关键词（标题/描述/正文）+ 标签；
+ * 动作：加标签 / 收藏 / 标记已读 / 触发 webhook。
+ */
+export const RuleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  on: z.boolean(),
+  when: z.object({
+    scope: RuleScopeSchema,
+    keywords: z.array(z.string()),
+    match: z.enum(['any', 'all']),
+    /** 空串 = 不按标签过滤 */
+    tag: z.string(),
+  }),
+  then: z.object({
+    addTags: z.array(z.string()),
+    favorite: z.boolean(),
+    markRead: z.boolean(),
+    notify: z.boolean(),
+  }),
+});
+export type Rule = z.infer<typeof RuleSchema>;
+
 /** 日报配置（按账号）。 */
 export const DigestConfigSchema = z.object({
   auto: z.boolean(),

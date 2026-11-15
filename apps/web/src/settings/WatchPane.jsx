@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { DetailSheet } from './DetailSheet.jsx';
 import { EditSection, Result, Section } from './primitives.jsx';
 import { RuleScopePicker, emptyScope, normalizeScope, scopeSummary } from './RuleScopePicker';
+import { RulesEditor } from './RulesEditor.jsx';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
 
 /**
@@ -759,6 +760,8 @@ export function WatchPane({ onDirtyChange }) {
             关键词不区分大小写；范围「全部」= 标题 + 摘要 + 正文；非法正则在保存时会被忽略。
           </small>
         </Section>
+
+        <RulesEditor />
       </div>
 
       {sheet && sheet.type === 'rule' ? (

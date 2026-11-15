@@ -26,7 +26,8 @@ import { normalizeItem, parseFeed, type NormalizedItem } from './rss';
 import { applyFilters } from './filter';
 import { classify, notifyRuleNames, type WatchVerdict } from './watch';
 import { expireWatchTags } from './watch-expire';
-import { userFilters, userWatchRules, userWebhook } from './prefs';
+import { userFilters, userRules, userWatchRules, userWebhook } from './prefs';
+import { applyRulesToFresh } from './rules';
 import { scopeAllows } from './scope';
 import { enhanceWithFullText, pruneArticleCache } from './fulltext';
 import {
@@ -570,6 +571,26 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
               publishedAt: row?.publishedAt ?? null,
             });
           }
+        }
+      }
+
+      // 自动化规则（when → then）：仅对新入库条目执行；通知攒批后与 watch 共用 webhook 推送
+      const rules = userRules(memberPrefs).filter((r) => r.on !== false);
+      if (rules.length && up.fresh.length) {
+        try {
+          const hits = await applyRulesToFresh(db, m.id, m, up.fresh, rules);
+          for (const h of hits) {
+            pendingHits.push({
+              ownerId: m.ownerId,
+              ruleName: h.ruleName,
+              title: h.title,
+              link: h.link,
+              feed: r.title ?? first.customTitle ?? first.url,
+              publishedAt: h.publishedAt,
+            });
+          }
+        } catch (e) {
+          console.error('[rules] apply failed:', (e as Error)?.message ?? e);
         }
       }
 

@@ -48,6 +48,8 @@ import {
   userDigest,
   userAiTags,
   sanitizeAiTags,
+  userRules,
+  sanitizeRules,
   userFilters,
   userGroupOrder,
   userLayout,
@@ -116,6 +118,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           webhookUrl: userWebhook(prefs),
           digest: userDigest(prefs),
           aiTags: userAiTags(prefs),
+          rules: userRules(prefs),
           llm: userLlmForView(llmRow, secret),
         },
         'GET /api/prefs',
@@ -139,7 +142,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         /* 只读账户仍可调整「怎么看」（布局 / 分组顺序；外观已存浏览器本机、不走本接口），
          * 但不能再改「抓什么、怎么处理」：过滤规则、关注屏蔽、Webhook、日报、模型全部拒绝。 */
         if (c.get('user').role === 'readonly') {
-          const blocked = (['filters', 'watchRules', 'watchExpireDays', 'webhookUrl', 'digest', 'aiTags', 'llm'] as const)
+          const blocked = (['filters', 'watchRules', 'watchExpireDays', 'webhookUrl', 'digest', 'aiTags', 'rules', 'llm'] as const)
             .filter((k) => body[k] !== undefined);
           if (blocked.length) {
             throw new ApiException('E_READONLY_RULES');
@@ -205,6 +208,10 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           next.aiTags = sanitizeAiTags(body.aiTags);
         }
 
+        if (Array.isArray(body.rules)) {
+          next.rules = sanitizeRules(body.rules);
+        }
+
         await db
           .update(users)
           .set({ prefs: next, updatedAt: sql`now()` })
@@ -267,6 +274,7 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
             webhookUrl: userWebhook(next),
             digest: userDigest(next),
             aiTags: userAiTags(next),
+            rules: userRules(next),
           },
           'POST /api/prefs',
         );

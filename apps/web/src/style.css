@@ -2684,6 +2684,17 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 }
 .sl-sec-h .feed-group-n { margin-left: auto; }
 .sl-empty { padding: var(--sp-5) var(--sp-3); text-align: center; color: var(--text-faint); font-size: var(--fs-sm); }
+/* 自动化规则（when→then）卡片：设置「规则」页底部 */
+.rule-card { border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--sp-3); margin-bottom: var(--sp-3); background: var(--surface-2, var(--bg-soft)); }
+.rule-card-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.rule-name { flex: 1; min-width: 0; }
+.rule-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-3); }
+.rule-grid label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); color: var(--text-muted); }
+.rule-grid textarea, .rule-grid input, .rule-grid select { width: 100%; }
+.rule-actions { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; margin-top: var(--sp-2); font-size: var(--fs-sm); }
+.rule-actions label { display: inline-flex; align-items: center; gap: 6px; }
+.rule-foot { display: flex; align-items: center; gap: var(--sp-2); justify-content: flex-end; margin-top: var(--sp-2); }
+@media (max-width: 720px) { .rule-grid { grid-template-columns: 1fr; } }
 /* 列表工具条（规则面板）：添加 / 一键动作 + 一句话说明 */
 .sl-toolbar {
   display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;

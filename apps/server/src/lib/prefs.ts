@@ -223,6 +223,98 @@ export function sanitizeWebhook(raw: unknown): string {
   return /^https?:\/\//i.test(v) ? v : '';
 }
 
+/* ---------------- 自动化规则（when → then） ---------------- */
+
+const RULES_MAX = 50;
+const RULE_KEYWORDS_MAX = 20;
+const RULE_KEYWORD_LEN = 60;
+const RULE_TAGS_MAX = 10;
+
+export interface RuleWhen {
+  scope: RuleScope;
+  keywords: string[];
+  match: 'any' | 'all';
+  /** 空串 = 不按标签过滤 */
+  tag: string;
+}
+
+export interface RuleThen {
+  addTags: string[];
+  favorite: boolean;
+  markRead: boolean;
+  notify: boolean;
+}
+
+export interface Rule {
+  id: string;
+  name: string;
+  on: boolean;
+  when: RuleWhen;
+  then: RuleThen;
+}
+
+/** 把字符串（多行/逗号分隔）或数组清洗成去重、限长、限量的列表。 */
+function cleanRuleList(raw: unknown, max: number, maxLen: number): string[] {
+  let list: unknown[] = [];
+  if (typeof raw === 'string') list = raw.split(/\r?\n|[,，]/);
+  else if (Array.isArray(raw)) list = raw;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of list) {
+    if (typeof x !== 'string') continue;
+    const v = x.trim().slice(0, maxLen);
+    if (!v) continue;
+    const k = v.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(v);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/**
+ * 清洗自动化规则。**至少一个条件 + 至少一个动作**，否则丢弃——
+ * 无条件规则会命中一切，把全库刷成收藏/已读，比漏掉更糟。
+ */
+export function sanitizeRules(raw: unknown): Rule[] {
+  const out: Rule[] = [];
+  if (!Array.isArray(raw)) return out;
+  const seen = new Set<string>();
+  for (const item of raw.slice(0, RULES_MAX)) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    const when = (r.when && typeof r.when === 'object' ? r.when : {}) as Record<string, unknown>;
+    const then = (r.then && typeof r.then === 'object' ? r.then : {}) as Record<string, unknown>;
+
+    const keywords = cleanRuleList(when.keywords, RULE_KEYWORDS_MAX, RULE_KEYWORD_LEN);
+    const tag = typeof when.tag === 'string' ? when.tag.trim().slice(0, 40) : '';
+    if (!keywords.length && !tag) continue;
+
+    const addTags = cleanRuleList(then.addTags, RULE_TAGS_MAX, 40);
+    const favorite = then.favorite === true;
+    const markRead = then.markRead === true;
+    const notify = then.notify === true;
+    if (!addTags.length && !favorite && !markRead && !notify) continue;
+
+    let id = typeof r.id === 'string' ? r.id.trim().slice(0, 40) : '';
+    if (!id || seen.has(id)) id = 'r' + (out.length + 1);
+    seen.add(id);
+
+    const name = (typeof r.name === 'string' ? r.name.trim() : '').slice(0, 60);
+    out.push({
+      id,
+      name: name || '规则 ' + (out.length + 1),
+      on: r.on !== false,
+      when: { scope: normalizeScope(when.scope), keywords, match: when.match === 'all' ? 'all' : 'any', tag },
+      then: { addTags, favorite, markRead, notify },
+    });
+  }
+  return out;
+}
+
+export const userRules = (prefs: PrefsBag) => sanitizeRules(bag(prefs, 'rules'));
+
 /* ---------------- 日报配置 ---------------- */
 
 const DIGEST_MODES = ['enabled', 'all', 'custom'];
