@@ -45,22 +45,25 @@ export async function findUntaggedEntries(db: Db, uid: string, limit: number): P
     .limit(limit);
 }
 
-/** 为单篇生成并落库 AI 标签；返回最终状态。模型失败返回 'failed'（带上错误，不抛）。 */
+/** 为单篇生成并落库 AI 标签；返回最终状态。模型失败返回 'failed'（带上错误，不抛）。
+ *  `usage` 回传给定时任务做本轮汇总（逐篇明细由 tick 合并成一条，见 aiTag 的批量段）。 */
 export async function tagEntry(
   db: Db,
   uid: string,
   entry: UntaggedEntry,
   llm: ResolvedLlm,
-): Promise<{ status: 'done' | 'failed'; tags: string[]; error?: string }> {
+): Promise<{ status: 'done' | 'failed'; tags: string[]; error?: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
   const id = crypto.randomUUID();
   const started = Date.now();
   const label = (entry.title ?? '').trim() || 'AI 标签';
   try {
     const { tags, usage } = await suggestEntryTags(entry.title, entry.content ?? '', llm, safeFetch);
+    // 只记聚合：定时打标一分钟能跑 20 篇，逐篇落明细会把「模型状态」列表刷满
     await recordAiUsage(db, uid, 'ai_tags', usage, true, 1, {
       model: llm.model,
       label,
       durationMs: Date.now() - started,
+      detail: false,
     });
     await db
       .insert(entryAiTags)
@@ -77,7 +80,7 @@ export async function tagEntry(
         target: [entryAiTags.userId, entryAiTags.entryId],
         set: { tags, model: llm.model, promptVersion: AI_TAG_PROMPT_VERSION, status: 'done', error: null, updatedAt: sql`now()` },
       });
-    return { status: 'done', tags };
+    return { status: 'done', tags, usage: usage ?? undefined };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     await recordAiUsage(db, uid, 'ai_tags', null, false, 1, {
@@ -85,6 +88,7 @@ export async function tagEntry(
       label,
       durationMs: Date.now() - started,
       error: message,
+      detail: false,
     });
     await db
       .insert(entryAiTags)
@@ -153,13 +157,45 @@ export async function runAiTagTick(db: Db, _now: Date = new Date()): Promise<num
       const batch = await findUntaggedEntries(db, u.id, AI_TAG_BATCH_PER_TICK);
       if (!batch.length) continue;
 
+      /* 本轮汇总成一条明细：一分钟能跑 20 篇，逐篇落明细会把「模型状态」列表整屏刷成
+         打标记录，把用户真正关心的日报 / 单篇调用挤掉。用量仍是逐篇精确记账（tagEntry 内），
+         这里只用 aggregate:false 补一条「本轮发生了什么」。 */
+      const batchStarted = Date.now();
+      let okCount = 0;
+      let failCount = 0;
+      let promptTokens = 0;
+      let completionTokens = 0;
+      let firstError = '';
       for (const e of batch) {
         const r = await tagEntry(db, u.id, e, llm);
         done += 1;
+        if (r.usage) {
+          promptTokens += r.usage.promptTokens;
+          completionTokens += r.usage.completionTokens;
+        }
         if (r.status === 'failed') {
+          failCount += 1;
+          firstError = firstError || (r.error || '打标失败');
           console.warn(`[ai-tags] user ${u.id} entry ${e.id} tagging failed: ${r.error}`);
+        } else {
+          okCount += 1;
         }
       }
+      await recordAiUsage(
+        db,
+        u.id,
+        'ai_tags',
+        { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
+        failCount === 0,
+        batch.length,
+        {
+          model: llm.model,
+          label: `自动打标 · ${okCount} 成功${failCount ? ` / ${failCount} 失败` : ''}`,
+          durationMs: Date.now() - batchStarted,
+          error: firstError,
+          aggregate: false,
+        },
+      );
       console.log(`[ai-tags] user ${u.id} tagged ${batch.length} entries`);
     } catch (e) {
       console.error(`[ai-tags] tick failed for user ${u.id}: ` + ((e as Error)?.message ?? e));

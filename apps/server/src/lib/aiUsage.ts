@@ -46,6 +46,10 @@ export interface AiRequestMeta {
   durationMs?: number;
   /** 失败原因（成功留空） */
   error?: string;
+  /** false = 只记聚合、不落明细。定时批量任务用它，避免一分钟往列表里刷 20 条。 */
+  detail?: boolean;
+  /** false = 只写明细、不记聚合。批量任务末尾用一条汇总明细代替逐篇明细时用，避免重复计数。 */
+  aggregate?: boolean;
 }
 
 const clip = (s: unknown, n: number): string => {
@@ -73,32 +77,35 @@ export async function recordAiUsage(
   const completionTokens = Math.max(0, Math.round(usage?.completionTokens ?? 0));
   const fails = ok ? 0 : 1;
   const n = Math.max(1, Math.round(calls));
-  try {
-    await db
-      .insert(aiUsageDaily)
-      .values({
-        userId,
-        date: shanghaiDate(),
-        kind,
-        calls: n,
-        fails,
-        promptTokens,
-        completionTokens,
-      })
-      .onConflictDoUpdate({
-        target: [aiUsageDaily.userId, aiUsageDaily.date, aiUsageDaily.kind],
-        set: {
-          calls: sql`${aiUsageDaily.calls} + ${n}`,
-          fails: sql`${aiUsageDaily.fails} + ${fails}`,
-          promptTokens: sql`${aiUsageDaily.promptTokens} + ${promptTokens}`,
-          completionTokens: sql`${aiUsageDaily.completionTokens} + ${completionTokens}`,
-        },
-      });
-  } catch {
-    /* 旁路：统计失败不影响业务 */
+  if (meta?.aggregate !== false) {
+    try {
+      await db
+        .insert(aiUsageDaily)
+        .values({
+          userId,
+          date: shanghaiDate(),
+          kind,
+          calls: n,
+          fails,
+          promptTokens,
+          completionTokens,
+        })
+        .onConflictDoUpdate({
+          target: [aiUsageDaily.userId, aiUsageDaily.date, aiUsageDaily.kind],
+          set: {
+            calls: sql`${aiUsageDaily.calls} + ${n}`,
+            fails: sql`${aiUsageDaily.fails} + ${fails}`,
+            promptTokens: sql`${aiUsageDaily.promptTokens} + ${promptTokens}`,
+            completionTokens: sql`${aiUsageDaily.completionTokens} + ${completionTokens}`,
+          },
+        });
+    } catch {
+      /* 旁路：统计失败不影响业务 */
+    }
   }
 
   // 明细与裁剪同样吞错：日志写不进去，模型调用照样算成功
+  if (meta?.detail === false) return;
   try {
     await db.insert(aiRequestLog).values({
       userId,
