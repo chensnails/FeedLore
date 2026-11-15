@@ -1,7 +1,7 @@
 import { core } from '@core';
 import { useState, useEffect, useRef } from 'react';
 import { DetailSheet } from './DetailSheet.jsx';
-import { EditSection, Result, Section } from './primitives.jsx';
+import { Result, Section } from './primitives.jsx';
 import { RuleScopePicker, emptyScope, normalizeScope, scopeSummary } from './RuleScopePicker';
 import { RulesEditor } from './RulesEditor.jsx';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
@@ -708,7 +708,7 @@ export function WatchPane({ onDirtyChange }) {
           <Result id="watchResult" result={result} />
         </Section>
 
-        <EditSection secKey="watch-notify" advanced title="通知与保留" sub={notifySub} editText="修改通知与保留">
+        <Section secKey="watch-notify" advanced title="通知与保留" sub={notifySub}>
           <div className="form-row">
             <label htmlFor="watchWebhook">Webhook 通知地址（可选）</label>
             <input id="watchWebhook" type="url" placeholder="https://…" spellCheck="false" autoComplete="off"
@@ -736,7 +736,7 @@ export function WatchPane({ onDirtyChange }) {
               <br />改完自动保存。
             </small>
           </div>
-        </EditSection>
+        </Section>
 
         <Section secKey="watch-filters" title="入库前过滤" open
           sub={!loaded ? '读取中…' : (filters.length ? `${filters.length} 条` : '未配置')}>

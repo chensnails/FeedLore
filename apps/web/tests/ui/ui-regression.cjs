@@ -1758,8 +1758,11 @@ const withEFP = (el, fn) => {
   t('挂载即重启自动刷新定时器', () => { if (!callsOf('scheduleAutoRefresh').length) throw new Error('scheduleAutoRefresh 未调用'); });
   t('pushSummary 同步副标题', () => { if (!callsOf('setSettingsSummary').length) throw new Error('setSettingsSummary 未调用'); });
   t('管理员进入拉取采集参数', () => { if (!countApi('/api/config')) throw new Error('未 GET /api/config'); });
-  // 表单默认只读：先点「修改采集参数」展开，再检查回填
-  document.querySelector('[data-sec="src-params"] .ro-toggle').click();
+  // 表单直接展示：进面板就能看能改，不该再有「点修改才展开」的一层
+  t('采集参数表单直接展示', () => {
+    if (document.querySelector('[data-sec="src-params"] .ro-toggle')) throw new Error('采集参数仍有「修改」按钮');
+    if (!document.querySelector('#srcRefresh')) throw new Error('采集参数表单未渲染');
+  });
   await sleep(40);
   t('采集参数各控件回填', () => {
     const v = (s) => document.querySelector(s).value;
@@ -2361,8 +2364,8 @@ const withEFP = (el, fn) => {
   releaseCfg({ ok: true, json: () => Promise.resolve({ username: 'tester', role: 'admin', source: Object.assign({}, miniSettingsSource) }) });
   await sleep(60);
   cfgHold = null;
-  document.querySelector('[data-sec="src-params"] .ro-toggle').click();
-  await sleep(40);
+  // 表单已在面板里，迟到配置到达后直接回填（无需再点展开）
+  await sleep(60);
   t('迟到配置到达后回填', () => { if (document.querySelector('#srcRefresh').value !== '30') throw new Error(document.querySelector('#srcRefresh').value); });
   setSel('#srcKeepDays', '90');
   clickEl('#saveSourceBtn');
@@ -2607,8 +2610,10 @@ const withEFP = (el, fn) => {
   // ============ 模型面板（P2b React 化） ============
   clickTab('模型');
   await sleep(80);
-  // 接口与密钥默认只读：先点「修改接口与密钥」展开表单
-  document.querySelector('[data-sec="llm-api"] .ro-toggle').click();
+  // 接口与密钥表单直接展示，进面板即可见
+  t('接口与密钥无「修改」前置按钮', () => {
+    if (document.querySelector('[data-sec="llm-api"] .ro-toggle')) throw new Error('仍有「修改」按钮');
+  });
   await sleep(40);
   t('模型面板渲染', () => { if (!document.querySelector('#llmBaseUrl')) throw new Error('无 #llmBaseUrl'); });
   t('模型面板分组：接口与密钥常开 / 思考模式收起', () => {
@@ -2841,9 +2846,12 @@ const withEFP = (el, fn) => {
   t('日报页不再放 AI 标签开关（已挪去模型页）', () => {
     if (document.querySelector('[data-pane="digest"] #aiTagsEnable')) throw new Error('日报页仍有 AI 标签开关');
   });
-  // 条数与保留 / 风格要求默认只读：先展开这两组再断言
-  document.querySelector('[data-sec="dig-limits"] .ro-toggle').click();
-  document.querySelector('[data-sec="dig-style"] .ro-toggle').click();
+  // 条数与保留 / 风格要求均为直接展示
+  t('日报表单组无「修改」前置按钮', () => {
+    for (const k of ['dig-limits', 'dig-style']) {
+      if (document.querySelector(`[data-sec="${k}"] .ro-toggle`)) throw new Error(k + ' 仍有「修改」按钮');
+    }
+  });
   await sleep(60);
   t('日报面板渲染', () => {
     if (!document.querySelector('.tab-pane[data-pane="digest"]')) throw new Error('无 digest 面板');
@@ -3706,8 +3714,10 @@ const withEFP = (el, fn) => {
   t('撤销新增过滤：回到 2 行', () => {
     if (document.querySelectorAll('[data-sec="watch-filters"] .sl-row[data-fid]').length !== 2) throw new Error('撤销后行数');
   });
-  // 通知与保留默认只读：先展开再断言
-  document.querySelector('[data-sec="watch-notify"] .ro-toggle').click();
+  // 通知与保留直接展示，无需展开
+  t('通知与保留无「修改」前置按钮', () => {
+    if (document.querySelector('[data-sec="watch-notify"] .ro-toggle')) throw new Error('仍有「修改」按钮');
+  });
   await sleep(40);
   t('通知与保留：webhook 回填空、保留天数 90', () => {
     if (document.querySelector('#watchWebhook').value !== '') throw new Error('webhook 回填: ' + document.querySelector('#watchWebhook').value);
