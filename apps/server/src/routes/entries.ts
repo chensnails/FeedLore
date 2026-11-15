@@ -89,6 +89,9 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
             watch: q.watch,
             unread: q.unread === '1',
             fav: q.fav === '1',
+            // 列表默认折叠重复项（软链接去重）；显式 dedup=all 时全量返回。
+            // 「全部已读 / 撤销」不传 dedup → 覆盖全部条目（含被折叠的重复），语义不变。
+            dedup: q.dedup ?? 'hide',
           }),
         );
 

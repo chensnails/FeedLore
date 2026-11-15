@@ -99,6 +99,8 @@ export function readerFilterParams() {
   if (state.rdScope === 'unread') params.set('unread', '1');
   if (state.rdScope === 'favorite') params.set('fav', '1');
   if (state.rdQ) params.set('q', state.rdQ);
+  // 智能去重（T-B）：默认折叠重复项；用户点「含重复」后改为全量
+  if (!state.rdShowDup) params.set('dedup', 'hide');
   return params;
 }
 
@@ -607,6 +609,13 @@ export function readerRetryMore() {
 
 /** 空态 / 错误态上的「再试一次」：整个列表重置重拉 */
 export function readerReload() {
+  return loadReader({ reset: true });
+}
+
+/** 智能去重（T-B）：切换「含重复」——会话级，不落库；切换后重载列表。 */
+export function readerToggleDup() {
+  state.rdShowDup = !state.rdShowDup;
+  renderReader();
   return loadReader({ reset: true });
 }
 

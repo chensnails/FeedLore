@@ -445,6 +445,9 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
               {src ? <span className="src-pill">{src}</span> : null}
               {e.size ? <span className="art-size">{e.size}</span> : null}
               <span className="art-date" title={fmtFull(e.date)}>{fmtDate(e.date)}</span>
+              {Number(e.dupCount) > 0 ? (
+                <span className="art-dup" title={`另有 ${e.dupCount} 条重复报道（默认已折叠）`}>{e.dupCount} 重复</span>
+              ) : null}
             </span>
           </span>
           {thumb ? (
@@ -800,6 +803,15 @@ export function ReaderView() {
               onClick={() => s.readerToggleAccordion && s.readerToggleAccordion()}>
               <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-accordion" /></svg>
               <span className="btn-label" id="readerAccLabel">{accordionOn ? '单篇' : '多篇'}</span>
+            </button>
+            {/* 智能去重（T-B）：默认折叠重复报道；此按钮切换是否显示（会话级） */}
+            <button className={'btn btn-ghost btn-sm vt-action' + (st.rdShowDup ? ' is-on' : '')}
+              id="readerDedupBtn" type="button"
+              aria-pressed={st.rdShowDup ? 'true' : 'false'}
+              title={st.rdShowDup ? '正在显示重复报道（点这里折叠）' : '重复报道已折叠（点这里显示）'}
+              onClick={() => s.readerToggleDup && s.readerToggleDup()}>
+              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-copy" /></svg>
+              <span className="btn-label">{st.rdShowDup ? '含重复' : '去重'}</span>
             </button>
             <button className="btn btn-ghost btn-sm vt-action" id="readerReadAllBtn" type="button" hidden={!hasUnread}
               title="把当前列表全部标为已读" onClick={() => s.readerReadAll && s.readerReadAll()}>

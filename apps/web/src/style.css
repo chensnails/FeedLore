@@ -3695,6 +3695,8 @@ body.is-scrolling .card-media-actions { transition: none; }
 .art-meta .src-pill { max-width: 180px; }
 .art-size { color: var(--text-muted); background: var(--accent-soft); border-radius: var(--radius-pill); padding:2px var(--sp-2); font-weight: 600; }
 .art-date { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+/* 智能去重（T-B）：「N 重复」提示，弱化处理，不抢标题行视线 */
+.art-dup { color: var(--accent-text); background: var(--accent-soft); border-radius: var(--radius-pill); padding:1px var(--sp-2); font-size: var(--fs-2xs); font-weight: 600; }
 
 /* ---------- 展开体 ---------- */
 .art-body { border-top: 1px solid var(--border); background: var(--panel-2); }

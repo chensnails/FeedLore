@@ -137,6 +137,7 @@ export const core = {
   readerReadAll: R.readerReadAll,
   readerToggleFav: R.readerToggleFav, readerMarkUnread: R.readerMarkUnread,
   readerReload: R.readerReload, readerRetryBody: R.readerRetryBody, readerRetryMore: R.readerRetryMore,
+  readerToggleDup: R.readerToggleDup,
   readerTagToCards: UI.readerTagToCards,
   restoreReaderArt: R.restoreReaderArt,
   readerToggleAccordion: R.readerToggleAccordion, readerAccordionOn: R.readerAccordionOn,

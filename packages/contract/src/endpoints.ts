@@ -378,6 +378,8 @@ export const entriesQuery = z.object({
    * 只让服务端支持前两档的话，v1 用户存了 name 的账号迁过来会静默退回「新→旧」——
    * 设置里显示「按名称」而列表按时间排，是最难查的那类不一致。 */
   sort: z.enum(['new', 'old', 'name']).optional(),
+  /** 智能去重：hide = 折叠重复项（列表默认）；all / 缺省 = 全量 */
+  dedup: z.enum(['hide', 'all']).optional(),
 });
 export type EntriesQuery = z.infer<typeof entriesQuery>;
 

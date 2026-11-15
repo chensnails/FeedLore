@@ -178,6 +178,15 @@ export const entries = pgTable(
     watchRule: text('watch_rule'),
     // 进入「关注」的时刻：规则可设置保留天数，到期自动移除关注标记（屏蔽不受影响）
     watchTaggedAt: timestamp('watch_tagged_at', { mode: 'date' }),
+    /**
+     * 智能去重（Phase 2 T-B）：软链接到「主条目」。null = 本条是主条目；
+     * 非 null 表示本条被判定为同一用户的另一条（主条目）的重复报道。
+     * 不加自引用外键：主条目被删时让 duplicate_of 悬空无害（列表按 id 展示），
+     * 也避免「自引用 + ON DELETE SET NULL」在迁移里多一层约束。
+     */
+    duplicateOf: bigint('duplicate_of', { mode: 'number' }),
+    /** 归一化标题签名（lower + 去空白/ASCII 标点），用于 O(1) 找同组主条目 */
+    dedupKey: text('dedup_key'),
   },
   (t) => [
     uniqueIndex('entries_feed_id_guid_key').on(t.feedId, t.guid),

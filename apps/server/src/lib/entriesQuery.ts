@@ -6,7 +6,7 @@
  * 抽到 lib 让 HTTP 路由与 MCP 工具共同 import，避免第二份真源悄悄走样。
  */
 
-import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { entries, entryAiTags, feeds, type Db } from '@feedlore/db';
 
 /** 条目查询公共列（详情另加 content）。字段名与 CardRow 一一对应。 */
@@ -33,6 +33,9 @@ export const CARD_COLUMNS = {
   bodyJson: entries.bodyJson,
   bodyVersion: entries.bodyVersion,
   feedName: feeds.title,
+  duplicateOf: entries.duplicateOf,
+  // 本条目作为「主条目」时挂了多少条重复（列表「N 重复」提示用）
+  dupCount: sql<number>`(select count(*)::int from entries d where d.duplicate_of = ${entries.id})`,
 };
 
 export interface EntryFilter {
@@ -42,6 +45,8 @@ export interface EntryFilter {
   watch?: 'watch' | 'block' | undefined;
   unread?: boolean;
   fav?: boolean;
+  /** 'hide' = 列表排除重复项；'all'/未传 = 不按去重过滤（「全部已读」等默认不过滤） */
+  dedup?: 'hide' | 'all';
 }
 
 /** 解析 `feeds=1,2,3`；返回 null 表示「没传这个参数」。 */
@@ -83,6 +88,8 @@ export function entryConditions(db: Db, uid: string, f: EntryFilter): SQL[] {
   if (f.unread) conds.push(eq(entries.isRead, false));
   if (f.fav) conds.push(eq(entries.isFavorite, true));
   if (f.watch) conds.push(eq(entries.watchState, f.watch));
+  // 智能去重（软链接）：仅在列表显式要求时排除重复项；「全部已读」等不传 dedup → 不过滤
+  if (f.dedup === 'hide') conds.push(isNull(entries.duplicateOf));
   return conds;
 }
 

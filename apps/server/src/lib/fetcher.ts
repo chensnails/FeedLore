@@ -19,6 +19,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { entries, feeds, users, type Db } from '@feedlore/db';
 import { safeFetch } from './net';
+import { assignDuplicatesForKeys, dedupKeyFor } from './dedup';
 import { apiErrorBody, apiErrorKey } from './apiError';
 import { API_ERROR_DEFAULTS, type ApiErrorCode } from '@feedlore/contract';
 import { normalizeItem, parseFeed, type NormalizedItem } from './rss';
@@ -309,6 +310,7 @@ export async function upsertEntries(db: Db, feedId: number, items: NormalizedIte
         bodyJson: it.bodyJson,
         bodyVersion: it.bodyVersion,
         publishedAt: it.publishedAt,
+        dedupKey: dedupKeyFor(it.title, it.link),
       })),
     )
     .onConflictDoUpdate({
@@ -331,8 +333,22 @@ export async function upsertEntries(db: Db, feedId: number, items: NormalizedIte
         links: sql`excluded.links`,
         sourceUrl: sql`excluded.source_url`,
         publishedAt: sql`excluded.published_at`,
+        dedupKey: sql`excluded.dedup_key`,
       },
     });
+
+  // 智能去重：把本轮新增条目的归一化签名与同用户已有条目比对，标出重复（软链接）。
+  // 失败不影响入库——去重是增强，不是入库的前置条件。
+  if (fresh.length) {
+    try {
+      const [feedRow] = await db.select({ ownerId: feeds.ownerId }).from(feeds).where(eq(feeds.id, feedId)).limit(1);
+      if (feedRow) {
+        await assignDuplicatesForKeys(db, feedRow.ownerId, fresh.map((it) => dedupKeyFor(it.title, it.link)));
+      }
+    } catch {
+      /* 去重失败忽略 */
+    }
+  }
 
   return { inserted: fresh.length, fresh };
 }
