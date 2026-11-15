@@ -334,7 +334,7 @@ export function DigestPane({ onDirtyChange }) {
 
         </EditSection>
 
-        <EditSection secKey="dig-style" title="风格要求" editText="修改风格要求"
+        <EditSection secKey="dig-style" advanced title="风格要求" editText="修改风格要求"
           sub={form.style ? `已写 ${form.style.length} 字` : '未写'}>
         <div className="form-row">
           <label htmlFor="digPrompt">风格要求（可选）</label>

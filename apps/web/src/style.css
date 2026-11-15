@@ -1947,6 +1947,16 @@ textarea:disabled {
 }
 .sec[open] > .sec-head .sec-arrow { transform: rotate(90deg); }
 .sec-title { flex: 0 0 auto; font-size: var(--fs-md); font-weight: 700; color: var(--text); }
+/* 「高级」标：常用组默认展开、高级组默认收起，一眼能分出两层。
+   高级组标题压暗一档，避免和常用项抢注意力。 */
+.sec-adv {
+  flex: 0 0 auto; margin-left: var(--sp-2);
+  font-size: var(--fs-2xs); font-weight: 600; line-height: 16px;
+  color: var(--text-faint); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: var(--radius-pill);
+  padding: 0 6px;
+}
+.sec.is-advanced .sec-title { color: var(--text-muted); font-weight: 600; }
 /* 摘要行：收起时靠它一眼看到当前值，不用展开 */
 .sec-sub {
   margin-left:auto; min-width: 0;

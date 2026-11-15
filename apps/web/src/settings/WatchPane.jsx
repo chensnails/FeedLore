@@ -708,7 +708,7 @@ export function WatchPane({ onDirtyChange }) {
           <Result id="watchResult" result={result} />
         </Section>
 
-        <EditSection secKey="watch-notify" title="通知与保留" sub={notifySub} editText="修改通知与保留">
+        <EditSection secKey="watch-notify" advanced title="通知与保留" sub={notifySub} editText="修改通知与保留">
           <div className="form-row">
             <label htmlFor="watchWebhook">Webhook 通知地址（可选）</label>
             <input id="watchWebhook" type="url" placeholder="https://…" spellCheck="false" autoComplete="off"

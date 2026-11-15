@@ -37,12 +37,21 @@ export function useFormLoadGuard() {
  * 一个可折叠分组。`open` 只是首次默认值；用户改过之后以 bindSections 记住的状态为准。
  * `subId` 留给需要被旧逻辑按 id 取用的摘要（频道计数、采集参数摘要）。
  */
-export function Section({ secKey, title, sub, subId, open, id, children }) {
+export function Section({ secKey, title, sub, subId, open, id, advanced, children }) {
+  /* 两层结构：`advanced` 的组默认收起并打「高级」标，常用组照旧默认展开。
+   * 不做「外层再套一个高级折叠容器」：那会变成两级折叠（点开外层还要再点内层），
+   * 也会让 bindSections 记的折叠状态与用户的直觉错位。 */
   return (
-    <details className="sec" data-sec={secKey} id={id} open={open || undefined}>
+    <details
+      className={'sec' + (advanced ? ' is-advanced' : '')}
+      data-sec={secKey}
+      id={id}
+      open={advanced ? undefined : (open || undefined)}
+    >
       <summary className="sec-head">
         <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
         <span className="sec-title">{title}</span>
+        {advanced ? <span className="sec-adv" aria-label="高级设置">高级</span> : null}
         <span className="sec-sub" id={subId}>{sub}</span>
       </summary>
       <div className="sec-body">{children}</div>
@@ -53,10 +62,10 @@ export function Section({ secKey, title, sub, subId, open, id, children }) {
 /** 填写类分组的「默认只读」外壳：正文默认不渲染，点「修改」展开，再点「收起」折叠。
  *  收起不清空已填内容 —— 保存仍走各面板底部的保存按钮，避免「收起 = 取消」的误解。
  *  需要逐字段只读摘要的地方（登录信息）用 ReadonlyField，不必套这层。 */
-export function EditSection({ secKey, title, sub, subId, open, id, editText = '修改', children }) {
+export function EditSection({ secKey, title, sub, subId, open, id, advanced, editText = '修改', children }) {
   const [editing, setEditing] = useState(false);
   return (
-    <Section secKey={secKey} title={title} sub={sub} subId={subId} open={open} id={id}>
+    <Section secKey={secKey} title={title} sub={sub} subId={subId} open={open} id={id} advanced={advanced}>
       {editing ? (
         <>
           {children}

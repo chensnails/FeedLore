@@ -355,7 +355,7 @@ export function ModelPane({ onDirtyChange }) {
         </div>
         </EditSection>
 
-        <Section secKey="llm-thinking" title="思考模式"
+        <Section secKey="llm-thinking" advanced title="思考模式"
           sub={form.thinking ? `已开启 · 深度${DEPTH_LABEL[form.thinkingDepth]}` : '关闭'}>
         <div className="form-row">
           <label className="form-row-head">

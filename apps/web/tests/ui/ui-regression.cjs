@@ -2624,6 +2624,17 @@ const withEFP = (el, fn) => {
     if (!think.contains(document.querySelector('#llmDepth'))) throw new Error('深度不在思考组');
     if (api.querySelector('.sec-sub').textContent !== 'Qwen/Qwen3-8B') throw new Error('模型摘要: ' + api.querySelector('.sec-sub').textContent);
   });
+  t('设置分层：高级组默认收起并带「高级」标，常用组不误标', () => {
+    const think = document.querySelector('[data-sec="llm-thinking"]');
+    const api = document.querySelector('[data-sec="llm-api"]');
+    if (!think || !api) throw new Error('缺分组');
+    if (think.open) throw new Error('高级组应默认收起');
+    if (!think.classList.contains('is-advanced')) throw new Error('高级组缺 is-advanced');
+    if (!think.querySelector('.sec-adv')) throw new Error('高级组缺「高级」标');
+    if (!api.open) throw new Error('常用组应默认展开');
+    if (api.querySelector('.sec-adv')) throw new Error('常用组不该有「高级」标');
+  });
+
   t('进入即拉 /api/prefs 回填', () => {
     if (!callsOf('apiFetch').some((c) => c[1] === '/api/prefs' && !c[2])) throw new Error('未 GET /api/prefs');
     if (document.querySelector('#llmBaseUrl').value !== 'https://api.siliconflow.cn/v1') throw new Error('baseUrl 未回填: ' + document.querySelector('#llmBaseUrl').value);

@@ -783,7 +783,7 @@ export function AccountPane({ onDirtyChange }) {
         </Section>
 
         {/* 数据导出：账号级存档，换机或长期留存用 */}
-        <Section secKey="acc-export" title="数据导出" sub="tar.gz">
+        <Section secKey="acc-export" advanced title="数据导出" sub="tar.gz">
           <p className="hint">
             <b>包含</b>：本账号的订阅源、全部文章（含已读 / 收藏 / 关注标记）、日报与偏好设置。
             <br /><b>不含</b>：登录会话、图片缓存与全文抓取缓存。
@@ -814,7 +814,7 @@ export function AccountPane({ onDirtyChange }) {
 
         {/* 数据导入：账号级增量合并（只读账户由服务端拒绝写操作，不展示） */}
         {!readonly && (
-          <Section secKey="acc-import" title="数据导入" sub="tar.gz">
+          <Section secKey="acc-import" advanced title="数据导入" sub="tar.gz">
             <p className="hint">
               上传本账号的导出包，把频道、文章标记、日报与偏好合并进来。
               <br /><b>合并规则</b>：已存在的频道与文章会跳过，现有文章的已读 / 收藏 / 关注状态不会被改动。
@@ -871,7 +871,7 @@ export function AccountPane({ onDirtyChange }) {
 
         {/* 整站备份：管理员级、含敏感数据，单独分组并走危险确认 */}
         {admin && (
-          <Section secKey="acc-backup" title="整站备份" sub="仅管理员">
+          <Section secKey="acc-backup" advanced title="整站备份" sub="仅管理员">
             <p className="hint">
               <b>包含</b>：所有账号（含密码哈希）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
               <br /><b>敏感</b>：这是敏感文件，请只保存在受控位置。
@@ -891,7 +891,7 @@ export function AccountPane({ onDirtyChange }) {
 
         {/* 整站还原：清库覆盖、全员掉线，两次确认后才会真正执行 */}
         {admin && (
-          <Section secKey="acc-restore" title="整站还原" sub="仅管理员">
+          <Section secKey="acc-restore" advanced title="整站还原" sub="仅管理员">
             <p className="hint">
               上传整站备份包，用它<b>整体替换</b>当前全站数据：账号（含密码）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
               <br /><b>影响</b>：还原期间站点短暂不可用，结束后所有登录会话失效。
@@ -915,7 +915,7 @@ export function AccountPane({ onDirtyChange }) {
         )}
 
         {/* 装到桌面属于「看一次就够」的内容，默认收起 */}
-        <Section secKey="acc-install" title="添加到手机" sub="装到桌面，像 App 一样打开">
+        <Section secKey="acc-install" advanced title="添加到手机" sub="装到桌面，像 App 一样打开">
             <p className="install-card-tip">
               用手机浏览器打开 <code id="installHost">{location.host}</code>，在浏览器菜单里选「安装应用 / 添加到主屏幕」即可。<br />
               Edge / Chrome：右上角「⋯」→ 添加到手机 / 安装应用；iOS Safari：分享 → 添加到主屏幕。
