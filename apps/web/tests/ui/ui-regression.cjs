@@ -8791,6 +8791,29 @@ const withEFP = (el, fn) => {
       }
       if (aiView.indexOf('disabled={genKey !== null}') < 0) throw new Error('两个生成按钮应互斥禁用');
     });
+
+    /* 位置：正文之前（标题行正下方）。用户明确要求过，别再挪回正文末尾。 */
+    const readerView = fs.readFileSync(path.join(webRoot, 'src', 'views', 'ReaderView.jsx'), 'utf8');
+    t('AI 动作条在正文之前（标题正下方）', () => {
+      const fnIdx = readerView.indexOf('export function ArtBody');
+      if (fnIdx < 0) throw new Error('找不到 ArtBody');
+      // 只在 ArtBody 函数体内比较：文件别处也有 parseBlocks（bodyShowsText）
+      const body = readerView.slice(fnIdx);
+      const aiIdx = body.indexOf('parts.push(<EntryAiBar');
+      if (aiIdx < 0) throw new Error('ArtBody 里没有 EntryAiBar');
+      const firstBody = body.indexOf('const blocks = parseBlocks(e.bodyJson)');
+      if (firstBody < 0) throw new Error('找不到正文解析起点');
+      if (aiIdx > firstBody) throw new Error('AI 动作条又挪回正文之后了');
+      // 也不能被挤到动作行之后（正文末尾）
+      const actIdx = body.indexOf('parts.push(<ArtActions');
+      if (actIdx > 0 && aiIdx > actIdx) throw new Error('AI 动作条跑到正文末尾了');
+    });
+    /* 超时：AI 调用吃长超时。30s 写超时会在服务端还在跑的时候先掐断，
+     * 界面报「失败」但几分钟后明细里其实成功了（实测前端 30s、服务端 99s）。 */
+    t('AI 长任务请求带长超时，不吃 30s 写超时', () => {
+      if (aiBar.indexOf('timeoutMs: aiTimeout') < 0) throw new Error('EntryAiBar 的 AI 调用未带长超时');
+      if (!/timeoutMs: .*AI_TIMEOUT_MS/.test(aiView)) throw new Error('日报生成未带长超时');
+    });
   }
 
   await pending;

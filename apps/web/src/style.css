@@ -4125,9 +4125,16 @@ body.is-scrolling .card-media-actions { transition: none; }
 
 /* 单条目 AI 动作条：挂在 ArtBody 正文末尾，文章页与卡片详情共用。
    复用 .btn 体系与 --sp 令牌，视觉上与前一排 .art-actions 拉开一档间距，避免误读成同一组。 */
-.entry-ai { display: flex; flex-direction: column; gap: var(--sp-3); padding-top: var(--sp-3);
-  border-top: 1px solid var(--line); margin-top: var(--sp-2); }
-.entry-ai-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+/* 单条目 AI 动作条：位置在正文之前（标题行正下方，由 ArtBody 的 parts 顺序决定）。
+ * 所以上下留白交给 .art-inner 的 gap，这里不再自带 border-top / margin-top ——
+ * 那是它当年挂在正文末尾时的写法，留着会在标题下面多出一条莫名其妙的横线。 */
+.entry-ai { display: flex; flex-direction: column; gap: var(--sp-3); }
+/* 动作行下沿一条淡线：让「这是工具条、下面才是正文」一眼分开 */
+.entry-ai-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  padding-bottom: var(--sp-3); border-bottom: 1px solid var(--line); }
+/* 「已等待 12s」：单篇生成可能跑 1~2 分钟，给个还在动的证据 */
+.entry-ai-wait { margin-left: auto; font-size: var(--fs-xs); color: var(--text-faint);
+  font-variant-numeric: tabular-nums; }
 .entry-ai-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--text-faint);
   padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; }
 .entry-ai-result { display: flex; flex-direction: column; gap: var(--sp-2);
@@ -4140,7 +4147,6 @@ body.is-scrolling .card-media-actions { transition: none; }
 .entry-ai-error { color: var(--danger, #c0392b); }
 
 @media (max-width: 720px) {
-  .entry-ai { padding-top: var(--sp-2); }
   .entry-ai-result { padding: var(--sp-3); }
 }
 .art-loading i {

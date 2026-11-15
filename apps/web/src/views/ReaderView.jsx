@@ -288,6 +288,10 @@ export function ArtBody({ e, onTag, extraActions }) {
   const s = S();
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
   const parts = [];
+  /* 单条目 AI 动作条放在正文之前 —— 也就是标题行的正下方。
+   * 文章页与卡片详情共用这个 ArtBody，一处生效两处；早先挂在正文末尾，
+   * 要读完整篇才看得见入口（用户反馈后调整，别再挪回底部）。 */
+  parts.push(<EntryAiBar key="ai" entryId={e.id} />);
   const blocks = parseBlocks(e.bodyJson);
 
   if (blocks) {
@@ -357,8 +361,6 @@ export function ArtBody({ e, onTag, extraActions }) {
     );
   }
   parts.push(<ArtActions key="acts" e={e} extraActions={extraActions} />);
-  // 单条目 AI 动作条：文章页与卡片详情共用 ArtBody，加这里两处同时生效
-  parts.push(<EntryAiBar key="ai" entryId={e.id} />);
   return <div className="art-inner">{parts}</div>;
 }
 
