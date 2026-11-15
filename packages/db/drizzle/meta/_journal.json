@@ -71,6 +71,13 @@
       "when": 1794709179216,
       "tag": "0009_entry_dedup",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794714090492,
+      "tag": "0010_dedup_precision",
+      "breakpoints": true
     }
   ]
 }

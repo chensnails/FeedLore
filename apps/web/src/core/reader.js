@@ -99,8 +99,10 @@ export function readerFilterParams() {
   if (state.rdScope === 'unread') params.set('unread', '1');
   if (state.rdScope === 'favorite') params.set('fav', '1');
   if (state.rdQ) params.set('q', state.rdQ);
-  // 智能去重（T-B）：默认折叠重复项；用户点「含重复」后改为全量
-  if (!state.rdShowDup) params.set('dedup', 'hide');
+  /* 智能去重（T-B）：**显式**两种都发。
+   * 服务端在参数缺失时按 hide 兜底，所以「含重复」时漏发参数 = 两个状态请求一模一样，
+   * 按钮点了没反应（这个坑踩过一次）。 */
+  params.set('dedup', state.rdShowDup ? 'all' : 'hide');
   return params;
 }
 
