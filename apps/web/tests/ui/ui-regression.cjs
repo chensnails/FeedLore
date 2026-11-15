@@ -8707,6 +8707,29 @@ const withEFP = (el, fn) => {
     await sleep(20);
   }
 
+  // 忙碌态归属（用户反馈：点 AI「摘要」时，兄弟按钮一起变「… ⟳」，像五个任务并行）。
+  // 约束：同一时刻只允许被点的那个按钮带 aria-busy/「…」，其余只置灰防并发。
+  {
+    const webRoot = path.join(__dirname, '..', '..');
+    const aiBar = fs.readFileSync(path.join(webRoot, 'src', 'ui', 'EntryAiBar.jsx'), 'utf8');
+    t('AI 动作条：忙碌态按动作区分，不共用一枚 boolean', () => {
+      if (/const \[busy, setBusy\]/.test(aiBar)) throw new Error('仍是共享 boolean 忙碌态');
+      if (/\{busy \?/.test(aiBar)) throw new Error('仍有共享 busy 的文案切换');
+      if (aiBar.indexOf('busyKey === a.k') < 0) throw new Error('动作按钮未按 key 判断忙碌态');
+      if (aiBar.indexOf('aria-busy={busyKey === a.k') < 0) throw new Error('aria-busy 应只落在当前动作上');
+      if (aiBar.indexOf("busyKey === 'tags'") < 0) throw new Error('标签按钮未按 key 判断忙碌态');
+      if (aiBar.indexOf('disabled={anyBusy}') < 0) throw new Error('其余按钮应仍被禁用（防并发覆盖同一块结果区）');
+    });
+    const aiView = fs.readFileSync(path.join(webRoot, 'src', 'ai', 'AiView.jsx'), 'utf8');
+    t('日报：重新生成 / 生成摘要 各自独立忙碌态', () => {
+      if (/generating \?/.test(aiView)) throw new Error('仍在用共享 generating 做文案切换');
+      for (const k of ['regen', 'gen']) {
+        if (aiView.indexOf(`genKey === '${k}'`) < 0) throw new Error('缺 genKey === ' + k);
+      }
+      if (aiView.indexOf('disabled={genKey !== null}') < 0) throw new Error('两个生成按钮应互斥禁用');
+    });
+  }
+
   await pending;
   let fail = 0;  results.forEach(([s, n]) => { if (s === 'FAIL') fail++; console.log(s, n); });
   console.log(`\n共 ${results.length} 项，通过 ${results.length - fail}，失败 ${fail}`);

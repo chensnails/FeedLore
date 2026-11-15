@@ -12,7 +12,7 @@
  */
 
 import { core } from '@core';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 const S = () => core;
 
@@ -28,7 +28,19 @@ export function EntryAiBar({ entryId }) {
   // 只读账户不提供 AI 写能力（后端也会拦 write 权限）；没有 id 无从定位条目
   const writable = s && s.isWritable ? !!s.isWritable() : true;
   const id = entryId == null ? null : entryId;
-  const [busy, setBusy] = useState(false);
+  /* 忙碌态按动作区分：只有一个正在跑，其余按钮只置灰、不变「…」也不转圈。
+   * 共用一枚 boolean 时点「摘要」会让四个兄弟按钮同时变「… ⟳」，看起来像四个任务都在跑
+   * （用户明确反馈过这一点）。并发仍要挡：AI_ACTIONS 共用一块结果区，两个请求同时回来会互相覆盖。 */
+  const [busyKey, setBusyKey] = useState(null);
+  const busyRef = useRef(null);
+  const begin = (k) => {
+    if (busyRef.current) return false;
+    busyRef.current = k;
+    setBusyKey(k);
+    return true;
+  };
+  const end = () => { busyRef.current = null; setBusyKey(null); };
+  const anyBusy = busyKey !== null;
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(false);
@@ -38,12 +50,12 @@ export function EntryAiBar({ entryId }) {
   if (!writable || id == null) return null;
 
   async function run(k) {
-    if (busy) return;
+    if (busyRef.current) return;
     if (!s || typeof s.apiFetch !== 'function') {
       if (s && s.toast) s.toast('AI 功能当前不可用', false);
       return;
     }
-    setBusy(true);
+    if (!begin(k)) return;
     setError(null);
     setResult(null);
     try {
@@ -64,18 +76,18 @@ export function EntryAiBar({ entryId }) {
       const msg = s && s.errText ? s.errText(err, 'AI 调用失败') : String((err && err.message) || err);
       setError(msg);
     } finally {
-      setBusy(false);
+      end();
     }
   }
 
   // 按需为单篇生成 AI 标签（POST /api/entry/:id/ai-tags，后端落库并回写）
   async function runTags() {
-    if (busy) return;
+    if (busyRef.current) return;
     if (!s || typeof s.apiFetch !== 'function') {
       if (s && s.toast) s.toast('AI 功能当前不可用', false);
       return;
     }
-    setBusy(true);
+    if (!begin('tags')) return;
     setTagError(null);
     setTagResult(null);
     try {
@@ -88,7 +100,7 @@ export function EntryAiBar({ entryId }) {
       const msg = s && s.errText ? s.errText(err, '生成失败') : String((err && err.message) || err);
       setTagError(msg);
     } finally {
-      setBusy(false);
+      end();
     }
   }
 
@@ -98,17 +110,17 @@ export function EntryAiBar({ entryId }) {
         <span className="entry-ai-label" aria-hidden="true">AI</span>
         {AI_ACTIONS.map((a) => (
           <button key={a.k} type="button" className="btn btn-ghost btn-sm"
-            disabled={busy} aria-busy={busy ? 'true' : undefined}
+            disabled={anyBusy} aria-busy={busyKey === a.k ? 'true' : undefined}
             aria-label={'AI' + a.label}
             onClick={() => run(a.k)}>
-            {busy ? '…' : a.label}
+            {busyKey === a.k ? '…' : a.label}
           </button>
         ))}
         <button key="tags" type="button" className="btn btn-ghost btn-sm"
-          disabled={busy} aria-busy={busy ? 'true' : undefined}
+          disabled={anyBusy} aria-busy={busyKey === 'tags' ? 'true' : undefined}
           aria-label="AI 标签"
           onClick={runTags}>
-          {busy ? '…' : '标签'}
+          {busyKey === 'tags' ? '…' : '标签'}
         </button>
       </div>
       {open && result != null ? (

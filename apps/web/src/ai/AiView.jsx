@@ -132,7 +132,10 @@ export function AiView() {
   const [dates, setDates] = useState([]);
   const [selected, setSelected] = useState(shanghaiToday);
   const [view, setView] = useState({ kind: 'loading' });
-  const [generating, setGenerating] = useState(false);
+  /* 忙碌态按按钮区分（'regen' / 'gen'）：两个按钮共用一枚 boolean 时，点「重新生成」
+     会让「生成摘要」也一起变成「生成中… ⟳」，看起来像同时在跑两个任务。 */
+  const [genKey, setGenKey] = useState(null);
+  const genBusy = useRef(false);
   /* 请求代际：日期切换是「点第二个日期时第一个可能还在飞」，慢响应回来会盖掉新内容，
      日期选择器与正文对不上。回包时对不上代际就整包丢弃（与两页列表同一套做法）。 */
   const reqGen = useRef(0);
@@ -210,9 +213,11 @@ export function AiView() {
     }
   }
 
-  async function generate(force) {
+  async function generate(force, key) {
+    if (genBusy.current) return;
+    genBusy.current = true;
     const gen = ++reqGen.current;                 // 生成期间切日期：以最后一次操作为准
-    setGenerating(true);
+    setGenKey(key || (force ? 'regen' : 'gen'));
     setView({ kind: 'genLoading' });
     try {
       const res = await s.apiFetch('/api/digest/generate', {
@@ -234,7 +239,8 @@ export function AiView() {
     } catch (err) {
       if (gen === reqGen.current) setView({ kind: 'genError', msg: String((err && err.message) || err) });
     } finally {
-      setGenerating(false);
+      genBusy.current = false;
+      setGenKey(null);
     }
   }
 
@@ -300,11 +306,11 @@ export function AiView() {
           {writable ? (
             <>
               <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"
-                disabled={generating} aria-busy={generating ? 'true' : undefined}
-                onClick={() => generate(true)}>{generating ? '生成中…' : '重新生成'}</button>
+                disabled={genKey !== null} aria-busy={genKey === 'regen' ? 'true' : undefined}
+                onClick={() => generate(true, 'regen')}>{genKey === 'regen' ? '生成中…' : '重新生成'}</button>
               <button className="btn btn-primary" id="genDigestBtn" type="button"
-                disabled={generating} aria-busy={generating ? 'true' : undefined}
-                onClick={() => generate(false)}>{generating ? '生成中…' : '生成摘要'}</button>
+                disabled={genKey !== null} aria-busy={genKey === 'gen' ? 'true' : undefined}
+                onClick={() => generate(false, 'gen')}>{genKey === 'gen' ? '生成中…' : '生成摘要'}</button>
             </>
           ) : null}
         </div>
