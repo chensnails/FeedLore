@@ -58,10 +58,79 @@ function isRealDate(s: string): boolean {
 
 /** 单条目 AI 喂给模型的正文上限：与 MCP 工具保持一致（24000 字符）。 */
 const ENTRY_AI_MAX_CHARS = 24_000;
-function truncateForAi(text: string): { content: string; truncated: boolean } {
-  if (text.length <= ENTRY_AI_MAX_CHARS) return { content: text, truncated: false };
-  return { content: text.slice(0, ENTRY_AI_MAX_CHARS), truncated: true };
+/**
+ * 翻译的正文预算。
+ *
+ * 翻译要逐句对应，正文给不全等于没法用；但 90 秒内模型大约只能产出 2000~3000 token，
+ * 硬塞 24000 字只会得到一个「翻了一半」的结果。所以按「能翻完」来定预算，
+ * 超出部分在结果里明确说明截断，而不是让用户对着半截译文猜。
+ */
+const ENTRY_AI_TRANSLATE_MAX_CHARS = 4_000;
+
+/**
+ * 单篇 AI 的服务端上限。
+ *
+ * 必须**小于 Cloudflare 的 100 秒代理读超时**：否则请求先被 CF 换成 524（非 JSON），
+ * 用户看到的是 `HTTP 524`，而服务端其实还在跑、还会记账 —— 一个假失败。
+ * 实测单篇平均 71 秒、最长 159 秒，所以这个上限是链路上限倒推出来的。
+ */
+const ENTRY_AI_TIMEOUT_MS = 90_000;
+
+/* 这里**不设** `max_tokens` —— 实测结论，不是漏做。
+ *
+ * 混合思考模型（Qwen3 系，测试机上的 neohorse-1-9b 就是这样）会把过程写进
+ * `reasoning_content` 再写答案：一篇 2300 字的文章，思考链 514 字 + 摘要 137 字。
+ * 一带 `max_tokens`，思考链先吃满额度，`message.content` 直接变成空串 ——
+ * 摘要 600 / 2000 两档实测**全部失败**，不限则正常返回（3500 token 左右）。
+ * 所以输出上限在这类上游上是「拿可用性换 token」，不划算；
+ * 真正能降的是输入侧（`compactForAi` 去噪）与思考指令（`thinkingDirective`）。 */
+
+/**
+ * 送模型前先做一次保守压缩。
+ *
+ * 抓来的正文常带大量空行、行尾空白、以及整段重复的导航/版权块 —— 实测能占 15%~25%。
+ * 它们对摘要和翻译毫无价值，只是把首 token 往后推。只做三件无损的事：
+ * 折叠连续空行、去行尾空白、丢弃**够长的完全重复行**（短行可能是「- 是」这种有效列表项）。
+ */
+function compactForAi(text: string): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  let blank = false;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/[ \t\u3000]+$/g, '');
+    if (!line.trim()) {
+      if (!blank && out.length) out.push('');
+      blank = true;
+      continue;
+    }
+    blank = false;
+    if (line.length >= 24) {
+      if (seen.has(line)) continue;
+      seen.add(line);
+    }
+    out.push(line);
+  }
+  return out.join('\n').trim();
 }
+
+function truncateForAi(
+  text: string,
+  action: EntryAiBody['action'],
+): { content: string; truncated: boolean } {
+  const compact = compactForAi(text);
+  const limit = action === 'translate' ? ENTRY_AI_TRANSLATE_MAX_CHARS : ENTRY_AI_MAX_CHARS;
+  if (compact.length <= limit) return { content: compact, truncated: false };
+  return { content: compact.slice(0, limit), truncated: true };
+}
+
+/**
+ * 思考指令：与日报同一套（`/no_think` 关掉混合思考模型的思考链，实测快一个数量级）。
+ * `/` 指令只对支持的模型生效，其它模型当普通文本忽略。
+ *
+ * 单篇动作（摘要 / 要点 / 翻译 / 解释）都不需要深度推理，所以默认关；
+ * 用户在本账号显式开了「思考模式」才跟随，避免「设置里开了却没生效」。
+ */
+const thinkingDirective = (llm: ResolvedLlm): string => (llm.thinking ? ' /think' : ' /no_think');
 
 /**
  * 按动作构造系统提示词。用户自定义只在此范围内生效（不接收外部 prompt 注入），
@@ -359,16 +428,32 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
         }
 
         const body = c.req.valid('json');
-        const cut = truncateForAi(entry.content ?? '');
+        const cut = truncateForAi(entry.content ?? '', body.action);
         const messages: ChatMessage[] = [
-          { role: 'system', content: entryAiSystemPrompt(body.action, body.targetLang ?? '简体中文') },
-          { role: 'user', content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}` },
+          {
+            role: 'system',
+            // 思考指令与日报同源：默认 /no_think，省下的思考链时间直接变成响应速度
+            content: entryAiSystemPrompt(body.action, body.targetLang ?? '简体中文') + thinkingDirective(llm),
+          },
+          {
+            role: 'user',
+            content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}`
+              + (cut.truncated ? '\n\n（正文过长已截断，请基于以上内容作答，不要臆测后续内容）' : ''),
+          },
         ];
 
         const entryLabel = (entry.title ?? '').trim() || '单篇 AI';
         const started = Date.now();
         try {
-          const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
+          const { content: result, usage } = await chat(messages, llm, {
+            fetchImpl: safeFetch,
+            timeoutMs: ENTRY_AI_TIMEOUT_MS,
+            /* 总预算固定 90 秒：重试也要落在里面，不能变成 2×90。
+             * 空内容重试是实测必需——混合思考模型没收到 /no_think 时会把答案写进
+             * reasoning_content，content 是空串，直接重试一次多半就能拿到正常输出。 */
+            budgetMs: ENTRY_AI_TIMEOUT_MS,
+            retryOnEmpty: true,
+          });
           await recordAiUsage(db, uid, 'entry_ai', usage, true, 1, {
             model: llm.model,
             label: entryLabel,

@@ -81,6 +81,8 @@ const CN = {
    * 用户看到的就是 `signal is aborted without reason` 这类底层英文。 */
   E_AI_NOT_CONFIGURED: '模型未配置完整：地址、API Key、模型名都要填好',
   E_AI_TIMEOUT: '模型响应超时（上游一直没回），可以重试或换一个更快的模型',
+  E_AI_ABORTED: '已取消这次生成',
+  E_AI_NETWORK: '连不上模型地址：请检查地址拼写、网络或代理设置',
   E_AI_AUTH: '模型拒绝鉴权：API Key 无效或没有调用权限',
   E_AI_HTTP: '模型接口返回错误',
   E_AI_BAD_RESPONSE: '模型返回的内容无法解析',

@@ -32,7 +32,7 @@ const SKIP = DATABASE_URL ? false : '未设置 DATABASE_URL —— 接口级测�
 
 /* ------------------------------------------------------------------ 假模型 */
 
-type Mode = 'ok' | 'auth' | 'html502' | 'notjson' | 'nocontent' | 'drop' | 'slow';
+type Mode = 'ok' | 'auth' | 'html502' | 'notjson' | 'nocontent' | 'emptyThenOk' | 'rejectET' | 'drop' | 'slow';
 
 interface FakeState {
   mode: Mode;
@@ -44,6 +44,8 @@ interface FakeState {
 }
 
 const fake: FakeState = { mode: 'ok', lastBody: '', prompts: [], hits: 0 };
+/** 'emptyThenOk' 模式用：第一次回空内容，之后正常（验证「空内容自动重试」） */
+let emptyCount = 0;
 
 const okBody = (content = '这是模型返回的摘要。'): string =>
   JSON.stringify({
@@ -67,6 +69,14 @@ const fakeServerFactory = (): Server => createServer((req, res) => {
       res.writeHead(code, { 'Content-Type': type });
       res.end(body);
     };
+    // 'rejectET' 模式：像某些网关那样，见到 enable_thinking 就 400（验证摘字段降级）
+    if (fake.mode === 'rejectET') {
+      let hasET = false;
+      try { hasET = (JSON.parse(raw) as { enable_thinking?: unknown }).enable_thinking !== undefined; } catch { hasET = false; }
+      return hasET
+        ? send(400, JSON.stringify({ code: 'UNKNOWN_FIELD', message: '未知请求字段：enable_thinking', data: { field: 'enable_thinking' } }))
+        : send(200, okBody('降级后拿到的摘要。'));
+    }
     switch (fake.mode) {
       case 'auth': return send(401, JSON.stringify({ error: 'invalid api key' }));
       case 'html502':
@@ -77,6 +87,12 @@ const fakeServerFactory = (): Server => createServer((req, res) => {
         );
       case 'notjson': return send(200, '抱歉，我无法回答');
       case 'nocontent': return send(200, JSON.stringify({ choices: [{ message: {} }] }));
+      case 'emptyThenOk':
+        emptyCount += 1;
+        // 第一次只给空 message（模拟「答案全在 reasoning_content 里」），第二次正常
+        return emptyCount === 1
+          ? send(200, JSON.stringify({ choices: [{ message: { reasoning_content: '思考中…' } }] }))
+          : send(200, okBody('重试后拿到的摘要。'));
       case 'drop': return void req.socket.destroy();
       case 'slow': return void setTimeout(() => send(200, okBody('慢响应的摘要。')), 1500);
       default: return send(200, okBody());
@@ -325,8 +341,65 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       const r = await ask(cOwner, longId);
       assert.equal(r.ok, true);
       const sent = (JSON.parse(fake.lastBody) as { messages: Array<{ content: string }> }).messages[1]?.content ?? '';
-      const bodyPart = sent.split('正文：\n')[1] ?? '';
+      const bodyPart = (sent.split('正文：\n')[1] ?? '').split('\n\n（正文过长已截断')[0] ?? '';
       assert.equal(bodyPart.length, 24000, `发给模型的正文应为 24000 字，实际 ${bodyPart.length}`);
+    });
+
+    await t.test('T13b 翻译按 4000 字预算（90 秒内能翻完的量）', async () => {
+      fake.mode = 'ok';
+      await ask(cOwner, longId, { action: 'translate' });
+      const sent = (JSON.parse(fake.lastBody) as { messages: Array<{ content: string }> }).messages[1]?.content ?? '';
+      const bodyPart = (sent.split('正文：\n')[1] ?? '').split('\n\n（正文过长已截断')[0] ?? '';
+      assert.ok(bodyPart.length <= 4000, `翻译正文应 ≤4000 字，实际 ${bodyPart.length}`);
+      assert.match(sent, /正文过长已截断/, '截断时应明确告知模型');
+    });
+
+    await t.test('T13c 正文去噪：折叠空行、丢弃重复长行', async () => {
+      fake.mode = 'ok';
+      const noisy = '第一段正文。\n\n\n\n\n第二段正文。\n'
+        + '这是一句重复出现的长引导语，用来测试去重是否生效。\n'
+        + '这是一句重复出现的长引导语，用来测试去重是否生效。\n'
+        + '最后一句话。';
+      const [noisyEntry] = await db.insert(entriesTable)
+        .values({ feedId: feed!.id, guid: `ai-noisy-${stamp}`, title: '带噪声的正文', content: noisy })
+        .returning();
+      assert.ok(noisyEntry);
+      const r = await ask(cOwner, noisyEntry.id);
+      assert.equal(r.ok, true);
+      const sent = (JSON.parse(fake.lastBody) as { messages: Array<{ content: string }> }).messages[1]?.content ?? '';
+      assert.doesNotMatch(sent, /\n\n\n/, '连续空行应被折叠');
+      const dupCount = sent.split('这是一句重复出现的长引导语').length - 1;
+      assert.equal(dupCount, 1, `重复长行应只保留一行，实际 ${dupCount} 行`);
+      assert.match(sent, /第一段正文/, '去噪不能把正文删掉');
+      assert.match(sent, /最后一句话/, '去噪不能把正文删掉');
+    });
+
+    await t.test('T29 默认关思考：请求体带 enable_thinking=false（实测 6s→1.3s）', async () => {
+      fake.mode = 'ok';
+      await ask(cOwner, shortId, { action: 'summary' });
+      const body = JSON.parse(fake.lastBody) as { max_tokens?: number; enable_thinking?: unknown; chat_template_kwargs?: unknown };
+      assert.equal(body.enable_thinking, false, '默认应显式关思考（这是主要提速手段）');
+      assert.equal(body.max_tokens, undefined, 'max_tokens 会被思考链吃满导致空答案，必须不传');
+      assert.equal(body.chat_template_kwargs, undefined, '默认关思考时不应下发 chat_template_kwargs');
+    });
+
+    await t.test('T30 默认关闭思考（系统提示带 /no_think）', async () => {
+      fake.mode = 'ok';
+      fake.prompts.length = 0;
+      await ask(cOwner, shortId);
+      assert.match(fake.prompts[0] ?? '', /\/no_think/, `系统提示应带 /no_think：${fake.prompts[0]}`);
+    });
+
+    await t.test('T31 账号显式开了思考模式 → 带 /think（设置不能白开）', async () => {
+      fake.mode = 'ok';
+      await db.execute(sql`update user_llm set thinking = true where user_id = ${ownerId}`);
+      try {
+        fake.prompts.length = 0;
+        await ask(cOwner, shortId);
+        assert.match(fake.prompts[0] ?? '', /\/think/, `应跟随账号设置带 /think：${fake.prompts[0]}`);
+      } finally {
+        await db.execute(sql`update user_llm set thinking = false where user_id = ${ownerId}`);
+      }
     });
 
     await t.test('T14 没有正文的条目也能调（不因 null 抛 500）', async () => {
@@ -381,20 +454,39 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       assert.match(r.result, /^E_AI_BAD_RESPONSE/, `实际：${r.result}`);
     });
 
-    await t.test('T19 上游没有 content → E_AI_NO_CONTENT', async () => {
+    await t.test('T19 上游没有 content → E_AI_NO_CONTENT（重试一次后仍为空）', async () => {
       fake.mode = 'nocontent';
+      const before = fake.hits;
       const r = await ask(cOwner, shortId);
       assert.equal(r.ok, false);
       assert.match(r.result, /^E_AI_NO_CONTENT/, `实际：${r.result}`);
+      assert.equal(fake.hits - before, 2, '空内容应重试一次（共打两次上游）');
     });
 
-    await t.test('T20 上游连接被掐断 → 记录实际文案（是否码化待评估）', async () => {
+    await t.test('T19b 空内容后重试成功（模拟答案只在思考链里）', async () => {
+      fake.mode = 'emptyThenOk';
+      emptyCount = 0;
+      const before = fake.hits;
+      const r = await ask(cOwner, shortId);
+      assert.equal(r.ok, true, `重试应成功，实际 ${r.result}`);
+      assert.equal(r.result, '重试后拿到的摘要。');
+      assert.equal(fake.hits - before, 2, '应第一次空、第二次成功');
+    });
+
+    await t.test('T19c 鉴权失败不重试（重试只会更糟）', async () => {
+      fake.mode = 'auth';
+      const before = fake.hits;
+      const r = await ask(cOwner, shortId);
+      assert.equal(r.ok, false);
+      assert.equal(fake.hits - before, 1, '401 不应重试');
+    });
+
+    await t.test('T20 上游连接被掐断 → E_AI_NETWORK（不再是裸的 fetch failed）', async () => {
       fake.mode = 'drop';
       const r = await ask(cOwner, shortId);
       assert.equal(r.ok, false, '断连必须报错');
-      assert.ok(r.result.length > 0, '错误文案不能为空');
-      // 这里先只记录：网络类错误目前是否带 E_AI_ 码，由报告判定严重程度
-      console.log(`[T20] 连接中断的实际提示：${JSON.stringify(r.result)}`);
+      assert.match(r.result, /^E_AI_NETWORK/, `实际：${r.result}`);
+      assert.doesNotMatch(r.result, /^fetch failed/, '不能把 undefined 网络错误原样抛给用户');
     });
 
     await t.test('T27 所有失败响应都不含中文（界面语言由前端词典负责）', async () => {
@@ -489,6 +581,22 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       const avg = Math.round(runs.reduce((a, b) => a + b, 0) / runs.length);
       assert.ok(avg < 2000, `平均耗时 ${avg}ms（三次 ${runs.join('/')}）`);
       console.log(`[T28] 三次正常调用耗时：${runs.join(' / ')}ms`);
+    });
+
+    /* 这条必须放最后：降级会把 host 记进进程内缓存，之后所有调用都不再带该字段。 */
+    await t.test('T32 上游拒绝 enable_thinking（400 UNKNOWN_FIELD）→ 自动摘字段重试成功', async () => {
+      fake.mode = 'rejectET';
+      const before = fake.hits;
+      const r = await ask(cOwner, shortId);
+      assert.equal(r.ok, true, `降级后应成功，实际 ${r.result}`);
+      assert.equal(r.result, '降级后拿到的摘要。');
+      assert.equal(fake.hits - before, 2, '应是「带字段被拒 → 摘掉重发」两次');
+
+      // 记住之后：同一上游不再带这个字段，避免每次多一趟 400
+      const before2 = fake.hits;
+      const r2 = await ask(cOwner, shortId);
+      assert.equal(r2.ok, true);
+      assert.equal(fake.hits - before2, 1, '同一上游第二次应直接成功（缓存生效）');
     });
   } finally {
     fakeServer?.close();

@@ -247,9 +247,64 @@ export interface ChatOptions {
   temperature?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
+  /**
+   * 输出 token 上限（`max_tokens`）。
+   * 不设时模型会「越写越多」——摘要生成 800 字、要点写成小作文，
+   * 这些 completion token 直接变成用户的等待时间。单篇动作请显式给上限。
+   */
+  maxTokens?: number;
+  /**
+   * 输出为空（模型只吐了思考链、`content` 是空串）时是否自动重试一次。
+   * 混合思考模型没收到 `/no_think` 时会这样，重试通常就能拿到正常答案。
+   */
+  retryOnEmpty?: boolean;
+  /** 本次调用的**总**时长预算（含重试）；不传则 `timeoutMs × 尝试次数`。 */
+  budgetMs?: number;
 }
 
 export const LLM_TIMEOUT_MS = 180_000;
+
+/**
+ * 把 fetch 的网络层失败收敛成稳定码。
+ *
+ * `fetch failed` / `ECONNREFUSED` 这类原文对用户毫无信息量：既不知道是地址写错、
+ * 网络不通还是上游挂了。错误码交给前端词典，具体原因（`ENOTFOUND` 等）作 detail。
+ */
+function networkError(e: unknown): Error {
+  const err = e as { message?: unknown; cause?: { code?: unknown; message?: unknown } };
+  const cause = err?.cause ?? {};
+  const detail =
+    (typeof cause.code === 'string' && cause.code) ||
+    (typeof cause.message === 'string' && cause.message) ||
+    (typeof err?.message === 'string' && err.message) ||
+    'unknown network error';
+  return aiError('E_AI_NETWORK', clamp(String(detail), 120));
+}
+
+/** 已经是 `E_AI_*` 的错误原样上抛，避免被二次包成「网络错误」。 */
+const isAiError = (e: unknown): boolean =>
+  e instanceof Error && /^E_AI_[A-Z_]+/.test(e.message);
+
+/**
+ * 记录「不接受 enable_thinking 的上游」（按 host 记忆）。
+ *
+ * 关思考这件事各家写法不一样：vLLM / SiliconFlow 认 `chat_template_kwargs`，
+ * 有的网关只认顶层 `enable_thinking`，还有的见到未知字段直接 400 UNKNOWN_FIELD。
+ * 所以先带 `enable_thinking: false` 试；被拒就记进这个集合，之后同一上游不再带，
+ * 避免每次调用都白跑一趟 400。
+ */
+const noThinkingUnsupported = new Set<string>();
+
+const hostOf = (baseUrl: string): string => {
+  try { return new URL(baseUrl).host; } catch { return baseUrl; }
+};
+
+/** 上游明确说「不认识这个字段」。 */
+const isUnknownField = (e: unknown, field: string): boolean =>
+  e instanceof Error
+  && e.message.startsWith('E_AI_HTTP')
+  && /UNKNOWN_FIELD|未知请求字段|unknown field/i.test(e.message)
+  && e.message.includes(field);
 
 /**
  * 调一次 OpenAI 兼容接口，取 `choices[0].message.content` 与 token 用量。
@@ -275,15 +330,72 @@ export async function chat(
     opts.temperature !== undefined ? clampTemperature(opts.temperature) : clampTemperature(llm.temperature);
 
   const body: Record<string, unknown> = { model, temperature, messages };
+  // 输出上限：不传就一直写到模型自己觉得够了，白等几十秒
+  if (opts.maxTokens && opts.maxTokens > 0) body.max_tokens = Math.round(opts.maxTokens);
 
-  /* 开思考时把预算交给推理模板。`chat_template_kwargs` 是 vLLM / SiliconFlow 这类
-   * OpenAI 兼容服务的透传口，模板里对应 enable_thinking 与 thinking_budget；
-   * 不支持的上游会忽略这个字段（顶多没生效，不会因为未知键拒请求）。 */
+  /* 关思考：优先用顶层 `enable_thinking: false`。
+   *
+   * 这是实测出来的最快路径 —— 同一篇短文，带该字段 1.3 秒、不带 6.0 秒，
+   * completion 从 102 降到 35，`reasoning_content` 直接为空。
+   * 为什么不用 `chat_template_kwargs`：测试机的上游对它直接 400 UNKNOWN_FIELD；
+   * 为什么不用文本 `/no_think`：那只是个普通 token，混合思考模型未必照做
+   * （实测 reasoning 反而更长）。system 提示里仍保留 `/no_think`（支持的模型认它），
+   * 两条路并行不冲突。
+   *
+   * 不支持的网关会回 400，由 `chat` 的循环摘掉该字段重试一次。 */
+  const host = hostOf(baseUrl);
+  if (!llm.thinking && !noThinkingUnsupported.has(host)) {
+    body.enable_thinking = false;
+  }
+
+  /* 开思考时把预算交给推理模板（vLLM / SiliconFlow 的透传口）。 */
   if (llm.thinking) {
     body.chat_template_kwargs = { enable_thinking: true, thinking_budget: llm.thinkingBudget };
   }
 
   const timeoutMs = opts.timeoutMs ?? LLM_TIMEOUT_MS;
+  /** 总预算：空内容重试与字段降级都要落在同一个预算里，否则「90 秒上限」会被翻倍。 */
+  const budget = opts.budgetMs ?? timeoutMs * (opts.retryOnEmpty ? 2 : 1);
+  const deadline = Date.now() + budget;
+  /* 步数上限 = 原始 1 次 + 字段降级 1 次 + 空内容重试 1 次 */
+  const maxSteps = opts.retryOnEmpty ? 3 : 2;
+  let emptyRetried = false;
+  let lastErr: unknown = null;
+
+  for (let step = 0; step < maxSteps; step += 1) {
+    const remaining = deadline - Date.now();
+    if (remaining < 1_000) break;
+    try {
+      return await chatOnce(body, llm, opts, Math.min(timeoutMs, remaining));
+    } catch (e) {
+      lastErr = e;
+      /* ① 上游不认 `enable_thinking`：摘掉重量，并记住这台上游，立刻重来。 */
+      if (isUnknownField(e, 'enable_thinking') && 'enable_thinking' in body) {
+        delete body.enable_thinking;
+        noThinkingUnsupported.add(host);
+        continue;
+      }
+      /* ② 空内容：模型只吐了思考链，允许重试一次。 */
+      if (
+        opts.retryOnEmpty && !emptyRetried
+        && e instanceof Error && e.message.startsWith('E_AI_NO_CONTENT')
+      ) {
+        emptyRetried = true;
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr ?? aiError('E_AI_TIMEOUT', `no response within ${Math.max(1, Math.round(budget / 1000))}s`);
+}
+
+/** 发一次请求。重试、预算与 body 组装都在 `chat` 里，这里只管单次往返。 */
+async function chatOnce(
+  body: Record<string, unknown>,
+  llm: ResolvedLlm,
+  opts: ChatOptions & { fetchImpl: FetchLike },
+  timeoutMs: number,
+): Promise<ChatResult> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   // 调用方自己的 signal（比如请求被客户端断开）也要能中断这次出网
@@ -291,9 +403,9 @@ export async function chat(
   opts.signal?.addEventListener('abort', onAbort, { once: true });
 
   try {
-    const resp = await opts.fetchImpl(llmEndpoint(baseUrl), {
+    const resp = await opts.fetchImpl(llmEndpoint(llm.baseUrl), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + llm.apiKey },
       body: JSON.stringify(body),
       signal: ctl.signal,
     });
@@ -322,11 +434,14 @@ export async function chat(
     }
     return { content, usage };
   } catch (e) {
+    if (isAiError(e)) throw e;
     if (isAbortError(e)) {
-      // 超时是最常见的失败：把「等了多少秒」写进补充信息，用户才知道该不该重试
-      throw aiError('E_AI_TIMEOUT', `no response within ${Math.round(timeoutMs / 1000)}s`);
+      /* 主动取消与「到点超时」是两件事：混成一句「超时」会让排障完全跑偏
+       * （用户切走、服务端关闭连接时，模型其实没超时）。 */
+      if (opts.signal?.aborted) throw aiError('E_AI_ABORTED', 'the request was cancelled');
+      throw aiError('E_AI_TIMEOUT', `no response within ${Math.max(1, Math.round(timeoutMs / 1000))}s`);
     }
-    throw e;
+    throw networkError(e);
   } finally {
     clearTimeout(timer);
     opts.signal?.removeEventListener('abort', onAbort);
@@ -426,10 +541,11 @@ export async function listModels(
     if (!models.length) throw aiError('E_AI_NO_MODELS', 'the upstream returned an empty model list');
     return models;
   } catch (e) {
+    if (isAiError(e)) throw e;
     if (isAbortError(e)) {
-      throw aiError('E_AI_TIMEOUT', `no response within ${Math.round(timeoutMs / 1000)}s`);
+      throw aiError('E_AI_TIMEOUT', `no response within ${Math.max(1, Math.round(timeoutMs / 1000))}s`);
     }
-    throw e;
+    throw networkError(e);
   } finally {
     clearTimeout(timer);
   }

@@ -41,6 +41,16 @@ This file records user-visible changes and deployment-related changes for 2.x.
   the UI while the request actually succeeded a minute later. A "waiting N s" counter is shown while
   in flight, and model failures are reported in plain language (timeout / auth / upstream error /
   unparsable response) instead of raw text such as `signal is aborted without reason`.
+- **Faster AI responses**: thinking is now explicitly disabled (`enable_thinking: false`) for calls
+  that do not ask for it. A single-article summary went from **56–76 s to 3–5 s** in testing, with
+  output tokens dropping from 3000+ to around 140 and no quality loss. If an upstream rejects the
+  field, it is dropped and the failure is remembered. Digest batching now runs four chunks in
+  parallel, cutting total generation time substantially.
+- **Single-article AI caps at 90 s**: below Cloudflare's 100-second proxy timeout, so long requests no
+  longer turn into a gateway `524` (where the UI errors out while the server keeps working).
+  Translation is budgeted at 4000 characters accordingly, and truncation is stated explicitly.
+- **Clearer model failures**: an unreachable endpoint now reads "cannot reach the model address…",
+  and a cancelled request says "cancelled" instead of being reported as a timeout.
 
 ### Removed
 

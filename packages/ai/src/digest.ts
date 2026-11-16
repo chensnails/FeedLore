@@ -23,6 +23,14 @@ const COLLECT_LIMIT = 3000;
 /** 单轮直出上限，超过走 map-reduce（模型上下文有限，120 条以上质量会明显下滑）。 */
 const SINGLE_LIMIT = 90;
 const CHUNK = 40;
+/**
+ * map 阶段并发度。
+ *
+ * 串行分批时总时长 = 批数 × 单批耗时：300 条 → 8 批 ≈ 3 分钟，前端 200s 上限必断，
+ * 走 Cloudflare 更早（100s 代理超时 → 524）。四路并发把常见规模压到一分钟出头。
+ * 不取更高：兼容服务普遍对同一 Key 有并发限制，429 会让整批降级成「没挑出东西」。
+ */
+const MAP_CONCURRENCY = 4;
 
 /* ============================ 小工具 ============================ */
 
@@ -274,36 +282,55 @@ async function mapReduce(
   const chunks: PoolEntry[][] = [];
   for (let i = 0; i < compact.length; i += CHUNK) chunks.push(compact.slice(i, i + CHUNK));
 
-  const mini: Array<{ base: PoolEntry[]; data: { summary?: unknown; notable?: Array<{ ref?: unknown; why?: unknown }> } }> = [];
-  for (const ch of chunks) {
+  /* 分片并发：结果按批号回填，顺序与串行完全一致（终稿靠批号拼「第 N 批」），
+   * 所以并发只影响耗时，不影响产物。单批失败仍按「这批没挑出东西」降级。 */
+  const mini: Array<{ base: PoolEntry[]; data: { summary?: unknown; notable?: Array<{ ref?: unknown; why?: unknown }> } }> =
+    new Array(chunks.length);
+  let cursor = 0;
+
+  const runChunk = async (ci: number): Promise<void> => {
+    const ch = chunks[ci];
+    if (!ch) return;
     const lines = ch.map((e, i) => toLine(e, i + 1));
-    const { content } = await chat(
-      [
-        { role: 'system', content: systemPrompt(llm) },
-        {
-          role: 'user',
-          content: [
-            `下面是 ${ch.length} 条新条目（编号为批内编号）：`,
-            '',
-            lines.join('\n'),
-            '',
-            '请输出 JSON：{ "summary": "这一批的 2 句话概括", "notable": [ { "ref": 批内编号, "why": "值得关注的原因，15 字内" } ] }',
-            'notable 最多 6 条，只挑真正有价值的。只输出 JSON。',
-            // 选材侧重要在这一轮就起作用：终稿只能从这批挑出的 notable 里选
-            ...(style ? ['', STYLE_GUARD, style] : []),
-          ].join('\n'),
-        },
-      ] as ChatMessage[],
-      llm,
-      { fetchImpl, onUsage },
-    );
     try {
-      mini.push({ base: ch, data: extractJson(content) as (typeof mini)[number]['data'] });
+      const { content } = await chat(
+        [
+          { role: 'system', content: systemPrompt(llm) },
+          {
+            role: 'user',
+            content: [
+              `下面是 ${ch.length} 条新条目（编号为批内编号）：`,
+              '',
+              lines.join('\n'),
+              '',
+              '请输出 JSON：{ "summary": "这一批的 2 句话概括", "notable": [ { "ref": 批内编号, "why": "值得关注的原因，15 字内" } ] }',
+              'notable 最多 6 条，只挑真正有价值的。只输出 JSON。',
+              // 选材侧重要在这一轮就起作用：终稿只能从这批挑出的 notable 里选
+              ...(style ? ['', STYLE_GUARD, style] : []),
+            ].join('\n'),
+          },
+        ] as ChatMessage[],
+        llm,
+        { fetchImpl, onUsage },
+      );
+      mini[ci] = { base: ch, data: extractJson(content) as (typeof mini)[number]['data'] };
     } catch {
       // 单批解析失败不该毁掉整份日报：当作「这批没挑出东西」，其余批次继续
-      mini.push({ base: ch, data: { summary: '', notable: [] } });
+      mini[ci] = { base: ch, data: { summary: '', notable: [] } };
     }
+  };
+
+  const workers: Array<Promise<void>> = [];
+  for (let w = 0; w < Math.min(MAP_CONCURRENCY, chunks.length); w += 1) {
+    workers.push((async () => {
+      while (cursor < chunks.length) {
+        const ci = cursor;
+        cursor += 1;
+        await runChunk(ci);
+      }
+    })());
   }
+  await Promise.all(workers);
 
   const flat: PoolEntry[] = [];
   const digestLines: string[] = [];
