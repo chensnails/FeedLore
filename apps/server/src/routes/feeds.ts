@@ -31,7 +31,7 @@ import { apiError, ApiException } from '../lib/apiError';
 import { assertResponse, BadRequest } from '../lib/validate';
 import { toFeed, type FeedCounts, type FeedRow } from '../lib/dto';
 import { assertFeedUrl, assertPublicHost } from '../lib/net';
-import { getLastRefreshAt, refreshFeeds, refreshOneFeed } from '../lib/fetcher';
+import { getLastRefreshAt, getRefreshProgress, refreshFeeds, refreshOneFeed } from '../lib/fetcher';
 import { buildOpml, parseOpml } from '../lib/opml';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 import { getSource } from '../lib/settings';
@@ -523,6 +523,12 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             ),
           );
         },
+      )
+
+      /* ---------------- GET /api/feeds/refresh-progress ----------------
+       * 整轮抓取进度。无库时返回「未在刷新」；不给用户身份之外的信息。 */
+      .get(feedsSpec.refreshProgress.path, requireAuth(auth, 'user'), (c) =>
+        c.json(assertResponse(feedsSpec.refreshProgress.response, getRefreshProgress(), 'GET /api/feeds/refresh-progress')),
       )
 
       /* ---------------- POST /api/feeds/refresh ----------------

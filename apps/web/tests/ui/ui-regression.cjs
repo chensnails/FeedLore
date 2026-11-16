@@ -535,6 +535,9 @@ w.feedlore = {
         failed: refreshAllFailed ? [{ feedId: '1', error: 'timeout' }] : [],
       });
     }
+    if (url === '/api/feeds/refresh-progress' && method === 'GET') {
+      return ok({ running: false, label: '', total: 0, done: 0, startedAt: null });
+    }
     if (url === '/api/feeds/import' && method === 'POST') {
       if (importShouldFail) { importShouldFail = false; return bad('E_UNEXPECTED_OPML'); }
       const text = String((body && body.opml) || '');
@@ -2478,6 +2481,14 @@ const withEFP = (el, fn) => {
   });
   refreshAllFailed = false;
 
+  // 进度：源码守卫确保按钮有 done/total 展示、定时器在收尾时清理、轮询失败静默
+  t('刷新全部：按钮显示 done/total 进度，且轮询定时器有清理', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'settings', 'SourcePane.jsx'), 'utf8');
+    if (src.indexOf('/api/feeds/refresh-progress') < 0) throw new Error('缺进度端点');
+    if (src.indexOf('refreshProgress.done') < 0 || src.indexOf('refreshProgress.total') < 0) throw new Error('按钮未展示 done/total');
+    const clears = (src.match(/clearInterval\(progressTimer\.current\)/g) || []).length;
+    if (clears < 2) throw new Error('进度定时器需在 finally 与卸载时各清理一次，实际 ' + clears);
+  });
   // ---- 异常路径：列表拉取失败 / 空列表 ----
   clickTab('外观'); await sleep(40);
   feedsFailNext = true;

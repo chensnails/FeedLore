@@ -21,10 +21,12 @@ import {
   feedIntervalMs,
   getLastRefreshAt,
   getLastRun,
+  getRefreshProgress,
   inFlightCount,
   type FeedRow,
 } from './fetcher';
 import { userDigest, userLayout } from './prefs';
+import { condPenalties } from './feedCond';
 import { APP_VERSION } from '../env';
 
 /* ============================================================================
@@ -386,6 +388,8 @@ export async function buildStatus(
         nextRefreshAt,
         dueCount,
         inFlight: inFlightCount(),
+        refreshProgress: getRefreshProgress(),
+        condPenalties: condPenalties(),
         lastResult: run
           ? {
               added: run.added,

@@ -301,6 +301,8 @@ export function SourcePane({ admin, onDirtyChange }) {
   const [renamingGroupDraft, setRenamingGroupDraft] = useState(''); // 组重命名草稿（提交式）
   const [busyFeed, setBusyFeed] = useState('');        // 单频道「立即抓取」中的 id
   const [busy, setBusy] = useState('');                // '' | 'add' | 'import' | 'all' | 'save' | 'imgclear' | 'bulk'
+  const [refreshProgress, setRefreshProgress] = useState(null); // 刷新全部时的 { done, total }
+  const progressTimer = useRef(null);
   // 某个频道有保存中的请求时禁用该行控件（防重复提交）
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [drop, setDrop] = useState(null);              // 拖拽落点指示 { type, id, group, before }
@@ -713,6 +715,7 @@ export function SourcePane({ admin, onDirtyChange }) {
     document.removeEventListener('pointerup', endRef.current);
     document.removeEventListener('pointercancel', endRef.current);
     document.body.classList.remove('is-dragging-feeds');
+    if (progressTimer.current) clearInterval(progressTimer.current);
     const ctx = dragRef.current;
     if (ctx && ctx.el) ctx.el.style.pointerEvents = '';
   }, []);
@@ -770,6 +773,17 @@ export function SourcePane({ admin, onDirtyChange }) {
   const onRefreshAll = async () => {
     const s = S();
     setBusy('all');
+    // 进度条：POST 要等整轮抓完才回，期间每 1.5s 拉一次轻量 GET 显示 done/total。
+    // 这是旁路只读请求；失败不影响主刷新，卸载/收尾时一律清掉定时器。
+    setRefreshProgress(null);
+    progressTimer.current = setInterval(async () => {
+      try {
+        const pr = await s.apiFetch('/api/feeds/refresh-progress');
+        if (!pr.ok) return;
+        const p = await pr.json();
+        if (p && p.running) setRefreshProgress({ done: p.done, total: p.total });
+      } catch { /* 进度轮询失败静默：主请求照常完成 */ }
+    }, 1500);
     try {
       const res = await s.apiFetch('/api/feeds/refresh', { method: 'POST' });
       const data = await res.json();
@@ -787,6 +801,8 @@ export function SourcePane({ admin, onDirtyChange }) {
     } catch (err) {
       setResult({ ok: false, msg: '抓取失败：' + (err.message || err) });
     } finally {
+      if (progressTimer.current) { clearInterval(progressTimer.current); progressTimer.current = null; }
+      setRefreshProgress(null);
       setBusy('');
     }
   };
@@ -1618,7 +1634,11 @@ export function SourcePane({ admin, onDirtyChange }) {
               disabled={busy === 'all'}
               onClick={onRefreshAll}
             >
-              {busy === 'all' ? '抓取中…' : '刷新全部'}
+              {busy === 'all'
+                ? (refreshProgress && refreshProgress.total
+                  ? `抓取中 ${refreshProgress.done}/${refreshProgress.total}…`
+                  : '抓取中…')
+                : '刷新全部'}
             </button>
             <button
               className="btn btn-primary"

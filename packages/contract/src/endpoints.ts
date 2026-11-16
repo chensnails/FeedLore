@@ -109,6 +109,18 @@ export const auth = {
         nextRefreshAt: C.IsoDateTime.nullable(),
         dueCount: z.number(),
         inFlight: z.number(),
+        /** 整轮刷新进度（刷新全部按钮旁的细粒度展示） */
+        refreshProgress: z.object({
+          running: z.boolean(),
+          label: z.string(),
+          total: z.number().int(),
+          done: z.number().int(),
+          startedAt: C.IsoDateTime.nullable(),
+        }),
+        /** 条件请求被忽略而降频的 host（进程内观测，重启重置） */
+        condPenalties: z.array(
+          z.object({ host: z.string(), misses: z.number().int(), factor: z.number(), lastAt: C.IsoDateTime }),
+        ),
         lastResult: z
           .object({
             added: z.number(),
@@ -297,6 +309,19 @@ export const feeds = {
       existed: z.boolean(),
       feed: M.FeedSchema,
       added: z.number().int(),
+    }),
+  },
+  /** 当前抓取进度（给「刷新全部」按钮旁展示；只读、无副作用） */
+  refreshProgress: {
+    method: 'get',
+    path: '/api/feeds/refresh-progress',
+    auth: 'user',
+    response: z.object({
+      running: z.boolean(),
+      label: z.string(),
+      total: z.number().int(),
+      done: z.number().int(),
+      startedAt: C.IsoDateTime.nullable(),
     }),
   },
   refresh: {

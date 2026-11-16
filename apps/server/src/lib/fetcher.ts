@@ -39,6 +39,7 @@ import {
   SCHEDULER_ENABLED,
 } from '../env';
 import { getSource, sourceSnapshot, type SourceConfig } from './settings';
+import { classifyCond, condFactor, condHost, noteCond } from './feedCond';
 
 export type FeedRow = typeof feeds.$inferSelect;
 
@@ -51,6 +52,12 @@ const MAX_BYTES = 12 * 1024 * 1024;
 const RETRY_MAX = 3;
 const RETRY_BASE_MS = 800;
 const RETRY_FACTOR = 2.4;
+/**
+ * 单源重试的**总预算**：从首次请求开始，最多 `timeoutMs + 8s`。
+ * 之前没有总预算，25s 超时 × 3 次 + 退避 = 77.8 秒（真机实测那轮 6 个源直接被拖垮）。
+ * 8s 只覆盖退避与第二次「快速失败」，不让慢源把整轮卡住；timeoutMs 仍由采集参数控制。
+ */
+const RETRY_EXTRA_MS = 8_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -105,14 +112,22 @@ export async function fetchFeedRaw(
   if (lastModified) headers['If-Modified-Since'] = lastModified;
 
   const budget = Number(timeoutMs) > 0 ? Number(timeoutMs) : FETCH_TIMEOUT_MS;
+  const deadline = Date.now() + budget + RETRY_EXTRA_MS;
+  const host = condHost(url);
   let lastErr: unknown = null;
 
   for (let attempt = 1; attempt <= RETRY_MAX; attempt++) {
+    // 每次请求都按「剩余总预算」缩额，避免最后一个 attempt 拿到完整 budget 把总时长顶穿
+    const left = deadline - Date.now();
+    if (left <= 0) throw lastErr ?? new FeedError('E_FETCH_TIMEOUT');
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), budget);
+    const timer = setTimeout(() => ctl.abort(), Math.min(budget, left));
     try {
       const resp = await safeFetch(url, { headers, signal: ctl.signal });
-      if (resp.status === 304) return { notModified: true, status: 304, finalUrl: url };
+      if (resp.status === 304) {
+        noteCond(host, 'hit');
+        return { notModified: true, status: 304, finalUrl: url };
+      }
 
       if (!resp.ok) {
         const status = resp.status;
@@ -139,12 +154,15 @@ export async function fetchFeedRaw(
         body = buf.toString('utf8');
       }
 
+      const resEtag = resp.headers.get('etag');
+      const resLast = resp.headers.get('last-modified');
+      noteCond(host, classifyCond({ etag, lastModified }, { status: resp.status, etag: resEtag, lastModified: resLast }));
       return {
         notModified: false,
         status: resp.status,
         body,
-        etag: resp.headers.get('etag'),
-        lastModified: resp.headers.get('last-modified'),
+        etag: resEtag,
+        lastModified: resLast,
         finalUrl: resp.url || url,
       };
     } catch (e) {
@@ -163,7 +181,10 @@ export async function fetchFeedRaw(
         || err?.code === 'E_FETCH_TOO_LARGE'
         || /ECONN|EAI_|fetch failed|socket hang up|network/i.test(msg);
       if (permanent || attempt >= RETRY_MAX || !maybeTransient) throw lastErr;
-      await sleep(Math.round(RETRY_BASE_MS * RETRY_FACTOR ** (attempt - 1)));
+      const backoff = Math.round(RETRY_BASE_MS * RETRY_FACTOR ** (attempt - 1));
+      // 退避也要落在总预算里，否则「睡完再发起一次完整超时」照样破上限
+      if (Date.now() + backoff >= deadline) throw lastErr;
+      await sleep(backoff);
     } finally {
       clearTimeout(timer);
     }
@@ -661,6 +682,7 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = 'manual'): P
   const items = [...groups.entries()];
   const results: GroupResult[] = [];
   let cursor = 0;
+  currentRun = { label, total: items.length, done: 0, startedAt: startedAt };
 
   const worker = async (): Promise<void> => {
     for (;;) {
@@ -668,9 +690,14 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = 'manual'): P
       const entry = items[idx];
       if (!entry) return;
       results.push(await refreshGroup(db, entry[0], entry[1], cfg));
+      if (currentRun) currentRun.done += 1;
     }
   };
-  await Promise.all(Array.from({ length: Math.min(cfg.concurrency, items.length || 1) }, worker));
+  try {
+    await Promise.all(Array.from({ length: Math.min(cfg.concurrency, items.length || 1) }, worker));
+  } finally {
+    currentRun = null;
+  }
 
   // 关注命中先推送（需要 prefs，直接用本轮已经查过的）
   const prefs = await loadPrefs(db, rows.map((r) => r.ownerId));
@@ -729,12 +756,19 @@ export function feedIntervalMs(
   return mins * 60_000;
 }
 
-/** 距上次抓取已超过自己间隔的频道（从没抓过的一律算到期） */
+/**
+ * 距上次抓取已超过自己间隔的频道（从没抓过的一律算到期）。
+ * 条件头被源站连续忽略时，用进程内观测到的倍数拉长间隔（1/2/4 倍），
+ * 不写库、不改用户配置 —— 这是运行期自适应，重启后重新学习。
+ */
 export function dueFeeds(rows: FeedRow[], now = Date.now()): FeedRow[] {
   return rows.filter((f) => {
     if (!f.enabled) return false;
     const lastAt = f.lastFetchedAt?.getTime() ?? 0;
-    return !lastAt || now - lastAt >= feedIntervalMs(f);
+    if (!lastAt) return true;
+    const host = condHost(f.url);
+    const interval = feedIntervalMs(f) * (host ? condFactor(host) : 1);
+    return now - lastAt >= interval;
   });
 }
 
@@ -760,6 +794,26 @@ export interface LastRunStat {
 
 let lastRun: LastRunStat | null = null;
 export const getLastRun = (): LastRunStat | null => lastRun;
+
+/** 当前正在进行的整轮刷新进度（给「刷新全部」按钮旁展示，不阻塞主请求）。 */
+export interface RefreshProgress {
+  running: boolean;
+  label: string;
+  total: number;
+  done: number;
+  startedAt: string | null;
+}
+let currentRun: { label: string; total: number; done: number; startedAt: number } | null = null;
+export function getRefreshProgress(): RefreshProgress {
+  if (!currentRun) return { running: false, label: '', total: 0, done: 0, startedAt: null };
+  return {
+    running: true,
+    label: currentRun.label,
+    total: currentRun.total,
+    done: currentRun.done,
+    startedAt: new Date(currentRun.startedAt).toISOString(),
+  };
+}
 
 /** 正在回源的 URL 组数（状态页「正在抓取 N 个」）。 */
 export const inFlightCount = (): number => inFlight.size;
