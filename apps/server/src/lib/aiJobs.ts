@@ -54,13 +54,36 @@ export function toJobView(row: AiJobRow, now = Date.now()): AiJob {
   };
 }
 
-/** 该账号活跃任务数（queued + running）。 */
-async function activeJobCount(db: Db, uid: string): Promise<number> {
-  const [row] = await db
-    .select({ n: count() })
-    .from(aiJobs)
-    .where(and(eq(aiJobs.userId, uid), inArray(aiJobs.status, ['queued', 'running'])));
-  return Number(row?.n ?? 0);
+/**
+ * 原子准入：同一账号的并发提交串行化，只有活跃任务 < 上限时才插入。
+ *
+ * 为什么不能用单条 `INSERT … SELECT … WHERE count < N`：READ COMMITTED 下每个事务
+ * 看到自己的 snapshot，并发事务都读不到别人未提交的新行，8 并发实测仍放进 5 个。
+ * 这里用 PostgreSQL advisory lock 按 userId 派生锁键：同账号事务排队、不同账号并行，
+ * 事务内 count + insert 对后续事务可见，上限才真正成立。锁随事务结束自动释放。
+ */
+async function insertIfUnderLimit(
+  db: Db,
+  values: { id: string; userId: string; kind: string; label: string; input: Record<string, unknown> },
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    // hashtext → int4，advisory lock 接受两个 int4（这里第二参固定 0）
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${values.userId}), 0)`);
+    const [row] = await tx
+      .select({ n: count() })
+      .from(aiJobs)
+      .where(and(eq(aiJobs.userId, values.userId), inArray(aiJobs.status, ['queued', 'running'])));
+    if (Number(row?.n ?? 0) >= AI_JOB_MAX_ACTIVE) return false;
+    await tx.insert(aiJobs).values({
+      id: values.id,
+      userId: values.userId,
+      kind: values.kind as 'entry_ai' | 'ai_tags' | 'digest',
+      status: 'queued',
+      label: values.label,
+      input: values.input,
+    });
+    return true;
+  });
 }
 
 /** 顺带清理过期任务：失败不影响提交。 */
@@ -112,8 +135,6 @@ export async function createJob(db: Db, uid: string, body: AiJobBody): Promise<A
     label = date ? `日报 ${date}` : '日报';
   }
 
-  if ((await activeJobCount(db, uid)) >= AI_JOB_MAX_ACTIVE) throw new ApiException('E_AI_BUSY');
-
   const input: Record<string, unknown> = {};
   if (entryId != null) input.entryId = entryId;
   if (kind === 'entry_ai') {
@@ -127,10 +148,11 @@ export async function createJob(db: Db, uid: string, body: AiJobBody): Promise<A
   }
 
   const id = crypto.randomUUID();
-  const [row] = await db
-    .insert(aiJobs)
-    .values({ id, userId: uid, kind, status: 'queued', label: clip(label, 120), input })
-    .returning();
+  // 原子准入：超限返回 false → 429。绝不能拆成「先 count 再 insert」，并发会绕过。
+  const inserted = await insertIfUnderLimit(db, {
+    id, userId: uid, kind, label: clip(label, 120), input,
+  });
+  if (!inserted) throw new ApiException('E_AI_BUSY');
 
   await pruneOldJobs(db, uid);
 
@@ -143,7 +165,8 @@ export async function createJob(db: Db, uid: string, body: AiJobBody): Promise<A
     });
   });
 
-  return row ?? (await readJobRow(db, uid, id))!;
+  // db.execute 的 RETURNING 是 raw snake_case 行；重新读一条规范化的 AiJobRow 给 toJobView
+  return (await readJobRow(db, uid, id))!;
 }
 
 async function readJobRow(db: Db, uid: string, id: string): Promise<AiJobRow | null> {

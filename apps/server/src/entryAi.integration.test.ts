@@ -703,6 +703,33 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       }
     });
 
+    await t.test('T40 真并发提交 8 个：验证活跃上限在 check-then-act 竞态下仍成立', async () => {
+      fake.mode = 'slow';   // 慢响应，让 queued/running 名额持续被占
+      // 先清干净本账号的残留任务，从 0 开始
+      await db.delete(aiJobs).where(sql`user_id = ${ownerId}`);
+      try {
+        const responses = await Promise.all(
+          Array.from({ length: 8 }, () =>
+            call(cOwner, '/api/ai/jobs', { method: 'POST', json: { kind: 'entry_ai', entryId: shortId, action: 'summary' } }),
+          ),
+        );
+        const statuses = responses.map((r) => r.status);
+        const ok = statuses.filter((s) => s === 200).length;
+        const busy = statuses.filter((s) => s === 429).length;
+        const [row] = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(aiJobs)
+          .where(sql`user_id = ${ownerId}`);
+        console.log(`[T40] 8 并发提交：200=${ok} / 429=${busy} / 落库任务=${row?.n}`);
+        // 上限是 4：至多 4 个成功入列，其余必须 429；落库任务数不能突破 4
+        assert.ok(ok <= 4, `并发成功数应 ≤4，实际 ${ok}（上限被竞态绕过）`);
+        assert.equal(ok + busy, 8, '每个请求都应明确 200 或 429');
+        assert.ok((row?.n ?? 0) <= 4, `落库任务应 ≤4，实际 ${row?.n}`);
+      } finally {
+        await db.delete(aiJobs).where(sql`user_id = ${ownerId}`);
+      }
+    });
+
     await t.test('T39 ai_tags 任务：结果落库并可回读', async () => {
       fake.mode = 'tags';
       const res = await call(cOwner, '/api/ai/jobs', { method: 'POST', json: { kind: 'ai_tags', entryId: shortId } });
