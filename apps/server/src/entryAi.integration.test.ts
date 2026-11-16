@@ -16,7 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import { sql } from 'drizzle-orm';
-import { createDb, feeds as feedsTable, entries as entriesTable } from '@feedlore/db';
+import { aiJobs, createDb, feeds as feedsTable, entries as entriesTable } from '@feedlore/db';
 import { createAuth } from '@feedlore/auth';
 import { createApp } from './app';
 
@@ -32,7 +32,7 @@ const SKIP = DATABASE_URL ? false : '未设置 DATABASE_URL —— 接口级测�
 
 /* ------------------------------------------------------------------ 假模型 */
 
-type Mode = 'ok' | 'auth' | 'html502' | 'notjson' | 'nocontent' | 'emptyThenOk' | 'rejectET' | 'drop' | 'slow';
+type Mode = 'ok' | 'tags' | 'auth' | 'html502' | 'notjson' | 'nocontent' | 'emptyThenOk' | 'rejectET' | 'drop' | 'slow';
 
 interface FakeState {
   mode: Mode;
@@ -78,6 +78,8 @@ const fakeServerFactory = (): Server => createServer((req, res) => {
         : send(200, okBody('降级后拿到的摘要。'));
     }
     switch (fake.mode) {
+      // 打标要的不是自然语言而是 JSON（见 packages/ai/src/tagging.ts）
+      case 'tags': return send(200, okBody('{"tags":["测试","标签"]}'));
       case 'auth': return send(401, JSON.stringify({ error: 'invalid api key' }));
       case 'html502':
         return send(
@@ -390,13 +392,17 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       assert.match(fake.prompts[0] ?? '', /\/no_think/, `系统提示应带 /no_think：${fake.prompts[0]}`);
     });
 
-    await t.test('T31 账号显式开了思考模式 → 带 /think（设置不能白开）', async () => {
+    await t.test('T31 账号显式开了思考模式 → /think + enable_thinking:true（全局开关双向生效）', async () => {
       fake.mode = 'ok';
       await db.execute(sql`update user_llm set thinking = true where user_id = ${ownerId}`);
       try {
         fake.prompts.length = 0;
         await ask(cOwner, shortId);
         assert.match(fake.prompts[0] ?? '', /\/think/, `应跟随账号设置带 /think：${fake.prompts[0]}`);
+        const body = JSON.parse(fake.lastBody) as { enable_thinking?: unknown; thinking_budget?: unknown };
+        // 账号级配置 → 请求体字段：不是前端每次临时传参，所以日报/标签/MCP 全都一致
+        assert.equal(body.enable_thinking, true, '开思考时应显式下发 enable_thinking:true');
+        assert.equal(typeof body.thinking_budget, 'number', '开思考时应带预算');
       } finally {
         await db.execute(sql`update user_llm set thinking = false where user_id = ${ownerId}`);
       }
@@ -581,6 +587,133 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       const avg = Math.round(runs.reduce((a, b) => a + b, 0) / runs.length);
       assert.ok(avg < 2000, `平均耗时 ${avg}ms（三次 ${runs.join('/')}）`);
       console.log(`[T28] 三次正常调用耗时：${runs.join(' / ')}ms`);
+    });
+
+    /* ================================================================ F. 异步任务 */
+    /** 轮询到任务结束（最多 15 秒；假模型都是毫秒级应答）。 */
+    type JobView = { status: string; error: string; result: unknown; durationMs: number };
+    async function waitJob(cookie: string, id: string, timeoutMs = 15_000): Promise<JobView> {
+      const t0 = Date.now();
+      let last: JobView | null = null;
+      while (Date.now() - t0 < timeoutMs) {
+        const res = await call(cookie, `/api/ai/jobs/${id}`);
+        assert.equal(res.status, 200, `轮询失败：${await res.clone().text()}`);
+        const body = (await res.json()) as { job: JobView };
+        last = body.job;
+        if (last.status === 'succeeded' || last.status === 'failed') return last;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      assert.fail(`任务 ${id} 在 ${timeoutMs}ms 内没有结束：${JSON.stringify(last)}`);
+    }
+
+    await t.test('T33 提交立即返回 jobId，轮询到 succeeded 并拿到结果', async () => {
+      fake.mode = 'ok';
+      const t0 = Date.now();
+      const res = await call(cOwner, '/api/ai/jobs', {
+        method: 'POST',
+        json: { kind: 'entry_ai', entryId: shortId, action: 'summary' },
+      });
+      const submitMs = Date.now() - t0;
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { ok: boolean; job: { id: string; kind: string; status: string } };
+      assert.equal(body.ok, true);
+      assert.equal(body.job.kind, 'entry_ai');
+      assert.ok(['queued', 'running'].includes(body.job.status), `提交时状态：${body.job.status}`);
+      // 关键：提交不等模型。慢的模型不该让这个请求也变慢。
+      assert.ok(submitMs < 2000, `提交应立刻返回，实际 ${submitMs}ms`);
+
+      const done = await waitJob(cOwner, body.job.id);
+      assert.equal(done.status, 'succeeded', done.error);
+      assert.equal((done.result as { result?: string }).result, '这是模型返回的摘要。');
+    });
+
+    await t.test('T34 任务失败：status=failed，error 带稳定码（前端可翻译）', async () => {
+      fake.mode = 'html502';
+      const res = await call(cOwner, '/api/ai/jobs', {
+        method: 'POST',
+        json: { kind: 'entry_ai', entryId: shortId, action: 'summary' },
+      });
+      const id = ((await res.json()) as { job: { id: string } }).job.id;
+      const done = await waitJob(cOwner, id);
+      assert.equal(done.status, 'failed');
+      assert.match(done.error, /^E_AI_HTTP/, `实际：${done.error}`);
+      fake.mode = 'ok';
+    });
+
+    await t.test('T35 轮询越权：拿别人的 jobId 一律 404（不泄露存在性）', async () => {
+      fake.mode = 'ok';
+      const res = await call(cOwner, '/api/ai/jobs', {
+        method: 'POST',
+        json: { kind: 'entry_ai', entryId: shortId, action: 'summary' },
+      });
+      const id = ((await res.json()) as { job: { id: string } }).job.id;
+      await waitJob(cOwner, id);
+      const denied = await call(cOther, `/api/ai/jobs/${id}`);
+      assert.equal(denied.status, 404);
+      const body = (await denied.json()) as { error: string };
+      assert.equal(body.error, 'E_AI_JOB_NOT_FOUND');
+    });
+
+    await t.test('T36 提交阶段就把请求错误判掉（不让它变成一条失败任务）', async () => {
+      const cases: Array<{ json: unknown; status: number; error: string }> = [
+        { json: { kind: 'entry_ai', entryId: foreignId, action: 'summary' }, status: 404, error: 'E_ENTRY_NOT_FOUND' },
+        { json: { kind: 'entry_ai', entryId: 99999999, action: 'summary' }, status: 404, error: 'E_ENTRY_NOT_FOUND' },
+        { json: { kind: 'entry_ai', action: 'summary' }, status: 404, error: 'E_ENTRY_NOT_FOUND' },
+        { json: { kind: 'digest', date: '2026-02-30' }, status: 400, error: 'E_DATE_INVALID' },
+      ];
+      for (const c of cases) {
+        const res = await call(cOwner, '/api/ai/jobs', { method: 'POST', json: c.json });
+        assert.equal(res.status, c.status, `${JSON.stringify(c.json)} → ${res.status}`);
+        const body = (await res.json()) as { error: string };
+        assert.equal(body.error, c.error);
+      }
+    });
+
+    await t.test('T37 只读账号不能提交任务（403，且不产生任务行）', async () => {
+      const before = (await db.select().from(aiJobs).where(sql`user_id = ${ownerId}`)).length;
+      const res = await call(cReader, '/api/ai/jobs', {
+        method: 'POST',
+        json: { kind: 'entry_ai', entryId: shortId, action: 'summary' },
+      });
+      assert.equal(res.status, 403);
+      const after = (await db.select().from(aiJobs).where(sql`user_id = ${ownerId}`)).length;
+      assert.equal(after, before, '被拦下的提交不该留下任务行');
+    });
+
+    await t.test('T38 活跃任务超上限 → 429 E_AI_BUSY（防连点变并发）', async () => {
+      await db.insert(aiJobs).values(
+        Array.from({ length: 4 }, (_, i) => ({
+          id: `itest-busy-${stamp}-${i}`,
+          userId: ownerId,
+          kind: 'entry_ai',
+          status: 'queued',
+          label: '占位任务',
+        })),
+      );
+      try {
+        const res = await call(cOwner, '/api/ai/jobs', {
+          method: 'POST',
+          json: { kind: 'entry_ai', entryId: shortId, action: 'summary' },
+        });
+        assert.equal(res.status, 429);
+        const body = (await res.json()) as { error: string };
+        assert.equal(body.error, 'E_AI_BUSY');
+      } finally {
+        await db.delete(aiJobs).where(sql`id like ${`itest-busy-${stamp}-%`}`);
+      }
+    });
+
+    await t.test('T39 ai_tags 任务：结果落库并可回读', async () => {
+      fake.mode = 'tags';
+      const res = await call(cOwner, '/api/ai/jobs', { method: 'POST', json: { kind: 'ai_tags', entryId: shortId } });
+      const id = ((await res.json()) as { job: { id: string } }).job.id;
+      const done = await waitJob(cOwner, id);
+      assert.equal(done.status, 'succeeded', done.error);
+      const tags = (done.result as { tags?: string[] }).tags;
+      assert.ok(Array.isArray(tags), `结果应带 tags：${JSON.stringify(done.result)}`);
+      const read = await call(cOwner, `/api/entry/${shortId}/ai-tags`);
+      const state = (await read.json()) as { status: string; tags: string[] };
+      assert.equal(state.status, 'done');
     });
 
     /* 这条必须放最后：降级会把 host 记进进程内缓存，之后所有调用都不再带该字段。 */

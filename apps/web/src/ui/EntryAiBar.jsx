@@ -56,9 +56,10 @@ export function EntryAiBar({ entryId }) {
     return () => clearInterval(iv);
   }, [anyBusy]);
 
-  /* AI 调用必须吃长超时：服务端一次模型调用允许 180s，走默认 30s 写超时会在
-   * 中途掐断并报错，服务端其实还在跑（实测前端 30s 报错、服务端 99s 成功）。 */
-  const aiTimeout = (s && s.AI_TIMEOUT_MS) || 200000;
+  /* 任务阶段：'' | 'queued'（已提交、排队中）| 'running'（模型在跑）。
+   * 长任务改成「提交 → 轮询」后，请求本身是毫秒级的，界面上的等待感来自任务状态，
+   * 而不是一个挂 90 秒的 POST。 */
+  const [phase, setPhase] = useState('');
 
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -66,64 +67,72 @@ export function EntryAiBar({ entryId }) {
   const [tagResult, setTagResult] = useState(null);
   const [tagError, setTagError] = useState(null);
 
+  /* 组件卸载（收起文章 / 切走）后不再轮询：任务在服务端照常跑完，
+   * 结果仍会写进「模型状态」列表，只是这个组件不再更新。 */
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
   if (!writable || id == null) return null;
+
+  /** 提交并轮询一个任务；成功返回 job，失败抛出已翻译的错误。 */
+  async function runJob(body, onPhase) {
+    const job = await s.submitAiJob(body);
+    if (aliveRef.current) onPhase(job.status || 'queued');
+    return s.pollAiJob(job.id, {
+      onStatus: (j) => { if (aliveRef.current) onPhase(j.status); },
+      isCancelled: () => !aliveRef.current,
+    });
+  }
 
   async function run(k) {
     if (busyRef.current) return;
-    if (!s || typeof s.apiFetch !== 'function') {
+    if (!s || typeof s.submitAiJob !== 'function') {
       if (s && s.toast) s.toast('AI 功能当前不可用', false);
       return;
     }
     if (!begin(k)) return;
     setError(null);
     setResult(null);
+    setPhase('');
     try {
-      const res = await s.apiFetch('/api/entry/' + encodeURIComponent(id) + '/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: k }),
-        timeoutMs: aiTimeout,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(s.errText ? s.errText(data, 'AI 调用失败') : 'AI 调用失败');
-      if (data && data.ok) {
-        setResult(typeof data.result === 'string' ? data.result : '');
-        setOpen(true);
-      } else {
-        // 失败原因回来的是 `E_AI_TIMEOUT: ...` 这类稳定码，交给词典翻译
-        setError(s.errText ? s.errText(data && data.result ? data.result : data, 'AI 调用失败') : 'AI 调用失败');
-      }
+      const job = await runJob({ kind: 'entry_ai', entryId: id, action: k }, setPhase);
+      const r = (job && job.result) || {};
+      const text = typeof r.result === 'string' ? r.result : '';
+      if (!text) throw new Error('AI 调用失败：任务完成但没有返回内容');
+      setResult(text);
+      setOpen(true);
     } catch (err) {
+      if (!aliveRef.current) return;
       const msg = s && s.errText ? s.errText(err, 'AI 调用失败') : String((err && err.message) || err);
       setError(msg);
     } finally {
+      if (aliveRef.current) setPhase('');
       end();
     }
   }
 
-  // 按需为单篇生成 AI 标签（POST /api/entry/:id/ai-tags，后端落库并回写）
+  // 按需为单篇生成 AI 标签（任务落库 → 服务端执行并回写 entry_ai_tags）
   async function runTags() {
     if (busyRef.current) return;
-    if (!s || typeof s.apiFetch !== 'function') {
+    if (!s || typeof s.submitAiJob !== 'function') {
       if (s && s.toast) s.toast('AI 功能当前不可用', false);
       return;
     }
     if (!begin('tags')) return;
     setTagError(null);
     setTagResult(null);
+    setPhase('');
     try {
-      const res = await s.apiFetch('/api/entry/' + encodeURIComponent(id) + '/ai-tags', {
-        method: 'POST',
-        timeoutMs: aiTimeout,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(s.errText ? s.errText(data, '生成失败') : '生成失败');
-      if (data && data.ok) setTagResult(Array.isArray(data.tags) ? data.tags : []);
-      else setTagError(s.errText ? s.errText(data && data.error ? data.error : data, '生成失败') : '生成失败');
+      const job = await runJob({ kind: 'ai_tags', entryId: id }, setPhase);
+      const r = (job && job.result) || {};
+      const tags = Array.isArray(r.tags) ? r.tags : [];
+      setTagResult(tags);
     } catch (err) {
+      if (!aliveRef.current) return;
       const msg = s && s.errText ? s.errText(err, '生成失败') : String((err && err.message) || err);
       setTagError(msg);
     } finally {
+      if (aliveRef.current) setPhase('');
       end();
     }
   }
@@ -146,8 +155,13 @@ export function EntryAiBar({ entryId }) {
           onClick={runTags}>
           {busyKey === 'tags' ? '…' : '标签'}
         </button>
-        {anyBusy && elapsed >= 3 ? (
-          <span className="entry-ai-wait" role="status">已等待 {elapsed}s</span>
+        {anyBusy && phase === 'queued' ? (
+          <span className="entry-ai-wait" role="status">排队中…</span>
+        ) : null}
+        {anyBusy && phase === 'running' ? (
+          <span className="entry-ai-wait" role="status">
+            {elapsed >= 3 ? `生成中 · 已等待 ${elapsed}s` : '生成中…'}
+          </span>
         ) : null}
       </div>
       {open && result != null ? (

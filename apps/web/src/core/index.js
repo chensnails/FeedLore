@@ -8,6 +8,7 @@
  * bootstrap 放在最后，它负责首屏主题 / 视图应用、登录态校验与首次数据加载。
  */
 import * as U from './util.js';
+import * as J from './aiJob.js';
 import * as S from './state.js';
 import * as F from './feeds.js';
 import * as R from './reader.js';
@@ -32,6 +33,11 @@ export const core = {
   // 模型调用的前端上限（200s）：AI 相关 POST 一律传 timeoutMs: core.AI_TIMEOUT_MS，
   // 否则会被 30s 写超时误杀（服务端一次调用允许 180s）
   AI_TIMEOUT_MS: U.NET_AI_TIMEOUT_MS,
+  // AI 异步任务：提交即返回 jobId，前端按 1.5s 间隔轮询（见 core/aiJob.js）
+  submitAiJob: (body) => J.submitAiJob(core, body),
+  pollAiJob: (jobId, opts) => J.pollAiJob(core, jobId, opts),
+  AI_JOB_POLL_MS: J.AI_JOB_POLL_MS,
+  AI_JOB_FAST_POLL_MS: J.AI_JOB_FAST_POLL_MS,
   isAdmin: S.isAdmin, isReadonly: S.isReadonly, isWritable: S.isWritable,
   toast: U.toast, confirm: U.confirm,
   // —— 覆盖层（v2.1.0 起 React 化，组件 src/ui/Overlays.jsx） ——

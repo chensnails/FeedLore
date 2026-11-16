@@ -11,6 +11,17 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Added
 
+- **Global `enable_thinking` switch (Settings → Model → "Model thinking")**: off by default; flipping
+  it saves to the account's model config and applies to **every** AI call — digest, per-article
+  summary/key points/translation/explanation, AI tags, MCP tools and "Test model" — rather than being a
+  per-request parameter. With it off, each request sends `enable_thinking: false` and gets only the
+  answer: on the same long article this cut latency from 56 s to 4 s. Upstreams that reject the field
+  have it dropped and the call retried, so it never breaks generation.
+- **AI calls are now async with polling**: per-article AI, AI tags and digest generation return a task
+  id immediately, run in the background, and the UI polls (1.5 s, 0.4 s for the first three polls) to
+  show queued / running with elapsed time / succeeded / failed. No long-lived request means the
+  gateway's 100-second read timeout can no longer turn a successful generation into a failure, and a
+  task keeps running if you leave the page; its outcome shows up under Model status.
 - **Model status (Settings → Model)**: a dedicated block showing the current model and recent calls —
   a status badge (available / last call failed / not tested / not configured), today's calls and
   failures, the average duration of recent successful calls, and a per-request history

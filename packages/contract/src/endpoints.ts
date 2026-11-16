@@ -719,6 +719,54 @@ export const aiRequestsResponse = z.object({
 });
 export type AiRequestsResponse = z.infer<typeof aiRequestsResponse>;
 
+/* ============================ AI 异步任务 ============================
+ * 长任务（单篇生成 / AI 标签 / 日报）改成「提交 → 轮询」：提交立即返回 jobId，
+ * 前端按约定间隔取状态。这样请求都变成短连接，网关的 100 秒读超时不再生效。
+ */
+
+/** 任务种类。MCP 不在此列：MCP 协议本身是请求-响应，改异步会破坏客户端兼容。 */
+export const aiJobKind = z.enum(['entry_ai', 'ai_tags', 'digest']);
+export type AiJobKind = z.infer<typeof aiJobKind>;
+
+/** 状态单向流转：queued → running → succeeded | failed。 */
+export const aiJobStatus = z.enum(['queued', 'running', 'succeeded', 'failed']);
+export type AiJobStatus = z.infer<typeof aiJobStatus>;
+
+export const aiJobSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  /** 在做什么：文章标题 / 「日报 2026-11-16」 */
+  label: z.string(),
+  /** 出参：entry_ai → {result} / ai_tags → {tags,model} / digest → {cached,digest} */
+  result: z.unknown().nullable(),
+  /** 失败原因（稳定错误码，前端过词典）；成功为空串 */
+  error: z.string(),
+  createdAt: z.string(),
+  startedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+  /** 已耗时：运行中 = 至今，结束 = 总时长 */
+  durationMs: z.number().int(),
+});
+export type AiJob = z.infer<typeof aiJobSchema>;
+
+/**
+ * 提交任务的入参。`kind` 决定哪些字段有意义，其余忽略：
+ * - entry_ai / ai_tags：`entryId`（必填）、entry_ai 另有 `action` / `targetLang`
+ * - digest：`date` / `force`
+ */
+export const aiJobBody = z.object({
+  kind: aiJobKind,
+  entryId: z.union([z.string(), z.number()]).optional(),
+  action: z.enum(['summary', 'keypoints', 'translate', 'explain']).optional(),
+  targetLang: z.string().max(20).optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  force: z.boolean().optional(),
+  /** digest 的自定义频道范围；不传按账号 prefs.digest 的口径 */
+  feeds: z.array(z.number().int().positive()).max(500).optional(),
+});
+export type AiJobBody = z.infer<typeof aiJobBody>;
+
 export const ai = {
   /** AI 消耗量统计（只读本人）。days 控制按天序列与合计的窗口，默认 30。 */
   apiUsage: {
@@ -818,6 +866,24 @@ export const ai = {
     auth: 'user',
     query: z.object({ limit: z.coerce.number().int().min(1).max(200).optional() }),
     response: aiRequestsResponse,
+  },
+  /**
+   * 提交一个 AI 任务。**立即返回**（<100ms），真正的模型调用在服务端进程内异步执行。
+   * 权限 write：会消耗账号额度。同一账号同时排队/运行的任务数有上限（超了 429 E_AI_BUSY）。
+   */
+  aiJobCreate: {
+    method: 'post',
+    path: '/api/ai/jobs',
+    auth: 'user',
+    body: aiJobBody,
+    response: z.object({ ok: z.boolean(), job: aiJobSchema }),
+  },
+  /** 轮询任务状态。只读本人：拿别人的 jobId 一律 404。 */
+  aiJobGet: {
+    method: 'get',
+    path: '/api/ai/jobs/:id',
+    auth: 'user',
+    response: z.object({ ok: z.boolean(), job: aiJobSchema }),
   },
 } as const satisfies Record<string, EndpointSpec>;
 

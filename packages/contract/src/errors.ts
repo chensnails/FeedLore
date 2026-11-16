@@ -83,6 +83,9 @@ export const API_ERROR_CODES = [
   'E_DIGEST_DISABLED',
   'E_MODEL_INCOMPLETE',
   'E_MODEL_URL_UNREACHABLE',
+  'E_AI_BUSY',
+  'E_AI_JOB_NOT_FOUND',
+  'E_AI_JOB_RESTARTED',
 
   // ---- Webhook 与更新通道 ----
   'E_WEBHOOK_URL_UNREACHABLE',
@@ -215,6 +218,15 @@ export const API_ERROR_DEFAULTS = {
     message: 'Model is not configured: base URL, API key and model name are all required',
   },
   E_MODEL_URL_UNREACHABLE: { status: 400, message: 'Model base URL is not reachable' },
+  E_AI_BUSY: {
+    status: 429,
+    message: 'Too many AI tasks are queued or running for this account, wait for one to finish',
+  },
+  E_AI_JOB_NOT_FOUND: { status: 404, message: 'AI task not found' },
+  E_AI_JOB_RESTARTED: {
+    status: 410,
+    message: 'The AI task was interrupted by a service restart, submit it again',
+  },
 
   E_WEBHOOK_URL_UNREACHABLE: { status: 400, message: 'Webhook URL is not reachable' },
   E_UPDATE_CHANNEL_UNSET: {

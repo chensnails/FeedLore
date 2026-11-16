@@ -99,6 +99,10 @@ export function ModelPane({ onDirtyChange }) {
      否则「改了开关没点保存模型就走人」会变成静默丢失。 */
   const [aiTagsEnabled, setAiTagsEnabled] = useState(false);
   const [aiTagsBusy, setAiTagsBusy] = useState(false);
+  /* enable_thinking 全局开关：与 AI 标签开关同款——点一下即落库，失败回滚。
+     它必须写进账号的模型配置（`user_llm.thinking`），下一次调用起生效，
+     而不是每次请求由前端临时传参：前端传参会出现「日报带了、单篇没带」的漂移。 */
+  const [thinkingBusy, setThinkingBusy] = useState(false);
   /* AI 用量：进页面拉一次，之后手动刷新。读接口不消耗额度。 */
   const [usage, setUsage] = useState(null);
   const [usageBusy, setUsageBusy] = useState(false);
@@ -260,6 +264,71 @@ export function ModelPane({ onDirtyChange }) {
       setResult({ ok: false, msg: '清除失败：' + String((err && err.message) || err) });
     } finally {
       setBusy('');
+    }
+  };
+
+  /* 把 enable_thinking / 深度写进账号模型配置。返回 true 表示已落库。
+   * 只提交这一个字段：`user_llm` 的保存是部分更新语义，不会碰用户还没保存的其它输入。 */
+  async function patchThinking(patch, okMsg) {
+    const res = await S().apiFetch('/api/prefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ llm: patch }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setResult({ ok: false, msg: S().errText(data, '保存思考开关失败') });
+      return false;
+    }
+    setResult({ ok: true, msg: okMsg });
+    return true;
+  }
+
+  /* 保存成功后同步脏态基线：开关是即时生效的，不该让页面一直显示「有未保存的更改」。 */
+  function syncSavedForm(patch) {
+    setSavedForm((s) => {
+      if (!s) return s;
+      try { return JSON.stringify(Object.assign(JSON.parse(s), patch)); } catch { return s; }
+    });
+  }
+
+  /** enable_thinking 开关：默认关；作用于本账号全部 AI 调用（日报 / 单篇 / 标签 / MCP / 测试）。 */
+  const onToggleThinking = async (ev) => {
+    const on = ev.target.checked;
+    if (thinkingBusy) return;
+    const prev = form.thinking;
+    guard.mark();
+    setForm((f) => Object.assign({}, f, { thinking: on }));
+    setThinkingBusy(true);
+    try {
+      const ok = await patchThinking({ thinking: on }, on ? '已开启模型思考（全部 AI 调用生效）' : '已关闭模型思考（全部 AI 调用生效）');
+      if (!ok) { setForm((f) => Object.assign({}, f, { thinking: prev })); return; }
+      syncSavedForm({ thinking: on });
+    } catch (err) {
+      setForm((f) => Object.assign({}, f, { thinking: prev }));
+      setResult({ ok: false, msg: '保存思考开关失败：' + String((err && err.message) || err) });
+    } finally {
+      setThinkingBusy(false);
+    }
+  };
+
+  /** 思考深度同样是账号级配置，改完即生效（只有开思考时才有意义）。 */
+  const onDepthChange = async (ev) => {
+    const depth = ev.target.value;
+    if (thinkingBusy) return;
+    const prev = form.thinkingDepth;
+    guard.mark();
+    setForm((f) => Object.assign({}, f, { thinkingDepth: depth }));
+    setThinkingBusy(true);
+    try {
+      const ok = await patchThinking({ thinkingDepth: depthToNum(depth) }, `思考深度已设为「${DEPTH_LABEL[depth] || '中'}」`);
+      if (!ok) { setForm((f) => Object.assign({}, f, { thinkingDepth: prev })); return; }
+      syncSavedForm({ thinkingDepth: depth });
+    } catch (err) {
+      setForm((f) => Object.assign({}, f, { thinkingDepth: prev }));
+      setResult({ ok: false, msg: '保存思考深度失败：' + String((err && err.message) || err) });
+    } finally {
+      setThinkingBusy(false);
     }
   };
 
@@ -512,34 +581,44 @@ export function ModelPane({ onDirtyChange }) {
         </div>
         </Section>
 
-        <Section secKey="llm-thinking" advanced title="思考模式"
-          sub={form.thinking ? `已开启 · 深度${DEPTH_LABEL[form.thinkingDepth]}` : '关闭'}>
+        {/*
+          enable_thinking 全局开关（账号级，默认关）。
+          放在常用组而不是「高级」里：它直接决定每次模型调用快 10 倍还是慢 10 倍，
+          属于用户最该看见的一项；拨动即落库——写的是账号模型配置，不是单次请求参数。
+        */}
+        <Section secKey="llm-thinking" open title="模型思考（enable_thinking）"
+          sub={form.thinking ? `已开启 · 深度${DEPTH_LABEL[form.thinkingDepth]}` : '已关闭 · 全部调用生效'}>
         <div className="form-row">
           <label className="form-row-head">
-            <span>开启模型思考</span>
+            <span>让模型先思考再回答</span>
             <span className="switch">
               <input
                 id="llmThinking"
                 type="checkbox"
                 checked={form.thinking}
-                onChange={(ev) => { guard.mark(); setForm((f) => Object.assign({}, f, { thinking: ev.target.checked })); }}
+                disabled={thinkingBusy}
+                onChange={onToggleThinking}
               />
               <span className="switch-slider" />
             </span>
           </label>
           <small className="form-tip">
-            让模型先推理再产出简报，选材和点评通常更贴要求，代价是明显更慢、更耗额度。
-            只对 Qwen3 / DeepSeek 这类支持思考的模型有效，不支持的上游会忽略这两项设置
+            <b>默认关闭，拨动即生效</b>，作用于本账号全部 AI 调用：日报、单篇摘要/要点/翻译/解释、
+            AI 标签、MCP 工具和「测试模型」。
+            <br />关闭时每次请求都带 <code>enable_thinking: false</code>，只给答案不给推理过程，
+            实测同一篇长文从 56 秒降到 4 秒；打开后会先写思考链再给结论，更贴复杂选材，但明显更慢、更耗额度。
+            只对 Qwen3 / DeepSeek 这类支持思考的模型有效；上游不认识这个字段时会自动去掉并重试，不会因此调用失败。
           </small>
         </div>
         <div className="form-row" hidden={!form.thinking}>
           <label htmlFor="llmDepth">思考深度</label>
-          <select id="llmDepth" className="select" value={form.thinkingDepth} onChange={set('thinkingDepth')}>
+          <select id="llmDepth" className="select" value={form.thinkingDepth}
+            disabled={thinkingBusy} onChange={onDepthChange}>
             <option value="low">轻 · 少量推理，接近不开思考</option>
             <option value="medium">中 · 默认，够它把选材想过一遍</option>
             <option value="high">深 · 充分推理，长清单时更明显</option>
           </select>
-          <small className="form-tip">日报是每天一次的后台任务，「中」通常就够；只有条目很多、分类总跑偏时才值得上「深」</small>
+          <small className="form-tip">同样是账号级配置，改完即生效。日报是每天一次的后台任务，「中」通常就够；只有条目很多、分类总跑偏时才值得上「深」</small>
         </div>
         </Section>
 

@@ -99,6 +99,13 @@
       "when": 1794729988207,
       "tag": "0013_ai_request_log",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794806278458,
+      "tag": "0014_ai_jobs",
+      "breakpoints": true
     }
   ]
 }

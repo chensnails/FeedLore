@@ -358,6 +358,39 @@ export const aiRequestLog = pgTable('ai_request_log', {
   createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
 });
 
+/**
+ * AI 异步任务（`ai_jobs`）。
+ *
+ * 为什么要落库而不是纯内存：单篇生成实测 4~160 秒、日报可达数分钟，都长于网关的
+ * 100 秒读超时。改成「提交即返回 jobId → 前端轮询」后，长连接消失；
+ * 任务本身必须可查，否则前端只能靠猜。
+ *
+ * - `status`：queued → running → succeeded / failed（单向，不回退）
+ * - `input` / `result` 用 jsonb：三种任务的出入参形状不同，建列会让表迅速长歪
+ * - 进程重启时残留的 queued/running 由启动清扫标成 failed（见 lib/aiJobs.ts）
+ */
+export const aiJobs = pgTable('ai_jobs', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** entry_ai / ai_tags / digest */
+  kind: text('kind').notNull(),
+  /** queued / running / succeeded / failed */
+  status: text('status').notNull().default('queued'),
+  /** 界面上「在做什么」：文章标题 / 日报日期 */
+  label: text('label').notNull().default(''),
+  /** 入参（entryId / action / date / force …），形状由 kind 决定 */
+  input: jsonb('input').notNull().default({}),
+  /** 出参（entry_ai: {result} / ai_tags: {tags,model} / digest: {cached,digest}） */
+  result: jsonb('result'),
+  error: text('error').notNull().default(''),
+  createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+  startedAt: timestamp('started_at', { mode: 'date' }),
+  finishedAt: timestamp('finished_at', { mode: 'date' }),
+  updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
+});
+
 /* ============================================================================
  * 索引（镜像 legacy 高频路径）
  * ----------------------------------------------------------------------------
@@ -441,4 +474,5 @@ export type NewUserLlm = typeof userLlm.$inferInsert;
 export type McpToken = typeof mcpTokens.$inferSelect;
 export type AiUsageDailyRow = typeof aiUsageDaily.$inferSelect;
 export type AiRequestLogRow = typeof aiRequestLog.$inferSelect;
+export type AiJobRow = typeof aiJobs.$inferSelect;
 export type EntryAiTags = typeof entryAiTags.$inferSelect;

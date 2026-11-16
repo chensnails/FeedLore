@@ -136,6 +136,15 @@ export function AiView() {
      会让「生成摘要」也一起变成「生成中… ⟳」，看起来像同时在跑两个任务。 */
   const [genKey, setGenKey] = useState(null);
   const genBusy = useRef(false);
+  /* 等待秒数：任务改成轮询后，界面需要一个「确实在跑」的证据。
+     只显示转圈 + 一句「运行中」，用户很容易在 2 分钟里反复点。 */
+  const [genElapsed, setGenElapsed] = useState(0);
+  useEffect(() => {
+    if (!genKey) { setGenElapsed(0); return undefined; }
+    const t0 = Date.now();
+    const iv = setInterval(() => setGenElapsed(Math.round((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(iv);
+  }, [genKey]);
   /* 请求代际：日期切换是「点第二个日期时第一个可能还在飞」，慢响应回来会盖掉新内容，
      日期选择器与正文对不上。回包时对不上代际就整包丢弃（与两页列表同一套做法）。 */
   const reqGen = useRef(0);
@@ -213,33 +222,44 @@ export function AiView() {
     }
   }
 
+  /* 日报生成已改异步：提交任务 → 轮询。请求从「挂 3 分钟」变成毫秒级，
+   * 网关的 100 秒读超时不再生效；关掉页面任务也会在服务端跑完。 */
   async function generate(force, key) {
     if (genBusy.current) return;
+    if (!s || typeof s.submitAiJob !== 'function') {
+      setView({ kind: 'genError', msg: 'AI 功能当前不可用' });
+      return;
+    }
     genBusy.current = true;
     const gen = ++reqGen.current;                 // 生成期间切日期：以最后一次操作为准
     setGenKey(key || (force ? 'regen' : 'gen'));
-    setView({ kind: 'genLoading' });
+    setView({ kind: 'genLoading', phase: 'queued' });
     try {
-      const res = await s.apiFetch('/api/digest/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: !!force }),
-        // 日报是多次模型调用的 map-reduce，30s 写超时必然误杀（服务端上限 180s/批）
-        timeoutMs: (s && s.AI_TIMEOUT_MS) || 200000,
+      const job = await s.submitAiJob({ kind: 'digest', force: !!force });
+      if (gen !== reqGen.current) return;
+      setView({ kind: 'genLoading', phase: job.status || 'queued' });
+      const done = await s.pollAiJob(job.id, {
+        onStatus: (j) => {
+          // 期间切了日期 / 又发起一次生成：旧任务的状态不该盖掉新视图
+          if (gen === reqGen.current) setView({ kind: 'genLoading', phase: j.status, at: j.createdAt });
+        },
+        isCancelled: () => gen !== reqGen.current,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(s.errText(data, '生成失败'));
-      if (gen !== reqGen.current) return;          // 期间已经切到别的日期 / 又发起一次生成
-      const d = data.digest;
+      if (gen !== reqGen.current) return;
+      const r = (done && done.result) || {};
+      const d = r.digest;
+      if (!d) throw new Error('生成失败：任务完成但没有返回日报');
       setDates((prev) => (prev.includes(d.date) ? prev : [d.date, ...prev]));
       setSelected(d.date);
       setView({ kind: 'ready', digest: d });
       // 服务端偶尔不给 stats：不能在已经生成成功之后抛 TypeError 把 ready 态改写成「生成失败」
       const kept = (d.stats && d.stats.kept) || 0;
       const feeds = (d.stats && d.stats.feeds) || 0;
-      s.toast(data.cached ? '已读取当日缓存摘要' : `摘要生成完成（${kept} 条 / ${feeds} 频道）`);
+      s.toast(r.cached ? '已读取当日缓存摘要' : `摘要生成完成（${kept} 条 / ${feeds} 频道）`);
     } catch (err) {
-      if (gen === reqGen.current) setView({ kind: 'genError', msg: String((err && err.message) || err) });
+      if (gen === reqGen.current) {
+        setView({ kind: 'genError', msg: s.errText ? s.errText(err, '生成失败') : String((err && err.message) || err) });
+      }
     } finally {
       genBusy.current = false;
       setGenKey(null);
@@ -253,7 +273,10 @@ export function AiView() {
     body = (
       <StateBlock className="dg-loading" spinner>
         正在采集过去 24 小时的新条目并生成摘要…
-        <div className="hint mt-2">首次生成约需 30~60 秒，请勿关闭页面</div>
+        <div className="hint mt-2">
+          {view.phase === 'queued' ? '任务已提交，排队中…' : `任务运行中 · 已等待 ${genElapsed}s`}
+          <br />任务在服务端跑，可以先离开这个页面；回到「日报」时会读到结果
+        </div>
       </StateBlock>
     );
   } else if (view.kind === 'error') {

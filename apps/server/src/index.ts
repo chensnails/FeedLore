@@ -21,6 +21,7 @@ import { bootstrap } from './bootstrap';
 import { startScheduler } from './lib/fetcher';
 import { startDigestScheduler } from './lib/digest';
 import { startAiTagScheduler } from './lib/aiTag';
+import { markInterruptedJobs } from './lib/aiJobs';
 import { undiciVersionMismatch, undiciVersions } from './lib/net';
 import { reloadSource } from './lib/settings';
 import { pruneImageCache } from './routes/img';
@@ -90,6 +91,13 @@ async function main(): Promise<void> {
   /* AI 智能标签调度：每分钟给「开启该功能的账号」打一批未打标条目。与抓取器/日报同款
    * 进程内调度（单进程够用、少一个故障点）；没配模型的账号会被跳过，不会无限重试。 */
   if (db) startAiTagScheduler(db);
+
+  /* AI 异步任务清扫：上一次进程里的 queued/running 不可能再有人推进了，
+   * 不标失败的话前端会一直轮询到一个永远不变的 running。
+   * 不自动续跑：模型调用不幂等，用户很可能已经重试过。 */
+  if (db) {
+    void markInterruptedJobs(db).catch(() => { /* 内部已记录 */ });
+  }
 
   /* 图片缓存清理：`image_cache` 随阅读量线性增长，不清会悄悄吃掉磁盘。
    * 首次延迟 10 分钟（别在冷启动和第一轮抓取抢数据库），之后每 6 小时一次。 */

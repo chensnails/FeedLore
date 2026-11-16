@@ -17,6 +17,9 @@ const path = require('path');
 // 服务端错误体现在只回「码 + 英文说明」，中文由前端词典产出（src/core/errorText.js）。
 // 这里直接引真词典，面板断言才能验证 code → 中文这条链路，而不是测一个桩。
 const { errorText } = require('../../src/core/errorText.js');
+// AI 异步任务客户端用真实实现（提交 + 轮询），桩只负责「服务端会怎么回」：
+// 测的是组件在 queued → succeeded 之间的行为，不是再抄一份轮询逻辑。
+const aiJobClient = require('../../src/core/aiJob.js');
 
 const dom = new JSDOM('<!DOCTYPE html><html><body>' +
   '<div id="settingsRoot"></div>' +
@@ -376,8 +379,16 @@ const applyFlagEverywhere = (id, patch) => {
 // 回顶钮读的「当前容器滚动位置」：真实核心按 state.tab 选容器，这里由测试直接给值
 let stubScrollTop = 0;
 
+/* AI 异步任务的「迷你任务表」：POST 建一条 queued，第一次 GET 就直接给终态。
+   这样轮询循环不需要真的等 1.5 秒，测试仍然走完整的 提交 → 轮询 → 终态 路径。 */
+let aiJobSeq = 0;
+const aiJobsById = new Map();
+
 w.feedlore = {
   errText: errorText,
+  // 组件通过 core 调用（真实实现，桩只替换 apiFetch 这一层）
+  submitAiJob: (body) => aiJobClient.submitAiJob(w.feedlore, body),
+  pollAiJob: (id, opts) => aiJobClient.pollAiJob(w.feedlore, id, opts),
   activeScrollTop: () => stubScrollTop,
   __setScrollTop: (v) => { stubScrollTop = Number(v) || 0; },
   scrollTop: () => { calls.push(['scrollTop']); },
@@ -695,12 +706,55 @@ w.feedlore = {
       const date = decodeURIComponent(url.split('date=')[1] || '');
       return ok({ date, digest: miniDigestFor(date) });
     }
+    // 旧同步入口保留（CLI/脚本），网页已不再调用
     if (url === '/api/digest/generate' && method === 'POST') {
       if (genFailNext) { genFailNext = false; return bad('E_MODEL_URL_UNREACHABLE', 502); }
       const date = todayStr();
       const d = Object.assign(miniDigestFor('2026-10-15'), { date });
       if (!miniDigestDates.includes(date)) miniDigestDates.unshift(date);
       return ok({ ok: true, cached: false, digest: d });
+    }
+    // ---- AI 异步任务：提交即返回 queued，第一次轮询就给终态 ----
+    if (url === '/api/ai/jobs' && method === 'POST') {
+      const id = 'job-' + (++aiJobSeq);
+      const kind = String((body && body.kind) || '');
+      const job = {
+        id, kind, status: 'queued',
+        label: kind === 'digest' ? '日报' : (body && body.action) || '单篇 AI',
+        result: null, error: '', createdAt: new Date().toISOString(),
+        startedAt: null, finishedAt: null, durationMs: 0,
+      };
+      aiJobsById.set(id, job);
+      return ok({ ok: true, job });
+    }
+    const aiJobMatch = url.match(/^\/api\/ai\/jobs\/([^/]+)$/);
+    if (aiJobMatch && method === 'GET') {
+      const job = aiJobsById.get(aiJobMatch[1]);
+      if (!job) return bad('E_AI_JOB_NOT_FOUND', 404);
+      if (job.status !== 'succeeded' && job.status !== 'failed') {
+        if (job.kind === 'digest') {
+          if (genFailNext) {
+            genFailNext = false;
+            job.status = 'failed';
+            job.error = 'E_MODEL_URL_UNREACHABLE: the model base URL is unreachable';
+          } else {
+            const date = todayStr();
+            const d = Object.assign(miniDigestFor('2026-10-15'), { date });
+            if (!miniDigestDates.includes(date)) miniDigestDates.unshift(date);
+            job.status = 'succeeded';
+            job.result = { cached: false, digest: d };
+          }
+        } else if (job.kind === 'ai_tags') {
+          job.status = 'succeeded';
+          job.result = { tags: ['测试', '标签'], model: 'Qwen/Qwen3-8B' };
+        } else {
+          job.status = 'succeeded';
+          job.result = { result: '这是 AI 生成的摘要。' };
+        }
+        job.finishedAt = new Date().toISOString();
+        job.durationMs = 12;
+      }
+      return ok({ ok: true, job });
     }
     // ---- 卡片视图 / 条目（P3b） ----
     if (url.indexOf('/api/entries?') === 0 && method === 'GET') {
@@ -2275,6 +2329,15 @@ const withEFP = (el, fn) => {
   });
 
   // ---- details 开合状态跨次进入（bindSections 持久化） ----
+  // 采集参数是「高级组」的代表：默认收起 + 压暗 + 标题旁「高级」标。
+  // 模型页的思考开关已提为常用组，高级机制改由这里守着。
+  t('高级组默认收起并带「高级」标（采集参数）', () => {
+    const p = document.querySelector('[data-sec="src-params"]');
+    if (!p) throw new Error('缺采集参数分组');
+    if (!p.classList.contains('is-advanced')) throw new Error('缺 is-advanced');
+    if (!p.querySelector('.sec-adv')) throw new Error('缺「高级」标');
+    if (p.open) throw new Error('高级组应默认收起');
+  });
   const paramsDetails = document.querySelector('[data-sec="src-params"]');
   paramsDetails.open = true;
   paramsDetails.dispatchEvent(new w.Event('toggle', { bubbles: true }));
@@ -2633,28 +2696,26 @@ const withEFP = (el, fn) => {
   });
   await sleep(40);
   t('模型面板渲染', () => { if (!document.querySelector('#llmBaseUrl')) throw new Error('无 #llmBaseUrl'); });
-  t('模型面板分组：接口与密钥常开 / 思考模式收起', () => {
+  t('模型面板分组：接口与密钥、模型思考都常驻展开（enable_thinking 是常用开关）', () => {
     const api = document.querySelector('[data-sec="llm-api"]');
     const think = document.querySelector('[data-sec="llm-thinking"]');
     if (!api || !think) throw new Error('缺分组');
     if (!api.open) throw new Error('接口组应默认展开');
-    if (think.open) throw new Error('思考组应默认收起');
+    if (!think.open) throw new Error('思考组应默认展开（不再藏在「高级」里）');
     for (const id of ['#llmBaseUrl', '#llmApiKey', '#llmModel', '#llmTemp']) {
       if (!api.contains(document.querySelector(id))) throw new Error(id + ' 不在接口组');
     }
     if (!think.contains(document.querySelector('#llmThinking'))) throw new Error('开关不在思考组');
     if (!think.contains(document.querySelector('#llmDepth'))) throw new Error('深度不在思考组');
     if (api.querySelector('.sec-sub').textContent !== 'Qwen/Qwen3-8B') throw new Error('模型摘要: ' + api.querySelector('.sec-sub').textContent);
+    const sub = think.querySelector('.sec-sub').textContent;
+    if (sub.indexOf('已关闭') < 0) throw new Error('默认关闭的摘要: ' + sub);
   });
-  t('设置分层：高级组默认收起并带「高级」标，常用组不误标', () => {
-    const think = document.querySelector('[data-sec="llm-thinking"]');
-    const api = document.querySelector('[data-sec="llm-api"]');
-    if (!think || !api) throw new Error('缺分组');
-    if (think.open) throw new Error('高级组应默认收起');
-    if (!think.classList.contains('is-advanced')) throw new Error('高级组缺 is-advanced');
-    if (!think.querySelector('.sec-adv')) throw new Error('高级组缺「高级」标');
-    if (!api.open) throw new Error('常用组应默认展开');
-    if (api.querySelector('.sec-adv')) throw new Error('常用组不该有「高级」标');
+  t('设置分层：模型页不再有高级组（思考开关已提为常用）', () => {
+    if (document.querySelector('[data-sec="llm-thinking"]').classList.contains('is-advanced')) {
+      throw new Error('思考组又被打回高级组');
+    }
+    if (document.querySelector('[data-sec="llm-api"] .sec-adv')) throw new Error('常用组不该有「高级」标');
   });
 
   t('进入即拉 /api/prefs 回填', () => {
@@ -2738,6 +2799,33 @@ const withEFP = (el, fn) => {
     const sub = document.querySelector('[data-sec="llm-thinking"] .sec-sub').textContent;
     if (sub !== '已开启 · 深度中') throw new Error('思考组摘要: ' + sub);
   });
+  t('思考开关拨动即落库：POST /api/prefs { llm: { thinking: true } }', () => {
+    const posts = postsTo('/api/prefs');
+    const last = posts[posts.length - 1];
+    if (!last) throw new Error('未 POST /api/prefs');
+    const sent = JSON.parse(last[3]);
+    if (!sent.llm || sent.llm.thinking !== true) throw new Error('请求体: ' + last[3]);
+    // 只提交这一项：不能把用户还没保存的 baseUrl / Key 一起写进去
+    if (sent.llm.baseUrl !== undefined || sent.llm.apiKey !== undefined) {
+      throw new Error('思考开关只该提交 thinking：' + last[3]);
+    }
+  });
+  const depthSel = document.querySelector('#llmDepth');
+  depthSel.value = 'high';
+  depthSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await sleep(40);
+  t('思考深度也是账号级配置：改完即 POST thinkingDepth', () => {
+    const posts = postsTo('/api/prefs');
+    const last = posts[posts.length - 1];
+    if (!last) throw new Error('未 POST /api/prefs');
+    const sent = JSON.parse(last[3]);
+    // 契约里是 1/2/3 的整数档位（界面用 low/medium/high 表述）
+    if (!sent.llm || sent.llm.thinkingDepth !== 3) throw new Error('请求体: ' + last[3]);
+  });
+  // 复位成中档：后面的「测试模型」断言依赖表单默认值，不能带着「深」继续跑
+  depthSel.value = 'medium';
+  depthSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await sleep(40);
   t('开思考后：模型名的提示跟着改口（不再宣称内置 /no_think）', () => {
     const tip = [...document.querySelectorAll('#llmModel ~ .form-tip, .form-tip')].map((e) => e.textContent).join(' | ');
     if (tip.indexOf('已开启思考') < 0) throw new Error('提示未跟着变: ' + tip.slice(0, 120));
@@ -4354,8 +4442,11 @@ const withEFP = (el, fn) => {
   // 生成摘要
   Q('#genDigestBtn').click();
   await sleep(150);
-  t('生成摘要：POST + toast + 渲染结果', () => {
-    if (!postsTo('/api/digest/generate').length) throw new Error('未 POST');
+  t('生成摘要：提交异步任务 + 轮询 + toast + 渲染结果', () => {
+    const posts = postsTo('/api/ai/jobs');
+    if (!posts.length) throw new Error('未 POST /api/ai/jobs');
+    if (JSON.parse(posts[posts.length - 1][3]).kind !== 'digest') throw new Error('任务类型不是 digest');
+    if (!callsOf('apiFetch').some((c) => String(c[1]).indexOf('/api/ai/jobs/') === 0)) throw new Error('未轮询任务状态');
     if (!Q('#digestBody .dg-overview')) throw new Error('未渲染生成结果');
     const tn = callsOf('toast');
     if (!tn.length || tn[tn.length - 1][1].indexOf('摘要生成完成') < 0) throw new Error('toast: ' + JSON.stringify(tn[tn.length - 1] || null));
@@ -8808,11 +8899,22 @@ const withEFP = (el, fn) => {
       const actIdx = body.indexOf('parts.push(<ArtActions');
       if (actIdx > 0 && aiIdx > actIdx) throw new Error('AI 动作条跑到正文末尾了');
     });
-    /* 超时：AI 调用吃长超时。30s 写超时会在服务端还在跑的时候先掐断，
-     * 界面报「失败」但几分钟后明细里其实成功了（实测前端 30s、服务端 99s）。 */
-    t('AI 长任务请求带长超时，不吃 30s 写超时', () => {
-      if (aiBar.indexOf('timeoutMs: aiTimeout') < 0) throw new Error('EntryAiBar 的 AI 调用未带长超时');
-      if (!/timeoutMs: .*AI_TIMEOUT_MS/.test(aiView)) throw new Error('日报生成未带长超时');
+    /* 长任务形态：提交（毫秒级）→ 轮询，不再挂一个 90 秒的 POST。
+     * 挂长 POST 会被 Cloudflare 100 秒读超时换成 524（界面报错、服务端还在跑）。 */
+    t('AI 长任务走「提交 + 轮询」，不退同步长请求', () => {
+      for (const [name, src] of [['EntryAiBar', aiBar], ['AiView', aiView]]) {
+        if (src.indexOf('submitAiJob') < 0) throw new Error(name + ' 未提交异步任务');
+        if (src.indexOf('pollAiJob') < 0) throw new Error(name + ' 未轮询任务状态');
+      }
+      if (aiBar.indexOf("'/ai'") >= 0) throw new Error('EntryAiBar 又退回同步接口');
+    });
+    /* enable_thinking 是账号级配置：ModelPane 必须把开关 POST 进 llm，而不是只在本地记一笔。 */
+    const modelPane = fs.readFileSync(path.join(webRoot, 'src', 'settings', 'ModelPane.jsx'), 'utf8');
+    t('enable_thinking 开关写账号配置（POST /api/prefs 的 llm 字段）', () => {
+      if (modelPane.indexOf('onToggleThinking') < 0) throw new Error('缺思考开关处理函数');
+      if (modelPane.indexOf('{ thinking: on }') < 0) throw new Error('未把 thinking 写进 llm 补丁');
+      if (modelPane.indexOf('data-sec="llm-thinking"') >= 0) throw new Error('未用 Section 的 secKey');
+      if (modelPane.indexOf('secKey="llm-thinking"') < 0) throw new Error('思考分组 key 变了');
     });
   }
 

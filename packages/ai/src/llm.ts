@@ -286,14 +286,18 @@ const isAiError = (e: unknown): boolean =>
   e instanceof Error && /^E_AI_[A-Z_]+/.test(e.message);
 
 /**
- * 记录「不接受 enable_thinking 的上游」（按 host 记忆）。
+ * 记录「不接受这些可选字段的上游」（按 host 记忆）。
  *
- * 关思考这件事各家写法不一样：vLLM / SiliconFlow 认 `chat_template_kwargs`，
+ * 思考开关各家写法不一样：vLLM / SiliconFlow 认 `chat_template_kwargs`，
  * 有的网关只认顶层 `enable_thinking`，还有的见到未知字段直接 400 UNKNOWN_FIELD。
- * 所以先带 `enable_thinking: false` 试；被拒就记进这个集合，之后同一上游不再带，
- * 避免每次调用都白跑一趟 400。
+ * 所以先按最通用的形态发；被拒就摘掉该字段重试，并记住这台上游，
+ * 之后不再每次都白跑一趟 400。
+ *
+ * 注意这里是**进程内**记忆：重启后各试探一次，代价可接受；
+ * 落库会让「上游升级后支持了」永久卡在旧结论上。
  */
-const noThinkingUnsupported = new Set<string>();
+const noThinkingField = new Set<string>();
+const noBudgetField = new Set<string>();
 
 const hostOf = (baseUrl: string): string => {
   try { return new URL(baseUrl).host; } catch { return baseUrl; }
@@ -333,32 +337,32 @@ export async function chat(
   // 输出上限：不传就一直写到模型自己觉得够了，白等几十秒
   if (opts.maxTokens && opts.maxTokens > 0) body.max_tokens = Math.round(opts.maxTokens);
 
-  /* 关思考：优先用顶层 `enable_thinking: false`。
+  /* 思考开关：**一个账号级配置，双向显式下发**。
    *
-   * 这是实测出来的最快路径 —— 同一篇短文，带该字段 1.3 秒、不带 6.0 秒，
-   * completion 从 102 降到 35，`reasoning_content` 直接为空。
-   * 为什么不用 `chat_template_kwargs`：测试机的上游对它直接 400 UNKNOWN_FIELD；
-   * 为什么不用文本 `/no_think`：那只是个普通 token，混合思考模型未必照做
-   * （实测 reasoning 反而更长）。system 提示里仍保留 `/no_think`（支持的模型认它），
-   * 两条路并行不冲突。
+   * `llm.thinking` 来自 `user_llm.thinking`（设置 → 模型 →「模型思考」），默认 false。
+   * 关的时候带 `enable_thinking: false`，开的时候带 `true` —— 不能只在「开」时发，
+   * 那会让混合思考模型按自己的默认（通常是开）走，思考链照样吃掉几十秒。
    *
-   * 不支持的网关会回 400，由 `chat` 的循环摘掉该字段重试一次。 */
+   * 实测（同一篇 3185 字）：带 false → 3.1/4.6/5.4 秒、completion 135~146；
+   * 不带 → 55.9/75.6 秒、completion 3251~4131。
+   *
+   * 为什么不用 `chat_template_kwargs`：测试机的上游对它直接 400 UNKNOWN_FIELD。
+   * 为什么还留着 system 提示里的 `/no_think`：那是对「只认文本指令」的模型的兜底，
+   * 两条路不冲突（`thinkingDirective()` 在 server 侧按同一开关生成）。
+   *
+   * 上游不认这些字段时会 400，由下面循环摘掉重试（见 noThinkingField / noBudgetField）。 */
   const host = hostOf(baseUrl);
-  if (!llm.thinking && !noThinkingUnsupported.has(host)) {
-    body.enable_thinking = false;
-  }
-
-  /* 开思考时把预算交给推理模板（vLLM / SiliconFlow 的透传口）。 */
-  if (llm.thinking) {
-    body.chat_template_kwargs = { enable_thinking: true, thinking_budget: llm.thinkingBudget };
-  }
+  if (!noThinkingField.has(host)) body.enable_thinking = llm.thinking === true;
+  /* 开思考时才需要预算；不给就按上游模板自己的默认。 */
+  if (llm.thinking && !noBudgetField.has(host)) body.thinking_budget = llm.thinkingBudget;
 
   const timeoutMs = opts.timeoutMs ?? LLM_TIMEOUT_MS;
   /** 总预算：空内容重试与字段降级都要落在同一个预算里，否则「90 秒上限」会被翻倍。 */
   const budget = opts.budgetMs ?? timeoutMs * (opts.retryOnEmpty ? 2 : 1);
   const deadline = Date.now() + budget;
-  /* 步数上限 = 原始 1 次 + 字段降级 1 次 + 空内容重试 1 次 */
-  const maxSteps = opts.retryOnEmpty ? 3 : 2;
+  /* 步数上限 = 原始 1 次 + 字段降级 2 次（enable_thinking / thinking_budget）+ 空内容重试 1 次。
+   * 每次降级都会 delete 一个字段，所以不可能无限循环。 */
+  const maxSteps = 3 + (opts.retryOnEmpty ? 1 : 0);
   let emptyRetried = false;
   let lastErr: unknown = null;
 
@@ -372,7 +376,13 @@ export async function chat(
       /* ① 上游不认 `enable_thinking`：摘掉重量，并记住这台上游，立刻重来。 */
       if (isUnknownField(e, 'enable_thinking') && 'enable_thinking' in body) {
         delete body.enable_thinking;
-        noThinkingUnsupported.add(host);
+        noThinkingField.add(host);
+        continue;
+      }
+      /* ①b 上游不认 `thinking_budget`：只摘预算，思考开关本身仍然保留。 */
+      if (isUnknownField(e, 'thinking_budget') && 'thinking_budget' in body) {
+        delete body.thinking_budget;
+        noBudgetField.add(host);
         continue;
       }
       /* ② 空内容：模型只吐了思考链，允许重试一次。 */

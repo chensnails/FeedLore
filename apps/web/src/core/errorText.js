@@ -88,6 +88,10 @@ const CN = {
   E_AI_BAD_RESPONSE: '模型返回的内容无法解析',
   E_AI_NO_CONTENT: '模型没有返回内容（可能是被内容过滤或截断）',
   E_AI_NO_MODELS: '上游没有返回任何模型，请手动填写模型名称',
+  /* 异步任务（提交 → 轮询）。任务不会因为页面关掉而取消，失败原因会留在模型状态里。 */
+  E_AI_BUSY: '该账号还有 AI 任务在跑，等其中一个结束后再试',
+  E_AI_JOB_NOT_FOUND: '找不到这个 AI 任务（可能已过期清理），请重新发起',
+  E_AI_JOB_RESTARTED: '服务重启导致任务中断，请重新发起',
 
   E_WEBHOOK_URL_UNREACHABLE: 'Webhook 地址不可用',
   E_UPDATE_CHANNEL_UNSET: '未配置更新通道（UPDATE_WEBHOOK_URL / UPDATE_WEBHOOK_TOKEN）',
