@@ -7,7 +7,7 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
-## Unreleased
+## 2.4.7 — 2026-11-16
 
 ### Added
 
@@ -32,8 +32,14 @@ This file records user-visible changes and deployment-related changes for 2.x.
   OpenAI-compatible `/models` endpoint and fills the candidate list; it also runs once after a
   successful save. When the upstream does not implement it, the field falls back to manual entry with
   an explanation.
-- **AI tags**, **rule engine**, **AI usage statistics** and the **MCP write tools**
-  (`feedlore_summarize_entry` / `feedlore_ask_entry`, `write` scope required).
+- **AI smart tags**: enable them in Settings → Model to generate semantic tags for entries, shown in
+  their own "AI tags" group on the article page and kept physically separate from manual tags; you can
+  also tag a single article via "AI · Tag".
+- **Rule engine**: Settings → Rules can automatically add tags, mark as watched or mark as read based
+  on keyword / tag conditions, applied only to entries ingested from then on.
+- **AI usage statistics**: Settings → Model → "AI usage" counts calls and tokens by today / last 7 days /
+  last 30 days and by feature, and lists failures.
+- **MCP write tools**: `feedlore_summarize_entry` / `feedlore_ask_entry` (require a `write`-scope token).
 
 ### Improved
 
@@ -70,6 +76,9 @@ This file records user-visible changes and deployment-related changes for 2.x.
   Translation is budgeted at 4000 characters accordingly, and truncation is stated explicitly.
 - **Clearer model failures**: an unreachable endpoint now reads "cannot reach the model address…",
   and a cancelled request says "cancelled" instead of being reported as a timeout.
+- **More reliable task concurrency cap**: when one account submits many AI tasks at once, the active
+  limit (4) could previously be bypassed by a race, causing excess model calls; it is now enforced at
+  the database level and extra submissions get "too many tasks, try again shortly".
 
 ### Removed
 

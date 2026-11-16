@@ -7,7 +7,7 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
-## 未发布
+## 2.4.7 — 2026-11-16
 
 ### 新增
 
@@ -59,6 +59,8 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
   超出会明确说明截断。
 - **模型失败更可读**：连不上模型地址时提示「连不上模型地址：请检查地址拼写、网络或代理设置」，
   主动取消单独提示「已取消这次生成」，不再和超时混为一谈。
+- **任务并发上限更可靠**：同一账号同时提交大量 AI 任务时，活跃上限（4 个）此前可能因并发竞态被
+  绕过，导致超量模型调用；现已从数据库层保证，超出的一律返回「任务过多，请稍后再试」。
 
 ### 移除
 
