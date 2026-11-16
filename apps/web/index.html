@@ -174,8 +174,18 @@ html.boot-lock { overflow: hidden; }
     done = true;
     clearTimeout(timer);
     document.documentElement.classList.remove('boot-lock');
-    /* 至少显示 350ms：接口很快时也不至于闪一下白/闪一下 logo */
-    var wait = Math.max(0, 350 - (performance.now() - t0));
+    /* 至少显示 350ms：接口很快时也不至于闪一下 logo。
+       但二次访问（资源全在 SW / HTTP 缓存里）本来就是秒开，再等满 350ms
+       只会让人觉得「快还要转半天」。用资源 timing 判断：有带哈希资源从缓存
+       命中（transferSize=0）就跳过等待，冷启动照旧保留 350ms。 */
+    var warm = false;
+    try {
+      var rs = performance.getEntriesByType('resource') || [];
+      for (var ri = 0; ri < rs.length; ri++) {
+        if (/\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\./.test(rs[ri].name) && rs[ri].transferSize === 0) { warm = true; break; }
+      }
+    } catch (e) { /* 老浏览器没有 resource timing：按冷启动处理 */ }
+    var wait = warm ? 0 : Math.max(0, 350 - (performance.now() - t0));
     setTimeout(function () {
       el.classList.add('is-done');
       setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 320);

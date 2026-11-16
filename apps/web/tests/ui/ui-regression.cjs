@@ -1308,6 +1308,21 @@ const withEFP = (el, fn) => {
   // 背景：v1.7.0 迁移 AI 视图时，替换区间跨过了 #settingsRoot，导致设置弹层不再挂载、
   // 设置按钮失效（直到 v1.8.2 才发现）。这里把四个挂载点钉死。
   const indexHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
+  t('首屏优化：热启动跳过 350ms（缓存命中时不等满）', () => {
+    if (indexHtml.indexOf("rs[ri].transferSize === 0") < 0) throw new Error('未按资源缓存命中判断热启动');
+    if (indexHtml.indexOf('warm ? 0 : Math.max') < 0) throw new Error('热启动未跳过等待');
+    // 冷启动的 350ms 保底仍在，不能有「无脑不等」的写法
+    if (indexHtml.indexOf('Math.max(0, 350') < 0) throw new Error('冷启动保底丢失');
+  });
+  t('首屏优化：骨架 CSS 同源抽取（标记 + 构建插件都在）', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const vite = fs.readFileSync(path.join(__dirname, '..', '..', 'vite.config.ts'), 'utf8');
+    if (css.indexOf('CRITICAL_SHELL:START') < 0 || css.indexOf('CRITICAL_SHELL:END') < 0) throw new Error('style.css 缺骨架标记');
+    if (vite.indexOf('inlineCriticalShell') < 0 || vite.indexOf('transformIndexHtml') < 0) throw new Error('构建插件未内联骨架');
+    // 骨架里必须有主题变量与 body 背景，否则深色首屏会闪白
+    const m = /CRITICAL_SHELL:START[\s\S]*?\*\/([\s\S]*?)CRITICAL_SHELL:END/.exec(css);
+    if (!m || m[1].indexOf('--bg:') < 0 || m[1].indexOf('background: var(--bg)') < 0) throw new Error('骨架缺主题变量/背景');
+  });
   t('index.html：React 挂载点齐全', () => {
     // v1.6.0：全局顶栏并入各视图后不再有独立的 <header class="topbar"> 顶栏元素
     for (const id of ['settingsRoot', 'cmdkRoot', 'aiRoot', 'cardsRoot', 'readerRoot', 'overlaysRoot']) {

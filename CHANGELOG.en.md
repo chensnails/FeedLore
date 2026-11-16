@@ -37,6 +37,14 @@ This file records user-visible changes and deployment-related changes for 2.x.
 
 ### Improved
 
+- **Faster feed refreshes**: sources that repeatedly ignore `If-None-Match` / `If-Modified-Since` are
+  automatically checked less often (up to 4x longer intervals, restored as soon as a normal 304 comes
+  back; relearned after a restart). A per-feed total time budget (timeout + 8 s of retries) stops a
+  single slow source from stalling a whole round for 78 seconds. "Refresh all" now shows done/total
+  progress while it runs.
+- **Faster first paint**: the minimal theme variables and page container ship inline with the HTML
+  instead of waiting for the 171 KB stylesheet, and repeat visits no longer wait out the splash
+  layer's 350 ms minimum when resources come from cache (375 ms → 109 ms measured).
 - **Settings forms are shown directly**: the 2.4.6 "read-only until you click Edit" layer is gone —
   every section is editable as soon as it opens. Only Account → Login info keeps the
   "Change username" / "Change password" buttons.
