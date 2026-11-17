@@ -416,8 +416,11 @@ export const LlmRouteSchema = z.object({
 });
 export type LlmRoute = z.infer<typeof LlmRouteSchema>;
 
-/** 整个路由表：键必须是白名单能力，值逐项校验。 */
-export const LlmRoutesSchema = z.record(AiCapabilitySchema, LlmRouteSchema);
+/**
+ * 整个路由表：键用 string（前端可只提交改动的能力，服务端按 AI_CAPABILITIES 白名单取键）。
+ * 不用 z.record(z.enum, ...)：zod4 会推断成「六个键全必需」的 Record，与部分更新语义冲突。
+ */
+export const LlmRoutesSchema = z.record(z.string(), LlmRouteSchema);
 export type LlmRoutes = z.infer<typeof LlmRoutesSchema>;
 
 /* ============================ AI 日报 ============================ */

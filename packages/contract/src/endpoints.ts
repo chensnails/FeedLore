@@ -681,7 +681,11 @@ export const admin = {
 
 /* ============================ AI 日报 ============================ */
 
-export const testLlmBody = z.object({ llm: M.LlmConfigSchema.partial().optional() });
+export const testLlmBody = z.object({
+  llm: M.LlmConfigSchema.partial().optional(),
+  /** 指定测哪一路提供商（0015）；不传 = 默认槽。测试连接不受能力开关限制。 */
+  providerId: z.string().max(64).optional(),
+});
 export type TestLlmBody = z.infer<typeof testLlmBody>;
 
 export const digestGenerateBody = z.object({
@@ -730,7 +734,11 @@ export type AiUsageResponse = z.infer<typeof aiUsageResponse>;
 
 /** 拉取上游模型列表（OpenAI 兼容 `GET {base}/models`）。
  *  可临时带未保存的 baseUrl / apiKey —— 与「测试连接」同口径，刚填完就能试。 */
-export const llmModelsBody = z.object({ llm: M.LlmConfigSchema.partial().optional() });
+export const llmModelsBody = z.object({
+  llm: M.LlmConfigSchema.partial().optional(),
+  /** 指定拉哪一路提供商的模型列表（0015）；不传 = 默认槽。 */
+  providerId: z.string().max(64).optional(),
+});
 export type LlmModelsBody = z.infer<typeof llmModelsBody>;
 
 /** 一条请求明细。`kind` 原样回，中文名由前端词典映射（与 AI 用量同一套）。 */

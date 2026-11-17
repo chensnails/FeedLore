@@ -10,18 +10,17 @@
  */
 
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { entries, entryAiTags, feeds, userLlm, users, type Db } from '@feedlore/db';
+import { entries, entryAiTags, feeds, users, type Db } from '@feedlore/db';
 import {
   AI_TAG_PROMPT_VERSION,
-  getCryptoSecret,
   llmComplete,
-  resolveUserLlm,
   suggestEntryTags,
   type ResolvedLlm,
 } from '@feedlore/ai';
 import { assertPublicHost, safeFetch } from './net';
 import { userAiTags } from './prefs';
 import { recordAiUsage } from './aiUsage';
+import { resolveLlmForTask, isCapabilityEnabled } from './llm';
 
 const TICK_MS = 60 * 1000;
 /** 每账号每 tick 最多处理的篇数：控制单次模型调用量，避免一上来把整库额度烧光。 */
@@ -121,28 +120,18 @@ export async function runAiTagTick(db: Db, _now: Date = new Date()): Promise<num
     .where(sql`${users.prefs}->'aiTags'->>'enabled' = 'true'`);
   if (!rows.length) return 0;
 
-  const secret = await getCryptoSecret(db);
   let done = 0;
 
   for (const u of rows) {
     try {
       // pref 里 enabled 不是严格 true 就跳过（与 SQL 过滤双保险）
       if (userAiTags(u.prefs).enabled !== true) continue;
+      // 「自动任务」开关：关掉后定时调度不烧额度（手动打标签仍可用，由 ai_tags 开关管）
+      if (!(await isCapabilityEnabled(db, u.id, 'auto'))) continue;
+      // 「AI 标签」开关：关掉后连手动也不该跑
+      if (!(await isCapabilityEnabled(db, u.id, 'ai_tags'))) continue;
 
-      const [llmRow] = await db
-        .select({
-          encryptedKey: userLlm.encryptedKey,
-          baseUrl: userLlm.baseUrl,
-          model: userLlm.model,
-          temperature: userLlm.temperature,
-          thinking: userLlm.thinking,
-          thinkingDepth: userLlm.thinkingDepth,
-        })
-        .from(userLlm)
-        .where(eq(userLlm.userId, u.id))
-        .limit(1);
-
-      const llm = resolveUserLlm(llmRow ?? null, secret);
+      const llm = await resolveLlmForTask(db, u.id, 'ai_tags');
       if (!llmComplete(llm)) continue; // 没配模型：跳过这一账号（不会无限重试）
 
       // 地址不可用先拦下，别等 180 秒超时（与日报生成一致）

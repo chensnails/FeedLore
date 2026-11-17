@@ -10,17 +10,16 @@
  */
 
 import { eq, sql } from 'drizzle-orm';
-import { feeds, userLlm, users, type Db } from '@feedlore/db';
+import { feeds, users, type Db } from '@feedlore/db';
 import {
-  getCryptoSecret,
   generateDigest,
   llmComplete,
-  resolveUserLlm,
   shanghaiDate,
 } from '@feedlore/ai';
 import { userDigest, userLayout } from './prefs';
 import { safeFetch } from './net';
 import { recordAiUsage } from './aiUsage';
+import { resolveLlmForTask, isCapabilityEnabled } from './llm';
 
 const TICK_MS = 60 * 1000;
 
@@ -98,7 +97,6 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
 
   if (!rows.length) return 0;
 
-  const secret = await getCryptoSecret(db);
   let done = 0;
 
   for (const u of rows) {
@@ -108,23 +106,13 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
 
       const cfg = userDigest(u.prefs);
       if (!cfg.auto || cfg.time !== hhmm || cfg.lastAuto === today) continue;
+      // 「自动任务」开关：关掉后定时调度不烧额度（手动生成仍可用，由 digest 开关管）
+      if (!(await isCapabilityEnabled(db, u.id, 'auto'))) continue;
+      if (!(await isCapabilityEnabled(db, u.id, 'digest'))) continue;
 
       await markAutoDone(db, u.id, today);
 
-      const [llmRow] = await db
-        .select({
-          encryptedKey: userLlm.encryptedKey,
-          baseUrl: userLlm.baseUrl,
-          model: userLlm.model,
-          temperature: userLlm.temperature,
-          thinking: userLlm.thinking,
-          thinkingDepth: userLlm.thinkingDepth,
-        })
-        .from(userLlm)
-        .where(eq(userLlm.userId, u.id))
-        .limit(1);
-
-      const llm = resolveUserLlm(llmRow ?? null, secret);
+      const llm = await resolveLlmForTask(db, u.id, 'digest');
 
       if (!llmComplete(llm)) {
         console.log(`[digest] user ${u.id}: scheduled time reached but LLM config is incomplete, skipping (no retry today)`);

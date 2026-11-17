@@ -19,16 +19,14 @@ import { entryAiTags, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import { ai as aiSpec, type LlmConfig } from '@feedlore/contract';
 import {
-  getCryptoSecret,
   listDigestDates,
   listModels,
   readDigest,
-  resolveUserLlm,
   shanghaiDate,
   testLlm,
   type ResolvedLlm,
 } from '@feedlore/ai';
-import { loadLlmRow } from '../lib/llm';
+import { resolveProviderForTest } from '../lib/llmProviders';
 import { assertResponse, BadRequest } from '../lib/validate';
 import { apiError, ApiException, apiErrorBody, apiErrorKey } from '../lib/apiError';
 import { assertPublicHost, safeFetch } from '../lib/net';
@@ -72,10 +70,9 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
       async (c) => {
         if (!db) return c.json({ ok: false, error: apiErrorBody('E_DB_NOT_READY').error });
         const uid = c.get('user').id;
-        const body = c.req.valid('json') as { llm?: Partial<LlmConfig> };
+        const body = c.req.valid('json') as { llm?: Partial<LlmConfig>; providerId?: string };
 
-        const secret = await getCryptoSecret(db);
-        const base = resolveUserLlm(await loadLlmRow(db, uid), secret);
+        const base = await resolveProviderForTest(db, uid, body.providerId);
         // 前端可临时覆盖（刚填完还没保存就该能试），留空沿用已保存的
         const llm: ResolvedLlm = { ...base };
         if (body.llm?.baseUrl?.trim()) llm.baseUrl = body.llm.baseUrl.trim().replace(/\/+$/, '');
@@ -133,10 +130,9 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
       async (c) => {
         if (!db) return c.json({ ok: false, models: [], error: apiErrorBody('E_DB_NOT_READY').error });
         const uid = c.get('user').id;
-        const body = c.req.valid('json') as { llm?: Partial<LlmConfig> };
+        const body = c.req.valid('json') as { llm?: Partial<LlmConfig>; providerId?: string };
 
-        const secret = await getCryptoSecret(db);
-        const base = resolveUserLlm(await loadLlmRow(db, uid), secret);
+        const base = await resolveProviderForTest(db, uid, body.providerId);
         const llm = { baseUrl: base.baseUrl, apiKey: base.apiKey };
         if (body.llm?.baseUrl?.trim()) llm.baseUrl = body.llm.baseUrl.trim().replace(/\/+$/, '');
         if (body.llm?.apiKey?.trim()) llm.apiKey = body.llm.apiKey.trim();

@@ -59,6 +59,13 @@ import {
 } from '../lib/prefs';
 import { expireWatchTags } from '../lib/watch-expire';
 import { assertPublicHost } from '../lib/net';
+import {
+  listLlmProviders,
+  loadLlmRoutes,
+  saveLlmRoutes,
+  upsertLlmProvider,
+  deleteLlmProvider,
+} from '../lib/llmProviders';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
 /**
@@ -105,6 +112,10 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         .limit(1);
 
       const secret = await getCryptoSecret(db);
+      const [llmProvidersView, llmRoutesView] = await Promise.all([
+        listLlmProviders(db, uid),
+        loadLlmRoutes(db, uid),
+      ]);
       const prefs = userRow.prefs;
 
       const payload = assertResponse(
@@ -120,6 +131,8 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           aiTags: userAiTags(prefs),
           rules: userRules(prefs),
           llm: userLlmForView(llmRow, secret),
+          llmProviders: llmProvidersView,
+          llmRoutes: llmRoutesView,
         },
         'GET /api/prefs',
       );
@@ -260,6 +273,18 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
                 set: { ...llmSet, updatedAt: sql`now()` },
               });
           }
+        }
+
+        /* ---- 多路提供商（0015）：单条 upsert / 删除 / 路由合并 ----
+         * 三项互不依赖，但都写 user_llm 或 llm_providers，串行执行避免同一行竞态。 */
+        if (body.llmProvider) {
+          await upsertLlmProvider(db, uid, body.llmProvider);
+        }
+        if (body.llmProviderDelete) {
+          await deleteLlmProvider(db, uid, body.llmProviderDelete);
+        }
+        if (body.llmRoutes) {
+          await saveLlmRoutes(db, uid, body.llmRoutes);
         }
 
         const payload = assertResponse(

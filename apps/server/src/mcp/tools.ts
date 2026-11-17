@@ -29,10 +29,8 @@ import { entries as entriesTable, feeds, type Db } from '@feedlore/db';
 import {
   chat,
   type ChatMessage,
-  getCryptoSecret,
   listDigestDates,
   readDigest,
-  resolveUserLlm,
   shanghaiDate,
   type ResolvedLlm,
 } from '@feedlore/ai';
@@ -40,7 +38,7 @@ import { APP_VERSION } from '../env';
 import { toCard } from '../lib/dto';
 import { CARD_COLUMNS, entryConditions, parseFeedIds } from '../lib/entriesQuery';
 import { recordAiUsage } from '../lib/aiUsage';
-import { loadLlmRow } from '../lib/llm';
+import { resolveLlmForTask } from '../lib/llm';
 import { assertPublicHost, safeFetch } from '../lib/net';
 import type { McpUser } from '../middleware/mcpAuth';
 
@@ -137,13 +135,12 @@ export function mcpAiSystemPrompt(
 }
 
 /**
- * 为 MCP 写工具解析并校验模型配置。复用 routes/ai.ts 同一套：
- * loadLlmRow → resolveUserLlm（解密）→ 三件套完整性 → assertPublicHost（SSRF）。
+ * 为 MCP 写工具解析并校验模型配置：走统一解析器（含 mcp 能力开关与路由）
+ * → 三件套完整性 → assertPublicHost（SSRF）。
  * 缺配置或地址非公网一律抛错，由 guard() 转成结构化错误。
  */
 async function resolveMcpLlm(db: Db, uid: string): Promise<ResolvedLlm> {
-  const secret = await getCryptoSecret(db);
-  const llm = resolveUserLlm(await loadLlmRow(db, uid), secret);
+  const llm = await resolveLlmForTask(db, uid, 'mcp');
   if (!llm.baseUrl || !llm.apiKey || !llm.model) {
     throw new Error('当前账号未配置可用的模型（baseUrl / apiKey / model 至少缺一项）');
   }

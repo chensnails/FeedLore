@@ -17,16 +17,14 @@ import type { EntryAiBody, ExploreResult, ExploreHistory } from '@feedlore/contr
 import {
   chat,
   type ChatMessage,
-  getCryptoSecret,
   extractJson,
   generateDigest,
-  resolveUserLlm,
   shanghaiDate,
   suggestEntryTags,
   AI_TAG_PROMPT_VERSION,
   type ResolvedLlm,
 } from '@feedlore/ai';
-import { loadLlmRow } from './llm';
+import { resolveLlmForTask } from './llm';
 import { assertPublicHost, safeFetch } from './net';
 import { recordAiUsage } from './aiUsage';
 import { ApiException } from './apiError';
@@ -129,10 +127,13 @@ export function entryAiSystemPrompt(action: EntryAiBody['action'], targetLang: s
   }
 }
 
-/** 取该账号的模型配置（解密后）。 */
+/**
+ * 兼容旧签名：按单篇 AI 能力解析模型。
+ * 新代码一律用 `resolveLlmForTask(db, uid, task, action)` —— 它会按能力开关
+ * 判断、按路由选提供商，并回落默认槽。保留本函数只为 CLI / 老脚本不破。
+ */
 export async function resolveLlmForUser(db: Db, uid: string): Promise<ResolvedLlm> {
-  const secret = await getCryptoSecret(db);
-  return resolveUserLlm(await loadLlmRow(db, uid), secret);
+  return resolveLlmForTask(db, uid, 'entry_ai');
 }
 
 /**
@@ -176,7 +177,7 @@ export async function execEntryAi(
   input: { entryId: number; action: EntryAiBody['action']; targetLang?: string },
 ): Promise<{ result: string }> {
   const entry = await loadOwnedEntry(db, uid, input.entryId);
-  const llm = await resolveLlmForUser(db, uid);
+  const llm = await resolveLlmForTask(db, uid, 'entry_ai', input.action);
   await assertLlmHost(llm);
 
   const cut = truncateForAi(entry.content ?? '', input.action);
@@ -233,7 +234,7 @@ export async function execEntryTags(
   entryId: number,
 ): Promise<{ tags: string[]; model: string }> {
   const entry = await loadOwnedEntry(db, uid, entryId);
-  const llm = await resolveLlmForUser(db, uid);
+  const llm = await resolveLlmForTask(db, uid, 'ai_tags');
   await assertLlmHost(llm);
 
   const id = crypto.randomUUID();
@@ -287,7 +288,7 @@ export async function execDigest(
   if (!isRealDate(date)) throw new ApiException('E_DATE_INVALID');
 
   const cfg = userDigest(userRow.prefs);
-  const llm = await resolveLlmForUser(db, uid);
+  const llm = await resolveLlmForTask(db, uid, 'digest');
   await assertLlmHost(llm);
 
   const scope = await resolveDigestScope(db, uid, input.feeds ?? null, cfg);
@@ -576,7 +577,7 @@ export async function execExplore(
   const question = String(input.question || '').trim();
   if (!question) throw new ApiException('E_EXPLORE_EMPTY_QUESTION');
 
-  const llm = await resolveLlmForUser(db, uid);
+  const llm = await resolveLlmForTask(db, uid, 'explore');
   await assertLlmHost(llm);
 
   const started = Date.now();

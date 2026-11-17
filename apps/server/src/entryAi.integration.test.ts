@@ -860,6 +860,86 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       assert.equal(body.error, 'E_EXPLORE_EMPTY_QUESTION');
     });
 
+    /* ---- 多路提供商与能力开关（0015）---- */
+
+    await t.test('T46 提供商 CRUD：回显不含明文 Key、设默认互斥、删除后路由回落', async () => {
+      fake.mode = 'ok';
+      const added = await call(cOwner, '/api/prefs', {
+        method: 'POST',
+        json: { llmProvider: { name: '便宜模型', baseUrl: FAKE_BASE, model: 'cheap-model', apiKey: 'sk-itest-provider-key' } },
+      });
+      assert.equal(added.status, 200, `新增失败：${await added.clone().text()}`);
+      let view = (await (await call(cOwner, '/api/prefs')).json()) as {
+        llmProviders: Array<{ id: string; name: string; apiKeySet: boolean; apiKeyHint: string; isDefault: boolean }>;
+        llmRoutes: Record<string, { enabled: boolean; providerId: string }>;
+      };
+      const p = view.llmProviders.find((x) => x.name === '便宜模型');
+      assert.ok(p, '新增的提供商应出现在视图里');
+      assert.equal(p!.apiKeySet, true);
+      assert.ok(p!.apiKeyHint.indexOf('sk-itest-provider-key') < 0, '视图不得含明文 Key');
+      assert.equal(view.llmRoutes.entry_ai?.enabled, true, '默认全开');
+      assert.equal(view.llmRoutes.entry_ai?.providerId, 'default', '默认走默认槽');
+
+      // 路由指向该提供商 + 设默认
+      const routed = await call(cOwner, '/api/prefs', {
+        method: 'POST',
+        json: {
+          llmProvider: { id: p!.id, name: '便宜模型', baseUrl: FAKE_BASE, model: 'cheap-model', isDefault: true },
+          llmRoutes: { digest: { providerId: p!.id } },
+        },
+      });
+      assert.equal(routed.status, 200, `路由保存失败：${await routed.clone().text()}`);
+      view = (await (await call(cOwner, '/api/prefs')).json()) as typeof view;
+      assert.equal(view.llmProviders.find((x) => x.id === p!.id)?.isDefault, true);
+      assert.equal(view.llmRoutes.digest?.providerId, p!.id);
+
+      // 删除后：引用它的路由仍在，但解析时自动回落默认槽（不报错）
+      const del = await call(cOwner, '/api/prefs', { method: 'POST', json: { llmProviderDelete: p!.id } });
+      assert.equal(del.status, 200);
+      const r = await ask(cOwner, shortId);
+      assert.equal(r.ok, true, '删除被引用的提供商后应回落默认槽，不能崩');
+
+      // 清理：把 digest 路由改回 default，避免影响后续用例
+      await call(cOwner, '/api/prefs', { method: 'POST', json: { llmRoutes: { digest: { providerId: 'default' } } } });
+    });
+
+    await t.test('T47 能力关闭：服务端拒绝并返回 E_AI_DISABLED（API 绕不过去）', async () => {
+      fake.mode = 'ok';
+      const before = fake.hits;
+      const off = await call(cOwner, '/api/prefs', {
+        method: 'POST', json: { llmRoutes: { entry_ai: { enabled: false } } },
+      });
+      assert.equal(off.status, 200);
+      const res = await call(cOwner, `/api/entry/${shortId}/ai`, { method: 'POST', json: { action: 'summary' } });
+      const body = (await res.json()) as { error?: string; ok?: boolean; result?: string };
+      assert.ok(body.error === 'E_AI_DISABLED' || body.result?.indexOf('E_AI_DISABLED')! >= 0,
+        `同步入口应带 E_AI_DISABLED，实际 ${JSON.stringify(body)}`);
+      assert.equal(fake.hits, before, '关闭后不应调用模型');
+
+      // 异步任务入口也要被拦
+      const job = await call(cOwner, '/api/ai/jobs', {
+        method: 'POST', json: { kind: 'entry_ai', entryId: shortId, action: 'summary' },
+      });
+      if (job.status === 200) {
+        const id = ((await job.json()) as { job: { id: string } }).job.id;
+        const done = await waitJob(cOwner, id);
+        assert.equal(done.status, 'failed', '关闭后任务应失败');
+        assert.ok(String(done.error).indexOf('E_AI_DISABLED') >= 0, `错误码不对：${done.error}`);
+      }
+      // 恢复
+      await call(cOwner, '/api/prefs', { method: 'POST', json: { llmRoutes: { entry_ai: { enabled: true } } } });
+      assert.equal(fake.hits, before, '恢复过程也不该调模型');
+    });
+
+    await t.test('T48 路由到不存在的提供商：保存被拒（E_LLM_PROVIDER_NOT_FOUND）', async () => {
+      const res = await call(cOwner, '/api/prefs', {
+        method: 'POST', json: { llmRoutes: { explore: { providerId: 'not-exist-xyz' } } },
+      });
+      assert.notEqual(res.status, 200, '指向不存在的提供商应被拒');
+      const body = (await res.json()) as { error?: string };
+      assert.equal(body.error, 'E_LLM_PROVIDER_NOT_FOUND');
+    });
+
     /* 这条必须放最后：降级会把 host 记进进程内缓存，之后所有调用都不再带该字段。 */
     await t.test('T32 上游拒绝 enable_thinking（400 UNKNOWN_FIELD）→ 自动摘字段重试成功', async () => {
       fake.mode = 'rejectET';
