@@ -2858,6 +2858,77 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 .ai-sub { margin:0; font-size: var(--fs-md); color: var(--text-muted); }
 
 /* ============================================================
+ * 探索（问答）
+ * 两级 tab 跟随头部吸顶：问答 / 日报。探索消息与引用卡沿用长列表的
+ * 「薄边 + 一层浅影」惯例，不使用日报卡的拟态表面（那是几张大阅读卡专用）。
+ * ============================================================ */
+.ai-tabs {
+  display: flex; gap: var(--sp-4); align-items: stretch;
+  padding: 0 var(--sp-1); border-bottom: 1px solid var(--border);
+}
+.ai-tab {
+  appearance: none; background: transparent; border: 0; cursor: pointer;
+  padding: var(--sp-3) 2px; font-size: var(--fs-md); color: var(--text-muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.ai-tab:hover { color: var(--text); }
+.ai-tab.is-active { color: var(--accent-text); border-bottom-color: var(--accent-text); font-weight: 600; }
+.ex-pane { display: flex; flex-direction: column; min-height: 0; }
+.ex-head { padding: var(--sp-4) 0 var(--sp-3); }
+.ex-thread {
+  display: flex; flex-direction: column; gap: var(--sp-4);
+  padding: var(--sp-2) 0 var(--sp-4);
+}
+.ex-turn { display: flex; flex-direction: column; gap: var(--sp-2); }
+.ex-msg { border-radius: var(--radius-lg, 12px); padding: var(--sp-3) var(--sp-4); line-height: 1.7; }
+.ex-msg-me { align-self: flex-end; max-width: 82%; background: var(--accent-soft, var(--hover)); color: var(--text); }
+.ex-msg-ai { align-self: flex-start; max-width: 100%; width: 100%; background: var(--panel); border: 1px solid var(--border); }
+.ex-answer { font-size: var(--fs-md); color: var(--text); white-space: pre-wrap; }
+.ex-answer-meta { margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-faint); }
+.ex-busy { padding: 0; }
+.ex-error { display: flex; align-items: center; gap: var(--sp-3); color: var(--danger); font-size: var(--fs-md); }
+.ex-intro { padding: var(--sp-6, 32px) var(--sp-2); text-align: center; }
+.ex-intro-ico { color: var(--accent-text); margin-bottom: var(--sp-2); }
+.ex-intro-ico .ico { width: 2rem; height: 2rem; }
+.ex-intro h3 { margin: 0 0 var(--sp-1); font-size: var(--fs-lg); font-weight: 600; }
+.ex-intro .hint { color: var(--text-muted); margin: 0 0 var(--sp-4); }
+.ex-suggest { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: center; }
+.ex-suggest-btn {
+  display: inline-flex; align-items: center; gap: var(--sp-2); cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+  padding: var(--sp-2) var(--sp-4); font-size: var(--fs-md); color: var(--text);
+}
+.ex-suggest-btn:hover { border-color: var(--accent-text); color: var(--accent-text); }
+.ex-suggest-btn .ico { width: 1rem; height: 1rem; }
+.ex-refs { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
+.ex-ref {
+  display: flex; align-items: center; gap: var(--sp-2); min-width: 0;
+  padding: var(--sp-2); border: 1px solid var(--border); border-radius: var(--border-radius-md, 8px);
+  background: var(--surface, var(--panel));
+}
+.ex-ref-thumb { flex: 0 0 40px; width: 40px; height: 40px; object-fit: cover; border-radius: 6px; }
+.ex-ref-thumb-fb { display: flex; align-items: center; justify-content: center; background: var(--hover); color: var(--text-faint); }
+.ex-ref-thumb-fb .ico { width: 1.1rem; height: 1.1rem; }
+.ex-ref-main { flex: 1; min-width: 0; }
+.ex-ref-name { font-size: var(--fs-md); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ex-ref-meta { font-size: var(--fs-sm); color: var(--text-faint); margin-top: 2px; }
+.ex-ref-go {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  background: transparent; border: 1px solid var(--accent-text); color: var(--accent-text);
+  border-radius: 6px; padding: 4px 8px; font-size: var(--fs-sm);
+}
+.ex-ref-go:hover { background: var(--accent-soft, var(--hover)); }
+.ex-ref-go .ico { width: .85rem; height: .85rem; }
+.ex-compose {
+  display: flex; gap: var(--sp-2); align-items: center;
+  position: sticky; bottom: 0; padding: var(--sp-3) 0;
+  background: var(--bg, var(--panel)); border-top: 1px solid var(--border);
+}
+.ex-compose input { flex: 1; min-width: 0; }
+.ex-compose .btn { display: inline-flex; align-items: center; gap: var(--sp-1); white-space: nowrap; }
+.ex-compose .btn .ico { width: 1rem; height: 1rem; }
+
+/* ============================================================
  * 日报
  * ============================================================ */
 /* 说明行与操作行分成两级，与文章 / 卡片页「标题行 → 筛选行」同一节奏：

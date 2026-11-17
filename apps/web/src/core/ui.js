@@ -146,9 +146,9 @@ export function switchView(name, opts) {
   // 切走之前先把「离开的那一页」滚到哪儿记下来；回来时（仅 ViewNav 显式要求）
   // 再恢复。默认仍回顶：换筛选 / 深链 / 命令面板跳转都不该沿用旧列表的位置。
   if (from !== name) rememberViewScroll(from);
-  // 日报关掉后这里兜一道：#digest 深链、命令面板遗留项、外部调用都从同一个口子回落，
-  // 不用在每个入口各写一遍判断（顶栏按钮的隐藏只是让它平时看不见）
-  if (name === 'ai' && layoutPref.digestEnabled === false) name = 'reader';
+  /* 探索页常驻（问答不依赖日报开关）：v2.4.8 起不再因 digestEnabled=false 把 ai 回落到 reader。
+   * 日报开关只控制探索页里的「日报」tab（AiView 里按 digestIsEnabled 隐藏/禁入），
+   * 关掉日报的用户仍能用探索问答。 */
   const same = from === name;
   // AI 视图按需加载（v2.2.0）：切过去之前先发起 chunk 下载，别等视图切完才开始。
   const mountAi = get('mountAi');
@@ -493,12 +493,11 @@ export function cardDetailRead(id) {
 export const digestIsEnabled = () => layoutPref.digestEnabled !== false;
 
 /** 开 / 关日报（设置面板的开关经桥调用）。
- *  关掉时如果正停在日报页，得把人带走 —— 否则入口消失了、页面还杵在那儿。 */
+ *  探索页常驻：关掉日报只隐藏页内「日报」tab，不再把人带离探索页。 */
 export function setDigestEnabled(on) {
   const next = on !== false;
   if (digestIsEnabled() === next) return;
   setLayout('digestEnabled', next);
-  if (!next && state.tab === 'ai') switchView('reader');
   emitShell();
 }
 

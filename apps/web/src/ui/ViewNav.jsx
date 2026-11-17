@@ -11,7 +11,7 @@ import { onAny, EVENT } from '../kernel/events.js';
 const VIEWS = [
   { id: 'reader', label: '文章', ico: 'inbox' },
   { id: 'cards', label: '卡片', ico: 'grid' },
-  { id: 'ai', label: '日报', ico: 'sparkle' },
+  { id: 'ai', label: '探索', ico: 'sparkle' },
 ];
 
 function readShell() {
@@ -31,7 +31,8 @@ export function ViewNav() {
   }, []);
 
   const view = (core.state && core.state.tab) || 'reader';
-  const views = snap.digestVisible === false ? VIEWS.filter((v) => v.id !== 'ai') : VIEWS;
+  // 探索页常驻：日报开关只影响页内「日报」tab，不再隐藏整个视图导航。
+  const views = VIEWS;
 
   return (
     <nav className="viewnav" role="navigation" aria-label="视图切换">

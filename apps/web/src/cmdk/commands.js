@@ -13,9 +13,8 @@ export function buildCommands(S) {
   const readonly = !!(S.isReadonly && S.isReadonly());
   const admin = !!(S.isAdmin && S.isAdmin());
   const cmds = [];
-  [['reader', '文章'], ['cards', '卡片'], ['ai', '日报']].forEach((v) => {
-    // 日报关掉后连命令都不该出现（真按到也进不去：switchView 那侧有守卫）
-    if (v[0] === 'ai' && S.digestIsEnabled && !S.digestIsEnabled()) return;
+  [['reader', '文章'], ['cards', '卡片'], ['ai', '探索']].forEach((v) => {
+    // 探索是常驻页（问答不依赖日报开关），命令面板始终保留；日报开关只管日报那块。
     cmds.push({
       group: '视图', icon: v[0] === 'reader' ? 'inbox' : (v[0] === 'cards' ? 'grid' : 'sparkle'),
       label: '切换到' + v[1] + '页', hint: v[1], keywords: 'view ' + v[1] + ' 页面切换',

@@ -723,7 +723,7 @@ w.feedlore = {
       const kind = String((body && body.kind) || '');
       const job = {
         id, kind, status: 'queued',
-        label: kind === 'digest' ? '日报' : (body && body.action) || '单篇 AI',
+        label: kind === 'digest' ? '日报' : (kind === 'explore' ? ('探索：' + ((body && body.question) || '')) : (body && body.action) || '单篇 AI'),
         result: null, error: '', createdAt: new Date().toISOString(),
         startedAt: null, finishedAt: null, durationMs: 0,
       };
@@ -750,6 +750,13 @@ w.feedlore = {
         } else if (job.kind === 'ai_tags') {
           job.status = 'succeeded';
           job.result = { tags: ['测试', '标签'], model: 'Qwen/Qwen3-8B' };
+        } else if (job.kind === 'explore') {
+          job.status = 'succeeded';
+          job.result = {
+            answer: '按你的订阅，最近值得看的是这几条 [#1]。',
+            refs: [{ id: 'e1', name: '最近的好剧推荐', feedName: '影视小报', date: '2026-11-16', desc: '摘要', image: null }],
+            model: 'Qwen/Qwen3-8B', matched: 12,
+          };
         } else {
           job.status = 'succeeded';
           job.result = { result: '这是 AI 生成的摘要。' };
@@ -4413,6 +4420,19 @@ const withEFP = (el, fn) => {
   const Q = (sel) => aiEl.querySelector(sel);
   const QA = (sel) => [...aiEl.querySelectorAll(sel)];
 
+  t('探索视图：标题改为探索、默认问答页、日报 tab 与日报子页保留', () => {
+    if (!Q('.ai-head')) throw new Error('无 ai-head');
+    if (!/探索/.test(Q('.ai-head h2').textContent)) throw new Error('标题未改成探索');
+    if (QA('#aiNav .ainav-btn').length !== 0) throw new Error('二级导航应已删除');
+    if (!Q('[data-ai-pane="explore"]')) throw new Error('无问答子页（默认）');
+    if (Q('[data-ai-pane="explore"]').hidden) throw new Error('问答应为默认显示');
+    if (!Q('[data-ai-pane="digest"]')) throw new Error('日报子页应保留');
+    if (!Q('[data-ai-pane="digest"]').hidden) throw new Error('日报默认应隐藏（放 tab 后）');
+    if (!Q('#exploreTabAsk') || !Q('#exploreTabDigest')) throw new Error('缺问答/日报 tab');
+    if (Q('#exploreTabAsk').getAttribute('aria-selected') !== 'true') throw new Error('问答 tab 未选中');
+    if (!Q('#exploreInput') || !Q('#exploreCompose')) throw new Error('缺提问输入框');
+    if (QA('.ex-suggest-btn').length < 2) throw new Error('缺预设问题');
+  });
   t('AI 视图渲染：单页（无二级导航）', () => {
     if (!Q('.ai-head')) throw new Error('无 ai-head');
     if (QA('#aiNav .ainav-btn').length !== 0) throw new Error('二级导航应已删除');
@@ -4484,6 +4504,43 @@ const withEFP = (el, fn) => {
   t('生成后日期选项今天置顶', () => {
     const opts = QA('#digestDate option').map((o) => o.value);
     if (opts[0] !== todayStr()) throw new Error('今天未置顶: ' + opts[0]);
+  });
+
+  // 探索问答：点预设问题 → 提交 explore 任务 → 轮询 → 答案 + 引用卡 + 跳文章
+  Q('#exploreTabAsk').click();
+  await sleep(30);
+  Q('.ex-suggest-btn').click();
+  await sleep(200);
+  t('探索问答：提交 explore 任务并渲染答案/引用卡', () => {
+    const posts = postsTo('/api/ai/jobs');
+    const last = JSON.parse(posts[posts.length - 1][3]);
+    if (last.kind !== 'explore' || !last.question) throw new Error('未提交 explore + question：' + JSON.stringify(last));
+    if (!callsOf('apiFetch').some((c) => String(c[1]).indexOf('/api/ai/jobs/') === 0)) throw new Error('未轮询任务');
+    if (!Q('.ex-answer') || Q('.ex-answer').textContent.indexOf('最近值得看') < 0) throw new Error('未渲染答案');
+    if (!Q('.ex-ref') || Q('.ex-ref-name').textContent.indexOf('好剧') < 0) throw new Error('未渲染引用卡');
+    if (!Q('.ex-ref-go')) throw new Error('引用卡缺「读文章」');
+  });
+  // 切到日报 tab：问答隐藏、日报显示（DOM 都在，靠 hidden 切换）
+  Q('#exploreTabDigest').click();
+  await sleep(30);
+  t('探索页 tab 切换：问答/日报互斥显示', () => {
+    const askPane = Q('[data-ai-pane="explore"]');
+    if (askPane && !askPane.hidden) throw new Error('切日报后问答未隐藏');
+    const dgPane = Q('[data-ai-pane="digest"]');
+    if (!dgPane || dgPane.hidden) throw new Error('日报未显示');
+    if (Q('#exploreTabDigest').getAttribute('aria-selected') !== 'true') throw new Error('日报 tab 未选中');
+  });
+  // 切回问答（切换会卸载/重挂问答组件，内存历史清空——符合设计），重新提问再点引用卡
+  Q('#exploreTabAsk').click();
+  await sleep(30);
+  Q('.ex-suggest-btn').click();
+  await sleep(200);
+  const jumpBefore = callsOf('jumpToFeed').length;
+  if (!Q('.ex-ref-go')) throw new Error('重新提问后未渲染引用卡');
+  Q('.ex-ref-go').click();
+  await sleep(30);
+  t('探索问答：引用卡「读文章」调用 jumpToFeed 打开条目', () => {
+    if (callsOf('jumpToFeed').length <= jumpBefore) throw new Error('未跳转文章');
   });
 
   // 生成失败
@@ -6689,23 +6746,24 @@ const withEFP = (el, fn) => {
       // 自动刷新后频道计数要重读一遍；阅读页只认 __readerTick，loadFeeds 那一次不够
       if (!/loadFeeds\(\)[\s\S]{0,200}renderReader\(\)/.test(ar)) throw new Error('自动刷新后阅读页侧栏计数不会刷新');
     });
-    t('冒烟：日报关掉时 switchView(ai) 回落文章页，重开后能进', () => {
+    t('冒烟：探索页常驻——关掉日报 switchView(ai) 仍可进入（日报只影响页内 tab）', () => {
       const c2 = sw.__coreForTest;
       c2.setLayout('digestEnabled', false);
       if (c2.digestIsEnabled() !== false) throw new Error('digestIsEnabled 未反映关闭态');
       c2.switchView('ai');
-      if (c2.state.tab !== 'reader') throw new Error('关闭后仍进了 ai：' + c2.state.tab);
+      if (c2.state.tab !== 'ai') throw new Error('探索页不该被日报开关挡住：' + c2.state.tab);
       c2.setLayout('digestEnabled', true);
-      c2.switchView('ai');
-      if (c2.state.tab !== 'ai') throw new Error('重开后仍进不去 ai：' + c2.state.tab);
       c2.switchView('reader');
     });
-    t('冒烟：setDigestEnabled(false) 关掉时把停在日报页的人带回文章页', () => {
+    t('冒烟：setDigestEnabled(false) 关掉日报不把人带离探索页', () => {
       const c2 = sw.__coreForTest;
       c2.setDigestEnabled(false);
-      if (c2.state.tab !== 'reader') throw new Error('未回落：' + c2.state.tab);
+      if (c2.digestIsEnabled() !== false) throw new Error('关掉日报未生效');
+      c2.switchView('ai');
+      if (c2.state.tab !== 'ai') throw new Error('关掉日报后仍应能进探索页：' + c2.state.tab);
       c2.setDigestEnabled(true);
       if (c2.digestIsEnabled() !== true) throw new Error('未能重新开启');
+      c2.switchView('reader');
     });
     // 底部标签栏（v2.4.0）的行为契约：视图导航切回来停在离开时的位置，其它入口照旧回顶。
     // jsdom 没有布局，滚动容器要一个可读写的槽（scrollTo 也接管，走的是真实分支）。
@@ -8893,9 +8951,9 @@ const withEFP = (el, fn) => {
   w.feedlore.setDigestEnabled(false);
   await sleep(60);
   const navOff = navViews();
-  t('P1-2 关闭日报后视图导航立即去掉「日报」入口', () => {
-    if (navOn.length !== 3 || navOn.indexOf('ai') < 0) throw new Error('开启时应有三项：' + navOn.join(','));
-    if (navOff.length !== 2 || navOff.indexOf('ai') >= 0) throw new Error('关闭后仍残留日报入口：' + navOff.join(','));
+  t('P1-2 探索页常驻：关闭日报后视图导航仍保留「探索」入口', () => {
+    if (navOn.length !== 3 || navOn.indexOf('ai') < 0) throw new Error('应有三项：' + navOn.join(','));
+    if (navOff.length !== 3 || navOff.indexOf('ai') < 0) throw new Error('探索应常驻，实际：' + navOff.join(','));
   });
   w.feedlore.setDigestEnabled(true);
   await sleep(60);

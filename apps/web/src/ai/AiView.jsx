@@ -21,6 +21,7 @@ import { isImgFailed, markImgFailed } from '../imgFail.js';
 import { Icon } from '../ui/Icon.jsx';
 import { StateBlock } from '../ui/StateBlock.jsx';
 import { CopyIconButton, safeHref } from '../ui/EntryActions.jsx';
+import { ExplorePane } from './ExplorePane.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -125,6 +126,9 @@ export function AiView() {
   const s = S();
   const writable = !!(s && s.isWritable ? s.isWritable() : true);
   const [active, setActive] = useState(() => !!(s && s.state && s.state.tab === 'ai'));
+  /* 探索页两级：问答（默认，新的对话式检索）/ 日报（原能力，DOM 与 ID 原样保留）。
+   * 放内存不落布局：刷新回到问答是探索页的默认入口，日报从 tab 一键切回。 */
+  const [pane, setPane] = useState('ask');
   // 合并后第一行（标题 + ⋮）即吸顶条，由其写入 --topbar-h
   const headRef = useRef(null);
 
@@ -165,6 +169,11 @@ export function AiView() {
     if (active) loadDigest();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
+
+  // 账号关掉日报后不能停在日报 tab（tab 按钮会隐藏），自动回到问答
+  useEffect(() => {
+    if (pane === 'digest' && s.digestIsEnabled && !s.digestIsEnabled()) setPane('ask');
+  }, [pane]);
 
   const today = shanghaiToday();
   const dateOptions = useMemo(() => {
@@ -311,14 +320,23 @@ export function AiView() {
       {/* 二级导航随「日报设置」一起撤了：只剩一项的导航不传达信息。
           合并头部：标题 + 右侧 ⋮（视图切换 / 刷新 / 主题 / 设置）。AI 页无频道抽屉与搜索。 */}
       <div className="ai-head page-head view-toolbar" ref={headRef}>
-        <div className="ai-head-text"><h2 className="page-title vt-title">日报</h2></div>
+        <div className="ai-head-text"><h2 className="page-title vt-title">探索</h2></div>
         <div className="head-right vt-tools">
           <ViewNav />
           <OverflowMenu view="ai" refreshLabel="刷新订阅"
             refreshHint="只更新订阅内容；重算日报请用「重新生成」" />
         </div>
       </div>
-      <section className="ai-pane" data-ai-pane="digest">
+      <div className="ai-tabs" role="tablist" aria-label="探索页模式">
+        <button type="button" role="tab" id="exploreTabAsk" aria-selected={pane === 'ask' ? 'true' : 'false'}
+          className={'ai-tab' + (pane === 'ask' ? ' is-active' : '')} onClick={() => setPane('ask')}>问答</button>
+        <button type="button" role="tab" id="exploreTabDigest" aria-selected={pane === 'digest' ? 'true' : 'false'}
+          className={'ai-tab' + (pane === 'digest' ? ' is-active' : '')}
+          hidden={s.digestIsEnabled && !s.digestIsEnabled()}
+          onClick={() => setPane('digest')}>日报</button>
+      </div>
+      {pane === 'ask' ? <ExplorePane /> : null}
+      <section className="ai-pane" data-ai-pane="digest" hidden={pane !== 'digest'}>
         {/* 说明行与操作行分层：标题 → 说明 → 日期/动作，窄屏操作行自己换行 */}
         <div className="digest-head">
           <p className="ai-sub" id="digestSub">{subtitle}</p>
