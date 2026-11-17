@@ -11,13 +11,14 @@
  * 同步路由收敛成 `{ok:false,result}`（降级可读），任务执行器记成 `failed` 状态。
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { entries as entriesTable, entryAiTags, feeds, users, type Db } from '@feedlore/db';
-import type { EntryAiBody } from '@feedlore/contract';
+import type { EntryAiBody, ExploreResult } from '@feedlore/contract';
 import {
   chat,
   type ChatMessage,
   getCryptoSecret,
+  extractJson,
   generateDigest,
   resolveUserLlm,
   shanghaiDate,
@@ -31,6 +32,8 @@ import { recordAiUsage } from './aiUsage';
 import { ApiException } from './apiError';
 import { resolveDigestScope } from './digest';
 import { userDigest, userLayout } from './prefs';
+import { CARD_COLUMNS, entryConditions } from './entriesQuery';
+import { toCard } from './dto';
 
 /** 真实日期判定：格式对不代表日期存在（`2026-02-30` 也是「格式合法」）。 */
 export function isRealDate(s: string): boolean {
@@ -316,6 +319,168 @@ export async function execDigest(
       model: llm.model,
       label: `日报 ${date}`,
       durationMs: Date.now() - started,
+      error: (e as Error)?.message ?? String(e),
+    });
+    throw e;
+  }
+}
+
+/* ---------------- 探索问答 ---------------- */
+
+/** 探索召回的候选上限：太多会撑爆提示词、拖慢首 token；太少会漏掉相关条目。 */
+const EXPLORE_CANDIDATE_LIMIT = 32;
+/** 近期池大小：覆盖「最近有什么」这类问题；再按关键词补充更早的命中。 */
+const EXPLORE_RECENT_POOL = 120;
+/** 探索单次调用预算：问答比日报短，60 秒足够；仍远低于 CF 的 100 秒。 */
+export const EXPLORE_TIMEOUT_MS = 60_000;
+
+/** 中文问答里的高频虚词：从关键词里剔掉，避免「的/什么/最近」把召回带偏。 */
+const EXPLORE_STOPWORDS = /最近|近期|现在|目前|有什么|哪些|什么|怎么|如何|推荐|一下|帮我|请问|有没|有没有|这个|那个|我|的|了|吗|呢|啊|么|在|是|和|与|及|或|给|看|说|到|对|把|被|从|为|关于|文章|条目|内容/g;
+
+/**
+ * 从自然语言问题里抽出召回关键词。
+ * 中文没有空格，所以除了整段清理后的串，再补 2-gram（「好剧」「羊毛」「服务器」）
+ * 覆盖「最近有好剧」「服务器羊毛」这类口语——全串 ilike 命中率太低。
+ * 结果去重、限长，交给 entryConditions 的 q（已转义 %_\，并覆盖正文/标签）。
+ */
+export function exploreKeywords(question: string): string[] {
+  const cleaned = String(question || '')
+    .toLowerCase()
+    .replace(EXPLORE_STOPWORDS, ' ')
+    .replace(/[\s，。！？、；：,.!?;:'"“”‘’()（）\[\]【】<>《》/\\|~`@#$%^&*+=_-]+/g, ' ')
+    .trim();
+  if (!cleaned) return [];
+  const out: string[] = [];
+  const push = (s: string) => {
+    const t = s.trim();
+    if (t.length >= 2 && !out.includes(t) && out.length < 8) out.push(t);
+  };
+  push(cleaned);
+  for (const run of cleaned.split(' ')) {
+    if (/^[\u4e00-\u9fa5]{2,}$/.test(run)) {
+      for (let i = 0; i + 2 <= run.length; i++) push(run.slice(i, i + 2));
+    } else if (/^[a-z0-9]{2,}$/.test(run)) {
+      push(run);
+    }
+  }
+  return out;
+}
+
+/**
+ * 探索问答：在本人订阅里检索候选条目 → 让模型从中挑出相关条目并作答 →
+ * 把模型引用的 #编号解析成带真实 id 的条目卡（前端据此跳文章页）。
+ *
+ * 与日报同构（预检索 + 编号引用），但不落日报表、不依赖 digestEnabled —— 探索是常驻能力。
+ * 担保：
+ * - owner 隔离：召回走 entryConditions 的 owner 子查询，别的账号条目进不了候选；
+ * - 不臆造引用：模型只能引用候选里的 #编号，越界编号直接丢弃；
+ * - 统计照记：成功/失败都写 ai_usage_daily 与 ai_request_log。
+ */
+export async function execExplore(
+  db: Db,
+  uid: string,
+  input: { question: string },
+): Promise<ExploreResult> {
+  const question = String(input.question || '').trim();
+  if (!question) throw new ApiException('E_EXPLORE_EMPTY_QUESTION');
+
+  const llm = await resolveLlmForUser(db, uid);
+  await assertLlmHost(llm);
+
+  const started = Date.now();
+  const label = `探索：${question.slice(0, 40)}`;
+
+  // ① 召回：近期池 + 关键词命中，按 id 去重。两路都走 owner 隔离查询。
+  const recent = await db
+    .select(CARD_COLUMNS)
+    .from(entriesTable)
+    .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+    .where(and(...entryConditions(db, uid, { feedIds: null })))
+    .orderBy(desc(entriesTable.publishedAt), desc(entriesTable.id))
+    .limit(EXPLORE_RECENT_POOL);
+
+  const keywords = exploreKeywords(question);
+  // entryConditions 的 q 只吃一个关键词；把多个 2-gram 各自的完整条件（含 owner 子查询）
+  // 用 OR 串起来，owner 隔离不会因 OR 而失效——每个分支都限定本人频道。
+  const kwRows = keywords.map((kw) => and(...entryConditions(db, uid, { feedIds: null, q: kw })));
+  const keywordRows = kwRows.length
+    ? await db
+        .select(CARD_COLUMNS)
+        .from(entriesTable)
+        .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+        .where(sql`(${sql.join(kwRows, sql` or `)})`)
+        .orderBy(desc(entriesTable.publishedAt), desc(entriesTable.id))
+        .limit(EXPLORE_CANDIDATE_LIMIT * 2)
+    : [];
+
+  const byId = new Map<number, (typeof recent)[number]>();
+  for (const r of recent) byId.set(r.id, r);
+  for (const r of keywordRows) if (!byId.has(r.id)) byId.set(r.id, r);
+  const pool = [...byId.values()].slice(0, EXPLORE_RECENT_POOL);
+
+  // 没有候选就不必烧模型：直接给一句人话，refs 为空。
+  if (!pool.length) {
+    await recordAiUsage(db, uid, 'explore', null, true, 0, { model: llm.model, label, durationMs: Date.now() - started });
+    return {
+      answer: '你的订阅里暂时没有条目可供检索，先添加几个数据源或等抓取一批内容后再来问。',
+      refs: [], model: llm.model, matched: 0,
+    };
+  }
+
+  // ② 编号化候选：一条一行，带来源/日期/标签/摘要前 180 字；日期让「最近」类问题有依据。
+  const cards = pool.map(toCard);
+  const candidateText = cards.map((c, i) => {
+    const tags = c.tags.length ? ` 标签:${c.tags.slice(0, 5).join('/')}` : '';
+    const desc = (c.desc || '').replace(/\s+/g, ' ').slice(0, 180);
+    return `#${i + 1} ${c.name}（来源:${c.feedName} · ${c.date || '日期未知'}${tags}）\n   ${desc}`;
+  }).join('\n');
+
+  const system = [
+    '你是「探索」助手，帮用户从他自己的订阅条目里找答案。只根据下面给出的候选条目作答，不要臆测候选里没有的内容。',
+    '候选条目每条以 #编号 开头，编号是引用凭证。回答用简体中文，简洁清楚（3~8 句）。',
+    '在答案里提到某条时，紧跟 [#编号] 标注来源，例如「据 #2 …」。可引用多条，但只准用候选里出现过的编号。',
+    '输出严格 JSON：{"answer":"答案正文（含 [#编号] 标注）","refs":[编号数组，按出现顺序]}。refs 只能来自候选编号；没有相关条目就给 refs:[] 并如实说明。',
+    thinkingDirective(llm),
+  ].join('\n');
+
+  const messages: ChatMessage[] = [
+    { role: 'system', content: system },
+    { role: 'user', content: `我的问题：${question}\n\n候选条目：\n${candidateText}` },
+  ];
+
+  try {
+    const { content, usage } = await chat(messages, llm, {
+      fetchImpl: safeFetch,
+      timeoutMs: EXPLORE_TIMEOUT_MS,
+      budgetMs: EXPLORE_TIMEOUT_MS,
+      retryOnEmpty: true,
+    });
+    const parsed = extractJson(content);
+    const answer = typeof parsed.answer === 'string' ? parsed.answer.trim() : '';
+    if (!answer) throw new Error('explore: model returned an empty answer');
+
+    // ③ 解析引用：越界/非法编号丢弃；按 #顺序 去重，映射回真实条目（带 id）。
+    const rawRefs = Array.isArray(parsed.refs) ? parsed.refs : [];
+    const seen = new Set<number>();
+    const refs = [] as ExploreResult['refs'];
+    for (const v of rawRefs) {
+      const n = typeof v === 'number' ? v : Number(v);
+      if (!Number.isInteger(n) || n < 1 || n > cards.length || seen.has(n)) continue;
+      seen.add(n);
+      const c = cards[n - 1]!;
+      refs.push({
+        id: c.id, name: c.name, feedName: c.feedName,
+        date: c.date || '', desc: c.desc, image: c.image || null,
+      });
+    }
+
+    await recordAiUsage(db, uid, 'explore', usage, true, 1, {
+      model: llm.model, label, durationMs: Date.now() - started,
+    });
+    return { answer, refs, model: llm.model, matched: pool.length };
+  } catch (e) {
+    await recordAiUsage(db, uid, 'explore', null, false, 1, {
+      model: llm.model, label, durationMs: Date.now() - started,
       error: (e as Error)?.message ?? String(e),
     });
     throw e;

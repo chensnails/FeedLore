@@ -15,7 +15,7 @@ import { aiRequestLog, aiUsageDaily, type Db } from '@feedlore/db';
 import { shanghaiDate } from '@feedlore/ai';
 
 /** 功能分类。新增调用点时必须在这里登记，否则前端「按功能」里看不到。 */
-export const AI_USAGE_KINDS = ['digest', 'entry_ai', 'ai_tags', 'mcp', 'test'] as const;
+export const AI_USAGE_KINDS = ['digest', 'entry_ai', 'ai_tags', 'mcp', 'test', 'explore'] as const;
 export type AiUsageKind = (typeof AI_USAGE_KINDS)[number];
 
 /** 明细保留口径：每个账号最近 200 条、且不超过 30 天（写入后顺带裁剪）。 */

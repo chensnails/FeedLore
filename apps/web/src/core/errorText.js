@@ -92,6 +92,7 @@ const CN = {
   E_AI_BUSY: '该账号还有 AI 任务在跑，等其中一个结束后再试',
   E_AI_JOB_NOT_FOUND: '找不到这个 AI 任务（可能已过期清理），请重新发起',
   E_AI_JOB_RESTARTED: '服务重启导致任务中断，请重新发起',
+  E_EXPLORE_EMPTY_QUESTION: '请先输入想问的问题',
 
   E_WEBHOOK_URL_UNREACHABLE: 'Webhook 地址不可用',
   E_UPDATE_CHANNEL_UNSET: '未配置更新通道（UPDATE_WEBHOOK_URL / UPDATE_WEBHOOK_TOKEN）',

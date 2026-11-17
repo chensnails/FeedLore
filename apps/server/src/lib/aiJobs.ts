@@ -17,7 +17,7 @@ import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { aiJobs, type AiJobRow, type Db } from '@feedlore/db';
 import type { AiJob, AiJobBody } from '@feedlore/contract';
 import { ApiException } from './apiError';
-import { execDigest, execEntryAi, execEntryTags, loadOwnedEntry, isRealDate } from './aiTasks';
+import { execDigest, execEntryAi, execEntryTags, execExplore, loadOwnedEntry, isRealDate } from './aiTasks';
 
 /** 同一账号同时排队/运行的任务上限。超了直接 429，别让「连点五次」变成五个并发模型调用。 */
 export const AI_JOB_MAX_ACTIVE = 4;
@@ -129,6 +129,10 @@ export async function createJob(db: Db, uid: string, body: AiJobBody): Promise<A
     const entry = await loadOwnedEntry(db, uid, n);
     label = kind === 'ai_tags' ? 'AI 标签' : ((entry.title ?? '').trim() || '单篇 AI');
     if (kind === 'ai_tags') action = 'summary';
+  } else if (kind === 'explore') {
+    const q = (body.question ?? '').trim();
+    if (!q) throw new ApiException('E_EXPLORE_EMPTY_QUESTION');
+    label = `探索：${q.slice(0, 40)}`;
   } else {
     date = (body.date ?? '').trim();
     if (date && !isRealDate(date)) throw new ApiException('E_DATE_INVALID');
@@ -146,6 +150,7 @@ export async function createJob(db: Db, uid: string, body: AiJobBody): Promise<A
     if (body.force === true) input.force = true;
     if (Array.isArray(body.feeds) && body.feeds.length) input.feeds = body.feeds;
   }
+  if (kind === 'explore') input.question = (body.question ?? '').trim();
 
   const id = crypto.randomUUID();
   // 原子准入：超限返回 false → 429。绝不能拆成「先 count 再 insert」，并发会绕过。
@@ -215,6 +220,10 @@ export async function runJob(db: Db, id: string): Promise<void> {
         date: typeof input.date === 'string' ? input.date : undefined,
         force: input.force === true,
         feeds: Array.isArray(input.feeds) ? (input.feeds as number[]) : null,
+      });
+    } else if (job.kind === 'explore') {
+      result = await execExplore(db, job.userId, {
+        question: typeof input.question === 'string' ? input.question : '',
       });
     } else {
       throw new Error(`Unknown AI job kind: ${job.kind}`);

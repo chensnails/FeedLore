@@ -754,7 +754,7 @@ export type AiRequestsResponse = z.infer<typeof aiRequestsResponse>;
  */
 
 /** 任务种类。MCP 不在此列：MCP 协议本身是请求-响应，改异步会破坏客户端兼容。 */
-export const aiJobKind = z.enum(['entry_ai', 'ai_tags', 'digest']);
+export const aiJobKind = z.enum(['entry_ai', 'ai_tags', 'digest', 'explore']);
 export type AiJobKind = z.infer<typeof aiJobKind>;
 
 /** 状态单向流转：queued → running → succeeded | failed。 */
@@ -793,8 +793,30 @@ export const aiJobBody = z.object({
   force: z.boolean().optional(),
   /** digest 的自定义频道范围；不传按账号 prefs.digest 的口径 */
   feeds: z.array(z.number().int().positive()).max(500).optional(),
+  /** explore：用户的自然语言问题（1~300 字） */
+  question: z.string().min(1).max(300).optional(),
 });
 export type AiJobBody = z.infer<typeof aiJobBody>;
+
+/** 探索问答引用的一条订阅条目：带 id 才能跳到文章页并展开。 */
+export const exploreRefSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  feedName: z.string(),
+  date: z.string(),
+  desc: z.string(),
+  image: z.string().nullable(),
+});
+export type ExploreRef = z.infer<typeof exploreRefSchema>;
+
+/** 探索问答结果：answer 是自然语言答案，refs 是它引用的本人条目。 */
+export const exploreResultSchema = z.object({
+  answer: z.string(),
+  refs: z.array(exploreRefSchema),
+  model: z.string(),
+  matched: z.number().int(),
+});
+export type ExploreResult = z.infer<typeof exploreResultSchema>;
 
 export const ai = {
   /** AI 消耗量统计（只读本人）。days 控制按天序列与合计的窗口，默认 30。 */

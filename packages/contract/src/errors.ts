@@ -86,6 +86,7 @@ export const API_ERROR_CODES = [
   'E_AI_BUSY',
   'E_AI_JOB_NOT_FOUND',
   'E_AI_JOB_RESTARTED',
+  'E_EXPLORE_EMPTY_QUESTION',
 
   // ---- Webhook 与更新通道 ----
   'E_WEBHOOK_URL_UNREACHABLE',
@@ -227,6 +228,7 @@ export const API_ERROR_DEFAULTS = {
     status: 410,
     message: 'The AI task was interrupted by a service restart, submit it again',
   },
+  E_EXPLORE_EMPTY_QUESTION: { status: 400, message: 'Please enter a question to explore' },
 
   E_WEBHOOK_URL_UNREACHABLE: { status: 400, message: 'Webhook URL is not reachable' },
   E_UPDATE_CHANNEL_UNSET: {
