@@ -32,7 +32,7 @@ const SKIP = DATABASE_URL ? false : '未设置 DATABASE_URL —— 接口级测�
 
 /* ------------------------------------------------------------------ 假模型 */
 
-type Mode = 'ok' | 'tags' | 'auth' | 'html502' | 'notjson' | 'nocontent' | 'emptyThenOk' | 'rejectET' | 'drop' | 'slow';
+type Mode = 'ok' | 'tags' | 'auth' | 'html502' | 'notjson' | 'nocontent' | 'emptyThenOk' | 'rejectET' | 'drop' | 'slow' | 'explore';
 
 interface FakeState {
   mode: Mode;
@@ -80,6 +80,8 @@ const fakeServerFactory = (): Server => createServer((req, res) => {
     switch (fake.mode) {
       // 打标要的不是自然语言而是 JSON（见 packages/ai/src/tagging.ts）
       case 'tags': return send(200, okBody('{"tags":["测试","标签"]}'));
+      // 探索问答：返回带 #1 引用的 JSON；#99 是越界编号，服务端应丢弃
+      case 'explore': return send(200, okBody('{"answer":"推荐看 #1 这篇。","refs":[1,99]}'));
       case 'auth': return send(401, JSON.stringify({ error: 'invalid api key' }));
       case 'html502':
         return send(
@@ -797,6 +799,39 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       const read = await call(cOwner, `/api/entry/${shortId}/ai-tags`);
       const state = (await read.json()) as { status: string; tags: string[] };
       assert.equal(state.status, 'done');
+    });
+
+    await t.test('T43 探索问答：召回本人条目 + 引用带真实 id + 越界编号丢弃', async () => {
+      fake.mode = 'explore';
+      const before = fake.hits;
+      const res = await call(cOwner, '/api/ai/jobs', {
+        method: 'POST', json: { kind: 'explore', question: '最近有什么好剧' },
+      });
+      assert.equal(res.status, 200, `提交失败：${await res.clone().text()}`);
+      const id = ((await res.json()) as { job: { id: string; label: string } }).job.id;
+      const done = await waitJob(cOwner, id);
+      assert.equal(done.status, 'succeeded', done.error);
+      assert.ok(fake.hits > before, '应调用了模型');
+      const r = (done.result || {}) as { answer?: string; refs?: Array<{ id: string; name: string }>; matched?: number; model?: string };
+      assert.ok(r.answer && r.answer.indexOf('#1') >= 0, `答案不对：${JSON.stringify(r)}`);
+      assert.ok(Array.isArray(r.refs), '应返回引用数组');
+      assert.equal(r.refs!.length, 1, '越界编号 #99 应被丢弃，只留 #1');
+      // #1 是候选池第 1 条（按发布时间倒序），应是本人 feed 里的条目，绝不是 foreign
+      const refId = String(r.refs![0]!.id);
+      assert.ok(/^\d+$/.test(refId), `引用应是条目数字 id，实际 ${refId}`);
+      assert.notEqual(refId, String(foreignId), '不应引用他人条目');
+      assert.ok((r.matched || 0) > 0, 'matched 应大于 0');
+      // 编号候选在 user message（messages[1]），fake.prompts 只记 system——查完整请求体
+      const body = fake.lastBody || '';
+      assert.ok(body.indexOf('#1') >= 0 && body.indexOf('候选条目') >= 0, '提示词应带编号候选');
+      assert.ok(body.indexOf('他人的条目') < 0, '提示词不应含他人条目（owner 隔离）');
+    });
+
+    await t.test('T44 探索问答：空问题提交被拒（400 + 稳定码）', async () => {
+      const res = await call(cOwner, '/api/ai/jobs', { method: 'POST', json: { kind: 'explore', question: '   ' } });
+      assert.equal(res.status, 400, `应 400，实际 ${res.status}`);
+      const body = (await res.json()) as { error: string };
+      assert.equal(body.error, 'E_EXPLORE_EMPTY_QUESTION');
     });
 
     /* 这条必须放最后：降级会把 host 记进进程内缓存，之后所有调用都不再带该字段。 */
