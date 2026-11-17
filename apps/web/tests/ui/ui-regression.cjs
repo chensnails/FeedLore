@@ -91,6 +91,10 @@ let checkResponse = { ok: true, hasUpdate: true, current: '1.2.0', latest: '1.3.
 
 // 模型面板的可变响应（复刻 /api/prefs GET 的 llm 视图字段：不回填明文，只给 set + 掩码）
 let prefsLlm = { baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen3-8B', temperature: 0.3, thinking: false, thinkingDepth: 'medium', apiKeySet: false, apiKeyHint: '' };
+/* 多路提供商与能力路由（0015）：mock 与服务端契约同源。 */
+let prefsProviders = [];
+let prefsRoutes = {};
+let prefsProviderSeq = 0;
 let prefsPostOk = true;
 // 日报：账号级开关（layout.digestEnabled）+ 整组按账号配置（prefs.digest）
 let prefsDigestEnabled = true;
@@ -413,6 +417,8 @@ w.feedlore = {
         layout: { digestEnabled: prefsDigestEnabled }, digest: Object.assign({}, prefsDigest),
         aiTags: { enabled: prefsAiTagsEnabled },
         watchExpireDays: miniWatchExpireDays, webhookUrl: miniWebhook,
+        llmProviders: prefsProviders.slice(),
+        llmRoutes: Object.assign({}, prefsRoutes),
       });
     }
     if (url === '/api/prefs' && method === 'POST') {
@@ -494,6 +500,35 @@ w.feedlore = {
       }
       if (body && typeof body.webhookUrl === 'string') {
         miniWebhook = body.webhookUrl.trim().slice(0, 600);
+      }
+      /* 多路提供商 / 能力路由（0015）：与服务端 lib/llmProviders.ts 同口径 */
+      if (body && body.llmProvider) {
+        const p = body.llmProvider;
+        const id = p.id || ('mock-provider-' + (++prefsProviderSeq));
+        const view = {
+          id, name: p.name || '', baseUrl: p.baseUrl || '', model: p.model || '',
+          temperature: p.temperature == null ? 0.3 : p.temperature,
+          thinking: p.thinking === true, thinkingDepth: p.thinkingDepth || 0,
+          apiKeySet: true, apiKeyHint: 'sk-…mock', isDefault: p.isDefault === true,
+        };
+        if (p.id) {
+          const old = prefsProviders.find((x) => x.id === p.id) || {};
+          prefsProviders = prefsProviders.map((x) => x.id === p.id
+            ? Object.assign({}, x, view, { apiKeySet: p.apiKey ? true : x.apiKeySet }) : x);
+        } else {
+          prefsProviders = prefsProviders.concat([view]);
+        }
+        if (p.isDefault === true) {
+          prefsProviders = prefsProviders.map((x) => Object.assign({}, x, { isDefault: x.id === id }));
+        }
+      }
+      if (body && body.llmProviderDelete) {
+        prefsProviders = prefsProviders.filter((x) => x.id !== body.llmProviderDelete);
+      }
+      if (body && body.llmRoutes && typeof body.llmRoutes === 'object') {
+        for (const k of Object.keys(body.llmRoutes)) {
+          prefsRoutes[k] = Object.assign({}, prefsRoutes[k] || {}, body.llmRoutes[k]);
+        }
       }
       return ok({ ok: true, groupOrder: miniGroupOrder.slice(), layout: {}, filters: miniFilters.slice(), watchRules: miniWatchRules.slice(), digest: Object.assign({}, prefsDigest), aiTags: { enabled: prefsAiTagsEnabled }, watchExpireDays: miniWatchExpireDays, webhookUrl: miniWebhook });
     }
@@ -2733,6 +2768,19 @@ const withEFP = (el, fn) => {
   });
   await sleep(40);
   t('模型面板渲染', () => { if (!document.querySelector('#llmBaseUrl')) throw new Error('无 #llmBaseUrl'); });
+  t('AI 能力区块：6 个能力开关 + 添加提供商入口，全部即时保存', () => {
+    const sec = document.querySelector('[data-sec="llm-capabilities"]');
+    if (!sec) throw new Error('模型页缺 [data-sec="llm-capabilities"]');
+    const cap = sec.querySelector('.ai-cap');
+    if (!cap) throw new Error('缺 .ai-cap 容器');
+    const rows = cap.querySelectorAll('.ai-cap-row');
+    if (rows.length !== 6) throw new Error('应有 6 个能力行，实际 ' + rows.length);
+    if (!cap.querySelector('#aiCapAddProvider')) throw new Error('缺添加提供商按钮');
+    if (!cap.querySelector('[data-cap="entry_ai"]')) throw new Error('缺单篇 AI 行');
+    // 组件渲染不能带 PaneFoot 的脏态按钮：它是独立即时保存
+    if (cap.querySelector('.pane-foot')) throw new Error('AI 能力区块不该有自己的动作栏');
+  });
+
   t('模型面板分组：接口与密钥、模型思考都常驻展开（enable_thinking 是常用开关）', () => {
     const api = document.querySelector('[data-sec="llm-api"]');
     const think = document.querySelector('[data-sec="llm-thinking"]');
@@ -2966,9 +3014,14 @@ const withEFP = (el, fn) => {
   prefsPostOk = true;
 
   // 切走再进：重新拉取（与旧 switchTab 行为一致）
-  // GET 计数：进入 1 + 保存1重拉 1 + 保存2重拉 1 + 清除重拉 1 + 再进入 1 = 5
+  // GET 计数：进入 1 + 保存1重拉 1 + 保存2重拉 1 + 清除重拉 1 + 再进入 1 = 5；
+  // 0015 起「AI 能力」独立组件也拉 /api/prefs，所以只断言「≥5 且二次进入后次数增加」。
+  const getsBeforeReenter = callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length;
   clickTab('数据源'); await sleep(40); clickTab('模型'); await sleep(80);
-  t('模型二次进入重新拉取', () => { if (callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length !== 5) throw new Error('GET 次数=' + callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length); });
+  t('模型二次进入重新拉取', () => {
+    const n = callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length;
+    if (n < 5 || n <= getsBeforeReenter) throw new Error('GET 次数=' + n + '（二次进入前=' + getsBeforeReenter + '）');
+  });
 
   // ---- AI 智能标签开关（从「日报」页挪到「模型」页；点一下即时保存，不参与模型表单脏态） ----
   t('AI 标签开关在模型页、默认关', () => {
@@ -3002,6 +3055,24 @@ const withEFP = (el, fn) => {
     if (document.querySelector('#aiTagsEnable').checked !== false) throw new Error('开关未回位');
     if (document.querySelector('[data-sec="llm-aitags"] .sec-sub').textContent !== '关闭') throw new Error('摘要未回落');
   });
+
+  // ---- AI 能力开关（0015）：拨动即落库 llmRoutes，不进模型表单脏态 ----
+  {
+    const capPostsBefore = postsTo('/api/prefs').length;
+    const sw = document.querySelector('[data-cap="explore"] input[type="checkbox"]');
+    if (sw) { sw.click(); await sleep(90); }
+    t('AI 能力开关：拨动即提交 llmRoutes.explore.enabled=false', () => {
+      if (!sw) throw new Error('缺探索问答开关');
+      if (postsTo('/api/prefs').length < capPostsBefore + 1) throw new Error('未 POST /api/prefs');
+      const body = lastPostBody('/api/prefs');
+      if (!body.llmRoutes || !body.llmRoutes.explore || body.llmRoutes.explore.enabled !== false) {
+        throw new Error('body: ' + JSON.stringify(body));
+      }
+      if (!document.querySelector('#saveLlmBtn').disabled) throw new Error('拨能力开关不该让模型表单变脏');
+    });
+    const sw2 = document.querySelector('[data-cap="explore"] input[type="checkbox"]');
+    if (sw2) { sw2.click(); await sleep(90); }  // 恢复，避免影响后续
+  }
 
   // ---- AI 用量（模型页）：展示三个窗口 + 按功能明细，刷新会重新拉 ----
   t('AI 用量：模型页有「AI 用量」组，三窗口与明细齐备', () => {

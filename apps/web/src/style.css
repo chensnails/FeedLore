@@ -1981,6 +1981,55 @@ textarea:disabled {
 /* 频道列表不再自己滚，交给 .pane-scroll 统一滚 */
 .feed-list { padding:0; }
 
+/* ---------- 设置 → 模型 → AI 能力（0015 多路提供商） ----------
+   组件自己即时保存，没有脏态与底部动作栏；视觉沿用 .form-row / .btn-sm / .switch，
+   只补容器骨架。窄屏规则就近写在本段末尾，不塞进别的功能断点段。 */
+.ai-cap-h { margin: var(--sp-5) 0 var(--sp-2); font-size: var(--fs-md); font-weight: 500; }
+.ai-cap > .hint { margin: 0 0 var(--sp-3); }
+.ai-cap > .hint.is-ok { color: var(--success, var(--accent-text)); }
+.ai-cap > .hint.is-err { color: var(--danger); }
+.ai-cap-providers { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.ai-cap-provider {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--border-radius-md, 8px);
+  background: var(--surface-soft, var(--panel));
+}
+.ai-cap-p-main { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); flex: 1; min-width: 0; }
+.ai-cap-p-name { font-size: var(--fs-md); font-weight: 500; }
+.ai-cap-p-main .hint { font-size: var(--fs-xs); }
+.ai-cap-badge {
+  padding: 1px 6px; border-radius: 999px; font-size: var(--fs-xs);
+  background: var(--accent-soft); color: var(--accent-text);
+}
+.ai-cap-p-actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.ai-cap-editor {
+  padding: var(--sp-4); margin-bottom: var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--border-radius-md, 8px);
+  background: var(--surface-soft, var(--panel));
+}
+.ai-cap-editor-actions { display: flex; gap: var(--sp-2); }
+.ai-cap-matrix { display: flex; flex-direction: column; gap: var(--sp-3); }
+.ai-cap-row {
+  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--border-radius-md, 8px);
+}
+.ai-cap-row-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.ai-cap-sw { display: inline-flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
+.ai-cap-sw-name { font-size: var(--fs-md); font-weight: 500; }
+.ai-cap-row-head select { flex: 1; min-width: 160px; max-width: 320px; }
+.ai-cap-actions {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2); margin-top: var(--sp-3);
+  padding-top: var(--sp-3); border-top: 1px solid var(--border);
+}
+.ai-cap-action { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }
+.ai-cap-action select { flex: 1; min-width: 0; }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .ai-cap-provider { flex-direction: column; align-items: stretch; }
+  .ai-cap-p-actions { justify-content: flex-start; }
+  .ai-cap-row-head select { max-width: none; width: 100%; }
+  .ai-cap-actions { grid-template-columns: 1fr; }
+}
+
 /* 频道搜索（v1.6.0）：大量频道时的本地过滤入口；吸顶，长列表滚动时仍可搜 */
 .feed-filter {
   position: sticky; top: 0; z-index: 3;

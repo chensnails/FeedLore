@@ -14,6 +14,7 @@ import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
 import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
+import { AiCapabilities } from './AiCapabilities.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -646,6 +647,12 @@ export function ModelPane({ onDirtyChange }) {
             只想给某一篇打标时，用文章页的「AI · 标签」按钮即可，不必开这个开关。
           </small>
         </div>
+        </Section>
+
+        {/* 多路提供商 + 能力开关（0015）：独立组件自己取数、自己即时保存，
+            不参与上面那份模型表单的 dirty 判定。 */}
+        <Section secKey="llm-capabilities" title="AI 能力" sub="多路模型与开关">
+          <AiCapabilities />
         </Section>
 
         {/* 模型状态：当前模型是谁、现在能不能用、最近都请求了什么。
