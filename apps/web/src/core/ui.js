@@ -8,7 +8,7 @@
 import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, writeHash, parseHash } from './util.js';
 import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, scrollActiveTop, rememberViewScroll, restoreViewScroll, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
 import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
-import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, setEntryFlag, focusReaderArt, restoreReaderArt, clearReaderPin } from './reader.js';
+import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, setEntryFlag, focusReaderArt, restoreReaderArt, clearReaderPin, readerSetTag } from './reader.js';
 import { hideNewPill } from './autorefresh.js';
 import { clearImgFail } from '../imgFail.js';
 import { emit, EVENT } from '../kernel/events.js';
@@ -240,14 +240,10 @@ window.addEventListener('popstate', () => {
 /** 正文里的标签：跳到卡片页按这个标签筛选。
  *  ai=true 表示来自文章页的「AI 标签」组（独立表），必须走 aiTag 而非 tag，
  *  否则后端只查手动标签列，结果为空或牛头不对马嘴。 */
+/** 旧入口兼容：文章页点标签改为就地筛选，不再跳卡片页（卡片页受 cardEnabled 限制会漏文章）。
+ *  统一走 reader.js#readerSetTag，两排标签同一套逻辑。 */
 export function readerTagToCards(tag, ai = false) {
-  state.tag = ai ? null : tag;
-  state.aiTag = ai ? tag : null;
-  switchView('cards');
-  // switchView 只在卡片页「还没数据」时才拉首屏；从文章页点过来时列表往往已有内容，
-  // 不显式重置就只能看到旧列表配新筛选条（点了标签却没反应）。这里必须重拉。
-  loadPage(true);
-  toast('已按' + (ai ? 'AI ' : '') + '标签筛选：#' + tag);
+  readerSetTag(tag, ai);
 }
 
 /* ---------- 图片灯箱 ----------

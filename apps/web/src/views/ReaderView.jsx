@@ -634,6 +634,8 @@ export function ReaderView() {
   else if (st.rdGroup != null) title = `分组 · ${st.rdGroup || '未分组'}`;
   else if (st.rdScope === 'unread') title = '未读';
   else if (st.rdScope === 'favorite') title = '收藏';
+  if (st.rdTag) title += ` · ${st.rdTag}`;
+  else if (st.rdAiTag) title += ` · AI ${st.rdAiTag}`;
 
   const hasUnread = entries.some((e) => !e.isRead);
   const anyExpanded = expanded.size > 0;
@@ -673,6 +675,10 @@ export function ReaderView() {
     } else if (q) {
       emptyMsg = `没有找到匹配「${q}」的文章`;
       emptyAction = { label: '清除搜索', run: () => onSearchClear() };
+    } else if (st.rdTag || st.rdAiTag) {
+      const t = st.rdAiTag || st.rdTag;
+      emptyMsg = `「${t}」标签下暂无文章`;
+      emptyAction = { label: '清除标签筛选', run: () => s.readerSetTag(null, !!st.rdAiTag) };
     } else if (st.rdWatch === 'watch') {
       emptyMsg = writable
         ? '还没有命中的文章；在「设置 → 规则」里配置关键词，保存后点「应用到已有文章」'
@@ -741,9 +747,9 @@ export function ReaderView() {
   const onFavArt = useCallback((id) => { const c = S(); if (c.readerToggleFav) c.readerToggleFav(id); }, []);
   const onUnreadArt = useCallback((id) => { const c = S(); if (c.readerMarkUnread) c.readerMarkUnread(id); }, []);
   const onRetryBodyArt = useCallback((id) => { const c = S(); if (c.readerRetryBody) c.readerRetryBody(id); }, []);
-  const onTagArt = useCallback((t) => { const c = S(); if (c.readerTagToCards) c.readerTagToCards(t, false); }, []);
+  const onTagArt = useCallback((t) => { const c = S(); if (c.readerSetTag) c.readerSetTag(t, false); }, []);
   // AI 标签走独立筛选参数，不能和手动标签混一条链路（后端两张表物理隔离）
-  const onAiTagArt = useCallback((t) => { const c = S(); if (c.readerTagToCards) c.readerTagToCards(t, true); }, []);
+  const onAiTagArt = useCallback((t) => { const c = S(); if (c.readerSetTag) c.readerSetTag(t, true); }, []);
   // D：侧栏回调稳定化（memo 的前提是 props 引用稳定），否则每次 tick 都拿到新函数、memo 失效
   const cbScope = useCallback((k) => S().readerSetScope(k), []);
   const cbFeed = useCallback((id) => S().readerSetFeed(id), []);
@@ -845,8 +851,30 @@ export function ReaderView() {
             onManage={() => s.readerToggleDrawer && s.readerToggleDrawer()} />
         </div>
 
-        {q && entries.length > 0 ? (
-          <div className="list-count" role="status">「{q}」找到 {st.rdTotal} 篇文章</div>
+        {(q || st.rdTag || st.rdAiTag) && entries.length > 0 ? (
+          <div className="list-count" role="status">
+            {q ? <span>「{q}」找到 {st.rdTotal} 篇文章</span> : null}
+            {st.rdTag ? (
+              <span className="count-chip">
+                标签：{st.rdTag}
+                {!q ? <span className="count-chip-n">{st.rdTotal} 条</span> : null}
+                <button type="button" className="count-clear" aria-label="清除标签筛选"
+                  title="清除标签筛选" onClick={() => s.readerSetTag(null, false)}>
+                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+                </button>
+              </span>
+            ) : null}
+            {st.rdAiTag ? (
+              <span className="count-chip count-chip-ai">
+                AI 标签：{st.rdAiTag}
+                {!q ? <span className="count-chip-n">{st.rdTotal} 条</span> : null}
+                <button type="button" className="count-clear" aria-label="清除 AI 标签筛选"
+                  title="清除 AI 标签筛选" onClick={() => s.readerSetTag(null, true)}>
+                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+                </button>
+              </span>
+            ) : null}
+          </div>
         ) : null}
         <div className="reader-list" id="readerList">
           {entries.map((e) => (

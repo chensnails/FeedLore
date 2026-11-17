@@ -99,6 +99,10 @@ export function readerFilterParams() {
   if (state.rdScope === 'unread') params.set('unread', '1');
   if (state.rdScope === 'favorite') params.set('fav', '1');
   if (state.rdQ) params.set('q', state.rdQ);
+  // 标签筛选：与卡片页同一套服务端参数，手动标签走 tag、AI 标签走 aiTag（两表物理隔离）。
+  // 阅读页看的是「全部内容」（上面 scope=all），不会被卡片的 cardEnabled 开关漏掉条目。
+  if (state.rdTag) params.set('tag', state.rdTag);
+  if (state.rdAiTag) params.set('aiTag', state.rdAiTag);
   return params;
 }
 
@@ -892,12 +896,15 @@ let watchPrevScope = null;   // 进入关注/屏蔽视图前的范围，退出�
 export function readerSetScope(scope) {
   // rdWatch 也算「已经偏离了默认范围」：在关注/屏蔽视图里整篇文章仍属于 rdScope='all'，
   // 少这一项会让点「全部文章」直接短路，看起来像按钮坏了。
-  if (scope === state.rdScope && state.rdFeedId == null && state.rdGroup == null && state.rdWatch == null) return;
+  if (scope === state.rdScope && state.rdFeedId == null && state.rdGroup == null && state.rdWatch == null
+      && state.rdTag == null && state.rdAiTag == null) return;
   state.rdScope = scope;
   setLayout('rdScope', scope);   // 默认范围按账号持久化
   state.rdFeedId = null;
   state.rdGroup = null;
   state.rdWatch = null;
+  state.rdTag = null;            // 换范围 = 换列表，不沿用标签筛选
+  state.rdAiTag = null;
   watchPrevScope = null;
   renderReader();
   loadReader({ reset: true });
@@ -908,6 +915,8 @@ export function readerSetScope(scope) {
 export function readerSetGroup(g) {
   state.rdScope = 'all';   // 看某个分组 = 回到「全部」范围
   state.rdWatch = null;
+  state.rdTag = null;      // 换分组 = 换列表，不沿用标签筛选
+  state.rdAiTag = null;
   watchPrevScope = null;
   if (g === state.rdGroup) state.rdGroup = null;
   else { state.rdGroup = g; state.rdFeedId = null; rdExpandGroup(g); }
@@ -933,6 +942,8 @@ export function readerSetFeed(id) {
   const f = next == null ? null : (state.feedList || []).find((x) => String(x.id) === String(next));
   state.rdFeedId = next;
   state.rdGroup = null;
+  state.rdTag = null;      // 换频道 = 换列表，不沿用标签筛选
+  state.rdAiTag = null;
   if (f) rdExpandGroup(String(f.groupName || '').trim());   // 折叠着就选不到它，选了必须看得见
   renderReader();
   loadReader({ reset: true });
@@ -963,6 +974,8 @@ export function readerSetWatch(w) {
   state.rdWatch = v;
   state.rdFeedId = null;
   state.rdGroup = null;
+  state.rdTag = null;      // 换关注/屏蔽视图 = 换列表，不沿用标签筛选
+  state.rdAiTag = null;
   renderReader();
   loadReader({ reset: true });
   emitShell();
@@ -1158,8 +1171,31 @@ export async function readerReadAll() {
 
 export function readerSearch(q) {
   q = String(q || '').trim();
-  if (q === state.rdQ) return;
+  if (q === state.rdQ && state.rdTag == null && state.rdAiTag == null) return;
   state.rdQ = q;
+  state.rdTag = null;      // 搜索与标签互斥（与卡片页 cardsSearch 一致）
+  state.rdAiTag = null;
   renderReader();
   loadReader({ reset: true });
+}
+
+/**
+ * 阅读页就地按标签筛选（手动 tag / AI 标签 aiTag 互斥）。
+ *
+ * 与卡片页的关键差异：文章页看的是「全部内容」，点标签就留在本页重拉，
+ * 不再跳到卡片页 —— 卡片页受 cardEnabled 开关限制，会漏掉未开卡片频道的文章。
+ * 再点同一个标签 = 取消筛选，与频道/分组「再点回顶」同一手感。
+ */
+export function readerSetTag(tag, ai = false) {
+  const t = tag || null;
+  const field = ai ? 'rdAiTag' : 'rdTag';
+  const other = ai ? 'rdTag' : 'rdAiTag';
+  const same = state[field] === t && state[other] == null;
+  const next = same ? null : t;
+  state.rdTag = ai ? null : next;
+  state.rdAiTag = ai ? next : null;
+  renderReader();
+  loadReader({ reset: true });
+  scrollReaderTop();
+  toast(next ? `已按${ai ? 'AI ' : ''}标签筛选：#${next}` : '已清除标签筛选');
 }

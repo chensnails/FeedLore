@@ -1064,6 +1064,7 @@ w.feedlore = {
     readerTick();
   },
   readerTagToCards: (t, ai) => calls.push(['readerTagToCards', t, !!ai]),
+  readerSetTag: (t, ai) => calls.push(['readerSetTag', t, !!ai]),
   readerToggleAccordion: () => calls.push(['readerToggleAccordion']),
   readerToggleDrawer: () => calls.push(['readerToggleDrawer']),
   readerCloseDrawer: () => calls.push(['readerCloseDrawer']),
@@ -1750,9 +1751,12 @@ const withEFP = (el, fn) => {
     const end = js.indexOf('export function readerSetGroup');
     const fn = start >= 0 && end > start ? js.slice(start, end) : '';
     if (!fn) throw new Error('找不到 readerSetScope');
-    const guard = (fn.match(/if \(scope === state\.rdScope[^\n]*\) return;/) || [])[0] || '';
+    const guard = (fn.match(/if \(scope === state\.rdScope[\s\S]*?\) return;/) || [])[0] || '';
     if (!/state\.rdWatch == null/.test(guard)) {
       throw new Error('readerSetScope 早退条件漏了 rdWatch：关注视图里点「全部文章」会被短路');
+    }
+    if (!/state\.rdTag == null[\s\S]*state\.rdAiTag == null/.test(guard)) {
+      throw new Error('readerSetScope 早退条件漏了标签筛选：带标签时点「全部文章」无法清除');
     }
   });
 
@@ -5278,24 +5282,25 @@ const withEFP = (el, fn) => {
   t('P1 排序/标签切换=换列表：重置重载 + 瞬时回顶 + 同值不重拉', () => {
     const root = path.join(__dirname, '..', '..');
     const idx = fs.readFileSync(path.join(root, 'src', 'core', 'index.js'), 'utf8');
-    for (const name of ['cardsSort', 'cardsTag']) {
-      const start = idx.indexOf(name + ':');
-      if (start < 0) throw new Error('core/index.js 缺 ' + name);
-      const body = idx.slice(start, idx.indexOf('},', start) + 2);
-      if (!/F\.loadPage\(true\)/.test(body)) throw new Error(name + ' 改筛选没有重置重载（看到的还是旧页）');
-      if (!/scrollActiveTop\('auto'\)/.test(body)) throw new Error(name + ' 换列表没有瞬时回顶');
-      if (!/return;/.test(body)) throw new Error(name + ' 缺同值短路');
-    }
     const sortBody = idx.slice(idx.indexOf('cardsSort:'), idx.indexOf('},', idx.indexOf('cardsSort:')) + 2);
+    if (!/F\.loadPage\(true\)/.test(sortBody)) throw new Error('cardsSort 改筛选没有重置重载');
     if (!/if \(S\.state\.sort === v\) return;/.test(sortBody)) throw new Error('cardsSort 同值仍重拉');
-    const tagBody = idx.slice(idx.indexOf('cardsTag:'), idx.indexOf('},', idx.indexOf('cardsTag:')) + 2);
-    if (!/S\.state\.tag === next && S\.state\.aiTag == null/.test(tagBody)) throw new Error('cardsTag 同值仍重拉');
-    // AI 标签必须走独立筛选参数，绝不混进手动标签那条链路
-    if (idx.indexOf('cardsAiTag:') < 0) throw new Error('缺 cardsAiTag（AI 标签会串到手动标签）');
-    const aiBody = idx.slice(idx.indexOf('cardsAiTag:'), idx.indexOf('},', idx.indexOf('cardsAiTag:')) + 2);
-    if (!/S\.state\.aiTag = next/.test(aiBody) || !/S\.state\.tag = null/.test(aiBody)) {
-      throw new Error('cardsAiTag 未与手动标签互斥');
+    // 标签筛选逻辑收进 cardsTagFilter（卡片页就地筛 + 0 命中回落文章页）
+    const fb = idx.slice(idx.indexOf('async function cardsTagFilter'), idx.indexOf('export const core'));
+    if (!/F\.loadPage\(true\)/.test(fb)) throw new Error('cardsTagFilter 改筛选没有重置重载');
+    if (!/scrollActiveTop\('auto'\)/.test(fb)) throw new Error('cardsTagFilter 换列表没有瞬时回顶');
+    if (!/S\.state\[field\] === next && S\.state\[other\] == null/.test(fb)) throw new Error('cardsTagFilter 缺同值短路');
+    if (!/S\.state\[field\] = next/.test(fb) || !/S\.state\[other\] = null/.test(fb)) {
+      throw new Error('cardsTagFilter 未做手动/AI 标签互斥');
     }
+    // 0 命中回落：带标签切文章页（文章页看全部内容，不受 cardEnabled 限制）
+    if (!/S\.state\.total !== 0\) return/.test(fb)) throw new Error('缺「卡片页有命中就不回落」判断');
+    if (!/UI\.switchView\('reader'/.test(fb) || !/R\.loadReader\(\{ reset: true \}\)/.test(fb)) {
+      throw new Error('卡片页 0 命中未回落到文章页检索');
+    }
+    if (!/S\.state\[field\] !== next\) return/.test(fb)) throw new Error('回落缺连点竞态防护');
+    if (!/cardsTag: \(t\) => cardsTagFilter\(t, false\)/.test(idx)) throw new Error('cardsTag 未走统一筛选');
+    if (!/cardsAiTag: \(t\) => cardsTagFilter\(t, true\)/.test(idx)) throw new Error('cardsAiTag 未走统一筛选');
     const fd = fs.readFileSync(path.join(root, 'src', 'core', 'feeds.js'), 'utf8').replace(/\r\n/g, '\n');
     if (!/if \(state\.aiTag\) qs\.set\('aiTag', state\.aiTag\)/.test(fd)) throw new Error('loadPage 丢了 aiTag 参数');
   });
@@ -5721,25 +5726,26 @@ const withEFP = (el, fn) => {
     if (CA('#readerList .art-nav-btn').length) throw new Error('不应再有 .art-nav-btn');
   });
 
-  // 正文标签 → 卡片筛选
+  // 正文标签 → 文章页就地筛选（不再跳卡片页）
   R('#readerList .art-item[data-id="r1"] .art-tags .mini-tag').click();
   await sleep(30);
-  t('正文标签 → readerTagToCards', () => {
-    if (!callsOf('readerTagToCards').some((c) => c[1] === '标签A' && c[2] === false)) throw new Error('未触发或带了 AI 标记');
+  t('正文标签 → readerSetTag(tag, false) 就地筛', () => {
+    if (!callsOf('readerSetTag').some((c) => c[1] === '标签A' && c[2] === false)) throw new Error('未触发或带了 AI 标记');
   });
 
   // AI 标签组 → 必须带 ai=true，不能和手动标签共用一条筛选链路
   R('#readerList .art-item[data-id="r1"] .art-tags-ai .mini-tag-ai').click();
   await sleep(30);
-  t('AI 标签 → readerTagToCards(tag, true) 独立筛选', () => {
-    if (!callsOf('readerTagToCards').some((c) => c[1] === 'AI标签A' && c[2] === true)) throw new Error('AI 标签未带 ai=true');
+  t('AI 标签 → readerSetTag(tag, true) 独立筛选', () => {
+    if (!callsOf('readerSetTag').some((c) => c[1] === 'AI标签A' && c[2] === true)) throw new Error('AI 标签未带 ai=true');
   });
-  t('readerTagToCards 点标签后显式重拉（卡片页已有数据也不能显示旧列表）', () => {
+  t('文章页点标签就地重拉、不跳卡片页', () => {
     const root = path.join(__dirname, '..', '..');
-    const ui = fs.readFileSync(path.join(root, 'src', 'core', 'ui.js'), 'utf8').replace(/\r\n/g, '\n');
-    const body = ui.slice(ui.indexOf('export function readerTagToCards'), ui.indexOf('/* ---------- 图片灯箱'));
-    if (!/loadPage\(true\)/.test(body)) throw new Error('点标签没触发 loadPage(true)');
-    if (!/state\.aiTag = ai \? tag : null/.test(body)) throw new Error('未区分 AI 标签');
+    const rd = fs.readFileSync(path.join(root, 'src', 'core', 'reader.js'), 'utf8').replace(/\r\n/g, '\n');
+    const body = rd.slice(rd.indexOf('export function readerSetTag'), rd.indexOf('/* ---------- 图片灯箱'));
+    if (!/loadReader\(\{ reset: true \}\)/.test(body)) throw new Error('点标签没触发 loadReader(reset)');
+    if (!/state\.rdTag = ai \? null : next/.test(body)) throw new Error('未区分 AI 标签');
+    if (/switchView\(/.test(body)) throw new Error('文章页点标签不应跳卡片页');
   });
 
   // 收藏
@@ -6547,7 +6553,7 @@ const withEFP = (el, fn) => {
       const need = [
         'state', 'switchView', 'loadFeeds', 'loadPage', 'refresh', 'cycleTheme', 'getShell',
         'readerSetScope', 'readerSetFeed', 'readerSetGroup', 'readerSetWatch', 'readerOpenSource', 'readerSearch',
-        'readerToggleArt', 'readerCollapseAll', 'readerReadAll', 'readerToggleFav', 'readerTagToCards',
+        'readerToggleArt', 'readerCollapseAll', 'readerReadAll', 'readerToggleFav', 'readerSetTag', 'readerTagToCards',
         'readerToggleAccordion', 'readerAccordionOn', 'readerToggleDrawer', 'readerCloseDrawer', 'fmtFull', 'fmtBadge',
         'readerCollapsedGroups', 'readerToggleGroupCollapse', 'readerToggleAllGroups',
         'getReaderSideWidth', 'setReaderSideWidth', 'applyReaderSideWidth', 'readerSideCap',

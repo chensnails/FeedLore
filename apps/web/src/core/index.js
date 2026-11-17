@@ -17,6 +17,38 @@ import * as AR from './autorefresh.js';
 import * as UI from './ui.js';
 import './bootstrap.js';
 
+/**
+ * 卡片页标签筛选 0 命中 → 回落到文章页按同一标签检索。
+ *
+ * 卡片页只显示「卡片开关」打开的频道（scope=cards），未开卡片的频道里即使有该标签
+ * 也会被漏掉；文章页看全部内容（scope=all）。用户在卡片页点标签却一条都没有时，
+ * 自动带着同一标签切到文章页继续找，避免误以为「没有这个标签的文章」。
+ *
+ * 只在「本次标签筛选确实仍生效且 0 命中」时回落：连点会改掉 state.tag，
+ * 先前那次 await 醒来发现标签已变就不回落，防止误跳。
+ */
+async function cardsTagFilter(t, ai) {
+  const next = t || null;
+  const field = ai ? 'aiTag' : 'tag';
+  const other = ai ? 'tag' : 'aiTag';
+  if (S.state[field] === next && S.state[other] == null) return;
+  S.state[field] = next;
+  S.state[other] = null;
+  await F.loadPage(true);
+  S.scrollActiveTop('auto');
+  if (!next || S.state.tab !== 'cards') return;
+  if (S.state[field] !== next) return;              // 期间用户又点了别的筛选
+  if (S.state.loading || S.state.loadError) return; // 加载中 / 失败，不做判断
+  if (S.state.total !== 0) return;                  // 卡片页有命中，就地筛即可
+  // 回落：带同一标签到文章页（沿用文章页当前频道/范围，只放宽到全部内容）
+  S.state.rdTag = ai ? null : next;
+  S.state.rdAiTag = ai ? next : null;
+  UI.switchView('reader', { skipReaderLoad: true });
+  R.loadReader({ reset: true });
+  R.scrollReaderTop();
+  U.toast(`卡片页没有「${next}」，已切到文章页检索全部内容`);
+}
+
 export const core = {
   state: S.state,
   switchView: UI.switchView, applyTheme: S.applyTheme, openSettings: S.openSettings,
@@ -121,26 +153,11 @@ export const core = {
     return p;
   },
   cardsView: (m) => F.setViewMode(m),
-  cardsTag: (t) => {
-    const next = t || null;
-    if (S.state.tag === next && S.state.aiTag == null) return;
-    S.state.tag = next;
-    S.state.aiTag = null;
-    const p = F.loadPage(true);
-    S.scrollActiveTop('auto');
-    return p;
-  },
+  cardsTag: (t) => cardsTagFilter(t, false),
   /* AI 标签与手动标签物理隔离，筛选也必须分开：点「AI 标签」组走 aiTag 参数，
-   * 不能塞进 tag（那只查 entries.tags，会把人带到 0 条或错误结果）。 */
-  cardsAiTag: (t) => {
-    const next = t || null;
-    if (S.state.aiTag === next && S.state.tag == null) return;
-    S.state.aiTag = next;
-    S.state.tag = null;
-    const p = F.loadPage(true);
-    S.scrollActiveTop('auto');
-    return p;
-  },
+   * 不能塞进 tag（那只查 entries.tags，会把人带到 0 条或错误结果）。
+   * 卡片页 0 命中时统一回落到文章页（见 cardsTagFilter）。 */
+  cardsAiTag: (t) => cardsTagFilter(t, true),
   cardsLoadMore: () => F.loadPage(false),
   cardsRetryMore: () => { S.state.loadMoreErr = false; return F.loadPage(false); },
   // 窄屏频道抽屉（与文章页同一套交互，v1.3.10）
@@ -161,6 +178,8 @@ export const core = {
   readerReadAll: R.readerReadAll,
   readerToggleFav: R.readerToggleFav, readerMarkUnread: R.readerMarkUnread,
   readerReload: R.readerReload, readerRetryBody: R.readerRetryBody, readerRetryMore: R.readerRetryMore,
+  readerSetTag: R.readerSetTag,
+  // 旧入口保留兼容：就地筛选，不再跳卡片页（见 reader.js#readerSetTag）
   readerTagToCards: UI.readerTagToCards,
   restoreReaderArt: R.restoreReaderArt,
   readerToggleAccordion: R.readerToggleAccordion, readerAccordionOn: R.readerAccordionOn,

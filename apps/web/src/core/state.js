@@ -58,6 +58,8 @@ export const state = {
                         // 命中条目不打搬动、只打标记（entries.watch_state），这里选中的是
                         // 「WHERE watch_state = ?」的聚合视图，与范围（未读/收藏）可叠加。
   rdQ: '',              // 阅读页搜索关键词（走服务端检索）
+  rdTag: null,          // 阅读页手动标签筛选（与卡片页 tag 独立，互斥 rdAiTag）
+  rdAiTag: null,        // 阅读页 AI 标签筛选（服务端按 entry_ai_tags 命中）
   rdFlags: { total: 0, unread: 0, favorite: 0, watching: 0, blocked: 0 },   // 侧栏计数（含关注/屏蔽命中数）
   rdEntries: [],
   rdOffset: 0,
