@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exploreKeywords, historyToMessages } from './aiTasks';
+import { exploreKeywords, exploreRelevance, historyToMessages } from './aiTasks';
 
 /** 探索问答的关键词抽取：纯函数，守「口语化问题也能召回」与「虚词不进召回」。 */
 
@@ -23,7 +23,7 @@ test('exploreKeywords: 英文与数字词保留', () => {
   assert.ok(kws.includes('100'), `实际 ${JSON.stringify(kws)}`);
 });
 
-test('exploreKeywords: 纯虚词 → 空数组（调用方据此直接召回近期池）', () => {
+test('exploreKeywords: 纯虚词 → 空数组（调用方据此只用近期打底池）', () => {
   assert.deepEqual(exploreKeywords('最近有什么'), []);
   assert.deepEqual(exploreKeywords('？？？'), []);
 });
@@ -32,6 +32,31 @@ test('exploreKeywords: 去重且不超过 8 个', () => {
   const kws = exploreKeywords('人工智能 机器学习 深度学习 服务器 羊毛 好剧 电影 科技 财经');
   assert.equal(new Set(kws).size, kws.length, '不该有重复');
   assert.ok(kws.length <= 8, `实际 ${kws.length} 个`);
+});
+
+/* ---- 全库召回的相关度排序 ---- */
+
+const row = (title: string, description = '', tags: string[] = []) => ({ title, description, tags });
+
+test('exploreRelevance: 命中词多的排前，标题/描述/标签都算', () => {
+  const terms = ['好剧', '电视剧', '追剧'];
+  const triple = row('好剧推荐', '近期电视剧盘点', ['追剧']);
+  const one = row('好剧推荐');
+  const none = row('财经快讯');
+  const rank = [none, one, triple]
+    .map((r) => ({ r, hits: exploreRelevance(r, terms) }))
+    .sort((a, b) => b.hits - a.hits);
+  assert.equal(exploreRelevance(triple, terms), 3, '标题/描述/标签各命中一个');
+  assert.equal(exploreRelevance(one, terms), 1);
+  assert.equal(exploreRelevance(none, terms), 0);
+  assert.equal(rank[0]!.r, triple, '命中 3 个词的应排第一');
+  assert.equal(rank[2]!.r, none, '零命中的近期打底排最后');
+});
+
+test('exploreRelevance: 每词最多算 1 次，重复出现不刷分；大小写不敏感', () => {
+  const terms = ['好剧', 'ai'];
+  assert.equal(exploreRelevance(row('好剧好剧好剧', '又是好剧'), ['好剧']), 1, '同词重复只算一次');
+  assert.equal(exploreRelevance(row('AI 工具', '再说 AI'), terms), 1, '英文大写应命中小写词');
 });
 
 /* ---- 多轮历史 ---- */

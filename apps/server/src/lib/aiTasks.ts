@@ -329,8 +329,23 @@ export async function execDigest(
 
 /** 探索召回的候选上限：太多会撑爆提示词、拖慢首 token；太少会漏掉相关条目。 */
 const EXPLORE_CANDIDATE_LIMIT = 32;
-/** 近期池大小：覆盖「最近有什么」这类问题；再按关键词补充更早的命中。 */
-const EXPLORE_RECENT_POOL = 120;
+/**
+ * 全库召回的扫描上限。 ilike 全表扫过 21 万条约 2~5 秒；多关键词 OR 会叠加，
+ * 所以扫到的命中最多取这么多条进排序，避免把整个库拖进提示词。
+ * 不做「最近 120 条」窗口截断——那会让老条目永远搜不到（用户真实痛点）。
+ */
+const EXPLORE_POOL_CAP = 400;
+/**
+ * 查询扩展的关键词上限。原问题抽出的 2-gram + 模型扩展词合并后取这么多个去 OR 检索。
+ * 每个词各带 owner 隔离条件；词太多会拖慢全表扫描。
+ */
+const EXPLORE_QUERY_TERMS = 8;
+/** 近期打底池：保证「最近有什么」这类问题即使关键词没命中也有新鲜候选。 */
+const EXPLORE_RECENT_SEED = 40;
+/** 最终喂给模型的候选数：相关度排序后取top。比旧的「最近120」更精，提示词也更小。 */
+const EXPLORE_FEED_LIMIT = 60;
+/** 查询扩展是一次轻量 chat（只吐 JSON 词表）：短预算，失败即降级，不拖主回答。 */
+const EXPLORE_EXPAND_TIMEOUT_MS = 12_000;
 /** 探索单次调用预算：问答比日报短，60 秒足够；仍远低于 CF 的 100 秒。 */
 export const EXPLORE_TIMEOUT_MS = 60_000;
 
@@ -364,6 +379,75 @@ export function exploreKeywords(question: string): string[] {
     }
   }
   return out;
+}
+
+/**
+ * 查询扩展：把口语问题补成一组检索词，解决「好剧」命中不了正文里「电视剧/剧集」的语义鸿沟。
+ *
+ * 用**同一个 chat 模型**、一次轻量调用（短预算、JSON 词表），不新增任何配置。
+ * 任何失败（超时/格式/网络/字段降级都不成立）都吞掉返回空数组，由调用方降级到
+ * exploreKeywords 的字面 2-gram —— 扩展是增益，不是依赖，挂了也要能全库检索。
+ */
+async function expandExploreKeywords(
+  question: string,
+  llm: ResolvedLlm,
+  seed: string[],
+): Promise<string[]> {
+  const system = [
+    '你是搜索词扩展助手。用户会在自己的订阅文章库里检索，请把问题改写成一组便于全文检索的关键词。',
+    '输出严格 JSON：{"terms":["词1","词2"]}。要求：',
+    '- 给同义词、近义词、上位词和常见口语说法（如「好剧」→ 电视剧/剧集/追剧/豆瓣高分）。',
+    '- 只给能在文章标题或正文里出现的短词，2~6 个字，不要句子、不要虚词。',
+    `- 最多 ${EXPLORE_QUERY_TERMS} 个，按相关度从高到低，不要重复。`,
+    '只输出 JSON，不要解释。',
+    thinkingDirective(llm),
+  ].join('\n');
+  try {
+    const { content } = await chat(
+      [
+        { role: 'system', content: system },
+        { role: 'user', content: `问题：${question}\n已有的字面关键词：${seed.join('、') || '无'}` },
+      ],
+      { ...llm, thinking: false },
+      {
+        fetchImpl: safeFetch,
+        timeoutMs: EXPLORE_EXPAND_TIMEOUT_MS,
+        budgetMs: EXPLORE_EXPAND_TIMEOUT_MS,
+        maxTokens: 200,
+      },
+    );
+    const parsed = extractJson(content);
+    const terms = Array.isArray(parsed.terms) ? parsed.terms : [];
+    const out: string[] = [];
+    for (const v of terms) {
+      const t = String(v ?? '').trim().toLowerCase().slice(0, 12);
+      if (t.length >= 2 && !out.includes(t)) out.push(t);
+      if (out.length >= EXPLORE_QUERY_TERMS) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 相关度打分：命中词数为主、时间为辅。全库召回里一条命中 3 个词的旧文章，
+ * 应该排在只命中 1 个词的新文章前面——否则「最近」语义会淹没真正的答案。
+ * 命中数按标题/描述/标签计（CARD_COLUMNS 不含正文；正文命中由检索的 q 条件负责，
+ * 排在限定时间内返回，排序只用可见字段）。每个词最多算 1 次，避免长文刷分。
+ */
+export function exploreRelevance(row: {
+  title: string | null;
+  description: string | null;
+  tags: string[];
+}, terms: string[]): number {
+  const text = [row.title, row.description, ...row.tags]
+    .filter((v): v is string => typeof v === 'string')
+    .join('\n')
+    .toLowerCase();
+  let hits = 0;
+  for (const t of terms) if (text.includes(t)) hits++;
+  return hits;
 }
 
 /**
@@ -412,19 +496,23 @@ export async function execExplore(
   const started = Date.now();
   const label = `探索：${question.slice(0, 40)}`;
 
-  // ① 召回：近期池 + 关键词命中，按 id 去重。两路都走 owner 隔离查询。
-  const recent = await db
-    .select(CARD_COLUMNS)
-    .from(entriesTable)
-    .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
-    .where(and(...entryConditions(db, uid, { feedIds: null })))
-    .orderBy(desc(entriesTable.publishedAt), desc(entriesTable.id))
-    .limit(EXPLORE_RECENT_POOL);
+  // ① 全库召回：字面 2-gram + 模型扩展词 → 全库 OR 检索 → 相关度排序取 top。
+  //
+  // 与旧实现的差别：不再用「最近 120 条」窗口截断（那让老条目永远搜不到），
+  // 而是全库按关键词检索；只保留一小份近期条目打底，兜住「最近有什么」这类
+  // 没有明确关键词的问题。两路都走 entryConditions，owner 隔离不因增删改而破。
+  const literal = exploreKeywords(question);
+  const expanded = await expandExploreKeywords(question, llm, literal);
+  // 字面词优先、扩展词补充，合并去重限长（扩展是增益，字面命中率最高排前面）。
+  const terms: string[] = [];
+  for (const t of [...literal, ...expanded]) {
+    if (t.length >= 2 && !terms.includes(t)) terms.push(t);
+    if (terms.length >= EXPLORE_QUERY_TERMS) break;
+  }
 
-  const keywords = exploreKeywords(question);
-  // entryConditions 的 q 只吃一个关键词；把多个 2-gram 各自的完整条件（含 owner 子查询）
-  // 用 OR 串起来，owner 隔离不会因 OR 而失效——每个分支都限定本人频道。
-  const kwRows = keywords.map((kw) => and(...entryConditions(db, uid, { feedIds: null, q: kw })));
+  // entryConditions 的 q 只吃一个关键词；把每个词的完整条件（含 owner 子查询）
+  // 用 OR 串起来，owner 隔离不会因 OR 失效——每个分支都限定本人频道。
+  const kwRows = terms.map((kw) => and(...entryConditions(db, uid, { feedIds: null, q: kw })));
   const keywordRows = kwRows.length
     ? await db
         .select(CARD_COLUMNS)
@@ -432,13 +520,29 @@ export async function execExplore(
         .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
         .where(sql`(${sql.join(kwRows, sql` or `)})`)
         .orderBy(desc(entriesTable.publishedAt), desc(entriesTable.id))
-        .limit(EXPLORE_CANDIDATE_LIMIT * 2)
+        .limit(EXPLORE_POOL_CAP)
     : [];
 
+  // 近期打底：关键词没命中或问「最近」时仍有候选；命中集已够多时可省掉这次查询。
+  const recent = keywordRows.length >= EXPLORE_FEED_LIMIT
+    ? []
+    : await db
+        .select(CARD_COLUMNS)
+        .from(entriesTable)
+        .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+        .where(and(...entryConditions(db, uid, { feedIds: null })))
+        .orderBy(desc(entriesTable.publishedAt), desc(entriesTable.id))
+        .limit(EXPLORE_RECENT_SEED);
+
   const byId = new Map<number, (typeof recent)[number]>();
-  for (const r of recent) byId.set(r.id, r);
-  for (const r of keywordRows) if (!byId.has(r.id)) byId.set(r.id, r);
-  const pool = [...byId.values()].slice(0, EXPLORE_RECENT_POOL);
+  for (const r of keywordRows) byId.set(r.id, r);
+  for (const r of recent) if (!byId.has(r.id)) byId.set(r.id, r);
+  // 相关度排序：命中词多的排前，命中数相同按时间倒序（SQL 已按时间排，稳定排序保留该次序）。
+  const pool = [...byId.values()]
+    .map((r) => ({ r, hits: exploreRelevance(r, terms) }))
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, EXPLORE_FEED_LIMIT)
+    .map((x) => x.r);
 
   // 没有候选就不必烧模型：直接给一句人话，refs 为空。
   if (!pool.length) {
