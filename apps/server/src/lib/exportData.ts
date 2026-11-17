@@ -21,12 +21,13 @@ import {
   entries,
   feeds,
   imageCache,
+  llmProviders,
   settings,
   userLlm,
   users,
   type Db,
 } from '@feedlore/db';
-import { getCryptoSecret, resolveUserLlm } from '@feedlore/ai';
+import { decryptSecret, getCryptoSecret, resolveUserLlm } from '@feedlore/ai';
 import { APP_VERSION } from '../env';
 import type { TarGzArchive } from './tar';
 
@@ -172,13 +173,32 @@ export async function writeUserExport(ar: TarGzArchive, input: UserExportInput):
         temperature: userLlm.temperature,
         thinking: userLlm.thinking,
         thinkingDepth: userLlm.thinkingDepth,
+        routes: userLlm.routes,
       })
       .from(userLlm)
       .where(eq(userLlm.userId, userId))
       .limit(1);
+    // 0015：多路提供商与任务路由一并带走。旧包没有这两个字段，导入端按缺省忽略。
+    const providerRows = await db
+      .select()
+      .from(llmProviders)
+      .where(eq(llmProviders.userId, userId));
+    const secret = await getCryptoSecret(db);
+    const providers = providerRows.map((p) => ({
+      id: p.id,
+      name: p.name,
+      baseUrl: p.baseUrl || '',
+      model: p.model || '',
+      temperature: p.temperature,
+      thinking: p.thinking,
+      thinkingDepth: p.thinkingDepth,
+      isDefault: p.isDefault,
+      // 勾选导出才解密；文件落到本机后请自行保管
+      apiKey: p.encryptedKey ? (decryptSecret(p.encryptedKey, secret) || '') : '',
+    }));
     let payload: Record<string, unknown> | null = null;
     if (row) {
-      const llm = resolveUserLlm(row, await getCryptoSecret(db));
+      const llm = resolveUserLlm(row, secret);
       payload = {
         baseUrl: llm.baseUrl,
         model: llm.model,
@@ -187,7 +207,11 @@ export async function writeUserExport(ar: TarGzArchive, input: UserExportInput):
         thinkingDepth: llm.thinkingDepth,
         // 勾选导出才解密；文件落到本机后请自行保管
         apiKey: llm.apiKey,
+        routes: row.routes || {},
+        providers,
       };
+    } else if (providers.length) {
+      payload = { routes: {}, providers };
     }
     await ar.add('llm.json', json(payload));
   }
@@ -246,6 +270,9 @@ export async function writeSiteExport(ar: TarGzArchive, db: Db): Promise<void> {
   await ar.add('feeds.json', json(feedRows));
   await ar.add('digests.json', json(digestRows));
   await ar.add('user_llm.json', json(llmRows));
+  // 0015：整站还原要连多路提供商一起恢复（密文按原样搬运，与 user_llm 同口径）
+  const providerRows = await db.select().from(llmProviders);
+  await ar.add('llm_providers.json', json(providerRows));
   await ar.add('settings.json', json(settingRows));
 
   let cursor = 0;

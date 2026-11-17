@@ -836,6 +836,39 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         )) as unknown as { rows: unknown[] };
         assert.equal(none.rows.length, 0, '被拦截的配置不应写库');
 
+        // 0015：新包带多路提供商与路由 —— Key 重新加密、悬空引用清成 default
+        await db.execute(sql`delete from user_llm where user_id = ${userId}`);
+        const multiLlm = JSON.stringify({
+          baseUrl: 'https://api.example.com/v1', model: 'default-model', apiKey: 'sk-plain-123',
+          providers: [
+            { id: 'p-cheap', name: '便宜模型', baseUrl: 'https://api.example.com/v1', model: 'cheap-model', apiKey: 'sk-cheap-key', isDefault: true },
+          ],
+          routes: {
+            digest: { providerId: 'p-cheap', enabled: true },
+            explore: { providerId: 'not-in-package', enabled: false },
+            entry_ai: { actions: { translate: 'p-cheap', summary: 'ghost' } },
+          },
+        });
+        const multiRes = await call('/api/import', { method: 'POST', body: await buildArchive(withLlm(multiLlm)) });
+        assert.equal(multiRes.status, 200, await multiRes.clone().text());
+        assert.equal(((await multiRes.json()) as { llm: string }).llm, 'applied');
+        const prov = (await db.execute(sql`
+          select id, name, model, encrypted_key, is_default from llm_providers where user_id = ${userId}
+        `)) as unknown as { rows: Array<{ id: string; name: string; model: string; encrypted_key: string | null; is_default: boolean }> };
+        assert.equal(prov.rows.length, 1, '应恢复一路提供商');
+        assert.equal(prov.rows[0]!.id, 'p-cheap');
+        assert.ok(!prov.rows[0]!.encrypted_key!.includes('sk-cheap-key'), '提供商 Key 不得明文落库');
+        assert.equal(decryptSecret(prov.rows[0]!.encrypted_key, secret), 'sk-cheap-key');
+        const rt = (await db.execute(sql`
+          select routes from user_llm where user_id = ${userId}
+        `)) as unknown as { rows: Array<{ routes: Record<string, { providerId?: string; enabled?: boolean; actions?: Record<string, string> }> }> };
+        const routes = rt.rows[0]!.routes;
+        assert.equal(routes.digest?.providerId, 'p-cheap', '有效引用应保留');
+        assert.equal(routes.explore?.providerId, 'default', '悬空引用应清成 default');
+        assert.equal(routes.explore?.enabled, false, '关闭状态应保留');
+        assert.equal(routes.entry_ai?.actions?.translate, 'p-cheap');
+        assert.equal(routes.entry_ai?.actions?.summary, 'default', '动作级悬空引用也要清');
+
         // 没勾选导出的包：根本没有 llm.json
         const absentRes = await call('/api/import', { method: 'POST', body: await buildArchive(baseFiles) });
         assert.equal(absentRes.status, 200);

@@ -24,6 +24,7 @@ import {
   entries,
   feeds,
   imageCache,
+  llmProviders,
   settings,
   userLlm,
   users,
@@ -31,6 +32,7 @@ import {
   type NewEntry,
   type NewFeed,
   type NewUserLlm,
+  type NewLlmProvider,
 } from '@feedlore/db';
 import {
   clampTemperature,
@@ -38,9 +40,11 @@ import {
   getCryptoSecret,
   normalizeThinkingDepth,
 } from '@feedlore/ai';
+import { AI_CAPABILITIES, ENTRY_AI_ACTIONS, type LlmRoutes } from '@feedlore/contract';
 import { ApiException } from './apiError';
 import { isSafeImageKey } from './tar-read';
 import { assertPublicHost } from './net';
+import { safeRoutes } from './llm';
 
 const FORMAT = 'feedlore-backup';
 const FORMAT_VERSION = 1;
@@ -55,7 +59,7 @@ export interface ImportCount {
 /** 与契约 `llmImportOutcome` 一一对应；`pending` 只是「包里有配置、待事务里确认」。 */
 type LlmPlan =
   | { outcome: 'absent' | 'url-blocked' }
-  | { outcome: 'pending'; row: NewUserLlm };
+  | { outcome: 'pending'; row: NewUserLlm; providers: NewLlmProvider[] };
 
 export type LlmImportOutcome = 'applied' | 'absent' | 'already-configured' | 'url-blocked';
 
@@ -293,8 +297,19 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
   const baseUrl = str(raw.baseUrl).trim().replace(/\/+$/, '');
   const model = str(raw.model).trim();
   const apiKey = str(raw.apiKey).trim();
-  if (!baseUrl && !model && !apiKey) return { outcome: 'absent' };
+  // 0015：老包只有默认槽三件套；新包可能只有 providers（默认槽为空）。
+  // 两种都不能误判成 absent，否则多路配置或旧包会被丢掉。
+  const rawProviders = Array.isArray(raw.providers) ? raw.providers : [];
+  if (!baseUrl && !model && !apiKey && !rawProviders.length) return { outcome: 'absent' };
 
+  // 每个模型的地址都要过同一条 SSRF 字面量基线（导入不查 DNS）
+  for (const p of rawProviders) {
+    const u = asRecord(p) ? str((p as Record<string, unknown>).baseUrl).trim() : '';
+    if (u) {
+      try { await assertPublicHost(u, { resolve: false }); }
+      catch { return { outcome: 'url-blocked' }; }
+    }
+  }
   if (baseUrl) {
     try {
       await assertPublicHost(baseUrl, { resolve: false });
@@ -304,6 +319,50 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
   }
 
   const secret = await getCryptoSecret(db);
+  const providers: NewLlmProvider[] = [];
+  const validIds = new Set<string>();
+  for (const p of rawProviders) {
+    if (!asRecord(p)) continue;
+    const r = p as Record<string, unknown>;
+    const id = str(r.id) || crypto.randomUUID();
+    const key = str(r.apiKey).trim();
+    validIds.add(id);
+    providers.push({
+      id, userId,
+      name: str(r.name).slice(0, 60),
+      encryptedKey: key ? encryptSecret(key, secret) : null,
+      baseUrl: str(r.baseUrl).trim().replace(/\/+$/, '') || null,
+      model: str(r.model).trim() || null,
+      temperature: r.temperature === null || r.temperature === undefined ? null : clampTemperature(r.temperature),
+      thinking: r.thinking === true,
+      thinkingDepth: normalizeThinkingDepth(r.thinkingDepth),
+      isDefault: r.isDefault === true,
+      updatedAt: new Date(),
+    });
+  }
+
+  // 路由表：只保留白名单能力键，且 providerId 必须指向本次导入的提供商或 'default'；
+  // 指向不存在的一律清成 default，避免还原后路由悬空。
+  const routes: LlmRoutes = {};
+  const rawRoutes = asRecord(raw.routes) ? (raw.routes as Record<string, unknown>) : {};
+  for (const [cap, rv] of Object.entries(rawRoutes)) {
+    if (!(AI_CAPABILITIES as readonly string[]).includes(cap) || !asRecord(rv)) continue;
+    const r = rv as Record<string, unknown>;
+    const item: LlmRoutes[string] = {};
+    if (typeof r.enabled === 'boolean') item.enabled = r.enabled;
+    const pid = str(r.providerId);
+    item.providerId = pid && (pid === 'default' || validIds.has(pid)) ? pid : 'default';
+    const acts = asRecord(r.actions) ? (r.actions as Record<string, unknown>) : {};
+    const cleanActs: Record<string, string> = {};
+    for (const [ak, av] of Object.entries(acts)) {
+      if (!(ENTRY_AI_ACTIONS as readonly string[]).includes(ak)) continue;
+      const v = str(av);
+      cleanActs[ak] = v && (v === 'default' || validIds.has(v)) ? v : 'default';
+    }
+    item.actions = cleanActs;
+    routes[cap] = item;
+  }
+
   return {
     outcome: 'pending',
     row: {
@@ -317,8 +376,10 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
         : clampTemperature(raw.temperature),
       thinking: raw.thinking === true,
       thinkingDepth: normalizeThinkingDepth(raw.thinkingDepth),
+      routes,
       updatedAt: new Date(),
     },
+    providers,
   };
 }
 
@@ -457,6 +518,10 @@ export async function importUserArchive(
           .insert(userLlm)
           .values(llmPlan.row)
           .onConflictDoNothing({ target: userLlm.userId });
+        // 0015：多路提供商与默认槽同一个事务落库，避免只恢复一半。
+        if (llmPlan.providers.length) {
+          await tx.insert(llmProviders).values(llmPlan.providers).onConflictDoNothing();
+        }
         llmOutcome = 'applied';
       }
     }
@@ -618,6 +683,8 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
   const feedRows = asArray(await readJson(dir, 'feeds.json'), 'feeds.json');
   const digestRows = asArray(await readJson(dir, 'digests.json'), 'digests.json');
   const llmRows = asArray(await readJson(dir, 'user_llm.json'), 'user_llm.json');
+  // 0015：老备份没有这个文件，按空数组处理（向后兼容）
+  const providerRows = asArray(await readOptionalJson(dir, 'llm_providers.json') ?? [], 'llm_providers.json');
   const settingRows = asArray(await readJson(dir, 'settings.json'), 'settings.json');
   const imageRows = asArray(await readJson(dir, 'image_cache.json'), 'image_cache.json');
   const entryFiles = await listBatches(dir, /^entries-\d{4}\.jsonl$/);
@@ -628,7 +695,7 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
   const counts = await db.transaction(async (tx) => {
     await tx.execute(sql`
       truncate table users, sessions, accounts, verifications, feeds, entries,
-        digests, user_llm, settings, image_cache, article_cache
+        digests, user_llm, llm_providers, settings, image_cache, article_cache
       restart identity cascade
     `);
 
@@ -712,10 +779,33 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
         temperature: numOrNull(raw.temperature),
         thinking: boolOr(raw.thinking, false),
         thinkingDepth: intOr(raw.thinkingDepth, 0),
+        // 0015：老备份没有 routes，回落空对象（= 全开 + 走默认槽）；逐键容错
+        routes: safeRoutes(raw.routes),
         updatedAt: dateOr(raw.updatedAt, new Date()),
       };
     });
     if (mappedLlm.length) await tx.insert(userLlm).values(mappedLlm);
+
+    // 0015：多路提供商（密文原样搬运，与 user_llm 同口径：整站备份不换主密钥）
+    const mappedProviders = providerRows.map((raw) => {
+      const userId = str(raw.userId);
+      const id = str(raw.id);
+      if (!userId || !id) throw invalid('bad llm_providers.json record');
+      return {
+        id, userId,
+        name: str(raw.name),
+        encryptedKey: strOrNull(raw.encryptedKey),
+        baseUrl: strOrNull(raw.baseUrl),
+        model: strOrNull(raw.model),
+        temperature: numOrNull(raw.temperature),
+        thinking: boolOr(raw.thinking, false),
+        thinkingDepth: intOr(raw.thinkingDepth, 0),
+        isDefault: boolOr(raw.isDefault, false),
+        createdAt: dateOr(raw.createdAt, new Date()),
+        updatedAt: dateOr(raw.updatedAt, new Date()),
+      };
+    });
+    if (mappedProviders.length) await tx.insert(llmProviders).values(mappedProviders);
 
     const mappedSettings = settingRows.map((raw) => {
       const key = str(raw.key);
