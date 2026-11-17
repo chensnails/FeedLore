@@ -1,8 +1,11 @@
-/* 探索页的「问答」模式：用大白话检索自己的订阅，AI 给答案 + 引用条目卡（可跳文章）。
+/* 探索页的「问答」模式——IM 聊天形态。
+ *
+ * 用大白话检索自己的订阅，AI 给答案 + 引用条目卡（可跳文章）。连续消息流：
+ * 双方气泡、时间戳、正在输入动画、自动滚动；支持全部历史轮次的多轮追问。
  *
  * 数据流与日报同构：submitAiJob → pollAiJob，四态齐全；历史只存内存（刷新即清），
  * 组件卸载即停止轮询（任务在服务端继续跑，与 DESIGN.md 的长任务约定一致）。
- * 引用卡带后端给的 entryId，点「读文章」走 core.jumpToFeed(feedId, id) 打开并展开。
+ * 提交时把已完成的轮次打包成 history：[#n] 的跨轮编号错位由服务端按 refs 修正。
  */
 import { core } from '@core';
 import { useEffect, useRef, useState } from 'react';
@@ -14,6 +17,11 @@ import { widthVariant } from '../imgSrc.js';
 const S = () => core;
 
 const SUGGESTIONS = ['最近有什么好剧？', '最近服务器有什么羊毛？', '这周 AI 圈有哪些大事？'];
+
+const hhmm = (ts) => {
+  const d = ts ? new Date(ts) : new Date();
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+};
 
 /** 一条引用条目：缩略图 + 来源 + 标题 + 跳文章。 */
 function RefCard({ ref: hit }) {
@@ -48,33 +56,54 @@ function RefCard({ ref: hit }) {
   );
 }
 
-/** 一轮问答：用户问题 + AI 答案/状态 + 引用卡。 */
-function Turn({ turn }) {
+/** 用户消息气泡（右侧）。 */
+function MeBubble({ turn }) {
+  return (
+    <div className="ex-row ex-row-me">
+      <div className="ex-col">
+        <div className="ex-bubble ex-bubble-me">{turn.question}</div>
+        <div className="ex-time">{hhmm(turn.at)}</div>
+      </div>
+    </div>
+  );
+}
+
+/** AI 消息气泡（左侧）：排队/生成中显示输入动画，成功显示答案 + 引用卡，失败显示错误 + 重试。 */
+function AiBubble({ turn }) {
   const busy = turn.status === 'queued' || turn.status === 'running';
   return (
-    <div className="ex-turn">
-      <div className="ex-msg ex-msg-me">{turn.question}</div>
-      <div className="ex-msg ex-msg-ai">
-        {busy ? (
-          <StateBlock className="ex-busy" spinner>
-            {turn.status === 'queued' ? '已提交，排队中…' : `检索你的订阅并生成中 · 已等待 ${turn.elapsed || 0}s`}
-          </StateBlock>
-        ) : turn.status === 'error' ? (
-          <div className="ex-error" role="alert">
-            <span>{turn.errorText || '生成失败'}</span>
-            {turn.retry ? <button className="btn btn-ghost btn-sm" type="button" onClick={turn.retry}>重试</button> : null}
-          </div>
-        ) : (
-          <>
-            <div className="ex-answer">{turn.answer}</div>
-            {turn.refs && turn.refs.length ? (
-              <div className="ex-refs">
-                {turn.refs.map((hit, i) => <RefCard ref={hit} key={hit.id || i} />)}
-              </div>
-            ) : null}
-            {turn.model ? <div className="ex-answer-meta">由 {turn.model} 生成 · 检索 {turn.matched || 0} 条候选</div> : null}
-          </>
-        )}
+    <div className="ex-row ex-row-ai">
+      <div className="ex-avatar" aria-hidden="true">AI</div>
+      <div className="ex-col">
+        <div className="ex-bubble ex-bubble-ai">
+          {busy ? (
+            <div className="ex-typing" role="status" aria-label="正在检索并生成">
+              <i /><i /><i />
+              <span className="ex-typing-text">
+                {turn.status === 'queued' ? '排队中…' : `检索你的订阅 · 已等待 ${turn.elapsed || 0}s`}
+              </span>
+            </div>
+          ) : turn.status === 'error' ? (
+            <div className="ex-error" role="alert">
+              <span>{turn.errorText || '生成失败'}</span>
+              {turn.retry ? <button className="btn btn-ghost btn-sm" type="button" onClick={turn.retry}>重试</button> : null}
+            </div>
+          ) : (
+            <>
+              <div className="ex-answer">{turn.answer}</div>
+              {turn.refs && turn.refs.length ? (
+                <div className="ex-refs">
+                  {turn.refs.map((hit, i) => <RefCard ref={hit} key={hit.id || i} />)}
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+        <div className="ex-time">
+          {turn.status === 'succeeded'
+            ? `${hhmm(turn.at)}${turn.model ? ` · ${turn.model}` : ''}${turn.matched ? ` · 检索 ${turn.matched} 条` : ''}`
+            : busy ? '正在生成…' : ''}
+        </div>
       </div>
     </div>
   );
@@ -86,7 +115,6 @@ export function ExplorePane() {
   const [draft, setDraft] = useState('');
   const aliveRef = useRef(true);
   const scrollRef = useRef(null);
-  /* 与日报一样按「当前这一轮」计时：轮询期间每秒刷新等待秒数，给用户「确实在跑」的证据。 */
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -94,12 +122,14 @@ export function ExplorePane() {
     return () => { aliveRef.current = false; };
   }, []);
 
+  // 有任务在跑时每秒刷新等待秒数（IM 里体现为「正在输入」旁的实时秒数）
   useEffect(() => {
     if (!turns.some((t) => t.status === 'queued' || t.status === 'running')) return undefined;
     const iv = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(iv);
   }, [turns]);
 
+  // 新消息 / 计时刷新都自动滚到底部（IM 的基本手感）
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -110,11 +140,20 @@ export function ExplorePane() {
     if (!q || !s || typeof s.submitAiJob !== 'function') return;
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const t0 = Date.now();
+    /* 全部历史：把已经成功/失败但有内容的轮次都打包。失败的轮次不带答案，
+     * 免得把错误信息喂给模型；只带 question + answer + refs。 */
+    const history = turns
+      .filter((t) => t.status === 'succeeded' && t.answer)
+      .map((t) => ({
+        question: t.question,
+        answer: t.answer,
+        refs: (t.refs || []).map((r) => ({ id: String(r.id), name: r.name })),
+      }));
     const patch = (fn) => { if (aliveRef.current) setTurns((prev) => prev.map((t) => (t.id === id ? fn(t) : t))); };
-    setTurns((prev) => [...prev, { id, question: q, status: 'queued', startedAt: t0 }]);
+    setTurns((prev) => [...prev, { id, question: q, status: 'queued', at: new Date(t0).toISOString(), startedAt: t0 }]);
     setDraft('');
     try {
-      const job = await s.submitAiJob({ kind: 'explore', question: q });
+      const job = await s.submitAiJob({ kind: 'explore', question: q, history });
       if (!aliveRef.current) return;
       patch((t) => ({ ...t, status: job.status || 'queued' }));
       const done = await s.pollAiJob(job.id, {
@@ -140,9 +179,9 @@ export function ExplorePane() {
   return (
     <section className="ai-pane ex-pane" data-ai-pane="explore">
       <div className="ex-head">
-        <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，并给出可直接打开的原文</p>
+        <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，可直接追问，答案带原文入口</p>
       </div>
-      <div className="ex-thread" ref={scrollRef} id="exploreThread">
+      <div className="ex-thread" ref={scrollRef} id="exploreThread" role="log" aria-live="polite">
         {!hasTurns ? (
           <div className="ex-intro">
             <div className="ex-intro-ico"><Icon n="sparkle" /></div>
@@ -156,13 +195,21 @@ export function ExplorePane() {
               ))}
             </div>
           </div>
-        ) : turns.map((t) => (
-          <Turn turn={{ ...t, elapsed: t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0 }} key={t.id} />
-        ))}
+        ) : (
+          <>
+            <p className="ex-day">本次会话 · 可连续追问</p>
+            {turns.map((t) => (
+              <div className="ex-pair" key={t.id}>
+                <MeBubble turn={t} />
+                <AiBubble turn={{ ...t, elapsed: t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0 }} />
+              </div>
+            ))}
+          </>
+        )}
       </div>
       <form className="ex-compose" id="exploreCompose"
         onSubmit={(e) => { e.preventDefault(); ask(draft); }}>
-        <input id="exploreInput" type="search" value={draft} placeholder="问点什么，比如「最近有什么好剧？」"
+        <input id="exploreInput" type="search" value={draft} placeholder="追问一句话…"
           aria-label="向探索提问" autoComplete="off" onChange={(e) => setDraft(e.target.value)} />
         <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>
           发送<Icon n="sparkle" />

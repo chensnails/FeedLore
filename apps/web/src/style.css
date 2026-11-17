@@ -2876,17 +2876,53 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 .ex-pane { display: flex; flex-direction: column; min-height: 0; }
 .ex-head { padding: var(--sp-4) 0 var(--sp-3); }
 .ex-thread {
-  display: flex; flex-direction: column; gap: var(--sp-4);
-  padding: var(--sp-2) 0 var(--sp-4);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-1) var(--sp-4);
+  /* IM 消息区自己滚动，输入栏贴在底部：高度 = 视口 - 头部 - tab - 说明 - 输入栏。
+     用 min() 兜底，避免极端矮视口算出负值。 */
+  height: min(62vh, 620px); min-height: 260px;
+  overflow-y: auto; overscroll-behavior: contain;
+  background: var(--surface-soft, var(--panel));
+  border: 1px solid var(--border); border-radius: var(--border-radius-lg, 12px);
 }
-.ex-turn { display: flex; flex-direction: column; gap: var(--sp-2); }
-.ex-msg { border-radius: var(--radius-lg, 12px); padding: var(--sp-3) var(--sp-4); line-height: 1.7; }
-.ex-msg-me { align-self: flex-end; max-width: 82%; background: var(--accent-soft, var(--hover)); color: var(--text); }
-.ex-msg-ai { align-self: flex-start; max-width: 100%; width: 100%; background: var(--panel); border: 1px solid var(--border); }
-.ex-answer { font-size: var(--fs-md); color: var(--text); white-space: pre-wrap; }
-.ex-answer-meta { margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-faint); }
-.ex-busy { padding: 0; }
-.ex-error { display: flex; align-items: center; gap: var(--sp-3); color: var(--danger); font-size: var(--fs-md); }
+/* IM 消息流：用户右侧气泡、AI 左侧头像+气泡，连续滚动；气泡圆角带一个小尖角 */
+.ex-day { text-align: center; font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--sp-4); }
+.ex-pair { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.ex-row { display: flex; gap: var(--sp-2); align-items: flex-start; }
+.ex-row-me { justify-content: flex-end; }
+.ex-col { max-width: 82%; min-width: 0; }
+.ex-row-me .ex-col { max-width: 78%; }
+.ex-avatar {
+  flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft, var(--hover)); color: var(--accent-text);
+  font-size: var(--fs-sm); font-weight: 600; margin-top: 2px;
+}
+.ex-bubble {
+  border-radius: 12px; padding: var(--sp-3) var(--sp-4);
+  line-height: 1.7; font-size: var(--fs-md);
+}
+.ex-bubble-me {
+  background: var(--accent-text); color: var(--panel);
+  border-bottom-right-radius: 3px;
+}
+.ex-bubble-ai {
+  background: var(--panel); border: 1px solid var(--border);
+  border-bottom-left-radius: 3px;
+}
+.ex-time { font-size: var(--fs-sm); color: var(--text-faint); margin-top: 4px; }
+.ex-row-me .ex-time { text-align: right; }
+.ex-typing { display: flex; align-items: center; gap: 5px; min-height: 1.2em; }
+.ex-typing i {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint);
+  animation: ex-blink 1.2s infinite ease-in-out;
+}
+.ex-typing i:nth-child(2) { animation-delay: .15s; }
+.ex-typing i:nth-child(3) { animation-delay: .3s; }
+.ex-typing-text { margin-left: var(--sp-1); color: var(--text-muted); font-size: var(--fs-sm); }
+@keyframes ex-blink { 0%, 60%, 100% { opacity: .3; } 30% { opacity: 1; } }
+.ex-answer { color: var(--text); white-space: pre-wrap; }
+.ex-error { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); color: var(--danger); font-size: var(--fs-md); }
 .ex-intro { padding: var(--sp-6, 32px) var(--sp-2); text-align: center; }
 .ex-intro-ico { color: var(--accent-text); margin-bottom: var(--sp-2); }
 .ex-intro-ico .ico { width: 2rem; height: 2rem; }
@@ -2921,11 +2957,13 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 .ex-ref-go .ico { width: .85rem; height: .85rem; }
 .ex-compose {
   display: flex; gap: var(--sp-2); align-items: center;
-  position: sticky; bottom: 0; padding: var(--sp-3) 0;
-  background: var(--bg, var(--panel)); border-top: 1px solid var(--border);
+  padding: var(--sp-3) 0 var(--sp-2);
 }
-.ex-compose input { flex: 1; min-width: 0; }
-.ex-compose .btn { display: inline-flex; align-items: center; gap: var(--sp-1); white-space: nowrap; }
+.ex-compose input { flex: 1; min-width: 0; border-radius: 999px; }
+.ex-compose .btn {
+  display: inline-flex; align-items: center; gap: var(--sp-1);
+  white-space: nowrap; border-radius: 999px;
+}
 .ex-compose .btn .ico { width: 1rem; height: 1rem; }
 
 /* ============================================================

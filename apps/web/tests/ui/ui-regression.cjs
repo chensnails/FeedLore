@@ -4511,15 +4511,40 @@ const withEFP = (el, fn) => {
   await sleep(30);
   Q('.ex-suggest-btn').click();
   await sleep(200);
-  t('探索问答：提交 explore 任务并渲染答案/引用卡', () => {
+  t('探索问答：提交 explore 任务并渲染 IM 气泡/答案/引用卡', () => {
     const posts = postsTo('/api/ai/jobs');
     const last = JSON.parse(posts[posts.length - 1][3]);
     if (last.kind !== 'explore' || !last.question) throw new Error('未提交 explore + question：' + JSON.stringify(last));
     if (!callsOf('apiFetch').some((c) => String(c[1]).indexOf('/api/ai/jobs/') === 0)) throw new Error('未轮询任务');
+    if (!Q('.ex-row-me .ex-bubble-me')) throw new Error('缺用户气泡（IM 形态）');
+    if (!Q('.ex-avatar') || !Q('.ex-row-ai .ex-bubble-ai')) throw new Error('缺 AI 头像/气泡（IM 形态）');
+    if (!Q('.ex-time')) throw new Error('缺消息时间戳');
     if (!Q('.ex-answer') || Q('.ex-answer').textContent.indexOf('最近值得看') < 0) throw new Error('未渲染答案');
     if (!Q('.ex-ref') || Q('.ex-ref-name').textContent.indexOf('好剧') < 0) throw new Error('未渲染引用卡');
     if (!Q('.ex-ref-go')) throw new Error('引用卡缺「读文章」');
   });
+  // 多轮追问：输入第二问，断言提交时带上第一轮历史（全部轮次）
+  {
+    const inp = Q('#exploreInput');
+    // React 受控输入：用原生 setter 写入，绕过 React 的 value tracker 才会触发 onChange
+    const setter = Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype, 'value').set;
+    setter.call(inp, '那第二部呢？');
+    inp.dispatchEvent(new w.Event('input', { bubbles: true }));
+  }
+  await sleep(30);
+  Q('#exploreCompose').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  await sleep(200);
+  t('探索多轮：追问时提交全部历史（question/answer/refs）', () => {
+    const posts = postsTo('/api/ai/jobs');
+    const last = JSON.parse(posts[posts.length - 1][3]);
+    if (last.question !== '那第二部呢？') throw new Error('第二问未提交：' + JSON.stringify(last));
+    if (!Array.isArray(last.history) || last.history.length !== 1) throw new Error('未带第一轮历史：' + JSON.stringify(last.history));
+    const h = last.history[0];
+    if (!h.question || h.question.indexOf('好剧') < 0) throw new Error('历史缺问题');
+    if (!h.answer || h.answer.indexOf('最近值得看') < 0) throw new Error('历史缺答案');
+    if (!Array.isArray(h.refs) || !h.refs[0] || !h.refs[0].name) throw new Error('历史缺引用条目名（服务端据此替换编号）');
+  });
+
   // 切到日报 tab：问答隐藏、日报显示（DOM 都在，靠 hidden 切换）
   Q('#exploreTabDigest').click();
   await sleep(30);

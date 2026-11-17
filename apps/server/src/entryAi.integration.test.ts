@@ -827,6 +827,32 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       assert.ok(body.indexOf('他人的条目') < 0, '提示词不应含他人条目（owner 隔离）');
     });
 
+    await t.test('T45 探索多轮：带 history 提交，提示词含历史且 [#n] 按 refs 换成条目名', async () => {
+      fake.mode = 'explore';
+      const res = await call(cOwner, '/api/ai/jobs', {
+        method: 'POST', json: {
+          kind: 'explore', question: '那第二部呢？',
+          history: [{
+            question: '最近有什么好剧？',
+            answer: '先看 [#1]，另可看 [#2]。',
+            refs: [{ id: '1', name: '开年剧单' }, { id: '2', name: '悬疑剧回潮' }],
+          }],
+        },
+      });
+      assert.equal(res.status, 200, `提交失败：${await res.clone().text()}`);
+      const id = ((await res.json()) as { job: { id: string } }).job.id;
+      const done = await waitJob(cOwner, id);
+      assert.equal(done.status, 'succeeded', done.error);
+      const body = fake.lastBody || '';
+      assert.ok(body.indexOf('那第二部呢') >= 0, '应带本次问题');
+      assert.ok(body.indexOf('最近有什么好剧') >= 0, '应带历史问题');
+      assert.ok(body.indexOf('《开年剧单》') >= 0 && body.indexOf('《悬疑剧回潮》') >= 0,
+        `历史 [#n] 应换成《条目名》，实际 ${body.slice(0, 800)}`);
+      assert.ok(body.indexOf('追问') >= 0, '系统提示应说明可能在追问');
+      const r = (done.result || {}) as { refs?: Array<{ id: string }> };
+      assert.equal(r.refs!.length, 1, '本轮引用仍应是 1 条');
+    });
+
     await t.test('T44 探索问答：空问题提交被拒（400 + 稳定码）', async () => {
       const res = await call(cOwner, '/api/ai/jobs', { method: 'POST', json: { kind: 'explore', question: '   ' } });
       assert.equal(res.status, 400, `应 400，实际 ${res.status}`);
