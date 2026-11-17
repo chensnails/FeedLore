@@ -2867,9 +2867,21 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 
 /* ============================================================
  * 探索（问答）
- * 两级 tab 跟随头部吸顶：问答 / 日报。探索消息与引用卡沿用长列表的
+ * 二级 tab 跟随头部吸顶：问答 / 日报。探索消息与引用卡沿用长列表的
  * 「薄边 + 一层浅影」惯例，不使用日报卡的拟态表面（那是几张大阅读卡专用）。
+ *
+ * 布局骨架：.ex-wrap 是限宽内容列（与文章页同一条 --reader-width 刻度），
+ * 桌面居中、宽屏不铺满；内部二级 tab + 对话面板同处这条列，气泡不再天各一方。
+ * 窄屏（≤720）铺满可用宽度，视图切换走底部胶囊，顶栏只留标题 + ⋮。
  * ============================================================ */
+.ex-wrap {
+  display: flex; flex-direction: column;
+  /* 桌面撑满视口剩余高度：顶栏由 --topbar-h 实测给出，tab 行由自身高度占去。
+     min-height 而不是 height——窄屏在断点段改成 auto，交给内容自适应。 */
+  min-height: calc(100dvh - var(--topbar-h, var(--head-h, 52px)) - var(--sp-6));
+  width: 100%; max-width: var(--reader-width);   /* 限宽居中，与文章阅读列同一刻度 */
+  margin: 0 auto;
+}
 .ai-tabs {
   display: flex; gap: var(--sp-4); align-items: stretch;
   padding: 0 var(--sp-1); border-bottom: 1px solid var(--border);
@@ -2881,28 +2893,30 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 }
 .ai-tab:hover { color: var(--text); }
 .ai-tab.is-active { color: var(--accent-text); border-bottom-color: var(--accent-text); font-weight: 600; }
-.ex-pane { display: flex; flex-direction: column; min-height: 0; }
+/* 桌面：问答 pane 在限宽列里 flex 撑满，高度链 #aiView → .ex-wrap → .ex-pane → .ex-shell
+   才完整，面板底部贴到视口底部，不再留一大片空白。窄屏在断点段改回 auto。 */
+.ex-pane { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .ex-head { padding: var(--sp-3) 0 var(--sp-2); }
 /* 对话容器：消息区 / 输入栏 / 免责声明同处一个面板。面板外观（背景/边框/圆角）
-   挂在 .ex-shell 上；.ex-thread 只负责滚动。这样输入栏与免责固定在面板底部，
-   不随消息滚，视觉上是「一个对话容器」而不是「面板 + 外面飘一条输入框」。
-   高度自适应：内容少时随内容收缩，超过上限才让 .ex-thread 内部滚。
-   上限比旧的 62vh 多留一档，多出来的空间给输入栏与免责。 */
+   挂在 .ex-shell 上；.ex-thread 只负责滚动。输入栏与免责固定在面板底部。
+   桌面：面板 flex 撑满 .ex-wrap 的剩余高度（#aiView 是 100dvh 滚动容器），
+        不再留一大片空白；矮内容也撑满，符合聊天界面「一方桌面」的手感。
+   窄屏：在统一断点段覆盖回 max-height:70vh，给悬浮底栏留白。 */
 .ex-shell {
-  display: flex; flex-direction: column; min-height: 0;
-  /* 上限按 70vh 留白：窄屏底部有悬浮视图栏（--tabbar-h + 浮起边距），
-     78vh 会让面板底部连同免责声明被底栏压住；70vh 恰好留出这段空间。 */
-  max-height: min(70vh, 720px);
+  display: flex; flex-direction: column;
+  flex: 1 1 auto; min-height: 420px;
   overflow: hidden;   /* 裁出圆角，输入栏/免责贴边不越界 */
   background: var(--surface-soft, var(--panel));
   border: 1px solid var(--border); border-radius: var(--border-radius-lg, 12px);
 }
 .ex-thread {
-  display: flex; flex-direction: column; gap: var(--sp-2);
+  display: flex; flex-direction: column; gap: var(--sp-3);
   flex: 1 1 auto; min-height: 0;
-  padding: var(--sp-3) var(--sp-2) var(--sp-4);
+  padding: var(--sp-4) var(--sp-4) var(--sp-5);
   overflow-y: auto; overscroll-behavior: contain;
 }
+/* 空态：面板内垂直居中，给引导留出呼吸感；进入对话后气泡靠上排布。 */
+.ex-pane:not(.is-chatting) .ex-thread { justify-content: center; }
 /* 免责在面板内收口（输入栏样式见下方 .ex-compose 集中定义）。 */
 .ex-pane .foot {
   flex: 0 0 auto;
@@ -3001,6 +3015,30 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
   white-space: nowrap; border-radius: 999px;
 }
 .ex-compose .btn .ico { width: 1rem; height: 1rem; }
+/* 发送按钮：空输入时禁用态弱化，可点时强调；忙碌态（有任务在跑）由 aria-busy 驱动，
+   与禁用一起让反馈明确。触屏按压给轻微缩放，不靠 hover 才有反馈。 */
+.ex-compose .btn[disabled] { opacity: .45; cursor: not-allowed; }
+.ex-compose .btn:active:not([disabled]) { transform: scale(.97); }
+.ex-suggest-btn:active { transform: scale(.97); }
+.ex-ref-go:active { transform: scale(.95); }
+@media (prefers-reduced-motion: reduce) {
+  .ex-compose .btn:active:not([disabled]), .ex-suggest-btn:active, .ex-ref-go:active { transform: none; }
+}
+
+/* ---------- 探索页响应式（就近写在功能段末尾，不合并到别处断点） ----------
+   窄屏：取消桌面的撑满高度，面板回到 70vh 上限给悬浮底栏留白；
+   限宽列铺满可用宽度；引用卡「读文章」收成纯图标把宽度让给来源/日期。 */
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .ex-wrap { min-height: 0; }
+  .ex-pane { flex: 0 0 auto; }
+  .ex-shell { flex: 0 0 auto; min-height: 200px; max-height: 70vh; }
+  .ex-thread { padding: var(--sp-3) var(--sp-2) var(--sp-4); }
+  /* 窄屏气泡里「读文章」收成纯图标，把宽度让给来源/日期
+     （title/aria-label 仍保留完整语义）。 */
+  .ex-ref-go span { display: none; }
+  .ex-ref-go { padding: 4px 6px; }
+  .ex-ref-go .ico { width: 1rem; height: 1rem; }
+}
 
 /* ============================================================
  * 日报
@@ -4350,12 +4388,6 @@ body.is-scrolling .card-media-actions { transition: none; }
  * 仍有足够空间常驻（内容列约 760px+），故统一到 720，与 JS 的 resize 阈值一致。
  * ============================================================ */
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
-  /* 探索引用卡：窄屏气泡里「读文章」收成纯图标，把宽度让给来源/日期，
-     避免「科技日报 · 今天 12…」被截断（title/aria-label 仍有完整语义）。 */
-  .ex-ref-go span { display: none; }
-  .ex-ref-go { padding: 4px 6px; }
-  .ex-ref-go .ico { width: 1rem; height: 1rem; }
-
   /* 阅读页：分栏 → 单列，左侧频道栏收进抽屉（右滑打开 / 左滑收起） */
   .reader { padding-top: var(--sp-4); }
   .reader > #readerRoot { grid-template-columns: minmax(0, 1fr); gap: 0; }

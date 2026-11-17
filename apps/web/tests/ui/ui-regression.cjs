@@ -4433,6 +4433,17 @@ const withEFP = (el, fn) => {
     if (!Q('#exploreInput') || !Q('#exploreCompose')) throw new Error('缺提问输入框');
     if (QA('.ex-suggest-btn').length < 2) throw new Error('缺预设问题');
   });
+  t('探索重构：限宽容器 ex-wrap 包住二级 tab 与问答面板，空态有说明行', () => {
+    const wrap = Q('.ex-wrap');
+    if (!wrap) throw new Error('缺限宽容器 .ex-wrap');
+    if (!wrap.contains(Q('.ai-tabs'))) throw new Error('二级 tab 不在限宽容器内');
+    if (!wrap.contains(Q('[data-ai-pane="explore"]'))) throw new Error('问答面板不在限宽容器内');
+    if (!Q('#exploreSub')) throw new Error('空态缺说明行');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    const wrapRule = css.slice(css.indexOf('.ex-wrap {'), css.indexOf('.ex-wrap {') + 400);
+    if (!/max-width:\s*var\(--reader-width\)/.test(wrapRule)) throw new Error('限宽未用 --reader-width 刻度');
+    if (!/margin:\s*0 auto/.test(wrapRule)) throw new Error('限宽列未居中');
+  });
   t('AI 视图渲染：单页（无二级导航）', () => {
     if (!Q('.ai-head')) throw new Error('无 ai-head');
     if (QA('#aiNav .ainav-btn').length !== 0) throw new Error('二级导航应已删除');
@@ -4511,6 +4522,11 @@ const withEFP = (el, fn) => {
   await sleep(30);
   Q('.ex-suggest-btn').click();
   await sleep(200);
+  t('探索重构：进入对话后说明行收起、面板带 is-chatting 态', () => {
+    if (Q('#exploreSub')) throw new Error('对话中说明行未收起（层级未压缩）');
+    const pane = Q('[data-ai-pane="explore"]');
+    if (!pane.classList.contains('is-chatting')) throw new Error('面板未进入 is-chatting 态');
+  });
   t('探索问答：提交 explore 任务并渲染 IM 气泡/答案/引用卡', () => {
     const posts = postsTo('/api/ai/jobs');
     const last = JSON.parse(posts[posts.length - 1][3]);

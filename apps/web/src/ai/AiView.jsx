@@ -336,16 +336,19 @@ export function AiView() {
             refreshHint="只更新订阅内容；重算日报请用「重新生成」" />
         </div>
       </div>
-      <div className="ai-tabs" role="tablist" aria-label="探索页模式">
-        <button type="button" role="tab" id="exploreTabAsk" aria-selected={pane === 'ask' ? 'true' : 'false'}
-          className={'ai-tab' + (pane === 'ask' ? ' is-active' : '')} onClick={() => setPane('ask')}>问答</button>
-        <button type="button" role="tab" id="exploreTabDigest" aria-selected={pane === 'digest' ? 'true' : 'false'}
-          className={'ai-tab' + (pane === 'digest' ? ' is-active' : '')}
-          hidden={s.digestIsEnabled && !s.digestIsEnabled()}
-          onClick={() => setPane('digest')}>日报</button>
-      </div>
-      {pane === 'ask' ? <ExplorePane key={sessionKey} /> : null}
-      <section className="ai-pane" data-ai-pane="digest" hidden={pane !== 'digest'}>
+      {/* 内容区限宽居中：二级 tab 与各 pane 同处一条内容列，桌面不再铺满整屏。
+          顶栏 .ai-head 不进容器——它是吸顶条，按设计约定保持全宽。 */}
+      <div className="ex-wrap">
+        <div className="ai-tabs" role="tablist" aria-label="探索页模式">
+          <button type="button" role="tab" id="exploreTabAsk" aria-selected={pane === 'ask' ? 'true' : 'false'}
+            className={'ai-tab' + (pane === 'ask' ? ' is-active' : '')} onClick={() => setPane('ask')}>问答</button>
+          <button type="button" role="tab" id="exploreTabDigest" aria-selected={pane === 'digest' ? 'true' : 'false'}
+            className={'ai-tab' + (pane === 'digest' ? ' is-active' : '')}
+            hidden={s.digestIsEnabled && !s.digestIsEnabled()}
+            onClick={() => setPane('digest')}>日报</button>
+        </div>
+        {pane === 'ask' ? <ExplorePane key={sessionKey} /> : null}
+        <section className="ai-pane" data-ai-pane="digest" hidden={pane !== 'digest'}>
         {/* 说明行与操作行分层：标题 → 说明 → 日期/动作，窄屏操作行自己换行 */}
         <div className="digest-head">
           <p className="ai-sub" id="digestSub">{subtitle}</p>
@@ -370,7 +373,8 @@ export function AiView() {
         <footer className="foot">
           摘要由大模型生成，可能存在偏差，请以原始条目为准
         </footer>
-      </section>
+        </section>
+      </div>
     </>
   );
 }

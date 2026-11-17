@@ -188,10 +188,13 @@ export function ExplorePane() {
   const hasTurns = turns.length > 0;
 
   return (
-    <section className="ai-pane ex-pane" data-ai-pane="explore">
-      <div className="ex-head">
-        <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，可直接追问，答案带原文入口</p>
-      </div>
+    <section className={'ai-pane ex-pane' + (hasTurns ? ' is-chatting' : '')} data-ai-pane="explore">
+      {/* 说明行只在空态出现：开始对话后收起，把层级从「说明 + 面板」压成「面板」一层。 */}
+      {!hasTurns ? (
+        <div className="ex-head">
+          <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，可直接追问，答案带原文入口</p>
+        </div>
+      ) : null}
       {/* 对话容器：消息区 / 输入栏 / 免责声明同处一个面板，输入栏固定不随消息滚动。
           ID 与类名全部保留，滚动目标仍是 #exploreThread。 */}
       <div className="ex-shell">
