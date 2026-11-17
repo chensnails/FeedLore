@@ -1331,6 +1331,8 @@ textarea:disabled {
   color: var(--text);
 }
 .count-chip-n { color: var(--text-faint); }
+/* AI 标签筛选条：与手动标签拉开色阶，避免看混两类筛选 */
+.count-chip-ai { border-color: var(--accent); color: var(--accent-text, var(--accent)); }
 /* × 视觉只有 20px，命中区由上方统一的 44px 伪元素组补齐（触屏上才点得中） */
 .count-clear {
   display: inline-flex; align-items: center; justify-content: center;

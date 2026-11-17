@@ -38,7 +38,10 @@ export const CARD_COLUMNS = {
 export interface EntryFilter {
   feedIds: number[] | null;
   q?: string | undefined;
+  /** 手动标签（entries.tags） */
   tag?: string | undefined;
+  /** AI 标签（entry_ai_tags，与手动标签物理隔离）：点文章页「AI 标签」组用它 */
+  aiTag?: string | undefined;
   watch?: 'watch' | 'block' | undefined;
   unread?: boolean;
   fav?: boolean;
@@ -64,6 +67,16 @@ export function entryConditions(db: Db, uid: string, f: EntryFilter): SQL[] {
   ];
   if (f.feedIds !== null) conds.push(inArray(entries.feedId, f.feedIds));
   if (f.tag) conds.push(sql`${f.tag} = any(${entries.tags})`);
+  if (f.aiTag) {
+    // AI 标签在独立表，且必须按 owner 取本人那份——和 CARD_COLUMNS.aiTags 的取值口径一致。
+    // 用 exists 而不是 join：列表/UPDATE 共用这套条件，join 会放大行数、让 "all read" 误伤。
+    conds.push(sql`exists (
+      select 1 from ${entryAiTags}
+      where ${entryAiTags.entryId} = ${entries.id}
+        and ${entryAiTags.userId} = ${uid}
+        and ${f.aiTag} = any(${entryAiTags.tags})
+    )`);
+  }
   if (f.q) {
     const kw = f.q.trim();
     if (kw) {

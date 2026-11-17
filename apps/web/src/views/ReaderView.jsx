@@ -284,7 +284,7 @@ function RichBlocks({ blocks }) {
 /** 正文（对应旧 artBodyHtml）：图文按原顺序内联；老数据回退为图集 + 段落。
  *  导出给卡片详情弹窗（src/views/CardDetail.jsx）复用，两处正文渲染保持一套。
  *  extraActions：弹窗会把「收藏 / 在文章页查看」也塞进这条动作行，保证一个弹窗只有一排按钮。 */
-export function ArtBody({ e, onTag, extraActions }) {
+export function ArtBody({ e, onTag, onAiTag, extraActions }) {
   const s = S();
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
   const parts = [];
@@ -356,7 +356,7 @@ export function ArtBody({ e, onTag, extraActions }) {
     parts.push(
       <div className="art-tags art-tags-ai" key="aiTags">
         <span className="art-tags-label">AI 标签</span>
-        {e.aiTags.map((t) => <button className="mini-tag mini-tag-ai" type="button" data-tag={t} key={t} onClick={() => onTag(t)}>#{t}</button>)}
+        {e.aiTags.map((t) => <button className="mini-tag mini-tag-ai" type="button" data-tag={t} key={t} onClick={() => (onAiTag || onTag)(t)}>#{t}</button>)}
       </div>
     );
   }
@@ -384,7 +384,7 @@ function useArticleListPrefs() {
  *  做成 memo：每次 __readerTick 都会把整列 entries 重新 map 一遍，而条目对象只在
  *  状态真的变化时才换新（core/reader.js 的 applyEntryFlag / ui.js 的 cardSetFlag 同口径），
  *  所以没变的那几百条不必跟着重新渲染。 */
-const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfortable, onToggle, onFav, onTag, onUnread, onRetryBody }) {
+const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfortable, onToggle, onFav, onTag, onAiTag, onUnread, onRetryBody }) {
   const s = S();
   const src = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
@@ -418,7 +418,7 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
 
   let inner = null;
   if (expanded) {
-    if (full) inner = <ArtBody e={full} onTag={onTag} />;
+    if (full) inner = <ArtBody e={full} onTag={onTag} onAiTag={onAiTag} />;
     else if (bodyErr) {
       inner = (
         <div className="art-inner">
@@ -741,7 +741,9 @@ export function ReaderView() {
   const onFavArt = useCallback((id) => { const c = S(); if (c.readerToggleFav) c.readerToggleFav(id); }, []);
   const onUnreadArt = useCallback((id) => { const c = S(); if (c.readerMarkUnread) c.readerMarkUnread(id); }, []);
   const onRetryBodyArt = useCallback((id) => { const c = S(); if (c.readerRetryBody) c.readerRetryBody(id); }, []);
-  const onTagArt = useCallback((t) => { const c = S(); if (c.readerTagToCards) c.readerTagToCards(t); }, []);
+  const onTagArt = useCallback((t) => { const c = S(); if (c.readerTagToCards) c.readerTagToCards(t, false); }, []);
+  // AI 标签走独立筛选参数，不能和手动标签混一条链路（后端两张表物理隔离）
+  const onAiTagArt = useCallback((t) => { const c = S(); if (c.readerTagToCards) c.readerTagToCards(t, true); }, []);
   // D：侧栏回调稳定化（memo 的前提是 props 引用稳定），否则每次 tick 都拿到新函数、memo 失效
   const cbScope = useCallback((k) => S().readerSetScope(k), []);
   const cbFeed = useCallback((id) => S().readerSetFeed(id), []);
@@ -853,7 +855,7 @@ export function ReaderView() {
               flash={flashId != null && flashId === String(e.id)}
               comfortable={listComfortable}
               onToggle={onToggleArt} onFav={onFavArt} onUnread={onUnreadArt}
-              onRetryBody={onRetryBodyArt} onTag={onTagArt} />
+              onRetryBody={onRetryBodyArt} onTag={onTagArt} onAiTag={onAiTagArt} />
           ))}
         </div>
 

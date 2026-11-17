@@ -372,7 +372,7 @@ export function CardsView() {
   const curCardFeed = st.feedFilter == null ? null : feeds.find((f) => String(f.id) === String(st.feedFilter));
   const headTitle = (curCardFeed
     ? (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(curCardFeed) : curCardFeed.title) : curCardFeed.title)
-    : (groupLabel || '全部频道')) + (st.tag ? ` · ${st.tag}` : '');
+    : (groupLabel || '全部频道')) + (st.tag ? ` · #${st.tag}` : '') + (st.aiTag ? ` · AI #${st.aiTag}` : '');
 
   const noFeeds = !feeds.length;
   const noCards = !st.feedFilter && !groupFilter && !feeds.some((f) => f.cardEnabled);
@@ -400,9 +400,9 @@ export function CardsView() {
     if (st.q) {
       emptyMsg = `没有找到匹配「${st.q}」的资源`;
       emptyAction = { label: '清除搜索', run: () => onSearchClear() };
-    } else if (st.tag) {
-      emptyMsg = '该标签下暂无内容';
-      emptyAction = { label: '清除标签', run: () => s.cardsTag(null) };
+    } else if (st.tag || st.aiTag) {
+      emptyMsg = st.aiTag ? '该 AI 标签下暂无内容' : '该标签下暂无内容';
+      emptyAction = { label: '清除标签', run: () => (st.aiTag ? s.cardsAiTag(null) : s.cardsTag(null)) };
     } else {
       emptyMsg = groupFilter ? '该分组暂无内容'
         : st.feedFilter == null ? '还没有内容' : '这个频道还没有内容';
@@ -454,6 +454,11 @@ export function CardsView() {
   const onTag = useCallback((t) => {
     const c = S();
     if (c.cardsTag) c.cardsTag(c.state.tag === t ? null : t);
+  }, []);
+  // 卡片详情里的「AI 标签」组：走独立筛选，不能混进手动标签那条链路
+  const onAiTag = useCallback((t) => {
+    const c = S();
+    if (c.cardsAiTag) c.cardsAiTag(c.state.aiTag === t ? null : t);
   }, []);
 
   // 频道筛选里的组头折叠：与文章页侧栏共用同一份偏好（layout.rdCollapsedGroups），
@@ -589,7 +594,7 @@ export function CardsView() {
       </div>
 
       <main className="wrap">
-        {(st.q || st.tag) && !showSkeleton && !showEmpty ? (
+        {(st.q || st.tag || st.aiTag) && !showSkeleton && !showEmpty ? (
           <div className="list-count" role="status">
             {st.q ? <span>「{st.q}」找到 {st.total} 条结果</span> : null}
             {st.tag ? (
@@ -598,6 +603,16 @@ export function CardsView() {
                 {!st.q ? <span className="count-chip-n">{st.total} 条</span> : null}
                 <button type="button" className="count-clear" aria-label="清除标签筛选"
                   title="清除标签筛选" onClick={() => s.cardsTag(null)}>
+                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+                </button>
+              </span>
+            ) : null}
+            {st.aiTag ? (
+              <span className="count-chip count-chip-ai">
+                AI 标签：{st.aiTag}
+                {!st.q ? <span className="count-chip-n">{st.total} 条</span> : null}
+                <button type="button" className="count-clear" aria-label="清除 AI 标签筛选"
+                  title="清除 AI 标签筛选" onClick={() => s.cardsAiTag(null)}>
                   <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
                 </button>
               </span>
@@ -651,7 +666,8 @@ export function CardsView() {
 
       {detailEntry ? (
         <CardDetail e={detailEntry} onClose={closeDetail}
-          onTag={(t) => { closeDetail(); onTag(t); }} />
+          onTag={(t) => { closeDetail(); onTag(t); }}
+          onAiTag={(t) => { closeDetail(); onAiTag(t); }} />
       ) : null}
     </>
   );

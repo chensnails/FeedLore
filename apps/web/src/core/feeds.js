@@ -183,6 +183,7 @@ export async function loadPage(reset = false) {
     // 标签筛选交给服务端：前端过滤只能筛「已拉回来的这一页」，
     // 命中的条目散在后续页里时，用户看到的是空列表或漏一堆。
     if (state.tag) qs.set('tag', state.tag);
+    if (state.aiTag) qs.set('aiTag', state.aiTag);
     // 排序同理必须服务端做：分页列表前端只排当前页，「最早」会变成
     // 「最新 50 条里最早的」，翻页后整体乱序。name 档服务端是码点序（见 routes/entries.ts）。
     qs.set('sort', state.sort || 'new');

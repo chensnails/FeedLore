@@ -86,6 +86,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
             feedIds,
             q: q.q,
             tag: q.tag,
+            aiTag: q.aiTag,
             watch: q.watch,
             unread: q.unread === '1',
             fav: q.fav === '1',
@@ -193,6 +194,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
             feedIds,
             q: body.q,
             tag: body.tag,
+            aiTag: body.aiTag,
             watch: body.watch,
             fav: body.fav === '1',
             unread: true, // 只标未读的：已是已读的不该刷新 read_at
@@ -241,6 +243,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
           feedIds,
           q: body.q,
           tag: body.tag,
+          aiTag: body.aiTag,
           watch: body.watch,
           fav: body.fav === '1',
         });

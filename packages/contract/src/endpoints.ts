@@ -390,7 +390,10 @@ export const entriesQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
   q: z.string().max(100).optional(),
+  /** 手动标签（entries.tags） */
   tag: z.string().max(60).optional(),
+  /** AI 标签（entry_ai_tags）：与手动标签物理隔离，点文章页「AI 标签」组传这个 */
+  aiTag: z.string().max(60).optional(),
   unread: z.enum(['1']).optional(),
   fav: z.enum(['1']).optional(),
   watch: z.enum(['watch', 'block']).optional(),
@@ -420,6 +423,7 @@ export const readAllBody = z.object({
   feeds: z.array(z.number().int().positive()).optional(),
   q: z.string().max(100).optional(),
   tag: z.string().max(60).optional(),
+  aiTag: z.string().max(60).optional(),
   watch: z.enum(['watch', 'block']).optional(),
   /* 收藏视图下的一键已读也必须只命中「收藏且未读」。
    * 少这个字段，「在收藏视图点全部已读」会把范围内所有未读都标掉 ——

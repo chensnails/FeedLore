@@ -30,7 +30,8 @@ export const state = {
   listEpoch: 0,
   q: '',
   sort: 'new',        // 阅读页排序：new 最新 / old 最早 / name 名称（按账号持久化）
-  tag: null,
+  tag: null,          // 手动标签筛选（entries.tags）
+  aiTag: null,        // AI 标签筛选（entry_ai_tags）；与 tag 互斥，点一个清另一个
   view: 'grid',       // 'grid' 卡片视图 | 'list' 列表视图（按账号持久化）
   pageSize: DEFAULT_PAGE_SIZE,
   readerPageSize: DEFAULT_READER_PAGE,

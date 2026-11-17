@@ -66,6 +66,7 @@ export async function fetchHead(view) {
     else params.set('scope', 'cards');
     if (state.q) params.set('q', state.q);
     if (state.tag) params.set('tag', state.tag);
+    if (state.aiTag) params.set('aiTag', state.aiTag);
     params.set('sort', state.sort || 'new');
   }
 

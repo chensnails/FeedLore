@@ -16,7 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import { sql } from 'drizzle-orm';
-import { aiJobs, createDb, feeds as feedsTable, entries as entriesTable } from '@feedlore/db';
+import { aiJobs, entryAiTags, createDb, feeds as feedsTable, entries as entriesTable } from '@feedlore/db';
 import { createAuth } from '@feedlore/auth';
 import { createApp } from './app';
 
@@ -727,6 +727,62 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
         assert.ok((row?.n ?? 0) <= 4, `落库任务应 ≤4，实际 ${row?.n}`);
       } finally {
         await db.delete(aiJobs).where(sql`user_id = ${ownerId}`);
+      }
+    });
+
+    await t.test('T41 标签筛选隔离：aiTag 只命中 AI 标签，不与手动标签串', async () => {
+      fake.mode = 'ok';
+      // 两条独立条目：A 有手动标签「工具甲」+ AI 标签「工具乙」，B 只有手动「工具乙」
+      const [tagA] = await db.insert(entriesTable)
+        .values({ feedId: feed.id, guid: `ai-tagA-${stamp}`, title: '标签隔离A', content: 'x' })
+        .returning();
+      const [tagB] = await db.insert(entriesTable)
+        .values({ feedId: feed.id, guid: `ai-tagB-${stamp}`, title: '标签隔离B', content: 'x' })
+        .returning();
+      assert.ok(tagA && tagB);
+      try {
+        await db.update(entriesTable).set({ tags: ['工具甲'] }).where(sql`id = ${tagA.id}`);
+        await db.update(entriesTable).set({ tags: ['工具乙'] }).where(sql`id = ${tagB.id}`);
+        await db.insert(entryAiTags).values({
+          id: `itest-tag-${stamp}`, userId: ownerId, entryId: tagA.id, tags: ['工具乙'], model: 'test',
+        });
+
+        // 带 feeds=<本频道> 显式指定范围：测试频道没开 cardEnabled，默认 scope=cards 会漏掉
+        const idsOf = async (qs: string): Promise<string[]> => {
+          const res = await call(cOwner, `/api/entries?limit=200&feeds=${feed.id}&${qs}`);
+          assert.equal(res.status, 200, `筛选请求失败：${await res.clone().text()}`);
+          const body = (await res.json()) as { entries: Array<{ id: number | string }> };
+          return body.entries.map((e) => String(e.id));
+        };
+        const byManual = await idsOf('tag=' + encodeURIComponent('工具甲'));
+        const byAi = await idsOf('aiTag=' + encodeURIComponent('工具乙'));
+        const a = String(tagA.id), b = String(tagB.id);
+        assert.ok(byManual.includes(a), '手动标签「工具甲」应命中 A');
+        assert.ok(!byManual.includes(b), '手动标签「工具甲」不应命中 B');
+        assert.ok(byAi.includes(a), 'AI 标签「工具乙」应命中 A（它有该 AI 标签）');
+        assert.ok(!byAi.includes(b), 'AI 标签「工具乙」不应命中 B（B 只有同名手动标签）');
+      } finally {
+        await db.delete(entriesTable).where(sql`id in (${tagA.id}, ${tagB.id})`);
+      }
+    });
+
+    await t.test('T42 aiTag 越权：拿别人的 AI 标签筛不到自己库里的条目', async () => {
+      fake.mode = 'ok';
+      const [mine] = await db.insert(entriesTable)
+        .values({ feedId: feed.id, guid: `ai-aitag-mine-${stamp}`, title: '本人的AI标签条目', content: 'x' })
+        .returning();
+      assert.ok(mine);
+      try {
+        await db.insert(entryAiTags).values({
+          id: `itest-aitag-mine-${stamp}`, userId: ownerId, entryId: mine.id, tags: ['专属甲'], model: 'test',
+        });
+        // 这里用 other 的会话，feeds= 传自己的频道 id（越权也拿不到），关键是验证不串别人的 AI 标签
+        const res = await call(cOther, `/api/entries?limit=200&scope=all&aiTag=${encodeURIComponent('专属甲')}`);
+        assert.equal(res.status, 200);
+        const body = (await res.json()) as { entries: Array<{ id: number | string }> };
+        assert.ok(!body.entries.some((e) => String(e.id) === String(mine.id)), '别人的 AI 标签不应让他人筛到我的条目');
+      } finally {
+        await db.delete(entriesTable).where(sql`id = ${mine.id}`);
       }
     });
 

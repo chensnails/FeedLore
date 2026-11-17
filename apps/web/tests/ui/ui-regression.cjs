@@ -1013,7 +1013,7 @@ w.feedlore = {
       st.rdExpanded.add(id);
       if (!st.rdBody.has(id)) {
         const base = {
-          id, name: '条目一', tags: ['标签A'],
+          id, name: '条目一', tags: ['标签A'], aiTags: ['AI标签A'],
           link: 'https://pan.quark.cn/s/abc', links: ['https://pan.quark.cn/s/abc'],
           sourceUrl: 'https://example.com/a', date: '2026-10-15T10:00:00Z',
         };
@@ -1063,7 +1063,7 @@ w.feedlore = {
     st.rdEntries = (st.rdEntries || []).map((x) => (String(x.id) === String(id) ? Object.assign({}, x, { isFavorite: !x.isFavorite }) : x));
     readerTick();
   },
-  readerTagToCards: (t) => calls.push(['readerTagToCards', t]),
+  readerTagToCards: (t, ai) => calls.push(['readerTagToCards', t, !!ai]),
   readerToggleAccordion: () => calls.push(['readerToggleAccordion']),
   readerToggleDrawer: () => calls.push(['readerToggleDrawer']),
   readerCloseDrawer: () => calls.push(['readerCloseDrawer']),
@@ -1134,7 +1134,7 @@ const readerTick = () => w.dispatchEvent(new w.Event('__readerTick'));
 
 /** 阅读页条目（P3c 测试用） */
 const READER_ENTRIES = () => ([
-  { id: 'r1', name: '文章一', desc: '这是一段用于列表摘要的纯文本描述，长度足够撑满两行。', tags: ['标签A'], size: '2.5G', date: '2026-10-15T10:00:00Z', feedName: '例子星球 - Telegram Channel', isRead: false, isFavorite: false, sourceUrl: 'https://example.com/a1', image: '/api/img?u=https%3A%2F%2Fexample.com%2Fa1.jpg&w=400' },
+  { id: 'r1', name: '文章一', desc: '这是一段用于列表摘要的纯文本描述，长度足够撑满两行。', tags: ['标签A'], aiTags: ['AI标签A'], size: '2.5G', date: '2026-10-15T10:00:00Z', feedName: '例子星球 - Telegram Channel', isRead: false, isFavorite: false, sourceUrl: 'https://example.com/a1', image: '/api/img?u=https%3A%2F%2Fexample.com%2Fa1.jpg&w=400' },
   { id: 'r2', name: '文章二', desc: '', tags: [], size: '', date: '2026-10-14T10:00:00Z', feedName: 'demo', isRead: true, isFavorite: true },
 ]);
 const readerSetEntries = (list) => { w.feedlore.state.rdEntries = list; readerTick(); };
@@ -5289,12 +5289,21 @@ const withEFP = (el, fn) => {
     const sortBody = idx.slice(idx.indexOf('cardsSort:'), idx.indexOf('},', idx.indexOf('cardsSort:')) + 2);
     if (!/if \(S\.state\.sort === v\) return;/.test(sortBody)) throw new Error('cardsSort 同值仍重拉');
     const tagBody = idx.slice(idx.indexOf('cardsTag:'), idx.indexOf('},', idx.indexOf('cardsTag:')) + 2);
-    if (!/if \(S\.state\.tag === next\) return;/.test(tagBody)) throw new Error('cardsTag 同值仍重拉');
+    if (!/S\.state\.tag === next && S\.state\.aiTag == null/.test(tagBody)) throw new Error('cardsTag 同值仍重拉');
+    // AI 标签必须走独立筛选参数，绝不混进手动标签那条链路
+    if (idx.indexOf('cardsAiTag:') < 0) throw new Error('缺 cardsAiTag（AI 标签会串到手动标签）');
+    const aiBody = idx.slice(idx.indexOf('cardsAiTag:'), idx.indexOf('},', idx.indexOf('cardsAiTag:')) + 2);
+    if (!/S\.state\.aiTag = next/.test(aiBody) || !/S\.state\.tag = null/.test(aiBody)) {
+      throw new Error('cardsAiTag 未与手动标签互斥');
+    }
+    const fd = fs.readFileSync(path.join(root, 'src', 'core', 'feeds.js'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/if \(state\.aiTag\) qs\.set\('aiTag', state\.aiTag\)/.test(fd)) throw new Error('loadPage 丢了 aiTag 参数');
   });
   t('P1 后台重拉与首屏同口径：fetchHead 带 tag/sort，applyFresh 收闸 + 清错误文案', () => {
     const root = path.join(__dirname, '..', '..');
     const ar = fs.readFileSync(path.join(root, 'src', 'core', 'autorefresh.js'), 'utf8').replace(/\r\n/g, '\n');
     if (!/if \(state\.tag\) params\.set\('tag', state\.tag\)/.test(ar)) throw new Error('后台重拉丢了标签筛选');
+    if (!/if \(state\.aiTag\) params\.set\('aiTag', state\.aiTag\)/.test(ar)) throw new Error('后台重拉丢了 AI 标签筛选');
     if (!/params\.set\('sort', state\.sort \|\| 'new'\)/.test(ar)) throw new Error('后台重拉丢了排序');
     if (!/state\.listEpoch = \(Number\(state\.listEpoch\) \|\| 0\) \+ 1/.test(ar)) throw new Error('后台重拉没递增 listEpoch 收闸');
     if (!/state\.loadMoreErrMsg = ''/.test(ar)) throw new Error('后台重拉没清掉旧的错误文案');
@@ -5307,7 +5316,7 @@ const withEFP = (el, fn) => {
     const root = path.join(__dirname, '..', '..');
     const idx = fs.readFileSync(path.join(root, 'src', 'core', 'index.js'), 'utf8');
     const search = idx.slice(idx.indexOf('cardsSearch:'), idx.indexOf('},', idx.indexOf('cardsSearch:')) + 2);
-    if (!/if \(v === S\.state\.q && S\.state\.tag == null\) return;/.test(search)) throw new Error('cardsSearch 同值仍重拉');
+    if (!/if \(v === S\.state\.q && S\.state\.tag == null && S\.state\.aiTag == null\) return;/.test(search)) throw new Error('cardsSearch 同值仍重拉');
     const feed = idx.slice(idx.indexOf('cardsFilterFeed:'), idx.indexOf('},', idx.indexOf('cardsFilterFeed:')) + 2);
     if (!/String\(next\) === String\(S\.state\.feedFilter\)/.test(feed)) throw new Error('频道 id 未按串比（number/string 两来源）');
     if (!/if \(same && S\.state\.cardGroup == null\) return;/.test(feed)) throw new Error('cardsFilterFeed 再点同一频道仍重拉');
@@ -5315,7 +5324,7 @@ const withEFP = (el, fn) => {
   t('P2 标签筛选计数 chip：标签名 + 总数 + 一键清除，搜索态不重复计数', () => {
     const root = path.join(__dirname, '..', '..');
     const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
-    if (!/\(st\.q \|\| st\.tag\) && !showSkeleton && !showEmpty/.test(cards)) throw new Error('计数行显示条件不对');
+    if (!/\(st\.q \|\| st\.tag \|\| st\.aiTag\) && !showSkeleton && !showEmpty/.test(cards)) throw new Error('计数行显示条件不对');
     if (cards.indexOf('className="count-chip"') < 0) throw new Error('缺标签 chip');
     if (cards.indexOf('className="count-clear"') < 0) throw new Error('缺清除按钮');
     if (!/onClick=\{\(\) => s\.cardsTag\(null\)\}/.test(cards)) throw new Error('清除按钮没接 cardsTag(null)');
@@ -5716,7 +5725,21 @@ const withEFP = (el, fn) => {
   R('#readerList .art-item[data-id="r1"] .art-tags .mini-tag').click();
   await sleep(30);
   t('正文标签 → readerTagToCards', () => {
-    if (!callsOf('readerTagToCards').some((c) => c[1] === '标签A')) throw new Error('未触发');
+    if (!callsOf('readerTagToCards').some((c) => c[1] === '标签A' && c[2] === false)) throw new Error('未触发或带了 AI 标记');
+  });
+
+  // AI 标签组 → 必须带 ai=true，不能和手动标签共用一条筛选链路
+  R('#readerList .art-item[data-id="r1"] .art-tags-ai .mini-tag-ai').click();
+  await sleep(30);
+  t('AI 标签 → readerTagToCards(tag, true) 独立筛选', () => {
+    if (!callsOf('readerTagToCards').some((c) => c[1] === 'AI标签A' && c[2] === true)) throw new Error('AI 标签未带 ai=true');
+  });
+  t('readerTagToCards 点标签后显式重拉（卡片页已有数据也不能显示旧列表）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const ui = fs.readFileSync(path.join(root, 'src', 'core', 'ui.js'), 'utf8').replace(/\r\n/g, '\n');
+    const body = ui.slice(ui.indexOf('export function readerTagToCards'), ui.indexOf('/* ---------- 图片灯箱'));
+    if (!/loadPage\(true\)/.test(body)) throw new Error('点标签没触发 loadPage(true)');
+    if (!/state\.aiTag = ai \? tag : null/.test(body)) throw new Error('未区分 AI 标签');
   });
 
   // 收藏

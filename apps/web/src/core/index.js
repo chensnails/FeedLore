@@ -70,9 +70,10 @@ export const core = {
   cardsSearch: (v) => {
     // 同值不重拉：去抖到期 / 回车时词没变，重拉只会白闪骨架并把页面拽回顶部。
     // 但挂着标签时清标签本身就是变化，仍要重置。
-    if (v === S.state.q && S.state.tag == null) return;
+    if (v === S.state.q && S.state.tag == null && S.state.aiTag == null) return;
     S.state.q = v;
     S.state.tag = null;
+    S.state.aiTag = null;
     const p = F.loadPage(true);
     S.scrollActiveTop('auto');
     return p;
@@ -89,6 +90,7 @@ export const core = {
     S.state.feedFilter = next;
     S.state.cardGroup = null;
     S.state.tag = null;
+    S.state.aiTag = null;
     const p = F.loadPage(true);
     S.scrollActiveTop('auto');
     return p;
@@ -101,6 +103,7 @@ export const core = {
     if (next != null) {
       S.state.feedFilter = null;
       S.state.tag = null;
+      S.state.aiTag = null;
       R.rdExpandGroup(next);
     }
     const p = F.loadPage(true);
@@ -120,8 +123,20 @@ export const core = {
   cardsView: (m) => F.setViewMode(m),
   cardsTag: (t) => {
     const next = t || null;
-    if (S.state.tag === next) return;
+    if (S.state.tag === next && S.state.aiTag == null) return;
     S.state.tag = next;
+    S.state.aiTag = null;
+    const p = F.loadPage(true);
+    S.scrollActiveTop('auto');
+    return p;
+  },
+  /* AI 标签与手动标签物理隔离，筛选也必须分开：点「AI 标签」组走 aiTag 参数，
+   * 不能塞进 tag（那只查 entries.tags，会把人带到 0 条或错误结果）。 */
+  cardsAiTag: (t) => {
+    const next = t || null;
+    if (S.state.aiTag === next && S.state.tag == null) return;
+    S.state.aiTag = next;
+    S.state.tag = null;
     const p = F.loadPage(true);
     S.scrollActiveTop('auto');
     return p;
