@@ -262,13 +262,24 @@ export function ExplorePane() {
             </div>
           ))}
         </div>
+        {/* 整卡式输入栏：与空态大输入框同款（浅边圆角卡 + 输入行 + 工具行圆形发送），
+            消除裸输入框聚焦时叠出的深色粗描边。ID 与提交逻辑不变。 */}
         <form className="ex-compose" id="exploreCompose"
           onSubmit={(e) => { e.preventDefault(); ask(draft); }}>
-          <input id="exploreInput" type="search" value={draft} placeholder="追问一句话…"
-            aria-label="向探索提问" autoComplete="off" onChange={(e) => setDraft(e.target.value)} />
-          <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>
-            发送<Icon n="sparkle" />
-          </button>
+          <div className="ex-compose-field">
+            <input id="exploreInput" type="search" value={draft} placeholder="追问一句话…"
+              aria-label="向探索提问" autoComplete="off" onChange={(e) => setDraft(e.target.value)} />
+          </div>
+          <div className="ex-compose-bar">
+            <button className="ex-compose-plus" type="button" aria-label="开始新一轮对话"
+              title="开始新一轮对话" onClick={() => setDraft('')}>
+              <Icon n="plus" />
+            </button>
+            <button className="ex-compose-send" type="submit" disabled={!draft.trim()}
+              aria-label="发送问题" title="发送问题">
+              <Icon n="arrow-up" />
+            </button>
+          </div>
         </form>
         <footer className="foot">答案由模型生成，可能不准确，请以引用条目的原文为准</footer>
       </div>

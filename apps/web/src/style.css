@@ -3077,27 +3077,44 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 }
 .ex-ref-go:hover { background: var(--accent-soft, var(--hover)); }
 .ex-ref-go .ico { width: .85rem; height: .85rem; }
-/* 输入栏固定在面板底部，一条分隔线与消息区分开（面板外观在 .ex-shell 上）。 */
+/* 对话输入栏：整卡式，与空态 .ex-landing-compose 同款（浅边圆角卡 + 输入行 +
+   工具行）。彻底重置 input 的边框/轮廓，消除聚焦时浏览器默认叠出的深色粗描边。 */
 .ex-compose {
-  display: flex; gap: var(--sp-2); align-items: center;
   flex: 0 0 auto;
-  border-top: 1px solid var(--border);
-  padding: var(--sp-3) var(--sp-2) 0;
+  margin: 0 var(--sp-2) var(--sp-1);
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 18px); padding: var(--sp-2) var(--sp-3);
+  transition: box-shadow .15s ease, border-color .15s ease;
 }
-.ex-compose input { flex: 1; min-width: 0; border-radius: 999px; }
-.ex-compose .btn {
-  display: inline-flex; align-items: center; gap: var(--sp-1);
-  white-space: nowrap; border-radius: 999px;
+.ex-compose:focus-within { border-color: var(--accent); box-shadow: var(--focus-halo); }
+.ex-compose-field input {
+  width: 100%; border: 0; outline: 0; background: transparent;
+  font-size: var(--fs-md); color: var(--text); padding: var(--sp-1) 0;
 }
-.ex-compose .btn .ico { width: 1rem; height: 1rem; }
-/* 发送按钮：空输入时禁用态弱化，可点时强调；忙碌态（有任务在跑）由 aria-busy 驱动，
-   与禁用一起让反馈明确。触屏按压给轻微缩放，不靠 hover 才有反馈。 */
-.ex-compose .btn[disabled] { opacity: .45; cursor: not-allowed; }
-.ex-compose .btn:active:not([disabled]) { transform: scale(.97); }
+.ex-compose-field input::placeholder { color: var(--text-faint); }
+/* 工具行：左圆形 + （新对话）、右圆形发送，风格与空态一致。 */
+.ex-compose-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 2px; }
+.ex-compose-plus, .ex-compose-send {
+  appearance: none; cursor: pointer; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 50%;
+}
+.ex-compose-plus {
+  width: 28px; height: 28px; background: transparent; color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.ex-compose-plus:hover { color: var(--text); border-color: var(--text-faint); }
+.ex-compose-plus .ico { width: 1rem; height: 1rem; }
+.ex-compose-send {
+  width: 32px; height: 32px; background: var(--accent); color: var(--panel); border: 0;
+}
+.ex-compose-send[disabled] { opacity: .4; cursor: not-allowed; }
+.ex-compose-send:not([disabled]):active { transform: scale(.94); }
+.ex-compose-send .ico { width: 1.05rem; height: 1.05rem; }
+/* 触屏按压反馈：不靠 hover 才显现。 */
 .ex-suggest-btn:active { transform: scale(.97); }
 .ex-ref-go:active { transform: scale(.95); }
 @media (prefers-reduced-motion: reduce) {
-  .ex-compose .btn:active:not([disabled]), .ex-suggest-btn:active, .ex-ref-go:active { transform: none; }
+  .ex-compose-send:not([disabled]):active, .ex-suggest-btn:active, .ex-ref-go:active { transform: none; }
 }
 
 /* ---------- 探索页响应式（就近写在功能段末尾，不合并到别处断点） ----------
@@ -3113,6 +3130,8 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
     padding: 0 var(--sp-4) var(--sp-1); scrollbar-width: none; }
   .ex-domains::-webkit-scrollbar { display: none; }
   .ex-landing-send { width: 44px; height: 44px; }
+  .ex-compose-send { width: 44px; height: 44px; }
+  .ex-compose-plus { width: 36px; height: 36px; }
   .ex-shell { flex: 0 0 auto; min-height: 200px; max-height: 70vh; }
   .ex-thread { padding: var(--sp-3) var(--sp-2) var(--sp-4); }
   /* 窄屏气泡里「读文章」收成纯图标，把宽度让给来源/日期
