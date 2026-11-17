@@ -327,14 +327,13 @@ export async function execDigest(
 
 /* ---------------- 探索问答 ---------------- */
 
-/** 探索召回的候选上限：太多会撑爆提示词、拖慢首 token；太少会漏掉相关条目。 */
-const EXPLORE_CANDIDATE_LIMIT = 32;
 /**
- * 全库召回的扫描上限。 ilike 全表扫过 21 万条约 2~5 秒；多关键词 OR 会叠加，
- * 所以扫到的命中最多取这么多条进排序，避免把整个库拖进提示词。
- * 不做「最近 120 条」窗口截断——那会让老条目永远搜不到（用户真实痛点）。
+ * 全库命中集的硬上限：先把命中全部取回（不按时间截断），再由应用层分时段取样，
+ * 让老条目有机会进 top60。只按时间倒序取一段 = 又变回「最近 N 条」窗口，老条目被截。
+ * ilike 全表扫 21 万条约 2~5 秒，取回几千行的事实传输不显著增加耗时；
+ * 上限只是防极端泛词（如「AI」命中 3 万条）撑爆内存。
  */
-const EXPLORE_POOL_CAP = 400;
+const EXPLORE_POOL_CAP = 4000;
 /**
  * 查询扩展的关键词上限。原问题抽出的 2-gram + 模型扩展词合并后取这么多个去 OR 检索。
  * 每个词各带 owner 隔离条件；词太多会拖慢全表扫描。
@@ -346,6 +345,11 @@ const EXPLORE_RECENT_SEED = 40;
 const EXPLORE_FEED_LIMIT = 60;
 /** 查询扩展是一次轻量 chat（只吐 JSON 词表）：短预算，失败即降级，不拖主回答。 */
 const EXPLORE_EXPAND_TIMEOUT_MS = 12_000;
+/**
+ * 进程内扩展词缓存上限：同一个问题反复问不必每次烧一次模型调用。
+ * 只缓存成功结果，key 含模型名（换模型后扩词质量不同，不复用旧缓存）。
+ */
+const EXPLORE_EXPAND_CACHE_MAX = 200;
 /** 探索单次调用预算：问答比日报短，60 秒足够；仍远低于 CF 的 100 秒。 */
 export const EXPLORE_TIMEOUT_MS = 60_000;
 
@@ -382,9 +386,17 @@ export function exploreKeywords(question: string): string[] {
 }
 
 /**
+ * 进程内扩词缓存（FIFO，超限淘汰 oldest）。key 含模型名：换模型后扩词口径不同，不复用。
+ * 只缓存成功且非空的扩展结果；失败/空结果不缓存，下次还有机会扩展成功。
+ * 多用户共享一个 Map 没有隐私问题——扩词只依赖问题文本与模型，不含任何账号数据。
+ */
+const exploreExpandCache = new Map<string, string[]>();
+
+/**
  * 查询扩展：把口语问题补成一组检索词，解决「好剧」命中不了正文里「电视剧/剧集」的语义鸿沟。
  *
  * 用**同一个 chat 模型**、一次轻量调用（短预算、JSON 词表），不新增任何配置。
+ * 成功结果进进程内缓存，同一个问题反复问不再烧模型。
  * 任何失败（超时/格式/网络/字段降级都不成立）都吞掉返回空数组，由调用方降级到
  * exploreKeywords 的字面 2-gram —— 扩展是增益，不是依赖，挂了也要能全库检索。
  */
@@ -393,11 +405,16 @@ async function expandExploreKeywords(
   llm: ResolvedLlm,
   seed: string[],
 ): Promise<string[]> {
+  const cacheKey = `${llm.model}\n${question}`;
+  const cached = exploreExpandCache.get(cacheKey);
+  if (cached) return cached;
+
   const system = [
     '你是搜索词扩展助手。用户会在自己的订阅文章库里检索，请把问题改写成一组便于全文检索的关键词。',
     '输出严格 JSON：{"terms":["词1","词2"]}。要求：',
-    '- 给同义词、近义词、上位词和常见口语说法（如「好剧」→ 电视剧/剧集/追剧/豆瓣高分）。',
-    '- 只给能在文章标题或正文里出现的短词，2~6 个字，不要句子、不要虚词。',
+    '- 给同义词、近义词、上位词和常见口语说法（如「好剧」→ 电视剧/剧集/追剧）。',
+    '- 只给文章**标题里真正会出现的实词**（名词/专名），2~6 个字；不要句子、虚词、',
+    '  主观形容（如「高分」「口碑」）或正文里才有的泛词——这些命中不了标题，扩展无效。',
     `- 最多 ${EXPLORE_QUERY_TERMS} 个，按相关度从高到低，不要重复。`,
     '只输出 JSON，不要解释。',
     thinkingDirective(llm),
@@ -424,6 +441,15 @@ async function expandExploreKeywords(
       if (t.length >= 2 && !out.includes(t)) out.push(t);
       if (out.length >= EXPLORE_QUERY_TERMS) break;
     }
+    if (out.length) {
+      exploreExpandCache.set(cacheKey, out);
+      // FIFO：超限淘汰最早插入的键（Map 迭代顺序即插入顺序）。
+      while (exploreExpandCache.size > EXPLORE_EXPAND_CACHE_MAX) {
+        const oldest = exploreExpandCache.keys().next().value;
+        if (oldest === undefined) break;
+        exploreExpandCache.delete(oldest);
+      }
+    }
     return out;
   } catch {
     return [];
@@ -431,23 +457,83 @@ async function expandExploreKeywords(
 }
 
 /**
- * 相关度打分：命中词数为主、时间为辅。全库召回里一条命中 3 个词的旧文章，
- * 应该排在只命中 1 个词的新文章前面——否则「最近」语义会淹没真正的答案。
- * 命中数按标题/描述/标签计（CARD_COLUMNS 不含正文；正文命中由检索的 q 条件负责，
- * 排在限定时间内返回，排序只用可见字段）。每个词最多算 1 次，避免长文刷分。
+ * 相关度打分：命中词数为主、字段与词源加权、时间为辅。
+ *
+ * - 字段权重：标题 3 / 描述 2 / 标签 1——标题命中「好剧」的文章，明显比标签里
+ *   碰巧带「好剧」的文章更相关，不该同分。
+ * - 词源权重：字面词 1、模型扩展词 0.6——「好剧」比扩出来的「推荐」有区分度，
+ *   扩展词泛化命中不应盖过用户的原话。
+ * - 每个词在每个字段最多算 1 次，避免长文重复刷分。
+ * - CARD_COLUMNS 不含正文；正文命中由检索的 q 条件负责（决定进不进候选），
+ *   排序只用可见字段。
  */
+const RELEVANCE_FIELD_WEIGHT = { title: 3, description: 2, tag: 1 } as const;
+const RELEVANCE_LITERAL_WEIGHT = 1;
+const RELEVANCE_EXPANDED_WEIGHT = 0.6;
+
 export function exploreRelevance(row: {
   title: string | null;
   description: string | null;
   tags: string[];
-}, terms: string[]): number {
-  const text = [row.title, row.description, ...row.tags]
-    .filter((v): v is string => typeof v === 'string')
-    .join('\n')
-    .toLowerCase();
-  let hits = 0;
-  for (const t of terms) if (text.includes(t)) hits++;
-  return hits;
+}, literal: string[], expanded: string[] = []): number {
+  const title = String(row.title || '').toLowerCase();
+  const desc = String(row.description || '').toLowerCase();
+  const tags = row.tags.map((t) => String(t).toLowerCase());
+  let score = 0;
+  const add = (term: string, weight: number) => {
+    if (!term) return;
+    if (title.includes(term)) score += weight * RELEVANCE_FIELD_WEIGHT.title;
+    if (desc.includes(term)) score += weight * RELEVANCE_FIELD_WEIGHT.description;
+    if (tags.some((t) => t.includes(term))) score += weight * RELEVANCE_FIELD_WEIGHT.tag;
+  };
+  for (const t of literal) add(t, RELEVANCE_LITERAL_WEIGHT);
+  for (const t of expanded) add(t, RELEVANCE_EXPANDED_WEIGHT);
+  return score;
+}
+
+/**
+ * 分时段取样：把已按相关度排序的命中集按发布时间分成三段，各取配额后合并，
+ * 保证老条目不会被近期条目全挤掉——这正是旧「最近 N 条」窗口的痛点。
+ *
+ * 输入必须已按相关度降序（调用方保证）；每段内部保持该次序（取最相关的）。
+ * 三段配额：近 50% / 中 30% / 老 20%，空段不占位、配额顺延给下一段，
+ * 避免命中集中在某一段时浪费名额。返回的是为后续 top-N 准备的候选（仍会再全局排序）。
+ */
+const EXPLORE_ERA_QUOTA = [0.5, 0.3, 0.2] as const;
+
+export function exploreSampleByEra<T extends { publishedAt: Date | null }>(
+  ranked: T[],
+  total: number,
+  now = Date.now(),
+): T[] {
+  if (!ranked.length) return [];
+  // 时间段边界：近 90 天 / 90~365 天 / 更早。按 now 算，测试可注入固定时间。
+  const day = 86_400_000;
+  const bounds = [now - 90 * day, now - 365 * day];
+  const buckets: T[][] = [[], [], []];
+  for (const r of ranked) {
+    const t = r.publishedAt ? r.publishedAt.getTime() : now; // 无日期当最新处理
+    const i = t >= bounds[0]! ? 0 : t >= bounds[1]! ? 1 : 2;
+    buckets[i]!.push(r);
+  }
+  const out: T[] = [];
+  let left = total;
+  // 先按配额取；某段不够时把剩余名额留给后面的段。
+  for (let i = 0; i < buckets.length && left > 0; i++) {
+    const want = i === buckets.length - 1 ? left : Math.min(left, Math.ceil(total * EXPLORE_ERA_QUOTA[i]!));
+    const take = buckets[i]!.slice(0, want);
+    out.push(...take);
+    left -= take.length;
+  }
+  // 仍有余量（前面的段有富余）就按相关度次序补齐。
+  if (left > 0) {
+    const picked = new Set(out);
+    for (const r of ranked) {
+      if (left <= 0) break;
+      if (!picked.has(r)) { out.push(r); left--; }
+    }
+  }
+  return out;
 }
 
 /**
@@ -504,14 +590,18 @@ export async function execExplore(
   const literal = exploreKeywords(question);
   const expanded = await expandExploreKeywords(question, llm, literal);
   // 字面词优先、扩展词补充，合并去重限长（扩展是增益，字面命中率最高排前面）。
+  // terms 供 SQL 检索用；打分时分两组传，让字面词的命中权重高于泛化扩展词。
   const terms: string[] = [];
+  const literalSet = new Set(literal);
   for (const t of [...literal, ...expanded]) {
     if (t.length >= 2 && !terms.includes(t)) terms.push(t);
     if (terms.length >= EXPLORE_QUERY_TERMS) break;
   }
+  const usedExpanded = terms.filter((t) => !literalSet.has(t));
 
   // entryConditions 的 q 只吃一个关键词；把每个词的完整条件（含 owner 子查询）
   // 用 OR 串起来，owner 隔离不会因 OR 失效——每个分支都限定本人频道。
+  // 不按时间 limit 截断：命中集整批取回（上限防泛词撑爆），再分时段取样。
   const kwRows = terms.map((kw) => and(...entryConditions(db, uid, { feedIds: null, q: kw })));
   const keywordRows = kwRows.length
     ? await db
@@ -519,7 +609,6 @@ export async function execExplore(
         .from(entriesTable)
         .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
         .where(sql`(${sql.join(kwRows, sql` or `)})`)
-        .orderBy(desc(entriesTable.publishedAt), desc(entriesTable.id))
         .limit(EXPLORE_POOL_CAP)
     : [];
 
@@ -537,12 +626,18 @@ export async function execExplore(
   const byId = new Map<number, (typeof recent)[number]>();
   for (const r of keywordRows) byId.set(r.id, r);
   for (const r of recent) if (!byId.has(r.id)) byId.set(r.id, r);
-  // 相关度排序：命中词多的排前，命中数相同按时间倒序（SQL 已按时间排，稳定排序保留该次序）。
-  const pool = [...byId.values()]
-    .map((r) => ({ r, hits: exploreRelevance(r, terms) }))
-    .sort((a, b) => b.hits - a.hits)
-    .slice(0, EXPLORE_FEED_LIMIT)
-    .map((x) => x.r);
+  // ① 相关度排序（字段加权 + 词源加权），同分按时间倒序（稳定排序保留 SQL 次序；命中集无 SQL 序时按 id 兜底）。
+  const scored = [...byId.values()]
+    .map((r) => ({ r, score: exploreRelevance(r, terms.filter((t) => literalSet.has(t)), usedExpanded) }))
+    .sort((a, b) => b.score - a.score || (b.r.publishedAt?.getTime() ?? 0) - (a.r.publishedAt?.getTime() ?? 0) || b.r.id - a.r.id);
+  // ② 分时段取样：近/中/老各留配额，让老条目不被近期条目挤掉。取样结果已是 top-N
+  //    条数，之后按分数重排只调整喂给模型的顺序、不减量（slice 仅作数量保险），
+  //    所以老条目的配额名额不会被这步排序挤掉。
+  const eraSampled = exploreSampleByEra(scored.map((x) => x.r), EXPLORE_FEED_LIMIT);
+  const scoreById = new Map(scored.map((x) => [x.r.id, x.score]));
+  const pool = eraSampled
+    .sort((a, b) => (scoreById.get(b.id) ?? 0) - (scoreById.get(a.id) ?? 0))
+    .slice(0, EXPLORE_FEED_LIMIT);
 
   // 没有候选就不必烧模型：直接给一句人话，refs 为空。
   if (!pool.length) {

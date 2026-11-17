@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exploreKeywords, exploreRelevance, historyToMessages } from './aiTasks';
+import { exploreKeywords, exploreRelevance, exploreSampleByEra, historyToMessages } from './aiTasks';
 
 /** 探索问答的关键词抽取：纯函数，守「口语化问题也能召回」与「虚词不进召回」。 */
 
@@ -38,25 +38,62 @@ test('exploreKeywords: 去重且不超过 8 个', () => {
 
 const row = (title: string, description = '', tags: string[] = []) => ({ title, description, tags });
 
-test('exploreRelevance: 命中词多的排前，标题/描述/标签都算', () => {
+test('exploreRelevance: 标题权重3 > 描述2 > 标签1，命中多仍排前', () => {
   const terms = ['好剧', '电视剧', '追剧'];
   const triple = row('好剧推荐', '近期电视剧盘点', ['追剧']);
   const one = row('好剧推荐');
   const none = row('财经快讯');
   const rank = [none, one, triple]
-    .map((r) => ({ r, hits: exploreRelevance(r, terms) }))
-    .sort((a, b) => b.hits - a.hits);
-  assert.equal(exploreRelevance(triple, terms), 3, '标题/描述/标签各命中一个');
-  assert.equal(exploreRelevance(one, terms), 1);
+    .map((r) => ({ r, score: exploreRelevance(r, terms) }))
+    .sort((a, b) => b.score - a.score);
+  assert.equal(exploreRelevance(triple, terms), 3 + 2 + 1, '标题3+描述2+标签1');
+  assert.equal(exploreRelevance(one, terms), 3, '标题命中算 3 分');
   assert.equal(exploreRelevance(none, terms), 0);
-  assert.equal(rank[0]!.r, triple, '命中 3 个词的应排第一');
+  assert.equal(rank[0]!.r, triple, '命中三个字段的应排第一');
   assert.equal(rank[2]!.r, none, '零命中的近期打底排最后');
 });
 
-test('exploreRelevance: 每词最多算 1 次，重复出现不刷分；大小写不敏感', () => {
-  const terms = ['好剧', 'ai'];
-  assert.equal(exploreRelevance(row('好剧好剧好剧', '又是好剧'), ['好剧']), 1, '同词重复只算一次');
-  assert.equal(exploreRelevance(row('AI 工具', '再说 AI'), terms), 1, '英文大写应命中小写词');
+test('exploreRelevance: 字面词权重高于扩展泛词', () => {
+  const literalHit = row('好剧清单');     // 只命中字面「好剧」
+  const expandedHit = row('本周榜单');    // 只命中扩展「榜单」
+  const lit = exploreRelevance(literalHit, ['好剧'], ['榜单']);
+  const exp = exploreRelevance(expandedHit, ['好剧'], ['榜单']);
+  assert.ok(lit > exp, `字面命中应比扩展命中分高：${lit} vs ${exp}`);
+  assert.equal(lit, 3, '字面词标题命中 = 1×3');
+  assert.ok(Math.abs(exp - 1.8) < 1e-9, `扩展词标题命中 = 0.6×3=1.8，实际 ${exp}`);
+});
+
+test('exploreRelevance: 同词同字段最多算 1 次，重复不刷分；大小写不敏感', () => {
+  assert.equal(exploreRelevance(row('好剧好剧好剧', '又是好剧'), ['好剧']), 3 + 2, '标题与描述各算一次');
+  assert.equal(exploreRelevance(row('AI 工具', '再说 AI'), ['ai']), 3 + 2, '英文大写命中小写词');
+});
+
+/* ---- 分时段取样 ---- */
+
+const eraRow = (id: number, daysAgo: number) => ({ id, publishedAt: new Date(NOW - daysAgo * 86_400_000) });
+const NOW = Date.UTC(2026, 10, 17);
+
+test('exploreSampleByEra: 近/中/老三段各留配额，老条目不被近期挤掉', () => {
+  // 40 条近的 + 40 条中的 + 40 条老的，都按相关度排好（同段内 id 小=更相关）
+  const ranked = [
+    ...Array.from({ length: 40 }, (_, i) => eraRow(i, 10)),       // 近
+    ...Array.from({ length: 40 }, (_, i) => eraRow(100 + i, 200)), // 中
+    ...Array.from({ length: 40 }, (_, i) => eraRow(200 + i, 500)), // 老
+  ];
+  const sampled = exploreSampleByEra(ranked, 30, NOW);
+  assert.equal(sampled.length, 30);
+  assert.ok(sampled.some((r) => r.publishedAt!.getTime() < NOW - 365 * 86_400_000), '应包含老条目');
+  assert.ok(sampled.some((r) => r.publishedAt!.getTime() >= NOW - 90 * 86_400_000), '应包含近期条目');
+});
+
+test('exploreSampleByEra: 命中全挤在近期时，空段配额顺延不浪费', () => {
+  const ranked = Array.from({ length: 50 }, (_, i) => eraRow(i, 5)); // 全在近段
+  const sampled = exploreSampleByEra(ranked, 30, NOW);
+  assert.equal(sampled.length, 30, '近段 50 条足够填满 30 配额');
+});
+
+test('exploreSampleByEra: 空输入返回空数组', () => {
+  assert.deepEqual(exploreSampleByEra([], 30, NOW), []);
 });
 
 /* ---- 多轮历史 ---- */
