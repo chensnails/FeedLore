@@ -318,8 +318,7 @@ export function ModelPane({ onDirtyChange }) {
   };
 
   /** 思考深度同样是账号级配置，改完即生效（只有开思考时才有意义）。 */
-  const onDepthChange = async (ev) => {
-    const depth = ev.target.value;
+  const onDepthChange = async (depth) => {
     if (thinkingBusy) return;
     const prev = form.thinkingDepth;
     guard.mark();
@@ -623,13 +622,14 @@ export function ModelPane({ onDirtyChange }) {
           </small>
         </div>
         <div className="form-row" hidden={!form.thinking}>
-          <label htmlFor="llmDepth">思考深度</label>
-          <select id="llmDepth" className="select" value={form.thinkingDepth}
-            disabled={thinkingBusy} onChange={onDepthChange}>
-            <option value="low">轻 · 少量推理，接近不开思考</option>
-            <option value="medium">中 · 默认，够它把选材想过一遍</option>
-            <option value="high">深 · 充分推理，长清单时更明显</option>
-          </select>
+          <label>思考深度</label>
+          <Dropdown id="llmDepth" wrapId="llmDepthDD" title="思考深度" ariaLabel="思考深度"
+            value={form.thinkingDepth} disabled={thinkingBusy} onChange={(v) => onDepthChange(v)}
+            options={[
+              { value: 'low', label: '轻 · 少量推理，接近不开思考' },
+              { value: 'medium', label: '中 · 默认，够它把选材想过一遍' },
+              { value: 'high', label: '深 · 充分推理，长清单时更明显' },
+            ]} />
           <small className="form-tip">同样是账号级配置，改完即生效。日报是每天一次的后台任务，「中」通常就够；只有条目很多、分类总跑偏时才值得上「深」</small>
         </div>
         </Section>
@@ -697,12 +697,10 @@ export function ModelPane({ onDirtyChange }) {
           <div className="ms-list-head">
             <span className="ms-list-title">历史请求</span>
             <span className="ms-list-note">只保留最近 {keepInfo.keep} 条 · {keepInfo.days} 天</span>
-            <select className="select ms-limit" id="aiRequestsLimit" value={reqLimit}
-              aria-label="显示条数"
-              onChange={(ev) => { const n = Number(ev.target.value) || 20; setReqLimit(n); loadRequests(n); }}>
-              <option value={20}>20 条</option>
-              <option value={50}>50 条</option>
-            </select>
+            <Dropdown id="aiRequestsLimit" wrapId="aiRequestsLimitDD" title="显示条数"
+              ariaLabel="显示条数" value={String(reqLimit)}
+              options={[{ value: 20, label: '20 条' }, { value: 50, label: '50 条' }]}
+              onChange={(v) => { const n = Number(v) || 20; setReqLimit(n); loadRequests(n); }} />
             <button className="btn btn-ghost btn-sm" id="aiRequestsRefresh" type="button"
               disabled={reqBusy} aria-busy={reqBusy ? 'true' : undefined} onClick={() => loadRequests()}>
               {reqBusy ? '刷新中…' : '刷新'}

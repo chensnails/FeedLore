@@ -5,6 +5,7 @@ import { Result, Section } from './primitives.jsx';
 import { RuleScopePicker, emptyScope, normalizeScope, scopeSummary } from './RuleScopePicker';
 import { RulesEditor } from './RulesEditor.jsx';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
+import { Dropdown } from '../views/Dropdown.jsx';
 
 /**
  * 规则面板（A 方案）：关注 / 屏蔽规则 + 入库前过滤，都是「紧凑列表 + 详情层」。
@@ -234,33 +235,33 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
       }
     >
       <div className="form-row">
-        <label htmlFor="filterAct">动作</label>
-        <select id="filterAct" className="select filter-act" value={draft.act}
-          onChange={(ev) => patch({ act: ev.target.value })}>
-          <option value="block">丢弃（命中即不入库）</option>
-          <option value="allow">只收（只保留命中）</option>
-        </select>
+        <label>动作</label>
+        <Dropdown id="filterAct" wrapId="filterActDD" title="动作" ariaLabel="动作"
+          value={draft.act} onChange={(v) => patch({ act: v })}
+          options={[
+            { value: 'block', label: '丢弃（命中即不入库）' },
+            { value: 'allow', label: '只收（只保留命中）' },
+          ]} />
         <small className="form-tip">两者同时存在时，先丢弃、再只收。</small>
       </div>
 
       <div className="form-row">
-        <label htmlFor="filterField">匹配范围</label>
-        <select id="filterField" className="select filter-field" value={draft.field}
-          onChange={(ev) => patch({ field: ev.target.value })}>
-          <option value="title">标题</option>
-          <option value="desc">摘要</option>
-          <option value="content">正文</option>
-          <option value="all">全部（标题 + 摘要 + 正文）</option>
-        </select>
+        <label>匹配范围</label>
+        <Dropdown id="filterField" wrapId="filterFieldDD" title="匹配范围" ariaLabel="匹配范围"
+          value={draft.field} onChange={(v) => patch({ field: v })}
+          options={[
+            { value: 'title', label: '标题' },
+            { value: 'desc', label: '摘要' },
+            { value: 'content', label: '正文' },
+            { value: 'all', label: '全部（标题 + 摘要 + 正文）' },
+          ]} />
       </div>
 
       <div className="form-row">
-        <label htmlFor="filterKind">匹配方式</label>
-        <select id="filterKind" className="select filter-kind" value={draft.kind}
-          onChange={(ev) => patch({ kind: ev.target.value })}>
-          <option value="kw">关键词</option>
-          <option value="re">正则</option>
-        </select>
+        <label>匹配方式</label>
+        <Dropdown id="filterKind" wrapId="filterKindDD" title="匹配方式" ariaLabel="匹配方式"
+          value={draft.kind} onChange={(v) => patch({ kind: v })}
+          options={[{ value: 'kw', label: '关键词' }, { value: 're', label: '正则' }]} />
       </div>
 
       <div className="form-row">

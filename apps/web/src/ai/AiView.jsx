@@ -20,6 +20,7 @@ import { widthVariant } from '../imgSrc.js';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
 import { Icon } from '../ui/Icon.jsx';
 import { StateBlock } from '../ui/StateBlock.jsx';
+import { Dropdown } from '../views/Dropdown.jsx';
 import { CopyIconButton, safeHref } from '../ui/EntryActions.jsx';
 import { ExplorePane } from './ExplorePane.jsx';
 
@@ -354,10 +355,9 @@ export function AiView() {
           <p className="ai-sub" id="digestSub">{subtitle}</p>
         </div>
         <div className="digest-actions">
-          <select id="digestDate" className="select" title="选择日期" value={selected}
-            onChange={(e) => showDigest(e.target.value)}>
-            {dateOptions.map((d) => <option key={d} value={d}>{d === today ? '今天 · ' : ''}{d}</option>)}
-          </select>
+          <Dropdown id="digestDate" wrapId="digestDateDD" title="选择日期" ariaLabel="选择日期"
+            value={selected} onChange={(v) => showDigest(v)}
+            options={dateOptions.map((d) => ({ value: d, label: (d === today ? '今天 · ' : '') + d }))} />
           {writable ? (
             <>
               <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"

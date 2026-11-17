@@ -11,6 +11,7 @@ import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
 import { DetailSheet } from './DetailSheet.jsx';
 import { EditToggle, PaneFoot, ReadonlyField, Result, Section, useResult } from './primitives.jsx';
+import { Dropdown } from '../views/Dropdown.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -90,18 +91,15 @@ function DeviceSheet({ device, busy, onClose, onRevoke }) {
 function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }) {
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
-  const roleRef = useRef(null);
   const self = !!user.isSelf;
 
-  const changeRole = async (ev) => {
-    const next = ev.target.value;
+  // Dropdown 是受控组件：value={user.role}，失败时 user.role 没变，显示自然回滚，
+  // 不再需要原生 select 那种 roleRef.current.value 手动回滚。
+  const changeRole = async (next) => {
     if (next === user.role) return;
     setErr('');
     const res = await onRole(user, next);
-    if (!res.ok) {
-      setErr(res.error || '角色修改失败');
-      if (roleRef.current) roleRef.current.value = user.role;
-    }
+    if (!res.ok) setErr(res.error || '角色修改失败');
   };
 
   const removeUser = async () => {
@@ -145,13 +143,14 @@ function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }) {
       ) : (
         <>
           <div className="form-row">
-            <label htmlFor="dsUserRole">角色</label>
-            <select id="dsUserRole" className="select" ref={roleRef} value={user.role}
-              disabled={busy} onChange={changeRole}>
-              <option value="user">普通</option>
-              <option value="readonly">只读</option>
-              <option value="admin">管理员</option>
-            </select>
+            <label>角色</label>
+            <Dropdown id="dsUserRole" wrapId="dsUserRoleDD" title="角色" ariaLabel="角色"
+              value={user.role} disabled={busy} onChange={changeRole}
+              options={[
+                { value: 'user', label: '普通' },
+                { value: 'readonly', label: '只读' },
+                { value: 'admin', label: '管理员' },
+              ]} />
             <small className="form-tip">
               管理员可管理用户与站点设置；普通用户管理自己的订阅源、模型与日报；只读只能阅读。改角色立即生效。
             </small>
@@ -227,13 +226,14 @@ function AddUserSheet({ busy, onClose, onCreate }) {
           onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }} />
       </div>
       <div className="form-row">
-        <label htmlFor="newUserRole">角色</label>
-        <select id="newUserRole" className="select" value={role}
-          onChange={(ev) => setRole(ev.target.value)}>
-          <option value="user">普通用户</option>
-          <option value="readonly">只读用户</option>
-          <option value="admin">管理员</option>
-        </select>
+        <label>角色</label>
+        <Dropdown id="newUserRole" wrapId="newUserRoleDD" title="角色" ariaLabel="角色"
+          value={role} onChange={(v) => setRole(v)}
+          options={[
+            { value: 'user', label: '普通用户' },
+            { value: 'readonly', label: '只读用户' },
+            { value: 'admin', label: '管理员' },
+          ]} />
         <small className="form-tip">
           每个用户拥有自己独立的订阅源、已读/收藏、日报与模型配置；角色之后还能改。
         </small>

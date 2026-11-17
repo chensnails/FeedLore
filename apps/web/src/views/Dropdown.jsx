@@ -22,7 +22,7 @@ export function isMobileMq() {
   catch (_) { return false; }
 }
 
-export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel, options, onChange, collapsible, collapsedGroups, onToggleGroup, activeGroup, onGroupFilter }) {
+export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel, options, onChange, collapsible, collapsedGroups, onToggleGroup, activeGroup, onGroupFilter, disabled, extraClass, dataAttrs }) {
   // options: [{ value, label, group }]；group 为分组名（'' / undefined 表示无分组）
   const [open, setOpen] = useState(false);
   const [mobile, setMobile] = useState(false);   // 打开瞬间定格，本次开合内不切换形态
@@ -96,7 +96,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
   }, [hi, open]);
 
-  const openPanel = () => { setMobile(isMobileMq()); setOpen(true); setHi(-1); };
+  const openPanel = () => { if (disabled) return; setMobile(isMobileMq()); setOpen(true); setHi(-1); };
 
   // 移动端：往下拖就能收起（见 useSwipeDismiss.js）
   const { setPanelRef, handlers: sheetHandlers } = useSwipeDismiss(close);
@@ -110,6 +110,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   };
 
   const onKeyDown = (ev) => {
+    if (disabled) return;
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
       ev.preventDefault();
       const at = visible.findIndex((o) => o === cur);
@@ -139,7 +140,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
       <button type="button" role="option" key={String(o.value)}
         id={'dd-opt-' + vi}
         className={'dd-item' + (active ? ' active' : '') + (hi === vi ? ' hi' : '')}
-        aria-selected={active}
+        data-value={String(o.value)} aria-selected={active}
         onMouseEnter={() => setHi(vi)}
         onClick={() => pick(o.value)}>
         <span className="dd-item-label">{o.label}</span>
@@ -214,8 +215,11 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
 
   return (
     <div className={'dd' + (open ? ' open' : '')} id={wrapId} ref={rootRef} onKeyDown={onKeyDown} onBlur={onBlur}>
-      <button type="button" id={id} ref={triggerRef} className={'select dd-trigger' + (icon ? ' has-icon' : '')}
+      <button type="button" id={id} ref={triggerRef}
+        className={'select dd-trigger' + (icon ? ' has-icon' : '') + (extraClass ? ' ' + extraClass : '')}
         title={title} aria-label={ariaLabel || title} aria-haspopup="listbox" aria-expanded={open}
+        value={value == null ? '' : String(value)} disabled={disabled}
+        {...dataAttrs}
         onClick={() => { if (open) close(); else openPanel(); }}>
         {icon ? (
           <svg className="ico dd-icon" aria-hidden="true" focusable="false"><use href={'#' + icon} /></svg>

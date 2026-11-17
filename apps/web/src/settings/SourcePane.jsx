@@ -27,6 +27,7 @@ import { core } from '@core';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 import { DetailSheet } from './DetailSheet.jsx';
+import { Dropdown } from '../views/Dropdown.jsx';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
 
@@ -166,7 +167,7 @@ const snapshotFeed = (f) => ({
 /* ---------- 频道详情层（A 方案第二层） ----------
  * 输入框用 defaultValue + key 绑服务端值：提交 / 撤销后服务端值变了，
  * key 跟着变 → 自动重挂载回显新值，不需要手动同步草稿。 */
-function FeedSheet({ feed, order, globalMins, busyFeed, pending, onClose, onToggle, onFreq, onOrder, onName, onUrl, onGroup, onRefresh, onDelete }) {
+function FeedSheet({ feed, order, globalMins, groupNames, busyFeed, pending, onClose, onToggle, onFreq, onOrder, onName, onUrl, onGroup, onRefresh, onDelete }) {
   const s = S();
   const nameRef = useRef(null);
   const urlRef = useRef(null);
@@ -240,24 +241,39 @@ function FeedSheet({ feed, order, globalMins, busyFeed, pending, onClose, onTogg
 
       <div className="form-row">
         <label htmlFor="dsGroup">分组</label>
-        <input id="dsGroup" key={'g-' + (feed.groupName || '')} ref={groupRef}
-          type="text" list="groupList" maxLength={40} spellCheck={false} autoComplete="off"
-          placeholder="未分组" data-sheet-group={feed.id} defaultValue={feed.groupName || ''}
-          onBlur={() => onGroup(feed, groupRef.current ? groupRef.current.value : '')}
-          onKeyDown={editKeys(feed.groupName || '')} />
-        <small className="form-tip">留空移出分组；输入新名即建组</small>
+        <div className="input-with-btn">
+          {/* 保留手填「输入新名即建组」；候选用自绘 Dropdown，不用 datalist
+              （Android Chrome 把多项 datalist 渲染成一排空心胶囊，真机不可用）。 */}
+          <input id="dsGroup" key={'g-' + (feed.groupName || '')} ref={groupRef}
+            type="text" maxLength={40} spellCheck={false} autoComplete="off"
+            placeholder="未分组" data-sheet-group={feed.id} defaultValue={feed.groupName || ''}
+            onBlur={() => onGroup(feed, groupRef.current ? groupRef.current.value : '')}
+            onKeyDown={editKeys(feed.groupName || '')} />
+          {groupNames.length ? (
+            <Dropdown id="dsGroupPick" wrapId="dsGroupDD" title="选已有分组"
+              ariaLabel="选已有分组" valueLabel="选组"
+              options={groupNames.map((g) => ({ value: g, label: g }))}
+              onChange={(v) => {
+                if (groupRef.current) groupRef.current.value = String(v);
+                onGroup(feed, String(v));
+              }} />
+          ) : null}
+        </div>
+        <small className="form-tip">留空移出分组；输入新名即建组，也可点「选组」挑已有分组</small>
       </div>
 
       <div className="form-row">
-        <label htmlFor="dsFreq">抓取频率</label>
-        <select id="dsFreq" className={'select feed-freq' + (feed.refreshMinutes == null ? '' : ' own')}
-          data-sheet-freq={feed.id}
+        <label>抓取频率</label>
+        <Dropdown id="dsFreq" wrapId="dsFreqDD" title="抓取频率" ariaLabel="抓取频率"
+          extraClass={'feed-freq' + (feed.refreshMinutes == null ? '' : ' own')}
+          dataAttrs={{ 'data-sheet-freq': feed.id }}
           value={feed.refreshMinutes == null ? '' : String(feed.refreshMinutes)}
           disabled={pending}
-          onChange={(ev) => onFreq(feed, ev.target.value === '' ? null : Number(ev.target.value))}>
-          <option value="">{`跟随全局（${fmtMinutes(globalMins)}）`}</option>
-          {FREQ_OPTIONS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-        </select>
+          onChange={(v) => onFreq(feed, v === '' ? null : Number(v))}
+          options={[
+            { value: '', label: `跟随全局（${fmtMinutes(globalMins)}）` },
+            ...FREQ_OPTIONS.map(([v, t]) => ({ value: v, label: t })),
+          ]} />
         <small className="form-tip">未设置则跟随全局自动抓取间隔</small>
       </div>
 
@@ -1272,6 +1288,8 @@ export function SourcePane({ admin, onDirtyChange }) {
   };
 
   const setCfgField = (k) => (ev) => { cfgGuard.mark(); setCfg((c) => Object.assign({}, c, { [k]: ev.target.value })); };
+  // 自绘 Dropdown 的 onChange 直接给值（不是 event），与 input 的 setCfgField 分开。
+  const setCfgVal = (k) => (v) => { cfgGuard.mark(); setCfg((c) => Object.assign({}, c, { [k]: String(v) })); };
 
   const bulkDisabled = !selectedFeeds.length || busy === 'bulk';
 
@@ -1328,10 +1346,10 @@ export function SourcePane({ admin, onDirtyChange }) {
         {admin && (
           <Section secKey="src-params" advanced title="采集参数" sub={paramsSub} subId="srcParamsSub">
               <div className="source-opts">
-                <label htmlFor="srcRefresh">自动抓取{' '}
-                  <select id="srcRefresh" className="select" value={cfg.refreshMinutes} onChange={setCfgField('refreshMinutes')}>
-                    {REFRESH_OPTIONS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-                  </select>
+                <label>自动抓取{' '}
+                  <Dropdown id="srcRefresh" wrapId="srcRefreshDD" title="自动抓取" ariaLabel="自动抓取"
+                    value={cfg.refreshMinutes} onChange={setCfgVal('refreshMinutes')}
+                    options={REFRESH_OPTIONS.map(([v, t]) => ({ value: v, label: t }))} />
                 </label>
                 <label htmlFor="srcKeep">每频道保留{' '}
                   <input
@@ -1346,10 +1364,10 @@ export function SourcePane({ admin, onDirtyChange }) {
                   />{' '}
                   条
                 </label>
-                <label htmlFor="srcKeepDays">最长保留{' '}
-                  <select id="srcKeepDays" className="select" value={cfg.keepDays} onChange={setCfgField('keepDays')}>
-                    {KEEP_DAYS_OPTIONS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-                  </select>
+                <label>最长保留{' '}
+                  <Dropdown id="srcKeepDays" wrapId="srcKeepDaysDD" title="最长保留" ariaLabel="最长保留"
+                    value={cfg.keepDays} onChange={setCfgVal('keepDays')}
+                    options={KEEP_DAYS_OPTIONS.map(([v, t]) => ({ value: v, label: t }))} />
                 </label>
                 <label htmlFor="srcTimeout">抓取超时{' '}
                   <input
@@ -1399,20 +1417,20 @@ export function SourcePane({ admin, onDirtyChange }) {
                     onChange={setCfgField('proxyUrl')}
                   />
                 </label>
-                <label htmlFor="srcAutoRefresh">页面自动刷新{' '}
-                  <select id="srcAutoRefresh" className="select" value={cfg.autoRefreshMinutes} onChange={setCfgField('autoRefreshMinutes')}>
-                    {AUTO_REFRESH_OPTIONS.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-                  </select>
+                <label>页面自动刷新{' '}
+                  <Dropdown id="srcAutoRefresh" wrapId="srcAutoRefreshDD" title="页面自动刷新" ariaLabel="页面自动刷新"
+                    value={cfg.autoRefreshMinutes} onChange={setCfgVal('autoRefreshMinutes')}
+                    options={AUTO_REFRESH_OPTIONS.map(([v, t]) => ({ value: v, label: t }))} />
                 </label>
-                <label htmlFor="srcImgTtl">图片回源窗口{' '}
-                  <select id="srcImgTtl" className="select" value={cfg.imgTtlDays} onChange={setCfgField('imgTtlDays')}>
-                    {withCurrentOption(IMG_TTL_OPTIONS, cfg.imgTtlDays).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-                  </select>
+                <label>图片回源窗口{' '}
+                  <Dropdown id="srcImgTtl" wrapId="srcImgTtlDD" title="图片回源窗口" ariaLabel="图片回源窗口"
+                    value={cfg.imgTtlDays} onChange={setCfgVal('imgTtlDays')}
+                    options={withCurrentOption(IMG_TTL_OPTIONS, cfg.imgTtlDays).map(([v, t]) => ({ value: v, label: t }))} />
                 </label>
-                <label htmlFor="srcImgKeep">图片保留{' '}
-                  <select id="srcImgKeep" className="select" value={cfg.imgKeepDays} onChange={setCfgField('imgKeepDays')}>
-                    {withCurrentOption(IMG_KEEP_OPTIONS, cfg.imgKeepDays).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-                  </select>
+                <label>图片保留{' '}
+                  <Dropdown id="srcImgKeep" wrapId="srcImgKeepDD" title="图片保留" ariaLabel="图片保留"
+                    value={cfg.imgKeepDays} onChange={setCfgVal('imgKeepDays')}
+                    options={withCurrentOption(IMG_KEEP_OPTIONS, cfg.imgKeepDays).map(([v, t]) => ({ value: v, label: t }))} />
                 </label>
                 <label htmlFor="srcImgMaxDim">图片最长边{' '}
                   <input
@@ -1589,11 +1607,6 @@ export function SourcePane({ admin, onDirtyChange }) {
             })
           )))}
         </div>
-        {/* 分组名建议列表：给详情层里的分组输入框用 */}
-        <datalist id="groupList">
-          {groupNames.map((g) => <option key={g} value={g} />)}
-        </datalist>
-
       </div>
 
       <PaneFoot dirty={sourceDirty} lead={bulk ? (
@@ -1660,6 +1673,7 @@ export function SourcePane({ admin, onDirtyChange }) {
           feed={sheetFeed}
           order={sheetOrder}
           globalMins={globalMins}
+          groupNames={groupNames}
           busyFeed={busyFeed}
           pending={pendingIds.has(String(sheetId))}
           onClose={() => setSheetId(null)}

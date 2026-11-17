@@ -9,6 +9,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { core } from '@core';
+import { Dropdown } from '../views/Dropdown.jsx';
 
 const S = () => core;
 
@@ -232,10 +233,11 @@ export function AiCapabilities() {
                     <span className="switch-slider" />
                   </span>
                 </label>
-                <select aria-label={`${cap.name}使用的模型`} disabled={!!busy || !enabled}
-                  value={r.providerId || 'default'} onChange={(e) => onAssign(cap.key, e.target.value)}>
-                  {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
+                <Dropdown id={'aiCapModel-' + cap.key} wrapId={'aiCapModelDD-' + cap.key}
+                  title={`${cap.name}使用的模型`} ariaLabel={`${cap.name}使用的模型`}
+                  disabled={!!busy || !enabled} value={r.providerId || 'default'}
+                  onChange={(v) => onAssign(cap.key, v)}
+                  options={options.map((o) => ({ value: o.id, label: o.label }))} />
               </div>
               <small className="form-tip">{cap.hint}</small>
               {cap.key === 'entry_ai' && enabled && providers.length ? (
@@ -243,11 +245,11 @@ export function AiCapabilities() {
                   {ACTIONS.map((a) => (
                     <label key={a.key} className="ai-cap-action">
                       <span>{a.name}</span>
-                      <select aria-label={`${a.name}使用的模型`} disabled={!!busy}
-                        value={(r.actions || {})[a.key] || r.providerId || 'default'}
-                        onChange={(e) => onAssign(cap.key, e.target.value, a.key)}>
-                        {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                      </select>
+                      <Dropdown id={'aiCapAction-' + a.key} wrapId={'aiCapActionDD-' + a.key}
+                        title={`${a.name}使用的模型`} ariaLabel={`${a.name}使用的模型`}
+                        disabled={!!busy} value={(r.actions || {})[a.key] || r.providerId || 'default'}
+                        onChange={(v) => onAssign(cap.key, v, a.key)}
+                        options={options.map((o) => ({ value: o.id, label: o.label }))} />
                     </label>
                   ))}
                 </div>

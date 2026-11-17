@@ -10,6 +10,7 @@
 import { core } from '@core';
 import { useEffect, useState } from 'react';
 import { Section } from './primitives.jsx';
+import { Dropdown } from '../views/Dropdown.jsx';
 
 const S = () => core;
 
@@ -150,10 +151,13 @@ export function RulesEditor() {
                 </label>
                 <label>
                   <span>匹配方式</span>
-                  <select className="select" value={d.match} onChange={(e) => update(d.id, { match: e.target.value })}>
-                    <option value="any">命中任一关键词</option>
-                    <option value="all">需同时命中全部关键词</option>
-                  </select>
+                  <Dropdown id={'ruleMatch-' + d.id} wrapId={'ruleMatchDD-' + d.id}
+                    title="匹配方式" ariaLabel="匹配方式" value={d.match}
+                    onChange={(v) => update(d.id, { match: v })}
+                    options={[
+                      { value: 'any', label: '命中任一关键词' },
+                      { value: 'all', label: '需同时命中全部关键词' },
+                    ]} />
                 </label>
                 <label>
                   <span>标签（可选，需已有该标签）</span>

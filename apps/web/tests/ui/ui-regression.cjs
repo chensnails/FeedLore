@@ -1268,12 +1268,42 @@ const setAreaEl = (el, v) => {
   Object.getOwnPropertyDescriptor(w.HTMLTextAreaElement.prototype, 'value').set.call(el, v);
   el.dispatchEvent(new w.Event('input', { bubbles: true }));
 };
-const setSel = (sel, v) => {
+// 统一设置「选择器」的值：原生 <select> 走 value setter，自绘 Dropdown（button.dd-trigger）
+// 走真实交互（展开 → 点对应选项），这样 onChange 与真机一致。Dropdown 的触发器带原生 value
+// 属性，读值断言（el.value）仍照旧可用。
+const setSel = async (sel, v) => {
   const el = document.querySelector(sel);
+  if (!el) throw new Error('无选择器: ' + sel);
+  if (el.classList && el.classList.contains('dd-trigger')) {
+    if (el.disabled) return;
+    el.click();
+    await sleep(40);
+    const wrap = document.querySelector(el.getAttribute('data-wrap') || ('#' + (el.id || '') )) ;
+    const items = [...document.querySelectorAll('.dd-item')];
+    const target = items.find((it) => {
+      const lab = it.querySelector('.dd-item-label');
+      return it.getAttribute('data-value') === String(v) || (lab && lab.getAttribute('data-value') === String(v));
+    });
+    if (!target) { if (el.click) el.click(); throw new Error('下拉无选项: ' + v); }
+    target.click();
+    await sleep(40);
+    return;
+  }
   Object.getOwnPropertyDescriptor(w.HTMLSelectElement.prototype, 'value').set.call(el, v);
   el.dispatchEvent(new w.Event('change', { bubbles: true }));
 };
-const setSelEl = (el, v) => {
+const setSelEl = async (el, v) => {
+  if (el.classList && el.classList.contains('dd-trigger')) {
+    if (el.disabled) return;
+    el.click();
+    await sleep(40);
+    const target = [...document.querySelectorAll('.dd-item')]
+      .find((it) => it.getAttribute('data-value') === String(v));
+    if (!target) { el.click(); throw new Error('下拉无选项: ' + v); }
+    target.click();
+    await sleep(40);
+    return;
+  }
   Object.getOwnPropertyDescriptor(w.HTMLSelectElement.prototype, 'value').set.call(el, v);
   el.dispatchEvent(new w.Event('change', { bubbles: true }));
 };
@@ -1991,9 +2021,31 @@ const withEFP = (el, fn) => {
     if (document.querySelector('#dsGroup').value !== '科技') throw new Error('分组');
     const sel = document.querySelector('#dsFreq');
     if (sel.classList.contains('own') || sel.value !== '') throw new Error('f1 应跟随全局');
-    if (sel.options[0].textContent.indexOf('跟随全局（30 分钟）') < 0) throw new Error('默认项: ' + sel.options[0].textContent);
+    const shown = sel.querySelector('.dd-label');
+    if (!shown || shown.textContent.indexOf('跟随全局（30 分钟）') < 0) throw new Error('默认项: ' + (shown ? shown.textContent : 'null'));
     if (document.querySelector('#dsOrder').value !== '1') throw new Error('序号: ' + document.querySelector('#dsOrder').value);
   });
+  t('分组候选：自绘「选组」按钮存在（不用 datalist）', () => {
+    if (!document.querySelector('#dsGroupPick')) throw new Error('无 #dsGroupPick');
+    if (document.querySelector('#groupList')) throw new Error('datalist 应已移除（移动端渲染成空心胶囊）');
+    if (!document.querySelector('#dsGroup').closest('.input-with-btn')) throw new Error('分组输入框应与选组按钮并排');
+  });
+  // 选组：展开 → 点已有分组 → 回填输入框并触发保存
+  document.querySelector('#dsGroupPick').click();
+  await sleep(50);
+  {
+    const opts = [...document.querySelectorAll('#dsGroupDD .dd-item .dd-item-label')].map((o) => o.textContent.trim());
+    if (!opts.length) throw new Error('选组下拉无候选');
+    const other = opts.find((o) => o !== '科技') || opts[0];
+    const target = [...document.querySelectorAll('#dsGroupDD .dd-item')]
+      .find((el) => el.textContent.trim() === other);
+    if (!target) throw new Error('找不到分组项: ' + other);
+    target.click();
+    await sleep(60);
+    t('分组：选已有组回填输入框', () => {
+      if (document.querySelector('#dsGroup').value !== other) throw new Error('未回填: ' + document.querySelector('#dsGroup').value);
+    });
+  }
   t('详情层开关：采集/卡片/全文', () => {
     if (!document.querySelector('[data-sheet-toggle="1"]').checked) throw new Error('采集');
     if (!document.querySelector('[data-sheet-card="1"]').checked) throw new Error('卡片');
@@ -2203,7 +2255,7 @@ const withEFP = (el, fn) => {
     if (patchesTo('/api/feeds/2').length !== patchesBeforeEsc) throw new Error('发了请求');
     if (!sheetEl()) throw new Error('Esc 不该连带关详情层');
   });
-  setSel('#dsFreq', '720');
+  await setSel('#dsFreq', '720');
   await sleep(80);
   t('频率修改：PATCH refreshMinutes=720 + own 态 + toast 带撤销', () => {
     const body = lastPatchBody('/api/feeds/2');
@@ -2212,7 +2264,7 @@ const withEFP = (el, fn) => {
     if (sel.value !== '720' || !sel.classList.contains('own')) throw new Error(sel.value + '/' + sel.className);
     if (!undoToast('该频道已设为每 12 小时抓取')) throw new Error('无撤销 toast');
   });
-  setSel('#dsFreq', '');
+  await setSel('#dsFreq', '');
   await sleep(80);
   t('频率跟随全局：PATCH null + 回落非 own', () => {
     const body = lastPatchBody('/api/feeds/2');
@@ -2511,7 +2563,7 @@ const withEFP = (el, fn) => {
   // 表单已在面板里，迟到配置到达后直接回填（无需再点展开）
   await sleep(60);
   t('迟到配置到达后回填', () => { if (document.querySelector('#srcRefresh').value !== '30') throw new Error(document.querySelector('#srcRefresh').value); });
-  setSel('#srcKeepDays', '90');
+  await setSel('#srcKeepDays', '90');
   clickEl('#saveSourceBtn');
   await sleep(80);
   t('保存采集参数：POST source 全字段 + ok 提示 + 重启自动刷新', () => {
@@ -2898,14 +2950,20 @@ const withEFP = (el, fn) => {
   const thinkSw = document.querySelector('#llmThinking ~ .switch-slider');
   thinkSw.click();
   await sleep(40);
-  t('开思考 → 深度行现身，三档可选、默认中档', () => {
+  t('开思考 → 深度行现身，默认中档', () => {
     if (depthRow().hidden !== false) throw new Error('深度行未出现');
-    const vals = [...document.querySelectorAll('#llmDepth option')].map((o) => o.value);
-    if (vals.join() !== 'low,medium,high') throw new Error('档位: ' + vals.join());
     if (document.querySelector('#llmDepth').value !== 'medium') throw new Error('默认档位: ' + document.querySelector('#llmDepth').value);
     const sub = document.querySelector('[data-sec="llm-thinking"] .sec-sub').textContent;
     if (sub !== '已开启 · 深度中') throw new Error('思考组摘要: ' + sub);
   });
+  document.querySelector('#llmDepth').click();
+  await sleep(40);
+  t('思考深度三档可选', () => {
+    const vals = [...document.querySelectorAll('#llmDepthDD .dd-item')].map((o) => o.getAttribute('data-value'));
+    if (vals.join() !== 'low,medium,high') throw new Error('档位: ' + vals.join());
+  });
+  document.querySelector('#llmDepth').click(); // 收起，避免遮挡后续断言
+  await sleep(30);
   t('思考开关拨动即落库：POST /api/prefs { llm: { thinking: true } }', () => {
     const posts = postsTo('/api/prefs');
     const last = posts[posts.length - 1];
@@ -2917,9 +2975,7 @@ const withEFP = (el, fn) => {
       throw new Error('思考开关只该提交 thinking：' + last[3]);
     }
   });
-  const depthSel = document.querySelector('#llmDepth');
-  depthSel.value = 'high';
-  depthSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await setSel('#llmDepth', 'high');
   await sleep(40);
   t('思考深度也是账号级配置：改完即 POST thinkingDepth', () => {
     const posts = postsTo('/api/prefs');
@@ -2930,8 +2986,7 @@ const withEFP = (el, fn) => {
     if (!sent.llm || sent.llm.thinkingDepth !== 3) throw new Error('请求体: ' + last[3]);
   });
   // 复位成中档：后面的「测试模型」断言依赖表单默认值，不能带着「深」继续跑
-  depthSel.value = 'medium';
-  depthSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await setSel('#llmDepth', 'medium');
   await sleep(40);
   t('开思考后：模型名的提示跟着改口（不再宣称内置 /no_think）', () => {
     const tip = [...document.querySelectorAll('#llmModel ~ .form-tip, .form-tip')].map((e) => e.textContent).join(' | ');
@@ -2969,7 +3024,7 @@ const withEFP = (el, fn) => {
 
   // 保存（带 Key）：temperature 数值化、apiKey 仅在填写时传
   setInput('#llmTemp', '0.4');
-  setSel('#llmDepth', 'high');
+  await setSel('#llmDepth', 'high');
   await sleep(30);
   t('切换深度 → 思考组摘要同步', () => {
     const sub = document.querySelector('[data-sec="llm-thinking"] .sec-sub').textContent;
@@ -3273,7 +3328,7 @@ const withEFP = (el, fn) => {
     if (sub !== '已写 23 字') throw new Error('风格组摘要: ' + sub);
   });
   setInput('#digMaxPerFeed', '25');
-  setSel('#digMode', 'all');
+  await setSel('#digMode', 'all');
   await sleep(30);
   document.querySelector('#digSaveBtn').click();
   await sleep(80);
@@ -3966,9 +4021,9 @@ const withEFP = (el, fn) => {
     if (document.querySelector('#filterKind').value !== 'kw') throw new Error('默认 kind');
     if (!document.querySelector('.rule-scope-btn.is-empty')) throw new Error('默认范围应未选');
   });
-  setSelEl(document.querySelector('#filterAct'), 'allow');
-  setSelEl(document.querySelector('#filterField'), 'content');
-  setSelEl(document.querySelector('#filterKind'), 're');
+  await setSelEl(document.querySelector('#filterAct'), 'allow');
+  await setSelEl(document.querySelector('#filterField'), 'content');
+  await setSelEl(document.querySelector('#filterKind'), 're');
   setVal(document.querySelector('#filterPattern'), 'v\d+');
   await sleep(50);
   t('改字段：动作 / 范围 / 方式 / 模式都走受控更新', () => {
@@ -4108,11 +4163,16 @@ const withEFP = (el, fn) => {
   // 添加用户：工具栏按钮打开详情层，提交后关层
   document.querySelector('#addUserBtn').click();
   await sleep(60);
+  document.querySelector('#newUserRole').click();
+  await sleep(40);
   t('添加用户：详情层打开 + 角色下拉含只读', () => {
     if (!document.querySelector('.ds-sheet[role="dialog"]')) throw new Error('详情层未打开');
-    const sel = document.querySelector('#newUserRole');
-    if (!sel || !sel.querySelector('option[value="readonly"]')) throw new Error('角色下拉缺少只读');
+    const hasReadonly = [...document.querySelectorAll('#newUserRoleDD .dd-item')]
+      .some((it) => it.getAttribute('data-value') === 'readonly');
+    if (!hasReadonly) throw new Error('角色下拉缺少只读');
   });
+  document.querySelector('#newUserRole').click(); // 收起
+  await sleep(30);
   setInput('#newUserName', 'bob');
   setInput('#newUserPass', 'bobpass');
   await sleep(30);
@@ -4145,9 +4205,7 @@ const withEFP = (el, fn) => {
   // 改角色（alice → 只读 → admin）：详情层下拉即改即存
   document.querySelector('#userList .sl-row[data-uid="2"]').click();
   await sleep(60);
-  const aliceRoleSel = document.querySelector('#dsUserRole');
-  aliceRoleSel.value = 'readonly';
-  aliceRoleSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await setSelEl(document.querySelector('#dsUserRole'), 'readonly');
   await sleep(80);
   t('改角色：PATCH /api/users/2 {role:readonly} + 徽章更新', () => {
     const p = patchesTo('/api/users/2');
@@ -4157,9 +4215,7 @@ const withEFP = (el, fn) => {
     if (!document.querySelector('.ds-sheet')) throw new Error('改角色后详情层应保持打开');
     if (document.querySelector('#dsUserRole').value !== 'readonly') throw new Error('下拉未回显新角色');
   });
-  const aliceRoleSel2 = document.querySelector('#dsUserRole');
-  aliceRoleSel2.value = 'admin';
-  aliceRoleSel2.dispatchEvent(new w.Event('change', { bubbles: true }));
+  await setSelEl(document.querySelector('#dsUserRole'), 'admin');
   await sleep(80);
   t('改角色：PATCH /api/users/2 {role:admin}', () => {
     if (JSON.parse(patchesTo('/api/users/2').pop()[3]).role !== 'admin') throw new Error('body 不符');
@@ -4563,10 +4619,14 @@ const withEFP = (el, fn) => {
     if (sub.indexOf('个频道，采集开启') < 0) throw new Error('subtitle 频道数: ' + sub);
     if (!callsOf('apiFetch').some((c) => c[1] === '/api/prefs' && !c[2])) throw new Error('未 GET /api/prefs 取范围');
   });
+  Q('#digestDate').click();
+  await sleep(40);
+  const dateOpts = QA('#digestDateDD .dd-item').map((o) => o.getAttribute('data-value'));
+  Q('#digestDate').click(); // 收起
+  await sleep(30);
   t('日期选择：今天置顶 + 历史日期', () => {
-    const opts = QA('#digestDate option').map((o) => o.value);
-    if (opts[0] !== todayStr()) throw new Error('首项应为今天: ' + opts[0]);
-    if (opts.indexOf('2026-10-15') < 0) throw new Error('缺历史日期');
+    if (dateOpts[0] !== todayStr()) throw new Error('首项应为今天: ' + dateOpts[0]);
+    if (dateOpts.indexOf('2026-10-15') < 0) throw new Error('缺历史日期');
   });
   t('默认空态（今天无摘要）', () => {
     const e = Q('#digestBody .dg-empty');
@@ -4574,7 +4634,7 @@ const withEFP = (el, fn) => {
   });
 
   // 切换日期 → 有数据
-  setSelEl(Q('#digestDate'), '2026-10-15');
+  await setSelEl(Q('#digestDate'), '2026-10-15');
   await sleep(120);
   t('切日期 → 渲染概览/元信息/亮点/条目', () => {
     const b = Q('#digestBody');
@@ -4617,9 +4677,13 @@ const withEFP = (el, fn) => {
     const tn = callsOf('toast');
     if (!tn.length || tn[tn.length - 1][1].indexOf('摘要生成完成') < 0) throw new Error('toast: ' + JSON.stringify(tn[tn.length - 1] || null));
   });
+  Q('#digestDate').click();
+  await sleep(40);
+  const dateOptsAfter = QA('#digestDateDD .dd-item').map((o) => o.getAttribute('data-value'));
+  Q('#digestDate').click();
+  await sleep(30);
   t('生成后日期选项今天置顶', () => {
-    const opts = QA('#digestDate option').map((o) => o.value);
-    if (opts[0] !== todayStr()) throw new Error('今天未置顶: ' + opts[0]);
+    if (dateOptsAfter[0] !== todayStr()) throw new Error('今天未置顶: ' + dateOptsAfter[0]);
   });
 
   // 探索问答：点预设问题 → 提交 explore 任务 → 轮询 → 答案 + 引用卡 + 跳文章

@@ -12,6 +12,7 @@ import { core } from '@core';
 import { useEffect, useRef, useState } from 'react';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
+import { Dropdown } from '../views/Dropdown.jsx';
 
 const S = () => core;
 
@@ -243,13 +244,14 @@ export function DigestPane({ onDirtyChange }) {
         </div>
 
         <div className="form-row" hidden={!form.auto}>
-          <label htmlFor="digMode">摘要范围</label>
-          <select id="digMode" className="select" value={form.mode}
-            onChange={(ev) => setField('mode', ev.target.value)}>
-            <option value="enabled">仅「采集」开启的频道</option>
-            <option value="all">全部频道</option>
-            <option value="custom">自定义频道</option>
-          </select>
+          <label>摘要范围</label>
+          <Dropdown id="digMode" wrapId="digModeDD" title="摘要范围" ariaLabel="摘要范围"
+            value={form.mode} onChange={(v) => setField('mode', v)}
+            options={[
+              { value: 'enabled', label: '仅「采集」开启的频道' },
+              { value: 'all', label: '全部频道' },
+              { value: 'custom', label: '自定义频道' },
+            ]} />
           <small className="form-tip">「采集」开关在「设置 → 数据源」页，按频道单独控制</small>
         </div>
 
