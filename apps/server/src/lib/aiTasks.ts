@@ -13,7 +13,7 @@
 
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { entries as entriesTable, entryAiTags, feeds, users, type Db } from '@feedlore/db';
-import type { EntryAiBody, ExploreResult } from '@feedlore/contract';
+import type { EntryAiBody, ExploreResult, ExploreHistory } from '@feedlore/contract';
 import {
   chat,
   type ChatMessage,
@@ -367,6 +367,28 @@ export function exploreKeywords(question: string): string[] {
 }
 
 /**
+ * 把历史轮次转成多轮消息。关键：历史答案里的 `[#n]` 是**那一轮**的候选编号，
+ * 与本次的 #n 不是同一篇——直接喂原文会让「那第二部呢」指错条目。
+ * 所以按该轮 refs 把 `[#n]` 替换成 `《条目名》`，模型才能正确理解指代。
+ */
+export function historyToMessages(history: ExploreHistory): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const turn of history) {
+    if (!turn || !turn.question) continue;
+    let answer = String(turn.answer || '').slice(0, 4000);
+    const refs = Array.isArray(turn.refs) ? turn.refs : [];
+    // 只替换 [#数字]，倒序处理避免 #1/#10 的前缀互相干扰（这里按匹配逐个替换无此问题，但保持稳妥）
+    answer = answer.replace(/\[#(\d+)\]/g, (whole, d: string) => {
+      const r = refs[Number(d) - 1];
+      return r && r.name ? `《${r.name}》` : whole;
+    });
+    out.push({ role: 'user', content: String(turn.question).slice(0, 300) });
+    if (answer) out.push({ role: 'assistant', content: answer });
+  }
+  return out;
+}
+
+/**
  * 探索问答：在本人订阅里检索候选条目 → 让模型从中挑出相关条目并作答 →
  * 把模型引用的 #编号解析成带真实 id 的条目卡（前端据此跳文章页）。
  *
@@ -379,7 +401,7 @@ export function exploreKeywords(question: string): string[] {
 export async function execExplore(
   db: Db,
   uid: string,
-  input: { question: string },
+  input: { question: string; history?: ExploreHistory },
 ): Promise<ExploreResult> {
   const question = String(input.question || '').trim();
   if (!question) throw new ApiException('E_EXPLORE_EMPTY_QUESTION');
@@ -435,16 +457,21 @@ export async function execExplore(
     return `#${i + 1} ${c.name}（来源:${c.feedName} · ${c.date || '日期未知'}${tags}）\n   ${desc}`;
   }).join('\n');
 
+  const history = Array.isArray(input.history) ? input.history : [];
   const system = [
     '你是「探索」助手，帮用户从他自己的订阅条目里找答案。只根据下面给出的候选条目作答，不要臆测候选里没有的内容。',
     '候选条目每条以 #编号 开头，编号是引用凭证。回答用简体中文，简洁清楚（3~8 句）。',
     '在答案里提到某条时，紧跟 [#编号] 标注来源，例如「据 #2 …」。可引用多条，但只准用候选里出现过的编号。',
     '输出严格 JSON：{"answer":"答案正文（含 [#编号] 标注）","refs":[编号数组，按出现顺序]}。refs 只能来自候选编号；没有相关条目就给 refs:[] 并如实说明。',
+    history.length ? '下面是你和用户之前的对话（历史里的《条目名》是当时引用过的条目）。用户可能在追问，请结合上下文理解「那个/第二部」等指代，但引用仍只能用本次候选的新编号。' : '',
     thinkingDirective(llm),
   ].join('\n');
 
+  /* ④ 多轮：历史放在本次问题之前，让「那第二部呢」有指代对象。
+   * 历史答案里的 [#n] 已在 historyToMessages 里换成《条目名》，避免跨轮编号错位。 */
   const messages: ChatMessage[] = [
     { role: 'system', content: system },
+    ...historyToMessages(history),
     { role: 'user', content: `我的问题：${question}\n\n候选条目：\n${candidateText}` },
   ];
 

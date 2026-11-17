@@ -15,7 +15,7 @@
 
 import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { aiJobs, type AiJobRow, type Db } from '@feedlore/db';
-import type { AiJob, AiJobBody } from '@feedlore/contract';
+import type { AiJob, AiJobBody, ExploreHistory } from '@feedlore/contract';
 import { ApiException } from './apiError';
 import { execDigest, execEntryAi, execEntryTags, execExplore, loadOwnedEntry, isRealDate } from './aiTasks';
 
@@ -150,7 +150,10 @@ export async function createJob(db: Db, uid: string, body: AiJobBody): Promise<A
     if (body.force === true) input.force = true;
     if (Array.isArray(body.feeds) && body.feeds.length) input.feeds = body.feeds;
   }
-  if (kind === 'explore') input.question = (body.question ?? '').trim();
+  if (kind === 'explore') {
+    input.question = (body.question ?? '').trim();
+    if (Array.isArray(body.history) && body.history.length) input.history = body.history;
+  }
 
   const id = crypto.randomUUID();
   // 原子准入：超限返回 false → 429。绝不能拆成「先 count 再 insert」，并发会绕过。
@@ -224,6 +227,7 @@ export async function runJob(db: Db, id: string): Promise<void> {
     } else if (job.kind === 'explore') {
       result = await execExplore(db, job.userId, {
         question: typeof input.question === 'string' ? input.question : '',
+        history: Array.isArray(input.history) ? (input.history as ExploreHistory) : [],
       });
     } else {
       throw new Error(`Unknown AI job kind: ${job.kind}`);

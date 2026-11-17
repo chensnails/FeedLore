@@ -784,6 +784,15 @@ export type AiJob = z.infer<typeof aiJobSchema>;
  * - entry_ai / ai_tags：`entryId`（必填）、entry_ai 另有 `action` / `targetLang`
  * - digest：`date` / `force`
  */
+/** 探索会话里的一轮历史。refs 带条目名，供服务端把 [#n] 替换成书名号。 */
+export const exploreHistoryTurnSchema = z.object({
+  question: z.string().max(300),
+  answer: z.string().max(4000),
+  refs: z.array(z.object({ id: z.string().max(40), name: z.string().max(300) })).max(40),
+});
+export type ExploreHistoryTurn = z.infer<typeof exploreHistoryTurnSchema>;
+export type ExploreHistory = ExploreHistoryTurn[];
+
 export const aiJobBody = z.object({
   kind: aiJobKind,
   entryId: z.union([z.string(), z.number()]).optional(),
@@ -795,6 +804,8 @@ export const aiJobBody = z.object({
   feeds: z.array(z.number().int().positive()).max(500).optional(),
   /** explore：用户的自然语言问题（1~300 字） */
   question: z.string().min(1).max(300).optional(),
+  /** explore：本次会话的全部历史轮次（前端内存态，刷新即清）。轮数上限只防滥用，不做业务截断。 */
+  history: z.array(exploreHistoryTurnSchema).max(200).optional(),
 });
 export type AiJobBody = z.infer<typeof aiJobBody>;
 
