@@ -192,41 +192,45 @@ export function ExplorePane() {
       <div className="ex-head">
         <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，可直接追问，答案带原文入口</p>
       </div>
-      <div className="ex-thread" ref={scrollRef} id="exploreThread" role="log" aria-live="polite">
-        {!hasTurns ? (
-          <div className="ex-intro">
-            <div className="ex-intro-ico"><Icon n="sparkle" /></div>
-            <h3>想从订阅里找点什么？</h3>
-            <p className="hint">试试这些问题，或直接输入你自己的</p>
-            <div className="ex-suggest">
-              {SUGGESTIONS.map((q) => (
-                <button className="ex-suggest-btn" type="button" key={q} onClick={() => ask(q)}>
-                  {q}<Icon n="sparkle" />
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <>
-            <p className="ex-day">本次会话 · 可连续追问</p>
-            {turns.map((t) => (
-              <div className="ex-pair" key={t.id}>
-                <MeBubble turn={t} />
-                <AiBubble turn={{ ...t, elapsed: t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0 }} />
+      {/* 对话容器：消息区 / 输入栏 / 免责声明同处一个面板，输入栏固定不随消息滚动。
+          ID 与类名全部保留，滚动目标仍是 #exploreThread。 */}
+      <div className="ex-shell">
+        <div className="ex-thread" ref={scrollRef} id="exploreThread" role="log" aria-live="polite">
+          {!hasTurns ? (
+            <div className="ex-intro">
+              <div className="ex-intro-ico"><Icon n="sparkle" /></div>
+              <h3>想从订阅里找点什么？</h3>
+              <p className="hint">试试这些问题，或直接输入你自己的</p>
+              <div className="ex-suggest">
+                {SUGGESTIONS.map((q) => (
+                  <button className="ex-suggest-btn" type="button" key={q} onClick={() => ask(q)}>
+                    {q}<Icon n="sparkle" />
+                  </button>
+                ))}
               </div>
-            ))}
-          </>
-        )}
+            </div>
+          ) : (
+            <>
+              <p className="ex-day">本次会话 · 可连续追问</p>
+              {turns.map((t) => (
+                <div className="ex-pair" key={t.id}>
+                  <MeBubble turn={t} />
+                  <AiBubble turn={{ ...t, elapsed: t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0 }} />
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+        <form className="ex-compose" id="exploreCompose"
+          onSubmit={(e) => { e.preventDefault(); ask(draft); }}>
+          <input id="exploreInput" type="search" value={draft} placeholder="追问一句话…"
+            aria-label="向探索提问" autoComplete="off" onChange={(e) => setDraft(e.target.value)} />
+          <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>
+            发送<Icon n="sparkle" />
+          </button>
+        </form>
+        <footer className="foot">答案由模型生成，可能不准确，请以引用条目的原文为准</footer>
       </div>
-      <form className="ex-compose" id="exploreCompose"
-        onSubmit={(e) => { e.preventDefault(); ask(draft); }}>
-        <input id="exploreInput" type="search" value={draft} placeholder="追问一句话…"
-          aria-label="向探索提问" autoComplete="off" onChange={(e) => setDraft(e.target.value)} />
-        <button className="btn btn-primary" type="submit" disabled={!draft.trim()}>
-          发送<Icon n="sparkle" />
-        </button>
-      </form>
-      <footer className="foot">答案由模型生成，可能不准确，请以引用条目的原文为准</footer>
     </section>
   );
 }

@@ -2883,20 +2883,31 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 .ai-tab.is-active { color: var(--accent-text); border-bottom-color: var(--accent-text); font-weight: 600; }
 .ex-pane { display: flex; flex-direction: column; min-height: 0; }
 .ex-head { padding: var(--sp-3) 0 var(--sp-2); }
-/* 消息区自适应：内容少时跟着内容收缩（空态居中仍是舒适高度），
-   超过上限才开始内部滚动。不再用固定 62vh —— 那会在手机上把消息、
-   输入栏、免责、底栏切成互不相干的几块「框中框」。 */
-.ex-thread {
-  display: flex; flex-direction: column; gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-2) var(--sp-4);
-  min-height: 200px; max-height: min(64vh, 620px);
-  overflow-y: auto; overscroll-behavior: contain;
+/* 对话容器：消息区 / 输入栏 / 免责声明同处一个面板。面板外观（背景/边框/圆角）
+   挂在 .ex-shell 上；.ex-thread 只负责滚动。这样输入栏与免责固定在面板底部，
+   不随消息滚，视觉上是「一个对话容器」而不是「面板 + 外面飘一条输入框」。
+   高度自适应：内容少时随内容收缩，超过上限才让 .ex-thread 内部滚。
+   上限比旧的 62vh 多留一档，多出来的空间给输入栏与免责。 */
+.ex-shell {
+  display: flex; flex-direction: column; min-height: 0;
+  /* 上限按 70vh 留白：窄屏底部有悬浮视图栏（--tabbar-h + 浮起边距），
+     78vh 会让面板底部连同免责声明被底栏压住；70vh 恰好留出这段空间。 */
+  max-height: min(70vh, 720px);
+  overflow: hidden;   /* 裁出圆角，输入栏/免责贴边不越界 */
   background: var(--surface-soft, var(--panel));
   border: 1px solid var(--border); border-radius: var(--border-radius-lg, 12px);
 }
-/* 输入栏紧跟消息末尾；免责声明收成一档，不再用全局 .foot 的大底部留白
-   （探索页在 #aiView 里滚，底栏留白由 #aiView 统一给）。 */
-.ex-pane .foot { padding: var(--sp-2) 0 0; font-size: var(--fs-sm); }
+.ex-thread {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  flex: 1 1 auto; min-height: 0;
+  padding: var(--sp-3) var(--sp-2) var(--sp-4);
+  overflow-y: auto; overscroll-behavior: contain;
+}
+/* 免责在面板内收口（输入栏样式见下方 .ex-compose 集中定义）。 */
+.ex-pane .foot {
+  flex: 0 0 auto;
+  padding: var(--sp-2) var(--sp-2) var(--sp-3); font-size: var(--fs-sm);
+}
 /* IM 消息流：用户右侧气泡、AI 左侧头像+气泡，连续滚动；气泡圆角带一个小尖角 */
 .ex-day { text-align: center; font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--sp-4); }
 .ex-pair { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-4); }
@@ -2977,9 +2988,12 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 }
 .ex-ref-go:hover { background: var(--accent-soft, var(--hover)); }
 .ex-ref-go .ico { width: .85rem; height: .85rem; }
+/* 输入栏固定在面板底部，一条分隔线与消息区分开（面板外观在 .ex-shell 上）。 */
 .ex-compose {
   display: flex; gap: var(--sp-2); align-items: center;
-  padding: var(--sp-3) 0 0;
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  padding: var(--sp-3) var(--sp-2) 0;
 }
 .ex-compose input { flex: 1; min-width: 0; border-radius: 999px; }
 .ex-compose .btn {

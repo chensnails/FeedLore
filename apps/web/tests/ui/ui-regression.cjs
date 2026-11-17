@@ -4572,6 +4572,16 @@ const withEFP = (el, fn) => {
     if (!/ex-ref-meta[\s\S]{0,300}fmtDate\(hit\.date\)/.test(src)) throw new Error('引用卡日期未用 fmtDate');
     if (/\{hit\.date\}\s*<\/div>/.test(src)) throw new Error('引用卡仍直接渲染 ISO 日期');
   });
+  t('探索对话容器：消息区/输入栏/免责同处 ex-shell 面板', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'ai', 'ExplorePane.jsx'), 'utf8').replace(/\r\n/g, '\n');
+    const shell = src.slice(src.indexOf('<div className="ex-shell">'), src.indexOf('</section>'));
+    if (shell.indexOf('className="ex-thread"') < 0) throw new Error('shell 内缺消息区');
+    if (shell.indexOf('id="exploreCompose"') < 0) throw new Error('输入栏不在 shell 内');
+    if (shell.indexOf('className="foot"') < 0) throw new Error('免责声明不在 shell 内');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    const shellRule = css.slice(css.indexOf('.ex-shell {'), css.indexOf('.ex-thread {', css.indexOf('.ex-shell {')));
+    if (!/background:/.test(shellRule) || !/border:/.test(shellRule)) throw new Error('面板外观未挂到 .ex-shell');
+  });
   const hasNewBtn = !!Q('#exploreNewBtn');
   if (hasNewBtn) Q('#exploreNewBtn').click();  // 点新对话：历史清空回空态
   await sleep(60);
