@@ -2897,6 +2897,81 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
    才完整，面板底部贴到视口底部，不再留一大片空白。窄屏在断点段改回 auto。 */
 .ex-pane { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .ex-head { padding: var(--sp-3) 0 var(--sp-2); }
+
+/* ---- 空态着陆页（参考 WorkBuddy 首页布局） ----
+   居中大标题 → 领域快捷标签 → 大输入框卡片 → 纵向预设问题。
+   配色一律走主题令牌（--panel / --border / --accent），自动适配三主题，
+   不写死浅色；视觉层次靠间距与一字号的克制对比，不靠重色块。 */
+.ex-landing {
+  display: flex; flex-direction: column; align-items: center;
+  flex: 1 1 auto;   /* 在限宽 pane 内撑开，clamp 的 6vh 顶部留白才有意义 */
+  width: 100%; padding: clamp(var(--sp-6), 6vh, 72px) var(--sp-2) var(--sp-8);
+  text-align: center;
+}
+.ex-landing-title {
+  margin: 0 0 var(--sp-2);
+  font-size: clamp(1.25rem, 2.6vw, 1.75rem); font-weight: 600; letter-spacing: -.3px;
+  line-height: 1.3; color: var(--text);
+}
+.ex-landing > .ai-sub { margin: 0 0 var(--sp-6); color: var(--text-muted); }
+/* 领域快捷标签：横排胶囊，窄屏可横滑不换行，保持一行节奏。 */
+.ex-domains {
+  display: flex; gap: var(--sp-2); flex-wrap: wrap; justify-content: center;
+  max-width: 100%; margin-bottom: var(--sp-5);
+}
+.ex-domain {
+  appearance: none; cursor: pointer; white-space: nowrap;
+  background: var(--panel); color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: var(--radius-pill, 999px);
+  padding: 7px 14px; font-size: var(--fs-md); line-height: 1.4;
+}
+.ex-domain:hover { border-color: var(--accent); color: var(--accent-text); }
+.ex-domain:active { transform: scale(.96); }
+/* 大输入框：一张浅边圆角卡，内部分「输入行 + 工具行」两层。
+   聚焦时整卡走 --focus-halo，不用深色块。 */
+.ex-landing-compose {
+  width: 100%; max-width: 560px; text-align: left;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 18px); box-shadow: var(--elevation-1);
+  padding: var(--sp-3) var(--sp-3) var(--sp-2);
+  transition: box-shadow .15s ease, border-color .15s ease;
+}
+.ex-landing-compose:focus-within {
+  border-color: var(--accent); box-shadow: var(--focus-halo);
+}
+.ex-landing-field input {
+  width: 100%; border: 0; background: transparent; outline: 0;
+  font-size: var(--fs-lg); color: var(--text); padding: var(--sp-2) var(--sp-1);
+}
+.ex-landing-field input::placeholder { color: var(--text-faint); }
+/* 工具行：左「+」次级图标钮，右圆形发送实心强调。 */
+.ex-landing-bar { display: flex; align-items: center; justify-content: space-between; margin-top: var(--sp-2); }
+.ex-landing-plus {
+  appearance: none; cursor: pointer; flex: 0 0 auto;
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--text-muted);
+  border: 1px solid var(--border); border-radius: 50%;
+}
+.ex-landing-plus:hover { color: var(--text); border-color: var(--text-faint); }
+.ex-landing-plus .ico { width: 1.1rem; height: 1.1rem; }
+.ex-landing-send {
+  appearance: none; cursor: pointer; flex: 0 0 auto;
+  width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--panel); border: 0; border-radius: 50%;
+}
+.ex-landing-send[disabled] { opacity: .4; cursor: not-allowed; }
+.ex-landing-send:not([disabled]):active { transform: scale(.94); }
+.ex-landing-send .ico { width: 1.15rem; height: 1.15rem; }
+/* 预设问题：左对齐胶囊，一条一行；箭头强化「点一下就提问」的暗示。 */
+.ex-landing-suggest {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2);
+  width: 100%; max-width: 560px; margin-top: var(--sp-6);
+}
+.ex-landing-suggest .ex-suggest-btn {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  max-width: 100%; text-align: left; color: var(--text);
+}
+.ex-landing-suggest .ex-suggest-btn .ico { width: .9rem; height: .9rem; color: var(--text-faint); transform: rotate(45deg); }
 /* 对话容器：消息区 / 输入栏 / 免责声明同处一个面板。面板外观（背景/边框/圆角）
    挂在 .ex-shell 上；.ex-thread 只负责滚动。输入栏与免责固定在面板底部。
    桌面：面板 flex 撑满 .ex-wrap 的剩余高度（#aiView 是 100dvh 滚动容器），
@@ -3031,6 +3106,13 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .ex-wrap { min-height: 0; }
   .ex-pane { flex: 0 0 auto; }
+  .ex-landing { padding-top: var(--sp-7); }
+  /* 窄屏领域标签横向滑动保持单行，不把大输入框挤下去 */
+  .ex-domains { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto;
+    width: calc(100% + var(--sp-4) * 2); margin-left: calc(var(--sp-4) * -1);
+    padding: 0 var(--sp-4) var(--sp-1); scrollbar-width: none; }
+  .ex-domains::-webkit-scrollbar { display: none; }
+  .ex-landing-send { width: 44px; height: 44px; }
   .ex-shell { flex: 0 0 auto; min-height: 200px; max-height: 70vh; }
   .ex-thread { padding: var(--sp-3) var(--sp-2) var(--sp-4); }
   /* 窄屏气泡里「读文章」收成纯图标，把宽度让给来源/日期

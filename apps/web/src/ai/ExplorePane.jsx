@@ -16,7 +16,24 @@ import { widthVariant } from '../imgSrc.js';
 
 const S = () => core;
 
-const SUGGESTIONS = ['最近有什么好剧？', '最近服务器有什么羊毛？', '这周 AI 圈有哪些大事？'];
+/* 空态着陆页的预设问题（点一条直接提问）。 */
+const SUGGESTIONS = [
+  '最近有什么好剧？',
+  '最近服务器有什么羊毛？',
+  '这周 AI 圈有哪些大事？',
+  '最近存了哪些值得重读的文章？',
+];
+
+/* 领域快捷词：对应设计图那排能力标签，贴合 RSS 订阅场景。
+   显示短词，点击时用完整问句提问（短词直接召回命中率低）。 */
+const DOMAINS = [
+  { label: '好剧', q: '最近有什么好剧推荐？' },
+  { label: '服务器羊毛', q: '最近服务器有什么羊毛？' },
+  { label: 'AI 圈', q: '这周 AI 圈有哪些大事？' },
+  { label: '技术', q: '最近有哪些值得看的技术文章？' },
+  { label: '财经', q: '最近财经方面有什么值得关注的？' },
+  { label: '深度长文', q: '最近有哪些值得读的深度长文？' },
+];
 
 /** 引用卡日期：服务端给的是 ISO 原值（2026-11-17T04:27:...Z），这里统一成人看的「今天 HH:mm / MM-DD HH:mm」，与文章/卡片页一致。 */
 const fmtDate = (d) => {
@@ -187,42 +204,63 @@ export function ExplorePane() {
 
   const hasTurns = turns.length > 0;
 
-  return (
-    <section className={'ai-pane ex-pane' + (hasTurns ? ' is-chatting' : '')} data-ai-pane="explore">
-      {/* 说明行只在空态出现：开始对话后收起，把层级从「说明 + 面板」压成「面板」一层。 */}
-      {!hasTurns ? (
-        <div className="ex-head">
-          <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，可直接追问，答案带原文入口</p>
+  /* 空态 = 着陆页（居中大标题 + 领域标签 + 大输入框 + 纵向预设问题），
+     对齐参考设计的层次；任一入口提问后立刻切到下面的 IM 对话流。
+     对话态保持既有实现不动——滚动目标、ID、四态、引用卡全部原样。 */
+  if (!hasTurns) {
+    return (
+      <section className="ai-pane ex-pane is-landing" data-ai-pane="explore">
+        <div className="ex-landing">
+          <h1 className="ex-landing-title">想从订阅里找点什么？</h1>
+          <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，可直接追问</p>
+          <div className="ex-domains" aria-label="领域快捷提问">
+            {DOMAINS.map((d) => (
+              <button className="ex-domain" type="button" key={d.label} onClick={() => ask(d.q)}>{d.label}</button>
+            ))}
+          </div>
+          <form className="ex-landing-compose" id="exploreCompose"
+            onSubmit={(e) => { e.preventDefault(); ask(draft); }}>
+            <div className="ex-landing-field">
+              <input id="exploreInput" type="search" value={draft}
+                placeholder="今天想从订阅里找点什么？直接问就好"
+                aria-label="向探索提问" autoComplete="off" onChange={(e) => setDraft(e.target.value)} />
+            </div>
+            <div className="ex-landing-bar">
+              <button className="ex-landing-plus" type="button" aria-label="开始新一轮对话"
+                title="开始新一轮对话" onClick={() => { setDraft(''); }}>
+                <Icon n="plus" />
+              </button>
+              <button className="ex-landing-send" type="submit" disabled={!draft.trim()}
+                aria-label="发送问题" title="发送问题">
+                <Icon n="arrow-up" />
+              </button>
+            </div>
+          </form>
+          <div className="ex-landing-suggest" aria-label="试试这些问题">
+            {SUGGESTIONS.map((q) => (
+              <button className="ex-suggest-btn" type="button" key={q} onClick={() => ask(q)}>
+                {q}<Icon n="arrow-up" />
+              </button>
+            ))}
+          </div>
         </div>
-      ) : null}
+      </section>
+    );
+  }
+
+  return (
+    <section className="ai-pane ex-pane is-chatting" data-ai-pane="explore">
       {/* 对话容器：消息区 / 输入栏 / 免责声明同处一个面板，输入栏固定不随消息滚动。
           ID 与类名全部保留，滚动目标仍是 #exploreThread。 */}
       <div className="ex-shell">
         <div className="ex-thread" ref={scrollRef} id="exploreThread" role="log" aria-live="polite">
-          {!hasTurns ? (
-            <div className="ex-intro">
-              <div className="ex-intro-ico"><Icon n="sparkle" /></div>
-              <h3>想从订阅里找点什么？</h3>
-              <p className="hint">试试这些问题，或直接输入你自己的</p>
-              <div className="ex-suggest">
-                {SUGGESTIONS.map((q) => (
-                  <button className="ex-suggest-btn" type="button" key={q} onClick={() => ask(q)}>
-                    {q}<Icon n="sparkle" />
-                  </button>
-                ))}
-              </div>
+          <p className="ex-day">本次会话 · 可连续追问</p>
+          {turns.map((t) => (
+            <div className="ex-pair" key={t.id}>
+              <MeBubble turn={t} />
+              <AiBubble turn={{ ...t, elapsed: t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0 }} />
             </div>
-          ) : (
-            <>
-              <p className="ex-day">本次会话 · 可连续追问</p>
-              {turns.map((t) => (
-                <div className="ex-pair" key={t.id}>
-                  <MeBubble turn={t} />
-                  <AiBubble turn={{ ...t, elapsed: t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0 }} />
-                </div>
-              ))}
-            </>
-          )}
+          ))}
         </div>
         <form className="ex-compose" id="exploreCompose"
           onSubmit={(e) => { e.preventDefault(); ask(draft); }}>

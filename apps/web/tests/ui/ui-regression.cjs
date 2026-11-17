@@ -4444,6 +4444,18 @@ const withEFP = (el, fn) => {
     if (!/max-width:\s*var\(--reader-width\)/.test(wrapRule)) throw new Error('限宽未用 --reader-width 刻度');
     if (!/margin:\s*0 auto/.test(wrapRule)) throw new Error('限宽列未居中');
   });
+  t('探索着陆页：大标题 + 领域标签 + 大输入框 + 4 条纵向预设问题', () => {
+    if (!Q('.ex-landing.is-landing, .ex-landing')) throw new Error('无空态着陆页 .ex-landing');
+    if (!Q('.ex-landing-title') || Q('.ex-landing-title').textContent.indexOf('想从订阅里找点什么') < 0) {
+      throw new Error('无居中大标题');
+    }
+    if (QA('.ex-domain').length < 5) throw new Error('领域快捷标签不足 5 个：' + QA('.ex-domain').length);
+    if (!Q('.ex-landing-compose') || !Q('#exploreInput') || !Q('#exploreCompose')) throw new Error('大输入框缺 ID/结构');
+    if (!Q('.ex-landing-send') || !Q('.ex-landing-plus')) throw new Error('缺圆形发送/加号按钮');
+    if (QA('.ex-landing-suggest .ex-suggest-btn').length !== 4) throw new Error('预设问题不是 4 条');
+    // 对话态的 IM 面板此时不该出现在 DOM
+    if (Q('.ex-shell')) throw new Error('空态不应渲染对话面板 ex-shell');
+  });
   t('AI 视图渲染：单页（无二级导航）', () => {
     if (!Q('.ai-head')) throw new Error('无 ai-head');
     if (QA('#aiNav .ainav-btn').length !== 0) throw new Error('二级导航应已删除');
@@ -4590,7 +4602,9 @@ const withEFP = (el, fn) => {
   });
   t('探索对话容器：消息区/输入栏/免责同处 ex-shell 面板', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'ai', 'ExplorePane.jsx'), 'utf8').replace(/\r\n/g, '\n');
-    const shell = src.slice(src.indexOf('<div className="ex-shell">'), src.indexOf('</section>'));
+    const shellStart = src.indexOf('<div className="ex-shell">');
+    // 空态分支已提前 return，第一个 </section> 在 shell 之前——要从 shell 之后找闭合
+    const shell = src.slice(shellStart, src.indexOf('</section>', shellStart));
     if (shell.indexOf('className="ex-thread"') < 0) throw new Error('shell 内缺消息区');
     if (shell.indexOf('id="exploreCompose"') < 0) throw new Error('输入栏不在 shell 内');
     if (shell.indexOf('className="foot"') < 0) throw new Error('免责声明不在 shell 内');
@@ -4606,9 +4620,19 @@ const withEFP = (el, fn) => {
     if (!hasNewBtn) throw new Error('缺新对话按钮');
     if (!afterReset.suggest || afterReset.answer) throw new Error('新对话未清空历史回空态：' + JSON.stringify(afterReset));
   });
-  // 重新提问，保持与原来一致的后续状态
-  Q('.ex-suggest-btn').click();
+  // 点领域快捷词重新提问：既验证「点标签即提问」入口，也保持后续测试的对话态
+  const postsBeforeDomain = postsTo('/api/ai/jobs').length;
+  if (!Q('.ex-domain')) throw new Error('新对话后无领域标签');
+  Q('.ex-domain').click();
   await sleep(180);
+  t('探索着陆页：点领域快捷词以完整问句提交 explore 任务', () => {
+    const posts = postsTo('/api/ai/jobs');
+    if (posts.length <= postsBeforeDomain) throw new Error('领域标签未触发提问');
+    const last = JSON.parse(posts[posts.length - 1][3]);
+    if (last.kind !== 'explore' || !last.question || last.question.indexOf('好剧') < 0) {
+      throw new Error('领域标签未转成完整问句：' + JSON.stringify(last));
+    }
+  });
 
   // 生成失败
   genFailNext = true;
