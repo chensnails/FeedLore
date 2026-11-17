@@ -129,6 +129,8 @@ export function AiView() {
   /* 探索页两级：问答（默认，新的对话式检索）/ 日报（原能力，DOM 与 ID 原样保留）。
    * 放内存不落布局：刷新回到问答是探索页的默认入口，日报从 tab 一键切回。 */
   const [pane, setPane] = useState('ask');
+  // 「新对话」：换 key 让 ExplorePane 重挂载，内存历史与轮询一起重置（任务在服务端继续）。
+  const [sessionKey, setSessionKey] = useState(0);
   // 合并后第一行（标题 + ⋮）即吸顶条，由其写入 --topbar-h
   const headRef = useRef(null);
 
@@ -317,9 +319,16 @@ export function AiView() {
 
   return (
     <>
-      {/* 二级导航随「日报设置」一起撤了：只剩一项的导航不传达信息。
-          合并头部：标题 + 右侧 ⋮（视图切换 / 刷新 / 主题 / 设置）。AI 页无频道抽屉与搜索。 */}
+      {/* 顶栏与文章/卡片页同构：左端一枚图标按钮（探索=新对话，清掉内存历史重开），
+          中间标题，右侧簇（视图导航 + ⋮）。AI 页无频道抽屉与搜索，不硬塞假功能。 */}
       <div className="ai-head page-head view-toolbar" ref={headRef}>
+        {pane === 'ask' ? (
+          <button className="btn btn-ghost btn-sm ai-new-btn vt-channel" id="exploreNewBtn" type="button"
+            aria-label="开始新一轮对话" title="开始新一轮对话（清空当前会话）"
+            onClick={() => setSessionKey((k) => k + 1)}>
+            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
+          </button>
+        ) : null}
         <div className="ai-head-text"><h2 className="page-title vt-title">探索</h2></div>
         <div className="head-right vt-tools">
           <ViewNav />
@@ -335,7 +344,7 @@ export function AiView() {
           hidden={s.digestIsEnabled && !s.digestIsEnabled()}
           onClick={() => setPane('digest')}>日报</button>
       </div>
-      {pane === 'ask' ? <ExplorePane /> : null}
+      {pane === 'ask' ? <ExplorePane key={sessionKey} /> : null}
       <section className="ai-pane" data-ai-pane="digest" hidden={pane !== 'digest'}>
         {/* 说明行与操作行分层：标题 → 说明 → 日期/动作，窄屏操作行自己换行 */}
         <div className="digest-head">

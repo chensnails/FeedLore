@@ -4567,6 +4567,22 @@ const withEFP = (el, fn) => {
   t('探索问答：引用卡「读文章」调用 jumpToFeed 打开条目', () => {
     if (callsOf('jumpToFeed').length <= jumpBefore) throw new Error('未跳转文章');
   });
+  t('探索移动端协调：引用卡日期走 fmtDate 不再露 ISO 原值', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'ai', 'ExplorePane.jsx'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/ex-ref-meta[\s\S]{0,300}fmtDate\(hit\.date\)/.test(src)) throw new Error('引用卡日期未用 fmtDate');
+    if (/\{hit\.date\}\s*<\/div>/.test(src)) throw new Error('引用卡仍直接渲染 ISO 日期');
+  });
+  const hasNewBtn = !!Q('#exploreNewBtn');
+  if (hasNewBtn) Q('#exploreNewBtn').click();  // 点新对话：历史清空回空态
+  await sleep(60);
+  const afterReset = { suggest: !!Q('.ex-suggest-btn'), answer: !!Q('.ex-answer') };
+  t('探索移动端协调：顶栏有「新对话」按钮，点击重置会话', () => {
+    if (!hasNewBtn) throw new Error('缺新对话按钮');
+    if (!afterReset.suggest || afterReset.answer) throw new Error('新对话未清空历史回空态：' + JSON.stringify(afterReset));
+  });
+  // 重新提问，保持与原来一致的后续状态
+  Q('.ex-suggest-btn').click();
+  await sleep(180);
 
   // 生成失败
   genFailNext = true;

@@ -18,6 +18,13 @@ const S = () => core;
 
 const SUGGESTIONS = ['最近有什么好剧？', '最近服务器有什么羊毛？', '这周 AI 圈有哪些大事？'];
 
+/** 引用卡日期：服务端给的是 ISO 原值（2026-11-17T04:27:...Z），这里统一成人看的「今天 HH:mm / MM-DD HH:mm」，与文章/卡片页一致。 */
+const fmtDate = (d) => {
+  const f = S().fmtDate;
+  if (typeof f === 'function') return f(d);
+  return d ? String(d).slice(0, 16).replace('T', ' ') : '';
+};
+
 const hhmm = (ts) => {
   const d = ts ? new Date(ts) : new Date();
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -46,12 +53,16 @@ function RefCard({ ref: hit }) {
       {thumb}
       <div className="ex-ref-main">
         <div className="ex-ref-name" title={hit.name}>{hit.name || '(无标题)'}</div>
-        <div className="ex-ref-meta">{hit.feedName || '订阅'}{hit.date ? ` · ${hit.date}` : ''}</div>
+        <div className="ex-ref-meta">
+          <span title={`${hit.feedName || '订阅'}${hit.date ? ` · ${fmtDate(hit.date)}` : ''}`}>
+            {hit.feedName || '订阅'}{hit.date ? ` · ${fmtDate(hit.date)}` : ''}
+          </span>
+          <button className="ex-ref-go" type="button" title="在文章页打开并展开这篇"
+            aria-label={`读文章：${hit.name || ''}`} onClick={openArticle}>
+            <Icon n="external" /><span>读文章</span>
+          </button>
+        </div>
       </div>
-      <button className="ex-ref-go" type="button" title="在文章页打开并展开这篇"
-        aria-label={`读文章：${hit.name || ''}`} onClick={openArticle}>
-        读文章<Icon n="external" />
-      </button>
     </div>
   );
 }

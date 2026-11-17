@@ -2852,6 +2852,14 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 .ai-head h2 {
   margin:0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.2px;
 }
+/* 「新对话」：与文章/卡片页左端图标按钮同位置同尺寸，补齐顶栏结构。
+   桌面与窄屏都显示（探索无频道抽屉，这个位置改放清会话）。 */
+.ai-new-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 34px; height: 34px; padding: 0;
+  border-radius: var(--radius-sm, 8px);
+}
+.ai-new-btn .ico { width: 1.15rem; height: 1.15rem; }
 
 .ai-pane { min-width: 0; }
 /* 子页里的一行说明（如日报页的那句「把…整理成一份中文简报」） */
@@ -2874,17 +2882,21 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 .ai-tab:hover { color: var(--text); }
 .ai-tab.is-active { color: var(--accent-text); border-bottom-color: var(--accent-text); font-weight: 600; }
 .ex-pane { display: flex; flex-direction: column; min-height: 0; }
-.ex-head { padding: var(--sp-4) 0 var(--sp-3); }
+.ex-head { padding: var(--sp-3) 0 var(--sp-2); }
+/* 消息区自适应：内容少时跟着内容收缩（空态居中仍是舒适高度），
+   超过上限才开始内部滚动。不再用固定 62vh —— 那会在手机上把消息、
+   输入栏、免责、底栏切成互不相干的几块「框中框」。 */
 .ex-thread {
   display: flex; flex-direction: column; gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-1) var(--sp-4);
-  /* IM 消息区自己滚动，输入栏贴在底部：高度 = 视口 - 头部 - tab - 说明 - 输入栏。
-     用 min() 兜底，避免极端矮视口算出负值。 */
-  height: min(62vh, 620px); min-height: 260px;
+  padding: var(--sp-3) var(--sp-2) var(--sp-4);
+  min-height: 200px; max-height: min(64vh, 620px);
   overflow-y: auto; overscroll-behavior: contain;
   background: var(--surface-soft, var(--panel));
   border: 1px solid var(--border); border-radius: var(--border-radius-lg, 12px);
 }
+/* 输入栏紧跟消息末尾；免责声明收成一档，不再用全局 .foot 的大底部留白
+   （探索页在 #aiView 里滚，底栏留白由 #aiView 统一给）。 */
+.ex-pane .foot { padding: var(--sp-2) 0 0; font-size: var(--fs-sm); }
 /* IM 消息流：用户右侧气泡、AI 左侧头像+气泡，连续滚动；气泡圆角带一个小尖角 */
 .ex-day { text-align: center; font-size: var(--fs-sm); color: var(--text-faint); margin: 0 0 var(--sp-4); }
 .ex-pair { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-4); }
@@ -2936,28 +2948,38 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 }
 .ex-suggest-btn:hover { border-color: var(--accent-text); color: var(--accent-text); }
 .ex-suggest-btn .ico { width: 1rem; height: 1rem; }
-.ex-refs { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
+/* 引用卡落在 AI 气泡里（窄屏气泡约 290px），必须能在单列下完整显示：
+   缩略图 + 两行文字占主行，「读文章」按钮移到 meta 行右侧，不再和标题抢宽度。
+   单列最小宽度压到 200px，宽屏仍可多列平铺。 */
+.ex-refs { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
 .ex-ref {
-  display: flex; align-items: center; gap: var(--sp-2); min-width: 0;
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: var(--sp-2); min-width: 0;
   padding: var(--sp-2); border: 1px solid var(--border); border-radius: var(--border-radius-md, 8px);
   background: var(--surface, var(--panel));
 }
-.ex-ref-thumb { flex: 0 0 40px; width: 40px; height: 40px; object-fit: cover; border-radius: 6px; }
+.ex-ref-thumb { grid-row: 1; width: 40px; height: 40px; object-fit: cover; border-radius: 6px; }
 .ex-ref-thumb-fb { display: flex; align-items: center; justify-content: center; background: var(--hover); color: var(--text-faint); }
 .ex-ref-thumb-fb .ico { width: 1.1rem; height: 1.1rem; }
-.ex-ref-main { flex: 1; min-width: 0; }
-.ex-ref-name { font-size: var(--fs-md); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ex-ref-meta { font-size: var(--fs-sm); color: var(--text-faint); margin-top: 2px; }
+.ex-ref-main { grid-column: 2; min-width: 0; }
+.ex-ref-name {
+  font-size: var(--fs-md); font-weight: 500; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ex-ref-meta {
+  display: flex; align-items: center; gap: var(--sp-1); min-width: 0;
+  font-size: var(--fs-sm); color: var(--text-faint); margin-top: 3px;
+}
+.ex-ref-meta > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ex-ref-go {
   flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
   background: transparent; border: 1px solid var(--accent-text); color: var(--accent-text);
-  border-radius: 6px; padding: 4px 8px; font-size: var(--fs-sm);
+  border-radius: 6px; padding: 3px 7px; font-size: var(--fs-sm); line-height: 1.4;
 }
 .ex-ref-go:hover { background: var(--accent-soft, var(--hover)); }
 .ex-ref-go .ico { width: .85rem; height: .85rem; }
 .ex-compose {
   display: flex; gap: var(--sp-2); align-items: center;
-  padding: var(--sp-3) 0 var(--sp-2);
+  padding: var(--sp-3) 0 0;
 }
 .ex-compose input { flex: 1; min-width: 0; border-radius: 999px; }
 .ex-compose .btn {
@@ -4314,6 +4336,12 @@ body.is-scrolling .card-media-actions { transition: none; }
  * 仍有足够空间常驻（内容列约 760px+），故统一到 720，与 JS 的 resize 阈值一致。
  * ============================================================ */
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  /* 探索引用卡：窄屏气泡里「读文章」收成纯图标，把宽度让给来源/日期，
+     避免「科技日报 · 今天 12…」被截断（title/aria-label 仍有完整语义）。 */
+  .ex-ref-go span { display: none; }
+  .ex-ref-go { padding: 4px 6px; }
+  .ex-ref-go .ico { width: 1rem; height: 1rem; }
+
   /* 阅读页：分栏 → 单列，左侧频道栏收进抽屉（右滑打开 / 左滑收起） */
   .reader { padding-top: var(--sp-4); }
   .reader > #readerRoot { grid-template-columns: minmax(0, 1fr); gap: 0; }
