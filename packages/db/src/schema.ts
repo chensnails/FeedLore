@@ -241,8 +241,42 @@ export const userLlm = pgTable('user_llm', {
   temperature: real('temperature'),
   thinking: boolean('thinking').notNull().default(false),
   thinkingDepth: integer('thinking_depth').notNull().default(0),
+  /**
+   * 任务级能力开关与模型路由（0015）。空对象 = 全部能力开启、全走默认槽。
+   * 形态见 0015 迁移注释；服务端解析时逐键容错，不信任前端结构。
+   */
+  routes: jsonb('routes').$type<LlmRoutes>().notNull().default({}),
   updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
 });
+
+/**
+ * 多路 AI 提供商（0015）：一个账号可配多套 baseUrl/key/model，按任务分配。
+ * 每行独立加密 Key；user_llm 原有三件套保留为「默认槽」向后兼容。
+ */
+export const llmProviders = pgTable('llm_providers', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull().default(''),
+  encryptedKey: text('encrypted_key'),
+  baseUrl: text('base_url'),
+  model: text('model'),
+  temperature: real('temperature'),
+  thinking: boolean('thinking').notNull().default(false),
+  thinkingDepth: integer('thinking_depth').notNull().default(0),
+  isDefault: boolean('is_default').notNull().default(false),
+  createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
+});
+
+/** 单个能力的路由项；providerId='default' 或省略表示回落 user_llm 默认槽。 */
+export interface LlmRoute {
+  enabled?: boolean;
+  providerId?: string;
+  /** 单篇 AI 四动作各自的模型分配（不单独开关，开关按 entry_ai 整体）。 */
+  actions?: Record<string, string>;
+}
+/** 能力键见契约 AiCapability；这里用宽松 Record，服务端按白名单取键。 */
+export type LlmRoutes = Record<string, LlmRoute>;
 
 /**
  * MCP（Model Context Protocol）接口令牌。
@@ -448,6 +482,10 @@ export const userLlmRelations = relations(userLlm, ({ one }) => ({
   user: one(users, { fields: [userLlm.userId], references: [users.id] }),
 }));
 
+export const llmProvidersRelations = relations(llmProviders, ({ one }) => ({
+  user: one(users, { fields: [llmProviders.userId], references: [users.id] }),
+}));
+
 export const entryAiTagsRelations = relations(entryAiTags, ({ one }) => ({
   user: one(users, { fields: [entryAiTags.userId], references: [users.id] }),
   entry: one(entries, { fields: [entryAiTags.entryId], references: [entries.id] }),
@@ -471,6 +509,8 @@ export type ImageCacheRow = typeof imageCache.$inferSelect;
 export type Setting = typeof settings.$inferSelect;
 export type UserLlm = typeof userLlm.$inferSelect;
 export type NewUserLlm = typeof userLlm.$inferInsert;
+export type LlmProvider = typeof llmProviders.$inferSelect;
+export type NewLlmProvider = typeof llmProviders.$inferInsert;
 export type McpToken = typeof mcpTokens.$inferSelect;
 export type AiUsageDailyRow = typeof aiUsageDaily.$inferSelect;
 export type AiRequestLogRow = typeof aiRequestLog.$inferSelect;

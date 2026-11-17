@@ -84,6 +84,8 @@ export const API_ERROR_CODES = [
   'E_MODEL_INCOMPLETE',
   'E_MODEL_URL_UNREACHABLE',
   'E_AI_BUSY',
+  'E_AI_DISABLED',
+  'E_LLM_PROVIDER_NOT_FOUND',
   'E_AI_JOB_NOT_FOUND',
   'E_AI_JOB_RESTARTED',
   'E_EXPLORE_EMPTY_QUESTION',
@@ -222,6 +224,14 @@ export const API_ERROR_DEFAULTS = {
   E_AI_BUSY: {
     status: 429,
     message: 'Too many AI tasks are queued or running for this account, wait for one to finish',
+  },
+  E_AI_DISABLED: {
+    status: 403,
+    message: 'This AI capability is turned off for this account, enable it in Settings - Model',
+  },
+  E_LLM_PROVIDER_NOT_FOUND: {
+    status: 404,
+    message: 'The selected model provider does not exist',
   },
   E_AI_JOB_NOT_FOUND: { status: 404, message: 'AI task not found' },
   E_AI_JOB_RESTARTED: {

@@ -526,6 +526,10 @@ export const prefsResponse = z.object({
   aiTags: M.AiTagsConfigSchema,
   rules: z.array(M.RuleSchema),
   llm: M.LlmViewSchema,
+  /** 多路提供商视图（0015）；空数组 = 只用 user_llm 默认槽。 */
+  llmProviders: z.array(M.LlmProviderViewSchema),
+  /** 任务级开关与模型分配；空对象 = 全开 + 全走默认槽。 */
+  llmRoutes: M.LlmRoutesSchema,
 });
 export type PrefsResponse = z.infer<typeof prefsResponse>;
 
@@ -541,6 +545,12 @@ export const prefsPatchBody = z.object({
   aiTags: M.AiTagsConfigSchema.partial().optional(),
   rules: z.array(M.RuleSchema).optional(),
   llm: M.LlmConfigSchema.partial().optional(),
+  /** 单条提供商 upsert（id 省略=新增）。单条提交而非整表覆盖，避免并发保存互相冲掉。 */
+  llmProvider: M.LlmProviderInputSchema.optional(),
+  /** 删除某一路提供商（id）。删除后引用它的路由自动回落到默认槽。 */
+  llmProviderDelete: z.string().max(64).optional(),
+  /** 任务路由表：按能力键部分更新（只提交改动的键，服务端逐键合并；record 天然可缺键）。 */
+  llmRoutes: M.LlmRoutesSchema.optional(),
 });
 export type PrefsPatchBody = z.infer<typeof prefsPatchBody>;
 

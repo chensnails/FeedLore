@@ -90,6 +90,8 @@ const CN = {
   E_AI_NO_MODELS: '上游没有返回任何模型，请手动填写模型名称',
   /* 异步任务（提交 → 轮询）。任务不会因为页面关掉而取消，失败原因会留在模型状态里。 */
   E_AI_BUSY: '该账号还有 AI 任务在跑，等其中一个结束后再试',
+  E_AI_DISABLED: '这项 AI 能力已在本账号关闭，到「设置 · 模型 · AI 能力」里开启后再用',
+  E_LLM_PROVIDER_NOT_FOUND: '所选的模型提供商已不存在，请重新分配',
   E_AI_JOB_NOT_FOUND: '找不到这个 AI 任务（可能已过期清理），请重新发起',
   E_AI_JOB_RESTARTED: '服务重启导致任务中断，请重新发起',
   E_EXPLORE_EMPTY_QUESTION: '请先输入想问的问题',

@@ -363,6 +363,63 @@ export const LlmViewSchema = z.object({
 });
 export type LlmView = z.infer<typeof LlmViewSchema>;
 
+/* ==================== 多路提供商与任务路由（0015） ==================== */
+
+/** 可独立开关/分配模型的 AI 能力。auto = 日报与标签的定时调度。 */
+export const AI_CAPABILITIES = [
+  'entry_ai', 'ai_tags', 'digest', 'explore', 'mcp', 'auto',
+] as const;
+export const AiCapabilitySchema = z.enum(AI_CAPABILITIES);
+export type AiCapability = z.infer<typeof AiCapabilitySchema>;
+
+/** 单篇 AI 的四个动作：可单独绑模型，但开关按 entry_ai 整体。 */
+export const ENTRY_AI_ACTIONS = ['summary', 'keypoints', 'translate', 'explain'] as const;
+export const EntryAiActionSchema = z.enum(ENTRY_AI_ACTIONS);
+
+/** 回显给设置页的提供商视图：绝不含明文/密文 Key。 */
+export const LlmProviderViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  baseUrl: z.string(),
+  model: z.string(),
+  temperature: z.number(),
+  thinking: z.boolean(),
+  thinkingDepth: z.number().int(),
+  isDefault: z.boolean(),
+  apiKeySet: z.boolean(),
+  apiKeyHint: z.string(),
+});
+export type LlmProviderView = z.infer<typeof LlmProviderViewSchema>;
+
+/**
+ * 新增/编辑一路提供商的入参。id 省略 = 新增；apiKey 省略 = 沿用原密文，空串 = 清除。
+ * 与现有 LlmConfig 的三态语义一致，避免「只改模型名」把 Key 冲掉。
+ */
+export const LlmProviderInputSchema = z.object({
+  id: z.string().max(64).optional(),
+  name: z.string().max(60),
+  baseUrl: z.string().max(500),
+  model: z.string().max(200),
+  apiKey: z.string().max(500).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  thinking: z.boolean().optional(),
+  thinkingDepth: z.number().int().min(0).max(3).optional(),
+  isDefault: z.boolean().optional(),
+});
+export type LlmProviderInput = z.infer<typeof LlmProviderInputSchema>;
+
+/** 单项能力路由：enabled 省略 = 开启，providerId 省略/'default' = 回落默认槽。 */
+export const LlmRouteSchema = z.object({
+  enabled: z.boolean().optional(),
+  providerId: z.string().max(64).optional(),
+  actions: z.record(z.string(), z.string().max(64)).optional(),
+});
+export type LlmRoute = z.infer<typeof LlmRouteSchema>;
+
+/** 整个路由表：键必须是白名单能力，值逐项校验。 */
+export const LlmRoutesSchema = z.record(AiCapabilitySchema, LlmRouteSchema);
+export type LlmRoutes = z.infer<typeof LlmRoutesSchema>;
+
 /* ============================ AI 日报 ============================ */
 
 /** 日报里的条目引用（精简 Card）。 */
