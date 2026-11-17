@@ -14,6 +14,7 @@ import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
 import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
+import { Dropdown } from '../views/Dropdown.jsx';
 import { AiCapabilities } from './AiCapabilities.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -531,16 +532,25 @@ export function ModelPane({ onDirtyChange }) {
           <div className="form-row">
             <label htmlFor="llmModel">模型名称</label>
             {/* 输入框保持可手填：/models 拉不到（或上游不实现）时照样能填名字。
-                拉到列表后 datalist 里会多出上游的真实模型名，点一下就选上。 */}
+                候选用自绘 Dropdown，不用 datalist —— Android Chrome 把多项 datalist
+                渲染成一排空心胶囊（点不动、看不清），真机实测不可用。 */}
             <div className="input-with-btn">
               <input
                 id="llmModel"
                 type="text"
                 placeholder="Qwen/Qwen3-8B"
                 spellCheck="false"
-                list="modelPresets"
                 value={form.model}
                 onChange={set('model')}
+              />
+              <Dropdown
+                id="modelPickBtn"
+                wrapId="modelPickDD"
+                title="从列表选择模型"
+                ariaLabel="从列表选择模型"
+                valueLabel="选模型"
+                options={(modelList && modelList.length ? modelList : MODEL_PRESETS).map((m) => ({ value: m, label: m }))}
+                onChange={(v) => { guard.mark(); setForm((f) => Object.assign({}, f, { model: String(v) })); }}
               />
               <button
                 className="btn btn-ghost btn-sm"
@@ -554,14 +564,11 @@ export function ModelPane({ onDirtyChange }) {
                 {modelBusy ? '获取中…' : modelList ? '重新获取' : '获取模型'}
               </button>
             </div>
-            <datalist id="modelPresets">
-              {(modelList && modelList.length ? modelList : MODEL_PRESETS).map((m) => <option key={m} value={m} />)}
-            </datalist>
             {modelErr ? (
               <small className="form-tip is-warn" id="modelListHint" role="status">{modelErr}</small>
             ) : modelList ? (
               <small className="form-tip" id="modelListHint" role="status">
-                已从上游获取 {modelList.length} 个模型，输入框里点一下就能选；也可以继续手填。
+                已从上游获取 {modelList.length} 个模型，点「选模型」从列表挑；也可以继续手填。
               </small>
             ) : null}
             {/* 思考模式的说明与「列表状态」分开两条：拉到列表后这条不该消失 */}

@@ -2821,7 +2821,10 @@ const withEFP = (el, fn) => {
     if (document.querySelector('#clearLlmKey').hidden !== true) throw new Error('清除按钮应隐藏');
     if (document.querySelector('#llmKeyHint').textContent.indexOf('尚未设置') < 0) throw new Error('hint: ' + document.querySelector('#llmKeyHint').textContent);
   });
-  t('模型预设 datalist 5 项', () => { if (document.querySelectorAll('#modelPresets option').length !== 5) throw new Error('实际 ' + document.querySelectorAll('#modelPresets option').length); });
+  t('模型预设：自绘选模型触发器存在（不用 datalist）', () => {
+    if (!document.querySelector('#modelPickBtn')) throw new Error('无 #modelPickBtn');
+    if (document.querySelector('#modelPresets')) throw new Error('datalist 应已移除（移动端渲染成空心胶囊）');
+  });
   t('温度输入为 number 0~1.5', () => { const el = document.querySelector('#llmTemp'); if (el.type !== 'number' || el.min !== '0' || el.max !== '1.5') throw new Error(el.type + '/' + el.min + '/' + el.max); });
 
   // ---- 模型状态（最近调用明细 + 上游模型列表）----
@@ -2853,12 +2856,25 @@ const withEFP = (el, fn) => {
   });
   document.querySelector('#fetchModelsBtn').click();
   await sleep(80);
-  t('模型名称：获取后 datalist 换成上游模型并给出数量提示', () => {
-    const opts = [...document.querySelectorAll('#modelPresets option')].map((o) => o.value);
+  document.querySelector('#modelPickBtn').click();
+  await sleep(60);
+  t('模型名称：获取后自绘下拉换成上游模型并给出数量提示', () => {
+    const opts = [...document.querySelectorAll('#modelPickDD .dd-item .dd-item-label')].map((o) => o.textContent);
     if (opts.length !== modelsPayload.length || opts.indexOf('deepseek-ai/DeepSeek-V3') < 0) throw new Error(opts.join(','));
     const hint = document.querySelector('#modelListHint');
     if (!hint || hint.textContent.indexOf(String(modelsPayload.length)) < 0) throw new Error('提示: ' + (hint ? hint.textContent : 'null'));
   });
+  // 选中一项要回填输入框（手填仍在），并标脏
+  {
+    const target = [...document.querySelectorAll('#modelPickDD .dd-item')]
+      .find((el) => el.textContent.indexOf('deepseek-ai/DeepSeek-V3') >= 0);
+    if (!target) throw new Error('下拉里找不到目标模型');
+    target.click();
+    await sleep(60);
+    t('模型名称：下拉选中回填输入框', () => {
+      if (document.querySelector('#llmModel').value !== 'deepseek-ai/DeepSeek-V3') throw new Error('未回填: ' + document.querySelector('#llmModel').value);
+    });
+  }
   // 失败路径：上游不实现 /models 时退回手填，只在这一块标红说明，不影响保存
   modelsFailNext = true;
   document.querySelector('#fetchModelsBtn').click();
