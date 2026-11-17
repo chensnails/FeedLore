@@ -3123,6 +3123,17 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .ex-wrap { min-height: 0; }
   .ex-pane { flex: 0 0 auto; }
+  /* 对话态撑满可用高度，让输入栏贴到屏幕底部（悬浮底栏胶囊上方），
+     而不是停在面板中部、下面空一大片。直接给 shell 限高：
+     视口高 - 顶栏 - tab 行 - 底栏占位（胶囊 6px 距底 + 48px 高 + 一档呼吸）。
+     这样面板底 = 视口底 - 底栏留白，免责完整露出、不被胶囊压住。
+     空态走 .ex-landing 内容自适应，不受这套影响。 */
+  .ex-pane.is-chatting { flex: 0 0 auto; }
+  .ex-pane.is-chatting .ex-shell {
+    flex: 0 0 auto;
+    height: calc(100dvh - var(--topbar-h, 52px) - 45px - var(--tabbar-h) - var(--sp-4) - 6px);
+    min-height: 240px; max-height: none;
+  }
   .ex-landing { padding-top: var(--sp-7); }
   /* 窄屏领域标签横向滑动保持单行，不把大输入框挤下去 */
   .ex-domains { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto;
