@@ -2768,6 +2768,12 @@ const withEFP = (el, fn) => {
   });
   await sleep(40);
   t('模型面板渲染', () => { if (!document.querySelector('#llmBaseUrl')) throw new Error('无 #llmBaseUrl'); });
+  t('模型地址带反自动填充防护（不被浏览器当账号）', () => {
+    const el = document.querySelector('#llmBaseUrl');
+    if (el.getAttribute('data-fl-no-autofill') !== 'true') throw new Error('缺 data-fl-no-autofill 标记');
+    if (!/^llm-url-/.test(el.name || '')) throw new Error('name 非唯一非语义: ' + el.name);
+    if (el.getAttribute('autocomplete') !== 'off') throw new Error('autocomplete 未关闭');
+  });
   t('AI 能力区块：6 个能力开关 + 添加提供商入口，全部即时保存', () => {
     const sec = document.querySelector('[data-sec="llm-capabilities"]');
     if (!sec) throw new Error('模型页缺 [data-sec="llm-capabilities"]');

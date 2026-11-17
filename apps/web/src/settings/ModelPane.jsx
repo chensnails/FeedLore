@@ -87,6 +87,9 @@ const DEPTH_LABEL = { low: '轻', medium: '中', high: '深' };
 
 export function ModelPane({ onDirtyChange }) {
   const keyName = useNoAutofillName('llm-key');
+  // 模型地址紧挨着密码框，Chrome/Edge Android 会把它启发式当成账号字段，把保存的
+  // username 塞进来。给它和 Key 一样的非语义唯一 name + 反填充标记（见 ui/noAutofill.js）。
+  const urlName = useNoAutofillName('llm-url');
   const paneRef = useRef(null);
   const [form, setForm] = useState(EMPTY);
   const [savedForm, setSavedForm] = useState('');
@@ -476,11 +479,12 @@ export function ModelPane({ onDirtyChange }) {
           <label htmlFor="llmBaseUrl">模型地址（OpenAI 兼容）</label>
           <input
             id="llmBaseUrl"
+            name={urlName}
             type="url"
             placeholder="https://api.siliconflow.cn/v1/chat/completions"
-            spellCheck="false"
             value={form.baseUrl}
             onChange={set('baseUrl')}
+            {...NO_AUTOFILL_PROPS}
           />
           <small className="form-tip">支持任意 OpenAI 兼容接口；填到 <code>/v1</code> 或完整的 <code>/chat/completions</code> 均可</small>
         </div>
