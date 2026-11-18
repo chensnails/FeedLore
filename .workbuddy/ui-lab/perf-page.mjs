@@ -5,7 +5,7 @@
  */
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync, rmSync } from 'node:fs';
 import { join, extname, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -74,6 +74,17 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(HTTP_PORT, '127.0.0.1', r));
 
 const profile = mkdtempSync(join(tmpdir(), 'feedlore-perf-'));
+/* 兜底清理：headless profile 一次约 1GB，不删会把系统临时目录塞满。
+   exit 钩子只能同步操作：先 kill Edge，用 Atomics.wait 同步等锁释放，再 rmSync 重试。 */
+let profileCleaned = false;
+function cleanProfile() {
+  if (profileCleaned) return;
+  profileCleaned = true;
+  try { edge.kill(); } catch { /* ignore */ }
+  try { const sab = new SharedArrayBuffer(4); Atomics.wait(new Int32Array(sab), 0, 0, 400); } catch { /* ignore */ }
+  try { rmSync(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); } catch { /* ignore */ }
+}
+process.on('exit', cleanProfile);
 const edge = spawn(EDGE, ['--headless=new', `--remote-debugging-port=${CDP_PORT}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--window-size=1280,900', 'about:blank'], { stdio: 'ignore' });
 let ws, seq = 0;
 const pending = new Map();
