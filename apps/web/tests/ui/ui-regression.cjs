@@ -3210,6 +3210,7 @@ const withEFP = (el, fn) => {
       const row = document.querySelector('[data-cap="ai_tags"]');
       if (row.classList.contains('is-off')) throw new Error('开启后不该再带 is-off');
       if (row.querySelector('.ai-cap-chip.dd-trigger').disabled) throw new Error('开启后 chip 应可用');
+      if (row.querySelector('.ai-cap-tag')) throw new Error('开启后不该再挂「默认关闭」');
     });
   }
   {

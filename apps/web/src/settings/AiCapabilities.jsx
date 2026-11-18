@@ -234,7 +234,7 @@ export function TaskAssignments({ ai }) {
                     <svg className="ico" focusable="false"><use href={'#' + CAP_ICONS[c.key]} /></svg>
                   </span>
                   <span className="ai-cap-name">{c.name}</span>
-                  {c.key === 'ai_tags' ? <span className="ai-cap-tag">默认关闭</span> : null}
+                  {c.key === 'ai_tags' && !enabled ? <span className="ai-cap-tag">默认关闭</span> : null}
                 </div>
                 <small className="form-tip ai-cap-hint">{c.hint}</small>
                 {c.key === 'entry_ai' && enabled && models.length > 1 ? (
