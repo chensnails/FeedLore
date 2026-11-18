@@ -137,13 +137,20 @@ function AiBubble({ turn }) {
   );
 }
 
-export function ExplorePane() {
+export function ExplorePane({ hidden, onNewSession }) {
   const s = S();
   const [turns, setTurns] = useState([]);
   const [draft, setDraft] = useState('');
   const aliveRef = useRef(true);
   const scrollRef = useRef(null);
   const [tick, setTick] = useState(0);
+
+  /* 「+」= 开始新一轮对话：与顶栏那枚按钮同一语义（重挂载整个面板、清空内存历史），
+   * 不是只把草稿清掉 —— 两个入口长得一样，行为也得一样。 */
+  const startNew = () => {
+    if (typeof onNewSession === 'function') onNewSession();
+    else setDraft('');
+  };
 
   useEffect(() => {
     aliveRef.current = true;
@@ -209,7 +216,7 @@ export function ExplorePane() {
      对话态保持既有实现不动——滚动目标、ID、四态、引用卡全部原样。 */
   if (!hasTurns) {
     return (
-      <section className="ai-pane ex-pane is-landing" data-ai-pane="explore">
+      <section className="ai-pane ex-pane is-landing" data-ai-pane="explore" hidden={!!hidden}>
         <div className="ex-landing">
           <h1 className="ex-landing-title">想从订阅里找点什么？</h1>
           <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，可直接追问</p>
@@ -227,7 +234,7 @@ export function ExplorePane() {
             </div>
             <div className="ex-landing-bar">
               <button className="ex-landing-plus" type="button" aria-label="开始新一轮对话"
-                title="开始新一轮对话" onClick={() => { setDraft(''); }}>
+                title="开始新一轮对话" onClick={startNew}>
                 <Icon n="plus" />
               </button>
               <button className="ex-landing-send" type="submit" disabled={!draft.trim()}
@@ -249,7 +256,7 @@ export function ExplorePane() {
   }
 
   return (
-    <section className="ai-pane ex-pane is-chatting" data-ai-pane="explore">
+    <section className="ai-pane ex-pane is-chatting" data-ai-pane="explore" hidden={!!hidden}>
       {/* 对话容器：消息区 / 输入栏 / 免责声明同处一个面板，输入栏固定不随消息滚动。
           ID 与类名全部保留，滚动目标仍是 #exploreThread。 */}
       <div className="ex-shell">
@@ -272,7 +279,7 @@ export function ExplorePane() {
           </div>
           <div className="ex-compose-bar">
             <button className="ex-compose-plus" type="button" aria-label="开始新一轮对话"
-              title="开始新一轮对话" onClick={() => setDraft('')}>
+              title="开始新一轮对话" onClick={startNew}>
               <Icon n="plus" />
             </button>
             <button className="ex-compose-send" type="submit" disabled={!draft.trim()}

@@ -4919,14 +4919,19 @@ const withEFP = (el, fn) => {
     if (!dgPane || dgPane.hidden) throw new Error('日报未显示');
     if (Q('#exploreTabDigest').getAttribute('aria-selected') !== 'true') throw new Error('日报 tab 未选中');
   });
-  // 切回问答（切换会卸载/重挂问答组件，内存历史清空——符合设计），重新提问再点引用卡
+  // 切回问答：tab 只 hidden 不卸载，会话应原样保留
   Q('#exploreTabAsk').click();
   await sleep(30);
-  Q('.ex-suggest-btn').click();
-  await sleep(200);
+  t('探索页 tab 切换：问答会话在切去日报后原样保留', () => {
+    const askPane = Q('[data-ai-pane="explore"]');
+    if (!askPane || askPane.hidden) throw new Error('切回问答后面板未显示');
+    if (!Q('.ex-row-me') || !Q('.ex-answer')) throw new Error('切回后会话历史丢了');
+    if (Q('.ex-suggest-btn')) throw new Error('不该回到空态着陆页');
+  });
   const jumpBefore = callsOf('jumpToFeed').length;
-  if (!Q('.ex-ref-go')) throw new Error('重新提问后未渲染引用卡');
-  Q('.ex-ref-go').click();
+  const refGo = QA('.ex-ref-go');
+  if (!refGo.length) throw new Error('切换后未保留引用卡');
+  refGo[refGo.length - 1].click();
   await sleep(30);
   t('探索问答：引用卡「读文章」调用 jumpToFeed 打开条目', () => {
     if (callsOf('jumpToFeed').length <= jumpBefore) throw new Error('未跳转文章');
@@ -4968,6 +4973,15 @@ const withEFP = (el, fn) => {
     if (last.kind !== 'explore' || !last.question || last.question.indexOf('好剧') < 0) {
       throw new Error('领域标签未转成完整问句：' + JSON.stringify(last));
     }
+  });
+
+  // 对话输入栏的「+」和顶栏「+」长得一样，行为也得一样：开新一轮对话，不只是清草稿
+  if (!Q('.ex-compose-plus')) throw new Error('对话态缺输入栏「+」');
+  Q('.ex-compose-plus').click();
+  await sleep(60);
+  t('探索输入栏「+」：与顶栏一致，开始新一轮对话并清空会话', () => {
+    if (Q('.ex-row-me') || Q('.ex-answer')) throw new Error('输入栏「+」只清了草稿，会话没重置');
+    if (!Q('.ex-suggest-btn')) throw new Error('未回到着陆页');
   });
 
   // 生成失败
@@ -7085,6 +7099,32 @@ const withEFP = (el, fn) => {
         const got = f(n);
         if (got !== want) throw new Error(`fmtBadge(${n}) = ${got}，期望 ${want}`);
       }
+    });
+    t('冒烟：撤销提示不被后来的普通提示挤掉（排队到撤销窗口结束）', () => {
+      const c2 = sw.__coreForTest;
+      let undone = 0;
+      c2.toast('已标为已读 3 篇', true, { action: () => { undone += 1; }, ms: 60000 });
+      c2.toast('已更新 2 条新内容', true, { ms: 20 });
+      const vis = c2.getToastState();
+      if (!vis.show || vis.msg !== '已标为已读 3 篇' || typeof vis.action !== 'function') {
+        throw new Error('普通提示把撤销条挤掉了：' + JSON.stringify({ msg: vis.msg, hasAction: typeof vis.action }));
+      }
+      c2.runToastAction();
+      const after = c2.getToastState();
+      if (undone !== 1) throw new Error('撤销动作未执行');
+      if (after.msg !== '已更新 2 条新内容' || !after.show || after.action) {
+        throw new Error('排队提示未在撤销后接上：' + JSON.stringify(after));
+      }
+    });
+    t('冒烟：失败提示不被撤销窗口压住（立即出现）', () => {
+      const c2 = sw.__coreForTest;
+      c2.toast('已标为已读 3 篇', true, { action: () => {}, ms: 60000 });
+      c2.toast('刷新失败：网络错误', false);
+      const vis = c2.getToastState();
+      if (vis.msg !== '刷新失败：网络错误' || vis.ok !== false || !vis.show) {
+        throw new Error('失败提示被排队了：' + JSON.stringify(vis));
+      }
+      c2.toast('清理', true, { ms: 10 });   // 收掉长驻提示，别影响后续用例
     });
     t('外观：默认全「中」、两套密度默认紧凑，首屏属性一致，且初始不写本机', () => {
       const got = sw.__coreForTest.getAppearance();

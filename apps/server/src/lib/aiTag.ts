@@ -113,7 +113,7 @@ export async function tagEntry(
  * SQL 直接按 user_llm.routes.ai_tags.enabled = true 过滤（innerJoin），
  * 这样每分钟只拉回真正开了这一项的账号。
  */
-export async function runAiTagTick(db: Db, _now: Date = new Date()): Promise<number> {
+async function runAiTagTickOnce(db: Db, _now: Date): Promise<number> {
   const rows = await db
     .select({ id: users.id })
     .from(users)
@@ -191,6 +191,21 @@ export async function runAiTagTick(db: Db, _now: Date = new Date()): Promise<num
   }
 
   return done;
+}
+
+let ticking = false;
+
+/** 调度入口：上一轮没跑完时直接跳过本轮。
+ *  单篇模型调用最长 180s，一轮 20 篇远超 60s 的 tick 间隔；不拦并发就会叠出多轮同时
+ *  打标 —— 同一批未标条目被重复提交（白烧额度），结果互相覆盖。 */
+export async function runAiTagTick(db: Db, _now: Date = new Date()): Promise<number> {
+  if (ticking) return 0;
+  ticking = true;
+  try {
+    return await runAiTagTickOnce(db, _now);
+  } finally {
+    ticking = false;
+  }
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;

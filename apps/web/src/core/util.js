@@ -212,17 +212,36 @@ export function fmtDate(ts) {
  *  有动作时默认停留 6 秒，给用户留出反应时间；没有动作仍是最短的 1.9 秒。 */
 export let toastTimer = null;
 export let toastState = { msg: '', ok: true, show: false, action: null, actionText: '' };
-export function toast(msg, ok = true, opts = {}) {
-  const action = opts && typeof opts.action === 'function' ? opts.action : null;
-  const actionText = (opts && opts.actionText) || '撤销';
-  const ms = (opts && opts.ms) || (action ? 6000 : 1900);
+/* 带「撤销」的提示还在倒计时时，后来的普通提示先排队：
+ * 否则一次成功的复制 / 自动刷新一来，撤销按钮就在用户眼皮底下被换掉了。 */
+let pendingToast = null;
+
+function showToastNow(msg, ok, action, actionText, ms) {
   toastState = { msg, ok, show: true, action, actionText };
   emitOverlays();
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     toastState = { msg, ok, show: false, action: null, actionText: '' };
     emitOverlays();
+    if (pendingToast) {
+      const p = pendingToast;
+      pendingToast = null;
+      showToastNow(p.msg, p.ok, null, '', p.ms);
+    }
   }, ms);
+}
+
+export function toast(msg, ok = true, opts = {}) {
+  const action = opts && typeof opts.action === 'function' ? opts.action : null;
+  const actionText = (opts && opts.actionText) || '撤销';
+  const ms = (opts && opts.ms) || (action ? 6000 : 1900);
+  // 失败提示照旧立刻出现（比撤销更急）；普通成功提示排队，别把撤销按钮挤掉
+  if (!action && ok && toastState.show && typeof toastState.action === 'function') {
+    pendingToast = { msg, ok, ms };   // 排队，等撤销窗口结束后再露出来
+    return;
+  }
+  pendingToast = null;
+  showToastNow(msg, ok, action, actionText, ms);
 }
 
 /** 点 toast 里的动作按钮：先收起提示（避免重复点），再执行动作 */
@@ -232,7 +251,11 @@ export function runToastAction() {
   clearTimeout(toastTimer);
   toastState = { msg: toastState.msg, ok: toastState.ok, show: false, action: null, actionText: '' };
   emitOverlays();
+  const queued = pendingToast;
+  pendingToast = null;
   action();
+  // 动作自己弹了新提示就让新提示留下，排队那条放弃
+  if (queued && !toastState.show) showToastNow(queued.msg, queued.ok, null, '', queued.ms);
 }
 
 /* ---------------- 统一确认框（替代原生 confirm / prompt） ----------------

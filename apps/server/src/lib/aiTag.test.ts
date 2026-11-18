@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseTagList, AI_TAG_MAX, suggestEntryTags, type ResolvedLlm } from '@feedlore/ai';
+import { runAiTagTick } from './aiTag';
 
 /**
  * 智能标签的纯函数与模型调用（mock fetch）测试。
@@ -60,4 +61,32 @@ test('suggestEntryTags: 调用 fetch 并解析标签', async () => {
   const r = await suggestEntryTags('一篇关于锂电的文章', '正文……', fakeLlm, openAiFetch as unknown as typeof fetch);
   assert.deepEqual(r.tags, ['a', 'b', 'c']);
   assert.ok(typeof r.raw === 'string' && r.raw.length > 0);
+});
+
+test('runAiTagTick: 上一轮没跑完时直接跳过，不叠并发打标', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  let selectCalls = 0;
+  const db = {
+    select() {
+      selectCalls += 1;
+      const q = {
+        from: () => q,
+        innerJoin: () => q,
+        where: () => gate.then(() => []),   // 空账号列表：一轮立即结束
+      };
+      return q;
+    },
+  } as unknown as Parameters<typeof runAiTagTick>[0];
+
+  const first = runAiTagTick(db);
+  const second = runAiTagTick(db);
+  assert.equal(await second, 0, '并发那一轮应被直接跳过');
+  assert.equal(selectCalls, 1, '被跳过的轮次不该再查库');
+  release();
+  assert.equal(await first, 0);
+
+  // 闸门释放后下一轮照常跑（守卫不能永久卡死）
+  assert.equal(await runAiTagTick(db), 0);
+  assert.equal(selectCalls, 2);
 });
