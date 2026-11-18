@@ -16,9 +16,14 @@ name: Release
 #   ① 正式版 vX.Y.Z        → 构建镜像，推版本号标签 + latest，并建 GitHub Release
 #   ② 预发布 vX.Y.Z-xxx    → 构建镜像，**只推版本号标签**（不碰 latest，不影响存量用户）
 #   ③ 其它（分支名等）     → 不构建
-# 两种可构建的档位都要求 tag 与 package.json 的 version 一致。版本号**单一真源就是
-# package.json**（镜像内 APP_VERSION 也读它）。
+# 两种可构建的档位都要求 tag 与 package.json 的 version 一致，且 tag 提交在 main 历史里。
+# 版本号**单一真源就是 package.json**（镜像内 APP_VERSION 也读它）。
 # 分档的意义：预发布镜像是给自己或少数人试的，不动 latest、不建 Release 就不算对外发布。
+#
+# 构建前还要过一遍 verify.yml（与 CI 同一份检查）：类型 / 单测 / 真库集成 / 前端产物 /
+# 镜像内容 / Node 运行时下限。红代码不能只因为「打了个 tag」就换成 latest。
+# 另外两处保护：整个发布用 concurrency 串行；latest 只允许向前移，旧版本补丁 tag
+# 只推版本号标签，绝不把滚动通道拽回去。
 #
 # 性能：amd64 与 arm64 各用一个「原生架构」runner 平行构建，不跑 QEMU 模拟；
 # 两个 build job 各自 push-by-digest，最后由 merge job 合并 manifest 清单。
@@ -30,6 +35,13 @@ name: Release
 on:
   push:
     tags: ['v*']
+
+# 同一时间只允许一个发布在跑：两个 tag 并行构建时，谁最后合并 manifest 谁写 latest，
+# 顺序并不由版本新旧决定。这里排队而非取消（cancel-in-progress: false）—— 已经在
+# 构建中的发布不该因为又推了一个 tag 被砍掉。
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 permissions:
   contents: write      # 建 Release
@@ -47,6 +59,7 @@ jobs:
     outputs:
       build: ${{ steps.check.outputs.build }}
       publish: ${{ steps.check.outputs.publish }}
+      latest: ${{ steps.check.outputs.latest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -58,6 +71,7 @@ jobs:
           # 默认两样都不给：任何一步没走到最后，既不构建也不发布
           echo "build=false" >> "$GITHUB_OUTPUT"
           echo "publish=false" >> "$GITHUB_OUTPUT"
+          echo "latest=false" >> "$GITHUB_OUTPUT"
 
           # 1) 只认版本 tag：正式版 vX.Y.Z 或预发布 vX.Y.Z-后缀。
           #    filter 通配符不支持正则，形态校验只能放在这里 —— 好处是被拦下的
@@ -90,18 +104,57 @@ jobs:
           # 到这里就值得构建镜像了
           echo "build=true" >> "$GITHUB_OUTPUT"
 
-          # 4) 带 -后缀 的是预发布：镜像照建，只推版本号标签、不碰 latest、不建 Release。
+          # 4) tag 必须打在 main 上。main 是唯一主线；从旧提交、旧分支临时补打 tag，
+          #    镜像里就是另一套代码 —— 检查再绿也不代表那是要对外发布的版本。
+          #    checkout 是浅克隆，先补全 main 历史再判祖先关系。
+          if ! git fetch --no-tags --unshallow origin main 2>/dev/null; then
+            git fetch --no-tags origin main
+          fi
+          if ! git merge-base --is-ancestor HEAD FETCH_HEAD; then
+            echo "::error title=tag 不在 main 上::$(git rev-parse --short HEAD) 不在 origin/main 历史里 —— 只从 main 发版"
+            exit 1
+          fi
+
+          # 5) 带 -后缀 的是预发布：镜像照建，只推版本号标签、不碰 latest、不建 Release。
           if [[ "$WANT" == *-* ]]; then
             echo "::notice title=预发布：只推版本号标签::ghcr.io/chensnails/feedlore:$WANT 将可用，latest 不动"
             exit 0
           fi
 
-          # 5) 正式版：建 Release，并把 latest 移到这一版
+          # 6) 正式版：建 Release，并把 latest 移到这一版
           echo "publish=true" >> "$GITHUB_OUTPUT"
-          echo "::notice title=正式发布::v$WANT —— feedlore:$WANT 将发布、latest 跟随，并创建 GitHub Release"
+          echo "latest=true" >> "$GITHUB_OUTPUT"
+
+          # 7) 防回退：latest 是滚动通道，只能前进。补丁分支事后补打的旧版本 tag
+          #    （比如远端已有 v2.4.7，又补发 v2.3.9）仍然构建、仍然发 Release，
+          #    但绝不能把 latest 拽回去 —— 否则所有站点的 watchtower 会集体降级。
+          #    基准取远端已有正式 tag 的版本最大值，不依赖 registry 当前状态：
+          #    latest 丢没丢都不影响这条判断。
+          BEST="$(git ls-remote --tags origin 'refs/tags/v*' \
+            | awk '{print $2}' \
+            | sed -e 's#^refs/tags/##' -e 's/\^{}$//' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sed 's/^v//' \
+            | sort -V \
+            | tail -1 || true)"
+          if [[ -n "$BEST" && "$WANT" != "$BEST" ]] \
+            && [[ "$(printf '%s\n%s\n' "$WANT" "$BEST" | sort -V | tail -1)" == "$BEST" ]]; then
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=不移动 latest::v$WANT 低于远端最新正式版 v$BEST —— 只推版本号标签，latest 保持不动（避免存量站点降级）"
+          fi
+
+          echo "::notice title=正式发布::v$WANT —— feedlore:$WANT 将发布并创建 GitHub Release（latest 是否跟随见上方 warning）"
+
+  # 发布闸门之二：先跑与 CI 完全相同的检查（verify.yml 单一真源）。
+  # 类型、单测、真库集成、前端产物、镜像内容、Node 运行时下限全绿才允许构建推送；
+  # 红代码再也不可能因为「打了一个 tag」就直接换成 latest。
+  verify:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/verify.yml
 
   build:
-    needs: gate
+    needs: [gate, verify]
     if: needs.gate.outputs.build == 'true'
     strategy:
       fail-fast: false
@@ -183,12 +236,14 @@ jobs:
           done
           echo "merging:$refs"
 
-          # 版本号标签人人都有；latest 只给正式版。
+          # 版本号标签人人都有；latest 只给「正式版且不比现有最新版旧」的一版。
           # latest 是滚动通道：1.x 用户容器里的 watchtower 盯的就是它，把 latest
           # 移过来 = 存量站点自动升级到 v2，无需改任何配置。
           docker buildx imagetools create $refs --tag "${{ env.REGISTRY_IMAGE }}:$VERSION"
-          if [[ "$PUBLISH" == "true" ]]; then
+          if [[ "$PUBLISH" == "true" && "${{ needs.gate.outputs.latest }}" == "true" ]]; then
             docker buildx imagetools create $refs --tag "${{ env.REGISTRY_IMAGE }}:latest"
+          elif [[ "$PUBLISH" == "true" ]]; then
+            echo "::notice title=latest 未移动::v$VERSION 低于远端已发布的最新正式版，latest 保持不动"
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -206,7 +261,7 @@ jobs:
           set -euo pipefail
           TAG="${{ github.ref_name }}"
           NOTES=$(cat <<'EOT'
-          镜像：`ghcr.io/chensnails/feedlore:${{ steps.merge.outputs.version }}`（amd64 + arm64），`latest` 已指向这一版。
+          镜像：`ghcr.io/chensnails/feedlore:${{ steps.merge.outputs.version }}`（amd64 + arm64）${{ needs.gate.outputs.latest == 'true' && '，`latest` 已指向这一版。' || '。`latest` 未移动（该版本低于已发布的最新正式版）。' }}
 
           ## 从 1.x 升级（无感）
 
