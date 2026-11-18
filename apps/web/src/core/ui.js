@@ -13,6 +13,7 @@ import { hideNewPill } from './autorefresh.js';
 import { clearImgFail } from '../imgFail.js';
 import { emit, EVENT } from '../kernel/events.js';
 import { get, isOn } from '../kernel/bridge.js';
+import { handleOverlayPop } from '../ui/overlayStack.js';
 
 /* ============================================================
  * 事件绑定
@@ -227,11 +228,14 @@ export function switchView(name, opts) {
   return Promise.resolve();
 }
 
-/* 浏览器前进 / 后退：按地址栏 hash 恢复视图与文章。
+/* 浏览器前进 / 后退：先问弹层栈，再按地址栏 hash 恢复视图与文章。
+ * 弹层栈（src/ui/overlayStack.js）打开弹层时压了一条哨兵：返回键的第一击属于栈顶弹层，
+ * 这里拿到 true 就到此为止，别让同一击顺手把视图也切了。
  * 策略与「进入一篇文章」完全一致——回到哪篇，就从那篇的开头看起（不保留离开时的滚动位置：
  * 列表是服务端分页的，位置未必还能落在同一篇上，保留它反而会停在半截正文）。
  * 正常情况下本应用只用 replaceState（不产生同文档历史），这里兜住手动改 hash / 站内返回等场景。 */
 window.addEventListener('popstate', () => {
+  if (handleOverlayPop()) return;
   const { tab, artId } = parseHash(location.hash);
   if (tab && tab !== state.tab) switchView(tab);
   if (tab === 'reader' && artId) restoreReaderArt(artId);

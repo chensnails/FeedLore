@@ -490,9 +490,11 @@ export function CardsView() {
   const closeDetail = () => {
     const id = detailId;
     setDetailId(null);
-    // 焦点回到来源卡片的标题按钮（弹窗里的控件都已随组件卸载）
+    // 焦点回到来源卡片的标题按钮（弹窗里的控件都已随组件卸载）。
+    // preventScroll：整屏详情关掉后列表刚从 body 锁滚动里恢复，浏览器默认会把
+    // 聚焦元素滚到视口中间 —— 用户会看到列表自己跳一下。
     const el = document.querySelector('[data-id="' + (window.CSS && window.CSS.escape ? window.CSS.escape(String(id)) : id) + '"] .title-btn');
-    if (el && el.focus) el.focus();
+    if (el && el.focus) el.focus({ preventScroll: true });
   };
 
   const feedLabel = (f) => {

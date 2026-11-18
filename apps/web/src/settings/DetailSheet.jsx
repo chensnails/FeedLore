@@ -14,6 +14,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useSwipeDismiss } from '../views/useSwipeDismiss.js';
+import { registerLayer } from '../ui/overlayStack.js';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -37,6 +38,9 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
   }, []);
 
   const { panelRef, setPanelRef, handlers, reset } = useSwipeDismiss(() => closeRef.current(), { enabled: isMobile });
+
+  // 系统返回键 / 手势返回：关这一层，不关外面的设置弹层（栈顶优先）。
+  useEffect(() => registerLayer(() => closeRef.current()), []);
 
   // 打开记住焦点来源，关闭归还（列表行被重渲染也先确认还在文档里）
   useEffect(() => {

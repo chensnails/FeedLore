@@ -12,6 +12,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { core } from '@core';
 import { on, EVENT } from '../kernel/events.js';
 import { provide, revoke, isOn } from '../kernel/bridge.js';
+import { registerLayer } from './overlayStack.js';
 
 const S = () => core;
 
@@ -52,6 +53,12 @@ function ConfirmDialog({ c }) {
 
   // Esc = 取消。用捕获阶段并阻断冒泡，避免同一击把设置弹层 / 命令面板也关掉。
   // Tab 也一并收在这个对话框里：它是叠在设置弹层之上的独立模态，焦点不能漏到背景。
+  // 系统返回键同理：取消确认框，不关下面那一层。
+  useEffect(() => {
+    if (!c.open) return undefined;
+    return registerLayer(() => S().cancelConfirm());
+  }, [c.open]);
+
   useEffect(() => {
     if (!c.open) return undefined;
     const onKey = (ev) => {
@@ -156,6 +163,12 @@ function ConfirmDialog({ c }) {
 function Lightbox({ box, close }) {
   const rootRef = useRef(null);
   const closeRef = useRef(null);
+  // close 每次渲染都是新函数；栈里存的必须是「当前这一次」，用 ref 转一手
+  const dismissRef = useRef(close);
+  dismissRef.current = close;
+
+  // 系统返回键 / 手势返回：关灯箱；叠在上面的确认框会先由自己的栈层吃掉这一击。
+  useEffect(() => registerLayer(() => dismissRef.current()), []);
 
   // 打开时把焦点放进对话框（优先关闭按钮，回退到容器）
   useEffect(() => {

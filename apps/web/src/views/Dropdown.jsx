@@ -14,6 +14,7 @@
 import { core } from '@core';
 import { useEffect, useRef, useState } from 'react';
 import { useSwipeDismiss } from './useSwipeDismiss.js';
+import { registerLayer } from '../ui/overlayStack.js';
 
 /* 与 style.css 的 720px 断点一致；jsdom 无 matchMedia 或无布局时按桌面处理。
    卡片详情弹窗（CardDetail）也用这条判据选弹层形态，故导出。 */
@@ -108,6 +109,14 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
 
   // 移动端：往下拖就能收起（见 useSwipeDismiss.js）
   const { setPanelRef, handlers: sheetHandlers } = useSwipeDismiss(close);
+
+  // 系统返回键 / 手势返回：先收起这一层（与 Esc / 关闭键同一个出口）。
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    if (!open) return undefined;
+    return registerLayer(() => closeRef.current());
+  }, [open]);
 
   const pick = (v) => {
     setOpen(false);

@@ -9414,6 +9414,19 @@ const withEFP = (el, fn) => {
     if (!/FLICK_MIN_MS/.test(hook)) throw new Error('速度判据要有最小采样窗，否则合成事件会误关弹层');
     if (!/ok === false\) springBack\(el\)/.test(hook)) throw new Error('脏态确认取消必须把面板弹回原位');
     if (!/mask\.style\.opacity/.test(hook)) throw new Error('拖拽时遮罩要跟手渐隐');
+    // v2.5.2：左右边缘横滑交给系统返回手势，应用不再争抢
+    if (/allowHorizontal/.test(hook) || /EDGE_BAND/.test(hook)) {
+      throw new Error('边缘横滑已下线（与系统返回手势冲突），hook 不该再留水平关闭');
+    }
+    // 飞出只做位移：整屏面板降到半透明会让背后页面透出来，看着像闪屏
+    if (/el\.style\.opacity/.test(hook)) throw new Error('飞出动画不得改整屏透明度（闪屏根因）');
+    if (!/addEventListener\('touchcancel', onCancel, \{ passive: true \}\)/.test(hook)) {
+      throw new Error('touchcancel 必须单独注册');
+    }
+    const cancel = hook.slice(hook.indexOf('const onCancel'), hook.indexOf('// 原生注册'));
+    if (!/springBack\(el\)/.test(cancel) || /dismissRef\.current\(\)/.test(cancel)) {
+      throw new Error('touchcancel 是系统抢走手势，只能回弹、不能当作松手关闭');
+    }
     for (const f of ['src/views/CardDetail.jsx', 'src/views/Dropdown.jsx', 'src/settings/SettingsModal.jsx']) {
       if (!/setPanelRef/.test(read(f))) throw new Error(f + ' 没接新 hook 的 callback ref');
     }
@@ -9421,7 +9434,34 @@ const withEFP = (el, fn) => {
     if (!/useSwipeDismiss\(requestClose, \{ enabled: isMobile \}\)/.test(sm)) throw new Error('设置弹层没接手势');
     if (!/return false;/.test(sm) || !/return true;/.test(sm)) throw new Error('requestClose 要返回是否真的关闭');
     if (!/clearAutofilledInput\(el\)/.test(sm)) throw new Error('打开设置时要兜底清「已填好」的账号');
-    if (!/allowHorizontal: true/.test(read('src/views/CardDetail.jsx'))) throw new Error('卡片详情要支持边缘横滑关闭');
+  });
+
+  t('返回键：弹层入栈，popstate 先问弹层栈再切视图', () => {
+    const root = path.join(__dirname, '..', '..');
+    const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');
+    const stack = read('src/ui/overlayStack.js');
+    for (const need of ['export function registerLayer', 'export function handleOverlayPop', 'history.pushState', 'history.back()']) {
+      if (stack.indexOf(need) < 0) throw new Error('弹层栈缺关键实现：' + need);
+    }
+    // 六个弹层都要入栈：漏一个，系统返回键就会穿过它去关下面那层 / 切视图
+    for (const f of [
+      'src/views/CardDetail.jsx',
+      'src/views/Dropdown.jsx',
+      'src/settings/SettingsModal.jsx',
+      'src/settings/DetailSheet.jsx',
+      'src/cmdk/CommandPalette.jsx',
+      'src/ui/Overlays.jsx',
+    ]) {
+      if (!/registerLayer\(/.test(read(f))) throw new Error(f + ' 没接入返回键栈');
+    }
+    const ui = read('src/core/ui.js');
+    const at = ui.indexOf("window.addEventListener('popstate'");
+    const pop = at < 0 ? '' : ui.slice(at);
+    const ask = pop.indexOf('handleOverlayPop()');
+    const view = pop.indexOf('parseHash');
+    if (ask < 0 || view < 0 || ask > view) throw new Error('popstate 必须先问弹层栈，再按 hash 切视图');
+    const sm = read('src/settings/SettingsModal.jsx');
+    if (!/goHome\(\); return false;/.test(sm)) throw new Error('移动端设置：返回键应先退回设置列表，而不是整层关闭');
   });
 
   t('底栏收展：方向判据 / 安全网 / 样式契约齐备', () => {

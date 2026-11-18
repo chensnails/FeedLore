@@ -23,6 +23,7 @@ import { ADMIN_TABS, READONLY_TABS, TAB_BY_NAME, TAB_GROUPS, matchTabs, visibleT
 import { provide, revoke, get } from '../kernel/bridge.js';
 import { NO_AUTOFILL_PROPS, useNoAutofillName, clearAutofilledInput } from '../ui/noAutofill.js';
 import { useSwipeDismiss } from '../views/useSwipeDismiss.js';
+import { registerLayer } from '../ui/overlayStack.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 const isAdminNow = () => !!(S() && S().isAdmin && S().isAdmin());
@@ -243,6 +244,18 @@ export function SettingsModal() {
     return true;
   };
   const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) requestClose(); };
+
+  // 系统返回键 / 手势返回与「返回」按钮、Esc 走同一套递减：移动端停在分区内容里时
+  // 先退回设置列表（这一击被吃掉，弹层保持打开），已经在列表上才整层关闭；
+  // 未保存改动由 requestClose 里的确认框拦截，用户选「继续编辑」时返回 false 留在原地。
+  useEffect(() => {
+    if (!open) return undefined;
+    return registerLayer(() => {
+      if (isMobileRef.current && paneOpenRef.current) { goHome(); return false; }
+      return requestClose();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // 手机上是贴底抽屉：往下拖即可收起，和卡片详情 / 频道下拉同一套手势。
   // dismiss 返回 false（用户选择保留未保存的改动）时 hook 会把面板弹回原位。

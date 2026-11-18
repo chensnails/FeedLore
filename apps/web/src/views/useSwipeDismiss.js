@@ -1,4 +1,4 @@
-/* 移动端底部弹层的手势关闭（v2.3.x 重做，2026-11-07）。
+/* 移动端底部弹层的手势关闭（v2.3.x 重做，2026-11-07；v2.5.2 收口）。
  *
  * 为什么是一个 hook：卡片详情（CardDetail）、自定义下拉（Dropdown）、设置弹层
  * （SettingsModal）共用同一套「贴底抽屉」语言，手势必须表现一致，不能一个能拖一个不能拖。
@@ -8,7 +8,7 @@
  * Android Chrome 会把「从顶部继续下拉」当成整页下拉刷新，直接派发 touchcancel，手势被吞。
  * 现在改成在面板元素上原生注册 { passive: false }，接管后真正阻止默认行为。
  *
- * 六条口径：
+ * 八条口径：
  * 1. 抓手 / 头部起手可直接拖；正文区起手要先让列表滚到顶，之后继续下拉才接管
  *    （可滚动祖先由 getComputedStyle 实测，不写死某个 class）；
  * 2. 跟手位移直接写内联 transform，不经过 state —— 一次拖拽几十帧，每帧 setState
@@ -18,7 +18,12 @@
  * 4. onDismiss 允许返回 Promise<boolean>：设置弹层有「放弃未保存更改」确认，用户点
  *    「继续编辑」时返回 false，面板必须弹回原位而不是停在半空；
  * 5. 拖完吞一次 click：抬手时浏览器还会在落点补发 click，不拦会顺手点开底下的卡片；
- * 6. prefers-reduced-motion 下跳过飞出动画，直接走关闭 / 回弹。
+ * 6. touchcancel 一律回弹：Android 下拉刷新 / 来电 / 系统手势会派发 touchcancel，
+ *    那不是「松手关闭」，当成松手会让弹层凭空消失；
+ * 7. 飞出只做位移、不做整屏淡出：整屏面板降到半透明会让背后的页面透出来，看着像闪屏；
+ * 8. prefers-reduced-motion 下跳过飞出动画，直接走关闭 / 回弹。
+ *
+ * 只做竖向：左右边缘横滑交给系统的返回手势，应用不再争抢（v2.5.2 去掉水平关闭）。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -33,20 +38,13 @@ const SPRING_MS = 200;
 const CLICK_GUARD_MS = 300;
 const GRIP_SELECTOR = '.dd-sheet-grip, .modal-head, [data-sheet-grip]';
 const GRIP_BAND = 72;        // 面板顶部这一条都算抓手（.modal::before 是伪元素，事件落在面板上）
-const EDGE_BAND = 48;        // 水平关闭只允许从左右边缘起手，避开系统返回手势与正文横滑
 
-function scrollableAncestor(node, panel, horizontal = false) {
+function scrollableAncestor(node, panel) {
   let el = node && node.nodeType === 1 ? node : (node && node.parentElement);
   while (el && el !== panel) {
     const st = window.getComputedStyle ? window.getComputedStyle(el) : null;
-    if (st) {
-      const overflow = horizontal ? st.overflowX : st.overflowY;
-      if (/(auto|scroll|overlay)/.test(overflow)) {
-        const over = horizontal
-          ? el.scrollWidth > el.clientWidth + 1
-          : el.scrollHeight > el.clientHeight + 1;
-        if (over) return el;
-      }
+    if (st && /(auto|scroll|overlay)/.test(st.overflowY)) {
+      if (el.scrollHeight > el.clientHeight + 1) return el;
     }
     el = el.parentElement;
   }
@@ -54,13 +52,12 @@ function scrollableAncestor(node, panel, horizontal = false) {
 }
 
 const emptyDrag = () => ({
-  x0: 0, y0: 0, t0: 0, dx: 0, dy: 0,
-  on: false, axis: 'y', fromGrip: false, block: false,
-  sc: null, hSc: null, edge: false,
+  y0: 0, t0: 0, dy: 0,
+  on: false, fromGrip: false, block: false, sc: null,
 });
 
 export function useSwipeDismiss(onDismiss, options = {}) {
-  const { enabled = true, allowHorizontal = false } = options;
+  const { enabled = true } = options;
   const panelRef = useRef(null);
   // 弹层常常是「打开时才挂载」的；effect 早于 ref 赋值执行，普通对象 ref 会让原生
   // 监听绑了个空。用 callback ref + node state，元素一落地就重跑 effect 重新绑定。
@@ -73,10 +70,8 @@ export function useSwipeDismiss(onDismiss, options = {}) {
   const swallowUntil = useRef(0);
   const dismissRef = useRef(onDismiss);
   const enabledRef = useRef(enabled);
-  const horizontalRef = useRef(allowHorizontal);
   dismissRef.current = onDismiss;
   enabledRef.current = enabled;
-  horizontalRef.current = allowHorizontal;
 
   const maskOf = useCallback((el) => {
     const m = el && el.parentElement;
@@ -105,7 +100,6 @@ export function useSwipeDismiss(onDismiss, options = {}) {
     if (!el) return;
     el.style.transition = '';
     el.style.transform = '';
-    el.style.opacity = '';
     el.style.willChange = '';
     const mask = maskOf(el);
     if (mask) { mask.style.transition = ''; mask.style.opacity = ''; }
@@ -122,7 +116,7 @@ export function useSwipeDismiss(onDismiss, options = {}) {
       ev.stopPropagation();
       const t = ev.touches && ev.touches[0];
       if (!t) return;
-      const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { top: 0, left: 0, right: 0 };
+      const rect = el.getBoundingClientRect ? el.getBoundingClientRect() : { top: 0 };
       const target = ev.target;
       const gripHit = !!(target && target.closest && target.closest(GRIP_SELECTOR));
       const nearTop = t.clientY - rect.top < GRIP_BAND;
@@ -132,11 +126,9 @@ export function useSwipeDismiss(onDismiss, options = {}) {
         || el.querySelector('.dd-sheet-body, .cd-scroll, .modal-body, .tabs');
       drag.current = {
         ...emptyDrag(),
-        x0: t.clientX, y0: t.clientY, t0: Date.now(),
+        y0: t.clientY, t0: Date.now(),
         fromGrip: gripHit || nearTop,
         sc,
-        hSc: horizontalRef.current ? scrollableAncestor(target, el, true) : null,
-        edge: horizontalRef.current && (t.clientX - rect.left < EDGE_BAND || rect.right - t.clientX < EDGE_BAND),
         block: !!(sc && sc.scrollTop > 0),
       };
     };
@@ -146,54 +138,34 @@ export function useSwipeDismiss(onDismiss, options = {}) {
       const t = ev.touches && ev.touches[0];
       if (!t || s.block || !enabledRef.current) return;
       ev.stopPropagation();
-      const dx = t.clientX - s.x0;
       const dy = t.clientY - s.y0;
-      // 一次拖拽内锁定方向：中途从横滑改成竖划会让面板左右横跳。
       if (s.on) {
-        const locked = s.axis;
-        const shift0 = locked === 'x' ? dx : dy;
-        s.dx = locked === 'x' ? dx : 0;
-        s.dy = locked === 'y' ? dy : 0;
+        s.dy = dy;
+        // 关键：接管后阻止默认，否则 Android Chrome 的下拉刷新 / overscroll 会抢走手势。
         if (ev.cancelable && ev.preventDefault) ev.preventDefault();
         el.style.transition = 'none';
         el.style.willChange = 'transform';
-        el.style.transform = locked === 'x'
-          ? 'translateX(' + dx + 'px)'
-          : 'translateY(' + dy + 'px)';
+        el.style.transform = 'translateY(' + dy + 'px)';
         const mask0 = maskOf(el);
         if (mask0) {
           const height0 = el.offsetHeight || 600;
-          mask0.style.opacity = String(Math.max(0.25, 1 - Math.abs(shift0) / height0 * 0.8));
+          mask0.style.opacity = String(Math.max(0.25, 1 - Math.abs(dy) / height0 * 0.8));
         }
         return;
       }
-      // 水平关闭：只在边缘起手、明显横向、且起手点没有横向滚动容器时接管
-      let axis = 'y';
-      if (horizontalRef.current && s.edge && !s.hSc && !s.fromGrip
-        && Math.abs(dx) > SLOP && Math.abs(dx) > Math.abs(dy) * 1.4) {
-        axis = 'x';
-      } else if (dy < SLOP) {
-        return;   // 上滑 / 手抖：把位移还给列表滚动
-      }
-      if (!s.on && !s.fromGrip && axis === 'y' && s.sc && s.sc.scrollTop > 0) return;
+      if (dy < SLOP) return;   // 上滑 / 手抖：把位移还给列表滚动
+      if (!s.fromGrip && s.sc && s.sc.scrollTop > 0) return;
 
       s.on = true;
-      s.axis = axis;
-      s.dx = axis === 'x' ? dx : 0;
-      s.dy = axis === 'y' ? dy : 0;
-      // 关键：接管后阻止默认，否则 Android Chrome 的下拉刷新 / overscroll 会抢走手势。
+      s.dy = dy;
       if (ev.cancelable && ev.preventDefault) ev.preventDefault();
-
-      const shift = axis === 'x' ? dx : dy;
       el.style.transition = 'none';
       el.style.willChange = 'transform';
-      el.style.transform = axis === 'x'
-        ? 'translateX(' + dx + 'px)'
-        : 'translateY(' + dy + 'px)';
+      el.style.transform = 'translateY(' + dy + 'px)';
       const mask = maskOf(el);
       if (mask) {
         const height = el.offsetHeight || 600;
-        mask.style.opacity = String(Math.max(0.25, 1 - Math.abs(shift) / height * 0.8));
+        mask.style.opacity = String(Math.max(0.25, 1 - Math.abs(dy) / height * 0.8));
       }
     };
 
@@ -201,7 +173,7 @@ export function useSwipeDismiss(onDismiss, options = {}) {
       const s = drag.current;
       if (!s.on) { s.on = false; return; }
       s.on = false;
-      const shift = s.axis === 'x' ? Math.abs(s.dx) : s.dy;
+      const shift = s.dy;
       const elapsed = Date.now() - s.t0;
       const velocity = elapsed >= FLICK_MIN_MS ? shift / elapsed : 0;
       const flick = shift > FLICK_DISTANCE && velocity > FLICK_VELOCITY;
@@ -222,24 +194,30 @@ export function useSwipeDismiss(onDismiss, options = {}) {
       };
 
       if (reduced) { settle(); return; }
-      el.style.transition = 'transform ' + FLING_MS + 'ms cubic-bezier(.32,.72,0,1), opacity ' + FLING_MS + 'ms linear';
-      el.style.transform = s.axis === 'x'
-        ? 'translateX(' + (s.dx > 0 ? '' : '-') + '100%)'
-        : 'translateY(100%)';
-      el.style.opacity = '0.6';
-      setTimeout(() => { el.style.opacity = ''; settle(); }, FLING_MS);
+      el.style.transition = 'transform ' + FLING_MS + 'ms cubic-bezier(.32,.72,0,1)';
+      el.style.transform = 'translateY(100%)';
+      setTimeout(settle, FLING_MS);
+    };
+
+    // 系统抢走手势（下拉刷新 / 来电 / 手势导航）不是「松手关闭」：回弹，不 dismiss。
+    const onCancel = () => {
+      const s = drag.current;
+      const wasDragging = s.on;
+      s.on = false;
+      s.dy = 0;
+      if (wasDragging) springBack(el);
     };
 
     // 原生注册：React 的 onTouchMove 是 passive，拦不住浏览器下拉刷新。
     el.addEventListener('touchstart', onStart, { passive: true });
     el.addEventListener('touchmove', onMove, { passive: false });
     el.addEventListener('touchend', onEnd, { passive: true });
-    el.addEventListener('touchcancel', onEnd, { passive: true });
+    el.addEventListener('touchcancel', onCancel, { passive: true });
     return () => {
       el.removeEventListener('touchstart', onStart);
       el.removeEventListener('touchmove', onMove);
       el.removeEventListener('touchend', onEnd);
-      el.removeEventListener('touchcancel', onEnd);
+      el.removeEventListener('touchcancel', onCancel);
     };
   }, [node, maskOf, springBack, reset]);
 

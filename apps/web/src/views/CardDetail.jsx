@@ -3,12 +3,13 @@
  * 弹层形态沿用 src/views/Dropdown.jsx 的既有约定，不新增第二套弹层语言：
  * - 桌面（>720px）：遮罩 + 居中模态，复用 .modal-mask / .modal 一族；
  * - 移动（≤720px）：v1.3.4 起整屏铺开（.dd-sheet 在窄屏就是一整屏），从下方推入像进入一个页面；
- *   整屏没有「点遮罩关闭」这回事，出口是右上角悬浮 ×、Esc、往下拖或边缘横滑（useSwipeDismiss）。
+ *   整屏没有「点遮罩关闭」这回事，出口是右上角悬浮 ×、Esc、往下拖（useSwipeDismiss）或系统返回键
+ *   （src/ui/overlayStack.js 的哨兵）。
  * 形态在打开瞬间定格，本次开合内不随窗口变化重排。
  *
  * 正文渲染直接复用文章页的 ArtBody（同一套 .art-* 样式与按钮），两处展示保持一份实现。
  * 正文一次铺开、不做折叠（v2.5.2，与文章页一致）：真正的出口是右上角 ×、Esc、
- * 往下拖 / 边缘横滑，以及文章页吸顶条上的「收起这篇」——不再额外要一次「展开全文」。
+ * 往下拖，以及文章页吸顶条上的「收起这篇」——不再额外要一次「展开全文」。
  * 打开弹窗即把该条记为已读：状态与卡片圆点、文章页列表同步，
  * 逻辑见 core 的 cardsDetailRead → reader.js markEntryRead。
  *
@@ -27,6 +28,7 @@ import { ArtBody, bodyShowsText } from './ReaderView.jsx';
 import { ArtActions } from '../ui/EntryActions.jsx';
 import { Icon } from '../ui/Icon.jsx';
 import { hasLayerAbove } from '../ui/layers.js';
+import { registerLayer } from '../ui/overlayStack.js';
 
 const S = () => core;
 
@@ -147,11 +149,13 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
     </button>
   );
 
-  // 往下拖即可收起；从左右边缘横滑也能关（整屏没有遮罩可点，手势 + × + Esc 是全部出口）。
+  // 往下拖即可收起。只做竖向：左右边缘横滑交给系统的返回手势，应用不再争抢。
   // hook 走原生 passive:false touch 监听，接管后阻止默认，Android 的下拉刷新抢不走手势。
   const dismiss = useCallback(() => onCloseRef.current(), []);
-  const { panelRef: sheetRef, setPanelRef, handlers: sheetHandlers } =
-    useSwipeDismiss(dismiss, { allowHorizontal: true });
+  const { panelRef: sheetRef, setPanelRef, handlers: sheetHandlers } = useSwipeDismiss(dismiss);
+
+  // 系统返回键 / 手势返回也走同一个出口：打开即入栈，关闭（任意路径）时由清理函数销账。
+  useEffect(() => registerLayer(dismiss), [dismiss]);
 
   const dialogLabel = e.name || '条目详情';
 

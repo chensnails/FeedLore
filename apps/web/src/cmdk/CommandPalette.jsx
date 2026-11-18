@@ -8,6 +8,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { buildCommands, cmdkFilter } from './commands.js';
 import { provide, revoke, isOn } from '../kernel/bridge.js';
 import { hasLayerAbove } from '../ui/layers.js';
+import { registerLayer } from '../ui/overlayStack.js';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 
 const BRIDGE = () => core;   // 核心逻辑单例（@core）
@@ -73,6 +74,11 @@ export function CommandPalette() {
   }, [active]);
 
   const close = useCallback(() => setOpen(false), []);
+  // 系统返回键 / 手势返回：先关命令面板（此时它通常就是最上面那一层）。
+  useEffect(() => {
+    if (!open) return undefined;
+    return registerLayer(close);
+  }, [open, close]);
   const matched = open ? cmdkFilter(buildCommands(BRIDGE()), q) : [];
   // 输入词同时当「全文搜索」用：命令都不匹配时它就是唯一一条，回车直接搜；
   // 有命令匹配时排在最后，回车仍先执行命令，想搜再按 ↓ 选它。
