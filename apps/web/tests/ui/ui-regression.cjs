@@ -2826,24 +2826,31 @@ const withEFP = (el, fn) => {
     if (!/^llm-url-/.test(el.name || '')) throw new Error('name 非唯一非语义: ' + el.name);
     if (el.getAttribute('autocomplete') !== 'off') throw new Error('autocomplete 未关闭');
   });
-  t('AI 能力区块：模型列表 / 添加模型 / 功能开关三区 + 6 能力，全部即时保存', () => {
+  t('模型页三层重组：模型配置 / 能力开关 / 运行诊断，6 能力即时保存', () => {
+    // ① 模型配置层：接口与密钥 + 思考 + 其它模型
+    const api = document.querySelector('[data-sec="llm-api"]');
+    const think = document.querySelector('[data-sec="llm-thinking"]');
+    const lib = document.querySelector('[data-sec="llm-library"]');
+    if (!api || !think || !lib) throw new Error('缺模型配置层 Section');
+    if (!lib.querySelector('#aiCapAddProvider')) throw new Error('缺添加模型按钮');
+    // ② 能力开关层：6 个能力行
     const sec = document.querySelector('[data-sec="llm-capabilities"]');
     if (!sec) throw new Error('模型页缺 [data-sec="llm-capabilities"]');
     const cap = sec.querySelector('.ai-cap');
     if (!cap) throw new Error('缺 .ai-cap 容器');
     const rows = cap.querySelectorAll('.ai-cap-row');
     if (rows.length !== 6) throw new Error('应有 6 个能力行，实际 ' + rows.length);
-    if (!cap.querySelector('#aiCapAddProvider')) throw new Error('缺添加模型按钮');
     if (!cap.querySelector('[data-cap="entry_ai"]')) throw new Error('缺单篇 AI 行');
-    // 三区标题顺序：模型列表 → 添加模型 → 功能开关
-    const hs = [...cap.querySelectorAll('.ai-cap-h')].map((h) => h.textContent.trim());
-    if (hs.join('|') !== '模型列表|添加模型|功能开关') throw new Error('三区标题/顺序: ' + hs.join('|'));
-    // 内置默认槽在列表首位、只读无操作按钮
-    const builtin = cap.querySelector('.ai-cap-provider.is-builtin[data-provider-id="default"]');
-    if (!builtin) throw new Error('缺内置默认模型条目');
-    if (builtin.querySelector('.ai-cap-p-actions')) throw new Error('内置默认项不该有编辑/删除按钮');
+    // ③ 运行诊断层
+    if (!document.querySelector('[data-sec="llm-status"]') || !document.querySelector('[data-sec="llm-usage"]')) {
+      throw new Error('缺运行诊断层 Section');
+    }
+    // 旧的独立 AI 标签 Section 已废弃（0016 收口到能力开关区）
+    if (document.querySelector('[data-sec="llm-aitags"]') || document.querySelector('#aiTagsEnable')) {
+      throw new Error('AI 标签仍有独立开关，未收口到能力区');
+    }
     // 组件渲染不能带 PaneFoot 的脏态按钮：它是独立即时保存
-    if (cap.querySelector('.pane-foot')) throw new Error('AI 能力区块不该有自己的动作栏');
+    if (cap.querySelector('.pane-foot')) throw new Error('能力区块不该有自己的动作栏');
   });
 
   t('模型面板分组：接口与密钥、模型思考都常驻展开（enable_thinking 是常用开关）', () => {
@@ -3107,37 +3114,33 @@ const withEFP = (el, fn) => {
     if (n < 5 || n <= getsBeforeReenter) throw new Error('GET 次数=' + n + '（二次进入前=' + getsBeforeReenter + '）');
   });
 
-  // ---- AI 智能标签开关（从「日报」页挪到「模型」页；点一下即时保存，不参与模型表单脏态） ----
-  t('AI 标签开关在模型页、默认关', () => {
-    const sec = document.querySelector('[data-sec="llm-aitags"]');
-    if (!sec) throw new Error('模型页缺 [data-sec="llm-aitags"]');
-    const sw = document.querySelector('#aiTagsEnable');
-    if (!sw) throw new Error('无 #aiTagsEnable');
-    if (!sec.contains(sw)) throw new Error('开关不在 AI 标签组');
-    if (sw.checked !== false) throw new Error('默认应关闭');
-    if (sec.querySelector('.sec-sub').textContent !== '关闭') throw new Error('摘要: ' + sec.querySelector('.sec-sub').textContent);
+  // ---- AI 智能标签单开关（0016 收口到能力开关区，默认关，POST llmRoutes.ai_tags） ----
+  t('AI 标签在能力区只有一个开关、默认关；无独立 llm-aitags Section', () => {
+    if (document.querySelector('[data-sec="llm-aitags"]')) throw new Error('独立 AI 标签 Section 未移除');
+    const row = document.querySelector('[data-cap="ai_tags"]');
+    if (!row) throw new Error('能力区缺 ai_tags 行');
+    const sw = row.querySelector('input[type="checkbox"]');
+    if (!sw) throw new Error('ai_tags 行缺开关');
+    if (sw.checked !== false) throw new Error('ai_tags 默认应关闭（避免全员自动打标烧额度）');
   });
   const aiPostsBefore = postsTo('/api/prefs').length;
-  document.querySelector('#aiTagsEnable').click();
+  document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').click();
   await sleep(80);
-  t('AI 标签开：POST /api/prefs 只带 aiTags 且开关翻开', () => {
+  t('AI 标签开：POST llmRoutes.ai_tags.enabled=true 且开关翻开', () => {
     if (postsTo('/api/prefs').length !== aiPostsBefore + 1) throw new Error('未 POST prefs');
     const body = lastPostBody('/api/prefs');
-    if (JSON.stringify(body) !== '{"aiTags":{"enabled":true}}') throw new Error('body: ' + JSON.stringify(body));
-    if (document.querySelector('#aiTagsEnable').checked !== true) throw new Error('开关未翻开');
-    const r = document.querySelector('#llmResult');
-    if (!r || r.textContent.indexOf('已开启 AI 智能标签') < 0) throw new Error('文案: ' + (r && r.textContent));
+    if (!body.llmRoutes || body.llmRoutes.ai_tags?.enabled !== true) throw new Error('body: ' + JSON.stringify(body));
+    if (document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').checked !== true) throw new Error('开关未翻开');
   });
   t('AI 标签开：不把模型表单标脏（即时保存的开关不该要人再点保存）', () => {
     if (!document.querySelector('#saveLlmBtn').disabled) throw new Error('保存模型应保持禁用');
   });
-  document.querySelector('#aiTagsEnable').click();
+  document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').click();
   await sleep(80);
-  t('AI 标签关：POST false 且开关回位', () => {
+  t('AI 标签关：POST llmRoutes.ai_tags.enabled=false 且开关回位', () => {
     const body = lastPostBody('/api/prefs');
-    if (!body.aiTags || body.aiTags.enabled !== false) throw new Error('body: ' + JSON.stringify(body));
-    if (document.querySelector('#aiTagsEnable').checked !== false) throw new Error('开关未回位');
-    if (document.querySelector('[data-sec="llm-aitags"] .sec-sub').textContent !== '关闭') throw new Error('摘要未回落');
+    if (!body.llmRoutes || body.llmRoutes.ai_tags?.enabled !== false) throw new Error('body: ' + JSON.stringify(body));
+    if (document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').checked !== false) throw new Error('开关未回位');
   });
 
   // ---- AI 能力开关（0015）：拨动即落库 llmRoutes，不进模型表单脏态 ----

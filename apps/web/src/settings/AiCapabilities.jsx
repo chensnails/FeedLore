@@ -1,10 +1,14 @@
-/* 设置 → 模型 →「AI 能力」（0015 多路提供商）。
+/* 设置 → 模型：模型库与能力开关（0015 多路提供商 / 0016 标签单开关）。
  *
- * 独立组件、独立取数：不侵入 ModelPane 那份 792 行的表单与脏态。
- * 所有操作都是「拨动/点一下即 POST、失败回滚」，跟 AI 标签/思考开关同款范式，
- * 不参与模型表单的 dirty 判定 —— 否则「改了分配没点保存模型就走人」会静默丢失。
+ * 独立取数、即时保存、失败回滚，不参与 ModelPane 表单的 dirty 判定——
+ * 否则「改了分配没点保存模型就走人」会静默丢失。
  *
- * 数据源就是 /api/prefs 一次 GET（llmProviders + llmRoutes），与服务端契约同源。
+ * 拆成两个展示组件（ModelLibrary / CapabilitySwitches）共享一份 hook 数据，
+ * 是为了让模型页能按「模型配置 / 能力开关」三层归位，而不是把所有东西塞进一个 Section。
+ * 数据源仍是 /api/prefs 一次 GET（providers + routes），与服务端契约同源。
+ *
+ * 开关语义（0016）：通用能力默认开（enabled !== false），
+ * ai_tags 默认关（必须 enabled === true）——与服务端 isRouteEnabled 严格一致。
  */
 
 import React, { useEffect, useState } from 'react';
@@ -15,7 +19,7 @@ const S = () => core;
 
 const CAPS = [
   { key: 'entry_ai', name: '单篇 AI', hint: '摘要 / 要点 / 翻译 / 讲解，可按动作单独指定模型' },
-  { key: 'ai_tags', name: 'AI 智能标签', hint: '给条目自动打标签（还需在下方开关之外开启标签功能）' },
+  { key: 'ai_tags', name: 'AI 智能标签', hint: '开启后可给条目自动打标签，也可在文章页手动触发；默认关闭，开启后会自动给新条目打标' },
   { key: 'digest', name: 'AI 日报', hint: '把近期订阅整理成中文简报' },
   { key: 'explore', name: '探索问答', hint: '在全库订阅里检索并带引用回答' },
   { key: 'mcp', name: 'MCP 写工具', hint: '外部客户端通过 MCP 调用模型' },
@@ -27,9 +31,13 @@ const ACTIONS = [
   { key: 'translate', name: '翻译' },
   { key: 'explain', name: '讲解' },
 ];
-const EMPTY_PROVIDER = { name: '', baseUrl: '', model: '', apiKey: '', thinking: false };
+const EMPTY_PROVIDER = { name: '', baseUrl: '', model: '', apiKey: '' };
 
-export function AiCapabilities() {
+/** 与服务端 isRouteEnabled 一致：ai_tags 默认关，其它默认开。 */
+const isOn = (key, r) => (key === 'ai_tags' ? r.enabled === true : r.enabled !== false);
+
+/** 共享数据 hook：两个组件各挂一处，但都从这一份状态读写。 */
+export function useAiCapabilities() {
   const [providers, setProviders] = useState([]);
   const [routes, setRoutes] = useState({});
   const [loaded, setLoaded] = useState(false);
@@ -75,10 +83,6 @@ export function AiCapabilities() {
     catch (err) { setBusy(''); setMsg({ ok: false, text: String((err && err.message) || err) }); }
   }
 
-  const options = [{ id: 'default', label: '默认模型（接口与密钥区那一份）' }, ...providers.map((p) => ({
-    id: p.id, label: p.name || p.model || p.id,
-  }))];
-
   const onToggle = (cap, on) => {
     if (busy) return;
     const prev = routes[cap.key] || {};
@@ -115,23 +119,21 @@ export function AiCapabilities() {
   const startEdit = (p) => {
     setEditing(p ? p.id : 'new');
     setDraft(p
-      ? { name: p.name, baseUrl: p.baseUrl, model: p.model, apiKey: '', thinking: p.thinking === true,
-          temperature: p.temperature, thinkingDepth: p.thinkingDepth, isDefault: p.isDefault === true }
+      ? { name: p.name, baseUrl: p.baseUrl, model: p.model, apiKey: '' }
       : EMPTY_PROVIDER);
   };
   const saveProvider = () => {
     const body = {
       name: draft.name || '', baseUrl: draft.baseUrl || '', model: draft.model || '',
-      thinking: !!draft.thinking,
       ...(editing !== 'new' ? { id: editing } : {}),
       ...(draft.apiKey ? { apiKey: draft.apiKey } : {}),
     };
     run(async () => {
-      await patch({ llmProvider: body }, editing === 'new' ? '已添加提供商' : '已保存提供商');
+      await patch({ llmProvider: body }, editing === 'new' ? '已添加模型' : '已保存模型');
       setEditing(null);
     });
   };
-  const removeProvider = (p) => run(() => patch({ llmProviderDelete: p.id }, '已删除提供商'));
+  const removeProvider = (p) => run(() => patch({ llmProviderDelete: p.id }, '已删除模型'));
   const setDefault = (p) => run(() => patch({
     llmProvider: { id: p.id, name: p.name, baseUrl: p.baseUrl, model: p.model, isDefault: true },
   }, '已设为默认'));
@@ -152,22 +154,25 @@ export function AiCapabilities() {
     } finally { setBusy(''); }
   };
 
+  return {
+    providers, routes, loaded, busy, msg, editing, draft, setDraft,
+    load, run, onToggle, onAssign, startEdit, saveProvider, removeProvider, setDefault, testProvider,
+    setEditing,
+  };
+}
+
+/** 模型列表 + 添加/编辑：归到「模型配置」层。 */
+export function ModelLibrary({ cap }) {
+  const { providers, loaded, busy, msg, editing, draft, setDraft,
+    startEdit, saveProvider, removeProvider, setDefault, testProvider, setEditing } = cap;
   return (
-    <div className="ai-cap" data-sec="ai-capabilities">
+    <div className="ai-cap ai-cap-lib">
       {msg ? <div className={'hint ' + (msg.ok ? 'is-ok' : 'is-err')} role="status">{msg.text}</div> : null}
 
-      {/* ① 模型列表：默认槽 + 所有额外模型，统一在这里查看与管理 */}
-      <h3 className="ai-cap-h">模型列表</h3>
-      <p className="hint">这里列出所有可用模型。未单独分配的任务统一走「默认模型」（即上方「接口与密钥」那一份）。</p>
+      <h3 className="ai-cap-h">已添加的模型</h3>
+      <p className="hint">默认模型在下方「接口与密钥」配置；未单独分配的任务统一走它。</p>
       {!loaded ? <p className="hint">读取中…</p> : null}
       <div className="ai-cap-providers">
-        <div className="ai-cap-provider is-builtin" data-provider-id="default">
-          <div className="ai-cap-p-main">
-            <span className="ai-cap-p-name">默认模型</span>
-            <span className="ai-cap-badge">内置</span>
-            <span className="hint">在「接口与密钥」配置，作为所有能力的兜底</span>
-          </div>
-        </div>
         {providers.map((p) => (
           <div className="ai-cap-provider" key={p.id} data-provider-id={p.id}>
             <div className="ai-cap-p-main">
@@ -190,7 +195,6 @@ export function AiCapabilities() {
         {!providers.length && loaded ? <p className="hint">还没有额外模型，所有任务都用「默认模型」。</p> : null}
       </div>
 
-      {/* ② 添加模型：常驻入口，点开展开表单；编辑复用同一份表单 */}
       <h3 className="ai-cap-h">添加模型</h3>
       {editing ? (
         <div className="ai-cap-editor">
@@ -224,34 +228,44 @@ export function AiCapabilities() {
         <button className="btn btn-ghost btn-sm" id="aiCapAddProvider" type="button"
           onClick={() => startEdit(null)}>+ 添加模型</button>
       )}
+    </div>
+  );
+}
 
-      {/* ③ 功能开关：每个能力一个开关 + 绑定的模型；单篇四动作可各绑一个 */}
-      <h3 className="ai-cap-h">功能开关</h3>
+/** 功能开关 + 模型分配：归到「能力开关」层。 */
+export function CapabilitySwitches({ cap }) {
+  const { providers, routes, busy, onToggle, onAssign } = cap;
+  const options = [
+    { id: 'default', label: '默认模型' },
+    ...providers.map((p) => ({ id: p.id, label: p.name || p.model || p.id })),
+  ];
+  return (
+    <div className="ai-cap ai-cap-caps">
       <p className="hint">关闭某项能力后，服务端会直接拒绝这类调用（包括 API 与 MCP），不再消耗额度。</p>
       <div className="ai-cap-matrix">
-        {CAPS.map((cap) => {
-          const r = routes[cap.key] || {};
-          const enabled = r.enabled !== false;
+        {CAPS.map((c) => {
+          const r = routes[c.key] || {};
+          const enabled = isOn(c.key, r);
           return (
-            <div className="ai-cap-row" key={cap.key} data-cap={cap.key}>
+            <div className="ai-cap-row" key={c.key} data-cap={c.key}>
               <div className="ai-cap-row-head">
                 <label className="ai-cap-sw">
-                  <span className="ai-cap-sw-name">{cap.name}</span>
+                  <span className="ai-cap-sw-name">{c.name}</span>
                   <span className="switch">
                     <input type="checkbox" checked={enabled} disabled={!!busy}
-                      aria-label={`${cap.name}开关`}
-                      onChange={(e) => onToggle(cap, e.target.checked)} />
+                      aria-label={`${c.name}开关`}
+                      onChange={(e) => onToggle(c, e.target.checked)} />
                     <span className="switch-slider" />
                   </span>
                 </label>
-                <Dropdown id={'aiCapModel-' + cap.key} wrapId={'aiCapModelDD-' + cap.key}
-                  title={`${cap.name}使用的模型`} ariaLabel={`${cap.name}使用的模型`}
+                <Dropdown id={'aiCapModel-' + c.key} wrapId={'aiCapModelDD-' + c.key}
+                  title={`${c.name}使用的模型`} ariaLabel={`${c.name}使用的模型`}
                   disabled={!!busy || !enabled} value={r.providerId || 'default'}
-                  onChange={(v) => onAssign(cap.key, v)}
+                  onChange={(v) => onAssign(c.key, v)}
                   options={options.map((o) => ({ value: o.id, label: o.label }))} />
               </div>
-              <small className="form-tip">{cap.hint}</small>
-              {cap.key === 'entry_ai' && enabled && providers.length ? (
+              <small className="form-tip">{c.hint}</small>
+              {c.key === 'entry_ai' && enabled && providers.length ? (
                 <div className="ai-cap-actions">
                   {ACTIONS.map((a) => (
                     <label key={a.key} className="ai-cap-action">
@@ -259,7 +273,7 @@ export function AiCapabilities() {
                       <Dropdown id={'aiCapAction-' + a.key} wrapId={'aiCapActionDD-' + a.key}
                         title={`${a.name}使用的模型`} ariaLabel={`${a.name}使用的模型`}
                         disabled={!!busy} value={(r.actions || {})[a.key] || r.providerId || 'default'}
-                        onChange={(v) => onAssign(cap.key, v, a.key)}
+                        onChange={(v) => onAssign(c.key, v, a.key)}
                         options={options.map((o) => ({ value: o.id, label: o.label }))} />
                     </label>
                   ))}

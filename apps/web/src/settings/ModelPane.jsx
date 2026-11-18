@@ -5,17 +5,18 @@
  *   apiKeySet + 掩码），留空 = 不修改；temperature 数值化后发送（旧实现传字符串，
  *   依赖服务端 clampNum 容错）；
  * - 保存 / 测试 / 清除三个动作的请求体与旧实现逐字段一致，成功后重新拉取刷新掩码态。
- * - v2.7.x 追加「AI 智能标签」组（原挂在日报页）：它是幂等开关，点一下即 POST
- *   `{ aiTags: { enabled } }` 落库、失败回滚，**不进 llm 表单的脏态**——否则
- *   「拨了开关没点保存模型就走人」会静默丢失。
- * 类名 / ID / data 属性与旧 DOM 完全一致，样式零改动。 */
+ * - 页面按三层组织：① 模型配置（默认模型 + 思考 + 额外模型）② 能力开关
+ *   ③ 运行诊断（状态 + 用量 + 请求历史）。AI 标签开关 0016 起收口到能力开关区，
+ *   废弃 prefs.aiTags，不再单列 Section。
+ *
+ * 类名 / ID / data 属性尽量保持，样式零大改。 */
 
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
 import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 import { Dropdown } from '../views/Dropdown.jsx';
-import { AiCapabilities } from './AiCapabilities.jsx';
+import { useAiCapabilities, ModelLibrary, CapabilitySwitches } from './AiCapabilities.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
@@ -92,6 +93,8 @@ export function ModelPane({ onDirtyChange }) {
   // username 塞进来。给它和 Key 一样的非语义唯一 name + 反填充标记（见 ui/noAutofill.js）。
   const urlName = useNoAutofillName('llm-url');
   const paneRef = useRef(null);
+  // 模型库与能力开关共享一份取数（一次 GET），两个展示组件分别挂到对应层级。
+  const aiCap = useAiCapabilities();
   const [form, setForm] = useState(EMPTY);
   const [savedForm, setSavedForm] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -99,12 +102,7 @@ export function ModelPane({ onDirtyChange }) {
   // result: { ok, msg } | null
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState('');   // '' | 'test' | 'save' | 'clear'
-  /* AI 智能标签开关：与上面那份模型表单分开管。
-     它是幂等开关（点一下即生效），即时保存、失败回滚，不参与 dirty 判定——
-     否则「改了开关没点保存模型就走人」会变成静默丢失。 */
-  const [aiTagsEnabled, setAiTagsEnabled] = useState(false);
-  const [aiTagsBusy, setAiTagsBusy] = useState(false);
-  /* enable_thinking 全局开关：与 AI 标签开关同款——点一下即落库，失败回滚。
+  /* enable_thinking 全局开关：默认槽的思考配置。点一下即落库，失败回滚。
      它必须写进账号的模型配置（`user_llm.thinking`），下一次调用起生效，
      而不是每次请求由前端临时传参：前端传参会出现「日报带了、单篇没带」的漂移。 */
   const [thinkingBusy, setThinkingBusy] = useState(false);
@@ -168,8 +166,6 @@ export function ModelPane({ onDirtyChange }) {
         // Key 输入框每次回填都清空并回到掩码态：留空 = 不修改
         setApiKey('');
         setShowKey(false);
-        // AI 标签开关随 prefs 一起回填（同一个 GET，省一次请求）
-        setAiTagsEnabled((data.aiTags && data.aiTags.enabled) === true);
       });
       if (!applied) setSavedForm((s) => s || JSON.stringify(EMPTY));
     } catch (err) {
@@ -333,38 +329,6 @@ export function ModelPane({ onDirtyChange }) {
       setResult({ ok: false, msg: '保存思考深度失败：' + String((err && err.message) || err) });
     } finally {
       setThinkingBusy(false);
-    }
-  };
-
-  /* AI 智能标签：点一下立刻落库。先乐观切换让开关不掉帧，失败再翻回原状态并报错。 */
-  const onToggleAiTags = async (ev) => {
-    const on = ev.target.checked;
-    const prev = aiTagsEnabled;
-    if (aiTagsBusy) return;
-    setAiTagsEnabled(on);
-    setAiTagsBusy(true);
-    setResult(null);
-    try {
-      const res = await S().apiFetch('/api/prefs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ aiTags: { enabled: on } }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setAiTagsEnabled(prev);
-        setResult({ ok: false, msg: S().errText(data, '保存 AI 标签开关失败') });
-        return;
-      }
-      // 以服务端回包为准（服务端可能对 aiTags 做过归一）；
-      // 老服务端/代理不回这个字段时按本次请求值算，免得开关「点了又弹回去」
-      setAiTagsEnabled(data.aiTags ? data.aiTags.enabled === true : on);
-      setResult({ ok: true, msg: on ? '已开启 AI 智能标签' : '已关闭 AI 智能标签' });
-    } catch (err) {
-      setAiTagsEnabled(prev);
-      setResult({ ok: false, msg: '保存 AI 标签开关失败：' + String((err && err.message) || err) });
-    } finally {
-      setAiTagsBusy(false);
     }
   };
 
@@ -597,8 +561,7 @@ export function ModelPane({ onDirtyChange }) {
           放在常用组而不是「高级」里：它直接决定每次模型调用快 10 倍还是慢 10 倍，
           属于用户最该看见的一项；拨动即落库——写的是账号模型配置，不是单次请求参数。
         */}
-        <Section secKey="llm-thinking" open title="模型思考（enable_thinking）"
-          sub={form.thinking ? `已开启 · 深度${DEPTH_LABEL[form.thinkingDepth]}` : '已关闭 · 全部调用生效'}>
+        <Section secKey="llm-thinking" open title="思考模式" sub={form.thinking ? `已开启 · 深度${DEPTH_LABEL[form.thinkingDepth]}` : '已关闭 · 全部调用生效'}>
         <div className="form-row">
           <label className="form-row-head">
             <span>让模型先思考再回答</span>
@@ -614,11 +577,10 @@ export function ModelPane({ onDirtyChange }) {
             </span>
           </label>
           <small className="form-tip">
-            <b>默认关闭，拨动即生效</b>，作用于本账号全部 AI 调用：日报、单篇摘要/要点/翻译/解释、
-            AI 标签、MCP 工具和「测试模型」。
-            <br />关闭时每次请求都带 <code>enable_thinking: false</code>，只给答案不给推理过程，
-            实测同一篇长文从 56 秒降到 4 秒；打开后会先写思考链再给结论，更贴复杂选材，但明显更慢、更耗额度。
-            只对 Qwen3 / DeepSeek 这类支持思考的模型有效；上游不认识这个字段时会自动去掉并重试，不会因此调用失败。
+            <b>默认关闭，拨动即生效</b>，作用于本账号全部 AI 调用。关闭时每次请求带
+            <code>enable_thinking: false</code>，只给答案不给推理（同一篇长文实测 56 秒降到 4 秒）；
+            打开后先思考再答，更贴复杂选材但明显更慢、更耗额度。仅对 Qwen3 / DeepSeek 这类支持思考的模型有效；
+            上游不认识该字段时会自动去掉重试。
           </small>
         </div>
         <div className="form-row" hidden={!form.thinking}>
@@ -630,45 +592,23 @@ export function ModelPane({ onDirtyChange }) {
               { value: 'medium', label: '中 · 默认，够它把选材想过一遍' },
               { value: 'high', label: '深 · 充分推理，长清单时更明显' },
             ]} />
-          <small className="form-tip">同样是账号级配置，改完即生效。日报是每天一次的后台任务，「中」通常就够；只有条目很多、分类总跑偏时才值得上「深」</small>
+          <small className="form-tip">账号级配置，改完即生效；日报「中」通常够，条目多、分类总跑偏时才用「深」。</small>
         </div>
         </Section>
 
-        <Section secKey="llm-aitags" title="AI 智能标签"
-          sub={aiTagsEnabled ? (saved ? '已开启' : '已开启 · 但还没配 Key') : '关闭'}>
-        <div className="form-row">
-          <label className="form-row-head">
-            <span>启用 AI 智能标签</span>
-            <span className="switch">
-              <input
-                id="aiTagsEnable"
-                type="checkbox"
-                checked={aiTagsEnabled}
-                disabled={aiTagsBusy}
-                onChange={onToggleAiTags}
-              />
-              <span className="switch-slider" />
-            </span>
-          </label>
-          <small className="form-tip">
-            开启后系统会自动为你的条目生成语义标签，文章页里单独显示成「AI 标签」一组——
-            <b>与你手打的标签物理隔离</b>，不覆盖也不混淆。开关点一下即生效，不用点「保存模型」。
-            <br />每篇打标消耗一次模型额度，用的是上面这份模型配置；
-            {saved ? '当前 Key 已配好。' : '现在还没填 API Key，开了也不会真的打标，先在上面填好再开。'}
-            只想给某一篇打标时，用文章页的「AI · 标签」按钮即可，不必开这个开关。
-          </small>
-        </div>
+        {/* ① 模型配置层：默认模型的额外模型列表 / 添加，与「接口与密钥」同层。
+            共享 aiCap 的取数，即时保存、不进表单脏态。 */}
+        <Section secKey="llm-library" title="其它模型" sub="多路提供商，可分配给不同能力">
+          <ModelLibrary cap={aiCap} />
         </Section>
 
-        {/* 多路提供商 + 能力开关（0015）：独立组件自己取数、自己即时保存，
-            不参与上面那份模型表单的 dirty 判定。 */}
-        <Section secKey="llm-capabilities" title="AI 能力" sub="多路模型与开关">
-          <AiCapabilities />
+        {/* ② 能力开关层：6 个能力的开关 + 模型分配，标签单开关也在这里（0016）。 */}
+        <Section secKey="llm-capabilities" title="能力开关" sub="每个任务用哪个模型">
+          <CapabilitySwitches cap={aiCap} />
         </Section>
 
-        {/* 模型状态：当前模型是谁、现在能不能用、最近都请求了什么。
-            状态用本地调用记录推断（最近一次结果），再点一次模型验证放在底部「测试模型」，
-            这样「看一眼状态」不会消耗额度。 */}
+        {/* ③ 运行诊断层：模型状态（本地最近一次调用推断）+ 用量统计。
+            「测试模型」放在底部动作栏——看状态不消耗额度，点测试才真调一次。 */}
         <Section secKey="llm-status" title="模型状态"
           sub={status.label + (lastReq ? ' · ' + fmtRel(lastReq.createdAt) : '')}>
           <div className="ms-head">

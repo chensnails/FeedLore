@@ -375,3 +375,7 @@ input[data-fl-no-autofill]:-webkit-autofill:focus {
   animation-name: flAutofillGuard;
   animation-duration: 1ms;
 }
+
+/* 自绘下拉触发器复用 .select 外观，箭头由内部 .dd-caret 画。这里在最后加载层
+   再清一次内嵌箭头，避免 text 后与右端各一个箭头（双箭头，真机能力开关区可见）。 */
+button.dd-trigger.select { background-image: none; }
