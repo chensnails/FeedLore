@@ -5,11 +5,16 @@
  *   apiKeySet + 掩码），留空 = 不修改；temperature 数值化后发送（旧实现传字符串，
  *   依赖服务端 clampNum 容错）；
  * - 保存 / 测试 / 清除三个动作的请求体与旧实现逐字段一致，成功后重新拉取刷新掩码态。
- * - 页面按三层组织：① 模型配置（默认模型 + 思考 + 额外模型）② 能力开关
- *   ③ 运行诊断（状态 + 用量 + 请求历史）。AI 标签开关 0016 起收口到能力开关区，
- *   废弃 prefs.aiTags，不再单列 Section。
+ * - 页面按四张大卡片组织（2026-11-18 深度重构）：
+ *   ① 多路提供商管理与添加（llm-library，提到最前）
+ *   ② 模式设置（llm-api 默认槽 + llm-thinking 思考模式/深度，合成一张卡）
+ *   ③ 能力开关与模型分配（llm-capabilities，6 能力 + 四动作 + AI 标签单开关）
+ *   ④ 模型状态与统计（llm-status 状态/历史 + llm-usage 用量，合成一张卡）
+ *   AI 标签开关 0016 起收口到能力开关区，废弃 prefs.aiTags，不再单列 Section。
  *
- * 类名 / ID / data 属性尽量保持，样式零大改。 */
+ * 卡片靠 Section 的可选 cardNo/cardDesc 渲染；四个 data-sec 锚点保持原样
+ * （llm-library / llm-api / llm-capabilities / llm-status 仍指向对应卡片），
+ * 旧测试与巡检选择器不失效。所有控件 id / data-cap 逐字保留。 */
 
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
@@ -438,7 +443,12 @@ export function ModelPane({ onDirtyChange }) {
   return (
     <div className="tab-pane" data-pane="model" ref={paneRef}>
       <div className="pane-scroll">
-        <Section secKey="llm-api" title="接口与密钥" sub={form.model || '未配置'} open>
+        {/* ① 模型配置层：默认模型的额外模型列表 / 添加，与「接口与密钥」同层。
+            共享 aiCap 的取数，即时保存、不进表单脏态。 */}
+        <Section secKey="llm-library" title="多路提供商管理" sub="添加并统一管理多个模型" cardNo="01" cardDesc="添加一个或多个 OpenAI 兼容模型，供下方各项能力按需分配；未单独分配的任务走默认模型。">
+          <ModelLibrary cap={aiCap} />
+        </Section>
+        <Section secKey="llm-api" title="模式设置" sub={form.model || '未配置'} cardNo="02" cardDesc="默认模型的地址、密钥与生成参数，以及思考模式开关与深度。这里的默认模型兜底所有未单独分配的能力。" open>
         <div className="form-row">
           <label htmlFor="llmBaseUrl">模型地址（OpenAI 兼容）</label>
           <input
@@ -554,14 +564,13 @@ export function ModelPane({ onDirtyChange }) {
             <small className="form-tip">越低越稳定保守，越高越发散。摘要建议 0.2 ~ 0.5</small>
           </div>
         </div>
-        </Section>
-
-        {/*
-          enable_thinking 全局开关（账号级，默认关）。
-          放在常用组而不是「高级」里：它直接决定每次模型调用快 10 倍还是慢 10 倍，
-          属于用户最该看见的一项；拨动即落库——写的是账号模型配置，不是单次请求参数。
-        */}
-        <Section secKey="llm-thinking" open title="思考模式" sub={form.thinking ? `已开启 · 深度${DEPTH_LABEL[form.thinkingDepth]}` : '已关闭 · 全部调用生效'}>
+        {/* 卡片 02 内的「思考模式」子节：与默认模型同属一张卡，不再单独折叠。
+            enable_thinking 是账号级开关（默认关），拨动即落库；它决定每次调用快 10 倍还是慢 10 倍。 */}
+        <div className="model-sub" data-sec="llm-thinking">
+          <div className="model-sub-head">
+            <span className="model-sub-title">思考模式</span>
+            <span className="sec-sub">{form.thinking ? `已开启 · 深度${DEPTH_LABEL[form.thinkingDepth]}` : '已关闭 · 全部调用生效'}</span>
+          </div>
         <div className="form-row">
           <label className="form-row-head">
             <span>让模型先思考再回答</span>
@@ -594,23 +603,17 @@ export function ModelPane({ onDirtyChange }) {
             ]} />
           <small className="form-tip">账号级配置，改完即生效；日报「中」通常够，条目多、分类总跑偏时才用「深」。</small>
         </div>
+        </div>
         </Section>
-
-        {/* ① 模型配置层：默认模型的额外模型列表 / 添加，与「接口与密钥」同层。
-            共享 aiCap 的取数，即时保存、不进表单脏态。 */}
-        <Section secKey="llm-library" title="其它模型" sub="多路提供商，可分配给不同能力">
-          <ModelLibrary cap={aiCap} />
-        </Section>
-
-        {/* ② 能力开关层：6 个能力的开关 + 模型分配，标签单开关也在这里（0016）。 */}
-        <Section secKey="llm-capabilities" title="能力开关" sub="每个任务用哪个模型">
+        {/* ③ 能力开关层：6 个能力的开关 + 模型分配，标签单开关也在这里（0016）。 */}
+        <Section secKey="llm-capabilities" title="能力开关与模型分配" sub="每个任务用哪个模型" cardNo="03" cardDesc="按能力启停 AI 调用并指定模型；关闭后服务端直接拒绝此类调用，不再消耗额度。">
           <CapabilitySwitches cap={aiCap} />
         </Section>
-
         {/* ③ 运行诊断层：模型状态（本地最近一次调用推断）+ 用量统计。
             「测试模型」放在底部动作栏——看状态不消耗额度，点测试才真调一次。 */}
-        <Section secKey="llm-status" title="模型状态"
-          sub={status.label + (lastReq ? ' · ' + fmtRel(lastReq.createdAt) : '')}>
+        <Section secKey="llm-status" title="模型状态与统计"
+          sub={status.label + (lastReq ? ' · ' + fmtRel(lastReq.createdAt) : '')}
+          cardNo="04" cardDesc="最近一次调用推断的可用状态、请求历史与近 30 天用量。查看不消耗额度，点底部「测试模型」才真调一次。">
           <div className="ms-head">
             <span className={'ms-badge ' + status.cls}>{status.label}</span>
             <span className="ms-model" title={String(form.model || '').trim() || '未设置模型'}>
@@ -682,10 +685,12 @@ export function ModelPane({ onDirtyChange }) {
             状态按最近一次调用推断：成功即「可用」，失败即「最近失败」并给出原因。
             想立刻确认，点底部「测试模型」——那会真的调一次并在列表里留一条记录。
           </small>
-        </Section>
-
-        <Section secKey="llm-usage" title="AI 用量"
-          sub={usage && usage.today ? `${fmtNum(usage.today.calls)} 次 · ${fmtTokens(usage.today.totalTokens)} tokens（今日）` : '暂无调用'}>
+        {/* 卡片 04 内的「AI 用量」子节：与状态/历史同属一张卡，不再单独折叠。 */}
+        <div className="model-sub" data-sec="llm-usage">
+          <div className="model-sub-head">
+            <span className="model-sub-title">AI 用量</span>
+            <span className="sec-sub">{usage && usage.today ? `${fmtNum(usage.today.calls)} 次 · ${fmtTokens(usage.today.totalTokens)} tokens（今日）` : '暂无调用'}</span>
+          </div>
         <div className="usage-grid" id="aiUsageGrid" aria-live="polite">
           {['today', 'days7', 'days30'].map((k) => (
             <div className="usage-cell" key={k}>
@@ -718,6 +723,7 @@ export function ModelPane({ onDirtyChange }) {
             disabled={usageBusy} onClick={loadUsage}>
             {usageBusy ? '刷新中…' : '刷新'}
           </button>
+        </div>
         </div>
         </Section>
 

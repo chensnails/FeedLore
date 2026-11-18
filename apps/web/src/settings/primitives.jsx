@@ -37,22 +37,29 @@ export function useFormLoadGuard() {
  * 一个可折叠分组。`open` 只是首次默认值；用户改过之后以 bindSections 记住的状态为准。
  * `subId` 留给需要被旧逻辑按 id 取用的摘要（频道计数、采集参数摘要）。
  */
-export function Section({ secKey, title, sub, subId, open, id, advanced, children }) {
+export function Section({ secKey, title, sub, subId, open, id, advanced, cardNo, cardDesc, children }) {
   /* 两层结构：`advanced` 的组默认收起并打「高级」标，常用组照旧默认展开。
    * 不做「外层再套一个高级折叠容器」：那会变成两级折叠（点开外层还要再点内层），
-   * 也会让 bindSections 记的折叠状态与用户的直觉错位。 */
+   * 也会让 bindSections 记的折叠状态与用户的直觉错位。
+   *
+   * cardNo/cardDesc：可选的「大卡片」外观（模型页四块用）。只在传了 cardNo 时
+   * 加 .model-card 类与卡片头里的编号、说明行；其它面板一个 props 都不传，
+   * DOM 与旧实现逐字一致。折叠仍走原生 details + data-sec，bindSections 照常记状态。 */
+  const isCard = cardNo != null;
   return (
     <details
-      className={'sec' + (advanced ? ' is-advanced' : '')}
+      className={'sec' + (advanced ? ' is-advanced' : '') + (isCard ? ' model-card' : '')}
       data-sec={secKey}
       id={id}
       open={advanced ? undefined : (open || undefined)}
     >
       <summary className="sec-head">
         <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+        {isCard ? <span className="model-card-no" aria-hidden="true">{cardNo}</span> : null}
         <span className="sec-title">{title}</span>
         {advanced ? <span className="sec-adv" aria-label="高级设置">高级</span> : null}
         <span className="sec-sub" id={subId}>{sub}</span>
+        {isCard && cardDesc ? <span className="model-card-desc">{cardDesc}</span> : null}
       </summary>
       <div className="sec-body">{children}</div>
     </details>
