@@ -13,14 +13,15 @@ export const SETTINGS_TABS = [
     keywords: '关注 屏蔽 规则 过滤 关键词 webhook 通知 推送 保留 天数 watch filter',
   },
   {
-    name: 'digest', label: '日报', group: '内容', icon: 'file',
-    desc: '日报时间、范围与风格',
-    keywords: '日报 生成 时间 自动 范围 条数 风格 提示词 digest ai',
-  },
-  {
     name: 'model', label: '模型', group: '智能', icon: 'sparkle',
     desc: '模型地址、Key、思考深度与 AI 标签',
     keywords: '模型 llm 地址 api key 密钥 温度 思考 深度 qwen deepseek model 标签 智能标签 打标 aitags 自动标签',
+  },
+  {
+    // 「日报」依赖 AI 模型生成，归到「智能」组、排在「模型」之下（用户 2026-11-18 指定）。
+    name: 'digest', label: '日报', group: '智能', icon: 'file',
+    desc: '日报时间、范围与风格',
+    keywords: '日报 生成 时间 自动 范围 条数 风格 提示词 digest ai',
   },
   {
     name: 'account', label: '账号', group: '账户', icon: 'user',

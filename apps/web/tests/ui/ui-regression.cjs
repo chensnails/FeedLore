@@ -1860,8 +1860,15 @@ const withEFP = (el, fn) => {
     const groupOf = (name) => document.querySelector('#settingsTab-' + name).closest('.tab-group').querySelector('.tab-group-label');
     if (groupOf('source').textContent !== '内容') throw new Error('source 分组');
     if (groupOf('model').textContent !== '智能') throw new Error('model 分组');
+    if (groupOf('digest').textContent !== '智能') throw new Error('digest 应在智能组');
     if (groupOf('account').textContent !== '账户') throw new Error('account 分组');
     if (groupOf('status').textContent !== '系统') throw new Error('status 分组');
+  });
+  t('日报归智能组且排在模型之下（AI 能力类归一处）', () => {
+    const smart = [...document.querySelectorAll('.tab-group')]
+      .find((g) => g.querySelector('.tab-group-label')?.textContent === '智能');
+    const names = [...smart.querySelectorAll('.tab')].map((b) => b.dataset.tab);
+    if (names.join('|') !== 'model|digest') throw new Error('智能组顺序应为 model|digest，实际 ' + names.join('|'));
   });
   t('每个 tab 都有可解析的 sprite 图标', () => {
     for (const btn of document.querySelectorAll('.tabs .tab')) {
