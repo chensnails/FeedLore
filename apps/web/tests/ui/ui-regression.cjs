@@ -6223,6 +6223,9 @@ const withEFP = (el, fn) => {
     const body = rd.slice(rd.indexOf('export function readerSetTag'), rd.indexOf('/* ---------- 图片灯箱'));
     if (!/loadReader\(\{ reset: true \}\)/.test(body)) throw new Error('点标签没触发 loadReader(reset)');
     if (!/state\.rdTag = ai \? null : next/.test(body)) throw new Error('未区分 AI 标签');
+    if (!/if \(next\) \{[\s\S]*?state\.rdScope = 'all'[\s\S]*?state\.rdFeedId = null[\s\S]*?state\.rdGroup = null[\s\S]*?state\.rdWatch = null/.test(body)) {
+      throw new Error('点标签没让频道 / 分组 / 关注视图 / 未读·收藏范围让位');
+    }
     if (/switchView\(/.test(body)) throw new Error('文章页点标签不应跳卡片页');
   });
 

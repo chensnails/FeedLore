@@ -1184,7 +1184,9 @@ export function readerSearch(q) {
  *
  * 与卡片页的关键差异：文章页看的是「全部内容」，点标签就留在本页重拉，
  * 不再跳到卡片页 —— 卡片页受 cardEnabled 开关限制，会漏掉未开卡片频道的文章。
- * 再点同一个标签 = 取消筛选，与频道/分组「再点回顶」同一手感。
+ * 因此点标签（两类都一样）等于「在全库找这个标签」：频道 / 分组 / 关注视图 /
+ * 未读·收藏范围全部让位，列表标题也回到「#标签」本身。再点同一个标签 = 取消筛选，
+ * 与频道/分组「再点回顶」同一手感；取消时不再动范围，用户接着看原来的视图。
  */
 export function readerSetTag(tag, ai = false) {
   const t = tag || null;
@@ -1194,8 +1196,16 @@ export function readerSetTag(tag, ai = false) {
   const next = same ? null : t;
   state.rdTag = ai ? null : next;
   state.rdAiTag = ai ? next : null;
+  if (next) {
+    state.rdScope = 'all';
+    state.rdFeedId = null;
+    state.rdGroup = null;
+    state.rdWatch = null;
+    watchPrevScope = null;
+  }
   renderReader();
   loadReader({ reset: true });
+  emitShell();
   scrollReaderTop();
   toast(next ? `已按${ai ? 'AI ' : ''}标签筛选：#${next}` : '已清除标签筛选');
 }
