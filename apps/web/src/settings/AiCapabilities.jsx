@@ -32,6 +32,14 @@ const ACTIONS = [
   { key: 'translate', name: '翻译' },
   { key: 'explain', name: '讲解' },
 ];
+const CAP_ICONS = {
+  entry_ai: 'i-sparkle',
+  ai_tags: 'i-tag',
+  digest: 'i-file',
+  explore: 'i-search',
+  mcp: 'i-link',
+  auto: 'i-clock',
+};
 
 /** 与服务端 isRouteEnabled 一致：ai_tags 默认关，其它默认开。 */
 const capOn = (key, r) => (key === 'ai_tags' ? r.enabled === true : r.enabled !== false);
@@ -39,6 +47,14 @@ const capOn = (key, r) => (key === 'ai_tags' ? r.enabled === true : r.enabled !=
 /** 模型的展示名：优先用户起的名字，其次上游模型名。 */
 export function modelLabel(m) {
   return String((m && (m.name || m.model)) || '').trim() || '未命名模型';
+}
+
+/** chip 文案：未分配跟随默认模型；引用了已删除的模型时明说，避免显示成默认。 */
+function chipOf(r, models, actionKey) {
+  const id = actionKey ? (r.actions || {})[actionKey] : r.providerId;
+  if (!id) return { label: '默认模型', custom: false };
+  const m = models.find((x) => String(x.id) === String(id));
+  return m ? { label: modelLabel(m), custom: true } : { label: '已移除的模型', custom: false };
 }
 
 /**
@@ -191,7 +207,7 @@ export function useAiSettings() {
   };
 }
 
-/** 任务分配：能力开关 + 每项能力走哪个模型；单篇四动作的高级分配默认收起。 */
+/** 任务分配：一项能力一行（名称 / 说明 + 模型 chip + 开关）；单篇四动作的高级分配默认收起。 */
 export function TaskAssignments({ ai }) {
   const { models, routes, busy, onToggle, onAssign } = ai;
   const options = [
@@ -203,17 +219,52 @@ export function TaskAssignments({ ai }) {
     })),
   ];
   return (
-    <div className="ai-cap ai-cap-caps">
+    <div className="ai-cap">
       <p className="hint">关闭某项能力后，服务端会直接拒绝这类调用（包括 API 与 MCP），不再消耗额度。</p>
       <div className="ai-cap-matrix">
         {CAPS.map((c) => {
           const r = routes[c.key] || {};
           const enabled = capOn(c.key, r);
+          const chip = chipOf(r, models, null);
           return (
-            <div className="ai-cap-row" key={c.key} data-cap={c.key}>
-              <div className="ai-cap-row-head">
+            <div className={'ai-cap-row' + (enabled ? '' : ' is-off')} key={c.key} data-cap={c.key}>
+              <div className="ai-cap-main">
+                <div className="ai-cap-top">
+                  <span className="ai-cap-ico" aria-hidden="true">
+                    <svg className="ico" focusable="false"><use href={'#' + CAP_ICONS[c.key]} /></svg>
+                  </span>
+                  <span className="ai-cap-name">{c.name}</span>
+                  {c.key === 'ai_tags' ? <span className="ai-cap-tag">默认关闭</span> : null}
+                </div>
+                <small className="form-tip ai-cap-hint">{c.hint}</small>
+                {c.key === 'entry_ai' && enabled && models.length > 1 ? (
+                  <details className="ai-cap-adv ai-cap-actions-adv">
+                    <summary>高级：按动作单独指定模型</summary>
+                    <div className="ai-cap-actions">
+                      {ACTIONS.map((a) => (
+                        <label key={a.key} className="ai-cap-action">
+                          <span>{a.name}</span>
+                          <Dropdown id={'aiCapAction-' + a.key} wrapId={'aiCapActionDD-' + a.key}
+                            title={`${a.name}使用的模型`} ariaLabel={`${a.name}使用的模型`}
+                            disabled={!!busy} value={(r.actions || {})[a.key] || r.providerId || 'default'}
+                            onChange={(v) => onAssign(c.key, v, a.key)}
+                            options={options} extraClass="ai-cap-act-chip" />
+                        </label>
+                      ))}
+                    </div>
+                    <p className="form-tip">不改就跟随上面的「单篇 AI」模型；这里只覆盖单个动作。</p>
+                  </details>
+                ) : null}
+              </div>
+              <div className="ai-cap-ctl">
+                <Dropdown id={'aiCapModel-' + c.key} wrapId={'aiCapModelDD-' + c.key}
+                  title={`${c.name}使用的模型`} ariaLabel={`${c.name}使用的模型`}
+                  disabled={!!busy || !enabled} value={r.providerId || 'default'}
+                  valueLabel={chip.label}
+                  onChange={(v) => onAssign(c.key, v)}
+                  options={options} extraClass="ai-cap-chip"
+                  dataAttrs={{ 'data-custom': chip.custom ? 'true' : 'false' }} />
                 <label className="ai-cap-sw">
-                  <span className="ai-cap-sw-name">{c.name}</span>
                   <span className="switch">
                     <input type="checkbox" checked={enabled} disabled={!!busy}
                       aria-label={`${c.name}开关`}
@@ -221,31 +272,7 @@ export function TaskAssignments({ ai }) {
                     <span className="switch-slider" />
                   </span>
                 </label>
-                <Dropdown id={'aiCapModel-' + c.key} wrapId={'aiCapModelDD-' + c.key}
-                  title={`${c.name}使用的模型`} ariaLabel={`${c.name}使用的模型`}
-                  disabled={!!busy || !enabled} value={r.providerId || 'default'}
-                  onChange={(v) => onAssign(c.key, v)}
-                  options={options} />
               </div>
-              <small className="form-tip">{c.hint}</small>
-              {c.key === 'entry_ai' && enabled && models.length > 1 ? (
-                <details className="ai-cap-actions-adv">
-                  <summary>高级：按动作单独指定模型</summary>
-                  <div className="ai-cap-actions">
-                    {ACTIONS.map((a) => (
-                      <label key={a.key} className="ai-cap-action">
-                        <span>{a.name}</span>
-                        <Dropdown id={'aiCapAction-' + a.key} wrapId={'aiCapActionDD-' + a.key}
-                          title={`${a.name}使用的模型`} ariaLabel={`${a.name}使用的模型`}
-                          disabled={!!busy} value={(r.actions || {})[a.key] || r.providerId || 'default'}
-                          onChange={(v) => onAssign(c.key, v, a.key)}
-                          options={options} />
-                      </label>
-                    ))}
-                  </div>
-                  <small className="form-tip">不改就跟随上面的「单篇 AI」模型；这里只覆盖单个动作。</small>
-                </details>
-              ) : null}
             </div>
           );
         })}

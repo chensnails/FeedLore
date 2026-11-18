@@ -3173,7 +3173,7 @@ const withEFP = (el, fn) => {
   });
 
   // —— 任务分配：6 个能力行，拨动即落库，不需要保存 ——
-  t('任务分配：6 个能力行，ai_tags 默认关', () => {
+  t('任务分配：6 个能力行，ai_tags 默认关，模型收成 chip', () => {
     const rows = document.querySelectorAll('[data-sec="llm-capabilities"] .ai-cap-row');
     if (rows.length !== 6) throw new Error('能力行数 ' + rows.length);
     const sw = document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]');
@@ -3181,6 +3181,22 @@ const withEFP = (el, fn) => {
     if (document.querySelector('[data-sec="llm-aitags"]') || document.querySelector('#aiTagsEnable')) {
       throw new Error('AI 标签不该有独立开关');
     }
+    const tagsRow = document.querySelector('[data-cap="ai_tags"]');
+    if (!tagsRow.classList.contains('is-off')) throw new Error('关闭的能力行应带 is-off');
+    const tag = tagsRow.querySelector('.ai-cap-tag');
+    if (!tag || tag.textContent !== '默认关闭') throw new Error('缺「默认关闭」徽标');
+    const chip = tagsRow.querySelector('.ai-cap-chip.dd-trigger');
+    if (!chip) throw new Error('缺模型 chip');
+    if (chip.textContent.indexOf('默认模型') < 0) throw new Error('chip 文案: ' + chip.textContent);
+    if (chip.getAttribute('data-custom') !== 'false') throw new Error('默认模型不该点亮自定义标记');
+    if (!chip.disabled) throw new Error('能力关闭后 chip 应禁用');
+    if (document.querySelector('[data-sec="llm-capabilities"] .ai-cap-row-head')) {
+      throw new Error('旧的行头结构应退场');
+    }
+    const first = rows[0];
+    if (!first.querySelector('.ai-cap-ico use')) throw new Error('能力行缺图标');
+    if (!first.querySelector('.ai-cap-hint')) throw new Error('能力行缺一行说明');
+    if (!first.querySelector('.ai-cap-ctl .ai-cap-sw input[type="checkbox"]')) throw new Error('开关应在行尾');
   });
   {
     const before = postsTo('/api/prefs').length;
@@ -3191,6 +3207,9 @@ const withEFP = (el, fn) => {
       const body = lastPostBody('/api/prefs');
       if (!body.llmRoutes || body.llmRoutes.ai_tags?.enabled !== true) throw new Error('body: ' + JSON.stringify(body));
       if (document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').checked !== true) throw new Error('开关未翻开');
+      const row = document.querySelector('[data-cap="ai_tags"]');
+      if (row.classList.contains('is-off')) throw new Error('开启后不该再带 is-off');
+      if (row.querySelector('.ai-cap-chip.dd-trigger').disabled) throw new Error('开启后 chip 应可用');
     });
   }
   {
@@ -3217,6 +3236,60 @@ const withEFP = (el, fn) => {
     });
     document.querySelector('[data-cap="explore"] input[type="checkbox"]').click();
     await sleep(120);
+  }
+
+  // —— 模型分配：点 chip 选模型即时落库；关闭能力只灰化、不清空分配 ——
+  {
+    const before = postsTo('/api/prefs').length;
+    document.querySelector('#aiCapModel-digest').click();
+    await sleep(40);
+    const item = [...document.querySelectorAll('#aiCapModelDD-digest .dd-panel .dd-item')]
+      .find((el) => el.textContent === '便宜模型');
+    if (!item) throw new Error('chip 下拉里没有「便宜模型」');
+    item.click();
+    await sleep(160);
+    t('点 chip 选模型：POST llmRoutes.digest.providerId，chip 点亮自定义', () => {
+      if (postsTo('/api/prefs').length !== before + 1) throw new Error('未 POST');
+      const body = lastPostBody('/api/prefs');
+      if (!body.llmRoutes || !body.llmRoutes.digest || !body.llmRoutes.digest.providerId) {
+        throw new Error('body: ' + JSON.stringify(body));
+      }
+      const chip = document.querySelector('#aiCapModel-digest');
+      if (chip.getAttribute('data-custom') !== 'true') throw new Error('chip 未标记自定义');
+      if (chip.textContent.indexOf('便宜模型') < 0) throw new Error('chip 文案: ' + chip.textContent);
+    });
+  }
+  {
+    document.querySelector('[data-cap="digest"] input[type="checkbox"]').click();
+    await sleep(160);
+    t('关闭能力：chip 禁用但保留已选模型，行变灰', () => {
+      const row = document.querySelector('[data-cap="digest"]');
+      if (!row.classList.contains('is-off')) throw new Error('缺 is-off');
+      const chip = row.querySelector('.ai-cap-chip.dd-trigger');
+      if (!chip.disabled) throw new Error('chip 未禁用');
+      if (chip.textContent.indexOf('便宜模型') < 0) throw new Error('chip 丢了已选模型: ' + chip.textContent);
+    });
+    document.querySelector('[data-cap="digest"] input[type="checkbox"]').click();
+    await sleep(160);
+  }
+  {
+    const before = postsTo('/api/prefs').length;
+    const details = document.querySelector('[data-cap="entry_ai"] .ai-cap-actions-adv');
+    details.open = true;
+    await sleep(20);
+    document.querySelector('#aiCapAction-summary').click();
+    await sleep(40);
+    const item = [...document.querySelectorAll('#aiCapActionDD-summary .dd-panel .dd-item')]
+      .find((el) => el.textContent === '便宜模型');
+    if (!item) throw new Error('动作下拉里没有「便宜模型」');
+    item.click();
+    await sleep(160);
+    t('高级分配：按动作指定模型 POST llmRoutes.entry_ai.actions.summary', () => {
+      if (postsTo('/api/prefs').length !== before + 1) throw new Error('未 POST');
+      const body = lastPostBody('/api/prefs');
+      const act = body.llmRoutes && body.llmRoutes.entry_ai && body.llmRoutes.entry_ai.actions;
+      if (!act || !act.summary) throw new Error('body: ' + JSON.stringify(body));
+    });
   }
 
   // —— 添加厂商 / 删除模型 / 删除厂商 ——

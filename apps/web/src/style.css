@@ -1981,58 +1981,112 @@ textarea:disabled {
 /* 频道列表不再自己滚，交给 .pane-scroll 统一滚 */
 .feed-list { padding:0; }
 
-/* ---------- 设置 → 模型 → AI 能力（0015 多路提供商） ----------
-   组件自己即时保存，没有脏态与底部动作栏；视觉沿用 .form-row / .btn-sm / .switch，
-   只补容器骨架。窄屏规则就近写在本段末尾，不塞进别的功能断点段。 */
-.ai-cap-h { margin: var(--sp-5) 0 var(--sp-2); font-size: var(--fs-md); font-weight: 500; }
+/* ---------- 设置 → 模型 → 任务分配（能力行） ----------
+   一项能力一行：左侧图标 + 名称 + 一行说明，右侧模型 chip + 开关；点 chip 才展开选择。
+   关闭能力只弱化、不清空已选模型。组件自己即时保存，没有脏态与底部动作栏；
+   窄屏规则就近写在本段末尾，不塞进别的功能断点段。 */
 .ai-cap > .hint { margin: 0 0 var(--sp-3); }
 .ai-cap > .hint.is-ok { color: var(--success, var(--accent-text)); }
 .ai-cap > .hint.is-err { color: var(--danger); }
-.ai-cap-providers { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); }
-.ai-cap-provider {
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
-  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-md);
-  background: var(--surface-soft, var(--panel));
+.ai-cap-matrix {
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  overflow: hidden;
 }
-/* 内置默认槽：只展示不可编辑（改它在「接口与密钥」区），虚线边与其他模型区分 */
-.ai-cap-provider.is-builtin { border-style: dashed; background: transparent; }
-.ai-cap-p-main { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); flex: 1; min-width: 0; }
-.ai-cap-p-name { font-size: var(--fs-md); font-weight: 500; }
-.ai-cap-p-main .hint { font-size: var(--fs-xs); }
-.ai-cap-badge {
-  padding: 1px 6px; border-radius: 999px; font-size: var(--fs-xs);
+.ai-cap-row {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  min-height: 60px; padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+.ai-cap-row:first-child { border-top: 0; }
+.ai-cap-main { flex: 1 1 auto; min-width: 0; }
+.ai-cap-top { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.ai-cap-ico {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; flex: 0 0 30px;
+  border-radius: var(--radius-sm);
   background: var(--accent-soft); color: var(--accent-text);
 }
-.ai-cap-p-actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
-.ai-cap-editor {
-  padding: var(--sp-4); margin-bottom: var(--sp-3);
-  border: 1px solid var(--border); border-radius: var(--radius-md);
-  background: var(--surface-soft, var(--panel));
+.ai-cap-ico .ico { width: .95rem; height: .95rem; }
+.ai-cap-name { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+/* 「默认关闭」是固有属性而非告警，用中性徽标 */
+.ai-cap-tag {
+  padding: 1px var(--sp-2); border-radius: var(--radius-pill);
+  font-size: var(--fs-2xs); font-weight: 600;
+  background: var(--chip-solid); color: var(--text-muted);
 }
-.ai-cap-editor-actions { display: flex; gap: var(--sp-2); }
-.ai-cap-matrix { display: flex; flex-direction: column; gap: var(--sp-3); }
-.ai-cap-row {
-  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-md);
+.ai-cap-hint { margin: 3px 0 0 38px; font-size: var(--fs-xs); line-height: 1.6; }
+.ai-cap-ctl { display: flex; align-items: center; gap: var(--sp-3); flex: 0 0 auto; padding-top: 3px; }
+
+/* 模型 chip：默认模型留灰点，自定义模型点亮强调色；长名截断不把行撑开 */
+.ai-cap-chip.dd-trigger {
+  max-width: 230px; min-height: 30px;
+  padding: 4px var(--sp-3); border-radius: var(--radius-pill);
+  background: var(--chip-solid); border: 1px solid transparent;
+  font-size: var(--fs-sm); color: var(--text);
 }
-.ai-cap-row-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
-.ai-cap-sw { display: inline-flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
-.ai-cap-sw-name { font-size: var(--fs-md); font-weight: 500; }
-/* 能力分配的下拉是自绘 Dropdown（.dd 容器 + .dd-trigger 按钮），不再是原生 select */
-.ai-cap-row-head .dd { flex: 1; min-width: 160px; max-width: 320px; }
-.ai-cap-row-head .dd-trigger { width: 100%; }
+.ai-cap-chip.dd-trigger::before {
+  content: ''; width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%;
+  background: var(--text-faint);
+}
+.ai-cap-chip[data-custom="true"].dd-trigger::before { background: var(--accent); }
+.ai-cap-chip .dd-label { max-width: 180px; }
+.ai-cap-chip .dd-caret { width: .75rem; height: .75rem; }
+.ai-cap-chip.dd-trigger:hover:not(:disabled) { background: var(--hover); border-color: var(--border-strong); }
+.ai-cap-chip.dd-trigger:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+/* 关闭态：只弱化；chip 仍保留已选模型，重新打开即恢复 */
+.ai-cap-row.is-off .ai-cap-ico { opacity: .55; }
+.ai-cap-row.is-off .ai-cap-name { color: var(--text-muted); }
+.ai-cap-row.is-off .ai-cap-chip.dd-trigger { color: var(--text-muted); }
+
+/* 开关：视觉尺寸不变，四周补 10px 命中区 */
+.ai-cap-sw { display: inline-flex; align-items: center; padding: 10px; margin: -10px; cursor: pointer; }
+
+/* 高级：按动作单独指定模型（单篇 AI 内，默认收起） */
+.ai-cap-adv {
+  margin: var(--sp-3) 0 0 38px; padding-top: var(--sp-3);
+  border-top: 1px dashed var(--border);
+}
+.ai-cap-adv > summary {
+  list-style: none; width: fit-content; cursor: pointer;
+  font-size: var(--fs-xs); color: var(--text-muted);
+}
+.ai-cap-adv > summary::-webkit-details-marker { display: none; }
+.ai-cap-adv > summary::before {
+  content: ''; display: inline-block; width: 0; height: 0; margin-right: 6px;
+  border-left: 4px solid currentColor;
+  border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transform: translateY(-1px); transition: transform var(--dur-fast);
+}
+.ai-cap-adv[open] > summary::before { transform: rotate(90deg); }
 .ai-cap-actions {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--sp-2); margin-top: var(--sp-3);
-  padding-top: var(--sp-3); border-top: 1px solid var(--border);
 }
-.ai-cap-action { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }
+.ai-cap-action { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-muted); }
 .ai-cap-action .dd { flex: 1; min-width: 0; }
-.ai-cap-action .dd-trigger { width: 100%; }
+.ai-cap-action .dd-trigger {
+  width: 100%; padding: 3px var(--sp-2);
+  font-size: var(--fs-xs); border-radius: var(--radius-sm);
+}
+.ai-cap-action .dd-label { max-width: none; }
+.ai-cap-adv > .form-tip { margin-top: var(--sp-2); font-size: var(--fs-xs); }
+
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
-  .ai-cap-provider { flex-direction: column; align-items: stretch; }
-  .ai-cap-p-actions { justify-content: flex-start; }
-  /* 窄屏让模型下拉换行独占整行，不被开关挤窄（flex-basis:100% 强制换行） */
-  .ai-cap-row-head .dd { flex: 0 0 100%; max-width: none; width: 100%; }
+  /* 移动：名称与开关同行，chip 落到第二行靠左，说明与高级分配占满整行 */
+  .ai-cap-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "main sw" "chip chip";
+    column-gap: var(--sp-2); padding: var(--sp-3);
+  }
+  .ai-cap-main { grid-area: main; }
+  .ai-cap-ctl { display: contents; }
+  .ai-cap-ctl .dd { grid-area: chip; justify-self: start; margin-top: var(--sp-2); max-width: 100%; }
+  .ai-cap-ctl .ai-cap-sw { grid-area: sw; align-self: start; }
+  .ai-cap-chip.dd-trigger { max-width: min(100%, 260px); }
+  .ai-cap-chip .dd-label { max-width: none; }
+  .ai-cap-hint, .ai-cap-adv { margin-left: 0; }
+  .ai-cap-adv { margin-top: var(--sp-2); }
   .ai-cap-actions { grid-template-columns: 1fr; }
 }
 
