@@ -161,16 +161,19 @@ export function useAiCapabilities() {
   };
 }
 
-/** 模型列表 + 添加/编辑：归到「模型配置」层。 */
-export function ModelLibrary({ cap }) {
+/** 模型列表 + 添加/编辑。`lead` 用于把「默认模型」那一行插到列表最前面，
+ *  让页面上只有一个模型列表、地址/Key/模型名只有一套 UI（2026-11-18 简化）。 */
+export function ModelLibrary({ cap, lead }) {
   const { providers, loaded, busy, msg, editing, draft, setDraft,
     startEdit, saveProvider, removeProvider, setDefault, testProvider, setEditing } = cap;
   return (
     <div className="ai-cap ai-cap-lib">
       {msg ? <div className={'hint ' + (msg.ok ? 'is-ok' : 'is-err')} role="status">{msg.text}</div> : null}
 
-      <h3 className="ai-cap-h">已添加的模型</h3>
-      <p className="hint">默认模型在下方「接口与密钥」配置；未单独分配的任务统一走它。</p>
+      {lead || null}
+
+      <h3 className="ai-cap-h">{lead ? '其它模型' : '已添加的模型'}</h3>
+      {lead ? null : <p className="hint">默认模型在上方「模型」里配置；未单独分配的任务统一走它。</p>}
       {!loaded ? <p className="hint">读取中…</p> : null}
       <div className="ai-cap-providers">
         {providers.map((p) => (
@@ -266,18 +269,24 @@ export function CapabilitySwitches({ cap }) {
               </div>
               <small className="form-tip">{c.hint}</small>
               {c.key === 'entry_ai' && enabled && providers.length ? (
-                <div className="ai-cap-actions">
-                  {ACTIONS.map((a) => (
-                    <label key={a.key} className="ai-cap-action">
-                      <span>{a.name}</span>
-                      <Dropdown id={'aiCapAction-' + a.key} wrapId={'aiCapActionDD-' + a.key}
-                        title={`${a.name}使用的模型`} ariaLabel={`${a.name}使用的模型`}
-                        disabled={!!busy} value={(r.actions || {})[a.key] || r.providerId || 'default'}
-                        onChange={(v) => onAssign(c.key, v, a.key)}
-                        options={options.map((o) => ({ value: o.id, label: o.label }))} />
-                    </label>
-                  ))}
-                </div>
+                /* 四动作的独立模型分配收进「高级」：默认全部跟随上面的能力模型，
+                   只有想「翻译用便宜模型、摘要用强模型」这类精细控制时才展开。 */
+                <details className="ai-cap-actions-adv">
+                  <summary>高级：按动作单独指定模型</summary>
+                  <div className="ai-cap-actions">
+                    {ACTIONS.map((a) => (
+                      <label key={a.key} className="ai-cap-action">
+                        <span>{a.name}</span>
+                        <Dropdown id={'aiCapAction-' + a.key} wrapId={'aiCapActionDD-' + a.key}
+                          title={`${a.name}使用的模型`} ariaLabel={`${a.name}使用的模型`}
+                          disabled={!!busy} value={(r.actions || {})[a.key] || r.providerId || 'default'}
+                          onChange={(v) => onAssign(c.key, v, a.key)}
+                          options={options.map((o) => ({ value: o.id, label: o.label }))} />
+                      </label>
+                    ))}
+                  </div>
+                  <small className="form-tip">不改就跟随上面的「单篇 AI」模型；这里只覆盖单个动作。</small>
+                </details>
               ) : null}
             </div>
           );

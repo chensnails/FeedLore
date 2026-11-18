@@ -2833,54 +2833,95 @@ const withEFP = (el, fn) => {
     if (!/^llm-url-/.test(el.name || '')) throw new Error('name 非唯一非语义: ' + el.name);
     if (el.getAttribute('autocomplete') !== 'off') throw new Error('autocomplete 未关闭');
   });
-  t('模型页四卡片：多路提供商 / 模式设置 / 能力开关 / 状态统计，6 能力即时保存', () => {
-    // ① 多路提供商管理与添加（提到最前）
+  t('模型页三卡片：模型 / 使用方式 / 运行状态，6 能力即时保存', () => {
+    // ① 模型卡：默认模型作首行 + 其它模型列表 + 添加入口
     const lib = document.querySelector('[data-sec="llm-library"]');
-    if (!lib || !lib.classList.contains('model-card')) throw new Error('缺卡片①多路提供商');
+    if (!lib || !lib.classList.contains('model-card')) throw new Error('缺卡片①模型');
+    if (!lib.querySelector('[data-provider-default="1"]')) throw new Error('缺默认模型首行');
+    if (!lib.querySelector('#editDefaultModelBtn')) throw new Error('缺默认模型编辑按钮');
     if (!lib.querySelector('#aiCapAddProvider')) throw new Error('缺添加模型按钮');
-    // ② 模式设置（默认槽 + 思考子节，同一张卡）
+    // 默认模型的地址/Key/模型名/温度在同一张卡里（唯一的表单，不再和添加表单重复）
     const api = document.querySelector('[data-sec="llm-api"]');
-    const think = document.querySelector('[data-sec="llm-thinking"]');
-    if (!api || !api.classList.contains('model-card')) throw new Error('缺卡片②模式设置');
-    if (!think || think.tagName !== 'DIV' || !api.contains(think)) throw new Error('思考子节应在模式设置卡内');
-    // ③ 能力开关与模型分配：6 个能力行
+    if (!api || api.tagName !== 'DIV' || !lib.contains(api)) throw new Error('默认模型表单应在模型卡内');
+    for (const id of ['#llmBaseUrl', '#llmApiKey', '#llmModel', '#llmTemp']) {
+      if (!api.contains(document.querySelector(id))) throw new Error(id + ' 不在默认模型表单');
+    }
+    if (lib.querySelector('.sec-head .sec-sub').textContent !== 'Qwen/Qwen3-8B') throw new Error('模型摘要: ' + lib.querySelector('.sec-head .sec-sub').textContent);
+    // ② 使用方式卡：思考子节 + 6 个能力行
     const sec = document.querySelector('[data-sec="llm-capabilities"]');
-    if (!sec || !sec.classList.contains('model-card')) throw new Error('缺卡片③能力开关');
+    if (!sec || !sec.classList.contains('model-card')) throw new Error('缺卡片②使用方式');
+    const think = document.querySelector('[data-sec="llm-thinking"]');
+    if (!think || think.tagName !== 'DIV' || !sec.contains(think)) throw new Error('思考子节应在使用方式卡内');
     const cap = sec.querySelector('.ai-cap');
     if (!cap) throw new Error('缺 .ai-cap 容器');
     const rows = cap.querySelectorAll('.ai-cap-row');
     if (rows.length !== 6) throw new Error('应有 6 个能力行，实际 ' + rows.length);
     if (!cap.querySelector('[data-cap="entry_ai"]')) throw new Error('缺单篇 AI 行');
-    // ④ 模型状态与统计（状态/历史 + 用量子节，同一张卡）
+    // 没有额外模型时「按动作指定模型」本就不渲染，它被收进高级折叠的检查放到添加模型之后
+    // ③ 运行状态卡：状态/历史 + 用量子节
     const status = document.querySelector('[data-sec="llm-status"]');
     const usage = document.querySelector('[data-sec="llm-usage"]');
-    if (!status || !status.classList.contains('model-card')) throw new Error('缺卡片④状态统计');
-    if (!usage || usage.tagName !== 'DIV' || !status.contains(usage)) throw new Error('用量子节应在状态统计卡内');
-    // 四张卡片按 01→02→03→04 顺序、各自带编号与说明
+    if (!status || !status.classList.contains('model-card')) throw new Error('缺卡片③运行状态');
+    if (!usage || usage.tagName !== 'DIV' || !status.contains(usage)) throw new Error('用量子节应在运行状态卡内');
+    // 三张卡片按 01→02→03 顺序、各自带编号与说明
     const cards = [...document.querySelectorAll('[data-pane="model"] .model-card')];
-    if (cards.length !== 4) throw new Error('应有 4 张卡片，实际 ' + cards.length);
+    if (cards.length !== 3) throw new Error('应有 3 张卡片，实际 ' + cards.length);
     const nos = cards.map((c) => c.querySelector('.model-card-no')?.textContent).join('|');
-    if (nos !== '01|02|03|04') throw new Error('卡片编号/顺序: ' + nos);
+    if (nos !== '01|02|03') throw new Error('卡片编号/顺序: ' + nos);
     if (cards.some((c) => !c.querySelector('.model-card-desc')?.textContent.trim())) throw new Error('卡片缺说明行');
     // 旧的独立 AI 标签 Section 已废弃（0016 收口到能力开关区）
     if (document.querySelector('[data-sec="llm-aitags"]') || document.querySelector('#aiTagsEnable')) {
       throw new Error('AI 标签仍有独立开关，未收口到能力区');
     }
-    // 组件渲染不能带 PaneFoot 的脏态按钮：它是独立即时保存
     if (cap.querySelector('.pane-foot')) throw new Error('能力区块不该有自己的动作栏');
+    // 默认展开：模型与使用方式是常用配置，运行状态是诊断（收起省空间）
+    if (!lib.open) throw new Error('「模型」卡应默认展开');
+    if (!sec.open) throw new Error('「使用方式」卡应默认展开');
+    if (status.open) throw new Error('「运行状态」卡应默认收起');
   });
 
-  t('模式设置卡：默认槽字段与思考子节同卡、均常驻展开', () => {
+  t('默认模型：未配置时自动展开表单', () => {
     const api = document.querySelector('[data-sec="llm-api"]');
+    if (!api) throw new Error('缺默认模型表单');
+    if (!document.querySelector('#editDefaultModelBtn')) throw new Error('缺默认模型编辑按钮');
+    if (api.hidden) throw new Error('未配置时应自动展开默认模型表单');
+  });
+  document.querySelector('#editDefaultModelBtn').click();
+  await sleep(50);
+  t('默认模型：点「收起」后表单隐藏（列表只留一行摘要）', () => {
+    if (!document.querySelector('[data-sec="llm-api"]').hidden) throw new Error('点收起后表单未隐藏');
+  });
+  document.querySelector('#editDefaultModelBtn').click();
+  await sleep(50);
+  t('默认模型：再点「编辑」重新展开', () => {
+    if (document.querySelector('[data-sec="llm-api"]').hidden) throw new Error('再点编辑未展开');
+  });
+
+  // 添加一个额外模型 → 「按动作指定模型」才出现，且必须收在高级折叠里、默认收起
+  {
+    document.querySelector('#aiCapAddProvider').click();
+    await sleep(50);
+    setInput('#aiCapName', '便宜模型');
+    setInput('#aiCapBaseUrl', 'https://cheap.example.com/v1');
+    setInput('#aiCapModel', 'cheap-1');
+    setInput('#aiCapKey', 'sk-cheap');
+    document.querySelector('#aiCapSaveProvider').click();
+    await sleep(150);
+    t('添加模型：新行入列表，四动作收进高级折叠且默认收起', () => {
+      if (!document.querySelector('.ai-cap-provider[data-provider-id]')) throw new Error('新模型未出现在列表');
+      const adv = document.querySelector('[data-cap="entry_ai"] .ai-cap-actions-adv');
+      if (!adv) throw new Error('四动作应收进高级折叠');
+      if (adv.open) throw new Error('四动作高级折叠应默认收起');
+      if (!adv.querySelector('#aiCapAction-summary')) throw new Error('高级里应保留四动作下拉');
+    });
+  }
+
+  t('使用方式卡：思考子节与能力区同卡，摘要同步', () => {
+    const sec = document.querySelector('[data-sec="llm-capabilities"]');
     const think = document.querySelector('[data-sec="llm-thinking"]');
-    if (!api || !think) throw new Error('缺分组');
-    if (!api.open) throw new Error('模式设置卡应默认展开');
-    for (const id of ['#llmBaseUrl', '#llmApiKey', '#llmModel', '#llmTemp']) {
-      if (!api.contains(document.querySelector(id))) throw new Error(id + ' 不在模式设置卡');
-    }
-    if (!think.contains(document.querySelector('#llmThinking'))) throw new Error('开关不在思考子节');
-    if (!think.contains(document.querySelector('#llmDepth'))) throw new Error('深度不在思考子节');
-    if (api.querySelector('.sec-sub').textContent !== 'Qwen/Qwen3-8B') throw new Error('模型摘要: ' + api.querySelector('.sec-sub').textContent);
+    if (!sec || !think) throw new Error('缺分组');
+    if (!think.querySelector('#llmThinking')) throw new Error('开关不在思考子节');
+    if (!think.querySelector('#llmDepth')) throw new Error('深度不在思考子节');
     const sub = think.querySelector('.sec-sub').textContent;
     if (sub.indexOf('已关闭') < 0) throw new Error('默认关闭的摘要: ' + sub);
   });
@@ -2888,7 +2929,7 @@ const withEFP = (el, fn) => {
     if (document.querySelector('[data-sec="llm-thinking"]').classList.contains('is-advanced')) {
       throw new Error('思考子节又被打回高级组');
     }
-    if (document.querySelector('[data-sec="llm-api"] .sec-adv')) throw new Error('常用组不该有「高级」标');
+    if (document.querySelector('[data-sec="llm-api"] .sec-adv')) throw new Error('默认模型不该有「高级」标');
   });
 
   t('进入即拉 /api/prefs 回填', () => {
@@ -3018,10 +3059,13 @@ const withEFP = (el, fn) => {
   // 复位成中档：后面的「测试模型」断言依赖表单默认值，不能带着「深」继续跑
   await setSel('#llmDepth', 'medium');
   await sleep(40);
-  t('开思考后：模型名的提示跟着改口（不再宣称内置 /no_think）', () => {
-    const tip = [...document.querySelectorAll('#llmModel ~ .form-tip, .form-tip')].map((e) => e.textContent).join(' | ');
-    if (tip.indexOf('已开启思考') < 0) throw new Error('提示未跟着变: ' + tip.slice(0, 120));
-    if (tip.indexOf('内置 /no_think') >= 0) throw new Error('还挂着「内置 /no_think」的旧说法');
+  t('开思考后：思考子节摘要改口，模型名提示不再重复思考文案', () => {
+    const sub = document.querySelector('[data-sec="llm-thinking"] .sec-sub').textContent;
+    if (sub.indexOf('已开启') < 0) throw new Error('思考子节摘要未改口: ' + sub);
+    const modelTip = document.querySelector('#llmModelTip');
+    if (modelTip && modelTip.textContent.indexOf('已开启思考') >= 0) {
+      throw new Error('模型名提示重复了思考文案（已收口到思考子节）');
+    }
   });
 
   // 显示/隐藏 Key
@@ -3190,11 +3234,17 @@ const withEFP = (el, fn) => {
     if (rows[0].textContent.indexOf('日报生成') < 0) throw new Error('明细文案: ' + rows[0].textContent);
   });
   const usageGetsBefore = callsOf('apiFetch').filter((c) => String(c[1]).indexOf('/api/ai-usage') === 0).length;
-  document.querySelector('#aiUsageRefresh').click();
+  const reqGetsBefore = callsOf('apiFetch').filter((c) => String(c[1]).indexOf('/api/ai-requests') === 0).length;
+  document.querySelector('#modelRefreshAll').click();
   await sleep(80);
-  t('AI 用量：点刷新重新拉一次（读接口不记账）', () => {
+  t('运行状态：一个刷新同时重拉用量与历史（读接口不记账）', () => {
     const after = callsOf('apiFetch').filter((c) => String(c[1]).indexOf('/api/ai-usage') === 0).length;
-    if (after !== usageGetsBefore + 1) throw new Error('GET 次数 ' + usageGetsBefore + ' -> ' + after);
+    const reqAfter = callsOf('apiFetch').filter((c) => String(c[1]).indexOf('/api/ai-requests') === 0).length;
+    if (after !== usageGetsBefore + 1) throw new Error('用量 GET 次数 ' + usageGetsBefore + ' -> ' + after);
+    if (reqAfter !== reqGetsBefore + 1) throw new Error('历史 GET 次数 ' + reqGetsBefore + ' -> ' + reqAfter);
+    if (document.querySelector('#aiUsageRefresh') || document.querySelector('#aiRequestsRefresh')) {
+      throw new Error('旧的分散刷新按钮应已合并');
+    }
   });
 
   // ============ 日报面板（整组按账号：开关 / 自动生成 / 范围 / 上限 / 风格） ============

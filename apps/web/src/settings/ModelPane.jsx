@@ -5,16 +5,17 @@
  *   apiKeySet + 掩码），留空 = 不修改；temperature 数值化后发送（旧实现传字符串，
  *   依赖服务端 clampNum 容错）；
  * - 保存 / 测试 / 清除三个动作的请求体与旧实现逐字段一致，成功后重新拉取刷新掩码态。
- * - 页面按四张大卡片组织（2026-11-18 深度重构）：
- *   ① 多路提供商管理与添加（llm-library，提到最前）
- *   ② 模式设置（llm-api 默认槽 + llm-thinking 思考模式/深度，合成一张卡）
- *   ③ 能力开关与模型分配（llm-capabilities，6 能力 + 四动作 + AI 标签单开关）
- *   ④ 模型状态与统计（llm-status 状态/历史 + llm-usage 用量，合成一张卡）
+ * - 页面按三张大卡片组织（2026-11-18 二次简化）：
+ *   ① 模型（llm-library）：默认模型作列表首行、点「编辑」才展开表单；其它提供商并列其下。
+ *      地址 / Key / 模型名 只有这一套 UI，不再与「添加模型」重复。
+ *   ② 使用方式（llm-capabilities）：思考模式与深度子节 + 6 能力开关与模型分配；
+ *      单篇四动作的独立模型分配收进「高级」，默认不占版面。
+ *   ③ 运行状态（llm-status + llm-usage 子节）：状态 / 历史请求 / 用量，共用一个刷新。
  *   AI 标签开关 0016 起收口到能力开关区，废弃 prefs.aiTags，不再单列 Section。
  *
- * 卡片靠 Section 的可选 cardNo/cardDesc 渲染；四个 data-sec 锚点保持原样
- * （llm-library / llm-api / llm-capabilities / llm-status 仍指向对应卡片），
- * 旧测试与巡检选择器不失效。所有控件 id / data-cap 逐字保留。 */
+ * 生效方式：地址 / Key 类显式保存（底部按钮）；温度、思考、能力开关、模型分派
+ * 全部改完即生效、失败回滚。data-sec 锚点（llm-library / llm-api / llm-thinking /
+ * llm-capabilities / llm-status / llm-usage）全部保留，旧选择器不失效。 */
 
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
@@ -98,8 +99,11 @@ export function ModelPane({ onDirtyChange }) {
   // username 塞进来。给它和 Key 一样的非语义唯一 name + 反填充标记（见 ui/noAutofill.js）。
   const urlName = useNoAutofillName('llm-url');
   const paneRef = useRef(null);
-  // 模型库与能力开关共享一份取数（一次 GET），两个展示组件分别挂到对应层级。
+  // 模型库与能力开关共享一份取数（一次 GET），两个展示组件挂到对应卡片。
   const aiCap = useAiCapabilities();
+  /* 默认模型现在是列表首行：收起时只看一行摘要，点「编辑」才展开表单。
+     未配置（缺 Key 或模型名）时自动展开，省得用户找不到该填哪里。 */
+  const [editDefault, setEditDefault] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [savedForm, setSavedForm] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -171,6 +175,8 @@ export function ModelPane({ onDirtyChange }) {
         // Key 输入框每次回填都清空并回到掩码态：留空 = 不修改
         setApiKey('');
         setShowKey(false);
+        // 还没配好（缺 Key 或模型名）就把默认行展开，省得用户找
+        setEditDefault((prev) => prev || !next.apiKeySet || !String(next.model || '').trim());
       });
       if (!applied) setSavedForm((s) => s || JSON.stringify(EMPTY));
     } catch (err) {
@@ -337,6 +343,26 @@ export function ModelPane({ onDirtyChange }) {
     }
   };
 
+  /* 温度即时生效：失焦即提交（数字输入边打字边 POST 太吵）。
+     只提交 temperature 一个字段，不碰用户还没保存的地址 / Key / 模型名。 */
+  async function onTempCommit() {
+    const next = String(parseTemp(form.temperature));
+    let base = null;
+    try { base = JSON.parse(savedForm || 'null'); } catch { base = null; }
+    if (base && String(base.temperature) === next) return;   // 没改就不发请求
+    try {
+      const ok = await patchThinking({ temperature: parseTemp(next) }, '温度已更新（立即生效）');
+      if (ok) syncSavedForm({ temperature: next });
+      else setForm((f) => Object.assign({}, f, { temperature: base ? base.temperature : EMPTY.temperature }));
+    } catch (err) {
+      setForm((f) => Object.assign({}, f, { temperature: base ? base.temperature : EMPTY.temperature }));
+      setResult({ ok: false, msg: '保存温度失败：' + String((err && err.message) || err) });
+    }
+  }
+
+  /** 运行状态卡片的一个刷新按钮：历史与用量一起重拉（只读接口，不消耗额度）。 */
+  function refreshAll() { loadRequests(); loadUsage(); }
+
   async function loadUsage() {
     setUsageBusy(true);
     try {
@@ -443,14 +469,32 @@ export function ModelPane({ onDirtyChange }) {
   return (
     <div className="tab-pane" data-pane="model" ref={paneRef}>
       <div className="pane-scroll">
-        {/* ① 模型配置层：默认模型的额外模型列表 / 添加，与「接口与密钥」同层。
-            共享 aiCap 的取数，即时保存、不进表单脏态。 */}
-        <Section secKey="llm-library" title="多路提供商管理" sub="添加并统一管理多个模型" cardNo="01" cardDesc="添加一个或多个 OpenAI 兼容模型，供下方各项能力按需分配；未单独分配的任务走默认模型。">
-          <ModelLibrary cap={aiCap} />
-        </Section>
-        <Section secKey="llm-api" title="模式设置" sub={form.model || '未配置'} cardNo="02" cardDesc="默认模型的地址、密钥与生成参数，以及思考模式开关与深度。这里的默认模型兜底所有未单独分配的能力。" open>
-        <div className="form-row">
-          <label htmlFor="llmBaseUrl">模型地址（OpenAI 兼容）</label>
+        {/* 卡片 01 · 模型：默认模型是列表首行（点「编辑」才展开表单），其它提供商并列其下。
+            地址 / Key / 模型名 只有这一套 UI，不再与「添加模型」表单重复。 */}
+        <Section secKey="llm-library" title="模型" sub={form.model || '未配置'} cardNo="01"
+          cardDesc="默认模型兜底所有未单独分配的任务；要给不同能力指定不同模型时，再在下面添加其它模型。" open>
+          <ModelLibrary cap={aiCap} lead={
+            <>
+            <div className="ai-cap-provider is-default" data-provider-default="1">
+              <div className="ai-cap-p-main">
+                <span className="ai-cap-p-name">{String(form.model || '').trim() || '未配置模型'}</span>
+                <span className="ai-cap-badge">默认</span>
+                <span className="hint">
+                  {saved ? 'Key 已设置' : '未设 Key'} · {String(form.baseUrl || '').replace(/^https?:\/\//, '').slice(0, 36) || '未填地址'}
+                </span>
+              </div>
+              <div className="ai-cap-p-actions">
+                <button className="btn btn-ghost btn-sm" id="editDefaultModelBtn" type="button"
+                  aria-expanded={editDefault ? 'true' : 'false'}
+                  onClick={() => setEditDefault((v) => !v)}>
+                  {editDefault ? '收起' : '编辑'}
+                </button>
+              </div>
+            </div>
+
+            <div className="model-edit" data-sec="llm-api" hidden={!editDefault}>
+              <div className="form-row">
+                <label htmlFor="llmBaseUrl">模型地址（OpenAI 兼容）</label>
           <input
             id="llmBaseUrl"
             name={urlName}
@@ -544,11 +588,7 @@ export function ModelPane({ onDirtyChange }) {
                 已从上游获取 {modelList.length} 个模型，点「选模型」从列表挑；也可以继续手填。
               </small>
             ) : null}
-            {/* 思考模式的说明与「列表状态」分开两条：拉到列表后这条不该消失 */}
-            <small className="form-tip" id="llmModelTip">免费额度推荐 <strong>Qwen/Qwen3-8B</strong>；{form.thinking
-              ? '已开启思考：系统提示改用 /think，并随请求下发思考预算'
-              : '系统提示内置 /no_think 关闭思考模式，速度更快'}
-            </small>
+            <small className="form-tip" id="llmModelTip">免费额度推荐 <strong>Qwen/Qwen3-8B</strong>；思考模式与深度在下面「使用方式」里设置。</small>
           </div>
           <div className="form-row">
             <label htmlFor="llmTemp">温度</label>
@@ -560,12 +600,20 @@ export function ModelPane({ onDirtyChange }) {
               step="0.05"
               value={form.temperature}
               onChange={set('temperature')}
+              onBlur={onTempCommit}
             />
-            <small className="form-tip">越低越稳定保守，越高越发散。摘要建议 0.2 ~ 0.5</small>
+            <small className="form-tip">越低越稳定保守，越高越发散。摘要建议 0.2 ~ 0.5；失焦即生效。</small>
           </div>
         </div>
-        {/* 卡片 02 内的「思考模式」子节：与默认模型同属一张卡，不再单独折叠。
-            enable_thinking 是账号级开关（默认关），拨动即落库；它决定每次调用快 10 倍还是慢 10 倍。 */}
+            </div>
+            </>
+          } />
+        </Section>
+
+        {/* 卡片 02 · 使用方式：思考模式 + 能力开关与分配，都是「怎么用模型」。
+            思考开关与深度即时落库；能力开关同理，关闭后服务端直接拒绝调用。 */}
+        <Section secKey="llm-capabilities" title="使用方式" sub="思考与任务分派" cardNo="02"
+          cardDesc="决定模型怎么想、哪些能力可以调用、每项能力走哪个模型。这里的开关与分派都是改完即生效。" open>
         <div className="model-sub" data-sec="llm-thinking">
           <div className="model-sub-head">
             <span className="model-sub-title">思考模式</span>
@@ -604,16 +652,13 @@ export function ModelPane({ onDirtyChange }) {
           <small className="form-tip">账号级配置，改完即生效；日报「中」通常够，条目多、分类总跑偏时才用「深」。</small>
         </div>
         </div>
-        </Section>
-        {/* ③ 能力开关层：6 个能力的开关 + 模型分配，标签单开关也在这里（0016）。 */}
-        <Section secKey="llm-capabilities" title="能力开关与模型分配" sub="每个任务用哪个模型" cardNo="03" cardDesc="按能力启停 AI 调用并指定模型；关闭后服务端直接拒绝此类调用，不再消耗额度。">
           <CapabilitySwitches cap={aiCap} />
         </Section>
-        {/* ③ 运行诊断层：模型状态（本地最近一次调用推断）+ 用量统计。
-            「测试模型」放在底部动作栏——看状态不消耗额度，点测试才真调一次。 */}
-        <Section secKey="llm-status" title="模型状态与统计"
+
+        {/* 卡片 03 · 运行状态：状态 / 历史请求 / 用量同处一卡，一个「刷新」同时重拉两者。 */}
+        <Section secKey="llm-status" title="运行状态"
           sub={status.label + (lastReq ? ' · ' + fmtRel(lastReq.createdAt) : '')}
-          cardNo="04" cardDesc="最近一次调用推断的可用状态、请求历史与近 30 天用量。查看不消耗额度，点底部「测试模型」才真调一次。">
+          cardNo="03" cardDesc="最近一次调用推断的可用状态、请求历史与近 30 天用量。查看不消耗额度，点底部「测试模型」才真调一次。">
           <div className="ms-head">
             <span className={'ms-badge ' + status.cls}>{status.label}</span>
             <span className="ms-model" title={String(form.model || '').trim() || '未设置模型'}>
@@ -644,9 +689,10 @@ export function ModelPane({ onDirtyChange }) {
               ariaLabel="显示条数" value={String(reqLimit)}
               options={[{ value: 20, label: '20 条' }, { value: 50, label: '50 条' }]}
               onChange={(v) => { const n = Number(v) || 20; setReqLimit(n); loadRequests(n); }} />
-            <button className="btn btn-ghost btn-sm" id="aiRequestsRefresh" type="button"
-              disabled={reqBusy} aria-busy={reqBusy ? 'true' : undefined} onClick={() => loadRequests()}>
-              {reqBusy ? '刷新中…' : '刷新'}
+            <button className="btn btn-ghost btn-sm" id="modelRefreshAll" type="button"
+              disabled={reqBusy || usageBusy} aria-busy={(reqBusy || usageBusy) ? 'true' : undefined}
+              onClick={refreshAll}>
+              {(reqBusy || usageBusy) ? '刷新中…' : '刷新'}
             </button>
           </div>
 
@@ -685,7 +731,7 @@ export function ModelPane({ onDirtyChange }) {
             状态按最近一次调用推断：成功即「可用」，失败即「最近失败」并给出原因。
             想立刻确认，点底部「测试模型」——那会真的调一次并在列表里留一条记录。
           </small>
-        {/* 卡片 04 内的「AI 用量」子节：与状态/历史同属一张卡，不再单独折叠。 */}
+        {/* 卡片 03 内的「AI 用量」子节：与状态/历史同属一张卡，共用上面的刷新按钮。 */}
         <div className="model-sub" data-sec="llm-usage">
           <div className="model-sub-head">
             <span className="model-sub-title">AI 用量</span>
@@ -719,10 +765,6 @@ export function ModelPane({ onDirtyChange }) {
             统计口径：每次真实调用记一次（失败的也计入次数）。token 只在模型返回 usage 时累加，
             所以上游不回 usage 时次数会增加而 token 不变。
           </small>
-          <button className="btn btn-ghost btn-sm" id="aiUsageRefresh" type="button"
-            disabled={usageBusy} onClick={loadUsage}>
-            {usageBusy ? '刷新中…' : '刷新'}
-          </button>
         </div>
         </div>
         </Section>
