@@ -15,13 +15,13 @@
   },
   "dependencies": {
     "@feedlore/contract": "workspace:*",
+    "drizzle-kit": "0.31.1",
     "drizzle-orm": "^0.45.4",
     "pg": "^8.13.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.10",
-    "drizzle-kit": "0.31.1",
     "typescript": "^5.9.0"
   }
 }

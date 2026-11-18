@@ -43,7 +43,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.23.4
           cache: pnpm
 
       - name: 安装依赖
@@ -87,8 +87,35 @@ jobs:
       - name: 校验前端产物
         run: node scripts/verify-dist.mjs
 
-      - name: 构建镜像（不推送）
-        run: docker build -f Dockerfile -t feedlore:ci .
+      # 发布同时出 amd64 与 arm64 镜像；只在这里构建 tag 才做的架构，坏了要等到
+      # 发布才发现。arm64 用 QEMU 模拟构建（只验证可构建，不 load）；缓存按架构
+      # 分开 scope，避免两种指令集的层互相覆盖。
+      - name: 准备多架构构建（arm64 走 QEMU）
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: 设置 Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像（amd64，不推送）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: feedlore:ci
+          cache-from: type=gha,scope=amd64
+          cache-to: type=gha,mode=max,scope=amd64
+
+      - name: 构建镜像（arm64，不推送）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: false
+          cache-from: type=gha,scope=arm64
+          cache-to: type=gha,mode=max,scope=arm64
 
       # 镜像构建成功但产物没拷对，是「容器起来就 404」的经典原因；
       # 这一步只查最关键的事实：前端产物在、server 入口在、workspace 包链接在。
@@ -113,11 +140,11 @@ jobs:
             echo "镜像产物齐全"
           '
 
-      # 预构建镜像会把基础镜像的 digest 冻在推送那一刻：`FROM node:22-slim` 的浮动只作用在
-      # 构建时，构建缓存或镜像站回退都可能产出未打补丁的 Node 却没人报警。
-      # 2026-10-21 那次安全发行修的是 TLS 主机名校验绕过与 dns.resolve NUL 截断，
-      # 正是服务端 SSRF 防线（assertPublicHost / safeFetch）依赖的行为，所以做成硬门禁。
-      # 官方预告 2026-11-11 还会有一次覆盖 22/24/26 的安全发行，届时抬高这个下限并重发版本。
+      # 预构建镜像会把基础镜像的 digest 冻在推送那一刻：`FROM node:22.23-slim` 的浮动
+      # 只作用在构建时，构建缓存或镜像站回退都可能产出未打补丁的 Node 却没人报警。
+      # 下限 = 2026-11-11 覆盖 22/24/26 的安全发行（TLS 主机名校验绕过、dns.resolve
+      # NUL 截断等，正是服务端 SSRF 防线依赖的行为）。engines / README / Dockerfile /
+      # 本工作流用同一个数字，改一处就要四处一起改。
       - name: 校验镜像内 Node 运行时不低于安全下限
         run: |
           docker run --rm -e NODE_FLOOR=22.23.4 feedlore:ci node -e '

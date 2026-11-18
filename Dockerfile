@@ -8,7 +8,9 @@
 
 # ---------------- 阶段 1：构建前端 ----------------
 # 单独一层：前端依赖（vite/react）与后端依赖的改动频率不同，分层能吃到构建缓存。
-FROM node:22-slim AS web
+# Node 22.23 是 2026-11-11 安全发行的下限线（engines / README / CI 同一数字）。
+# 只钉到次版本号：同一 minor 内的补丁更新继续随官方镜像走，verify.yml 另有运行时下限硬门禁。
+FROM node:22.23-slim AS web
 
 WORKDIR /app
 
@@ -24,7 +26,7 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @feedlore/web build
 
 # ---------------- 阶段 2：运行时 ----------------
-FROM node:22-slim
+FROM node:22.23-slim
 
 # GPL-3.0：分发镜像即分发二进制，许可证文本要随镜像一起分发
 LABEL org.opencontainers.image.licenses="GPL-3.0-only"
@@ -40,9 +42,12 @@ COPY apps/server ./apps/server
 # 同上：lockfile 里的 apps/web importer 必须存在，否则 --frozen-lockfile 会判定不一致
 COPY apps/web/package.json ./apps/web/package.json
 
+# 只装生产依赖：镜像不携带 typescript / vite / jsdom / @types 等仅构建期需要的东西。
+# 启动自举要跑 `pnpm --filter @feedlore/db migrate`，所以 drizzle-kit 被放在
+# packages/db 的 dependencies（而不是 devDependencies）—— 它在这套架构里是运行时工具。
 # dangerouslyAllowAllBuilds 已在 pnpm-workspace.yaml 开启，否则 esbuild 的 postinstall
 # 被拦截会让 install 返回退出码 1，直接打断构建。
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --prod --frozen-lockfile
 
 # 前端产物由阶段 1 拷入；WEB_ROOT 让 Hono 托管它（同源，无需 CORS）
 COPY --from=web /app/apps/web/dist ./apps/web/dist

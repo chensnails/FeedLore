@@ -58,7 +58,7 @@ docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time passwo
 
 ## 本地开发
 
-Node ≥ 22：
+Node ≥ 22.23.4（22.x 安全下限；`package.json` 的 engines 与镜像、CI 用同一数字）：
 
 ```bash
 pnpm install

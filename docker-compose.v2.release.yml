@@ -139,6 +139,8 @@ services:
       AUTH_TRUSTED_ORIGINS: ${AUTH_TRUSTED_ORIGINS:-}
       # 纯 HTTP 必须为 0：Secure Cookie 在 HTTP 下不会被浏览器回传，表现为「登录成功但仍未登录」
       AUTH_SECURE_COOKIES: ${AUTH_SECURE_COOKIES:-0}
+      # 公开注册默认关闭（空值即关闭）；=1 才放行 /api/auth/sign-up
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-}
 
       # ---- 初始管理员（仅空站点首次启动生效；不填密码则生成一次性随机口令）----
       ADMIN_USER: ${ADMIN_USER:-admin}
@@ -156,6 +158,8 @@ services:
       REFRESH_MINUTES: ${REFRESH_MINUTES:-30}
       KEEP_PER_FEED: ${KEEP_PER_FEED:-300}
       KEEP_DAYS: ${KEEP_DAYS:-90}
+      # 抓取与模型调用的出网代理（http/https）；同样只在首次落库时作为默认值
+      PROXY_URL: ${PROXY_URL:-}
     ports:
       - "${HOST_PORT:-3210}:3000"
     labels:

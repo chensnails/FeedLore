@@ -447,9 +447,9 @@ export const aiJobs = pgTable('ai_jobs', {
  * 注意：drizzle-orm 0.44.7 的 index().on(列) 存在回归（列对象不再携带
  * defaultConfig，indexes.cjs 仍引用它导致 JSON.parse(undefined) 抛错），且
  * drizzle-kit 无法为 DESC NULLS LAST / GIN+gin_trgm_ops 这类表达式索引生成 SQL。
- * 因此所有性能索引统一在迁移文件 0001_perf_indexes.sql 里用原始 SQL 创建，
+ * 因此所有性能索引统一在迁移文件里用原始 SQL 创建（0001_perf_indexes.sql 起），
  * 本文件只保留表结构与 unique 约束（uniqueIndex 列定义内联）。
- * 索引清单（见 0001）：
+ * 索引清单（见 0001 / 0013–0018）：
  *   feeds_owner_idx           (owner_id, sort_order, id)
  *   entries_pub_idx           (published_at DESC NULLS LAST, id DESC)
  *   entries_feed_pub_idx      (feed_id, published_at DESC NULLS LAST, id DESC)
@@ -459,6 +459,9 @@ export const aiJobs = pgTable('ai_jobs', {
  *   entries_fav_idx           (favorited_at DESC NULLS LAST, id DESC) WHERE is_favorite = true
  *   image_cache_created_idx   (created_at)
  *   entries_title_trgm        USING gin (title gin_trgm_ops)  -- 需 pg_trgm 扩展
+ *   entries_pub_asc_idx       (published_at ASC NULLS LAST, id ASC)          -- 0018
+ *   entries_feed_pub_asc_idx  (feed_id, published_at ASC NULLS LAST, id ASC) -- 0018
+ *   entries_title_lower_idx   (lower(title) ASC, id ASC)                     -- 0018
  * ==========================================================================*/
 
 /* ============================================================================

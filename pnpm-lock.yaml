@@ -352,6 +352,9 @@ importers:
       '@feedlore/contract':
         specifier: workspace:*
         version: link:../contract
+      drizzle-kit:
+        specifier: 0.31.1
+        version: 0.31.1
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@types/pg@8.23.1)(kysely@0.29.7)(pg@8.23.1)
@@ -365,9 +368,6 @@ importers:
       '@types/pg':
         specifier: ^8.11.10
         version: 8.23.1
-      drizzle-kit:
-        specifier: 0.31.1
-        version: 0.31.1
       typescript:
         specifier: ^5.9.0
         version: 5.9.3

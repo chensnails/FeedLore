@@ -58,7 +58,7 @@ Defaults work out of the box. To change the port, run behind an HTTPS reverse pr
 
 ## Local development
 
-Node ≥ 22:
+Node ≥ 22.23.4 (the 22.x security floor; the same number is used by engines, the image and CI):
 
 ```bash
 pnpm install
