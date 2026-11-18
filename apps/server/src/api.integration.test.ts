@@ -65,7 +65,7 @@ function parse<T>(schema: z.ZodType<T>, body: unknown, what: string): T {
 }
 
 /** 用服务端同一套归档器造上传包，避免测试自己手搓 tar 头。 */
-async function buildArchive(files: Record<string, string>): Promise<Buffer> {
+async function buildArchive(files: Record<string, string | Buffer>): Promise<Buffer> {
   const ar = createTarGz();
   for (const [name, data] of Object.entries(files)) await ar.add(name, data);
   await ar.close();
@@ -75,8 +75,8 @@ async function buildArchive(files: Record<string, string>): Promise<Buffer> {
 }
 
 /** 解开导出包（我们只写 ustar，不写 PAX），返回 文件名 → 内容。 */
-function readTarGz(raw: ArrayBuffer): Map<string, Buffer> {
-  const tar = gunzipSync(Buffer.from(raw));
+function readTarGz(raw: ArrayBuffer | Buffer): Map<string, Buffer> {
+  const tar = gunzipSync(raw instanceof Uint8Array ? raw : Buffer.from(raw));
   const files = new Map<string, Buffer>();
   let off = 0;
   for (;;) {
@@ -89,6 +89,15 @@ function readTarGz(raw: ArrayBuffer): Map<string, Buffer> {
     off += 512 + Math.ceil(size / 512) * 512;
   }
   return files;
+}
+
+async function rebuildArchive(files: Map<string, Buffer>): Promise<Buffer> {
+  const ar = createTarGz();
+  for (const [name, data] of files) await ar.add(name, data);
+  await ar.close();
+  const chunks: Buffer[] = [];
+  for await (const chunk of ar.readable) chunks.push(Buffer.from(chunk as Buffer));
+  return Buffer.concat(chunks);
 }
 
 test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) => {
@@ -654,16 +663,36 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.ok(![...files.keys()].some((k) => /session|verification/i.test(k)), '包里不应有会话文件');
     });
 
-    await t.test('账号导出：勾选后才带 llm.json', async () => {
+    await t.test('账号导出：勾选且确有配置时才带 llm.json', async () => {
       const res = await call('/api/export?llm=1');
       assert.equal(res.status, 200);
       const files = readTarGz(await res.arrayBuffer());
-      assert.ok(files.has('llm.json'));
-      // 测试账号没配模型：文件存在但内容为 null，说明走的是同一套分支
-      assert.equal(JSON.parse(files.get('llm.json')!.toString('utf8')), null);
+      // 测试账号没配模型：没有可写的内容，不生成空文件（导入端按 absent 处理）
+      assert.ok(!files.has('llm.json'));
     });
 
     await t.test('整站备份：管理员可下，含账号与设置，不含会话', async () => {
+      // AI 标签 / MCP 令牌 / 用量：备份与还原都要带上，否则整站还原会静默丢数据
+      await db.execute(sql`
+        insert into entry_ai_tags (id, user_id, entry_id, tags, model, status)
+        select 'itestaitag', ${userId}, id, array['标签甲', '标签乙'], 'itest-model', 'done'
+        from entries
+        where feed_id = (select id from feeds where owner_id = ${userId} and url = 'https://example.com/itest-feed.xml')
+        order by id limit 1
+      `);
+      await db.execute(sql`
+        insert into mcp_tokens (id, user_id, name, scope, token_hash, prefix)
+        values ('itestmcp', ${userId}, 'ITest 令牌', 'read', 'itest-token-hash', 'fl_itest')
+      `);
+      await db.execute(sql`
+        insert into ai_usage_daily (user_id, date, kind, calls, fails, prompt_tokens, completion_tokens)
+        values (${userId}, '2026-01-02', 'entry_ai', 3, 1, 120, 30)
+      `);
+      await db.execute(sql`
+        insert into ai_request_log (user_id, kind, model, label, ok, calls, duration_ms, prompt_tokens, completion_tokens)
+        values (${userId}, 'entry_ai', 'itest-model', '测试标题', true, 1, 88, 40, 10)
+      `);
+
       // 图片代理的宽度变体键带 `:w640` 后缀：备份必须能写入，还原也必须能认回
       await db.execute(sql`
         insert into image_cache (key, content_type, data, size)
@@ -678,16 +707,27 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       const files = readTarGz(raw);
 
       const manifest = JSON.parse(files.get('manifest.json')!.toString('utf8')) as {
-        kind: string; includes: { sessions: boolean };
+        kind: string;
+        includes: { sessions: boolean; aiTags: boolean; mcpTokens: boolean; aiUsage: boolean; aiJobs: boolean };
       };
       assert.equal(manifest.kind, 'site');
       assert.equal(manifest.includes.sessions, false);
+      assert.equal(manifest.includes.aiTags, true);
+      assert.equal(manifest.includes.mcpTokens, true);
+      assert.equal(manifest.includes.aiUsage, true);
+      assert.equal(manifest.includes.aiJobs, false, '一次性异步任务不入备份');
 
       const users = JSON.parse(files.get('users.json')!.toString('utf8')) as Array<{ username: string }>;
       assert.ok(users.some((u) => u.username === username), '备份应包含本账号');
-      for (const name of ['accounts.json', 'settings.json', 'user_llm.json', 'image_cache.json', 'feeds.json']) {
+      for (const name of [
+        'accounts.json', 'settings.json', 'user_llm.json', 'image_cache.json', 'feeds.json',
+        'mcp_tokens.json', 'ai_usage_daily.json', 'ai_request_log.json',
+      ]) {
         assert.ok(files.has(name), `备份缺 ${name}`);
       }
+      const aiTagBatch = [...files.keys()].find((k) => /^entry_ai_tags-\d{4}\.jsonl$/.test(k));
+      assert.ok(aiTagBatch, '备份应包含 AI 标签批次');
+      assert.match(files.get(aiTagBatch!)!.toString('utf8'), /itestaitag/, 'AI 标签应写进批次');
       assert.ok(files.has('images/itestimg:w640'), '备份应包含宽度变体的图片缓存');
       assert.ok(![...files.keys()].some((k) => /^sessions|verification/i.test(k)));
     });
@@ -837,7 +877,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         assert.equal(none.rows.length, 0, '被拦截的配置不应写库');
 
         // 0015：新包带多路提供商与路由 —— Key 重新加密、悬空引用清成 default
+        // 0017 起旧形状也会落成厂商 + 模型行，先清干净才算「空账号」
         await db.execute(sql`delete from user_llm where user_id = ${userId}`);
+        await db.execute(sql`delete from llm_providers where user_id = ${userId}`);
+        await db.execute(sql`delete from llm_vendors where user_id = ${userId}`);
         const multiLlm = JSON.stringify({
           baseUrl: 'https://api.example.com/v1', model: 'default-model', apiKey: 'sk-plain-123',
           providers: [
@@ -852,13 +895,19 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         const multiRes = await call('/api/import', { method: 'POST', body: await buildArchive(withLlm(multiLlm)) });
         assert.equal(multiRes.status, 200, await multiRes.clone().text());
         assert.equal(((await multiRes.json()) as { llm: string }).llm, 'applied');
+        // 0017：Key 归厂商行，模型行只保留 vendor_id
         const prov = (await db.execute(sql`
-          select id, name, model, encrypted_key, is_default from llm_providers where user_id = ${userId}
-        `)) as unknown as { rows: Array<{ id: string; name: string; model: string; encrypted_key: string | null; is_default: boolean }> };
+          select id, name, model, vendor_id, is_default from llm_providers where user_id = ${userId}
+        `)) as unknown as { rows: Array<{ id: string; name: string; model: string; vendor_id: string | null; is_default: boolean }> };
         assert.equal(prov.rows.length, 1, '应恢复一路提供商');
         assert.equal(prov.rows[0]!.id, 'p-cheap');
-        assert.ok(!prov.rows[0]!.encrypted_key!.includes('sk-cheap-key'), '提供商 Key 不得明文落库');
-        assert.equal(decryptSecret(prov.rows[0]!.encrypted_key, secret), 'sk-cheap-key');
+        assert.ok(prov.rows[0]!.vendor_id, '模型行应挂到厂商');
+        const vend = (await db.execute(sql`
+          select id, encrypted_key from llm_vendors where id = ${prov.rows[0]!.vendor_id}
+        `)) as unknown as { rows: Array<{ id: string; encrypted_key: string | null }> };
+        assert.equal(vend.rows.length, 1, '应恢复厂商行');
+        assert.ok(!vend.rows[0]!.encrypted_key!.includes('sk-cheap-key'), '厂商 Key 不得明文落库');
+        assert.equal(decryptSecret(vend.rows[0]!.encrypted_key, secret), 'sk-cheap-key');
         const rt = (await db.execute(sql`
           select routes from user_llm where user_id = ${userId}
         `)) as unknown as { rows: Array<{ routes: Record<string, { providerId?: string; enabled?: boolean; actions?: Record<string, string> }> }> };
@@ -962,11 +1011,39 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         values (${userId}, 'https://example.com/only-before-restore.xml', '还原前临时源')
       `);
 
+      // 老版本备份没有 AI 标签 / MCP / 用量文件：先还原一遍降级包，必须照常成功
+      const oldFiles = readTarGz(siteArchive);
+      const added = [...oldFiles.keys()].filter(
+        (n) => /^entry_ai_tags-\d{4}\.jsonl$/.test(n)
+          || ['mcp_tokens.json', 'ai_usage_daily.json', 'ai_request_log.json'].includes(n),
+      );
+      assert.equal(added.length, 4, '完整备份应带三类 JSON 与一个 AI 标签批次');
+      for (const name of added) oldFiles.delete(name);
+      const oldArchive = await rebuildArchive(oldFiles);
+
       jar = before;   // 登出用例已经清空了主 Cookie 罐
+      const oldRes = await call('/api/restore', { method: 'POST', body: oldArchive });
+      assert.equal(oldRes.status, 200, await oldRes.clone().text());
+      const oldOut = (await oldRes.json()) as {
+        counts: { feeds: number; entries: number; aiTags: number; mcpTokens: number; aiUsage: number; aiRequestLog: number };
+      };
+      assert.equal(oldOut.counts.feeds, 1);
+      assert.equal(oldOut.counts.entries, 2);
+      assert.equal(oldOut.counts.aiTags, 0, '老包没有 AI 标签文件，应按 0 处理而不是报错');
+      assert.equal(oldOut.counts.mcpTokens, 0);
+      assert.equal(oldOut.counts.aiUsage, 0);
+      assert.equal(oldOut.counts.aiRequestLog, 0);
+
+      jar = await loginAs(username, password);   // 还原清掉了会话，重新登录
       const res = await call('/api/restore', { method: 'POST', body: siteArchive });
       assert.equal(res.status, 200, await res.clone().text());
       const out = (await res.json()) as {
-        ok: boolean; kind: string; counts: { users: number; feeds: number; entries: number; images: number };
+        ok: boolean;
+        kind: string;
+        counts: {
+          users: number; feeds: number; entries: number; images: number;
+          aiTags: number; mcpTokens: number; aiUsage: number; aiRequestLog: number;
+        };
       };
       assert.equal(out.ok, true);
       assert.equal(out.kind, 'site');
@@ -974,6 +1051,29 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal(out.counts.feeds, 1);
       assert.equal(out.counts.entries, 2, '备份包里只有两条文章');
       assert.equal(out.counts.images, 2, '默认图与 :w640 变体都应还原');
+      assert.equal(out.counts.aiTags, 1, 'AI 标签应随备份还原');
+      assert.equal(out.counts.mcpTokens, 1, 'MCP 令牌应随备份还原');
+      assert.equal(out.counts.aiUsage, 1, 'AI 用量应随备份还原');
+      assert.equal(out.counts.aiRequestLog, 1, 'AI 请求明细应随备份还原');
+
+      const aiTag = (await db.execute(sql`
+        select array_to_string(tags, ',') as tags, status from entry_ai_tags where id = 'itestaitag'
+      `)) as unknown as { rows: Array<{ tags: string; status: string }> };
+      assert.equal(aiTag.rows[0]?.tags, '标签甲,标签乙');
+      assert.equal(aiTag.rows[0]?.status, 'done');
+      const mcp = (await db.execute(sql`
+        select prefix, scope from mcp_tokens where id = 'itestmcp'
+      `)) as unknown as { rows: Array<{ prefix: string; scope: string }> };
+      assert.equal(mcp.rows[0]?.prefix, 'fl_itest');
+      assert.equal(mcp.rows[0]?.scope, 'read');
+      const usage = (await db.execute(sql`
+        select calls, fails, prompt_tokens::int as prompt from ai_usage_daily where user_id = ${userId} and kind = 'entry_ai'
+      `)) as unknown as { rows: Array<{ calls: number; fails: number; prompt: number }> };
+      assert.deepEqual(usage.rows[0], { calls: 3, fails: 1, prompt: 120 });
+      const reqLog = (await db.execute(sql`
+        select label, duration_ms from ai_request_log where user_id = ${userId} and kind = 'entry_ai'
+      `)) as unknown as { rows: Array<{ label: string; duration_ms: number }> };
+      assert.deepEqual(reqLog.rows[0], { label: '测试标题', duration_ms: 88 });
 
       const gone = (await db.execute(sql`
         select count(*)::int as n from feeds where url = 'https://example.com/only-before-restore.xml'

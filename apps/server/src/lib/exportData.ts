@@ -16,13 +16,17 @@
 import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import {
   accounts,
+  aiRequestLog,
+  aiUsageDaily,
   articleCache,
   digests,
   entries,
+  entryAiTags,
   feeds,
   imageCache,
   llmProviders,
   llmVendors,
+  mcpTokens,
   settings,
   userLlm,
   users,
@@ -290,6 +294,8 @@ export async function writeSiteExport(ar: TarGzArchive, db: Db): Promise<void> {
     digests: digestRows.length,
     images: await countOf(db.select({ n: sql<number>`count(*)::int` }).from(imageCache)),
     articles: await countOf(db.select({ n: sql<number>`count(*)::int` }).from(articleCache)),
+    aiTags: await countOf(db.select({ n: sql<number>`count(*)::int` }).from(entryAiTags)),
+    mcpTokens: await countOf(db.select({ n: sql<number>`count(*)::int` }).from(mcpTokens)),
   };
 
   await ar.add('manifest.json', json({
@@ -309,12 +315,19 @@ export async function writeSiteExport(ar: TarGzArchive, db: Db): Promise<void> {
       settings: true,
       images: true,
       articleCache: true,
+      aiTags: true,
+      mcpTokens: true,
+      aiUsage: true,
+      aiRequestLog: true,
+      // 异步任务是一次性的，进程重启都会清扫，没有还原价值
+      aiJobs: false,
       sessions: false,
     },
     notes: [
       '敏感文件：含账号密码哈希、加密后的模型 Key 与站点设置，请勿外传。',
       'images/<key> 是图片缓存原文件，键与 image_cache.json 一一对应；article_cache-*.jsonl 是全文抓取缓存。',
-      '不含 sessions / verifications：恢复后所有人需要重新登录。',
+      'entry_ai_tags-*.jsonl 是 AI 标签，mcp_tokens.json 是 MCP 令牌（仅哈希），ai_usage_daily.json / ai_request_log.json 是 AI 用量统计与最近请求明细。',
+      '不含 sessions / verifications：恢复后所有人需要重新登录；不含 ai_jobs：异步任务不跨备份保留。',
       '在「设置 · 账号 · 整站还原」上传本包即可整体还原：会清空并替换当前全站数据，所有人需要重新登录。',
     ],
   }));
@@ -345,6 +358,33 @@ export async function writeSiteExport(ar: TarGzArchive, db: Db): Promise<void> {
     batch += 1;
     await ar.add(`entries-${String(batch).padStart(4, '0')}.jsonl`, jsonl(rows));
   }
+
+  let aiTagCursor = '';
+  batch = 0;
+  for (;;) {
+    const rows = await db
+      .select()
+      .from(entryAiTags)
+      .where(gt(entryAiTags.id, aiTagCursor))
+      .orderBy(asc(entryAiTags.id))
+      .limit(ENTRY_BATCH);
+    if (!rows.length) break;
+    aiTagCursor = rows[rows.length - 1]!.id;
+    batch += 1;
+    await ar.add(`entry_ai_tags-${String(batch).padStart(4, '0')}.jsonl`, jsonl(rows));
+  }
+
+  const mcpRows = await db.select().from(mcpTokens).orderBy(asc(mcpTokens.id));
+  await ar.add('mcp_tokens.json', json(mcpRows));
+
+  const usageRows = await db
+    .select()
+    .from(aiUsageDaily)
+    .orderBy(asc(aiUsageDaily.userId), asc(aiUsageDaily.date), asc(aiUsageDaily.kind));
+  await ar.add('ai_usage_daily.json', json(usageRows));
+
+  const requestRows = await db.select().from(aiRequestLog).orderBy(asc(aiRequestLog.id));
+  await ar.add('ai_request_log.json', json(requestRows));
 
   let articleCursor = '';
   batch = 0;

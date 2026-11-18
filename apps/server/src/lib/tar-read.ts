@@ -24,7 +24,9 @@ const IMAGE_KEY_SOURCE = '[A-Za-z0-9._-]{1,150}(?::w\\d{1,4})?';
 /** 导出器可能写出的全部文件名。images/ 下是图片缓存键。 */
 const SAFE_NAME = new RegExp(
   '^(manifest\\.json|feeds\\.json|prefs\\.json|llm\\.json|digests\\.json|users\\.json|accounts\\.json|' +
-  'user_llm\\.json|settings\\.json|image_cache\\.json|entries-\\d{4}\\.jsonl|article_cache-\\d{4}\\.jsonl|' +
+  'user_llm\\.json|llm_vendors\\.json|llm_providers\\.json|settings\\.json|image_cache\\.json|' +
+  'mcp_tokens\\.json|ai_usage_daily\\.json|ai_request_log\\.json|' +
+  'entries-\\d{4}\\.jsonl|entry_ai_tags-\\d{4}\\.jsonl|article_cache-\\d{4}\\.jsonl|' +
   `images/${IMAGE_KEY_SOURCE})$`,
 );
 

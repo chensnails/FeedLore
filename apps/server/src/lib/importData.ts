@@ -19,13 +19,17 @@ import { createInterface } from 'node:readline';
 import { sql } from 'drizzle-orm';
 import {
   accounts,
+  aiRequestLog,
+  aiUsageDaily,
   articleCache,
   digests,
   entries,
+  entryAiTags,
   feeds,
   imageCache,
   llmProviders,
   llmVendors,
+  mcpTokens,
   settings,
   userLlm,
   users,
@@ -92,6 +96,10 @@ export interface SiteRestoreResult {
     digests: number;
     images: number;
     articles: number;
+    aiTags: number;
+    mcpTokens: number;
+    aiUsage: number;
+    aiRequestLog: number;
   };
 }
 
@@ -833,6 +841,40 @@ async function insertImages(tx: Db, dir: string, metaRows: Raw[]): Promise<numbe
   return total;
 }
 
+async function insertEntryAiTags(tx: Db, dir: string, files: string[]): Promise<number> {
+  let total = 0;
+  let batch: Array<typeof entryAiTags.$inferInsert> = [];
+  const flush = async (): Promise<void> => {
+    if (!batch.length) return;
+    await tx.insert(entryAiTags).values(batch);
+    total += batch.length;
+    batch = [];
+  };
+  for (const name of files) {
+    for await (const raw of jsonlRows(dir, name)) {
+      const id = str(raw.id);
+      const userId = str(raw.userId);
+      const entryId = intOrNull(raw.entryId);
+      if (!id || !userId || entryId == null) throw invalid(`bad ${name} record`);
+      batch.push({
+        id,
+        userId,
+        entryId,
+        tags: arrStr(raw.tags),
+        model: strOrNull(raw.model),
+        promptVersion: intOr(raw.promptVersion, 1),
+        status: str(raw.status) || 'done',
+        error: strOrNull(raw.error),
+        createdAt: dateOr(raw.createdAt, new Date()),
+        updatedAt: dateOr(raw.updatedAt, new Date()),
+      });
+      if (batch.length >= ENTRY_BATCH) await flush();
+    }
+  }
+  await flush();
+  return total;
+}
+
 export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteRestoreResult> {
   const manifest = await readManifest(dir);
   if (manifest.kind === 'user') throw new ApiException('E_ARCHIVE_IS_USER_EXPORT');
@@ -849,6 +891,11 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
   const providerRows = asArray(await readOptionalJson(dir, 'llm_providers.json') ?? [], 'llm_providers.json');
   const settingRows = asArray(await readJson(dir, 'settings.json'), 'settings.json');
   const imageRows = asArray(await readJson(dir, 'image_cache.json'), 'image_cache.json');
+  // AI 标签 / MCP 令牌 / AI 用量是后补进备份的：老备份没有这些文件，按空处理
+  const aiTagFiles = await listBatches(dir, /^entry_ai_tags-\d{4}\.jsonl$/);
+  const mcpRows = asArray(await readOptionalJson(dir, 'mcp_tokens.json') ?? [], 'mcp_tokens.json');
+  const usageRows = asArray(await readOptionalJson(dir, 'ai_usage_daily.json') ?? [], 'ai_usage_daily.json');
+  const requestRows = asArray(await readOptionalJson(dir, 'ai_request_log.json') ?? [], 'ai_request_log.json');
   const entryFiles = await listBatches(dir, /^entries-\d{4}\.jsonl$/);
   const articleFiles = await listBatches(dir, /^article_cache-\d{4}\.jsonl$/);
 
@@ -1021,6 +1068,67 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
     const entryCount = await insertEntries(tx as unknown as Db, dir, entryFiles);
     const articleCount = await insertArticles(tx as unknown as Db, dir, articleFiles);
     const imageCount = await insertImages(tx as unknown as Db, dir, imageRows);
+    // AI 标签引用 entry_id，必须等文章写完之后再插
+    const aiTagCount = await insertEntryAiTags(tx as unknown as Db, dir, aiTagFiles);
+
+    const mappedMcp = mcpRows.map((raw) => {
+      const id = str(raw.id);
+      const userId = str(raw.userId);
+      const name = str(raw.name);
+      const tokenHash = str(raw.tokenHash);
+      const prefix = str(raw.prefix);
+      if (!id || !userId || !name || !tokenHash || !prefix) throw invalid('bad mcp_tokens.json record');
+      return {
+        id,
+        userId,
+        name,
+        scope: str(raw.scope) || 'read',
+        tokenHash,
+        prefix,
+        lastUsedAt: dateOrNull(raw.lastUsedAt),
+        revokedAt: dateOrNull(raw.revokedAt),
+        createdAt: dateOr(raw.createdAt, new Date()),
+      };
+    });
+    if (mappedMcp.length) await tx.insert(mcpTokens).values(mappedMcp);
+
+    const mappedUsage = usageRows.map((raw) => {
+      const userId = str(raw.userId);
+      const date = str(raw.date);
+      const kind = str(raw.kind);
+      if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !kind) throw invalid('bad ai_usage_daily.json record');
+      return {
+        userId,
+        date,
+        kind,
+        calls: intOr(raw.calls, 0),
+        fails: intOr(raw.fails, 0),
+        promptTokens: intOr(raw.promptTokens, 0),
+        completionTokens: intOr(raw.completionTokens, 0),
+      };
+    });
+    if (mappedUsage.length) await tx.insert(aiUsageDaily).values(mappedUsage);
+
+    // 明细的 bigserial id 不跨备份保留：没有外键引用，按包内顺序重新编号即可
+    const mappedRequests = requestRows.map((raw) => {
+      const userId = str(raw.userId);
+      const kind = str(raw.kind);
+      if (!userId || !kind) throw invalid('bad ai_request_log.json record');
+      return {
+        userId,
+        kind,
+        model: str(raw.model),
+        label: str(raw.label),
+        ok: boolOr(raw.ok, true),
+        calls: intOr(raw.calls, 1),
+        durationMs: intOr(raw.durationMs, 0),
+        promptTokens: intOr(raw.promptTokens, 0),
+        completionTokens: intOr(raw.completionTokens, 0),
+        error: str(raw.error),
+        createdAt: dateOr(raw.createdAt, new Date()),
+      };
+    });
+    if (mappedRequests.length) await tx.insert(aiRequestLog).values(mappedRequests);
 
     /* bigserial 的序列被 truncate restart identity 归零，而上面是按原 id 显式插入的；
      * 不 setval 的话，下一条自动插入会从 1 开始撞主键。 */
@@ -1047,6 +1155,10 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
       digests: mappedDigests.length,
       images: imageCount,
       articles: articleCount,
+      aiTags: aiTagCount,
+      mcpTokens: mappedMcp.length,
+      aiUsage: mappedUsage.length,
+      aiRequestLog: mappedRequests.length,
     };
   });
 
