@@ -156,11 +156,18 @@ export function EntryAiBar({ entryId }) {
           {busyKey === 'tags' ? '…' : '标签'}
         </button>
         {anyBusy && phase === 'queued' ? (
-          <span className="entry-ai-wait" role="status">排队中…</span>
+          <span className="entry-ai-wait">
+            <span className="sr-only" role="status">AI 已提交，排队中</span>
+            <span aria-hidden="true">排队中…</span>
+          </span>
         ) : null}
         {anyBusy && phase === 'running' ? (
-          <span className="entry-ai-wait" role="status">
-            {elapsed >= 3 ? `生成中 · 已等待 ${elapsed}s` : '生成中…'}
+          <span className="entry-ai-wait">
+            {/* 秒数每秒变，aria-hidden；读屏只播报一次「生成中」 */}
+            <span className="sr-only" role="status">AI 正在生成</span>
+            <span aria-hidden="true">
+              {elapsed >= 3 ? `生成中 · 已等待 ${elapsed}s` : '生成中…'}
+            </span>
           </span>
         ) : null}
       </div>

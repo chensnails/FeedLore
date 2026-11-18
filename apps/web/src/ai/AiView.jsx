@@ -134,6 +134,23 @@ export function AiView() {
   // 「新对话」：换 key 让 ExplorePane 重挂载，内存历史与轮询一起重置（任务在服务端继续）。
   const [sessionKey, setSessionKey] = useState(0);
   const newSession = () => setSessionKey((k) => k + 1);
+
+  /* 二级 tab 的键盘语义（自动激活）：←/→ 在可见 tab 间移动并立即切换，
+   * Home/End 跳到首尾。鼠标点击照旧；隐藏的「日报」tab 不参与遍历。 */
+  function onTabKey(e) {
+    const list = Array.from(e.currentTarget.parentElement.querySelectorAll('[role="tab"]')).filter((el) => !el.hidden);
+    if (list.length < 2) return;
+    const i = list.indexOf(e.currentTarget);
+    let next = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = list[(i + 1) % list.length];
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = list[(i - 1 + list.length) % list.length];
+    else if (e.key === 'Home') next = list[0];
+    else if (e.key === 'End') next = list[list.length - 1];
+    if (!next) return;
+    e.preventDefault();
+    setPane(next.id === 'exploreTabDigest' ? 'digest' : 'ask');
+    next.focus();
+  }
   // 合并后第一行（标题 + ⋮）即吸顶条，由其写入 --topbar-h
   const headRef = useRef(null);
 
@@ -344,14 +361,18 @@ export function AiView() {
       <div className="ex-wrap">
         <div className="ai-tabs" role="tablist" aria-label="探索页模式">
           <button type="button" role="tab" id="exploreTabAsk" aria-selected={pane === 'ask' ? 'true' : 'false'}
+            aria-controls="exploreAskPanel" tabIndex={pane === 'ask' ? 0 : -1} onKeyDown={onTabKey}
             className={'ai-tab' + (pane === 'ask' ? ' is-active' : '')} onClick={() => setPane('ask')}>问答</button>
           <button type="button" role="tab" id="exploreTabDigest" aria-selected={pane === 'digest' ? 'true' : 'false'}
+            aria-controls="exploreDigestPanel" tabIndex={pane === 'digest' ? 0 : -1} onKeyDown={onTabKey}
             className={'ai-tab' + (pane === 'digest' ? ' is-active' : '')}
             hidden={s.digestIsEnabled && !s.digestIsEnabled()}
             onClick={() => setPane('digest')}>日报</button>
         </div>
-        <ExplorePane key={sessionKey} hidden={pane !== 'ask'} onNewSession={newSession} />
-        <section className="ai-pane" data-ai-pane="digest" hidden={pane !== 'digest'}>
+        <ExplorePane key={sessionKey} hidden={pane !== 'ask'} onNewSession={newSession}
+          panelProps={{ id: 'exploreAskPanel', role: 'tabpanel', 'aria-labelledby': 'exploreTabAsk' }} />
+        <section className="ai-pane" data-ai-pane="digest" id="exploreDigestPanel"
+          role="tabpanel" aria-labelledby="exploreTabDigest" hidden={pane !== 'digest'}>
         {/* 说明行与操作行分层：标题 → 说明 → 日期/动作，窄屏操作行自己换行 */}
         <div className="digest-head">
           <p className="ai-sub" id="digestSub">{subtitle}</p>

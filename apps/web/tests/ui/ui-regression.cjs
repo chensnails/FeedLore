@@ -4919,6 +4919,34 @@ const withEFP = (el, fn) => {
     if (!dgPane || dgPane.hidden) throw new Error('日报未显示');
     if (Q('#exploreTabDigest').getAttribute('aria-selected') !== 'true') throw new Error('日报 tab 未选中');
   });
+  // tablist 键盘语义：→/← 在可见 tab 间移动并立即切换（焦点跟随）
+  {
+    const key = (el, k) => el.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    Q('#exploreTabAsk').focus();
+    key(Q('#exploreTabAsk'), 'ArrowRight');
+    await sleep(30);
+    t('探索 tab：→ 切到日报并带走焦点（roving tabindex）', () => {
+      if (Q('#exploreTabDigest').getAttribute('aria-selected') !== 'true') throw new Error('→ 未激活日报');
+      if (w.document.activeElement !== Q('#exploreTabDigest')) throw new Error('焦点未跟到日报');
+      if (Q('#exploreTabAsk').getAttribute('tabindex') !== '-1') throw new Error('问答 tab 未退出 Tab 序列');
+      if (Q('#exploreTabDigest').getAttribute('tabindex') !== '0') throw new Error('日报 tab 未进入 Tab 序列');
+    });
+    key(Q('#exploreTabDigest'), 'Home');
+    await sleep(30);
+    t('探索 tab：Home 回到首个可见 tab', () => {
+      if (Q('#exploreTabAsk').getAttribute('aria-selected') !== 'true') throw new Error('Home 未回到问答');
+      if (w.document.activeElement !== Q('#exploreTabAsk')) throw new Error('焦点未回到问答');
+    });
+    t('探索 tab：tab/panel 语义闭合（aria-controls / role=tabpanel）', () => {
+      if (Q('#exploreTabAsk').getAttribute('aria-controls') !== 'exploreAskPanel') throw new Error('问答 tab 缺 aria-controls');
+      if (Q('#exploreTabDigest').getAttribute('aria-controls') !== 'exploreDigestPanel') throw new Error('日报 tab 缺 aria-controls');
+      const askPane = Q('#exploreAskPanel');
+      if (!askPane || askPane.getAttribute('role') !== 'tabpanel') throw new Error('问答面板缺 role=tabpanel');
+      if (askPane.getAttribute('aria-labelledby') !== 'exploreTabAsk') throw new Error('问答面板未关联 tab');
+      const dgPane = Q('#exploreDigestPanel');
+      if (!dgPane || dgPane.getAttribute('role') !== 'tabpanel') throw new Error('日报面板缺 role=tabpanel');
+    });
+  }
   // 切回问答：tab 只 hidden 不卸载，会话应原样保留
   Q('#exploreTabAsk').click();
   await sleep(30);
@@ -4952,6 +4980,19 @@ const withEFP = (el, fn) => {
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
     const shellRule = css.slice(css.indexOf('.ex-shell {'), css.indexOf('.ex-thread {', css.indexOf('.ex-shell {')));
     if (!/background:/.test(shellRule) || !/border:/.test(shellRule)) throw new Error('面板外观未挂到 .ex-shell');
+  });
+  t('计时提示：每秒跳动的秒数不进 live region（读屏不每秒播报）', () => {
+    const root = path.join(__dirname, '..', '..');
+    const src = fs.readFileSync(path.join(root, 'src', 'ai', 'ExplorePane.jsx'), 'utf8').replace(/\r\n/g, '\n');
+    if (/ex-typing[^>]*role="status"/.test(src)) throw new Error('ex-typing 仍是 role=status，秒数每秒会被播报');
+    if (!/aria-hidden="true">[\s\S]{0,160}已等待/.test(src)) throw new Error('探索秒数未 aria-hidden');
+    if (!/<span className="sr-only" role="status">[\s\S]{0,160}检索你的订阅/.test(src)) throw new Error('探索缺静态读屏状态');
+    const bar = fs.readFileSync(path.join(root, 'src', 'ui', 'EntryAiBar.jsx'), 'utf8').replace(/\r\n/g, '\n');
+    if (/entry-ai-wait" role="status"/.test(bar)) throw new Error('单篇 AI 等待条仍是 live 秒数');
+    if (!/aria-hidden="true">[\s\S]{0,160}已等待/.test(bar)) throw new Error('单篇 AI 秒数未 aria-hidden');
+    if (!/className="entry-ai-wait">[\s\S]{0,300}className="sr-only" role="status"/.test(bar)) throw new Error('单篇 AI 缺静态读屏状态');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
+    if (!/\.sr-only\s*\{[\s\S]{0,300}clip:\s*rect\(0 0 0 0\)/.test(css)) throw new Error('缺 .sr-only 工具类');
   });
   const hasNewBtn = !!Q('#exploreNewBtn');
   if (hasNewBtn) Q('#exploreNewBtn').click();  // 点新对话：历史清空回空态
@@ -8564,6 +8605,20 @@ const withEFP = (el, fn) => {
     const cap = css.split('@media (hover: none)').slice(1).map((s) => s.slice(0, 600)).join('\n');
     for (const sel of ['.feed-group-rename', '.feed-row .drag-handle', '.dd-group-filter', '.rd-ch-filter']) {
       if (cap.indexOf(sel) < 0) throw new Error(sel + ' 是 hover-only 控件，触屏段没有常显出口');
+    }
+  });
+
+  t('弹层关闭键：统一 44×44（触屏可点，不再 30–36px）', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const ruleOf = (sel) => {
+      const i = css.indexOf(sel + ' {');
+      return i < 0 ? '' : css.slice(i, css.indexOf('}', i) + 1);
+    };
+    for (const sel of ['.dd-sheet-close', '.modal-close', '.ds-close', '.cd-close']) {
+      const r = ruleOf(sel);
+      if (!/width:\s*44px/.test(r) || !/height:\s*44px/.test(r)) {
+        throw new Error(sel + ' 关闭键未到 44×44：' + r.replace(/\s+/g, ' '));
+      }
     }
   });
 

@@ -104,11 +104,18 @@ function AiBubble({ turn }) {
       <div className="ex-avatar" aria-hidden="true">AI</div>
       <div className="ex-col">
         <div className="ex-bubble ex-bubble-ai">
+          {/* 秒数每秒跳一次：只把静态状态交给读屏（role=status 播报一次），
+              会变的数字 aria-hidden，避免每秒念一遍「已等待 Ns」。 */}
           {busy ? (
-            <div className="ex-typing" role="status" aria-label="正在检索并生成">
+            <div className="ex-typing">
               <i /><i /><i />
               <span className="ex-typing-text">
-                {turn.status === 'queued' ? '排队中…' : `检索你的订阅 · 已等待 ${turn.elapsed || 0}s`}
+                <span className="sr-only" role="status">
+                  {turn.status === 'queued' ? '已提交，排队中' : '正在检索你的订阅'}
+                </span>
+                <span aria-hidden="true">
+                  {turn.status === 'queued' ? '排队中…' : `检索你的订阅 · 已等待 ${turn.elapsed || 0}s`}
+                </span>
               </span>
             </div>
           ) : turn.status === 'error' ? (
@@ -137,7 +144,7 @@ function AiBubble({ turn }) {
   );
 }
 
-export function ExplorePane({ hidden, onNewSession }) {
+export function ExplorePane({ hidden, onNewSession, panelProps }) {
   const s = S();
   const [turns, setTurns] = useState([]);
   const [draft, setDraft] = useState('');
@@ -216,7 +223,7 @@ export function ExplorePane({ hidden, onNewSession }) {
      对话态保持既有实现不动——滚动目标、ID、四态、引用卡全部原样。 */
   if (!hasTurns) {
     return (
-      <section className="ai-pane ex-pane is-landing" data-ai-pane="explore" hidden={!!hidden}>
+      <section className="ai-pane ex-pane is-landing" data-ai-pane="explore" hidden={!!hidden} {...panelProps}>
         <div className="ex-landing">
           <h1 className="ex-landing-title">想从订阅里找点什么？</h1>
           <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，可直接追问</p>
@@ -256,7 +263,7 @@ export function ExplorePane({ hidden, onNewSession }) {
   }
 
   return (
-    <section className="ai-pane ex-pane is-chatting" data-ai-pane="explore" hidden={!!hidden}>
+    <section className="ai-pane ex-pane is-chatting" data-ai-pane="explore" hidden={!!hidden} {...panelProps}>
       {/* 对话容器：消息区 / 输入栏 / 免责声明同处一个面板，输入栏固定不随消息滚动。
           ID 与类名全部保留，滚动目标仍是 #exploreThread。 */}
       <div className="ex-shell">
