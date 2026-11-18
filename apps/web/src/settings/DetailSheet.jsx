@@ -3,7 +3,7 @@
  * 列表 + 详情两层：列表只留紧凑行（头像 / 标题 / 状态 / 快捷开关），点行打开这一层，
  * 全部编辑控件收在里面。两种形态共用同一份 DOM：
  *  - 桌面（>720px）：设置弹层内容区右侧抽屉，左边的列表仍可见、可对照；
- *  - 移动（≤720px）：贴底整宽弹层，下滑手势关闭（useSwipeDismiss，与卡片详情同一套）。
+ *  - 移动（≤720px）：贴底整宽弹层；出口是 × / 返回键，下滑关闭已下线（真机收起会闪屏）。
  *
  * 层内多数修改「即改即生效」；规则/过滤这类带草稿的编辑在关闭时保存，
  * 用 saveHint 明说，免得用户把 Esc 当成取消。
@@ -12,32 +12,16 @@
  * 确认框 / 灯箱 / 范围选择浮层叠在上面时，Esc 让位给它们（捕获阶段先检查）。
  */
 
-import React, { useEffect, useRef, useState } from 'react';
-import { useSwipeDismiss } from '../views/useSwipeDismiss.js';
+import React, { useEffect, useRef } from 'react';
 import { registerLayer } from '../ui/overlayStack.js';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint }) {
-  const [isMobile, setIsMobile] = useState(() =>
-    !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches));
+  const panelRef = useRef(null);
   const openerRef = useRef(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
-
-  useEffect(() => {
-    const mq = window.matchMedia ? window.matchMedia('(max-width: 720px)') : null;
-    if (!mq) return undefined;
-    const on = () => setIsMobile(!!mq.matches);
-    if (mq.addEventListener) mq.addEventListener('change', on);
-    else if (mq.addListener) mq.addListener(on);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener('change', on);
-      else if (mq.removeListener) mq.removeListener(on);
-    };
-  }, []);
-
-  const { panelRef, setPanelRef, handlers, reset } = useSwipeDismiss(() => closeRef.current(), { enabled: isMobile });
 
   // 系统返回键 / 手势返回：关这一层，不关外面的设置弹层（栈顶优先）。
   useEffect(() => registerLayer(() => closeRef.current()), []);
@@ -55,7 +39,6 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
     }, 0);
     return () => {
       clearTimeout(t);
-      reset();
       const back = openerRef.current;
       openerRef.current = null;
       if (back && back !== document.body && document.contains(back) && back.focus) back.focus();
@@ -117,11 +100,10 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
         role="dialog"
         aria-modal="true"
         aria-label={sub ? label + ' · ' + sub : label}
-        ref={setPanelRef}
+        ref={panelRef}
         tabIndex={-1}
-        {...handlers}
       >
-        <div className="ds-head" data-sheet-grip>
+        <div className="ds-head">
           <button className="ds-back" type="button" aria-label="返回列表" onClick={() => closeRef.current()}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
           </button>

@@ -3,7 +3,7 @@
  * 原生 <select> 的展开弹窗由操作系统渲染，与应用风格不统一 —— 以自绘浮层替代：
  * - 桌面（>720px）：锚定玻璃面板（分组标题、选中勾、键盘 ↑↓/Enter/Esc、外点关闭）；
  * - 移动（≤720px）：遮罩 + 整屏面板 + 标题栏 + 大触控选项，打开期间锁页面滚动，支持底部安全区。
- *   往下拖就能收起（useSwipeDismiss），手势条是这枚提示。
+ *   出口是 × / Esc / 系统返回键；下滑关闭已于 v2.5.3 下线（真机收起会闪屏）。
  * - 传 collapsible 时分组标题变成整行折叠开关（卡片页频道筛选，与文章页侧栏共用同一份偏好）；
  *   再传 onGroupFilter 时组头右端多一枚「只看这组」漏斗，行为与文章页侧栏一致。
  *   不传 collapsible 就还是纯文本分组标题，排序那种下拉不受影响。
@@ -13,7 +13,6 @@
 
 import { core } from '@core';
 import { useEffect, useRef, useState } from 'react';
-import { useSwipeDismiss } from './useSwipeDismiss.js';
 import { registerLayer } from '../ui/overlayStack.js';
 
 /* 与 style.css 的 720px 断点一致；jsdom 无 matchMedia 或无布局时按桌面处理。
@@ -106,9 +105,6 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   }, [hi, open]);
 
   const openPanel = () => { if (disabled) return; setMobile(isMobileMq()); setOpen(true); setHi(-1); };
-
-  // 移动端：往下拖就能收起（见 useSwipeDismiss.js）
-  const { setPanelRef, handlers: sheetHandlers } = useSwipeDismiss(close);
 
   // 系统返回键 / 手势返回：先收起这一层（与 Esc / 关闭键同一个出口）。
   const closeRef = useRef(close);
@@ -282,10 +278,8 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
 
       {open && mobile && (
         <div className="dd-mask" onClick={close}>
-          <div ref={setPanelRef} className="dd-sheet" role="dialog" aria-modal="true"
-            aria-label={ariaLabel || title} onClick={(ev) => ev.stopPropagation()} {...sheetHandlers}>
-            {/* 手势条 = 「往下拖就能收起」的提示 */}
-            <div className="dd-sheet-grip" aria-hidden="true" />
+          <div ref={panelRef} className="dd-sheet" role="dialog" aria-modal="true"
+            aria-label={ariaLabel || title} onClick={(ev) => ev.stopPropagation()}>
             <div className="dd-sheet-head">
               <span className="dd-sheet-title">{title}</span>
               <button type="button" className="dd-sheet-close" aria-label="关闭" ref={sheetCloseRef} onClick={close}>

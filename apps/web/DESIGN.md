@@ -66,12 +66,12 @@
     `ui/noAutofill.js#NO_AUTOFILL_PROPS` + `useNoAutofillName()`；全局哨兵在 `main.jsx`
     一处安装，`hig.css` 的 `:-webkit-autofill` 规则负责背景重置与哨兵动画。
     **登录、改密、新建用户等凭据字段不要接** —— 密码管理器在那儿是正确行为。
-11. **移动端贴底弹层只有一个手势实现**。`views/useSwipeDismiss.js` 用原生
-    `{ passive: false }` 的 `touchmove` 接管下拉（React 的被动监听拦不住 Android 下拉刷新），
-    面板必须接 `setPanelRef` 这个 callback ref：弹层常是打开时才挂载，普通 ref 会让
-    监听绑在 null 上。抓手 / 头部可直接拖，正文区要先滚到顶；关闭判据是距离或
-    `FLICK_MIN_MS` 之后的快甩。`onDismiss` 返回 `false`（如设置的「放弃更改」被取消）时
-    面板回弹，新增弹层不要另写一套 touch 逻辑。
+11. **移动端弹层不做下滑关闭**。v2.5.3 起整体下线：真机上收起动画会整屏闪一下，
+    多轮调整都修不掉，于是不再提供这个手势。弹层出口统一为 × / Esc / 系统返回键
+    （系统返回键走 `src/ui/overlayStack.js` 的哨兵）。不要给弹层再绑 `touchmove`、
+    画抓手、写 `touch-action: none`；`views/useSwipeDismiss.js` 已删除，回归里有负向
+    用例守着「拖了也不动、也不关」。关闭前的未保存确认不受影响（设置外壳的
+    「放弃更改？」仍由 `SettingsModal` 自己拦）。
 12. **长文一次铺开，退出全靠吸顶标题条**。正文不折叠（v2.5.2 起移除 `.art-clip` 与
     「展开全文」）：点开即全文，不再要求用户先做一次「要不要读完」的选择，也不再有
     两层「收起」语义互相干扰。展开态 `.art-row` 吸附的 `top` 用 `--reader-head-h`
@@ -79,7 +79,7 @@
     漏出一条，看起来像标题行浮在正文中间。同时必须放开 `.art-item.open` 的
     `overflow: hidden`（它生成 containment，sticky 会被关在卡片里、只跟着卡片滚）。
     吸顶条上的「收起这篇」（`.art-collapse`）
-    收起整条卡片并滚回本条标题；卡片详情不另造出口，用常驻的右上角 ×、Esc 与手势关闭，
+    收起整条卡片并滚回本条标题；卡片详情不另造出口，用常驻的右上角 ×、Esc 与系统返回键，
     正文和动作行都和文章页共用同一个 `ArtBody`。
 13. **底部标签栏可以收起，但必须留三条回来的路**。`ui/tabbarAutoHide.js` 只负责给
     `body` 挂 `tabbar-tucked`，视觉规则全部写在 `style.css` 的移动断点里 ——

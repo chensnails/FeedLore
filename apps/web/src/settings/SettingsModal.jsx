@@ -22,7 +22,6 @@ import { StatusPane } from './StatusPane.jsx';
 import { ADMIN_TABS, READONLY_TABS, TAB_BY_NAME, TAB_GROUPS, matchTabs, visibleTabs } from './tabs.js';
 import { provide, revoke, get } from '../kernel/bridge.js';
 import { NO_AUTOFILL_PROPS, useNoAutofillName, clearAutofilledInput } from '../ui/noAutofill.js';
-import { useSwipeDismiss } from '../views/useSwipeDismiss.js';
 import { registerLayer } from '../ui/overlayStack.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -257,17 +256,8 @@ export function SettingsModal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // 手机上是贴底抽屉：往下拖即可收起，和卡片详情 / 频道下拉同一套手势。
-  // dismiss 返回 false（用户选择保留未保存的改动）时 hook 会把面板弹回原位。
-  const { setPanelRef, handlers: swipeHandlers, reset: resetSwipe } =
-    useSwipeDismiss(requestClose, { enabled: isMobile });
-  const attachModal = useCallback((el) => {
-    modalRef.current = el;
-    setPanelRef(el);
-  }, [setPanelRef]);
-
-  // 面板常驻 DOM（hidden 切换），每次开合都清掉上一轮拖拽残留的内联 transform / 遮罩透明度。
-  useEffect(() => { resetSwipe(); }, [open, isMobile, resetSwipe]);
+  // 手机上是贴底整屏弹层，出口只有 × / Esc / 系统返回键（下滑关闭 v2.5.3 下线：真机会闪屏）。
+  const attachModal = useCallback((el) => { modalRef.current = el; }, []);
 
   // 浏览器可能在弹层打开之后又填一次：state 说空、DOM 却有值，直接纠偏。
   // 全局哨兵（main.jsx → installAutofillGuard）负责填充发生当刻，这里兜「打开时已填好」。
@@ -323,7 +313,7 @@ export function SettingsModal() {
   return (
     <div className="modal-mask" hidden={!open} onClick={onMaskClick}>
       <div className={'modal settings-modal' + (isMobile ? (mobilePane ? ' mobile-pane' : ' mobile-home') : '')}
-        role="dialog" aria-modal="true" aria-labelledby="settingsTitle" ref={attachModal} tabIndex={-1} {...swipeHandlers}>
+        role="dialog" aria-modal="true" aria-labelledby="settingsTitle" ref={attachModal} tabIndex={-1}>
         <div className="modal-head">
           <div className="modal-head-lead">
             {isMobile && mobilePane ? (

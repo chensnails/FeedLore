@@ -2058,13 +2058,13 @@ const withEFP = (el, fn) => {
 
   // ---- 详情层：点行打开，全部编辑控件收在层内 ----
   await openSheet('1');
-  t('点行开详情层：dialog 语义 + 标题/副标题 + 手势区', () => {
+  t('点行开详情层：dialog 语义 + 标题/副标题', () => {
     const sh = sheetEl();
     if (!sh) throw new Error('无 .ds-sheet');
     if (sh.getAttribute('role') !== 'dialog' || sh.getAttribute('aria-modal') !== 'true') throw new Error('缺 dialog 语义');
     if (sh.querySelector('.ds-title').textContent !== '例子星球') throw new Error(sh.querySelector('.ds-title').textContent);
     if (sh.querySelector('.ds-sub').textContent.indexOf('example.com/feed.xml') < 0) throw new Error('副标题应是地址');
-    if (!sh.querySelector('.ds-head[data-sheet-grip]')) throw new Error('缺手势抓取区');
+    if (sh.querySelector('.ds-head[data-sheet-grip]')) throw new Error('下滑关闭已下线，不该再有抓取区');
   });
   t('详情层回填：名称/地址/分组/频率/序号', () => {
     if (document.querySelector('#dsName').value !== '例子星球') throw new Error('名称');
@@ -2850,11 +2850,16 @@ const withEFP = (el, fn) => {
   fireTouch('touchmove', 130);
   fireTouch('touchend', 130);
   await sleep(320);
-  t('窄屏：下滑手势只关详情层，设置外壳留在原地', () => {
-    if (sheetEl()) throw new Error('手势未关闭');
-    // 两层都挂了 useSwipeDismiss：手势必须归最内层，否则滑一次关两层
+  t('窄屏：详情层不再响应下滑（出口是 × / 返回键），设置外壳留在原地', () => {
+    if (!sheetEl()) throw new Error('下滑把详情层关了');
     if (mask().hidden !== false) throw new Error('设置外壳被连带关闭');
     if (!document.querySelector('.settings-modal.mobile-pane')) throw new Error('外壳离开内容态');
+  });
+  document.querySelector('.ds-close').click();
+  await sleep(60);
+  t('窄屏：点 × 收起详情层，设置外壳仍在', () => {
+    if (sheetEl()) throw new Error('未关闭');
+    if (mask().hidden !== false) throw new Error('设置外壳被连带关闭');
   });
   setNarrow(false);
   await sleep(60);
@@ -4293,7 +4298,7 @@ const withEFP = (el, fn) => {
     const sheet = document.querySelector('.ds-sheet');
     if (!sheet) throw new Error('未打开');
     if (sheet.getAttribute('role') !== 'dialog') throw new Error('缺 dialog 语义');
-    if (!sheet.querySelector('.ds-head[data-sheet-grip]')) throw new Error('缺下滑把手');
+    if (sheet.querySelector('.ds-head[data-sheet-grip]')) throw new Error('下滑关闭已下线，不该再有抓取区');
     if (!sheet.querySelector('#ruleKeywords')) throw new Error('层内缺编辑控件');
     document.querySelector('.ds-close').click();
   });
@@ -5293,7 +5298,7 @@ const withEFP = (el, fn) => {
   const realMM = w.matchMedia;
   w.matchMedia = (q) => ({ matches: String(q).indexOf('max-width: 720px') >= 0, media: String(q),
     addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
-  // v1.3.5 下拉关闭手势：合成触摸轨迹。tt 单步派发，便于在 touchend 之前先断言「跟手」
+  // 合成触摸轨迹：下滑关闭 v2.5.3 下线，这里只用来确认「拖了也不动」。
   const tt = (el, type, y) => {
     const ev = new w.Event(type, { bubbles: true, cancelable: true });
     ev.touches = y === null ? [] : [{ clientY: y }];
@@ -5306,10 +5311,10 @@ const withEFP = (el, fn) => {
   };
   C('#feedSelect').click();
   await sleep(20);
-  t('频道下拉（移动端）：整屏形态（无遮罩留白 / 标题栏 / 大选项 / 手势条）', () => {
+  t('频道下拉（移动端）：整屏形态（无遮罩留白 / 标题栏 / 大选项 / 无手势条）', () => {
     if (!C('#feedDD .dd-mask')) throw new Error('无遮罩');
     if (!C('#feedDD .dd-sheet')) throw new Error('频道选项多，移动端应整屏铺开');
-    if (!C('#feedDD .dd-sheet-grip')) throw new Error('整屏也支持往下拖收起，手势条是这枚提示');
+    if (C('#feedDD .dd-sheet-grip')) throw new Error('下滑关闭已下线，不该再有手势条');
     if (!C('#feedDD .dd-sheet-head .dd-sheet-title')) throw new Error('无标题栏');
     if (CA('#feedDD .dd-sheet .dd-item').length !== 3) throw new Error('弹窗选项 ' + CA('#feedDD .dd-sheet .dd-item').length);
     if (!C('#feedDD .dd-sheet .dd-item.active')) throw new Error('当前项未高亮');
@@ -5328,42 +5333,13 @@ const withEFP = (el, fn) => {
     close.dispatchEvent(back);
     if (w.document.activeElement !== last) throw new Error('关闭键 Shift+Tab 应绕到末项');
   });
-  t('下拉手势：位移跟手，写的是面板内联 transform', () => {
+  t('整屏弹层不再响应下滑：拖到底也不关闭，面板位置不变', () => {
     const sheet = C('#feedDD .dd-sheet');
-    tt(sheet, 'touchstart', 100);
-    tt(sheet, 'touchmove', 104);   // 4px < SLOP，手抖不算拖拽
-    if (sheet.style.transform !== '') throw new Error('小于阈值不该动: ' + sheet.style.transform);
-    tt(sheet, 'touchmove', 250);
-    if (sheet.style.transform !== 'translateY(150px)') throw new Error('位移没跟手: ' + sheet.style.transform);
-    if (!C('#feedDD .dd-mask')) throw new Error('拖拽途中不该提前卸载弹层');
+    swipe(sheet, 100, [180, 300, 420]);
+    if (sheet.style.transform !== '') throw new Error('下滑不该再带动面板: ' + sheet.style.transform);
+    if (!C('#feedDD .dd-mask')) throw new Error('下滑不该关闭弹窗');
+    if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('拖拽不该改筛选');
   });
-  t('下拉手势：往下拖过阈值 → 飞出，松手后收起（筛选未变）', () => {
-    const sheet = C('#feedDD .dd-sheet');
-    tt(sheet, 'touchend', null);
-    if (sheet.style.transform !== 'translateY(100%)') throw new Error('超阈值应整块飞出: ' + sheet.style.transform);
-    if (!C('#feedDD .dd-mask')) throw new Error('飞出动画跑完前不该卸载');
-  });
-  await sleep(240);
-  t('下拉手势：飞出动画结束后弹窗关闭', () => {
-    if (C('#feedDD .dd-mask')) throw new Error('下拉超阈值后应收起');
-    if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('关闭不该改筛选');
-  });
-  // 位移不足阈值 → 弹回，不关；且抬手补发的那次 click 要吞掉，否则拖一下就改了频道
-  C('#feedSelect').click();
-  await sleep(20);
-  t('下拉手势：只拖一点点就弹回，弹窗仍开着', () => {
-    const sheet = C('#feedDD .dd-sheet');
-    swipe(sheet, 100, [120, 135]);
-    if (sheet.style.transform !== '') throw new Error('应弹回原位: ' + sheet.style.transform);
-    if (!C('#feedDD .dd-mask')) throw new Error('短拖不该关闭');
-  });
-  t('下拉手势：抬手后浏览器补发的 click 被吞掉（没顺手选中选项）', () => {
-    CA('#feedDD .dd-sheet .dd-item')[1].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-    if (!C('#feedDD .dd-mask')) throw new Error('被吞的 click 不该关闭弹窗');
-    if (C('#feedSelect .dd-label').textContent.indexOf('全部频道') < 0) throw new Error('补发的 click 把选项点上了');
-  });
-  // 吞点击的窗口只有一瞬，等它过去才轮到正常的点关闭
-  await sleep(320);
   C('#feedDD .dd-sheet-close').click();
   await sleep(20);
   t('频道下拉（移动端）：点关闭收起弹窗', () => {
@@ -5391,31 +5367,6 @@ const withEFP = (el, fn) => {
     if (w.feedlore.readerCollapsedGroups().size !== 0) throw new Error('偏好未清空');
   });
   C('#feedDD .dd-sheet-close').click();
-  await sleep(20);
-  // 手势起点落在组头上：拖到底只该关弹窗，不该顺手把分组展开
-  w.feedlore.readerToggleGroupCollapse('科技');
-  await sleep(20);
-  C('#feedSelect').click();
-  await sleep(20);
-  t('下拉手势：从组头起拖也能飞出', () => {
-    const g = C('#feedDD .dd-sheet-body .dd-group');
-    if (!g.classList.contains('is-collapsed')) throw new Error('前提：组应处于收起态');
-    swipe(g, 100, [180, 240]);
-    if (C('#feedDD .dd-sheet').style.transform !== 'translateY(100%)') throw new Error('应整块飞出: ' + C('#feedDD .dd-sheet').style.transform);
-  });
-  t('下拉手势：抬手补发的 click 落也在组头上同样被吞掉（没顺手展开）', () => {
-    const g = C('#feedDD .dd-sheet-body .dd-group');
-    g.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
-    if (!g.classList.contains('is-collapsed')) throw new Error('被吞的 click 把分组展开了');
-    if (!C('#feedDD .dd-mask')) throw new Error('飞出动画跑完前不该卸载');
-  });
-  await sleep(240);
-  t('下拉手势：从组头起拖松手后弹窗关闭，折叠态没被误改', () => {
-    if (C('#feedDD .dd-mask')) throw new Error('未收起');
-    if (!w.feedlore.readerCollapsedGroups().has('科技')) throw new Error('拖拽误改了折叠态');
-  });
-  // 还原：清空折叠，避免影响后续用例
-  w.feedlore.readerToggleGroupCollapse('科技');
   await sleep(20);
   w.matchMedia = realMM;
   t('卡片内容：标题 / 来源短名 / 体积 / 日期（不再展示标签）', () => {
@@ -5645,37 +5596,23 @@ const withEFP = (el, fn) => {
   w.matchMedia = (q) => ({ matches: /max-width:\s*720px/.test(q), addEventListener() {}, removeEventListener() {} });
   C('#grid .card[data-id="e1"] .title-btn').click();
   await sleep(60);
-  t('移动端形态：详情整屏铺开（.dd-mask > .dd-sheet），带手势条、无标题栏 / 底栏', () => {
+  t('移动端形态：详情整屏铺开（.dd-mask > .dd-sheet），无手势条 / 标题栏 / 底栏', () => {
     if (!C('.dd-mask > .dd-sheet[role="dialog"]')) throw new Error('未整屏弹出');
     if (C('.modal-mask')) throw new Error('移动端不应再用居中模态');
-    if (!C('.dd-sheet-grip')) throw new Error('往下拖就能收起，手势条是这枚提示');
+    if (C('.dd-sheet-grip')) throw new Error('下滑关闭已下线，不该再有手势条');
     if (C('.dd-sheet .dd-sheet-head') || C('.dd-sheet .cd-foot')) throw new Error('整屏同样不再有标题栏 / 底栏');
     if (!C('.dd-sheet .cd-close')) throw new Error('整屏没有「点遮罩关闭」，右上角 × 是指针出口');
     if (!C('.dd-sheet .art-actions .btn-fav') || !C('.dd-sheet .art-actions .btn-jump')) throw new Error('动作行缺收藏 / 跳文章页');
   });
-  t('下拉手势：正文滚到中部时不接管，不跟手', () => {
-    const sc = C('.dd-sheet .dd-sheet-body');
-    Object.defineProperty(sc, 'scrollTop', { value: 120, configurable: true });
-    swipe(C('.dd-sheet'), 300, [420, 560]);
-    if (C('.dd-sheet').style.transform !== '') throw new Error('列表还在滚动就不该抢走手势');
-    if (!C('.dd-mask')) throw new Error('滚动中拖拽不该关闭弹窗');
-    delete sc.scrollTop;
+  t('整屏详情不再响应下滑：拖到底也不关闭', () => {
+    const sheet = C('.dd-sheet');
+    swipe(sheet, 60, [200, 300, 420]);
+    if (sheet.style.transform !== '') throw new Error('下滑不该再带动面板: ' + sheet.style.transform);
+    if (!C('.dd-mask')) throw new Error('下滑不该关闭详情');
   });
   C('.dd-sheet .cd-close').click();
   await sleep(40);
   t('移动端：抽屉关闭按钮收起弹窗', () => {
-    if (C('.dd-mask')) throw new Error('未关闭');
-  });
-  C('#grid .card[data-id="e1"] .title-btn').click();
-  await sleep(60);
-  t('下拉手势：整屏详情往下拖过阈值 → 整块飞出', () => {
-    const sheet = C('.dd-sheet');
-    swipe(sheet, 60, [200, 260]);
-    if (sheet.style.transform !== 'translateY(100%)') throw new Error('超阈值应整块飞出: ' + sheet.style.transform);
-    if (!C('.dd-mask')) throw new Error('飞出动画跑完前不该卸载');
-  });
-  await sleep(240);
-  t('下拉手势：详情松手后收起弹窗', () => {
     if (C('.dd-mask')) throw new Error('未关闭');
   });
   w.matchMedia = realMM2;
@@ -9400,39 +9337,26 @@ const withEFP = (el, fn) => {
     input.remove();
   });
 
-  t('手势关闭：原生被动监听修复、callback ref 与脏态回弹契约', () => {
+  t('下滑关闭已整体下线：弹层只留 × / Esc / 返回键', () => {
     const root = path.join(__dirname, '..', '..');
     const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');
-    const hook = read('src/views/useSwipeDismiss.js');
-    if (!/addEventListener\('touchmove', onMove, \{ passive: false \}\)/.test(hook)) {
-      throw new Error('React 的 passive onTouchMove 拦不住 Android 下拉刷新，必须原生 passive:false');
+    // 真机上收起动画会整屏闪白，手势实现连同 hook 一起删除；别再偷偷加回来
+    if (fs.existsSync(path.join(root, 'src/views/useSwipeDismiss.js'))) {
+      throw new Error('useSwipeDismiss 应已删除');
     }
-    if (!/ev\.preventDefault\(\)/.test(hook)) throw new Error('接管拖拽后必须阻止默认滚动');
-    if (!/setPanelRef/.test(hook) || !/useState\(null\)/.test(hook)) {
-      throw new Error('延迟挂载的弹层必须用 callback ref 重绑监听');
+    for (const f of ['src/views/CardDetail.jsx', 'src/views/Dropdown.jsx',
+      'src/settings/SettingsModal.jsx', 'src/settings/DetailSheet.jsx']) {
+      const src = read(f);
+      if (/useSwipeDismiss|dd-sheet-grip|data-sheet-grip|setPanelRef|touchstart/.test(src)) {
+        throw new Error(f + ' 仍残留下滑关闭');
+      }
     }
-    if (!/FLICK_MIN_MS/.test(hook)) throw new Error('速度判据要有最小采样窗，否则合成事件会误关弹层');
-    if (!/ok === false\) springBack\(el\)/.test(hook)) throw new Error('脏态确认取消必须把面板弹回原位');
-    if (!/mask\.style\.opacity/.test(hook)) throw new Error('拖拽时遮罩要跟手渐隐');
-    // v2.5.2：左右边缘横滑交给系统返回手势，应用不再争抢
-    if (/allowHorizontal/.test(hook) || /EDGE_BAND/.test(hook)) {
-      throw new Error('边缘横滑已下线（与系统返回手势冲突），hook 不该再留水平关闭');
-    }
-    // 飞出只做位移：整屏面板降到半透明会让背后页面透出来，看着像闪屏
-    if (/el\.style\.opacity/.test(hook)) throw new Error('飞出动画不得改整屏透明度（闪屏根因）');
-    if (!/addEventListener\('touchcancel', onCancel, \{ passive: true \}\)/.test(hook)) {
-      throw new Error('touchcancel 必须单独注册');
-    }
-    const cancel = hook.slice(hook.indexOf('const onCancel'), hook.indexOf('// 原生注册'));
-    if (!/springBack\(el\)/.test(cancel) || /dismissRef\.current\(\)/.test(cancel)) {
-      throw new Error('touchcancel 是系统抢走手势，只能回弹、不能当作松手关闭');
-    }
-    for (const f of ['src/views/CardDetail.jsx', 'src/views/Dropdown.jsx', 'src/settings/SettingsModal.jsx']) {
-      if (!/setPanelRef/.test(read(f))) throw new Error(f + ' 没接新 hook 的 callback ref');
-    }
+    const css = read('src/style.css');
+    if (/\.dd-sheet-grip/.test(css)) throw new Error('手势条样式应一并移除');
+    if (/\.modal::before\s*\{[^}]*38px/.test(css)) throw new Error('设置弹层的抓手伪元素应一并移除');
+    // 手没了，设置弹层的脏态守卫不能跟着丢
     const sm = read('src/settings/SettingsModal.jsx');
-    if (!/useSwipeDismiss\(requestClose, \{ enabled: isMobile \}\)/.test(sm)) throw new Error('设置弹层没接手势');
-    if (!/return false;/.test(sm) || !/return true;/.test(sm)) throw new Error('requestClose 要返回是否真的关闭');
+    if (!/askDiscard/.test(sm)) throw new Error('设置关闭前的未保存确认不能丢');
     if (!/clearAutofilledInput\(el\)/.test(sm)) throw new Error('打开设置时要兜底清「已填好」的账号');
   });
 

@@ -3,8 +3,8 @@
  * 弹层形态沿用 src/views/Dropdown.jsx 的既有约定，不新增第二套弹层语言：
  * - 桌面（>720px）：遮罩 + 居中模态，复用 .modal-mask / .modal 一族；
  * - 移动（≤720px）：v1.3.4 起整屏铺开（.dd-sheet 在窄屏就是一整屏），从下方推入像进入一个页面；
- *   整屏没有「点遮罩关闭」这回事，出口是右上角悬浮 ×、Esc、往下拖（useSwipeDismiss）或系统返回键
- *   （src/ui/overlayStack.js 的哨兵）。
+ *   整屏没有「点遮罩关闭」这回事，出口是右上角悬浮 ×、Esc 或系统返回键
+ *   （src/ui/overlayStack.js 的哨兵）。下滑关闭已于 v2.5.3 下线：真机上收起动画会整屏闪一下。
  * 形态在打开瞬间定格，本次开合内不随窗口变化重排。
  *
  * 正文渲染直接复用文章页的 ArtBody（同一套 .art-* 样式与按钮），两处展示保持一份实现。
@@ -23,7 +23,6 @@
 import { core } from '@core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isMobileMq } from './Dropdown.jsx';
-import { useSwipeDismiss } from './useSwipeDismiss.js';
 import { ArtBody, bodyShowsText } from './ReaderView.jsx';
 import { ArtActions } from '../ui/EntryActions.jsx';
 import { Icon } from '../ui/Icon.jsx';
@@ -149,10 +148,9 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
     </button>
   );
 
-  // 往下拖即可收起。只做竖向：左右边缘横滑交给系统的返回手势，应用不再争抢。
-  // hook 走原生 passive:false touch 监听，接管后阻止默认，Android 的下拉刷新抢不走手势。
+  // 下滑关闭已下线（v2.5.3）：真机收起时会整屏闪白，退出只留 × / Esc / 系统返回键。
   const dismiss = useCallback(() => onCloseRef.current(), []);
-  const { panelRef: sheetRef, setPanelRef, handlers: sheetHandlers } = useSwipeDismiss(dismiss);
+  const sheetRef = useRef(null);
 
   // 系统返回键 / 手势返回也走同一个出口：打开即入栈，关闭（任意路径）时由清理函数销账。
   useEffect(() => registerLayer(dismiss), [dismiss]);
@@ -187,9 +185,8 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
   if (mobile) {
     return (
       <div className="dd-mask" onClick={onClose}>
-        <div ref={setPanelRef} className="dd-sheet cd-modal" role="dialog" aria-modal="true"
-          aria-label={dialogLabel} onClick={(ev) => ev.stopPropagation()} {...sheetHandlers}>
-          <div className="dd-sheet-grip" aria-hidden="true" />
+        <div ref={sheetRef} className="dd-sheet cd-modal" role="dialog" aria-modal="true"
+          aria-label={dialogLabel} onClick={(ev) => ev.stopPropagation()}>
           {closeBtn}
           <div className="dd-sheet-body cd-body">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}

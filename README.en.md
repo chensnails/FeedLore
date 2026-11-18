@@ -14,7 +14,7 @@ Current version **2.4.7** · [Changelog](CHANGELOG.en.md) · [Upgrade & deployme
 - **Feeds & rules**: OPML import/export, groups, per-feed intervals and full-text fetching; keyword / regex filters, Watch / Block rules scoped to groups or channels.
 - **AI digest & MCP**: a daily Chinese brief of the last 24 hours; external AI clients query feeds, full articles and digests through `/mcp` ([setup guide](docs/MCP.md)).
 - **Multi-user & roles**: separate feeds, read state, stars, rules and model config per account; read-only accounts supported, public registration off by default.
-- **Details that feel right**: 4 themes × 6 accent colors, adjustable type size / density / reading width; on phones, swipeable channel tabs, gesture-dismiss sheets and a bottom nav that tucks away while scrolling.
+- **Details that feel right**: 4 themes × 6 accent colors, adjustable type size / density / reading width; on phones, swipeable channel tabs, full-screen sheets that close via the system back key, and a bottom nav that tucks away while scrolling.
 - **Zero-fuss deployment**: one compose command to start; update via Watchtower or Settings → About.
 
 ## Screenshots
