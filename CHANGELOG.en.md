@@ -7,6 +7,65 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## 2.5.1 — 2026-11-18
+
+### Added
+
+- **Models are now organized as vendor → model**: Settings → Model is a single "Model access" section
+  where vendors are collapsible groups and their models sit indented underneath. The API address and
+  key live only in the vendor detail layer, and every model from the same vendor shares that key. The
+  vendor holding the default model starts expanded, and the collapsed state is remembered per account.
+  Models from older configurations are grouped under "Not assigned to a vendor" and keep working.
+- **Task assignment is now one row per capability**: icon, name, one-line description, model chip and
+  toggle — all six capabilities fit on one screen. The model picker opens only when you tap the chip;
+  turning a capability off just greys it out and keeps its assignment; per-action overrides moved into
+  an "Advanced" disclosure.
+- **Site backups now include AI details**: AI tags, MCP tokens, daily usage and request logs are part
+  of backup/restore. Restore writes them back with their original ids, and older backups that lack
+  these files are treated as empty.
+
+### Improved
+
+- **Tag clicks search the whole library**: tapping a manual or AI tag on the article page or the card
+  wall searches that tag across all channels instead of the current channel, group and scope. Card-wall
+  results stay on the card wall; zero hits offer "clear tag" in place instead of jumping to the article
+  page.
+- **Explore keeps its place**: switching to Digest and back keeps the conversation, the input draft and
+  any running poll. The composer "+" and the header "+" mean the same thing (start a new round), and
+  success toasts during an undo window queue up instead of replacing each other.
+- **Keyboard and screen reader**: the Ask/Digest tabs support ← → / Home / End with automatic
+  activation; the elapsed-seconds counter is no longer announced every second, only when the state
+  changes; close buttons in settings, detail layers, the drawer and card details are all 44×44.
+- **Mobile drawer and full-screen sheets**: a collapsed drawer no longer stays in the Tab order or the
+  accessibility tree; opening moves focus to the close button and closing returns it to the "Channels"
+  toggle; Tab / Shift+Tab cycle inside a full-screen sheet instead of reaching the page behind it.
+- **Faster sorting on large libraries**: dedicated indexes for "oldest first" and "by title" (including
+  per-channel variants) — paging through 220k articles no longer sorts the whole table.
+- **Smaller image**: the runtime image no longer ships build-time dependencies, 855MB → 714MB, so
+  pulls and updates are faster.
+
+### Fixed
+
+- **Fetching no longer fails as a whole on duplicate guids**: duplicates in one batch are deduplicated
+  by guid before the insert, so the batch no longer fails and the channel no longer gets auto-paused
+  after accumulating failures.
+- **Full-site restore accepts the vendor structure**: the unpack whitelist now includes the vendor and
+  model files, so restoring an upgraded site no longer reports "unexpected entry".
+- **AI tag badge**: accounts with AI tags enabled no longer see a "off by default" badge.
+- **No duplicate AI tagging**: tagging polls now have a concurrency gate, so long intervals no longer
+  stack duplicate tagging requests.
+
+### Deployment
+
+- Node runtime floor raised to 22.23.4 (the 2026-11-11 security release), using the same number in
+  `engines`, README, the image and CI; CI now has a hard Node-version check inside the image plus an
+  arm64 pre-build.
+- Release flow: a tag reuses the full CI check set (types / unit tests / real-database integration /
+  front-end output / image contents), releases are serialized, and `latest` only moves forward.
+- `.env.example` documents `ALLOW_SIGNUP` and `PROXY_URL`; compose passes both through.
+- Migrations 0016 (single AI-tag switch), 0017 (vendors) and 0018 (sort indexes) run automatically on
+  startup.
+
 ## 2.4.7 — 2026-11-16
 
 ### Added
