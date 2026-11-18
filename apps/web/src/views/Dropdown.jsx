@@ -30,6 +30,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   const rootRef = useRef(null);
   const panelRef = useRef(null);                 // 可滚动列表容器（桌面面板 / 移动弹窗体共用）
   const triggerRef = useRef(null);
+  const sheetCloseRef = useRef(null);
 
   const cur = options.find((o) => String(o.value) === String(value));
   const isActive = (o) => !!cur && String(o.value) === String(cur.value);
@@ -88,6 +89,13 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
   }, [open]);
 
+  // 移动端整屏弹层是模态对话框：焦点必须跟着进去，否则 Tab 先走完背后的页面。
+  // 落在关闭按钮上最稳（它就是弹层的出口），↑↓/Enter 仍在根节点统一处理。
+  useEffect(() => {
+    if (!open || !mobile) return;
+    if (sheetCloseRef.current && sheetCloseRef.current.focus) sheetCloseRef.current.focus();
+  }, [open, mobile]);
+
   // 键盘 ↑↓ 高亮时把那一项滚进视野（长频道列表里否则看不到当前高亮在哪）
   useEffect(() => {
     if (!open || hi < 0 || !panelRef.current) return;
@@ -109,8 +117,33 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     if (onChange) onChange(v);
   };
 
+  // 移动端弹层内的可聚焦元素（组头折叠键、选项、关闭键）；收起组里的按钮不算
+  const sheetFocusables = () => {
+    const body = panelRef.current;
+    const sheet = body && body.closest ? body.closest('.dd-sheet') : null;
+    if (!sheet) return null;
+    const list = Array.from(sheet.querySelectorAll('button:not([disabled])'))
+      .filter((el) => !el.closest('[hidden]'));
+    return list.length ? list : null;
+  };
+
   const onKeyDown = (ev) => {
     if (disabled) return;
+    // 模态弹层里 Tab 不能跑出去（背后页面还开着，跑出去等于把焦点丢进遮罩后面）
+    if (ev.key === 'Tab' && open && mobile) {
+      const list = sheetFocusables();
+      if (list) {
+        const first = list[0];
+        const last = list[list.length - 1];
+        const at = document.activeElement;
+        if (ev.shiftKey && (at === first || !list.includes(at))) {
+          ev.preventDefault(); last.focus();
+        } else if (!ev.shiftKey && (at === last || !list.includes(at))) {
+          ev.preventDefault(); first.focus();
+        }
+      }
+      return;
+    }
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
       ev.preventDefault();
       const at = visible.findIndex((o) => o === cur);
@@ -246,7 +279,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
             <div className="dd-sheet-grip" aria-hidden="true" />
             <div className="dd-sheet-head">
               <span className="dd-sheet-title">{title}</span>
-              <button type="button" className="dd-sheet-close" aria-label="关闭" onClick={close}>
+              <button type="button" className="dd-sheet-close" aria-label="关闭" ref={sheetCloseRef} onClick={close}>
                 <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
               </button>
             </div>

@@ -1014,8 +1014,20 @@ export function setReaderDrawer(open) {
   if (on === document.body.classList.contains('reader-drawer-open')) return;
   document.body.classList.toggle('reader-drawer-open', on);
   // 抽屉铺满整屏，背景也得真的钉住：iOS 上只写 overflow:hidden 挡不住惯性滚动
-  if (on) { lockPageScroll(); readerDrawerLocked = true; }
-  else if (readerDrawerLocked) { readerDrawerLocked = false; unlockPageScroll(); }
+  if (on) {
+    lockPageScroll(); readerDrawerLocked = true;
+    // 焦点跟着抽屉走：键盘用户打开后仍停在背景按钮上，Tab 会先走完屏外内容
+    const close = document.getElementById('readerSideClose');
+    if (close && close.focus) close.focus();
+  } else {
+    if (readerDrawerLocked) { readerDrawerLocked = false; unlockPageScroll(); }
+    // 焦点还在抽屉里（点关闭 / Esc）时还给开关；已经点去别处就不抢
+    const side = document.getElementById('readerSide');
+    if (side && side.contains(document.activeElement)) {
+      const opener = document.getElementById('readerMenuBtn');
+      if (opener && opener.focus) opener.focus();
+    }
+  }
 }
 
 /** 换了频道 / 范围 / 分组 = 换了一整个列表，把视线带回顶部，别停在新列表中间。

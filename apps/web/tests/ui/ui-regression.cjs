@@ -1521,6 +1521,12 @@ const withEFP = (el, fn) => {
     if (!drawer) throw new Error('抽屉应由 .reader-side, .cards-side 共用同一条规则');
     if (drawer.indexOf('var(--z-drawer)') < 0) throw new Error('抽屉没走 --z-drawer 层级');
     if (drawer.indexOf('min(272px, 84vw)') < 0) throw new Error('抽屉宽度应与文章页一致');
+    // 收起态必须真的不可达：只写 translateX(-104%) 的话，抽屉还在 Tab 序与无障碍树里
+    if (!/visibility:\s*hidden/.test(drawer)) throw new Error('收起态抽屉应 visibility:hidden（否则屏外内容仍可 Tab）');
+    if (!/visibility 0s linear \.26s/.test(drawer)) throw new Error('收起态应把 visibility 的隐藏推迟到滑出动画结束');
+    if (!/body\.reader-drawer-open\s+\.reader-side,\s*body\.cards-drawer-open\s+\.cards-side\s*\{[^}]*visibility:\s*visible/.test(css)) {
+      throw new Error('展开态抽屉应立刻 visibility:visible');
+    }
     if (!/body\.cards-drawer-open\s+\.cards-side\s*\{\s*transform:\s*none/.test(css)) throw new Error('缺 body.cards-drawer-open 的展开态');
     // ≤1080px 起抽屉就是唯一入口，头部下拉整体退场（不再只管窄屏工具栏那一处）
     if (!/#feedDD\s*\{\s*display:\s*none/.test(css)) throw new Error('≤1080px 应把频道下拉收起（抽屉代替）');
@@ -5253,6 +5259,20 @@ const withEFP = (el, fn) => {
     if (CA('#feedDD .dd-sheet .dd-item').length !== 3) throw new Error('弹窗选项 ' + CA('#feedDD .dd-sheet .dd-item').length);
     if (!C('#feedDD .dd-sheet .dd-item.active')) throw new Error('当前项未高亮');
   });
+  t('频道下拉（移动端）：打开即把焦点送进弹层，Tab 在弹层内循环', () => {
+    const close = C('#feedDD .dd-sheet-close');
+    if (w.document.activeElement !== close) {
+      throw new Error('焦点没进弹层：' + (w.document.activeElement && w.document.activeElement.className));
+    }
+    const items = CA('#feedDD .dd-sheet .dd-item');
+    const last = items[items.length - 1];
+    last.focus();
+    last.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    if (w.document.activeElement !== close) throw new Error('末项 Tab 应绕回关闭键');
+    const back = new w.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true });
+    close.dispatchEvent(back);
+    if (w.document.activeElement !== last) throw new Error('关闭键 Shift+Tab 应绕到末项');
+  });
   t('下拉手势：位移跟手，写的是面板内联 transform', () => {
     const sheet = C('#feedDD .dd-sheet');
     tt(sheet, 'touchstart', 100);
@@ -7286,6 +7306,16 @@ const withEFP = (el, fn) => {
       if (!doc.body.classList.contains('cards-drawer-open')) throw new Error('右滑够距应打开抽屉');
       c2.cardsCloseDrawer();
       if (doc.body.classList.contains('cards-drawer-open')) throw new Error('卡片页抽屉关不上');
+
+      // 焦点契约（收起态的 visibility:hidden 由 CSS 守）：打开进抽屉、关闭回开关
+      const mkBtn = (id, parent) => { const el = doc.createElement('button'); el.id = id; parent.appendChild(el); return el; };
+      const cMenu = mkBtn('cardsMenuBtn', doc.body);
+      const cClose = mkBtn('cardsSideClose', doc.getElementById('cardsSide'));
+      c2.cardsToggleDrawer();
+      if (doc.activeElement !== cClose) throw new Error('打开卡片抽屉应把焦点移到关闭键');
+      c2.cardsCloseDrawer();
+      if (doc.activeElement !== cMenu) throw new Error('关闭卡片抽屉应把焦点还给「频道」开关');
+
       // 文章页没有被这次右滑误开（同一套手势，各归各的类）
       if (doc.body.classList.contains('reader-drawer-open')) throw new Error('误开了文章页抽屉');
 
@@ -7305,6 +7335,14 @@ const withEFP = (el, fn) => {
       if (!doc.body.classList.contains('reader-drawer-open')) throw new Error('文章页抽屉没拉出来');
       if (doc.body.classList.contains('cards-drawer-open')) throw new Error('文章页也开了卡片页抽屉');
       c2.readerCloseDrawer();
+
+      // 文章页同一套焦点契约
+      const rMenu = mkBtn('readerMenuBtn', doc.body);
+      const rClose = mkBtn('readerSideClose', doc.getElementById('readerSide'));
+      c2.readerToggleDrawer();
+      if (doc.activeElement !== rClose) throw new Error('打开文章页抽屉应把焦点移到关闭键');
+      c2.readerCloseDrawer();
+      if (doc.activeElement !== rMenu) throw new Error('关闭文章页抽屉应把焦点还给「频道」开关');
     });
 
     // ---- 「再次点击同一频道 → 回到该频道最新信息」 ----

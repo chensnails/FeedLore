@@ -282,8 +282,20 @@ export function setCardsDrawer(open) {
   if (on === document.body.classList.contains('cards-drawer-open')) return;
   document.body.classList.toggle('cards-drawer-open', on);
   // 与文章页抽屉一致：铺满整屏的浮层得把背景真的钉住，iOS 上只写 overflow:hidden 挡不住惯性滚动
-  if (on) { lockPageScroll(); cardsDrawerLocked = true; }
-  else if (cardsDrawerLocked) { cardsDrawerLocked = false; unlockPageScroll(); }
+  if (on) {
+    lockPageScroll(); cardsDrawerLocked = true;
+    // 焦点跟着抽屉走，别让键盘用户的 Tab 从屏外的频道栏开始
+    const close = document.getElementById('cardsSideClose');
+    if (close && close.focus) close.focus();
+  } else {
+    if (cardsDrawerLocked) { cardsDrawerLocked = false; unlockPageScroll(); }
+    // 焦点还在抽屉里时还给开关；点去别处（比如遮罩）就不抢
+    const side = document.getElementById('cardsSide');
+    if (side && side.contains(document.activeElement)) {
+      const opener = document.getElementById('cardsMenuBtn');
+      if (opener && opener.focus) opener.focus();
+    }
+  }
 }
 
 export function cardsToggleDrawer() { setCardsDrawer(!document.body.classList.contains('cards-drawer-open')); }

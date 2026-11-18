@@ -48,7 +48,12 @@ function place(px) {
   px = Math.max(0, Math.min(w, px));
   const pct = px / w;
   const side = sideOf(active);
-  if (side) side.style.transform = `translateX(${(-104 + pct * 104).toFixed(2)}%)`;
+  if (side) {
+    // 收起态由 CSS 设了 visibility:hidden（不能占 Tab 序）；拖出来的过程还没加 open 类，
+    // 得在这里临时放开，否则跟手时抽屉是空的。
+    side.style.visibility = 'visible';
+    side.style.transform = `translateX(${(-104 + pct * 104).toFixed(2)}%)`;
+  }
   const mask = maskOf(active);
   if (mask) {
     mask.style.visibility = 'visible';
@@ -123,7 +128,7 @@ document.addEventListener('touchend', (ev) => {
   cur.set(open);                                              // 类切换 + 页面滚动锁
   // 吸附动画结束后把内联样式交还给 CSS，避免后续用按钮开关时内联值压住类样式
   setTimeout(() => {
-    const side1 = sideOf(cur); if (side1) side1.style.transform = '';
+    const side1 = sideOf(cur); if (side1) { side1.style.transform = ''; side1.style.visibility = ''; }
     const mask1 = maskOf(cur); if (mask1) { mask1.style.opacity = ''; mask1.style.visibility = ''; }
     active = null;
   }, 300);

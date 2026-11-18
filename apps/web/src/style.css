@@ -4679,10 +4679,17 @@ body.is-scrolling .card-media-actions { transition: none; }
     overflow-y: auto;
     overscroll-behavior: contain;
     transform: translateX(-104%);
-    transition: transform .26s cubic-bezier(.4, 0, .2, 1);
+    /* 收起态只是滑出屏幕，元素仍在 Tab 序列与无障碍树里 —— 加 visibility
+       才真的不可达；延迟到滑出动画结束再隐藏，展开时立即可见。 */
+    visibility: hidden;
+    transition: transform .26s cubic-bezier(.4, 0, .2, 1), visibility 0s linear .26s;
   }
   body.reader-drawer-open .reader-side,
-  body.cards-drawer-open .cards-side { transform: none; }
+  body.cards-drawer-open .cards-side {
+    transform: none;
+    visibility: visible;
+    transition: transform .26s cubic-bezier(.4, 0, .2, 1), visibility 0s linear 0s;
+  }
   .reader-side-head, .cards-side-head { padding: 2px var(--sp-1) var(--sp-2); }
   .reader-channels, .cards-channels { flex-direction: column; gap: var(--sp-0); overflow: visible; }
   .rd-ch {
