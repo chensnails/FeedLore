@@ -293,6 +293,17 @@ export interface UpsertResult {
   fresh: NormalizedItem[];
 }
 
+/** 同一批 items 里可能出现重复 guid（guid 拿不到时会回落到 title/link）：
+ *  重复行一起写进同一条 upsert 会触发 PostgreSQL 的
+ *  `ON CONFLICT DO UPDATE command cannot affect row a second time`，整组抓取失败，
+ *  还会累加 failStreak 把频道自动停采。按 guid 去重，保留最后一条（同轮里更晚解析的为准）。 */
+export function dedupeByGuid(items: NormalizedItem[]): NormalizedItem[] {
+  if (items.length < 2) return items;
+  const byGuid = new Map<string, NormalizedItem>();
+  for (const it of items) byGuid.set(it.guid, it);
+  return byGuid.size === items.length ? items : [...byGuid.values()];
+}
+
 /**
  * 批量写入条目，返回新增条数与「本轮新增」列表。
  *
@@ -301,20 +312,21 @@ export interface UpsertResult {
  * 这里两次往返搞定，新增集合由「查之前」的差集得出（并发双抓已由 inFlight 去重挡掉）。
  */
 export async function upsertEntries(db: Db, feedId: number, items: NormalizedItem[]): Promise<UpsertResult> {
-  if (!items.length) return { inserted: 0, fresh: [] };
+  const list = dedupeByGuid(items);
+  if (!list.length) return { inserted: 0, fresh: [] };
 
-  const guids = [...new Set(items.map((it) => it.guid))];
+  const guids = [...new Set(list.map((it) => it.guid))];
   const existing = await db
     .select({ guid: entries.guid })
     .from(entries)
     .where(and(eq(entries.feedId, feedId), inArray(entries.guid, guids)));
   const seen = new Set(existing.map((r) => r.guid));
-  const fresh = items.filter((it) => !seen.has(it.guid));
+  const fresh = list.filter((it) => !seen.has(it.guid));
 
   await db
     .insert(entries)
     .values(
-      items.map((it) => ({
+      list.map((it) => ({
         feedId,
         guid: it.guid,
         title: it.title,
