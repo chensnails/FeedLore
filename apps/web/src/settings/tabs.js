@@ -14,8 +14,8 @@ export const SETTINGS_TABS = [
   },
   {
     name: 'model', label: '模型', group: '智能', icon: 'sparkle',
-    desc: '模型地址、Key、思考深度与 AI 标签',
-    keywords: '模型 llm 地址 api key 密钥 温度 思考 深度 qwen deepseek model 标签 智能标签 打标 aitags 自动标签',
+    desc: '厂商接入、模型参数与任务分配',
+    keywords: '模型 llm 厂商 vendor 接入 地址 api key 密钥 温度 思考 深度 默认模型 任务分配 能力 标签 智能标签 打标 aitags 运行状态 model',
   },
   {
     // 「日报」依赖 AI 模型生成，归到「智能」组、排在「模型」之下（用户 2026-11-18 指定）。

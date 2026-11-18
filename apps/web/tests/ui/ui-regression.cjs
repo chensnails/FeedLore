@@ -92,10 +92,29 @@ let checkResponse = { ok: true, hasUpdate: true, current: '1.2.0', latest: '1.3.
 // 模型面板的可变响应（复刻 /api/prefs GET 的 llm 视图字段：不回填明文，只给 set + 掩码）
 let prefsLlm = { baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen3-8B', temperature: 0.3, thinking: false, thinkingDepth: 'medium', apiKeySet: false, apiKeyHint: '' };
 /* 多路提供商与能力路由（0015）：mock 与服务端契约同源。 */
-let prefsProviders = [];
+// 0017：厂商 → 模型两层。default 模型挂在厂商下，Key 只在厂商上。
+let prefsVendors = [{
+  id: 'v1', name: '硅基流动', baseUrl: 'https://api.siliconflow.cn/v1',
+  modelCount: 1, apiKeySet: false, apiKeyHint: '',
+}];
+let prefsModels = [{
+  id: 'm1', vendorId: 'v1', vendorName: '硅基流动',
+  name: '', baseUrl: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen3-8B',
+  temperature: 0.3, thinking: false, thinkingDepth: 2,
+  isDefault: true, apiKeySet: false, apiKeyHint: '',
+}];
 let prefsRoutes = {};
-let prefsProviderSeq = 0;
+let prefsVendorSeq = 1;
+let prefsModelSeq = 1;
 let prefsPostOk = true;
+// 视图按服务端 listLlmVendors / listLlmModels 的口径拼：模型跟着厂商的 Key 状态走
+const vendorViews = () => prefsVendors.map((v) => ({
+  ...v, modelCount: prefsModels.filter((m) => m.vendorId === v.id).length,
+}));
+const modelViews = () => prefsModels.map((m) => {
+  const v = prefsVendors.find((x) => x.id === m.vendorId) || {};
+  return { ...m, vendorName: v.name || '', baseUrl: v.baseUrl || '', apiKeySet: !!v.apiKeySet, apiKeyHint: v.apiKeyHint || '' };
+});
 // 日报：账号级开关（layout.digestEnabled）+ 整组按账号配置（prefs.digest）
 let prefsDigestEnabled = true;
 const DIGEST_CFG_DEFAULT = {
@@ -417,7 +436,9 @@ w.feedlore = {
         layout: { digestEnabled: prefsDigestEnabled }, digest: Object.assign({}, prefsDigest),
         aiTags: { enabled: prefsAiTagsEnabled },
         watchExpireDays: miniWatchExpireDays, webhookUrl: miniWebhook,
-        llmProviders: prefsProviders.slice(),
+        llmProviders: prefsModels.slice(),
+        llmVendors: vendorViews(),
+        llmModels: modelViews(),
         llmRoutes: Object.assign({}, prefsRoutes),
       });
     }
@@ -501,29 +522,46 @@ w.feedlore = {
       if (body && typeof body.webhookUrl === 'string') {
         miniWebhook = body.webhookUrl.trim().slice(0, 600);
       }
-      /* 多路提供商 / 能力路由（0015）：与服务端 lib/llmProviders.ts 同口径 */
-      if (body && body.llmProvider) {
-        const p = body.llmProvider;
-        const id = p.id || ('mock-provider-' + (++prefsProviderSeq));
+      /* 0017：厂商 → 模型两层（与服务端 lib/llmProviders.ts 同口径） */
+      if (body && body.llmVendor) {
+        const p = body.llmVendor;
+        const id = p.id || ('mock-vendor-' + (++prefsVendorSeq));
+        const old = prefsVendors.find((x) => x.id === id) || {};
+        const baseUrl = String(p.baseUrl || old.baseUrl || '').replace(/\/+$/, '');
+        const name = String(p.name || old.name || '').trim() || String(baseUrl).replace(/^[a-z]+:\/\//, '').split('/')[0];
+        const keySet = p.apiKey === '' ? false : (p.apiKey ? true : !!old.apiKeySet);
+        const view = { id, name, baseUrl, apiKeySet: keySet, apiKeyHint: keySet ? 'sk-…mock' : '' };
+        prefsVendors = old.id ? prefsVendors.map((x) => (x.id === id ? view : x)) : prefsVendors.concat([view]);
+      }
+      if (body && body.llmVendorDelete) {
+        prefsVendors = prefsVendors.filter((x) => x.id !== body.llmVendorDelete);
+        prefsModels = prefsModels.filter((m) => m.vendorId !== body.llmVendorDelete);
+      }
+      if (body && body.llmModel) {
+        const p = body.llmModel;
+        const id = p.id || ('mock-model-' + (++prefsModelSeq));
+        const old = prefsModels.find((x) => x.id === id) || {};
         const view = {
-          id, name: p.name || '', baseUrl: p.baseUrl || '', model: p.model || '',
-          temperature: p.temperature == null ? 0.3 : p.temperature,
-          thinking: p.thinking === true, thinkingDepth: p.thinkingDepth || 0,
-          apiKeySet: true, apiKeyHint: 'sk-…mock', isDefault: p.isDefault === true,
+          id,
+          vendorId: p.vendorId || old.vendorId || '',
+          name: p.name != null ? String(p.name) : (old.name || ''),
+          model: p.model || old.model || '',
+          temperature: p.temperature == null ? (old.temperature == null ? 0.3 : old.temperature) : p.temperature,
+          thinking: typeof p.thinking === 'boolean' ? p.thinking : !!old.thinking,
+          thinkingDepth: p.thinkingDepth == null ? (old.thinkingDepth || 0) : p.thinkingDepth,
+          isDefault: p.isDefault === true || !!old.isDefault,
         };
-        if (p.id) {
-          const old = prefsProviders.find((x) => x.id === p.id) || {};
-          prefsProviders = prefsProviders.map((x) => x.id === p.id
-            ? Object.assign({}, x, view, { apiKeySet: p.apiKey ? true : x.apiKeySet }) : x);
-        } else {
-          prefsProviders = prefsProviders.concat([view]);
-        }
-        if (p.isDefault === true) {
-          prefsProviders = prefsProviders.map((x) => Object.assign({}, x, { isDefault: x.id === id }));
+        prefsModels = old.id ? prefsModels.map((x) => (x.id === id ? view : x)) : prefsModels.concat([view]);
+        if (p.isDefault === true) prefsModels = prefsModels.map((x) => Object.assign({}, x, { isDefault: x.id === id }));
+        if (!prefsModels.some((x) => x.isDefault) && prefsModels.length) {
+          prefsModels = prefsModels.map((x, i) => Object.assign({}, x, { isDefault: i === 0 }));
         }
       }
-      if (body && body.llmProviderDelete) {
-        prefsProviders = prefsProviders.filter((x) => x.id !== body.llmProviderDelete);
+      if (body && body.llmModelDelete) {
+        prefsModels = prefsModels.filter((x) => x.id !== body.llmModelDelete);
+        if (prefsModels.length && !prefsModels.some((x) => x.isDefault)) {
+          prefsModels = prefsModels.map((x, i) => Object.assign({}, x, { isDefault: i === 0 }));
+        }
       }
       if (body && body.llmRoutes && typeof body.llmRoutes === 'object') {
         for (const k of Object.keys(body.llmRoutes)) {
@@ -2818,411 +2856,261 @@ const withEFP = (el, fn) => {
     if (document.querySelector('.settings-modal.mobile-pane')) throw new Error('仍在移动态');
   });
 
-  // ============ 模型面板（P2b React 化） ============
+  // ============ 模型面板（0017 厂商 → 模型两层：列表 + 详情层） ============
   clickTab('模型');
-  await sleep(80);
-  // 接口与密钥表单直接展示，进面板即可见
-  t('接口与密钥无「修改」前置按钮', () => {
-    if (document.querySelector('[data-sec="llm-api"] .ro-toggle')) throw new Error('仍有「修改」按钮');
-  });
-  await sleep(40);
-  t('模型面板渲染', () => { if (!document.querySelector('#llmBaseUrl')) throw new Error('无 #llmBaseUrl'); });
-  t('模型地址带反自动填充防护（不被浏览器当账号）', () => {
-    const el = document.querySelector('#llmBaseUrl');
-    if (el.getAttribute('data-fl-no-autofill') !== 'true') throw new Error('缺 data-fl-no-autofill 标记');
-    if (!/^llm-url-/.test(el.name || '')) throw new Error('name 非唯一非语义: ' + el.name);
-    if (el.getAttribute('autocomplete') !== 'off') throw new Error('autocomplete 未关闭');
-  });
-  t('模型页三卡片：模型 / 使用方式 / 运行状态，6 能力即时保存', () => {
-    // ① 模型卡：默认模型作首行 + 其它模型列表 + 添加入口
+  await sleep(120);
+
+  const modelRows = () => [...document.querySelectorAll('[data-sec="llm-library"] .sl-row[data-model-id]')];
+  const vendorRows = () => [...document.querySelectorAll('[data-sec="llm-vendors"] .sl-row[data-vendor-id]')];
+  const rowByName = (rows, name) => rows.find((r) => r.querySelector('.sl-name').textContent === name);
+
+  t('模型页四区：模型 / 厂商与接入 / 任务分配 / 运行状态（折叠），旧大卡片与整页保存都移除', () => {
     const lib = document.querySelector('[data-sec="llm-library"]');
-    if (!lib || !lib.classList.contains('model-card')) throw new Error('缺卡片①模型');
-    if (!lib.querySelector('[data-provider-default="1"]')) throw new Error('缺默认模型首行');
-    if (!lib.querySelector('#editDefaultModelBtn')) throw new Error('缺默认模型编辑按钮');
-    if (!lib.querySelector('#aiCapAddProvider')) throw new Error('缺添加模型按钮');
-    // 默认模型的地址/Key/模型名/温度在同一张卡里（唯一的表单，不再和添加表单重复）
-    const api = document.querySelector('[data-sec="llm-api"]');
-    if (!api || api.tagName !== 'DIV' || !lib.contains(api)) throw new Error('默认模型表单应在模型卡内');
-    for (const id of ['#llmBaseUrl', '#llmApiKey', '#llmModel', '#llmTemp']) {
-      if (!api.contains(document.querySelector(id))) throw new Error(id + ' 不在默认模型表单');
+    const ven = document.querySelector('[data-sec="llm-vendors"]');
+    const cap = document.querySelector('[data-sec="llm-capabilities"]');
+    const st = document.querySelector('[data-sec="llm-status"]');
+    if (!lib || !ven || !cap || !st) throw new Error('缺区块');
+    if (!lib.open || !ven.open || !cap.open) throw new Error('常用区应默认展开');
+    if (st.open) throw new Error('运行状态应默认折叠');
+    if (document.querySelector('[data-pane="model"] .model-card')) throw new Error('旧大卡片外观应已移除');
+    if (document.querySelector('#saveLlmBtn')) throw new Error('模型页不该再有整页保存按钮');
+    if (document.querySelector('[data-sec="llm-api"]') || document.querySelector('#llmBaseUrl')) {
+      throw new Error('旧「默认模型表单」应已移除（地址与 Key 归厂商）');
     }
-    if (lib.querySelector('.sec-head .sec-sub').textContent !== 'Qwen/Qwen3-8B') throw new Error('模型摘要: ' + lib.querySelector('.sec-head .sec-sub').textContent);
-    // ② 使用方式卡：思考子节 + 6 个能力行
-    const sec = document.querySelector('[data-sec="llm-capabilities"]');
-    if (!sec || !sec.classList.contains('model-card')) throw new Error('缺卡片②使用方式');
-    const think = document.querySelector('[data-sec="llm-thinking"]');
-    if (!think || think.tagName !== 'DIV' || !sec.contains(think)) throw new Error('思考子节应在使用方式卡内');
-    const cap = sec.querySelector('.ai-cap');
-    if (!cap) throw new Error('缺 .ai-cap 容器');
-    const rows = cap.querySelectorAll('.ai-cap-row');
-    if (rows.length !== 6) throw new Error('应有 6 个能力行，实际 ' + rows.length);
-    if (!cap.querySelector('[data-cap="entry_ai"]')) throw new Error('缺单篇 AI 行');
-    // 没有额外模型时「按动作指定模型」本就不渲染，它被收进高级折叠的检查放到添加模型之后
-    // ③ 运行状态卡：状态/历史 + 用量子节
-    const status = document.querySelector('[data-sec="llm-status"]');
-    const usage = document.querySelector('[data-sec="llm-usage"]');
-    if (!status || !status.classList.contains('model-card')) throw new Error('缺卡片③运行状态');
-    if (!usage || usage.tagName !== 'DIV' || !status.contains(usage)) throw new Error('用量子节应在运行状态卡内');
-    // 三张卡片按 01→02→03 顺序、各自带编号与说明
-    const cards = [...document.querySelectorAll('[data-pane="model"] .model-card')];
-    if (cards.length !== 3) throw new Error('应有 3 张卡片，实际 ' + cards.length);
-    const nos = cards.map((c) => c.querySelector('.model-card-no')?.textContent).join('|');
-    if (nos !== '01|02|03') throw new Error('卡片编号/顺序: ' + nos);
-    if (cards.some((c) => !c.querySelector('.model-card-desc')?.textContent.trim())) throw new Error('卡片缺说明行');
-    // 旧的独立 AI 标签 Section 已废弃（0016 收口到能力开关区）
-    if (document.querySelector('[data-sec="llm-aitags"]') || document.querySelector('#aiTagsEnable')) {
-      throw new Error('AI 标签仍有独立开关，未收口到能力区');
-    }
-    if (cap.querySelector('.pane-foot')) throw new Error('能力区块不该有自己的动作栏');
-    // 默认展开：模型与使用方式是常用配置，运行状态是诊断（收起省空间）
-    if (!lib.open) throw new Error('「模型」卡应默认展开');
-    if (!sec.open) throw new Error('「使用方式」卡应默认展开');
-    if (status.open) throw new Error('「运行状态」卡应默认收起');
   });
 
-  t('默认模型：未配置时自动展开表单', () => {
-    const api = document.querySelector('[data-sec="llm-api"]');
-    if (!api) throw new Error('缺默认模型表单');
-    if (!document.querySelector('#editDefaultModelBtn')) throw new Error('缺默认模型编辑按钮');
-    if (api.hidden) throw new Error('未配置时应自动展开默认模型表单');
-  });
-  document.querySelector('#editDefaultModelBtn').click();
-  await sleep(50);
-  t('默认模型：点「收起」后表单隐藏（列表只留一行摘要）', () => {
-    if (!document.querySelector('[data-sec="llm-api"]').hidden) throw new Error('点收起后表单未隐藏');
-  });
-  document.querySelector('#editDefaultModelBtn').click();
-  await sleep(50);
-  t('默认模型：再点「编辑」重新展开', () => {
-    if (document.querySelector('[data-sec="llm-api"]').hidden) throw new Error('再点编辑未展开');
+  t('模型列表：默认模型在最上，行内给出厂商 / 温度 / 思考与默认徽标', () => {
+    const rows = modelRows();
+    if (rows.length !== 1) throw new Error('行数 ' + rows.length);
+    const row = rows[0];
+    if (row.querySelector('.sl-name').textContent !== 'Qwen/Qwen3-8B') throw new Error('名称: ' + row.querySelector('.sl-name').textContent);
+    const sub = row.querySelector('.sl-sub').textContent;
+    if (sub.indexOf('硅基流动') < 0 || sub.indexOf('温度 0.3') < 0) throw new Error('副标题: ' + sub);
+    if (!row.querySelector('.sl-badge') || row.querySelector('.sl-badge').textContent !== '默认') throw new Error('缺默认徽标');
+    if (row.getAttribute('role') !== 'button' || row.tabIndex !== 0) throw new Error('整行应可键盘操作');
   });
 
-  // 添加一个额外模型 → 「按动作指定模型」才出现，且必须收在高级折叠里、默认收起
+  t('厂商列表：名称 / 域名 / 模型数 / Key 状态', () => {
+    const rows = vendorRows();
+    if (rows.length !== 1) throw new Error('行数 ' + rows.length);
+    if (rows[0].querySelector('.sl-name').textContent !== '硅基流动') throw new Error('名称');
+    if (rows[0].querySelector('.sl-sub').textContent.indexOf('api.siliconflow.cn') < 0) throw new Error('域名');
+    if (rows[0].querySelector('.sl-badge').textContent !== '未设 Key') throw new Error('Key 徽标: ' + rows[0].querySelector('.sl-badge').textContent);
+  });
+
+  // —— 模型详情层：参数编辑、即时保存、测试、上游列表 ——
+  modelRows()[0].dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await sleep(80);
+  t('键盘 Enter 打开模型详情层，字段齐全且不含 Key', () => {
+    if (!sheetEl()) throw new Error('未打开详情层');
+    if (document.querySelector('.ds-title').textContent.indexOf('模型') < 0) throw new Error('标题: ' + document.querySelector('.ds-title').textContent);
+    for (const id of ['#modelVendor', '#modelName', '#modelUpstream', '#modelTemp', '#modelThinking', '#modelIsDefault']) {
+      if (!document.querySelector(id)) throw new Error('缺 ' + id);
+    }
+    if (!document.querySelector('#modelUpstream').closest('.input-with-btn')) throw new Error('获取列表按钮应贴在模型名输入框旁');
+    if (document.querySelector('#vendorKey')) throw new Error('Key 不该出现在模型层');
+  });
+  t('默认模型：勾选且锁定（全站唯一）', () => {
+    const box = document.querySelector('#modelIsDefault');
+    if (box.checked !== true || box.disabled !== true) throw new Error('默认模型应勾选并锁定');
+  });
+  t('思考关闭时深度行隐藏', () => {
+    if (document.querySelector('#modelDepth').closest('.form-row').hidden !== true) throw new Error('深度行不该可见');
+  });
+  document.querySelector('#modelThinking ~ .switch-slider').click();
+  await sleep(40);
+  t('打开思考后深度行出现，默认中档', () => {
+    if (document.querySelector('#modelDepth').closest('.form-row').hidden !== false) throw new Error('深度行未出现');
+    if (document.querySelector('#modelDepth').value !== 'medium') throw new Error('档位: ' + document.querySelector('#modelDepth').value);
+  });
+  setInput('#modelTemp', '0.4');
+  await setSel('#modelDepth', 'high');
+  document.querySelector('#modelSheetSave').click();
+  await sleep(150);
+  t('保存模型：POST llmModel（只发模型字段，不含地址 / Key）', () => {
+    const body = lastPostBody('/api/prefs');
+    if (!body.llmModel) throw new Error('body: ' + JSON.stringify(body));
+    const m = body.llmModel;
+    if (m.id !== 'm1' || m.vendorId !== 'v1') throw new Error('定位: ' + JSON.stringify(m));
+    if (m.model !== 'Qwen/Qwen3-8B' || m.temperature !== 0.4) throw new Error('参数: ' + JSON.stringify(m));
+    if (m.thinking !== true || m.thinkingDepth !== 3) throw new Error('思考: ' + JSON.stringify(m));
+    if (m.isDefault !== true) throw new Error('默认标记丢失');
+    if ('apiKey' in m || 'baseUrl' in m) throw new Error('模型层不该带地址或 Key');
+  });
+  t('保存后详情层关闭，列表副标题同步', () => {
+    if (sheetEl()) throw new Error('详情层未关闭');
+    const sub = modelRows()[0].querySelector('.sl-sub').textContent;
+    if (sub.indexOf('温度 0.4') < 0 || sub.indexOf('思考深') < 0) throw new Error('副标题: ' + sub);
+  });
+
+  modelRows()[0].click();
+  await sleep(60);
+  document.querySelector('#fetchUpstreamBtn').click();
+  await sleep(120);
+  t('获取上游模型：POST /api/llm/models { vendorId }，返回后出现下拉', () => {
+    const body = lastPostBody('/api/llm/models');
+    if (body.vendorId !== 'v1') throw new Error('body: ' + JSON.stringify(body));
+    if (!document.querySelector('#modelUpstreamPick')) throw new Error('应出现上游模型下拉');
+  });
+  document.querySelector('#modelUpstreamPick').click();
+  await sleep(60);
+  t('上游模型下拉逐项列出', () => {
+    const opts = [...document.querySelectorAll('.dd-panel .dd-item .dd-item-label')].map((x) => x.textContent);
+    if (opts.join('|') !== modelsPayload.join('|')) throw new Error(opts.join(','));
+  });
   {
-    document.querySelector('#aiCapAddProvider').click();
-    await sleep(50);
-    setInput('#aiCapName', '便宜模型');
-    setInput('#aiCapBaseUrl', 'https://cheap.example.com/v1');
-    setInput('#aiCapModel', 'cheap-1');
-    setInput('#aiCapKey', 'sk-cheap');
-    document.querySelector('#aiCapSaveProvider').click();
-    await sleep(150);
-    t('添加模型：新行入列表，四动作收进高级折叠且默认收起', () => {
-      if (!document.querySelector('.ai-cap-provider[data-provider-id]')) throw new Error('新模型未出现在列表');
-      const adv = document.querySelector('[data-cap="entry_ai"] .ai-cap-actions-adv');
-      if (!adv) throw new Error('四动作应收进高级折叠');
-      if (adv.open) throw new Error('四动作高级折叠应默认收起');
-      if (!adv.querySelector('#aiCapAction-summary')) throw new Error('高级里应保留四动作下拉');
-    });
+    const target = [...document.querySelectorAll('.dd-panel .dd-item')].find((el) => el.textContent.indexOf('DeepSeek-V3') >= 0);
+    if (target) target.click();
+    await sleep(60);
   }
-
-  t('使用方式卡：思考子节与能力区同卡，摘要同步', () => {
-    const sec = document.querySelector('[data-sec="llm-capabilities"]');
-    const think = document.querySelector('[data-sec="llm-thinking"]');
-    if (!sec || !think) throw new Error('缺分组');
-    if (!think.querySelector('#llmThinking')) throw new Error('开关不在思考子节');
-    if (!think.querySelector('#llmDepth')) throw new Error('深度不在思考子节');
-    const sub = think.querySelector('.sec-sub').textContent;
-    if (sub.indexOf('已关闭') < 0) throw new Error('默认关闭的摘要: ' + sub);
+  t('选上游模型回填模型名', () => {
+    if (document.querySelector('#modelUpstream').value !== 'deepseek-ai/DeepSeek-V3') throw new Error('值: ' + document.querySelector('#modelUpstream').value);
   });
-  t('设置分层：模型页不再有高级组（思考开关已提为常用）', () => {
-    if (document.querySelector('[data-sec="llm-thinking"]').classList.contains('is-advanced')) {
-      throw new Error('思考子节又被打回高级组');
+  modelsFailNext = true;
+  document.querySelector('#fetchUpstreamBtn').click();
+  await sleep(120);
+  t('获取失败：保留手填并标红说明原因', () => {
+    const tip = document.querySelector('#modelUpstream').closest('.form-row').querySelector('.form-tip.is-warn');
+    if (!tip || tip.textContent.indexOf('404') < 0) throw new Error('提示: ' + (tip ? tip.textContent : 'null'));
+    if (!document.querySelector('#modelUpstream')) throw new Error('输入框应仍在');
+  });
+  document.querySelector('#modelSheetTest').click();
+  await sleep(120);
+  t('详情层测试：POST test-llm 带该模型的 modelId，内联 ok', () => {
+    const body = lastPostBody('/api/digest/test-llm');
+    if (body.modelId !== 'm1') throw new Error('body: ' + JSON.stringify(body));
+    const r = document.querySelector('#modelSheetResult');
+    if (!r.classList.contains('ok') || r.textContent.indexOf('模型可用') < 0) throw new Error('结果: ' + r.textContent);
+  });
+  prefsPostOk = false;
+  setInput('#modelTemp', '0.6');
+  document.querySelector('#modelSheetSave').click();
+  await sleep(120);
+  t('保存失败：详情层留在原地并内联报错', () => {
+    const r = document.querySelector('#modelSheetResult');
+    if (!r.classList.contains('err') || r.textContent.indexOf('炸了') < 0) throw new Error('结果: ' + r.textContent);
+    if (!sheetEl()) throw new Error('失败时不该关层');
+  });
+  prefsPostOk = true;
+  await closeSheet();
+
+  // —— 厂商详情层：地址与 Key 的唯一来源 ——
+  vendorRows()[0].click();
+  await sleep(80);
+  t('厂商详情层：只含地址与 Key 的反自动填充防护，无模型字段', () => {
+    if (!document.querySelector('#vendorBaseUrl')) throw new Error('缺地址');
+    if (document.querySelector('#modelUpstream') || document.querySelector('#modelTemp')) throw new Error('模型字段不该在厂商层');
+    const url = document.querySelector('#vendorBaseUrl');
+    if (url.getAttribute('data-fl-no-autofill') !== 'true') throw new Error('缺 data-fl-no-autofill 标记');
+    if (url.getAttribute('autocomplete') !== 'off') throw new Error('autocomplete 未关闭');
+    if (document.querySelector('#vendorKey').placeholder !== 'sk-...') throw new Error('占位: ' + document.querySelector('#vendorKey').placeholder);
+  });
+  setInput('#vendorBaseUrl', 'https://api.siliconflow.cn/v1');
+  setInput('#vendorKey', 'sk-vendor-1');
+  document.querySelector('#vendorSheetSave').click();
+  await sleep(160);
+  t('保存厂商：POST llmVendor 带 Key，徽标翻为「Key 已设」', () => {
+    const body = lastPostBody('/api/prefs');
+    if (!body.llmVendor || body.llmVendor.apiKey !== 'sk-vendor-1') throw new Error('body: ' + JSON.stringify(body));
+    if (vendorRows()[0].querySelector('.sl-badge').textContent !== 'Key 已设') {
+      throw new Error('徽标: ' + vendorRows()[0].querySelector('.sl-badge').textContent);
     }
-    if (document.querySelector('[data-sec="llm-api"] .sec-adv')) throw new Error('默认模型不该有「高级」标');
+  });
+  vendorRows()[0].click();
+  await sleep(60);
+  t('已设 Key：占位改「已保存」并出现清除按钮', () => {
+    if (document.querySelector('#vendorKey').placeholder !== '已保存，留空则不修改') throw new Error('占位: ' + document.querySelector('#vendorKey').placeholder);
+    const btn = [...document.querySelectorAll('.ds-body .input-with-btn button')].find((b) => b.textContent === '清除');
+    if (!btn) throw new Error('缺清除按钮');
+  });
+  setInput('#vendorName', '硅基流动（新）');
+  document.querySelector('#vendorSheetSave').click();
+  await sleep(160);
+  t('Key 留空保存：请求体不含 apiKey，名称即时更新', () => {
+    const body = lastPostBody('/api/prefs');
+    if ('apiKey' in body.llmVendor) throw new Error('不应传 apiKey: ' + JSON.stringify(body));
+    if (vendorRows()[0].querySelector('.sl-name').textContent !== '硅基流动（新）') throw new Error('名称未更新');
+  });
+  vendorRows()[0].click();
+  await sleep(60);
+  {
+    const btn = [...document.querySelectorAll('.ds-body .input-with-btn button')].find((b) => b.textContent === '清除');
+    if (btn) btn.click();
+    await sleep(30);
+  }
+  document.querySelector('#vendorSheetSave').click();
+  await sleep(160);
+  t('清除 Key：提交 apiKey:""，徽标回落「未设 Key」', () => {
+    const body = lastPostBody('/api/prefs');
+    if (body.llmVendor.apiKey !== '') throw new Error('body: ' + JSON.stringify(body));
+    if (vendorRows()[0].querySelector('.sl-badge').textContent !== '未设 Key') throw new Error('徽标');
   });
 
-  t('进入即拉 /api/prefs 回填', () => {
-    if (!callsOf('apiFetch').some((c) => c[1] === '/api/prefs' && !c[2])) throw new Error('未 GET /api/prefs');
-    if (document.querySelector('#llmBaseUrl').value !== 'https://api.siliconflow.cn/v1') throw new Error('baseUrl 未回填: ' + document.querySelector('#llmBaseUrl').value);
-    if (document.querySelector('#llmModel').value !== 'Qwen/Qwen3-8B') throw new Error('model 未回填');
-    if (document.querySelector('#llmTemp').value !== '0.3') throw new Error('temperature 未回填: ' + document.querySelector('#llmTemp').value);
+  // —— 添加模型：详情层空白表单，厂商默认选中 ——
+  document.querySelector('#addModelBtn').click();
+  await sleep(80);
+  t('添加模型：厂商默认选中、字段为空、不抢默认位', () => {
+    if (!sheetEl()) throw new Error('未开层');
+    if (document.querySelector('#modelVendor').value !== 'v1') throw new Error('厂商: ' + document.querySelector('#modelVendor').value);
+    if (document.querySelector('#modelUpstream').value !== '') throw new Error('模型名应空白');
+    if (document.querySelector('#modelIsDefault').checked) throw new Error('新模型默认不抢默认位');
   });
-  t('未存 Key：输入框空+占位 sk- + 清除按钮隐藏', () => {
-    if (document.querySelector('#llmApiKey').value !== '') throw new Error('Key 应留空');
-    if (document.querySelector('#llmApiKey').placeholder !== 'sk-...') throw new Error('占位不符: ' + document.querySelector('#llmApiKey').placeholder);
-    if (document.querySelector('#clearLlmKey').hidden !== true) throw new Error('清除按钮应隐藏');
-    if (document.querySelector('#llmKeyHint').textContent.indexOf('尚未设置') < 0) throw new Error('hint: ' + document.querySelector('#llmKeyHint').textContent);
+  setInput('#modelName', '便宜模型');
+  setInput('#modelUpstream', 'cheap-1');
+  document.querySelector('#modelSheetSave').click();
+  await sleep(160);
+  t('添加模型：POST 新建行，列表出现且可「设为默认」，四动作高级分配出现', () => {
+    const body = lastPostBody('/api/prefs');
+    if (body.llmModel.id) throw new Error('新建不该带 id');
+    if (body.llmModel.name !== '便宜模型' || body.llmModel.model !== 'cheap-1') throw new Error('body: ' + JSON.stringify(body));
+    if (modelRows().length !== 2) throw new Error('行数 ' + modelRows().length);
+    const row = rowByName(modelRows(), '便宜模型');
+    if (!row) throw new Error('新行不在列表');
+    if (!row.querySelector('.sl-side button')) throw new Error('非默认模型应有「设为默认」');
+    const adv = document.querySelector('[data-cap="entry_ai"] .ai-cap-actions-adv');
+    if (!adv) throw new Error('两个模型后应出现按动作分配');
+    if (adv.open) throw new Error('高级折叠应默认收起');
   });
-  t('模型预设：自绘选模型触发器存在（不用 datalist）', () => {
-    if (!document.querySelector('#modelPickBtn')) throw new Error('无 #modelPickBtn');
-    if (document.querySelector('#modelPresets')) throw new Error('datalist 应已移除（移动端渲染成空心胶囊）');
+  {
+    const row = rowByName(modelRows(), '便宜模型');
+    row.querySelector('.sl-side button').click();
+    await sleep(160);
+  }
+  t('行内「设为默认」：POST isDefault，徽标转移', () => {
+    const body = lastPostBody('/api/prefs');
+    if (!body.llmModel || body.llmModel.isDefault !== true) throw new Error('body: ' + JSON.stringify(body));
+    const def = modelRows().find((r) => {
+      const b = r.querySelector('.sl-badge');
+      return b && b.textContent === '默认';
+    });
+    if (!def || def.querySelector('.sl-name').textContent !== '便宜模型') throw new Error('默认徽标未转移');
   });
-  t('温度输入为 number 0~1.5', () => { const el = document.querySelector('#llmTemp'); if (el.type !== 'number' || el.min !== '0' || el.max !== '1.5') throw new Error(el.type + '/' + el.min + '/' + el.max); });
 
-  // ---- 模型状态（最近调用明细 + 上游模型列表）----
-  t('模型状态：区块 + 今日三格 + 状态徽标 + 当前模型名', () => {
-    const sec = document.querySelector('[data-sec="llm-status"]');
-    if (!sec) throw new Error('无模型状态区块');
-    if (document.querySelectorAll('#modelStatusStats .ms-stat').length !== 3) throw new Error('统计格数不对');
-    if (!sec.querySelector('.ms-badge')) throw new Error('缺状态徽标');
-    const model = sec.querySelector('.ms-model');
-    if (!model || model.textContent.trim() !== 'Qwen/Qwen3-8B') throw new Error('当前模型名: ' + (model ? model.textContent : 'null'));
+  // —— 运行状态：折叠区里的诊断信息 ——
+  {
+    const st = document.querySelector('[data-sec="llm-status"]');
+    st.querySelector('summary').click();
+    await sleep(60);
+  }
+  t('运行状态：状态徽标 / 默认模型 / 三格统计', () => {
+    const st = document.querySelector('[data-sec="llm-status"]');
+    if (!st.open) throw new Error('未展开');
+    if (!st.querySelector('.ms-badge')) throw new Error('缺状态徽标');
+    if (st.querySelector('.ms-model').textContent !== '便宜模型') throw new Error('默认模型名: ' + st.querySelector('.ms-model').textContent);
+    if (st.querySelectorAll('.ms-stat').length !== 3) throw new Error('统计格数不对');
   });
-  t('模型状态：历史请求逐条列出，失败行带原因', () => {
+  t('运行状态：历史逐条列出，失败行带原因', () => {
     const rows = [...document.querySelectorAll('#modelRequestList .ms-row')];
     if (rows.length !== aiRequestsPayload.requests.length) throw new Error('行数 ' + rows.length);
     if (rows[0].getAttribute('data-kind') !== 'entry_ai') throw new Error('首行功能: ' + rows[0].getAttribute('data-kind'));
     const fail = document.querySelector('#modelRequestList .ms-row.is-fail .ms-err');
     if (!fail || fail.textContent.indexOf('timed out') < 0) throw new Error('失败行缺原因');
   });
-  t('模型状态：如实写出保留口径（200 条 / 30 天）', () => {
+  t('运行状态：如实写出保留口径（200 条 / 30 天）', () => {
     const note = document.querySelector('.ms-list-note');
-    if (!note) throw new Error('缺保留口径说明');
-    if (note.textContent.indexOf('200') < 0 || note.textContent.indexOf('30') < 0) throw new Error(note.textContent);
+    if (!note || note.textContent.indexOf('200') < 0 || note.textContent.indexOf('30') < 0) throw new Error(note ? note.textContent : '缺说明');
   });
-  t('模型名称：有「获取模型」按钮且贴在输入框旁', () => {
-    const b = document.querySelector('#fetchModelsBtn');
-    if (!b) throw new Error('无获取按钮');
-    const input = document.querySelector('#llmModel');
-    if (!input || !input.closest('.input-with-btn')) throw new Error('按钮应贴在输入框旁');
-  });
-  document.querySelector('#fetchModelsBtn').click();
-  await sleep(80);
-  document.querySelector('#modelPickBtn').click();
-  await sleep(60);
-  t('模型名称：获取后自绘下拉换成上游模型并给出数量提示', () => {
-    const opts = [...document.querySelectorAll('#modelPickDD .dd-item .dd-item-label')].map((o) => o.textContent);
-    if (opts.length !== modelsPayload.length || opts.indexOf('deepseek-ai/DeepSeek-V3') < 0) throw new Error(opts.join(','));
-    const hint = document.querySelector('#modelListHint');
-    if (!hint || hint.textContent.indexOf(String(modelsPayload.length)) < 0) throw new Error('提示: ' + (hint ? hint.textContent : 'null'));
-  });
-  // 选中一项要回填输入框（手填仍在），并标脏
-  {
-    const target = [...document.querySelectorAll('#modelPickDD .dd-item')]
-      .find((el) => el.textContent.indexOf('deepseek-ai/DeepSeek-V3') >= 0);
-    if (!target) throw new Error('下拉里找不到目标模型');
-    target.click();
-    await sleep(60);
-    t('模型名称：下拉选中回填输入框', () => {
-      if (document.querySelector('#llmModel').value !== 'deepseek-ai/DeepSeek-V3') throw new Error('未回填: ' + document.querySelector('#llmModel').value);
-    });
-  }
-  // 失败路径：上游不实现 /models 时退回手填，只在这一块标红说明，不影响保存
-  modelsFailNext = true;
-  document.querySelector('#fetchModelsBtn').click();
-  await sleep(80);
-  t('模型名称：获取失败退回手填并标红说明原因', () => {
-    const hint = document.querySelector('#modelListHint');
-    if (!hint.classList.contains('is-warn')) throw new Error('提示未标红');
-    if (hint.textContent.indexOf('404') < 0) throw new Error('提示: ' + hint.textContent);
-    if (!document.querySelector('#llmModel')) throw new Error('输入框应仍在（手填不能丢）');
-  });
-
-  // 思考模式：默认关，档位行平时不显示（关着还摆一档 = 让人以为在发）
-  const depthRow = () => document.querySelector('#llmDepth').closest('.form-row');
-  t('思考默认关 + 档位行隐藏', () => {
-    if (!document.querySelector('#llmThinking')) throw new Error('无 #llmThinking');
-    if (document.querySelector('#llmThinking').checked !== false) throw new Error('开关应为未勾选');
-    if (depthRow().hidden !== true) throw new Error('未关思考时深度行不该可见');
-  });
-  // 点的是「看得见的那颗滑块」而不是 input：input 本身被 CSS 收成 0×0，
-  // 用户手点的其实是 label 命中区（早先这里用 span 包 input，导致开关点不动）
-  const thinkSw = document.querySelector('#llmThinking ~ .switch-slider');
-  thinkSw.click();
-  await sleep(40);
-  t('开思考 → 深度行现身，默认中档', () => {
-    if (depthRow().hidden !== false) throw new Error('深度行未出现');
-    if (document.querySelector('#llmDepth').value !== 'medium') throw new Error('默认档位: ' + document.querySelector('#llmDepth').value);
-    const sub = document.querySelector('[data-sec="llm-thinking"] .sec-sub').textContent;
-    if (sub !== '已开启 · 深度中') throw new Error('思考组摘要: ' + sub);
-  });
-  document.querySelector('#llmDepth').click();
-  await sleep(40);
-  t('思考深度三档可选', () => {
-    const vals = [...document.querySelectorAll('#llmDepthDD .dd-item')].map((o) => o.getAttribute('data-value'));
-    if (vals.join() !== 'low,medium,high') throw new Error('档位: ' + vals.join());
-  });
-  document.querySelector('#llmDepth').click(); // 收起，避免遮挡后续断言
-  await sleep(30);
-  t('思考开关拨动即落库：POST /api/prefs { llm: { thinking: true } }', () => {
-    const posts = postsTo('/api/prefs');
-    const last = posts[posts.length - 1];
-    if (!last) throw new Error('未 POST /api/prefs');
-    const sent = JSON.parse(last[3]);
-    if (!sent.llm || sent.llm.thinking !== true) throw new Error('请求体: ' + last[3]);
-    // 只提交这一项：不能把用户还没保存的 baseUrl / Key 一起写进去
-    if (sent.llm.baseUrl !== undefined || sent.llm.apiKey !== undefined) {
-      throw new Error('思考开关只该提交 thinking：' + last[3]);
-    }
-  });
-  await setSel('#llmDepth', 'high');
-  await sleep(40);
-  t('思考深度也是账号级配置：改完即 POST thinkingDepth', () => {
-    const posts = postsTo('/api/prefs');
-    const last = posts[posts.length - 1];
-    if (!last) throw new Error('未 POST /api/prefs');
-    const sent = JSON.parse(last[3]);
-    // 契约里是 1/2/3 的整数档位（界面用 low/medium/high 表述）
-    if (!sent.llm || sent.llm.thinkingDepth !== 3) throw new Error('请求体: ' + last[3]);
-  });
-  // 复位成中档：后面的「测试模型」断言依赖表单默认值，不能带着「深」继续跑
-  await setSel('#llmDepth', 'medium');
-  await sleep(40);
-  t('开思考后：思考子节摘要改口，模型名提示不再重复思考文案', () => {
-    const sub = document.querySelector('[data-sec="llm-thinking"] .sec-sub').textContent;
-    if (sub.indexOf('已开启') < 0) throw new Error('思考子节摘要未改口: ' + sub);
-    const modelTip = document.querySelector('#llmModelTip');
-    if (modelTip && modelTip.textContent.indexOf('已开启思考') >= 0) {
-      throw new Error('模型名提示重复了思考文案（已收口到思考子节）');
-    }
-  });
-
-  // 显示/隐藏 Key
-  document.querySelector('#toggleLlmKey').click();
-  await sleep(30);
-  t('切换 Key 可见（text + 隐藏）', () => { if (document.querySelector('#llmApiKey').type !== 'text') throw new Error('未切 text'); if (document.querySelector('#toggleLlmKey').textContent !== '隐藏') throw new Error('按钮文案: ' + document.querySelector('#toggleLlmKey').textContent); });
-  document.querySelector('#toggleLlmKey').click();
-  await sleep(30);
-  t('切回掩码（password + 显示）', () => { if (document.querySelector('#llmApiKey').type !== 'password') throw new Error('未切回'); });
-
-  // 测试模型
-  setInput('#llmBaseUrl', 'https://api.example.com/v1');
-  setInput('#llmModel', 'deepseek-ai/DeepSeek-V3');
-  setInput('#llmApiKey', 'sk-test123');
-  await sleep(30);
-  document.querySelector('#testLlmBtn').click();
-  await sleep(60);
-  t('测试模型：POST /api/digest/test-llm 带表单值', () => {
-    if (!postsTo('/api/digest/test-llm').length) throw new Error('未 POST');
-    const body = lastPostBody('/api/digest/test-llm');
-    if (body.llm.baseUrl !== 'https://api.example.com/v1') throw new Error('baseUrl: ' + body.llm.baseUrl);
-    if (body.llm.apiKey !== 'sk-test123') throw new Error('apiKey: ' + body.llm.apiKey);
-    if (body.llm.model !== 'deepseek-ai/DeepSeek-V3') throw new Error('model: ' + body.llm.model);
-    // 思考设置跟着临时覆盖发出去：拨开开关还没保存就该能测出上游认不认
-    if (body.llm.thinking !== true) throw new Error('thinking: ' + body.llm.thinking);
-    // 界面三档 ↔ v2 落库整数：medium = 2
-    if (body.llm.thinkingDepth !== 2) throw new Error('thinkingDepth: ' + body.llm.thinkingDepth);
-  });
-  t('测试 ok 态', () => { const r = document.querySelector('#llmResult'); if (!r || !r.classList.contains('ok')) throw new Error('类名: ' + (r && r.className)); if (r.textContent.indexOf('模型可用') < 0) throw new Error('文案: ' + r.textContent); });
-
-  // 保存（带 Key）：temperature 数值化、apiKey 仅在填写时传
-  setInput('#llmTemp', '0.4');
-  await setSel('#llmDepth', 'high');
-  await sleep(30);
-  t('切换深度 → 思考组摘要同步', () => {
-    const sub = document.querySelector('[data-sec="llm-thinking"] .sec-sub').textContent;
-    if (sub !== '已开启 · 深度深') throw new Error('摘要: ' + sub);
-  });
-  document.querySelector('#saveLlmBtn').click();
-  await sleep(80);
-  t('保存：POST /api/prefs（含 Key + 数值温度）', () => {
-    if (!postsTo('/api/prefs').length) throw new Error('未 POST');
-    const body = lastPostBody('/api/prefs');
-    if (body.llm.apiKey !== 'sk-test123') throw new Error('apiKey 未传');
-    if (body.llm.temperature !== 0.4 || typeof body.llm.temperature !== 'number') throw new Error('temperature 应数值化: ' + JSON.stringify(body.llm.temperature));
-    if (body.llm.baseUrl !== 'https://api.example.com/v1') throw new Error('baseUrl 未传');
-    if (body.llm.thinking !== true) throw new Error('thinking 未传: ' + body.llm.thinking);
-    if (body.llm.thinkingDepth !== 3) throw new Error('thinkingDepth 未传: ' + body.llm.thinkingDepth);
-  });
-  t('保存 ok + toast', () => {
-    const r = document.querySelector('#llmResult');
-    if (!r || !r.classList.contains('ok')) throw new Error('结果类名: ' + (r && r.className));
-    if (r.textContent.indexOf('模型配置与 API Key 已保存') < 0) throw new Error('文案: ' + r.textContent);
-    // 表单保存只发内联结果（v1.3.8-test2 起不再重复 toast）
-  });
-  t('保存后重拉：掩码态更新（set + hint + 清除可见 + Key 清空）', () => {
-    if (document.querySelector('#llmApiKey').value !== '') throw new Error('Key 未清空');
-    if (document.querySelector('#llmApiKey').type !== 'password') throw new Error('未回掩码态');
-    if (document.querySelector('#llmApiKey').placeholder !== '已保存，留空则不修改') throw new Error('占位: ' + document.querySelector('#llmApiKey').placeholder);
-    if (document.querySelector('#clearLlmKey').hidden !== false) throw new Error('清除按钮应可见');
-    const hint = document.querySelector('#llmKeyHint');
-    if (hint.textContent.indexOf('已保存') < 0 || !hint.querySelector('code')) throw new Error('hint 未显示掩码: ' + hint.textContent);
-  });
-
-  // 保存（不带 Key）：不传 apiKey 字段。干净态保存按钮禁用，先改个温度再存
-  t('未改动时保存按钮禁用', () => { if (document.querySelector('#saveLlmBtn').disabled !== true) throw new Error('应禁用'); });
-  setInput('#llmTemp', '0.5');
-  await sleep(30);
-  t('改动后保存按钮恢复', () => { if (document.querySelector('#saveLlmBtn').disabled !== false) throw new Error('应可用'); });
-  document.querySelector('#saveLlmBtn').click();
-  await sleep(80);
-  t('保存（Key 留空）：不传 apiKey 字段', () => {
-    const body = lastPostBody('/api/prefs');
-    if ('apiKey' in body.llm) throw new Error('不应传 apiKey');
-    if (body.llm.temperature !== 0.5) throw new Error('temperature: ' + body.llm.temperature);
-    if (document.querySelector('#llmResult').textContent.indexOf('模型配置已保存') < 0) throw new Error('文案: ' + document.querySelector('#llmResult').textContent);
-  });
-
-  // 清除 Key
-  document.querySelector('#clearLlmKey').click();
-  await sleep(80);
-  t('清除 Key：POST clearApiKey 且 set 回落', () => {
-    const body = lastPostBody('/api/prefs');
-    if (body.llm.clearApiKey !== true) throw new Error('clearApiKey 未传');
-    if (document.querySelector('#llmResult').textContent.indexOf('API Key 已清除') < 0) throw new Error('文案: ' + document.querySelector('#llmResult').textContent);
-    if (document.querySelector('#clearLlmKey').hidden !== true) throw new Error('清除按钮应重新隐藏');
-    if (document.querySelector('#llmApiKey').placeholder !== 'sk-...') throw new Error('占位未回落');
-  });
-
-  // 失败路径：POST !ok（同样先制造改动，按钮在干净态是禁用的）
-  prefsPostOk = false;
-  setInput('#llmTemp', '0.6');
-  await sleep(30);
-  document.querySelector('#saveLlmBtn').click();
-  await sleep(80);
-  t('保存失败 err 态', () => { const r = document.querySelector('#llmResult'); if (!r.classList.contains('err')) throw new Error('类名: ' + r.className); if (r.textContent.indexOf('炸了') < 0) throw new Error('文案: ' + r.textContent); });
-  prefsPostOk = true;
-
-  // 切走再进：重新拉取（与旧 switchTab 行为一致）
-  // GET 计数：进入 1 + 保存1重拉 1 + 保存2重拉 1 + 清除重拉 1 + 再进入 1 = 5；
-  // 0015 起「AI 能力」独立组件也拉 /api/prefs，所以只断言「≥5 且二次进入后次数增加」。
-  const getsBeforeReenter = callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length;
-  clickTab('数据源'); await sleep(40); clickTab('模型'); await sleep(80);
-  t('模型二次进入重新拉取', () => {
-    const n = callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length;
-    if (n < 5 || n <= getsBeforeReenter) throw new Error('GET 次数=' + n + '（二次进入前=' + getsBeforeReenter + '）');
-  });
-
-  // ---- AI 智能标签单开关（0016 收口到能力开关区，默认关，POST llmRoutes.ai_tags） ----
-  t('AI 标签在能力区只有一个开关、默认关；无独立 llm-aitags Section', () => {
-    if (document.querySelector('[data-sec="llm-aitags"]')) throw new Error('独立 AI 标签 Section 未移除');
-    const row = document.querySelector('[data-cap="ai_tags"]');
-    if (!row) throw new Error('能力区缺 ai_tags 行');
-    const sw = row.querySelector('input[type="checkbox"]');
-    if (!sw) throw new Error('ai_tags 行缺开关');
-    if (sw.checked !== false) throw new Error('ai_tags 默认应关闭（避免全员自动打标烧额度）');
-  });
-  const aiPostsBefore = postsTo('/api/prefs').length;
-  document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').click();
-  await sleep(80);
-  t('AI 标签开：POST llmRoutes.ai_tags.enabled=true 且开关翻开', () => {
-    if (postsTo('/api/prefs').length !== aiPostsBefore + 1) throw new Error('未 POST prefs');
-    const body = lastPostBody('/api/prefs');
-    if (!body.llmRoutes || body.llmRoutes.ai_tags?.enabled !== true) throw new Error('body: ' + JSON.stringify(body));
-    if (document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').checked !== true) throw new Error('开关未翻开');
-  });
-  t('AI 标签开：不把模型表单标脏（即时保存的开关不该要人再点保存）', () => {
-    if (!document.querySelector('#saveLlmBtn').disabled) throw new Error('保存模型应保持禁用');
-  });
-  document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').click();
-  await sleep(80);
-  t('AI 标签关：POST llmRoutes.ai_tags.enabled=false 且开关回位', () => {
-    const body = lastPostBody('/api/prefs');
-    if (!body.llmRoutes || body.llmRoutes.ai_tags?.enabled !== false) throw new Error('body: ' + JSON.stringify(body));
-    if (document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').checked !== false) throw new Error('开关未回位');
-  });
-
-  // ---- AI 能力开关（0015）：拨动即落库 llmRoutes，不进模型表单脏态 ----
-  {
-    const capPostsBefore = postsTo('/api/prefs').length;
-    const sw = document.querySelector('[data-cap="explore"] input[type="checkbox"]');
-    if (sw) { sw.click(); await sleep(90); }
-    t('AI 能力开关：拨动即提交 llmRoutes.explore.enabled=false', () => {
-      if (!sw) throw new Error('缺探索问答开关');
-      if (postsTo('/api/prefs').length < capPostsBefore + 1) throw new Error('未 POST /api/prefs');
-      const body = lastPostBody('/api/prefs');
-      if (!body.llmRoutes || !body.llmRoutes.explore || body.llmRoutes.explore.enabled !== false) {
-        throw new Error('body: ' + JSON.stringify(body));
-      }
-      if (!document.querySelector('#saveLlmBtn').disabled) throw new Error('拨能力开关不该让模型表单变脏');
-    });
-    const sw2 = document.querySelector('[data-cap="explore"] input[type="checkbox"]');
-    if (sw2) { sw2.click(); await sleep(90); }  // 恢复，避免影响后续
-  }
-
-  // ---- AI 用量（模型页）：展示三个窗口 + 按功能明细，刷新会重新拉 ----
-  t('AI 用量：模型页有「AI 用量」组，三窗口与明细齐备', () => {
+  t('AI 用量：三窗口与按功能明细齐备', () => {
     const sec = document.querySelector('[data-sec="llm-usage"]');
     if (!sec) throw new Error('缺 [data-sec="llm-usage"]');
     const cells = sec.querySelectorAll('.usage-cell');
@@ -3233,18 +3121,121 @@ const withEFP = (el, fn) => {
     if (rows.length !== 2) throw new Error('功能明细行数 ' + rows.length);
     if (rows[0].textContent.indexOf('日报生成') < 0) throw new Error('明细文案: ' + rows[0].textContent);
   });
+  document.querySelector('#testLlmBtn').click();
+  await sleep(120);
+  t('测试默认模型：不带 modelId，结果内联在运行状态区', () => {
+    const body = lastPostBody('/api/digest/test-llm');
+    if (body.modelId) throw new Error('默认测试不该带 modelId');
+    const r = document.querySelector('#llmStatusResult');
+    if (!r.classList.contains('ok')) throw new Error('结果: ' + r.textContent);
+  });
   const usageGetsBefore = callsOf('apiFetch').filter((c) => String(c[1]).indexOf('/api/ai-usage') === 0).length;
   const reqGetsBefore = callsOf('apiFetch').filter((c) => String(c[1]).indexOf('/api/ai-requests') === 0).length;
   document.querySelector('#modelRefreshAll').click();
-  await sleep(80);
+  await sleep(120);
   t('运行状态：一个刷新同时重拉用量与历史（读接口不记账）', () => {
     const after = callsOf('apiFetch').filter((c) => String(c[1]).indexOf('/api/ai-usage') === 0).length;
     const reqAfter = callsOf('apiFetch').filter((c) => String(c[1]).indexOf('/api/ai-requests') === 0).length;
     if (after !== usageGetsBefore + 1) throw new Error('用量 GET 次数 ' + usageGetsBefore + ' -> ' + after);
     if (reqAfter !== reqGetsBefore + 1) throw new Error('历史 GET 次数 ' + reqGetsBefore + ' -> ' + reqAfter);
-    if (document.querySelector('#aiUsageRefresh') || document.querySelector('#aiRequestsRefresh')) {
-      throw new Error('旧的分散刷新按钮应已合并');
+  });
+
+  // —— 任务分配：6 个能力行，拨动即落库，不需要保存 ——
+  t('任务分配：6 个能力行，ai_tags 默认关', () => {
+    const rows = document.querySelectorAll('[data-sec="llm-capabilities"] .ai-cap-row');
+    if (rows.length !== 6) throw new Error('能力行数 ' + rows.length);
+    const sw = document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]');
+    if (!sw || sw.checked !== false) throw new Error('ai_tags 默认应关闭');
+    if (document.querySelector('[data-sec="llm-aitags"]') || document.querySelector('#aiTagsEnable')) {
+      throw new Error('AI 标签不该有独立开关');
     }
+  });
+  {
+    const before = postsTo('/api/prefs').length;
+    document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').click();
+    await sleep(120);
+    t('AI 标签开：POST llmRoutes.ai_tags.enabled=true 且开关翻开', () => {
+      if (postsTo('/api/prefs').length !== before + 1) throw new Error('未 POST');
+      const body = lastPostBody('/api/prefs');
+      if (!body.llmRoutes || body.llmRoutes.ai_tags?.enabled !== true) throw new Error('body: ' + JSON.stringify(body));
+      if (document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').checked !== true) throw new Error('开关未翻开');
+    });
+  }
+  {
+    document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').click();
+    await sleep(120);
+    t('AI 标签关：POST enabled=false 且开关回位', () => {
+      const body = lastPostBody('/api/prefs');
+      if (!body.llmRoutes || body.llmRoutes.ai_tags?.enabled !== false) throw new Error('body: ' + JSON.stringify(body));
+      if (document.querySelector('[data-cap="ai_tags"] input[type="checkbox"]').checked !== false) throw new Error('开关未回位');
+    });
+  }
+  {
+    const sw = document.querySelector('[data-cap="explore"] input[type="checkbox"]');
+    const before = postsTo('/api/prefs').length;
+    sw.click();
+    await sleep(120);
+    t('能力开关：拨动即提交 llmRoutes.explore.enabled=false，无整页脏态', () => {
+      if (postsTo('/api/prefs').length < before + 1) throw new Error('未 POST');
+      const body = lastPostBody('/api/prefs');
+      if (!body.llmRoutes || !body.llmRoutes.explore || body.llmRoutes.explore.enabled !== false) {
+        throw new Error('body: ' + JSON.stringify(body));
+      }
+      if (document.querySelector('#saveLlmBtn')) throw new Error('不该出现整页保存按钮');
+    });
+    document.querySelector('[data-cap="explore"] input[type="checkbox"]').click();
+    await sleep(120);
+  }
+
+  // —— 添加厂商 / 删除模型 / 删除厂商 ——
+  document.querySelector('#addVendorBtn').click();
+  await sleep(80);
+  setInput('#vendorName', '火山方舟');
+  setInput('#vendorBaseUrl', 'https://ark.example.com/v1');
+  setInput('#vendorKey', 'sk-ark');
+  document.querySelector('#vendorSheetSave').click();
+  await sleep(160);
+  t('添加厂商：独立于模型，列表增至 2 个', () => {
+    const body = lastPostBody('/api/prefs');
+    if (body.llmVendor.id) throw new Error('新建不该带 id');
+    if (vendorRows().length !== 2) throw new Error('行数 ' + vendorRows().length);
+  });
+  {
+    const row = rowByName(modelRows(), '便宜模型');
+    row.click();
+    await sleep(80);
+  }
+  document.querySelector('#modelSheetDelete').click();
+  await sleep(160);
+  t('删除模型：危险确认 → POST llmModelDelete，行消失', () => {
+    const c = lastCall('confirm');
+    if (!c || !c[1] || c[1].danger !== true) throw new Error('未走危险确认');
+    const body = lastPostBody('/api/prefs');
+    if (!body.llmModelDelete) throw new Error('body: ' + JSON.stringify(body));
+    if (modelRows().length !== 1) throw new Error('行数 ' + modelRows().length);
+  });
+  {
+    const row = rowByName(vendorRows(), '火山方舟');
+    row.click();
+    await sleep(80);
+  }
+  document.querySelector('#vendorSheetDelete').click();
+  await sleep(160);
+  t('删除厂商：POST llmVendorDelete，列表回落 1 个', () => {
+    const body = lastPostBody('/api/prefs');
+    if (!body.llmVendorDelete) throw new Error('body: ' + JSON.stringify(body));
+    if (vendorRows().length !== 1) throw new Error('行数 ' + vendorRows().length);
+  });
+
+  const getsBeforeReenter = callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length;
+  clickTab('数据源'); await sleep(40); clickTab('模型'); await sleep(120);
+  t('模型二次进入重新拉取', () => {
+    const n = callsOf('apiFetch').filter((c) => c[1] === '/api/prefs' && !c[2]).length;
+    if (n <= getsBeforeReenter) throw new Error('GET 次数=' + n + '（二次进入前=' + getsBeforeReenter + '）');
+  });
+  t('重新进入后模型 / 厂商仍是列表态，不残留详情层', () => {
+    if (sheetEl()) throw new Error('详情层未随面板卸载');
+    if (modelRows().length !== 1 || vendorRows().length !== 1) throw new Error('列表行数异常');
   });
 
   // ============ 日报面板（整组按账号：开关 / 自动生成 / 范围 / 上限 / 风格） ============
@@ -8819,10 +8810,13 @@ const withEFP = (el, fn) => {
     const prim = fs.readFileSync(path.join(root, 'settings', 'primitives.jsx'), 'utf8');
     if (!/export function PaneFoot\(\{[^}]*dirty/.test(prim)) throw new Error('PaneFoot 未接收 dirty');
     if (!/pane-foot-dirty/.test(prim)) throw new Error('动作栏未渲染常驻未保存提示');
-    for (const f of ['AccountPane', 'DigestPane', 'ModelPane', 'SourcePane']) {
+    for (const f of ['AccountPane', 'DigestPane', 'SourcePane']) {
       const pane = fs.readFileSync(path.join(root, 'settings', f + '.jsx'), 'utf8');
       if (!/<PaneFoot dirty=/.test(pane)) throw new Error(f + ' 未把脏态传给动作栏');
     }
+    // 模型页全部即改即生效（没有整页草稿），动作栏不应再显示「有未保存的更改」
+    const model = fs.readFileSync(path.join(root, 'settings', 'ModelPane.jsx'), 'utf8');
+    if (/<PaneFoot dirty=/.test(model)) throw new Error('ModelPane 已是即时生效，不该再带整页脏态');
     const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
     if (!/\.pane-foot\.is-dirty \{/.test(css)) throw new Error('缺动作栏脏态样式');
     if (!/\.cards-sticky:has\(\.chan-tabs\) \{ row-gap: 0; \}/.test(css)) throw new Error('卡片页频道条未消掉 flex 行间距');
@@ -9093,7 +9087,7 @@ const withEFP = (el, fn) => {
     const prim = fs.readFileSync(path.join(dir, 'primitives.jsx'), 'utf8').replace(/\r\n/g, '\n');
     if (!/export function useFormLoadGuard/.test(prim)) throw new Error('缺共享的回填守卫');
     if (!/if \(touched\.current\) return false/.test(prim)) throw new Error('守卫没有拦住已编辑表单的回填');
-    for (const f of ['DigestPane.jsx', 'ModelPane.jsx']) {
+    for (const f of ['DigestPane.jsx']) {
       const src = fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r\n/g, '\n');
       if (!/const guard = useFormLoadGuard\(\)/.test(src)) throw new Error(f + ' 未接入守卫');
       if (!/guard\.mark\(\)/.test(src)) throw new Error(f + ' 用户输入没有标记 touched');
@@ -9104,9 +9098,9 @@ const withEFP = (el, fn) => {
       // 守卫回调内部的 setForm(next) 是合法的；只拦「进守卫之前就无条件覆盖」
       if (/setForm\(next\)/.test(load[0].slice(0, iApply))) throw new Error(f + ' 仍在无条件覆盖表单');
     }
+    // 模型页已改为列表 + 详情层：字段在开层时用当前行初始化，没有异步回填可覆盖
     const model = fs.readFileSync(path.join(dir, 'ModelPane.jsx'), 'utf8').replace(/\r\n/g, '\n');
-    if (!/async function load\(force = false\)/.test(model)) throw new Error('模型面板缺强制重拉通道');
-    if ((model.match(/await load\(true\)/g) || []).length < 2) throw new Error('保存 / 清除后的主动重拉必须绕过守卫，否则掩码态刷新不回来');
+    if (/useFormLoadGuard/.test(model)) throw new Error('ModelPane 已无整页表单，不该再挂回填守卫');
   });
 
   t('自动填充：非登录输入框三层防护齐备、登录页语义不被误删', () => {
@@ -9345,13 +9339,16 @@ const withEFP = (el, fn) => {
       }
       if (aiBar.indexOf("'/ai'") >= 0) throw new Error('EntryAiBar 又退回同步接口');
     });
-    /* enable_thinking 是账号级配置：ModelPane 必须把开关 POST 进 llm，而不是只在本地记一笔。 */
+    /* 思考是每个模型自己的参数（0017）：保存时写进 llmModel.thinking，
+     * 不再当成账号级 llm 字段一把梭。 */
     const modelPane = fs.readFileSync(path.join(webRoot, 'src', 'settings', 'ModelPane.jsx'), 'utf8');
-    t('enable_thinking 开关写账号配置（POST /api/prefs 的 llm 字段）', () => {
-      if (modelPane.indexOf('onToggleThinking') < 0) throw new Error('缺思考开关处理函数');
-      if (modelPane.indexOf('{ thinking: on }') < 0) throw new Error('未把 thinking 写进 llm 补丁');
-      if (modelPane.indexOf('data-sec="llm-thinking"') < 0) throw new Error('思考子节锚点丢了');
-      if (modelPane.indexOf('cardNo="02"') < 0) throw new Error('模式设置卡编号丢了');
+    t('思考开关写进模型配置（llmModel.thinking），不再走账号 llm 字段', () => {
+      if (modelPane.indexOf('#modelThinking') < 0 && modelPane.indexOf('id="modelThinking"') < 0) {
+        throw new Error('缺模型详情层里的思考开关');
+      }
+      if (!/\bthinking,\s*\n/.test(modelPane)) throw new Error('保存模型时没把 thinking 写进请求体');
+      if (modelPane.indexOf('onToggleThinking') >= 0) throw new Error('思考开关不该再走账号级补丁');
+      if (modelPane.indexOf('secKey="llm-capabilities"') < 0) throw new Error('任务分配区段锚点丢了');
     });
   }
 

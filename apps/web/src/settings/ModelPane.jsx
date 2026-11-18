@@ -1,43 +1,27 @@
-/* 设置弹层「模型」面板（v1.4.0 起 React 化，原 index.html 内联 DOM + app.js 绑定迁移至此）。
- * 行为与旧实现等价且实现更干净：
- * - 表单由受控状态管理（旧实现裸读 DOM .value）；
- * - 进入面板拉一次 /api/prefs 回填（旧 loadModelForm），Key 永不回填明文（服务端只给
- *   apiKeySet + 掩码），留空 = 不修改；temperature 数值化后发送（旧实现传字符串，
- *   依赖服务端 clampNum 容错）；
- * - 保存 / 测试 / 清除三个动作的请求体与旧实现逐字段一致，成功后重新拉取刷新掩码态。
- * - 页面按三张大卡片组织（2026-11-18 二次简化）：
- *   ① 模型（llm-library）：默认模型作列表首行、点「编辑」才展开表单；其它提供商并列其下。
- *      地址 / Key / 模型名 只有这一套 UI，不再与「添加模型」重复。
- *   ② 使用方式（llm-capabilities）：思考模式与深度子节 + 6 能力开关与模型分配；
- *      单篇四动作的独立模型分配收进「高级」，默认不占版面。
- *   ③ 运行状态（llm-status + llm-usage 子节）：状态 / 历史请求 / 用量，共用一个刷新。
- *   AI 标签开关 0016 起收口到能力开关区，废弃 prefs.aiTags，不再单列 Section。
+/* 设置弹层「模型」面板（2026-11-18 按 0017 厂商 / 模型两层全新重构）。
  *
- * 生效方式：地址 / Key 类显式保存（底部按钮）；温度、思考、能力开关、模型分派
- * 全部改完即生效、失败回滚。data-sec 锚点（llm-library / llm-api / llm-thinking /
- * llm-capabilities / llm-status / llm-usage）全部保留，旧选择器不失效。 */
+ * 页面只讲四件事，顺序就是使用顺序：
+ *   ① 模型：真正被任务调用的东西（默认模型兜底），点行开详情改名称 / 厂商 / 参数；
+ *   ② 厂商与接入：地址与 Key 的唯一来源，多个模型共用一份 Key；
+ *   ③ 任务分配：哪项能力用哪个模型，关闭即服务端硬拦；
+ *   ④ 运行状态（默认折叠）：最近调用、历史与用量，参考信息不抢版面。
+ *
+ * 生效方式：全部即改即生效。列表行只做展示与快捷动作，编辑收进 DetailSheet
+ * （桌面右侧抽屉 / 移动端底部弹层），与数据源、规则、账号面板同一套交互。
+ * 没有底部保存按钮 —— 模型配置没有「整页草稿」，不会出现「改了一半没保存」。
+ *
+ * data-sec 锚点：llm-library（模型）、llm-vendors（厂商）、llm-capabilities（任务分配）、
+ * llm-status + llm-usage（运行状态）。 */
 
 import { core } from '@core';
 import React, { useEffect, useRef, useState } from 'react';
-import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
-import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
+import { DetailSheet } from './DetailSheet.jsx';
+import { PaneFoot, Result, Section, useResult } from './primitives.jsx';
 import { Dropdown } from '../views/Dropdown.jsx';
-import { useAiCapabilities, ModelLibrary, CapabilitySwitches } from './AiCapabilities.jsx';
+import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
+import { modelLabel, TaskAssignments, useAiSettings } from './AiCapabilities.jsx';
 
-const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
-
-const MODEL_PRESETS = [
-  'Qwen/Qwen3-8B',
-  'Qwen/Qwen3-30B-A3B-Instruct-2507',
-  'Qwen/Qwen3-235B-A22B-Instruct-2507',
-  'deepseek-ai/DeepSeek-V3',
-  'THUDM/GLM-4-9B-0414',
-];
-
-const EMPTY = {
-  baseUrl: '', model: '', temperature: '0.3', apiKeySet: false, apiKeyHint: '',
-  thinking: false, thinkingDepth: 'medium',
-};
+const S = () => core;
 
 const USAGE_SPANS = { today: '今日', days7: '近 7 天', days30: '近 30 天' };
 const USAGE_KINDS = {
@@ -47,6 +31,7 @@ const USAGE_KINDS = {
   mcp: 'MCP 调用',
   test: '测试模型',
 };
+const DEPTH_LABEL = { low: '轻', medium: '中', high: '深' };
 
 const fmtNum = (n) => Number(n || 0).toLocaleString('zh-CN');
 const fmtTokens = (n) => {
@@ -55,22 +40,15 @@ const fmtTokens = (n) => {
   if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
   return String(v);
 };
+const hostOf = (url) => String(url || '').replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '').split('/')[0];
 
-const parseTemp = (v) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0.3;
-};
-
-/* ---- 请求明细的时间 / 耗时呈现 ---- */
 const pad2 = (n) => String(n).padStart(2, '0');
-/** 当天只给 HH:MM，跨天补 MM-DD —— 列表里全是「今天 16:02」会看不出是哪一天。 */
 const fmtReqTime = (iso) => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   const hm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   return d.toDateString() === new Date().toDateString() ? hm : `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hm}`;
 };
-/** 相对时间：状态徽标旁只放「2 分钟前」这种短说法。 */
 const fmtRel = (iso) => {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return '—';
@@ -87,297 +65,367 @@ const fmtDur = (ms) => {
   return v >= 10000 ? Math.round(v / 1000) + 's' : (v / 1000).toFixed(1) + 's';
 };
 
-/* 思考深度：界面用 low/medium/high 三档，v2 落库是 1/2/3 的整数（0 表示未设置）。
-   两边显式换算，别依赖服务端「数字转字符串」——契约里写的就是 number。 */
+/* 界面用 low/medium/high 三档，落库是 1/2/3 的整数（0 表示未设置）。 */
 const depthToNum = (d) => (d === 'low' ? 1 : d === 'high' ? 3 : 2);
 const numToDepth = (n) => (n === 1 ? 'low' : n === 3 ? 'high' : 'medium');
-const DEPTH_LABEL = { low: '轻', medium: '中', high: '深' };
+const tempText = (t) => String(Number.isFinite(Number(t)) ? Number(t) : 0.3);
 
-export function ModelPane({ onDirtyChange }) {
-  const keyName = useNoAutofillName('llm-key');
-  // 模型地址紧挨着密码框，Chrome/Edge Android 会把它启发式当成账号字段，把保存的
-  // username 塞进来。给它和 Key 一样的非语义唯一 name + 反填充标记（见 ui/noAutofill.js）。
-  const urlName = useNoAutofillName('llm-url');
-  const paneRef = useRef(null);
-  // 模型库与能力开关共享一份取数（一次 GET），两个展示组件挂到对应卡片。
-  const aiCap = useAiCapabilities();
-  /* 默认模型现在是列表首行：收起时只看一行摘要，点「编辑」才展开表单。
-     未配置（缺 Key 或模型名）时自动展开，省得用户找不到该填哪里。 */
-  const [editDefault, setEditDefault] = useState(false);
-  const [form, setForm] = useState(EMPTY);
-  const [savedForm, setSavedForm] = useState('');
+/* ============================ 模型详情层 ============================ */
+
+function ModelSheet({ ai, model, onClose, onNeedVendor }) {
+  const editing = !!model;
+  const [vendorId, setVendorId] = useState(model ? (model.vendorId || ai.vendors[0]?.id || '') : (ai.vendors[0]?.id || ''));
+  const [name, setName] = useState(model ? model.name || '' : '');
+  const [upstream, setUpstream] = useState(model ? model.model || '' : '');
+  const [temperature, setTemperature] = useState(tempText(model ? model.temperature : 0.3));
+  const [thinking, setThinking] = useState(!!(model && model.thinking));
+  const [depth, setDepth] = useState(numToDepth(model ? model.thinkingDepth : 2));
+  const [isDefault, setIsDefault] = useState(!!(model && model.isDefault));
+  const [list, setList] = useState(null);
+  const [listBusy, setListBusy] = useState(false);
+  const [listErr, setListErr] = useState('');
+  const [busy, setBusy] = useState('');
+  const [result, showResult] = useResult();
+
+  const vendorOptions = ai.vendors.map((v) => ({ value: v.id, label: v.name }));
+  const lockedDefault = editing && model.isDefault;
+
+  async function fetchList() {
+    if (!vendorId) { setListErr('先选择厂商'); return; }
+    setListBusy(true);
+    setListErr('');
+    try {
+      const arr = await ai.fetchUpstreamModels(vendorId);
+      setList(arr.length ? arr : null);
+      if (!arr.length) setListErr('上游没有返回模型列表，可直接手填模型名');
+    } catch (err) {
+      setList(null);
+      setListErr(String((err && err.message) || err));
+    } finally {
+      setListBusy(false);
+    }
+  }
+
+  async function save() {
+    if (!vendorId) { showResult(false, '先在「厂商与接入」里添加一个厂商'); return; }
+    if (!upstream.trim()) { showResult(false, '模型名不能为空'); return; }
+    const t = Number(temperature);
+    if (!Number.isFinite(t) || t < 0 || t > 2) { showResult(false, '温度需在 0 ~ 2 之间'); return; }
+    setBusy('save');
+    try {
+      await ai.saveModel({
+        vendorId,
+        name: name.trim(),
+        model: upstream.trim(),
+        temperature: t,
+        thinking,
+        thinkingDepth: depthToNum(depth),
+        isDefault: lockedDefault ? true : isDefault,
+      }, editing ? model.id : undefined);
+      onClose();
+    } catch (err) {
+      showResult(false, '保存失败：' + String((err && err.message) || err));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function runTest() {
+    if (!editing) return;
+    setBusy('test');
+    const r = await ai.testModel(model.id);
+    showResult(r.ok, r.text);
+    setBusy('');
+  }
+
+  async function remove() {
+    const ok = await S().confirm({
+      title: '删除这个模型？',
+      desc: '引用它的任务会自动回落到默认模型；上游厂商与 Key 不受影响。',
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy('delete');
+    try { await ai.removeModel(model.id); onClose(); }
+    catch (err) { showResult(false, '删除失败：' + String((err && err.message) || err)); setBusy(''); }
+  }
+
+  const foot = (
+    <>
+      {editing ? (
+        <button className="btn btn-danger" type="button" id="modelSheetDelete" disabled={!!busy} onClick={remove}>
+          {busy === 'delete' ? '删除中…' : '删除模型'}
+        </button>
+      ) : null}
+      {editing ? (
+        <button className="btn" type="button" id="modelSheetTest" disabled={!!busy} onClick={runTest}>
+          {busy === 'test' ? '测试中…' : '测试'}
+        </button>
+      ) : null}
+      <button className="btn btn-primary" type="button" id="modelSheetSave" disabled={!!busy || !ai.vendors.length} onClick={save}>
+        {busy === 'save' ? '保存中…' : editing ? '保存' : '添加模型'}
+      </button>
+    </>
+  );
+
+  return (
+    <DetailSheet
+      title={editing ? `模型 · ${modelLabel(model)}` : '添加模型'}
+      subtitle={editing ? (model.vendorName || '未绑定厂商') : '模型只决定上游名字与参数，地址与 Key 在厂商里'}
+      onClose={onClose}
+      foot={foot}
+      saveHint="保存后立即生效；测试会真的调一次上游并在「运行状态」里留一条记录。"
+    >
+      {!ai.vendors.length ? (
+        <div className="hint pane-msg" role="status">
+          还没有厂商。模型的地址与 Key 都挂在厂商上，先添加一个厂商再回来选模型。
+          <button type="button" className="btn btn-ghost btn-sm ml-3" onClick={onNeedVendor}>添加厂商</button>
+        </div>
+      ) : null}
+
+      <div className="form-row">
+        <label>厂商</label>
+        <Dropdown id="modelVendor" wrapId="modelVendorDD" title="所属厂商" ariaLabel="所属厂商"
+          disabled={!vendorOptions.length} value={vendorId}
+          valueLabel={vendorOptions.length ? '选择厂商' : '还没有厂商'}
+          onChange={setVendorId} options={vendorOptions} />
+        <small className="form-tip">同一厂商下的模型共用地址与 Key；换厂商不需要重填 Key。</small>
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="modelName">显示名称</label>
+        <input id="modelName" type="text" maxLength={60} placeholder="如：便宜模型 / 日报专用（可留空）"
+          value={name} onChange={(e) => setName(e.target.value)} />
+        <small className="form-tip">只用于本页展示；留空时显示上游模型名。</small>
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="modelUpstream">上游模型名</label>
+        <div className="input-with-btn">
+          <input id="modelUpstream" type="text" spellCheck="false" placeholder="Qwen/Qwen3-8B"
+            value={upstream} onChange={(e) => setUpstream(e.target.value)} />
+          {list ? (
+            <Dropdown id="modelUpstreamPick" wrapId="modelUpstreamPickDD" title="从上游列表选择"
+              ariaLabel="从上游列表选择" value={upstream} valueLabel="选模型"
+              onChange={setUpstream} options={list.map((m) => ({ value: m, label: m }))} />
+          ) : null}
+          <button type="button" className="btn btn-ghost btn-sm" id="fetchUpstreamBtn"
+            disabled={listBusy || !vendorId} onClick={fetchList}>
+            {listBusy ? '获取中…' : list ? '重新获取' : '获取列表'}
+          </button>
+        </div>
+        {listErr ? <small className="form-tip is-warn" role="status">{listErr}</small> : null}
+        <small className="form-tip">会向上游请求 <code>/models</code>；拉不到也可以直接手填。</small>
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="modelTemp">温度</label>
+        <input id="modelTemp" type="number" min="0" max="2" step="0.05"
+          value={temperature} onChange={(e) => setTemperature(e.target.value)} />
+        <small className="form-tip">越低越稳定保守，越高越发散。摘要建议 0.2 ~ 0.5。</small>
+      </div>
+
+      <div className="form-row">
+        <label className="form-row-head">
+          <span>思考模式</span>
+          <span className="switch">
+            <input id="modelThinking" type="checkbox" checked={thinking}
+              onChange={(e) => setThinking(e.target.checked)} />
+            <span className="switch-slider" />
+          </span>
+        </label>
+        <small className="form-tip">
+          只对这个模型生效。打开后先推理再回答，更贴复杂选材但更慢、更耗额度；
+          仅对
+          <code>Qwen3</code> / <code>DeepSeek</code> 这类支持思考的上游有效。
+        </small>
+      </div>
+
+      <div className="form-row" hidden={!thinking}>
+        <label>思考深度</label>
+        <Dropdown id="modelDepth" wrapId="modelDepthDD" title="思考深度" ariaLabel="思考深度"
+          value={depth} onChange={setDepth}
+          options={[
+            { value: 'low', label: '轻 · 少量推理，接近不开思考' },
+            { value: 'medium', label: '中 · 默认，够它把选材想过一遍' },
+            { value: 'high', label: '深 · 充分推理，长清单时更明显' },
+          ]} />
+        <small className="form-tip">日报「中」通常够；条目多、分类总跑偏时才用「深」。</small>
+      </div>
+
+      <div className="form-row">
+        <label className="form-row-head">
+          <span>设为默认模型</span>
+          <span className="switch">
+            <input id="modelIsDefault" type="checkbox" checked={lockedDefault || isDefault}
+              disabled={lockedDefault}
+              onChange={(e) => setIsDefault(e.target.checked)} />
+            <span className="switch-slider" />
+          </span>
+        </label>
+        <small className="form-tip">默认模型兜底所有没有单独分配的任务，全站只保留一个。</small>
+      </div>
+
+      <Result id="modelSheetResult" result={result} />
+    </DetailSheet>
+  );
+}
+
+/* ============================ 厂商详情层 ============================ */
+
+function VendorSheet({ ai, vendor, onClose, onSaved }) {
+  const editing = !!vendor;
+  const keyName = useNoAutofillName('vendor-key');
+  const urlName = useNoAutofillName('vendor-url');
+  const [name, setName] = useState(vendor ? vendor.name || '' : '');
+  const [baseUrl, setBaseUrl] = useState(vendor ? vendor.baseUrl || '' : '');
   const [apiKey, setApiKey] = useState('');
   const [showKey, setShowKey] = useState(false);
-  // result: { ok, msg } | null
-  const [result, setResult] = useState(null);
-  const [busy, setBusy] = useState('');   // '' | 'test' | 'save' | 'clear'
-  /* enable_thinking 全局开关：默认槽的思考配置。点一下即落库，失败回滚。
-     它必须写进账号的模型配置（`user_llm.thinking`），下一次调用起生效，
-     而不是每次请求由前端临时传参：前端传参会出现「日报带了、单篇没带」的漂移。 */
-  const [thinkingBusy, setThinkingBusy] = useState(false);
-  /* AI 用量：进页面拉一次，之后手动刷新。读接口不消耗额度。 */
+  const [clearKey, setClearKey] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [result, showResult] = useResult();
+
+  const saved = !!(vendor && vendor.apiKeySet);
+
+  async function save() {
+    if (!baseUrl.trim()) { showResult(false, '接口地址不能为空'); return; }
+    setBusy('save');
+    try {
+      const payload = { name: name.trim(), baseUrl: baseUrl.trim() };
+      const typed = apiKey.trim();
+      if (clearKey) payload.apiKey = '';
+      else if (typed) payload.apiKey = typed;
+      await ai.saveVendor(payload, editing ? vendor.id : undefined);
+      onSaved();
+    } catch (err) {
+      showResult(false, '保存失败：' + String((err && err.message) || err));
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function remove() {
+    const n = vendor.modelCount || 0;
+    const ok = await S().confirm({
+      title: '删除这个厂商？',
+      desc: n
+        ? `它下面的 ${n} 个模型会一起删除，引用这些模型的任务自动回落到默认模型。`
+        : '这个厂商还没有模型，删除后不影响其它配置。',
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy('delete');
+    try { await ai.removeVendor(vendor.id); onClose(); }
+    catch (err) { showResult(false, '删除失败：' + String((err && err.message) || err)); setBusy(''); }
+  }
+
+  const foot = (
+    <>
+      {editing ? (
+        <button className="btn btn-danger" type="button" id="vendorSheetDelete" disabled={!!busy} onClick={remove}>
+          {busy === 'delete' ? '删除中…' : '删除厂商'}
+        </button>
+      ) : null}
+      <button className="btn btn-primary" type="button" id="vendorSheetSave" disabled={!!busy} onClick={save}>
+        {busy === 'save' ? '保存中…' : editing ? '保存' : '添加厂商'}
+      </button>
+    </>
+  );
+
+  return (
+    <DetailSheet
+      title={editing ? `厂商 · ${vendor.name || hostOf(vendor.baseUrl)}` : '添加厂商'}
+      subtitle={editing ? `${vendor.modelCount || 0} 个模型共用这份连接信息` : '地址与 Key 只填一次，模型里直接选'}
+      onClose={onClose}
+      foot={foot}
+      saveHint="地址是出网口，保存前会做一次可达性与安全校验。"
+    >
+      <div className="form-row">
+        <label htmlFor="vendorName">名称</label>
+        <input id="vendorName" type="text" maxLength={60} placeholder="如：硅基流动 / 火山方舟（可留空，默认用域名）"
+          value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="vendorBaseUrl">接口地址（OpenAI 兼容）</label>
+        <input id="vendorBaseUrl" name={urlName} type="url" spellCheck="false"
+          placeholder="https://api.siliconflow.cn/v1" value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)} {...NO_AUTOFILL_PROPS} />
+        <small className="form-tip">填到 <code>/v1</code> 或完整 <code>/chat/completions</code> 均可。</small>
+      </div>
+
+      <div className="form-row">
+        <label htmlFor="vendorKey">API Key</label>
+        <div className="input-with-btn">
+          <input id="vendorKey" name={keyName} type={showKey ? 'text' : 'password'}
+            placeholder={saved ? '已保存，留空则不修改' : 'sk-...'} value={apiKey}
+            onChange={(e) => { setApiKey(e.target.value); setClearKey(false); }}
+            {...NO_AUTOFILL_PROPS} />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowKey((v) => !v)}>
+            {showKey ? '隐藏' : '显示'}
+          </button>
+          {saved ? (
+            <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy}
+              onClick={() => { setClearKey(true); setApiKey(''); }}>
+              清除
+            </button>
+          ) : null}
+        </div>
+        <small className="form-tip">
+          {clearKey ? '保存后清除已存的 Key。'
+            : saved ? <>已保存：<code>{vendor.apiKeyHint || '••••'}</code> · 加密存储，不回显明文。</>
+              : 'Key 加密存储，页面只显示掩码。同一厂商下所有模型共用。'}
+        </small>
+      </div>
+
+      <Result id="vendorSheetResult" result={result} />
+    </DetailSheet>
+  );
+}
+
+/* ============================ 主面板 ============================ */
+
+export function ModelPane({ onDirtyChange }) {
+  const paneRef = useRef(null);
+  const ai = useAiSettings();
+  const { vendors, models, loaded, loadError, busy, msg } = ai;
+
+  // 详情层：{ kind: 'model'|'vendor', id: string|null }；id 为 null = 新建
+  const [sheet, setSheet] = useState(null);
+  // 在模型层里点「添加厂商」后，厂商保存完要自动回到新建模型
+  const [pendingModel, setPendingModel] = useState(false);
+
   const [usage, setUsage] = useState(null);
   const [usageBusy, setUsageBusy] = useState(false);
-  /* 模型状态：最近调用明细 + 上游模型列表。
-     - requests 为 null = 读取中；读取失败只影响这一块（下方仍可改配置）。
-     - modelList 为 null = 还没拉过上游列表，输入框照旧手填 + 预设。 */
   const [requests, setRequests] = useState(null);
   const [reqError, setReqError] = useState('');
   const [reqBusy, setReqBusy] = useState(false);
   const [reqLimit, setReqLimit] = useState(20);
   const [keepInfo, setKeepInfo] = useState({ keep: 200, days: 30 });
-  const [modelList, setModelList] = useState(null);
-  const [modelBusy, setModelBusy] = useState(false);
-  const [modelErr, setModelErr] = useState('');
-  // 与日报面板同一条守卫：GET 回来前用户已输入，就不能用服务端旧值覆盖表单
-  const guard = useFormLoadGuard();
+  const [statusResult, showStatusResult] = useResult();
 
-  /* ---- 未保存改动：表单指纹 + 已输入但未保存的 Key ---- */
-  const formDirty = !!savedForm && JSON.stringify(form) !== savedForm;
-  const dirty = formDirty || apiKey.trim() !== '';
-  useEffect(() => {
-    if (onDirtyChange) onDirtyChange(dirty);
-  }, [dirty, onDirtyChange]);
-
-  // 进入「模型」页拉一次配置（旧 loadModelForm 的迁移）；面板随 tab 切换挂载/卸载。
-  // 注意：不清 result——保存 / 清除成功后要保留「已保存」提示（与旧实现一致），
-  // 读取失败时才在 catch 里置 err；初次进入时 result 本就为 null。
-  useEffect(() => { load(); loadUsage(); loadRequests(); }, []);
-
-  // 折叠分组的开合按账号持久化（与其他设置面板同一机制）
   useEffect(() => {
     const s = S();
     if (s && s.bindSections && paneRef.current) s.bindSections(paneRef.current);
   }, []);
-
-  // force：保存 / 清除成功后的主动重拉，属于「用户已确认」，必须允许回填并重置 touched；
-  // 只有挂载那次（load() 无参）才受守卫保护，避免覆盖加载期间的输入。
-  async function load(force = false) {
-    if (force) guard.reset();
-    try {
-      const res = await S().apiFetch('/api/prefs');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const llm = data.llm || {};
-      const next = {
-        baseUrl: llm.baseUrl || '',
-        model: llm.model || '',
-        temperature: String(llm.temperature == null ? 0.3 : llm.temperature),
-        thinking: llm.thinking === true,
-        thinkingDepth: numToDepth(llm.thinkingDepth),
-        apiKeySet: !!llm.apiKeySet,
-        apiKeyHint: llm.apiKeyHint || '••••',
-      };
-      // 用户已在加载完成前输入：只补一条脏态基线，不覆盖任何输入框
-      const applied = guard.apply(() => {
-        setForm(next);
-        setSavedForm(JSON.stringify(next));
-        // Key 输入框每次回填都清空并回到掩码态：留空 = 不修改
-        setApiKey('');
-        setShowKey(false);
-        // 还没配好（缺 Key 或模型名）就把默认行展开，省得用户找
-        setEditDefault((prev) => prev || !next.apiKeySet || !String(next.model || '').trim());
-      });
-      if (!applied) setSavedForm((s) => s || JSON.stringify(EMPTY));
-    } catch (err) {
-      // 读取失败时以当前空表单为基线，用户仍可手填后保存
-      guard.apply(() => setSavedForm(JSON.stringify(EMPTY)));
-      setResult({ ok: false, msg: '读取配置失败：' + String((err && err.message) || err) });
-    }
-  }
-
-  const set = (k) => (ev) => { guard.mark(); setForm((f) => Object.assign({}, f, { [k]: ev.target.value })); };
-
-  const onTest = async () => {
-    setBusy('test');
-    setResult(null);
-    try {
-      const res = await S().apiFetch('/api/digest/test-llm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // 测试连接真的发一次模型请求（服务端上限 45s），别被 30s 写超时先掐断
-        timeoutMs: S().AI_TIMEOUT_MS || 200000,
-        body: JSON.stringify({
-          llm: {
-            baseUrl: form.baseUrl, apiKey, model: form.model,
-            // 思考两项也带上：刚把开关拨开、还没保存就能试出这上游认不认
-            thinking: form.thinking, thinkingDepth: depthToNum(form.thinkingDepth),
-          },
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data.ok) setResult({ ok: true, msg: `模型可用：${data.reply || '连接正常'}` });
-      else setResult({ ok: false, msg: '调用失败：' + S().errText(data, '未知错误') });
-    } catch (err) {
-      setResult({ ok: false, msg: '调用失败：' + String((err && err.message) || err) });
-    } finally {
-      setBusy('');
-    }
-  };
-
-  // 当前表单值 → 保存用的 llm 片段（Key 留空则不传，服务端沿用原密文）
-  const llmPatch = (extra) => Object.assign({
-    baseUrl: form.baseUrl,
-    model: form.model,
-    temperature: parseTemp(form.temperature),
-    thinking: form.thinking,
-    thinkingDepth: depthToNum(form.thinkingDepth),
-  }, extra);
-
-  const onSave = async () => {
-    setBusy('save');
-    try {
-      const typedKey = apiKey.trim();
-      const res = await S().apiFetch('/api/prefs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ llm: llmPatch(typedKey ? { apiKey: typedKey } : {}) }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: S().errText(data, '保存失败') }); return; }
-      const msg = typedKey ? '模型配置与 API Key 已保存' : '模型配置已保存';
-      // 表单保存只用内联结果，不再叠一层 toast（列表级动作才用 toast）
-      setResult({ ok: true, msg });
-      await load(true);
-      // 保存成功后自动拉一次上游模型列表（Key 都没配就别白跑一趟）
-      if (typedKey || form.apiKeySet) refreshModels(true);
-      // 配置可能已经能用了，顺手刷新状态区，别让「最近失败」停在旧结论上
-      loadRequests();
-    } catch (err) {
-      setResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const onClearKey = async () => {
-    const ok = await S().confirm({
-      title: '清除已保存的 API Key？',
-      desc: '清除后这个账号将无法调用模型，日报直到重新填写前都生成不了。',
-      confirmText: '清除',
-      danger: true,
-    });
-    if (!ok) return;
-    setBusy('clear');
-    try {
-      const res = await S().apiFetch('/api/prefs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ llm: llmPatch({ clearApiKey: true }) }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: S().errText(data, '清除失败') }); return; }
-      setResult({ ok: true, msg: 'API Key 已清除' });
-      await load(true);
-      // Key 没了就拉不到模型列表，把上一次的结果一并清掉，免得下拉里还留着过期的名字
-      setModelList(null);
-      setModelErr('');
-    } catch (err) {
-      setResult({ ok: false, msg: '清除失败：' + String((err && err.message) || err) });
-    } finally {
-      setBusy('');
-    }
-  };
-
-  /* 把 enable_thinking / 深度写进账号模型配置。返回 true 表示已落库。
-   * 只提交这一个字段：`user_llm` 的保存是部分更新语义，不会碰用户还没保存的其它输入。 */
-  async function patchThinking(patch, okMsg) {
-    const res = await S().apiFetch('/api/prefs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ llm: patch }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setResult({ ok: false, msg: S().errText(data, '保存思考开关失败') });
-      return false;
-    }
-    setResult({ ok: true, msg: okMsg });
-    return true;
-  }
-
-  /* 保存成功后同步脏态基线：开关是即时生效的，不该让页面一直显示「有未保存的更改」。 */
-  function syncSavedForm(patch) {
-    setSavedForm((s) => {
-      if (!s) return s;
-      try { return JSON.stringify(Object.assign(JSON.parse(s), patch)); } catch { return s; }
-    });
-  }
-
-  /** enable_thinking 开关：默认关；作用于本账号全部 AI 调用（日报 / 单篇 / 标签 / MCP / 测试）。 */
-  const onToggleThinking = async (ev) => {
-    const on = ev.target.checked;
-    if (thinkingBusy) return;
-    const prev = form.thinking;
-    guard.mark();
-    setForm((f) => Object.assign({}, f, { thinking: on }));
-    setThinkingBusy(true);
-    try {
-      const ok = await patchThinking({ thinking: on }, on ? '已开启模型思考（全部 AI 调用生效）' : '已关闭模型思考（全部 AI 调用生效）');
-      if (!ok) { setForm((f) => Object.assign({}, f, { thinking: prev })); return; }
-      syncSavedForm({ thinking: on });
-    } catch (err) {
-      setForm((f) => Object.assign({}, f, { thinking: prev }));
-      setResult({ ok: false, msg: '保存思考开关失败：' + String((err && err.message) || err) });
-    } finally {
-      setThinkingBusy(false);
-    }
-  };
-
-  /** 思考深度同样是账号级配置，改完即生效（只有开思考时才有意义）。 */
-  const onDepthChange = async (depth) => {
-    if (thinkingBusy) return;
-    const prev = form.thinkingDepth;
-    guard.mark();
-    setForm((f) => Object.assign({}, f, { thinkingDepth: depth }));
-    setThinkingBusy(true);
-    try {
-      const ok = await patchThinking({ thinkingDepth: depthToNum(depth) }, `思考深度已设为「${DEPTH_LABEL[depth] || '中'}」`);
-      if (!ok) { setForm((f) => Object.assign({}, f, { thinkingDepth: prev })); return; }
-      syncSavedForm({ thinkingDepth: depth });
-    } catch (err) {
-      setForm((f) => Object.assign({}, f, { thinkingDepth: prev }));
-      setResult({ ok: false, msg: '保存思考深度失败：' + String((err && err.message) || err) });
-    } finally {
-      setThinkingBusy(false);
-    }
-  };
-
-  /* 温度即时生效：失焦即提交（数字输入边打字边 POST 太吵）。
-     只提交 temperature 一个字段，不碰用户还没保存的地址 / Key / 模型名。 */
-  async function onTempCommit() {
-    const next = String(parseTemp(form.temperature));
-    let base = null;
-    try { base = JSON.parse(savedForm || 'null'); } catch { base = null; }
-    if (base && String(base.temperature) === next) return;   // 没改就不发请求
-    try {
-      const ok = await patchThinking({ temperature: parseTemp(next) }, '温度已更新（立即生效）');
-      if (ok) syncSavedForm({ temperature: next });
-      else setForm((f) => Object.assign({}, f, { temperature: base ? base.temperature : EMPTY.temperature }));
-    } catch (err) {
-      setForm((f) => Object.assign({}, f, { temperature: base ? base.temperature : EMPTY.temperature }));
-      setResult({ ok: false, msg: '保存温度失败：' + String((err && err.message) || err) });
-    }
-  }
-
-  /** 运行状态卡片的一个刷新按钮：历史与用量一起重拉（只读接口，不消耗额度）。 */
-  function refreshAll() { loadRequests(); loadUsage(); }
+  useEffect(() => { if (onDirtyChange) onDirtyChange(false); }, [onDirtyChange]);
+  useEffect(() => { loadUsage(); loadRequests(); }, []);
 
   async function loadUsage() {
     setUsageBusy(true);
     try {
       const res = await S().apiFetch('/api/ai-usage?days=30');
       const data = await res.json().catch(() => ({}));
-      // 读失败不打扰用户：这一块是参考信息，静默留空即可
       if (res.ok) setUsage(data);
     } catch {
-      /* 忽略 */
+      /* 参考信息，静默留空 */
     } finally {
       setUsageBusy(false);
     }
   }
 
-  /* 最近调用明细：只读接口。读失败只在「模型状态」区里报，不影响上面的配置表单。 */
   async function loadRequests(limit = reqLimit) {
     setReqBusy(true);
     setReqError('');
@@ -398,55 +446,20 @@ export function ModelPane({ onDirtyChange }) {
     }
   }
 
-  /* 拉上游模型列表（OpenAI 兼容 GET {base}/models）。
-     - 临时带上输入框刚填的 baseUrl / Key：还没保存也该能拉；
-     - auto=true 是保存成功后自动跑一次：失败只在这块提示，不打断保存结果；
-     - 失败一律退回手填，不做成阻塞。 */
-  async function refreshModels(auto = false) {
-    if (modelBusy) return;
-    setModelBusy(true);
-    setModelErr('');
-    try {
-      const typedKey = apiKey.trim();
-      const res = await S().apiFetch('/api/llm/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // 上游拉列表可能慢（服务端 20s 上限），留出余量
-        timeoutMs: S().AI_TIMEOUT_MS || 200000,
-        body: JSON.stringify({
-          llm: Object.assign({ baseUrl: form.baseUrl }, typedKey ? { apiKey: typedKey } : {}),
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(S().errText(data, '获取模型列表失败'));
-      if (!data.ok) {
-        setModelList(null);
-        setModelErr(S().errText(data, '上游没有返回模型列表，请手动填写模型名称'));
-        return;
-      }
-      const list = Array.isArray(data.models) ? data.models : [];
-      setModelList(list.length ? list : null);
-      if (!list.length) setModelErr('上游没有返回模型列表，请手动填写模型名称');
-    } catch (err) {
-      setModelList(null);
-      setModelErr((auto ? '自动获取模型列表失败：' : '') + String((err && err.message) || err));
-    } finally {
-      setModelBusy(false);
-    }
-  }
+  function refreshAll() { loadRequests(); loadUsage(); }
 
-  const saved = form.apiKeySet;
+  const defaultModel = models.find((m) => m.isDefault) || models[0] || null;
 
-  /* ---- 模型状态：只用本地记录推断，不额外打一次模型（看状态不烧 token） ---- */
+  /* ---- 运行状态：只用本地记录推断，不额外打一次模型（看状态不烧 token） ---- */
   const recent = Array.isArray(requests) ? requests : [];
   const lastReq = recent[0] || null;
   const status = (() => {
-    if (!saved || !String(form.model || '').trim()) {
-      return { cls: 'is-off', label: '未配置', detail: '地址 / Key / 模型名三项齐了才能调用' };
-    }
+    if (!defaultModel) return { cls: 'is-off', label: '未配置', detail: '先添加厂商与模型才能调用' };
+    if (!defaultModel.model) return { cls: 'is-off', label: '未配置', detail: '默认模型还没填上游模型名' };
+    if (!defaultModel.apiKeySet) return { cls: 'is-off', label: '缺少 Key', detail: '默认模型所属厂商还没有 API Key' };
     if (requests === null && !reqError) return { cls: 'is-idle', label: '读取中…', detail: '' };
     if (reqError && !recent.length) return { cls: 'is-fail', label: '状态未知', detail: reqError };
-    if (!lastReq) return { cls: 'is-idle', label: '未测试', detail: '还没有调用记录，可以用底部的「测试模型」先验一次' };
+    if (!lastReq) return { cls: 'is-idle', label: '未测试', detail: '还没有调用记录，可以点「测试默认模型」先验一次' };
     if (lastReq.ok) {
       return {
         cls: 'is-ok',
@@ -454,7 +467,6 @@ export function ModelPane({ onDirtyChange }) {
         detail: `最近一次成功 · ${fmtRel(lastReq.createdAt)} · ${USAGE_KINDS[lastReq.kind] || lastReq.kind}`,
       };
     }
-    // 失败原因可能是 `E_AI_TIMEOUT: ...` 这类稳定码，过一遍词典；英文原文留在列表行的 title 里
     return { cls: 'is-fail', label: '最近失败', detail: `${fmtRel(lastReq.createdAt)} · ${S().errText(lastReq.error || '', '调用失败')}` };
   })();
   const avgMs = (() => {
@@ -466,206 +478,156 @@ export function ModelPane({ onDirtyChange }) {
   const todayFails = usage?.today?.fails || 0;
   const reqLoading = requests === null && !reqError;
 
+  async function testDefault() {
+    const r = await ai.testModel();
+    showStatusResult(r.ok, r.text);
+    loadRequests();
+  }
+
+  const openRow = (kind, id) => setSheet({ kind, id });
+
+  const rowKeyDown = (fn) => (ev) => {
+    if (ev.target !== ev.currentTarget) return;
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); fn(); }
+  };
+
+  const currentModel = sheet && sheet.kind === 'model' && sheet.id
+    ? models.find((m) => m.id === sheet.id) || null
+    : null;
+  const currentVendor = sheet && sheet.kind === 'vendor' && sheet.id
+    ? vendors.find((v) => v.id === sheet.id) || null
+    : null;
+
+  const modelsSub = !loaded ? '读取中…' : models.length
+    ? `${models.length} 个` + (defaultModel ? ` · 默认 ${modelLabel(defaultModel)}` : '')
+    : '未配置';
+  const vendorsSub = !loaded ? '读取中…' : vendors.length ? `${vendors.length} 个接入` : '未配置';
+
   return (
     <div className="tab-pane" data-pane="model" ref={paneRef}>
       <div className="pane-scroll">
-        {/* 卡片 01 · 模型：默认模型是列表首行（点「编辑」才展开表单），其它提供商并列其下。
-            地址 / Key / 模型名 只有这一套 UI，不再与「添加模型」表单重复。 */}
-        <Section secKey="llm-library" title="模型" sub={form.model || '未配置'} cardNo="01"
-          cardDesc="默认模型兜底所有未单独分配的任务；要给不同能力指定不同模型时，再在下面添加其它模型。" open>
-          <ModelLibrary cap={aiCap} lead={
-            <>
-            <div className="ai-cap-provider is-default" data-provider-default="1">
-              <div className="ai-cap-p-main">
-                <span className="ai-cap-p-name">{String(form.model || '').trim() || '未配置模型'}</span>
-                <span className="ai-cap-badge">默认</span>
-                <span className="hint">
-                  {saved ? 'Key 已设置' : '未设 Key'} · {String(form.baseUrl || '').replace(/^https?:\/\//, '').slice(0, 36) || '未填地址'}
-                </span>
-              </div>
-              <div className="ai-cap-p-actions">
-                <button className="btn btn-ghost btn-sm" id="editDefaultModelBtn" type="button"
-                  aria-expanded={editDefault ? 'true' : 'false'}
-                  onClick={() => setEditDefault((v) => !v)}>
-                  {editDefault ? '收起' : '编辑'}
-                </button>
-              </div>
-            </div>
-
-            <div className="model-edit" data-sec="llm-api" hidden={!editDefault}>
-              <div className="form-row">
-                <label htmlFor="llmBaseUrl">模型地址（OpenAI 兼容）</label>
-          <input
-            id="llmBaseUrl"
-            name={urlName}
-            type="url"
-            placeholder="https://api.siliconflow.cn/v1/chat/completions"
-            value={form.baseUrl}
-            onChange={set('baseUrl')}
-            {...NO_AUTOFILL_PROPS}
-          />
-          <small className="form-tip">支持任意 OpenAI 兼容接口；填到 <code>/v1</code> 或完整的 <code>/chat/completions</code> 均可</small>
-        </div>
-        <div className="form-row">
-          <label htmlFor="llmApiKey">API Key</label>
-          <div className="input-with-btn">
-            <input
-              id="llmApiKey"
-              name={keyName}
-              type={showKey ? 'text' : 'password'}
-              placeholder={saved ? '已保存，留空则不修改' : 'sk-...'}
-              value={apiKey}
-              onChange={(ev) => { guard.mark(); setApiKey(ev.target.value); }}
-              {...NO_AUTOFILL_PROPS}
-            />
-            <button
-              className="btn btn-ghost btn-sm"
-              id="toggleLlmKey"
-              type="button"
-              onClick={() => setShowKey((v) => !v)}
-            >
-              {showKey ? '隐藏' : '显示'}
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              id="clearLlmKey"
-              type="button"
-              hidden={!saved}
-              disabled={busy === 'clear'}
-              onClick={onClearKey}
-            >
-              清除
-            </button>
+        {loadError ? (
+          <div className="hint pane-msg lg" role="alert">
+            {loadError}
+            <button type="button" className="btn btn-ghost btn-sm ml-3" onClick={ai.load}>重试</button>
           </div>
-          <small className="form-tip" id="llmKeyHint">
-            {saved ? (
-              <>已保存：<code>{form.apiKeyHint}</code> · 加密存储，不回显明文；要更换就直接粘贴新的，要删除点「清除」</>
+        ) : null}
+        {msg ? <Result id="llmResult" result={{ ok: msg.ok, msg: msg.text }} /> : null}
+
+        {/* ---------- ① 模型：默认模型在最前，行内只留状态与快捷动作 ---------- */}
+        <Section secKey="llm-library" title="模型" sub={modelsSub} open>
+          <div className="sl-toolbar">
+            <button type="button" className="btn btn-ghost btn-sm" id="addModelBtn"
+              disabled={!vendors.length} onClick={() => openRow('model', null)}>
+              + 添加模型
+            </button>
+            <span className="sl-toolbar-note">默认模型兜底所有未单独分配的任务；点行编辑名称、温度与思考。</span>
+          </div>
+
+          {!loaded ? <div className="sl-empty">正在读取模型…</div>
+            : !models.length ? (
+              <div className="sl-empty">
+                {vendors.length
+                  ? '还没有模型。点「添加模型」，从厂商里挑一个上游模型名。'
+                  : '还没有模型。先在下面「厂商与接入」里添加地址与 Key，再回来添加模型。'}
+              </div>
             ) : (
-              <>尚未设置。保存后以加密形式落库，页面只显示掩码。</>
+              <div className="sl-list">
+                {models.map((m) => {
+                  const isDefault = m.isDefault;
+                  const depth = numToDepth(m.thinkingDepth);
+                  return (
+                    <div className="sl-row" key={m.id} data-model-id={m.id}
+                      role="button" tabIndex={0} aria-label={`编辑模型「${modelLabel(m)}」`}
+                      onClick={() => openRow('model', m.id)}
+                      onKeyDown={rowKeyDown(() => openRow('model', m.id))}>
+                      <span className="sl-ava">
+                        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-sparkle" /></svg>
+                      </span>
+                      <div className="sl-main">
+                        <div className="sl-name">{modelLabel(m)}</div>
+                        <div className="sl-sub">
+                          {m.vendorName || '未绑定厂商'} · 温度 {tempText(m.temperature)} · {m.thinking ? `思考${DEPTH_LABEL[depth]}` : '不思考'}
+                        </div>
+                      </div>
+                      <span className="sl-side" onClick={(ev) => ev.stopPropagation()}>
+                        {isDefault ? <span className="sl-badge">默认</span>
+                          : m.vendorId ? (
+                            <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy}
+                              onClick={() => ai.makeDefault(m)}>设为默认</button>
+                          ) : <span className="sl-badge muted">旧配置</span>}
+                      </span>
+                      <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+                    </div>
+                  );
+                })}
+              </div>
             )}
-          </small>
-        </div>
-        <div className="form-grid form-grid-2">
-          <div className="form-row">
-            <label htmlFor="llmModel">模型名称</label>
-            {/* 输入框保持可手填：/models 拉不到（或上游不实现）时照样能填名字。
-                候选用自绘 Dropdown，不用 datalist —— Android Chrome 把多项 datalist
-                渲染成一排空心胶囊（点不动、看不清），真机实测不可用。 */}
-            <div className="input-with-btn">
-              <input
-                id="llmModel"
-                type="text"
-                placeholder="Qwen/Qwen3-8B"
-                spellCheck="false"
-                value={form.model}
-                onChange={set('model')}
-              />
-              <Dropdown
-                id="modelPickBtn"
-                wrapId="modelPickDD"
-                title="从列表选择模型"
-                ariaLabel="从列表选择模型"
-                valueLabel="选模型"
-                options={(modelList && modelList.length ? modelList : MODEL_PRESETS).map((m) => ({ value: m, label: m }))}
-                onChange={(v) => { guard.mark(); setForm((f) => Object.assign({}, f, { model: String(v) })); }}
-              />
-              <button
-                className="btn btn-ghost btn-sm"
-                id="fetchModelsBtn"
-                type="button"
-                disabled={modelBusy}
-                aria-busy={modelBusy ? 'true' : undefined}
-                title="向当前模型地址请求 /models，拉取可用模型名"
-                onClick={() => refreshModels(false)}
-              >
-                {modelBusy ? '获取中…' : modelList ? '重新获取' : '获取模型'}
-              </button>
-            </div>
-            {modelErr ? (
-              <small className="form-tip is-warn" id="modelListHint" role="status">{modelErr}</small>
-            ) : modelList ? (
-              <small className="form-tip" id="modelListHint" role="status">
-                已从上游获取 {modelList.length} 个模型，点「选模型」从列表挑；也可以继续手填。
-              </small>
-            ) : null}
-            <small className="form-tip" id="llmModelTip">免费额度推荐 <strong>Qwen/Qwen3-8B</strong>；思考模式与深度在下面「使用方式」里设置。</small>
-          </div>
-          <div className="form-row">
-            <label htmlFor="llmTemp">温度</label>
-            <input
-              id="llmTemp"
-              type="number"
-              min="0"
-              max="1.5"
-              step="0.05"
-              value={form.temperature}
-              onChange={set('temperature')}
-              onBlur={onTempCommit}
-            />
-            <small className="form-tip">越低越稳定保守，越高越发散。摘要建议 0.2 ~ 0.5；失焦即生效。</small>
-          </div>
-        </div>
-            </div>
-            </>
-          } />
         </Section>
 
-        {/* 卡片 02 · 使用方式：思考模式 + 能力开关与分配，都是「怎么用模型」。
-            思考开关与深度即时落库；能力开关同理，关闭后服务端直接拒绝调用。 */}
-        <Section secKey="llm-capabilities" title="使用方式" sub="思考与任务分派" cardNo="02"
-          cardDesc="决定模型怎么想、哪些能力可以调用、每项能力走哪个模型。这里的开关与分派都是改完即生效。" open>
-        <div className="model-sub" data-sec="llm-thinking">
-          <div className="model-sub-head">
-            <span className="model-sub-title">思考模式</span>
-            <span className="sec-sub">{form.thinking ? `已开启 · 深度${DEPTH_LABEL[form.thinkingDepth]}` : '已关闭 · 全部调用生效'}</span>
+        {/* ---------- ② 厂商与接入：地址与 Key 的唯一来源 ---------- */}
+        <Section secKey="llm-vendors" title="厂商与接入" sub={vendorsSub} open>
+          <div className="sl-toolbar">
+            <button type="button" className="btn btn-ghost btn-sm" id="addVendorBtn"
+              onClick={() => openRow('vendor', null)}>
+              + 添加厂商
+            </button>
+            <span className="sl-toolbar-note">地址与 Key 只在这里维护；多个模型可以共用一个厂商。</span>
           </div>
-        <div className="form-row">
-          <label className="form-row-head">
-            <span>让模型先思考再回答</span>
-            <span className="switch">
-              <input
-                id="llmThinking"
-                type="checkbox"
-                checked={form.thinking}
-                disabled={thinkingBusy}
-                onChange={onToggleThinking}
-              />
-              <span className="switch-slider" />
-            </span>
-          </label>
-          <small className="form-tip">
-            <b>默认关闭，拨动即生效</b>，作用于本账号全部 AI 调用。关闭时每次请求带
-            <code>enable_thinking: false</code>，只给答案不给推理（同一篇长文实测 56 秒降到 4 秒）；
-            打开后先思考再答，更贴复杂选材但明显更慢、更耗额度。仅对 Qwen3 / DeepSeek 这类支持思考的模型有效；
-            上游不认识该字段时会自动去掉重试。
-          </small>
-        </div>
-        <div className="form-row" hidden={!form.thinking}>
-          <label>思考深度</label>
-          <Dropdown id="llmDepth" wrapId="llmDepthDD" title="思考深度" ariaLabel="思考深度"
-            value={form.thinkingDepth} disabled={thinkingBusy} onChange={(v) => onDepthChange(v)}
-            options={[
-              { value: 'low', label: '轻 · 少量推理，接近不开思考' },
-              { value: 'medium', label: '中 · 默认，够它把选材想过一遍' },
-              { value: 'high', label: '深 · 充分推理，长清单时更明显' },
-            ]} />
-          <small className="form-tip">账号级配置，改完即生效；日报「中」通常够，条目多、分类总跑偏时才用「深」。</small>
-        </div>
-        </div>
-          <CapabilitySwitches cap={aiCap} />
+
+          {!loaded ? <div className="sl-empty">正在读取厂商…</div>
+            : !vendors.length ? (
+              <div className="sl-empty">还没有接入厂商。添加一个 OpenAI 兼容的接口地址与 Key，就可以在上面建模型了。</div>
+            ) : (
+              <div className="sl-list">
+                {vendors.map((v) => (
+                  <div className="sl-row" key={v.id} data-vendor-id={v.id}
+                    role="button" tabIndex={0} aria-label={`编辑厂商「${v.name}」`}
+                    onClick={() => openRow('vendor', v.id)}
+                    onKeyDown={rowKeyDown(() => openRow('vendor', v.id))}>
+                    <span className="sl-ava" style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+                      <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-link" /></svg>
+                    </span>
+                    <div className="sl-main">
+                      <div className="sl-name">{v.name || hostOf(v.baseUrl) || '未命名厂商'}</div>
+                      <div className="sl-sub">
+                        {hostOf(v.baseUrl) || '未填地址'} · {v.modelCount || 0} 个模型
+                      </div>
+                    </div>
+                    <span className="sl-side">
+                      <span className={'sl-badge' + (v.apiKeySet ? '' : ' muted')}>
+                        {v.apiKeySet ? 'Key 已设' : '未设 Key'}
+                      </span>
+                    </span>
+                    <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+                  </div>
+                ))}
+              </div>
+            )}
         </Section>
 
-        {/* 卡片 03 · 运行状态：状态 / 历史请求 / 用量同处一卡，一个「刷新」同时重拉两者。 */}
+        {/* ---------- ③ 任务分配 ---------- */}
+        <Section secKey="llm-capabilities" title="任务分配" sub="能力开关与模型" open>
+          <TaskAssignments ai={ai} />
+        </Section>
+
+        {/* ---------- ④ 运行状态（默认折叠） ---------- */}
         <Section secKey="llm-status" title="运行状态"
-          sub={status.label + (lastReq ? ' · ' + fmtRel(lastReq.createdAt) : '')}
-          cardNo="03" cardDesc="最近一次调用推断的可用状态、请求历史与近 30 天用量。查看不消耗额度，点底部「测试模型」才真调一次。">
+          sub={status.label + (lastReq ? ' · ' + fmtRel(lastReq.createdAt) : '')}>
           <div className="ms-head">
             <span className={'ms-badge ' + status.cls}>{status.label}</span>
-            <span className="ms-model" title={String(form.model || '').trim() || '未设置模型'}>
-              {String(form.model || '').trim() || '未设置模型'}
+            <span className="ms-model" title={defaultModel ? modelLabel(defaultModel) : '未设置模型'}>
+              {defaultModel ? modelLabel(defaultModel) : '未设置模型'}
             </span>
-            {status.detail ? <span className="ms-head-note">{status.detail}</span> : null}
+            <button type="button" className="btn btn-ghost btn-sm" id="testLlmBtn"
+              disabled={busy === 'test' || !defaultModel}
+              onClick={testDefault}>
+              {busy === 'test' ? '测试中…' : '测试默认模型'}
+            </button>
+            <span className="ms-head-note">{status.detail}</span>
           </div>
+
+          <Result id="llmStatusResult" result={statusResult} />
 
           <div className="ms-stats" id="modelStatusStats">
             <div className="ms-stat">
@@ -709,7 +671,7 @@ export function ModelPane({ onDirtyChange }) {
             </div>
           ) : recent.length === 0 ? (
             <div className="ms-empty" id="modelRequestEmpty">
-              还没有请求记录。生成日报、用单篇 AI、打标签或点底部「测试模型」之后，
+              还没有请求记录。生成日报、用单篇 AI、打标签或点「测试默认模型」之后，
               每次调用都会记在这里（时间 · 功能 · 内容 · 耗时 · tokens · 结果）。
             </div>
           ) : (
@@ -727,70 +689,66 @@ export function ModelPane({ onDirtyChange }) {
               ))}
             </ul>
           )}
-          <small className="form-tip">
-            状态按最近一次调用推断：成功即「可用」，失败即「最近失败」并给出原因。
-            想立刻确认，点底部「测试模型」——那会真的调一次并在列表里留一条记录。
-          </small>
-        {/* 卡片 03 内的「AI 用量」子节：与状态/历史同属一张卡，共用上面的刷新按钮。 */}
-        <div className="model-sub" data-sec="llm-usage">
-          <div className="model-sub-head">
-            <span className="model-sub-title">AI 用量</span>
-            <span className="sec-sub">{usage && usage.today ? `${fmtNum(usage.today.calls)} 次 · ${fmtTokens(usage.today.totalTokens)} tokens（今日）` : '暂无调用'}</span>
-          </div>
-        <div className="usage-grid" id="aiUsageGrid" aria-live="polite">
-          {['today', 'days7', 'days30'].map((k) => (
-            <div className="usage-cell" key={k}>
-              <span className="usage-cell-label">{USAGE_SPANS[k]}</span>
-              <span className="usage-cell-value">{fmtNum(usage?.[k]?.calls || 0)} 次</span>
-              <span className="usage-cell-sub">{fmtTokens(usage?.[k]?.totalTokens || 0)} tokens</span>
-              {usage?.[k]?.fails ? <span className="usage-cell-fail">失败 {fmtNum(usage[k].fails)} 次</span> : null}
-            </div>
-          ))}
-        </div>
-        {usage && usage.byKind && usage.byKind.length ? (
-          <ul className="usage-list" id="aiUsageKinds">
-            {usage.byKind.map((r) => (
-              <li key={r.kind}>
-                <span className="usage-kind">{USAGE_KINDS[r.kind] || r.kind}</span>
-                <span className="usage-num">{fmtNum(r.calls)} 次</span>
-                <span className="usage-num">{fmtTokens(r.totalTokens)} tokens</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <small className="form-tip">近 30 天还没有调用记录。生成日报、用单篇 AI 或开启 AI 标签后会出现在这里。</small>
-        )}
-        <div className="usage-foot">
-          <small className="form-tip">
-            统计口径：每次真实调用记一次（失败的也计入次数）。token 只在模型返回 usage 时累加，
-            所以上游不回 usage 时次数会增加而 token 不变。
-          </small>
-        </div>
-        </div>
-        </Section>
 
-        {result ? <Result id="llmResult" result={result} /> : null}
+          <div className="model-sub" data-sec="llm-usage">
+            <div className="model-sub-head">
+              <span className="model-sub-title">AI 用量</span>
+              <span className="sec-sub">{usage && usage.today ? `${fmtNum(usage.today.calls)} 次 · ${fmtTokens(usage.today.totalTokens)} tokens（今日）` : '暂无调用'}</span>
+            </div>
+            <div className="usage-grid" id="aiUsageGrid" aria-live="polite">
+              {['today', 'days7', 'days30'].map((k) => (
+                <div className="usage-cell" key={k}>
+                  <span className="usage-cell-label">{USAGE_SPANS[k]}</span>
+                  <span className="usage-cell-value">{fmtNum(usage?.[k]?.calls || 0)} 次</span>
+                  <span className="usage-cell-sub">{fmtTokens(usage?.[k]?.totalTokens || 0)} tokens</span>
+                  {usage?.[k]?.fails ? <span className="usage-cell-fail">失败 {fmtNum(usage[k].fails)} 次</span> : null}
+                </div>
+              ))}
+            </div>
+            {usage && usage.byKind && usage.byKind.length ? (
+              <ul className="usage-list" id="aiUsageKinds">
+                {usage.byKind.map((r) => (
+                  <li key={r.kind}>
+                    <span className="usage-kind">{USAGE_KINDS[r.kind] || r.kind}</span>
+                    <span className="usage-num">{fmtNum(r.calls)} 次</span>
+                    <span className="usage-num">{fmtTokens(r.totalTokens)} tokens</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <small className="form-tip">近 30 天还没有调用记录。生成日报、用单篇 AI 或开启 AI 标签后会出现在这里。</small>
+            )}
+            <div className="usage-foot">
+              <small className="form-tip">
+                统计口径：每次真实调用记一次（失败的也计入次数）。token 只在模型返回 usage 时累加，
+                所以上游不回 usage 时次数会增加而 token 不变。
+              </small>
+            </div>
+          </div>
+        </Section>
       </div>
-      <PaneFoot dirty={dirty} lead={<span className="hint">模型配置完全跟随账号：这一份只对你自己生效，不会用上别人的地址或 Key，也没有站点默认值可回退——三项都填好才能生成日报</span>}>
-        <button
-          className="btn btn-ghost"
-          id="testLlmBtn"
-          type="button"
-          disabled={busy === 'test'}
-          onClick={onTest}
-        >
-          {busy === 'test' ? '测试中…' : '测试模型'}
-        </button>
-        <button
-          className="btn btn-primary"
-          id="saveLlmBtn"
-          type="button"
-          disabled={busy === 'save' || !dirty}
-          onClick={onSave}
-        >
-          {busy === 'save' ? '保存中…' : '保存模型'}
-        </button>
-      </PaneFoot>
+
+      <PaneFoot lead={
+        <span className="hint">
+          模型配置跟随账号：只对你自己生效，不会用上别人的地址或 Key。所有修改即改即生效。
+        </span>
+      } />
+
+      {sheet && sheet.kind === 'model' ? (
+        <ModelSheet ai={ai} model={sheet.id ? currentModel : null}
+          onClose={() => setSheet(null)}
+          onNeedVendor={() => { setPendingModel(true); setSheet({ kind: 'vendor', id: null }); }} />
+      ) : null}
+
+      {sheet && sheet.kind === 'vendor' ? (
+        <VendorSheet ai={ai} vendor={sheet.id ? currentVendor : null}
+          onClose={() => { setPendingModel(false); setSheet(null); }}
+          onSaved={() => {
+            const wantModel = pendingModel;
+            setPendingModel(false);
+            setSheet(wantModel ? { kind: 'model', id: null } : null);
+          }} />
+      ) : null}
     </div>
   );
 }
