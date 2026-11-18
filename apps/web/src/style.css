@@ -1991,9 +1991,11 @@ textarea:disabled {
 .ai-cap-providers { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); }
 .ai-cap-provider {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
-  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--border-radius-md, 8px);
+  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-md);
   background: var(--surface-soft, var(--panel));
 }
+/* 内置默认槽：只展示不可编辑（改它在「接口与密钥」区），虚线边与其他模型区分 */
+.ai-cap-provider.is-builtin { border-style: dashed; background: transparent; }
 .ai-cap-p-main { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); flex: 1; min-width: 0; }
 .ai-cap-p-name { font-size: var(--fs-md); font-weight: 500; }
 .ai-cap-p-main .hint { font-size: var(--fs-xs); }
@@ -2004,29 +2006,33 @@ textarea:disabled {
 .ai-cap-p-actions { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .ai-cap-editor {
   padding: var(--sp-4); margin-bottom: var(--sp-3);
-  border: 1px solid var(--border); border-radius: var(--border-radius-md, 8px);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
   background: var(--surface-soft, var(--panel));
 }
 .ai-cap-editor-actions { display: flex; gap: var(--sp-2); }
 .ai-cap-matrix { display: flex; flex-direction: column; gap: var(--sp-3); }
 .ai-cap-row {
-  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--border-radius-md, 8px);
+  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-md);
 }
 .ai-cap-row-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
 .ai-cap-sw { display: inline-flex; align-items: center; gap: var(--sp-2); cursor: pointer; }
 .ai-cap-sw-name { font-size: var(--fs-md); font-weight: 500; }
-.ai-cap-row-head select { flex: 1; min-width: 160px; max-width: 320px; }
+/* 能力分配的下拉是自绘 Dropdown（.dd 容器 + .dd-trigger 按钮），不再是原生 select */
+.ai-cap-row-head .dd { flex: 1; min-width: 160px; max-width: 320px; }
+.ai-cap-row-head .dd-trigger { width: 100%; }
 .ai-cap-actions {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--sp-2); margin-top: var(--sp-3);
   padding-top: var(--sp-3); border-top: 1px solid var(--border);
 }
 .ai-cap-action { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); }
-.ai-cap-action select { flex: 1; min-width: 0; }
+.ai-cap-action .dd { flex: 1; min-width: 0; }
+.ai-cap-action .dd-trigger { width: 100%; }
 @media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   .ai-cap-provider { flex-direction: column; align-items: stretch; }
   .ai-cap-p-actions { justify-content: flex-start; }
-  .ai-cap-row-head select { max-width: none; width: 100%; }
+  /* 窄屏让模型下拉换行独占整行，不被开关挤窄（flex-basis:100% 强制换行） */
+  .ai-cap-row-head .dd { flex: 0 0 100%; max-width: none; width: 100%; }
   .ai-cap-actions { grid-template-columns: 1fr; }
 }
 

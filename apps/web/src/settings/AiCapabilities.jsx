@@ -156,10 +156,18 @@ export function AiCapabilities() {
     <div className="ai-cap" data-sec="ai-capabilities">
       {msg ? <div className={'hint ' + (msg.ok ? 'is-ok' : 'is-err')} role="status">{msg.text}</div> : null}
 
-      <h3 className="ai-cap-h">模型提供商</h3>
-      <p className="hint">可以配置多套接口与密钥，再把不同任务分配给不同模型。未分配的任务统一走「默认模型」。</p>
+      {/* ① 模型列表：默认槽 + 所有额外模型，统一在这里查看与管理 */}
+      <h3 className="ai-cap-h">模型列表</h3>
+      <p className="hint">这里列出所有可用模型。未单独分配的任务统一走「默认模型」（即上方「接口与密钥」那一份）。</p>
       {!loaded ? <p className="hint">读取中…</p> : null}
       <div className="ai-cap-providers">
+        <div className="ai-cap-provider is-builtin" data-provider-id="default">
+          <div className="ai-cap-p-main">
+            <span className="ai-cap-p-name">默认模型</span>
+            <span className="ai-cap-badge">内置</span>
+            <span className="hint">在「接口与密钥」配置，作为所有能力的兜底</span>
+          </div>
+        </div>
         {providers.map((p) => (
           <div className="ai-cap-provider" key={p.id} data-provider-id={p.id}>
             <div className="ai-cap-p-main">
@@ -179,9 +187,11 @@ export function AiCapabilities() {
             </div>
           </div>
         ))}
-        {!providers.length && loaded ? <p className="hint">还没有额外提供商，当前所有任务都用「默认模型」。</p> : null}
+        {!providers.length && loaded ? <p className="hint">还没有额外模型，所有任务都用「默认模型」。</p> : null}
       </div>
 
+      {/* ② 添加模型：常驻入口，点开展开表单；编辑复用同一份表单 */}
+      <h3 className="ai-cap-h">添加模型</h3>
       {editing ? (
         <div className="ai-cap-editor">
           <div className="form-row">
@@ -206,16 +216,17 @@ export function AiCapabilities() {
           </div>
           <div className="ai-cap-editor-actions">
             <button className="btn btn-primary btn-sm" id="aiCapSaveProvider" type="button" disabled={!!busy}
-              onClick={saveProvider}>{busy ? '保存中…' : '保存提供商'}</button>
+              onClick={saveProvider}>{busy ? '保存中…' : editing === 'new' ? '添加模型' : '保存修改'}</button>
             <button className="btn btn-ghost btn-sm" type="button" onClick={() => setEditing(null)}>取消</button>
           </div>
         </div>
       ) : (
         <button className="btn btn-ghost btn-sm" id="aiCapAddProvider" type="button"
-          onClick={() => startEdit(null)}>+ 添加提供商</button>
+          onClick={() => startEdit(null)}>+ 添加模型</button>
       )}
 
-      <h3 className="ai-cap-h">能力开关与模型分配</h3>
+      {/* ③ 功能开关：每个能力一个开关 + 绑定的模型；单篇四动作可各绑一个 */}
+      <h3 className="ai-cap-h">功能开关</h3>
       <p className="hint">关闭某项能力后，服务端会直接拒绝这类调用（包括 API 与 MCP），不再消耗额度。</p>
       <div className="ai-cap-matrix">
         {CAPS.map((cap) => {

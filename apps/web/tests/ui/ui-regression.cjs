@@ -2826,15 +2826,22 @@ const withEFP = (el, fn) => {
     if (!/^llm-url-/.test(el.name || '')) throw new Error('name 非唯一非语义: ' + el.name);
     if (el.getAttribute('autocomplete') !== 'off') throw new Error('autocomplete 未关闭');
   });
-  t('AI 能力区块：6 个能力开关 + 添加提供商入口，全部即时保存', () => {
+  t('AI 能力区块：模型列表 / 添加模型 / 功能开关三区 + 6 能力，全部即时保存', () => {
     const sec = document.querySelector('[data-sec="llm-capabilities"]');
     if (!sec) throw new Error('模型页缺 [data-sec="llm-capabilities"]');
     const cap = sec.querySelector('.ai-cap');
     if (!cap) throw new Error('缺 .ai-cap 容器');
     const rows = cap.querySelectorAll('.ai-cap-row');
     if (rows.length !== 6) throw new Error('应有 6 个能力行，实际 ' + rows.length);
-    if (!cap.querySelector('#aiCapAddProvider')) throw new Error('缺添加提供商按钮');
+    if (!cap.querySelector('#aiCapAddProvider')) throw new Error('缺添加模型按钮');
     if (!cap.querySelector('[data-cap="entry_ai"]')) throw new Error('缺单篇 AI 行');
+    // 三区标题顺序：模型列表 → 添加模型 → 功能开关
+    const hs = [...cap.querySelectorAll('.ai-cap-h')].map((h) => h.textContent.trim());
+    if (hs.join('|') !== '模型列表|添加模型|功能开关') throw new Error('三区标题/顺序: ' + hs.join('|'));
+    // 内置默认槽在列表首位、只读无操作按钮
+    const builtin = cap.querySelector('.ai-cap-provider.is-builtin[data-provider-id="default"]');
+    if (!builtin) throw new Error('缺内置默认模型条目');
+    if (builtin.querySelector('.ai-cap-p-actions')) throw new Error('内置默认项不该有编辑/删除按钮');
     // 组件渲染不能带 PaneFoot 的脏态按钮：它是独立即时保存
     if (cap.querySelector('.pane-foot')) throw new Error('AI 能力区块不该有自己的动作栏');
   });
