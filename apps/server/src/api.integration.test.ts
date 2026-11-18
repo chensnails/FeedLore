@@ -41,6 +41,7 @@ import {
 } from '@feedlore/contract';
 import { createApp } from './app';
 import { createTarGz } from './lib/tar';
+import { resetLoginAttempts } from './lib/rate-limit';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? '';
 
@@ -150,6 +151,9 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
   /** 单独登录一个账号并返回它自己的 Cookie 串（不污染主 jar）。
    *  userAgent 会随登录请求透传，用于验证「登录设备」里的浏览器识别。 */
   async function loginAs(u: string, p: string, userAgent = ''): Promise<string> {
+    /* 用例全程从同一个测试 IP 登录十几次，一分钟内会撞上 10 次/分的登录限流。
+     * 限流本身由 rate-limit.test.ts 覆盖，这里清空桶只是不让套件自己把自己锁在门外。 */
+    resetLoginAttempts();
     const headers: Record<string, string> = { origin: ORIGIN, 'content-type': 'application/json' };
     if (userAgent) headers['user-agent'] = userAgent;
     const res = await app.request('/api/login', {
