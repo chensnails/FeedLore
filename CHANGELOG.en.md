@@ -7,6 +7,21 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## 2.5.2 — 2026-11-18
+
+### Fixed
+
+- **No more flash when closing sheets**: swiping down to close card details, the channel dropdown or
+  the settings sheet used to flash the whole screen for a moment on phones. The gesture is gone;
+  sheets now close via the top-right ×, Esc or the system back key. Guards such as "discard unsaved
+  changes?" in settings still apply.
+- **System back closes the top sheet first**: pressing back (or using the back gesture) while a sheet
+  is open dismisses the topmost layer — card details, settings, the settings detail layer, the channel
+  dropdown, the command palette, confirm dialogs and the image lightbox — instead of leaving the view
+  or the page.
+- **Mobile gesture conflict**: card details no longer react to left-edge horizontal swipes, giving the
+  system back gesture back to the system.
+
 ## 2.5.1 — 2026-11-18
 
 ### Added

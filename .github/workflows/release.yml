@@ -126,7 +126,7 @@ jobs:
           echo "latest=true" >> "$GITHUB_OUTPUT"
 
           # 7) 防回退：latest 是滚动通道，只能前进。补丁分支事后补打的旧版本 tag
-          #    （比如远端已有 v2.5.1，又补发 v2.3.9）仍然构建、仍然发 Release，
+          #    （比如远端已有 v2.5.2，又补发 v2.3.9）仍然构建、仍然发 Release，
           #    但绝不能把 latest 拽回去 —— 否则所有站点的 watchtower 会集体降级。
           #    基准取远端已有正式 tag 的版本最大值，不依赖 registry 当前状态：
           #    latest 丢没丢都不影响这条判断。
