@@ -19,7 +19,9 @@ import { join } from 'node:path';
 
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const [url = 'http://172.26.1.2:3211', user = 'admin', pass = ''] = process.argv.slice(2);
-const PORT = 9335;
+// 用随机高位端口：固定端口撞上上次残留的 headless Edge 时，新实例会连到旧进程，
+// 旧 profile 已是登录态，导致「未登录 → 登录页」那几条假失败（真机验证踩过）。
+const PORT = 9300 + Math.floor(Math.random() * 600);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -166,8 +168,10 @@ try {
     '服务端注入了 window.__LAYOUT__');
   check(await evalJs("window.__APPEARANCE__ === undefined"),
     '服务端不再注入 window.__APPEARANCE__（外观只存本机）');
-  check(await evalJs("localStorage.getItem('feedlore.appearance.v2') === null"),
-    '干净 profile 下外观无本机记录（按默认值渲染）');
+  // 外观只存本机；applyTheme 启动时会把当前主题写回（{"theme":"auto"}），
+  // 所以不要求为空，只要求它不含账号维度的字段、且服务端不注入（上一条已断言）。
+  const apprSafe = await evalJs("(()=>{try{const a=JSON.parse(localStorage.getItem('feedlore.appearance.v2')||'null');return a===null||(typeof a==='object'&&!('username' in a)&&!('userId' in a));}catch(e){return false;}})()");
+  check(apprSafe, '外观只存本机、不含账号字段');
   /* 首页里带着这个账号的外观/布局；一旦可被缓存，代理就会把 A 的偏好发给 B。
    * Hono 的 compress 在 finalized 后补 Vary 会重建 Response、丢掉 c.res.headers 上的头，
    * 这条断言就是那个坑的哨兵。 */
@@ -234,8 +238,12 @@ try {
   check(tabCount >= 7, `设置页签 ${tabCount} 个（≥7）`);
   await evalJs("document.querySelector('#tabs .tab[data-tab=\"source\"]')?.click()");
   check(await waitFor("!!document.querySelector('#settingsPanel #srcRefresh')"), '数据源页渲染出全局采集间隔');
-  const freqCount = (await evalJs("document.querySelectorAll('#settingsPanel .feed-freq').length")) ?? 0;
-  check(freqCount > 0, `每频道采集间隔下拉 ${freqCount} 个`);
+  // feed-freq 在「列表 + 详情两层」重构后只存在于频道详情层（FeedSheet）内，
+  // 冒烟这里没打开任何频道，所以要先点开一行再数（否则恒为 0）。
+  await evalJs("document.querySelector('#settingsPanel .feed-row')?.click()");
+  await waitFor("!!document.querySelector('.ds-sheet')", 5000);
+  const freqCount = (await evalJs("document.querySelectorAll('.ds-sheet .feed-freq').length")) ?? 0;
+  check(freqCount > 0, `每频道采集间隔下拉 ${freqCount} 个（详情层内）`);
   await shot('ui-v1-settings.png');
   await evalJs("document.querySelector('#settingsClose')?.click()");
   check(await waitFor("!document.querySelector('.modal-mask:not([hidden])')"), '设置弹层可关闭');
