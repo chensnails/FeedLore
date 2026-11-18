@@ -2855,6 +2855,29 @@ body.is-dragging-feeds .feed-row .drag-handle { opacity: 1; }
   padding-bottom: var(--sp-2);
 }
 .sl-toolbar-note { font-size: var(--fs-xs); color: var(--text-faint); }
+
+/* 模型接入：厂商折叠组，模型缩进挂在厂商下（设置 · 模型页） */
+.sl-group > summary { list-style: none; border-bottom: 0; cursor: pointer; }
+.sl-group > summary::-webkit-details-marker { display: none; }
+.sl-group[open] > .sl-group-head { background: var(--surface-2); }
+.sl-group-caret { color: var(--text-faint); transition: transform var(--dur-fast); }
+.sl-group[open] > .sl-group-head .sl-group-caret { transform: rotate(90deg); }
+.sl-group-edit { flex: 0 0 auto; }
+.sl-models {
+  margin-left: 58px; padding-left: var(--sp-3);
+  border-left: 1px solid var(--line);
+}
+.sl-row.is-nested { min-height: 50px; padding: var(--sp-2) 0; border-bottom: 0; }
+.sl-row.is-nested .sl-name { font-size: var(--fs-sm); font-weight: 500; }
+.sl-models > .sl-empty.is-inline {
+  padding: var(--sp-3) 0; text-align: left;
+  font-size: var(--fs-xs);
+}
+.sl-group-foot { display: flex; padding: var(--sp-1) 0 var(--sp-2); }
+@media (max-width: 720px) {
+  /* 窄屏收窄缩进：只保留一条竖线区分层级，别把模型名挤成两行 */
+  .sl-models { margin-left: 16px; padding-left: var(--sp-2); }
+}
 /* 详情层底部：危险动作靠左，主保存靠右 */
 .ds-foot .btn-danger { margin-right: auto; }
 

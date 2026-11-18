@@ -1,16 +1,16 @@
-/* 设置弹层「模型」面板（2026-11-18 按 0017 厂商 / 模型两层全新重构）。
+/* 设置弹层「模型」面板（2026-11-18 按 0017 厂商 / 模型两层重构）。
  *
- * 页面只讲四件事，顺序就是使用顺序：
- *   ① 模型：真正被任务调用的东西（默认模型兜底），点行开详情改名称 / 厂商 / 参数；
- *   ② 厂商与接入：地址与 Key 的唯一来源，多个模型共用一份 Key；
- *   ③ 任务分配：哪项能力用哪个模型，关闭即服务端硬拦；
- *   ④ 运行状态（默认折叠）：最近调用、历史与用量，参考信息不抢版面。
+ * 页面只讲三件事，顺序就是使用顺序：
+ *   ① 模型接入：厂商是折叠组，模型缩进挂在厂商下（与 Cherry Studio / LobeChat 一致）；
+ *      地址与 Key 只在厂商详情里维护，多个模型共用一份；
+ *   ② 任务分配：哪项能力用哪个模型，关闭即服务端硬拦；
+ *   ③ 运行状态（默认折叠）：最近调用、历史与用量，参考信息不抢版面。
  *
  * 生效方式：全部即改即生效。列表行只做展示与快捷动作，编辑收进 DetailSheet
  * （桌面右侧抽屉 / 移动端底部弹层），与数据源、规则、账号面板同一套交互。
  * 没有底部保存按钮 —— 模型配置没有「整页草稿」，不会出现「改了一半没保存」。
  *
- * data-sec 锚点：llm-library（模型）、llm-vendors（厂商）、llm-capabilities（任务分配）、
+ * data-sec 锚点：llm-access（模型接入）、llm-capabilities（任务分配）、
  * llm-status + llm-usage（运行状态）。 */
 
 import { core } from '@core';
@@ -41,6 +41,7 @@ const fmtTokens = (n) => {
   return String(v);
 };
 const hostOf = (url) => String(url || '').replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '').split('/')[0];
+const vendorLabel = (v) => String((v && v.name) || hostOf(v && v.baseUrl) || '').trim() || '未命名厂商';
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const fmtReqTime = (iso) => {
@@ -72,9 +73,11 @@ const tempText = (t) => String(Number.isFinite(Number(t)) ? Number(t) : 0.3);
 
 /* ============================ 模型详情层 ============================ */
 
-function ModelSheet({ ai, model, onClose, onNeedVendor }) {
+function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
   const editing = !!model;
-  const [vendorId, setVendorId] = useState(model ? (model.vendorId || ai.vendors[0]?.id || '') : (ai.vendors[0]?.id || ''));
+  const [vendorId, setVendorId] = useState(
+    model ? (model.vendorId || ai.vendors[0]?.id || '') : (initialVendorId || ai.vendors[0]?.id || ''),
+  );
   const [name, setName] = useState(model ? model.name || '' : '');
   const [upstream, setUpstream] = useState(model ? model.model || '' : '');
   const [temperature, setTemperature] = useState(tempText(model ? model.temperature : 0.3));
@@ -107,7 +110,7 @@ function ModelSheet({ ai, model, onClose, onNeedVendor }) {
   }
 
   async function save() {
-    if (!vendorId) { showResult(false, '先在「厂商与接入」里添加一个厂商'); return; }
+    if (!vendorId) { showResult(false, '先在「模型接入」里添加一个厂商'); return; }
     if (!upstream.trim()) { showResult(false, '模型名不能为空'); return; }
     const t = Number(temperature);
     if (!Number.isFinite(t) || t < 0 || t > 2) { showResult(false, '温度需在 0 ~ 2 之间'); return; }
@@ -396,6 +399,8 @@ export function ModelPane({ onDirtyChange }) {
   const [sheet, setSheet] = useState(null);
   // 在模型层里点「添加厂商」后，厂商保存完要自动回到新建模型
   const [pendingModel, setPendingModel] = useState(false);
+  // 厂商组的展开状态；没动过的组默认展开默认模型所在厂商
+  const [openGroups, setOpenGroups] = useState({});
 
   const [usage, setUsage] = useState(null);
   const [usageBusy, setUsageBusy] = useState(false);
@@ -491,6 +496,32 @@ export function ModelPane({ onDirtyChange }) {
     if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); fn(); }
   };
 
+  const renderModelRow = (m, loose) => {
+    const depth = numToDepth(m.thinkingDepth);
+    return (
+      <div className="sl-row is-nested" key={m.id} data-model-id={m.id}
+        role="button" tabIndex={0} aria-label={`编辑模型「${modelLabel(m)}」`}
+        onClick={() => openRow('model', m.id)}
+        onKeyDown={rowKeyDown(() => openRow('model', m.id))}>
+        <div className="sl-main">
+          <div className="sl-name">{modelLabel(m)}</div>
+          <div className="sl-sub">
+            {loose ? `${m.vendorName || '未绑定厂商'} · ` : ''}
+            温度 {tempText(m.temperature)} · {m.thinking ? `思考${DEPTH_LABEL[depth]}` : '不思考'}
+          </div>
+        </div>
+        <span className="sl-side" onClick={(ev) => ev.stopPropagation()}>
+          {m.isDefault ? <span className="sl-badge">默认</span>
+            : m.vendorId ? (
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy}
+                onClick={() => ai.makeDefault(m)}>设为默认</button>
+            ) : <span className="sl-badge muted">旧配置</span>}
+        </span>
+        <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+      </div>
+    );
+  };
+
   const currentModel = sheet && sheet.kind === 'model' && sheet.id
     ? models.find((m) => m.id === sheet.id) || null
     : null;
@@ -498,10 +529,12 @@ export function ModelPane({ onDirtyChange }) {
     ? vendors.find((v) => v.id === sheet.id) || null
     : null;
 
-  const modelsSub = !loaded ? '读取中…' : models.length
-    ? `${models.length} 个` + (defaultModel ? ` · 默认 ${modelLabel(defaultModel)}` : '')
-    : '未配置';
-  const vendorsSub = !loaded ? '读取中…' : vendors.length ? `${vendors.length} 个接入` : '未配置';
+  const looseModels = models.filter((m) => !m.vendorId);
+  const autoOpenVendorId = (defaultModel && defaultModel.vendorId) || vendors[0]?.id || '';
+  const accessSub = !loaded ? '读取中…'
+    : vendors.length
+      ? `${vendors.length} 个厂商 · ${models.length} 个模型` + (defaultModel ? ` · 默认 ${modelLabel(defaultModel)}` : '')
+      : '未配置';
 
   return (
     <div className="tab-pane" data-pane="model" ref={paneRef}>
@@ -514,104 +547,102 @@ export function ModelPane({ onDirtyChange }) {
         ) : null}
         {msg ? <Result id="llmResult" result={{ ok: msg.ok, msg: msg.text }} /> : null}
 
-        {/* ---------- ① 模型：默认模型在最前，行内只留状态与快捷动作 ---------- */}
-        <Section secKey="llm-library" title="模型" sub={modelsSub} open>
-          <div className="sl-toolbar">
-            <button type="button" className="btn btn-ghost btn-sm" id="addModelBtn"
-              disabled={!vendors.length} onClick={() => openRow('model', null)}>
-              + 添加模型
-            </button>
-            <span className="sl-toolbar-note">默认模型兜底所有未单独分配的任务；点行编辑名称、温度与思考。</span>
-          </div>
-
-          {!loaded ? <div className="sl-empty">正在读取模型…</div>
-            : !models.length ? (
-              <div className="sl-empty">
-                {vendors.length
-                  ? '还没有模型。点「添加模型」，从厂商里挑一个上游模型名。'
-                  : '还没有模型。先在下面「厂商与接入」里添加地址与 Key，再回来添加模型。'}
-              </div>
-            ) : (
-              <div className="sl-list">
-                {models.map((m) => {
-                  const isDefault = m.isDefault;
-                  const depth = numToDepth(m.thinkingDepth);
-                  return (
-                    <div className="sl-row" key={m.id} data-model-id={m.id}
-                      role="button" tabIndex={0} aria-label={`编辑模型「${modelLabel(m)}」`}
-                      onClick={() => openRow('model', m.id)}
-                      onKeyDown={rowKeyDown(() => openRow('model', m.id))}>
-                      <span className="sl-ava">
-                        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-sparkle" /></svg>
-                      </span>
-                      <div className="sl-main">
-                        <div className="sl-name">{modelLabel(m)}</div>
-                        <div className="sl-sub">
-                          {m.vendorName || '未绑定厂商'} · 温度 {tempText(m.temperature)} · {m.thinking ? `思考${DEPTH_LABEL[depth]}` : '不思考'}
-                        </div>
-                      </div>
-                      <span className="sl-side" onClick={(ev) => ev.stopPropagation()}>
-                        {isDefault ? <span className="sl-badge">默认</span>
-                          : m.vendorId ? (
-                            <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy}
-                              onClick={() => ai.makeDefault(m)}>设为默认</button>
-                          ) : <span className="sl-badge muted">旧配置</span>}
-                      </span>
-                      <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-        </Section>
-
-        {/* ---------- ② 厂商与接入：地址与 Key 的唯一来源 ---------- */}
-        <Section secKey="llm-vendors" title="厂商与接入" sub={vendorsSub} open>
+        {/* ---------- ① 模型接入：厂商折叠组，模型缩进挂在厂商下 ---------- */}
+        <Section secKey="llm-access" title="模型接入" sub={accessSub} open>
           <div className="sl-toolbar">
             <button type="button" className="btn btn-ghost btn-sm" id="addVendorBtn"
               onClick={() => openRow('vendor', null)}>
               + 添加厂商
             </button>
-            <span className="sl-toolbar-note">地址与 Key 只在这里维护；多个模型可以共用一个厂商。</span>
+            <button type="button" className="btn btn-ghost btn-sm" id="addModelBtn"
+              disabled={!vendors.length} onClick={() => openRow('model', null)}>
+              + 添加模型
+            </button>
+            <span className="sl-toolbar-note">点厂商展开模型；地址与 Key 在厂商详情里维护。</span>
           </div>
 
-          {!loaded ? <div className="sl-empty">正在读取厂商…</div>
+          {!loaded ? <div className="sl-empty">正在读取模型配置…</div>
             : !vendors.length ? (
-              <div className="sl-empty">还没有接入厂商。添加一个 OpenAI 兼容的接口地址与 Key，就可以在上面建模型了。</div>
+              <div className="sl-empty">
+                还没有接入厂商。添加一个 OpenAI 兼容的接口地址与 Key，再在它下面建模型。
+              </div>
             ) : (
               <div className="sl-list">
-                {vendors.map((v) => (
-                  <div className="sl-row" key={v.id} data-vendor-id={v.id}
-                    role="button" tabIndex={0} aria-label={`编辑厂商「${v.name}」`}
-                    onClick={() => openRow('vendor', v.id)}
-                    onKeyDown={rowKeyDown(() => openRow('vendor', v.id))}>
-                    <span className="sl-ava" style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
-                      <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-link" /></svg>
-                    </span>
-                    <div className="sl-main">
-                      <div className="sl-name">{v.name || hostOf(v.baseUrl) || '未命名厂商'}</div>
-                      <div className="sl-sub">
-                        {hostOf(v.baseUrl) || '未填地址'} · {v.modelCount || 0} 个模型
+                {vendors.map((v) => {
+                  const own = models.filter((m) => m.vendorId === v.id);
+                  const label = vendorLabel(v);
+                  const open = v.id in openGroups ? openGroups[v.id] : v.id === autoOpenVendorId;
+                  return (
+                    <details className="sl-group" key={v.id} data-vendor-id={v.id}
+                      open={open}
+                      onToggle={(ev) => {
+                        const isOpen = ev.currentTarget.open;
+                        setOpenGroups((prev) => (prev[v.id] === isOpen ? prev : { ...prev, [v.id]: isOpen }));
+                      }}>
+                      <summary className="sl-row sl-group-head">
+                        <span className="sl-ava" style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+                          <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-link" /></svg>
+                        </span>
+                        <div className="sl-main">
+                          <div className="sl-name">{label}</div>
+                          <div className="sl-sub">{hostOf(v.baseUrl) || '未填地址'} · {own.length} 个模型</div>
+                        </div>
+                        <span className="sl-side">
+                          <span className={'sl-badge' + (v.apiKeySet ? '' : ' muted')}>
+                            {v.apiKeySet ? 'Key 已设' : '未设 Key'}
+                          </span>
+                          <button type="button" className="btn btn-ghost btn-sm sl-group-edit"
+                            aria-label={`编辑厂商「${label}」`}
+                            onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); openRow('vendor', v.id); }}>
+                            编辑
+                          </button>
+                        </span>
+                        <svg className="ico feed-caret sl-group-caret" aria-hidden="true" focusable="false">
+                          <use href="#i-chevron-right" />
+                        </svg>
+                      </summary>
+                      <div className="sl-models">
+                        {own.length ? own.map((m) => renderModelRow(m, false))
+                          : <div className="sl-empty is-inline">这个厂商下还没有模型。</div>}
+                        <div className="sl-group-foot">
+                          <button type="button" className="btn btn-ghost btn-sm" data-vendor-add={v.id}
+                            onClick={() => setSheet({ kind: 'model', id: null, vendorId: v.id })}>
+                            + 添加模型
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <span className="sl-side">
-                      <span className={'sl-badge' + (v.apiKeySet ? '' : ' muted')}>
-                        {v.apiKeySet ? 'Key 已设' : '未设 Key'}
+                    </details>
+                  );
+                })}
+                {looseModels.length ? (
+                  <details className="sl-group" data-vendor-id="__none" open>
+                    <summary className="sl-row sl-group-head">
+                      <span className="sl-ava warn">
+                        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-link" /></svg>
                       </span>
-                    </span>
-                    <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-                  </div>
-                ))}
+                      <div className="sl-main">
+                        <div className="sl-name">未归入厂商</div>
+                        <div className="sl-sub">{looseModels.length} 个模型 · 点开后可改选厂商</div>
+                      </div>
+                      <svg className="ico feed-caret sl-group-caret" aria-hidden="true" focusable="false">
+                        <use href="#i-chevron-right" />
+                      </svg>
+                    </summary>
+                    <div className="sl-models">
+                      {looseModels.map((m) => renderModelRow(m, true))}
+                    </div>
+                  </details>
+                ) : null}
               </div>
             )}
         </Section>
 
-        {/* ---------- ③ 任务分配 ---------- */}
+        {/* ---------- ② 任务分配 ---------- */}
         <Section secKey="llm-capabilities" title="任务分配" sub="能力开关与模型" open>
           <TaskAssignments ai={ai} />
         </Section>
 
-        {/* ---------- ④ 运行状态（默认折叠） ---------- */}
+        {/* ---------- ③ 运行状态（默认折叠） ---------- */}
         <Section secKey="llm-status" title="运行状态"
           sub={status.label + (lastReq ? ' · ' + fmtRel(lastReq.createdAt) : '')}>
           <div className="ms-head">
@@ -736,6 +767,7 @@ export function ModelPane({ onDirtyChange }) {
 
       {sheet && sheet.kind === 'model' ? (
         <ModelSheet ai={ai} model={sheet.id ? currentModel : null}
+          initialVendorId={sheet.vendorId || ''}
           onClose={() => setSheet(null)}
           onNeedVendor={() => { setPendingModel(true); setSheet({ kind: 'vendor', id: null }); }} />
       ) : null}

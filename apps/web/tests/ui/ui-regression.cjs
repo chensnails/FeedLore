@@ -2856,46 +2856,78 @@ const withEFP = (el, fn) => {
     if (document.querySelector('.settings-modal.mobile-pane')) throw new Error('仍在移动态');
   });
 
-  // ============ 模型面板（0017 厂商 → 模型两层：列表 + 详情层） ============
+  // ============ 模型面板（0017 厂商 → 模型两层：厂商折叠组 + 详情层） ============
   clickTab('模型');
   await sleep(120);
 
-  const modelRows = () => [...document.querySelectorAll('[data-sec="llm-library"] .sl-row[data-model-id]')];
-  const vendorRows = () => [...document.querySelectorAll('[data-sec="llm-vendors"] .sl-row[data-vendor-id]')];
+  const accessSec = () => document.querySelector('[data-sec="llm-access"]');
+  const modelRows = () => [...document.querySelectorAll('[data-sec="llm-access"] [data-model-id]')];
+  const vendorRows = () => [...document.querySelectorAll('[data-sec="llm-access"] details[data-vendor-id]')];
   const rowByName = (rows, name) => rows.find((r) => r.querySelector('.sl-name').textContent === name);
+  const editVendor = (name) => {
+    const g = rowByName(vendorRows(), name);
+    if (!g) throw new Error('找不到厂商组：' + name);
+    g.querySelector('.sl-group-edit').click();
+  };
 
-  t('模型页四区：模型 / 厂商与接入 / 任务分配 / 运行状态（折叠），旧大卡片与整页保存都移除', () => {
-    const lib = document.querySelector('[data-sec="llm-library"]');
-    const ven = document.querySelector('[data-sec="llm-vendors"]');
+  t('模型页三区：模型接入 / 任务分配 / 运行状态（折叠），模型与厂商不再分区', () => {
+    const acc = accessSec();
     const cap = document.querySelector('[data-sec="llm-capabilities"]');
     const st = document.querySelector('[data-sec="llm-status"]');
-    if (!lib || !ven || !cap || !st) throw new Error('缺区块');
-    if (!lib.open || !ven.open || !cap.open) throw new Error('常用区应默认展开');
+    if (!acc || !cap || !st) throw new Error('缺区块');
+    if (!acc.open || !cap.open) throw new Error('常用区应默认展开');
     if (st.open) throw new Error('运行状态应默认折叠');
+    if (document.querySelector('[data-sec="llm-library"]') || document.querySelector('[data-sec="llm-vendors"]')) {
+      throw new Error('模型与厂商应合并在「模型接入」里');
+    }
     if (document.querySelector('[data-pane="model"] .model-card')) throw new Error('旧大卡片外观应已移除');
     if (document.querySelector('#saveLlmBtn')) throw new Error('模型页不该再有整页保存按钮');
     if (document.querySelector('[data-sec="llm-api"]') || document.querySelector('#llmBaseUrl')) {
       throw new Error('旧「默认模型表单」应已移除（地址与 Key 归厂商）');
     }
+    const grp = document.querySelector('[data-sec="llm-access"] details[data-vendor-id="v1"]');
+    if (!grp) throw new Error('厂商应是可折叠组');
+    if (!grp.querySelector('.sl-models [data-model-id="m1"]')) throw new Error('模型应缩进挂在厂商下');
+    if (!grp.querySelector('[data-vendor-add="v1"]')) throw new Error('组内应有「添加模型」');
   });
 
-  t('模型列表：默认模型在最上，行内给出厂商 / 温度 / 思考与默认徽标', () => {
+  t('厂商组：默认展开默认模型所在厂商，点厂商行可收起', () => {
+    if (!vendorRows()[0].open) throw new Error('默认模型所在厂商应默认展开');
+  });
+  {
+    vendorRows()[0].querySelector('summary').click();
+    await sleep(60);
+    t('点厂商行收起：组折叠，模型行仍在 DOM 但不可见', () => {
+      if (vendorRows()[0].open) throw new Error('未收起');
+      if (modelRows().length !== 1) throw new Error('模型行不该被删除');
+    });
+    vendorRows()[0].querySelector('summary').click();
+    await sleep(60);
+    if (!vendorRows()[0].open) throw new Error('再点未展开');
+  }
+
+  t('模型行：缩进在厂商组下，副标题给温度 / 思考，默认徽标就位', () => {
     const rows = modelRows();
     if (rows.length !== 1) throw new Error('行数 ' + rows.length);
     const row = rows[0];
+    if (!row.classList.contains('is-nested')) throw new Error('模型行应是缩进行');
     if (row.querySelector('.sl-name').textContent !== 'Qwen/Qwen3-8B') throw new Error('名称: ' + row.querySelector('.sl-name').textContent);
     const sub = row.querySelector('.sl-sub').textContent;
-    if (sub.indexOf('硅基流动') < 0 || sub.indexOf('温度 0.3') < 0) throw new Error('副标题: ' + sub);
+    if (sub.indexOf('温度 0.3') < 0 || sub.indexOf('硅基流动') >= 0) throw new Error('副标题: ' + sub);
     if (!row.querySelector('.sl-badge') || row.querySelector('.sl-badge').textContent !== '默认') throw new Error('缺默认徽标');
     if (row.getAttribute('role') !== 'button' || row.tabIndex !== 0) throw new Error('整行应可键盘操作');
   });
 
-  t('厂商列表：名称 / 域名 / 模型数 / Key 状态', () => {
+  t('厂商组头：名称 / 域名与模型数 / Key 状态 / 编辑入口', () => {
     const rows = vendorRows();
-    if (rows.length !== 1) throw new Error('行数 ' + rows.length);
-    if (rows[0].querySelector('.sl-name').textContent !== '硅基流动') throw new Error('名称');
-    if (rows[0].querySelector('.sl-sub').textContent.indexOf('api.siliconflow.cn') < 0) throw new Error('域名');
-    if (rows[0].querySelector('.sl-badge').textContent !== '未设 Key') throw new Error('Key 徽标: ' + rows[0].querySelector('.sl-badge').textContent);
+    if (rows.length !== 1) throw new Error('组数 ' + rows.length);
+    const head = rows[0].querySelector('.sl-group-head');
+    if (!head) throw new Error('缺组头');
+    if (head.querySelector('.sl-name').textContent !== '硅基流动') throw new Error('名称');
+    if (head.querySelector('.sl-sub').textContent.indexOf('api.siliconflow.cn') < 0) throw new Error('域名');
+    if (head.querySelector('.sl-sub').textContent.indexOf('1 个模型') < 0) throw new Error('模型数');
+    if (head.querySelector('.sl-badge').textContent !== '未设 Key') throw new Error('Key 徽标: ' + head.querySelector('.sl-badge').textContent);
+    if (!head.querySelector('.sl-group-edit')) throw new Error('缺编辑按钮');
   });
 
   // —— 模型详情层：参数编辑、即时保存、测试、上游列表 ——
@@ -2995,7 +3027,7 @@ const withEFP = (el, fn) => {
   await closeSheet();
 
   // —— 厂商详情层：地址与 Key 的唯一来源 ——
-  vendorRows()[0].click();
+  editVendor('硅基流动');
   await sleep(80);
   t('厂商详情层：只含地址与 Key 的反自动填充防护，无模型字段', () => {
     if (!document.querySelector('#vendorBaseUrl')) throw new Error('缺地址');
@@ -3016,7 +3048,7 @@ const withEFP = (el, fn) => {
       throw new Error('徽标: ' + vendorRows()[0].querySelector('.sl-badge').textContent);
     }
   });
-  vendorRows()[0].click();
+  vendorRows()[0].querySelector('.sl-group-edit').click();
   await sleep(60);
   t('已设 Key：占位改「已保存」并出现清除按钮', () => {
     if (document.querySelector('#vendorKey').placeholder !== '已保存，留空则不修改') throw new Error('占位: ' + document.querySelector('#vendorKey').placeholder);
@@ -3031,7 +3063,7 @@ const withEFP = (el, fn) => {
     if ('apiKey' in body.llmVendor) throw new Error('不应传 apiKey: ' + JSON.stringify(body));
     if (vendorRows()[0].querySelector('.sl-name').textContent !== '硅基流动（新）') throw new Error('名称未更新');
   });
-  vendorRows()[0].click();
+  vendorRows()[0].querySelector('.sl-group-edit').click();
   await sleep(60);
   {
     const btn = [...document.querySelectorAll('.ds-body .input-with-btn button')].find((b) => b.textContent === '清除');
@@ -3216,7 +3248,7 @@ const withEFP = (el, fn) => {
   });
   {
     const row = rowByName(vendorRows(), '火山方舟');
-    row.click();
+    row.querySelector('.sl-group-edit').click();
     await sleep(80);
   }
   document.querySelector('#vendorSheetDelete').click();
