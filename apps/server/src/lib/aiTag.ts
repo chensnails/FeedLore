@@ -2,15 +2,15 @@
  * AI 智能标签的执行器与调度器（Phase 2 · 智能标签）。
  *
  * 与日报调度同款「进程内每分钟 tick」哲学（单进程够用、少一个故障点）：
- * - 只把 `prefs.aiTags.enabled = true` 的账号捞出来；
- * - 每个账号每 tick 最多处理 `AI_TAG_BATCH_PER_TICK` 篇「还没有 AI 标签」的条目
- *   （用 left join 判缺失，已打过的自然跳过 → 天然幂等，也兼顾历史条目回填）；
+ * - 只把 `user_llm.routes.ai_tags.enabled = true` 的账号捞出来（SQL 过滤），否则每分钟要把全表拉回 JS。
+ *   0016 起 ai_tags 是唯一开关（默认关），旧 prefs.aiTags 已废弃并在迁移时把开启状态平移进 routes。
+ * （用 left join 判缺失，已打过的自然跳过 → 天然幂等，也兼顾历史条目回填）；
  * - 复用 `chat` / `safeFetch`（SSRF 三道闸）/ 按账号隔离 / `llmComplete` 前置守卫；
  * - 模型失败写入 status='failed'（避免每 tick 空转重试），用户改好 Key 后可按需 POST 重算。
  */
 
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { entries, entryAiTags, feeds, users, type Db } from '@feedlore/db';
+import { entries, entryAiTags, feeds, userLlm, users, type Db } from '@feedlore/db';
 import {
   AI_TAG_PROMPT_VERSION,
   llmComplete,
@@ -18,7 +18,6 @@ import {
   type ResolvedLlm,
 } from '@feedlore/ai';
 import { assertPublicHost, safeFetch } from './net';
-import { userAiTags } from './prefs';
 import { recordAiUsage } from './aiUsage';
 import { resolveLlmForTask, isCapabilityEnabled } from './llm';
 
@@ -111,24 +110,24 @@ export async function tagEntry(
 
 /**
  * 一次 tick：找出「此刻该打标签」的账号并逐个处理。
- * 只把 `aiTags.enabled` 为 true 的账号捞出来（SQL 过滤），否则每分钟要把全表 prefs 拉回 JS。
+ * SQL 直接按 user_llm.routes.ai_tags.enabled = true 过滤（innerJoin），
+ * 这样每分钟只拉回真正开了这一项的账号。
  */
 export async function runAiTagTick(db: Db, _now: Date = new Date()): Promise<number> {
   const rows = await db
-    .select({ id: users.id, prefs: users.prefs })
+    .select({ id: users.id })
     .from(users)
-    .where(sql`${users.prefs}->'aiTags'->>'enabled' = 'true'`);
+    .innerJoin(userLlm, eq(userLlm.userId, users.id))
+    .where(sql`${userLlm.routes}->'ai_tags'->>'enabled' = 'true'`);
   if (!rows.length) return 0;
 
   let done = 0;
 
   for (const u of rows) {
     try {
-      // pref 里 enabled 不是严格 true 就跳过（与 SQL 过滤双保险）
-      if (userAiTags(u.prefs).enabled !== true) continue;
-      // 「自动任务」开关：关掉后定时调度不烧额度（手动打标签仍可用，由 ai_tags 开关管）
+      // 「自动任务」开关：关掉后定时调度不烧额度
       if (!(await isCapabilityEnabled(db, u.id, 'auto'))) continue;
-      // 「AI 标签」开关：关掉后连手动也不该跑
+      // 「AI 标签」单开关：默认关，必须显式开启（isCapabilityEnabled 特判）
       if (!(await isCapabilityEnabled(db, u.id, 'ai_tags'))) continue;
 
       const llm = await resolveLlmForTask(db, u.id, 'ai_tags');

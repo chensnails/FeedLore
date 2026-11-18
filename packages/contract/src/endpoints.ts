@@ -523,7 +523,6 @@ export const prefsResponse = z.object({
   watchExpireDays: z.number().int().min(0).max(3650),
   webhookUrl: z.string(),
   digest: M.DigestConfigSchema,
-  aiTags: M.AiTagsConfigSchema,
   rules: z.array(M.RuleSchema),
   llm: M.LlmViewSchema,
   /** 多路提供商视图（0015）；空数组 = 只用 user_llm 默认槽。 */
@@ -542,7 +541,7 @@ export const prefsPatchBody = z.object({
   watchExpireDays: z.number().int().min(0).max(3650).optional(),
   webhookUrl: z.string().optional(),
   digest: M.DigestConfigSchema.partial().optional(),
-  aiTags: M.AiTagsConfigSchema.partial().optional(),
+  // AI 标签开关已收口到 llmRoutes.ai_tags（0016）：prefs.aiTags 废弃，见 routes.ai_tags
   rules: z.array(M.RuleSchema).optional(),
   llm: M.LlmConfigSchema.partial().optional(),
   /** 单条提供商 upsert（id 省略=新增）。单条提交而非整表覆盖，避免并发保存互相冲掉。 */
@@ -563,7 +562,6 @@ export const prefsUpdateResponse = z.object({
   watchExpireDays: z.number().int().min(0).max(3650),
   webhookUrl: z.string(),
   digest: M.DigestConfigSchema,
-  aiTags: M.AiTagsConfigSchema,
   rules: z.array(M.RuleSchema),
 });
 export type PrefsUpdateResponse = z.infer<typeof prefsUpdateResponse>;

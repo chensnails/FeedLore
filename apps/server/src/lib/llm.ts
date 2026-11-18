@@ -90,6 +90,16 @@ export function pickProviderId(routes: LlmRoutes, task: AiCapability, action?: s
 }
 
 /**
+ * 能力是否开启的**唯一判定**（纯函数，解析器与调度器共用，也是单测入口）。
+ * - 通用能力：默认开，仅 enabled === false 关闭（0015 兼容语义）；
+ * - ai_tags：默认关，必须 enabled === true（0016 单开关收口，见下）。
+ */
+export function isRouteEnabled(routes: LlmRoutes, task: AiCapability): boolean {
+  const enabled = routes[task]?.enabled;
+  return task === 'ai_tags' ? enabled === true : enabled !== false;
+}
+
+/**
  * 按任务解析模型配置：开关判断 → 选提供商 → 回落默认槽。
  *
  * 回落链（任何一环缺失都继续往下，绝不因为删了一路就让全站 AI 崩掉）：
@@ -110,7 +120,8 @@ export async function resolveLlmForTask(
   const base = await loadLlmRow(db, uid);
   const routes = safeRoutes(base?.routes);
 
-  if (routes[task]?.enabled === false) {
+  // 关闭语义：由 isRouteEnabled 统一判定（ai_tags 默认关，其它默认开）。
+  if (!isRouteEnabled(routes, task)) {
     throw new ApiException('E_AI_DISABLED', { detail: CAPABILITY_LABEL[task] });
   }
 
@@ -139,8 +150,16 @@ export async function resolveLlmForTask(
 /**
  * 只判断开关（不解析模型），供调度器在遍历账号时快速跳过关闭的能力。
  * 不查 providers 表，比 resolveLlmForTask 轻。
+ *
+ * 语义分两档：
+ * - 通用能力（entry_ai/digest/explore/mcp/auto）：enabled !== false，即**默认开**
+ *   （routes 为空 = 全开走默认槽，这是 0015 定下的兼容语义）。
+ * - ai_tags：**默认关**，必须 routes.ai_tags.enabled === true 才算开。
+ *   原因：自动打标会给全库每篇条目烧一份模型额度，旧 prefs.aiTags 也是默认关；
+ *   0016 把旧开关的开启状态平移进 routes，所以这里特判不会让老用户突然被扣额度。
+ *   AI 标签现在是单一开关（routes.ai_tags），prefs.aiTags 已废弃。
  */
 export async function isCapabilityEnabled(db: Db, uid: string, task: AiCapability): Promise<boolean> {
   const base = await loadLlmRow(db, uid);
-  return safeRoutes(base?.routes)[task]?.enabled !== false;
+  return isRouteEnabled(safeRoutes(base?.routes), task);
 }

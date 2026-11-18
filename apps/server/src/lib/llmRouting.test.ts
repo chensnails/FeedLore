@@ -5,7 +5,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { safeRoutes, pickProviderId, CAPABILITY_LABEL } from './llm';
+import { safeRoutes, pickProviderId, isRouteEnabled, CAPABILITY_LABEL } from './llm';
 import { AI_CAPABILITIES } from '@feedlore/contract';
 
 test('safeRoutes: 非对象/数组/null 一律回落空表', () => {
@@ -47,4 +47,26 @@ test('能力键白名单与中文标签一一对应', () => {
   for (const k of AI_CAPABILITIES) {
     assert.ok(CAPABILITY_LABEL[k], `${k} 应有中文标签`);
   }
+});
+
+test('isRouteEnabled: 通用能力默认开，仅显式 false 关闭（0015 语义）', () => {
+  const empty = safeRoutes({});
+  for (const k of AI_CAPABILITIES) {
+    if (k === 'ai_tags') continue; // ai_tags 语义不同，单独测
+    assert.equal(isRouteEnabled(empty, k), true, `${k} 空路由应默认开`);
+  }
+  const off = safeRoutes({ digest: { enabled: false }, explore: { enabled: false } });
+  assert.equal(isRouteEnabled(off, 'digest'), false);
+  assert.equal(isRouteEnabled(off, 'explore'), false);
+  assert.equal(isRouteEnabled(safeRoutes({ digest: { enabled: true } }), 'digest'), true);
+});
+
+test('isRouteEnabled: ai_tags 是单开关且默认关，必须显式 true（0016）', () => {
+  assert.equal(isRouteEnabled(safeRoutes({}), 'ai_tags'), false, '未配置 = 关，避免升级后全库自动打标烧额度');
+  assert.equal(isRouteEnabled(safeRoutes({ ai_tags: {} }), 'ai_tags'), false, '只有 providerId 不算开');
+  assert.equal(isRouteEnabled(safeRoutes({ ai_tags: { enabled: false } }), 'ai_tags'), false);
+  assert.equal(isRouteEnabled(safeRoutes({ ai_tags: { enabled: true } }), 'ai_tags'), true);
+  // 其它能力不受影响：ai_tags 关着，digest 仍默认开
+  const mixed = safeRoutes({ ai_tags: { enabled: false } });
+  assert.equal(isRouteEnabled(mixed, 'digest'), true);
 });

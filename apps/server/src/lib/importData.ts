@@ -768,9 +768,26 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
     });
     if (mappedDigests.length) await tx.insert(digests).values(mappedDigests);
 
+    // 0016：aiTags 单开关收口到 routes.ai_tags。老备份的 users.prefs 里还留着
+    // aiTags.enabled，还原时若用户的 user_llm.routes 没有 ai_tags 键，把这个开启状态
+    // 平移过去，否则导入后老用户会静默丢掉已开启的自动打标。
+    const legacyAiTagsOn = new Map(
+      userRows
+        .filter((u) => asRecord(u) && asRecord((u as Record<string, unknown>).prefs))
+        .map((u) => {
+          const prefs = (u as Record<string, unknown>).prefs as Record<string, unknown>;
+          const ai = asRecord(prefs.aiTags) ? (prefs.aiTags as Record<string, unknown>) : {};
+          return [str((u as Record<string, unknown>).id), ai.enabled === true] as const;
+        }),
+    );
+
     const mappedLlm = llmRows.map((raw) => {
       const userId = str(raw.userId);
       if (!userId) throw invalid('bad user_llm.json record');
+      const routes = safeRoutes(raw.routes);
+      if (routes.ai_tags?.enabled === undefined && legacyAiTagsOn.get(userId) === true) {
+        routes.ai_tags = { ...(routes.ai_tags || {}), enabled: true };
+      }
       return {
         userId,
         encryptedKey: strOrNull(raw.encryptedKey),
@@ -780,7 +797,7 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
         thinking: boolOr(raw.thinking, false),
         thinkingDepth: intOr(raw.thinkingDepth, 0),
         // 0015：老备份没有 routes，回落空对象（= 全开 + 走默认槽）；逐键容错
-        routes: safeRoutes(raw.routes),
+        routes,
         updatedAt: dateOr(raw.updatedAt, new Date()),
       };
     });
