@@ -375,7 +375,9 @@ export function CardsView() {
     : (groupLabel || '全部频道')) + (st.tag ? ` · #${st.tag}` : '') + (st.aiTag ? ` · AI #${st.aiTag}` : '');
 
   const noFeeds = !feeds.length;
-  const noCards = !st.feedFilter && !groupFilter && !feeds.some((f) => f.cardEnabled);
+  // 挂着标签筛选时是全库检索（不受卡片开关限制），「卡片开关全关」的引导不适用
+  const noCards = !st.tag && !st.aiTag
+    && !st.feedFilter && !groupFilter && !feeds.some((f) => f.cardEnabled);
 
   // 空态不只说「为什么空」，还要给一条出路：每个分支都配一个能立刻点的动作，
   // 否则用户只能自己去猜该去哪个页面、点哪个开关。

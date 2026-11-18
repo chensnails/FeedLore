@@ -7,7 +7,7 @@
 
 import { apiFetch, httpError, toast, emitShell, emitOverlays } from './util.js';
 import { state, activeScrollTop, scrollActiveTop, forgetViewScroll } from './state.js';
-import { render, loadFeeds, cardGroupFeedIds } from './feeds.js';
+import { render, loadFeeds, applyCardScope } from './feeds.js';
 import { renderReader, readerFilterParams } from './reader.js';
 import { isOn } from '../kernel/bridge.js';
 
@@ -61,9 +61,7 @@ export async function fetchHead(view) {
     for (const [k, v] of readerFilterParams()) params.set(k, v);
   } else {
     // 与 loadPage 用同一套条件，否则分组 / 标签 / 排序筛选下的「新内容」会按错误的范围去数
-    if (state.cardGroup != null) params.set('feeds', cardGroupFeedIds().join(','));
-    else if (state.feedFilter) params.set('feeds', String(state.feedFilter));
-    else params.set('scope', 'cards');
+    applyCardScope(params);
     if (state.q) params.set('q', state.q);
     if (state.tag) params.set('tag', state.tag);
     if (state.aiTag) params.set('aiTag', state.aiTag);

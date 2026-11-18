@@ -47,6 +47,17 @@ export function cardGroupFeedIds() {
     .map((f) => f.id);
 }
 
+/** 卡片页的检索范围写进查询参数。
+ *  挂着标签筛选（手动 tag / AI aiTag）时是全库检索 —— 与文章页同一口径，
+ *  只把「怎么展示」限定在卡片页，不再被频道 / 分组 / 卡片开关收窄；
+ *  没挂标签时才是卡片页一贯的范围：分组 → 频道 → 卡片开关打开的频道。 */
+export function applyCardScope(params) {
+  if (state.tag || state.aiTag) { params.set('scope', 'all'); return; }
+  if (state.cardGroup != null) params.set('feeds', cardGroupFeedIds().join(','));
+  else if (state.feedFilter) params.set('feeds', String(state.feedFilter));
+  else params.set('scope', 'cards');
+}
+
 /* 分组折叠状态：按账号持久化（users.prefs.layout.collapsedGroups），不再落浏览器 */
 export function loadCollapsedGroups() {
   const arr = Array.isArray(layoutPref.collapsedGroups) ? layoutPref.collapsedGroups : [];
@@ -187,11 +198,8 @@ export async function loadPage(reset = false) {
     // 排序同理必须服务端做：分页列表前端只排当前页，「最早」会变成
     // 「最新 50 条里最早的」，翻页后整体乱序。name 档服务端是码点序（见 routes/entries.ts）。
     qs.set('sort', state.sort || 'new');
-    // 分组筛选优先于频道：与文章页同一口径（传该组频道的 id 清单）
-    if (state.cardGroup != null) qs.set('feeds', cardGroupFeedIds().join(','));
-    // 没指定具体频道时，卡片页只取「卡片开关」打开的频道
-    else if (state.feedFilter) qs.set('feeds', String(state.feedFilter));
-    else qs.set('scope', 'cards');
+    // 标签筛选时是全库检索（见 applyCardScope）
+    applyCardScope(qs);
 
     const res = await apiFetch('/api/entries?' + qs.toString(),
       ctrl ? { signal: ctrl.signal, timeoutMs: NET_TIMEOUT_MS } : { timeoutMs: NET_TIMEOUT_MS });

@@ -18,35 +18,28 @@ import * as UI from './ui.js';
 import './bootstrap.js';
 
 /**
- * 卡片页标签筛选 0 命中 → 回落到文章页按同一标签检索。
+ * 卡片页按标签筛选（手动 tag / AI 标签 aiTag 互斥）。
  *
- * 卡片页只显示「卡片开关」打开的频道（scope=cards），未开卡片的频道里即使有该标签
- * 也会被漏掉；文章页看全部内容（scope=all）。用户在卡片页点标签却一条都没有时，
- * 自动带着同一标签切到文章页继续找，避免误以为「没有这个标签的文章」。
+ * 与文章页同一口径：点标签 = 「在全库找这个标签」，频道 / 分组筛选让位
+ * （见 feeds.js#applyCardScope 的 scope=all）。区别只在于结果仍留在卡片页展示，
+ * 不再因为 0 命中就自动跳到文章页 —— 空态会就地说明并给「清除标签」的出口。
  *
- * 只在「本次标签筛选确实仍生效且 0 命中」时回落：连点会改掉 state.tag，
- * 先前那次 await 醒来发现标签已变就不回落，防止误跳。
+ * 再点同一个标签 = 取消筛选，回到卡片页原来的全部频道列表。
  */
-async function cardsTagFilter(t, ai) {
+function cardsTagFilter(t, ai) {
   const next = t || null;
   const field = ai ? 'aiTag' : 'tag';
   const other = ai ? 'tag' : 'aiTag';
   if (S.state[field] === next && S.state[other] == null) return;
   S.state[field] = next;
   S.state[other] = null;
-  await F.loadPage(true);
+  if (next) {
+    S.state.feedFilter = null;
+    S.state.cardGroup = null;
+  }
+  const p = F.loadPage(true);
   S.scrollActiveTop('auto');
-  if (!next || S.state.tab !== 'cards') return;
-  if (S.state[field] !== next) return;              // 期间用户又点了别的筛选
-  if (S.state.loading || S.state.loadError) return; // 加载中 / 失败，不做判断
-  if (S.state.total !== 0) return;                  // 卡片页有命中，就地筛即可
-  // 回落：带同一标签到文章页（沿用文章页当前频道/范围，只放宽到全部内容）
-  S.state.rdTag = ai ? null : next;
-  S.state.rdAiTag = ai ? next : null;
-  UI.switchView('reader', { skipReaderLoad: true });
-  R.loadReader({ reset: true });
-  R.scrollReaderTop();
-  U.toast(`卡片页没有「${next}」，已切到文章页检索全部内容`);
+  return p;
 }
 
 export const core = {
@@ -156,7 +149,7 @@ export const core = {
   cardsTag: (t) => cardsTagFilter(t, false),
   /* AI 标签与手动标签物理隔离，筛选也必须分开：点「AI 标签」组走 aiTag 参数，
    * 不能塞进 tag（那只查 entries.tags，会把人带到 0 条或错误结果）。
-   * 卡片页 0 命中时统一回落到文章页（见 cardsTagFilter）。 */
+   * 两类标签都是全库检索，结果仍留在卡片页（见 cardsTagFilter）。 */
   cardsAiTag: (t) => cardsTagFilter(t, true),
   cardsLoadMore: () => F.loadPage(false),
   cardsRetryMore: () => { S.state.loadMoreErr = false; return F.loadPage(false); },

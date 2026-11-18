@@ -5763,24 +5763,32 @@ const withEFP = (el, fn) => {
     const sortBody = idx.slice(idx.indexOf('cardsSort:'), idx.indexOf('},', idx.indexOf('cardsSort:')) + 2);
     if (!/F\.loadPage\(true\)/.test(sortBody)) throw new Error('cardsSort 改筛选没有重置重载');
     if (!/if \(S\.state\.sort === v\) return;/.test(sortBody)) throw new Error('cardsSort 同值仍重拉');
-    // 标签筛选逻辑收进 cardsTagFilter（卡片页就地筛 + 0 命中回落文章页）
-    const fb = idx.slice(idx.indexOf('async function cardsTagFilter'), idx.indexOf('export const core'));
+    // 标签筛选逻辑收进 cardsTagFilter：全库检索，结果仍留在卡片页（不再回落文章页）
+    const fb = idx.slice(idx.indexOf('function cardsTagFilter'), idx.indexOf('export const core'));
     if (!/F\.loadPage\(true\)/.test(fb)) throw new Error('cardsTagFilter 改筛选没有重置重载');
     if (!/scrollActiveTop\('auto'\)/.test(fb)) throw new Error('cardsTagFilter 换列表没有瞬时回顶');
     if (!/S\.state\[field\] === next && S\.state\[other\] == null/.test(fb)) throw new Error('cardsTagFilter 缺同值短路');
     if (!/S\.state\[field\] = next/.test(fb) || !/S\.state\[other\] = null/.test(fb)) {
       throw new Error('cardsTagFilter 未做手动/AI 标签互斥');
     }
-    // 0 命中回落：带标签切文章页（文章页看全部内容，不受 cardEnabled 限制）
-    if (!/S\.state\.total !== 0\) return/.test(fb)) throw new Error('缺「卡片页有命中就不回落」判断');
-    if (!/UI\.switchView\('reader'/.test(fb) || !/R\.loadReader\(\{ reset: true \}\)/.test(fb)) {
-      throw new Error('卡片页 0 命中未回落到文章页检索');
+    // 标签是全库检索：频道 / 分组让位，且不再因为 0 命中跳到文章页
+    if (!/if \(next\) \{\s*S\.state\.feedFilter = null;\s*S\.state\.cardGroup = null;/.test(fb)) {
+      throw new Error('cardsTagFilter 挂着标签时没清掉频道/分组筛选');
     }
-    if (!/S\.state\[field\] !== next\) return/.test(fb)) throw new Error('回落缺连点竞态防护');
+    if (/UI\.switchView|R\.loadReader|rdTag/.test(fb)) {
+      throw new Error('卡片页标签筛选不该再回落到文章页');
+    }
     if (!/cardsTag: \(t\) => cardsTagFilter\(t, false\)/.test(idx)) throw new Error('cardsTag 未走统一筛选');
     if (!/cardsAiTag: \(t\) => cardsTagFilter\(t, true\)/.test(idx)) throw new Error('cardsAiTag 未走统一筛选');
     const fd = fs.readFileSync(path.join(root, 'src', 'core', 'feeds.js'), 'utf8').replace(/\r\n/g, '\n');
     if (!/if \(state\.aiTag\) qs\.set\('aiTag', state\.aiTag\)/.test(fd)) throw new Error('loadPage 丢了 aiTag 参数');
+    // 范围统一走 applyCardScope：挂标签 → scope=all（不受频道/分组/卡片开关收窄）
+    if (!/export function applyCardScope\(params\) \{\s*if \(state\.tag \|\| state\.aiTag\) \{ params\.set\('scope', 'all'\); return; \}/.test(fd)) {
+      throw new Error('卡片页标签筛选没改成全库检索（scope=all）');
+    }
+    if (!/else if \(state\.feedFilter\) params\.set\('feeds', String\(state\.feedFilter\)\)/.test(fd)) {
+      throw new Error('applyCardScope 丢了频道筛选');
+    }
   });
   t('P1 后台重拉与首屏同口径：fetchHead 带 tag/sort，applyFresh 收闸 + 清错误文案', () => {
     const root = path.join(__dirname, '..', '..');
@@ -5788,6 +5796,7 @@ const withEFP = (el, fn) => {
     if (!/if \(state\.tag\) params\.set\('tag', state\.tag\)/.test(ar)) throw new Error('后台重拉丢了标签筛选');
     if (!/if \(state\.aiTag\) params\.set\('aiTag', state\.aiTag\)/.test(ar)) throw new Error('后台重拉丢了 AI 标签筛选');
     if (!/params\.set\('sort', state\.sort \|\| 'new'\)/.test(ar)) throw new Error('后台重拉丢了排序');
+    if (!/applyCardScope\(params\)/.test(ar)) throw new Error('后台重拉没走 applyCardScope（标签下会按错误范围计数）');
     if (!/state\.listEpoch = \(Number\(state\.listEpoch\) \|\| 0\) \+ 1/.test(ar)) throw new Error('后台重拉没递增 listEpoch 收闸');
     if (!/state\.loadMoreErrMsg = ''/.test(ar)) throw new Error('后台重拉没清掉旧的错误文案');
     if (!/forgetViewScroll\('cards'\)/.test(ar)) throw new Error('后台重拉没丢卡片页旧滚动记忆');
