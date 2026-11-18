@@ -862,42 +862,64 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
 
     /* ---- 多路提供商与能力开关（0015）---- */
 
-    await t.test('T46 提供商 CRUD：回显不含明文 Key、设默认互斥、删除后路由回落', async () => {
+    await t.test('T46 厂商 + 模型 CRUD：Key 只挂在厂商、默认互斥、删除后路由回落', async () => {
       fake.mode = 'ok';
-      const added = await call(cOwner, '/api/prefs', {
+      const addedVendor = await call(cOwner, '/api/prefs', {
         method: 'POST',
-        json: { llmProvider: { name: '便宜模型', baseUrl: FAKE_BASE, model: 'cheap-model', apiKey: 'sk-itest-provider-key' } },
+        json: { llmVendor: { name: '便宜接入', baseUrl: FAKE_BASE, apiKey: 'sk-itest-vendor-key' } },
       });
-      assert.equal(added.status, 200, `新增失败：${await added.clone().text()}`);
+      assert.equal(addedVendor.status, 200, `新增厂商失败：${await addedVendor.clone().text()}`);
       let view = (await (await call(cOwner, '/api/prefs')).json()) as {
-        llmProviders: Array<{ id: string; name: string; apiKeySet: boolean; apiKeyHint: string; isDefault: boolean }>;
+        llmVendors: Array<{ id: string; name: string; apiKeySet: boolean; apiKeyHint: string; modelCount: number }>;
+        llmModels: Array<{ id: string; vendorId: string; vendorName: string; name: string; model: string; apiKeySet: boolean; isDefault: boolean }>;
         llmRoutes: Record<string, { enabled: boolean; providerId: string }>;
       };
-      const p = view.llmProviders.find((x) => x.name === '便宜模型');
-      assert.ok(p, '新增的提供商应出现在视图里');
-      assert.equal(p!.apiKeySet, true);
-      assert.ok(p!.apiKeyHint.indexOf('sk-itest-provider-key') < 0, '视图不得含明文 Key');
+      const v = view.llmVendors.find((x) => x.name === '便宜接入');
+      assert.ok(v, '新增的厂商应出现在视图里');
+      assert.equal(v!.apiKeySet, true);
+      assert.ok(v!.apiKeyHint.indexOf('sk-itest-vendor-key') < 0, '视图不得含明文 Key');
+      assert.equal(v!.modelCount, 0, '还没建模型');
       assert.equal(view.llmRoutes.entry_ai?.enabled, true, '默认全开');
       assert.equal(view.llmRoutes.entry_ai?.providerId, 'default', '默认走默认槽');
 
-      // 路由指向该提供商 + 设默认
+      const addedModel = await call(cOwner, '/api/prefs', {
+        method: 'POST',
+        json: { llmModel: { vendorId: v!.id, name: '便宜模型', model: 'cheap-model' } },
+      });
+      assert.equal(addedModel.status, 200, `新增模型失败：${await addedModel.clone().text()}`);
+      view = (await (await call(cOwner, '/api/prefs')).json()) as typeof view;
+      const m = view.llmModels.find((x) => x.name === '便宜模型');
+      assert.ok(m, '新增的模型应出现在视图里');
+      assert.equal(m!.vendorId, v!.id);
+      assert.equal(m!.vendorName, '便宜接入');
+      assert.equal(m!.apiKeySet, true, '模型继承厂商的 Key 状态');
+      assert.equal(view.llmVendors.find((x) => x.id === v!.id)?.modelCount, 1);
+
+      // 模型设默认 + 路由指向该模型
       const routed = await call(cOwner, '/api/prefs', {
         method: 'POST',
         json: {
-          llmProvider: { id: p!.id, name: '便宜模型', baseUrl: FAKE_BASE, model: 'cheap-model', isDefault: true },
-          llmRoutes: { digest: { providerId: p!.id } },
+          llmModel: { id: m!.id, vendorId: v!.id, model: 'cheap-model', isDefault: true },
+          llmRoutes: { digest: { providerId: m!.id } },
         },
       });
       assert.equal(routed.status, 200, `路由保存失败：${await routed.clone().text()}`);
       view = (await (await call(cOwner, '/api/prefs')).json()) as typeof view;
-      assert.equal(view.llmProviders.find((x) => x.id === p!.id)?.isDefault, true);
-      assert.equal(view.llmRoutes.digest?.providerId, p!.id);
+      assert.equal(view.llmModels.find((x) => x.id === m!.id)?.isDefault, true);
+      assert.equal(view.llmModels.filter((x) => x.isDefault).length, 1, '全站只保留一个默认模型');
+      assert.equal(view.llmRoutes.digest?.providerId, m!.id);
 
-      // 删除后：引用它的路由仍在，但解析时自动回落默认槽（不报错）
-      const del = await call(cOwner, '/api/prefs', { method: 'POST', json: { llmProviderDelete: p!.id } });
-      assert.equal(del.status, 200);
+      // 删除模型后：引用它的路由仍在，但解析时自动回落默认槽（不报错）
+      const delModel = await call(cOwner, '/api/prefs', { method: 'POST', json: { llmModelDelete: m!.id } });
+      assert.equal(delModel.status, 200);
       const r = await ask(cOwner, shortId);
-      assert.equal(r.ok, true, '删除被引用的提供商后应回落默认槽，不能崩');
+      assert.equal(r.ok, true, '删除被引用的模型后应回落默认槽，不能崩');
+
+      // 删厂商：连同其模型一起消失
+      const delVendor = await call(cOwner, '/api/prefs', { method: 'POST', json: { llmVendorDelete: v!.id } });
+      assert.equal(delVendor.status, 200);
+      view = (await (await call(cOwner, '/api/prefs')).json()) as typeof view;
+      assert.equal(view.llmVendors.some((x) => x.id === v!.id), false);
 
       // 清理：把 digest 路由改回 default，避免影响后续用例
       await call(cOwner, '/api/prefs', { method: 'POST', json: { llmRoutes: { digest: { providerId: 'default' } } } });
@@ -931,11 +953,11 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       assert.equal(fake.hits, before, '恢复过程也不该调模型');
     });
 
-    await t.test('T48 路由到不存在的提供商：保存被拒（E_LLM_PROVIDER_NOT_FOUND）', async () => {
+    await t.test('T48 路由到不存在的模型：保存被拒（E_LLM_PROVIDER_NOT_FOUND）', async () => {
       const res = await call(cOwner, '/api/prefs', {
         method: 'POST', json: { llmRoutes: { explore: { providerId: 'not-exist-xyz' } } },
       });
-      assert.notEqual(res.status, 200, '指向不存在的提供商应被拒');
+      assert.notEqual(res.status, 200, '指向不存在的模型应被拒');
       const body = (await res.json()) as { error?: string };
       assert.equal(body.error, 'E_LLM_PROVIDER_NOT_FOUND');
     });

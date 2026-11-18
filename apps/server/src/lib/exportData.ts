@@ -22,6 +22,7 @@ import {
   feeds,
   imageCache,
   llmProviders,
+  llmVendors,
   settings,
   userLlm,
   users,
@@ -178,42 +179,94 @@ export async function writeUserExport(ar: TarGzArchive, input: UserExportInput):
       .from(userLlm)
       .where(eq(userLlm.userId, userId))
       .limit(1);
-    // 0015：多路提供商与任务路由一并带走。旧包没有这两个字段，导入端按缺省忽略。
-    const providerRows = await db
-      .select()
-      .from(llmProviders)
-      .where(eq(llmProviders.userId, userId));
+    /* 0017：厂商 / 模型分层。同时写一份 0015 的 providers 旧形状与顶层默认槽，
+     * 保证包回到旧版本也能还原（新旧两种导入端各读各的字段）。 */
+    const [vendorRows, modelRows] = await Promise.all([
+      db.select().from(llmVendors).where(eq(llmVendors.userId, userId)),
+      db.select().from(llmProviders).where(eq(llmProviders.userId, userId)),
+    ]);
     const secret = await getCryptoSecret(db);
-    const providers = providerRows.map((p) => ({
-      id: p.id,
-      name: p.name,
-      baseUrl: p.baseUrl || '',
-      model: p.model || '',
-      temperature: p.temperature,
-      thinking: p.thinking,
-      thinkingDepth: p.thinkingDepth,
-      isDefault: p.isDefault,
+    const vendorKey = (id: string | null): string => {
+      const v = vendorRows.find((x) => x.id === id);
+      return v?.encryptedKey ? (decryptSecret(v.encryptedKey, secret) || '') : '';
+    };
+    const vendors = vendorRows.map((v) => ({
+      id: v.id,
+      name: v.name,
+      baseUrl: v.baseUrl || '',
       // 勾选导出才解密；文件落到本机后请自行保管
-      apiKey: p.encryptedKey ? (decryptSecret(p.encryptedKey, secret) || '') : '',
+      apiKey: v.encryptedKey ? (decryptSecret(v.encryptedKey, secret) || '') : '',
     }));
+    const models = modelRows.map((m) => ({
+      id: m.id,
+      vendorId: m.vendorId || '',
+      name: m.name,
+      model: m.model || '',
+      temperature: m.temperature,
+      thinking: m.thinking,
+      thinkingDepth: m.thinkingDepth,
+      isDefault: m.isDefault,
+      // 旧行没有 vendor_id 时，连接信息还在行上
+      ...(m.vendorId ? {} : {
+        baseUrl: m.baseUrl || '',
+        apiKey: m.encryptedKey ? (decryptSecret(m.encryptedKey, secret) || '') : '',
+      }),
+    }));
+    const providers = modelRows.map((m) => {
+      const v = vendorRows.find((x) => x.id === m.vendorId);
+      const enc = v ? v.encryptedKey : m.encryptedKey;
+      return {
+        id: m.id,
+        name: m.name,
+        baseUrl: (v ? v.baseUrl : m.baseUrl) || '',
+        model: m.model || '',
+        temperature: m.temperature,
+        thinking: m.thinking,
+        thinkingDepth: m.thinkingDepth,
+        isDefault: m.isDefault,
+        apiKey: enc ? (decryptSecret(enc, secret) || '') : '',
+      };
+    });
+
+    const defaultModel = modelRows.find((m) => m.isDefault) || null;
+    const defaultVendor = defaultModel
+      ? vendorRows.find((v) => v.id === defaultModel.vendorId)
+      : null;
     let payload: Record<string, unknown> | null = null;
-    if (row) {
-      const llm = resolveUserLlm(row, secret);
+    if (row || vendors.length || models.length) {
+      const legacy = defaultModel
+        ? {
+          baseUrl: (defaultVendor ? defaultVendor.baseUrl : defaultModel.baseUrl) || '',
+          model: defaultModel.model || '',
+          temperature: defaultModel.temperature ?? 0.3,
+          thinking: defaultModel.thinking === true,
+          thinkingDepth: defaultModel.thinkingDepth || 0,
+          apiKey: defaultVendor
+            ? vendorKey(defaultVendor.id)
+            : (defaultModel.encryptedKey ? (decryptSecret(defaultModel.encryptedKey, secret) || '') : ''),
+        }
+        : (row ? (() => {
+          const llm = resolveUserLlm(row, secret);
+          return {
+            baseUrl: llm.baseUrl,
+            model: llm.model,
+            temperature: llm.temperature,
+            thinking: llm.thinking,
+            thinkingDepth: llm.thinkingDepth,
+            apiKey: llm.apiKey,
+          };
+        })() : null);
       payload = {
-        baseUrl: llm.baseUrl,
-        model: llm.model,
-        temperature: llm.temperature,
-        thinking: llm.thinking,
-        thinkingDepth: llm.thinkingDepth,
-        // 勾选导出才解密；文件落到本机后请自行保管
-        apiKey: llm.apiKey,
-        routes: row.routes || {},
+        ...(legacy || {}),
+        routes: row?.routes || {},
+        // 0017 新形状
+        vendors,
+        models,
+        // 0015 旧形状（回滚到旧版本时用）
         providers,
       };
-    } else if (providers.length) {
-      payload = { routes: {}, providers };
     }
-    await ar.add('llm.json', json(payload));
+    if (payload) await ar.add('llm.json', json(payload));
   }
 }
 
@@ -227,6 +280,7 @@ export async function writeSiteExport(ar: TarGzArchive, db: Db): Promise<void> {
   const feedRows = await db.select().from(feeds);
   const digestRows = await db.select().from(digests).orderBy(asc(digests.ownerId), asc(digests.date));
   const llmRows = await db.select().from(userLlm);
+  const vendorRows = await db.select().from(llmVendors);
   const settingRows = await db.select().from(settings).orderBy(asc(settings.key));
 
   const counts = {
@@ -270,6 +324,8 @@ export async function writeSiteExport(ar: TarGzArchive, db: Db): Promise<void> {
   await ar.add('feeds.json', json(feedRows));
   await ar.add('digests.json', json(digestRows));
   await ar.add('user_llm.json', json(llmRows));
+  // 0017：厂商表（密文按原样搬运，与 user_llm 同口径）
+  await ar.add('llm_vendors.json', json(vendorRows));
   // 0015：整站还原要连多路提供商一起恢复（密文按原样搬运，与 user_llm 同口径）
   const providerRows = await db.select().from(llmProviders);
   await ar.add('llm_providers.json', json(providerRows));

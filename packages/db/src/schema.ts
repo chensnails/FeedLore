@@ -250,12 +250,28 @@ export const userLlm = pgTable('user_llm', {
 });
 
 /**
- * 多路 AI 提供商（0015）：一个账号可配多套 baseUrl/key/model，按任务分配。
- * 每行独立加密 Key；user_llm 原有三件套保留为「默认槽」向后兼容。
+ * AI 厂商 / 接入点（0017）：名称 + baseUrl + 加密 Key，可被多个模型复用。
+ * 模型仍在 llm_providers（id 不变，路由无需迁移）。
+ */
+export const llmVendors = pgTable('llm_vendors', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull().default(''),
+  baseUrl: text('base_url').notNull().default(''),
+  encryptedKey: text('encrypted_key'),
+  createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
+});
+
+/**
+ * AI 模型（0015 起；0017 拆出厂商）。
+ * 0017 前每行自带 baseUrl/encryptedKey；新数据连接信息在 llmVendors，
+ * 旧列保留用于回滚与未回填行的兜底。
  */
 export const llmProviders = pgTable('llm_providers', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  vendorId: text('vendor_id').references(() => llmVendors.id, { onDelete: 'cascade' }),
   name: text('name').notNull().default(''),
   encryptedKey: text('encrypted_key'),
   baseUrl: text('base_url'),
@@ -484,6 +500,12 @@ export const userLlmRelations = relations(userLlm, ({ one }) => ({
 
 export const llmProvidersRelations = relations(llmProviders, ({ one }) => ({
   user: one(users, { fields: [llmProviders.userId], references: [users.id] }),
+  vendor: one(llmVendors, { fields: [llmProviders.vendorId], references: [llmVendors.id] }),
+}));
+
+export const llmVendorsRelations = relations(llmVendors, ({ one, many }) => ({
+  user: one(users, { fields: [llmVendors.userId], references: [users.id] }),
+  models: many(llmProviders),
 }));
 
 export const entryAiTagsRelations = relations(entryAiTags, ({ one }) => ({
@@ -511,6 +533,8 @@ export type UserLlm = typeof userLlm.$inferSelect;
 export type NewUserLlm = typeof userLlm.$inferInsert;
 export type LlmProvider = typeof llmProviders.$inferSelect;
 export type NewLlmProvider = typeof llmProviders.$inferInsert;
+export type LlmVendor = typeof llmVendors.$inferSelect;
+export type NewLlmVendor = typeof llmVendors.$inferInsert;
 export type McpToken = typeof mcpTokens.$inferSelect;
 export type AiUsageDailyRow = typeof aiUsageDaily.$inferSelect;
 export type AiRequestLogRow = typeof aiRequestLog.$inferSelect;

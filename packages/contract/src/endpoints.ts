@@ -525,9 +525,11 @@ export const prefsResponse = z.object({
   digest: M.DigestConfigSchema,
   rules: z.array(M.RuleSchema),
   llm: M.LlmViewSchema,
-  /** 多路提供商视图（0015）；空数组 = 只用 user_llm 默认槽。 */
-  llmProviders: z.array(M.LlmProviderViewSchema),
-  /** 任务级开关与模型分配；空对象 = 全开 + 全走默认槽。 */
+  /** 厂商 / 接入点（0017）：名称 + 地址 + 加密 Key。 */
+  llmVendors: z.array(M.LlmVendorViewSchema),
+  /** 模型列表；默认模型只有一个，路由 providerId 指向这里的 id。 */
+  llmModels: z.array(M.LlmModelViewSchema),
+  /** 任务级开关与模型分配；空对象 = 全开 + 全走默认模型。 */
   llmRoutes: M.LlmRoutesSchema,
 });
 export type PrefsResponse = z.infer<typeof prefsResponse>;
@@ -544,10 +546,14 @@ export const prefsPatchBody = z.object({
   // AI 标签开关已收口到 llmRoutes.ai_tags（0016）：prefs.aiTags 废弃，见 routes.ai_tags
   rules: z.array(M.RuleSchema).optional(),
   llm: M.LlmConfigSchema.partial().optional(),
-  /** 单条提供商 upsert（id 省略=新增）。单条提交而非整表覆盖，避免并发保存互相冲掉。 */
-  llmProvider: M.LlmProviderInputSchema.optional(),
-  /** 删除某一路提供商（id）。删除后引用它的路由自动回落到默认槽。 */
-  llmProviderDelete: z.string().max(64).optional(),
+  /** 单条厂商 upsert（id 省略=新增）。Key 属于厂商，换模型不用重填。 */
+  llmVendor: M.LlmVendorInputSchema.optional(),
+  /** 删除厂商（id）。该厂商下的模型一并删除，引用它们的路由自动回落到默认模型。 */
+  llmVendorDelete: z.string().max(64).optional(),
+  /** 单条模型 upsert（id 省略=新增）。 */
+  llmModel: M.LlmModelInputSchema.optional(),
+  /** 删除模型（id）。引用它的路由自动回落到默认模型。 */
+  llmModelDelete: z.string().max(64).optional(),
   /** 任务路由表：按能力键部分更新（只提交改动的键，服务端逐键合并；record 天然可缺键）。 */
   llmRoutes: M.LlmRoutesSchema.optional(),
 });
@@ -681,8 +687,8 @@ export const admin = {
 
 export const testLlmBody = z.object({
   llm: M.LlmConfigSchema.partial().optional(),
-  /** 指定测哪一路提供商（0015）；不传 = 默认槽。测试连接不受能力开关限制。 */
-  providerId: z.string().max(64).optional(),
+  /** 指定测哪个已保存的模型（0017）；不传 = 默认模型。测试不受能力开关限制。 */
+  modelId: z.string().max(64).optional(),
 });
 export type TestLlmBody = z.infer<typeof testLlmBody>;
 
@@ -734,8 +740,8 @@ export type AiUsageResponse = z.infer<typeof aiUsageResponse>;
  *  可临时带未保存的 baseUrl / apiKey —— 与「测试连接」同口径，刚填完就能试。 */
 export const llmModelsBody = z.object({
   llm: M.LlmConfigSchema.partial().optional(),
-  /** 指定拉哪一路提供商的模型列表（0015）；不传 = 默认槽。 */
-  providerId: z.string().max(64).optional(),
+  /** 指定拉哪个已保存厂商的模型列表（0017）；不传 = 默认模型的厂商。 */
+  vendorId: z.string().max(64).optional(),
 });
 export type LlmModelsBody = z.infer<typeof llmModelsBody>;
 

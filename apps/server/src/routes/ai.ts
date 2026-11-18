@@ -26,7 +26,7 @@ import {
   testLlm,
   type ResolvedLlm,
 } from '@feedlore/ai';
-import { resolveProviderForTest } from '../lib/llmProviders';
+import { resolveModelForTest, resolveVendorCredentials } from '../lib/llmProviders';
 import { assertResponse, BadRequest } from '../lib/validate';
 import { apiError, ApiException, apiErrorBody, apiErrorKey } from '../lib/apiError';
 import { assertPublicHost, safeFetch } from '../lib/net';
@@ -70,9 +70,9 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
       async (c) => {
         if (!db) return c.json({ ok: false, error: apiErrorBody('E_DB_NOT_READY').error });
         const uid = c.get('user').id;
-        const body = c.req.valid('json') as { llm?: Partial<LlmConfig>; providerId?: string };
+        const body = c.req.valid('json') as { llm?: Partial<LlmConfig>; modelId?: string };
 
-        const base = await resolveProviderForTest(db, uid, body.providerId);
+        const base = await resolveModelForTest(db, uid, body.modelId);
         // 前端可临时覆盖（刚填完还没保存就该能试），留空沿用已保存的
         const llm: ResolvedLlm = { ...base };
         if (body.llm?.baseUrl?.trim()) llm.baseUrl = body.llm.baseUrl.trim().replace(/\/+$/, '');
@@ -130,9 +130,9 @@ export function aiRoutes(db: Db | null, auth: AuthInstance | null) {
       async (c) => {
         if (!db) return c.json({ ok: false, models: [], error: apiErrorBody('E_DB_NOT_READY').error });
         const uid = c.get('user').id;
-        const body = c.req.valid('json') as { llm?: Partial<LlmConfig>; providerId?: string };
+        const body = c.req.valid('json') as { llm?: Partial<LlmConfig>; vendorId?: string };
 
-        const base = await resolveProviderForTest(db, uid, body.providerId);
+        const base = await resolveVendorCredentials(db, uid, body.vendorId);
         const llm = { baseUrl: base.baseUrl, apiKey: base.apiKey };
         if (body.llm?.baseUrl?.trim()) llm.baseUrl = body.llm.baseUrl.trim().replace(/\/+$/, '');
         if (body.llm?.apiKey?.trim()) llm.apiKey = body.llm.apiKey.trim();

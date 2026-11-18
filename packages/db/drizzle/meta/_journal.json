@@ -120,6 +120,13 @@
       "when": 1794896400000,
       "tag": "0016_ai_tags_single_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794975600000,
+      "tag": "0017_llm_vendors",
+      "breakpoints": true
     }
   ]
 }

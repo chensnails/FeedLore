@@ -10,13 +10,12 @@
  */
 
 import { and, eq } from 'drizzle-orm';
-import { llmProviders, userLlm, type Db, type LlmRoutes } from '@feedlore/db';
+import { llmProviders, llmVendors, userLlm, type Db, type LlmRoutes } from '@feedlore/db';
 import type { AiCapability } from '@feedlore/contract';
 import {
   getCryptoSecret,
   resolveUserLlm,
   type ResolvedLlm,
-  type LlmRow,
 } from '@feedlore/ai';
 import { ApiException } from './apiError';
 
@@ -49,8 +48,7 @@ export async function loadLlmRow(
   return row;
 }
 
-/** 能力键 → 中文名（错误详情与界面用）。 */
-export const CAPABILITY_LABEL: Record<AiCapability, string> = {
+/** 能力键 → 中文名（错误详情与界面用）。 */export const CAPABILITY_LABEL: Record<AiCapability, string> = {
   entry_ai: '单篇 AI',
   ai_tags: 'AI 标签',
   digest: '日报',
@@ -99,13 +97,79 @@ export function isRouteEnabled(routes: LlmRoutes, task: AiCapability): boolean {
   return task === 'ai_tags' ? enabled === true : enabled !== false;
 }
 
+/** 模型行 + 其厂商的连接信息。vendorId 为空 = 0017 回填前的旧行，按自身列兜底。 */
+export interface ModelRow {
+  id: string;
+  encryptedKey: string | null;
+  baseUrl: string | null;
+  model: string | null;
+  temperature: number | null;
+  thinking: boolean;
+  thinkingDepth: number;
+  vendorId: string | null;
+  vendorBaseUrl: string | null;
+  vendorEncryptedKey: string | null;
+}
+
+const MODEL_COLUMNS = {
+  id: llmProviders.id,
+  encryptedKey: llmProviders.encryptedKey,
+  baseUrl: llmProviders.baseUrl,
+  model: llmProviders.model,
+  temperature: llmProviders.temperature,
+  thinking: llmProviders.thinking,
+  thinkingDepth: llmProviders.thinkingDepth,
+  vendorId: llmProviders.vendorId,
+  vendorBaseUrl: llmVendors.baseUrl,
+  vendorEncryptedKey: llmVendors.encryptedKey,
+} as const;
+
+/** 读指定模型（本人）。 */
+export async function loadModelWithVendor(
+  db: Db,
+  uid: string,
+  modelId: string,
+): Promise<ModelRow | undefined> {
+  const [row] = await db
+    .select(MODEL_COLUMNS)
+    .from(llmProviders)
+    .leftJoin(llmVendors, eq(llmProviders.vendorId, llmVendors.id))
+    .where(and(eq(llmProviders.id, modelId), eq(llmProviders.userId, uid)))
+    .limit(1);
+  return row;
+}
+
+/** 读默认模型（本人）。 */
+export async function loadDefaultModel(db: Db, uid: string): Promise<ModelRow | undefined> {
+  const [row] = await db
+    .select(MODEL_COLUMNS)
+    .from(llmProviders)
+    .leftJoin(llmVendors, eq(llmProviders.vendorId, llmVendors.id))
+    .where(and(eq(llmProviders.userId, uid), eq(llmProviders.isDefault, true)))
+    .limit(1);
+  return row;
+}
+
+/** 模型行 → 可请求配置：有厂商时连接信息以厂商为准（厂商清掉 Key 不能回落到旧列）。 */
+export function resolveModelLlm(row: ModelRow, secret: string): ResolvedLlm {
+  const hasVendor = Boolean(row.vendorId);
+  return resolveUserLlm({
+    baseUrl: hasVendor ? row.vendorBaseUrl : row.baseUrl,
+    encryptedKey: hasVendor ? row.vendorEncryptedKey : row.encryptedKey,
+    model: row.model,
+    temperature: row.temperature,
+    thinking: row.thinking,
+    thinkingDepth: row.thinkingDepth,
+  }, secret);
+}
+
 /**
- * 按任务解析模型配置：开关判断 → 选提供商 → 回落默认槽。
+ * 按任务解析模型配置：开关判断 → 选模型 → 回落默认模型 → 旧默认槽。
  *
  * 回落链（任何一环缺失都继续往下，绝不因为删了一路就让全站 AI 崩掉）：
- *   1. 能力/动作绑定的 llm_providers 行；
- *   2. is_default=true 的提供商行；
- *   3. user_llm 原有默认槽（升级前就存在的配置，保证无缝）。
+ *   1. 能力/动作绑定的模型行（llm_providers.id）；
+ *   2. is_default=true 的模型行；
+ *   3. user_llm 旧默认槽（0017 回填前的账号，保证无缝升级）。
  *
  * 关闭语义：routes[task].enabled === false 时抛 E_AI_DISABLED（403），
  * 服务端硬拦，API / MCP / 调度器都绕不过去。
@@ -127,21 +191,13 @@ export async function resolveLlmForTask(
 
   const wanted = pickProviderId(routes, task, action);
   if (wanted !== 'default') {
-    const [row] = await db
-      .select()
-      .from(llmProviders)
-      .where(and(eq(llmProviders.id, wanted), eq(llmProviders.userId, uid)))
-      .limit(1);
-    if (row) return resolveUserLlm(row as LlmRow, secret);
-    // 引用了已删除的提供商：不报错，走下面的默认回落。
+    const row = await loadModelWithVendor(db, uid, wanted);
+    if (row) return resolveModelLlm(row, secret);
+    // 引用了已删除的模型：不报错，走下面的默认回落。
   }
 
-  const [defaultRow] = await db
-    .select()
-    .from(llmProviders)
-    .where(and(eq(llmProviders.userId, uid), eq(llmProviders.isDefault, true)))
-    .limit(1);
-  if (defaultRow) return resolveUserLlm(defaultRow as LlmRow, secret);
+  const defaultRow = await loadDefaultModel(db, uid);
+  if (defaultRow) return resolveModelLlm(defaultRow, secret);
 
   // 兼容旧数据：user_llm 三件套仍是默认槽。
   return resolveUserLlm(base ?? null, secret);

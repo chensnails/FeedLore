@@ -376,9 +376,35 @@ export type AiCapability = z.infer<typeof AiCapabilitySchema>;
 export const ENTRY_AI_ACTIONS = ['summary', 'keypoints', 'translate', 'explain'] as const;
 export const EntryAiActionSchema = z.enum(ENTRY_AI_ACTIONS);
 
-/** 回显给设置页的提供商视图：绝不含明文/密文 Key。 */
-export const LlmProviderViewSchema = z.object({
+/** 回显给设置页的厂商视图：绝不含明文/密文 Key。 */
+export const LlmVendorViewSchema = z.object({
   id: z.string(),
+  name: z.string(),
+  baseUrl: z.string(),
+  /** 该厂商下的模型数量，列表行直接展示 */
+  modelCount: z.number().int(),
+  apiKeySet: z.boolean(),
+  apiKeyHint: z.string(),
+});
+export type LlmVendorView = z.infer<typeof LlmVendorViewSchema>;
+
+/**
+ * 厂商（接入）入参。id 省略 = 新增；apiKey 省略 = 沿用原密文，空串 = 清除。
+ * 地址是出网口，服务端保存前过 SSRF 基线。
+ */
+export const LlmVendorInputSchema = z.object({
+  id: z.string().max(64).optional(),
+  name: z.string().max(60).optional(),
+  baseUrl: z.string().max(500).optional(),
+  apiKey: z.string().max(500).optional(),
+});
+export type LlmVendorInput = z.infer<typeof LlmVendorInputSchema>;
+
+/** 回显给设置页的模型视图。vendorId/vendorName 为空 = 0017 回填前的旧行。 */
+export const LlmModelViewSchema = z.object({
+  id: z.string(),
+  vendorId: z.string(),
+  vendorName: z.string(),
   name: z.string(),
   baseUrl: z.string(),
   model: z.string(),
@@ -389,24 +415,23 @@ export const LlmProviderViewSchema = z.object({
   apiKeySet: z.boolean(),
   apiKeyHint: z.string(),
 });
-export type LlmProviderView = z.infer<typeof LlmProviderViewSchema>;
+export type LlmModelView = z.infer<typeof LlmModelViewSchema>;
 
 /**
- * 新增/编辑一路提供商的入参。id 省略 = 新增；apiKey 省略 = 沿用原密文，空串 = 清除。
- * 与现有 LlmConfig 的三态语义一致，避免「只改模型名」把 Key 冲掉。
+ * 新增/编辑模型。id 省略 = 新增；apiKey 不在这里（Key 属于厂商）。
+ * isDefault=true 时服务端把该账号其它模型一并取消默认。
  */
-export const LlmProviderInputSchema = z.object({
+export const LlmModelInputSchema = z.object({
   id: z.string().max(64).optional(),
-  name: z.string().max(60),
-  baseUrl: z.string().max(500),
+  vendorId: z.string().max(64),
+  name: z.string().max(60).optional(),
   model: z.string().max(200),
-  apiKey: z.string().max(500).optional(),
   temperature: z.number().min(0).max(2).optional(),
   thinking: z.boolean().optional(),
   thinkingDepth: z.number().int().min(0).max(3).optional(),
   isDefault: z.boolean().optional(),
 });
-export type LlmProviderInput = z.infer<typeof LlmProviderInputSchema>;
+export type LlmModelInput = z.infer<typeof LlmModelInputSchema>;
 
 /** 单项能力路由：enabled 省略 = 开启，providerId 省略/'default' = 回落默认槽。 */
 export const LlmRouteSchema = z.object({

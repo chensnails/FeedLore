@@ -25,6 +25,7 @@ import {
   feeds,
   imageCache,
   llmProviders,
+  llmVendors,
   settings,
   userLlm,
   users,
@@ -33,6 +34,7 @@ import {
   type NewFeed,
   type NewUserLlm,
   type NewLlmProvider,
+  type NewLlmVendor,
 } from '@feedlore/db';
 import {
   clampTemperature,
@@ -45,6 +47,7 @@ import { ApiException } from './apiError';
 import { isSafeImageKey } from './tar-read';
 import { assertPublicHost } from './net';
 import { safeRoutes } from './llm';
+import { vendorLabel } from './llmProviders';
 
 const FORMAT = 'feedlore-backup';
 const FORMAT_VERSION = 1;
@@ -59,7 +62,12 @@ export interface ImportCount {
 /** 与契约 `llmImportOutcome` 一一对应；`pending` 只是「包里有配置、待事务里确认」。 */
 type LlmPlan =
   | { outcome: 'absent' | 'url-blocked' }
-  | { outcome: 'pending'; row: NewUserLlm; providers: NewLlmProvider[] };
+  | {
+    outcome: 'pending';
+    row: NewUserLlm;
+    vendors: NewLlmVendor[];
+    models: NewLlmProvider[];
+  };
 
 export type LlmImportOutcome = 'applied' | 'absent' | 'already-configured' | 'url-blocked';
 
@@ -97,6 +105,7 @@ const asRecord = (v: unknown): Raw | null =>
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+const normalizeBaseUrl = (v: unknown): string => str(v).trim().replace(/\/+$/, '');
 const arrStr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 const intOr = (v: unknown, fallback: number): number => {
@@ -280,7 +289,14 @@ function mapUserEntry(raw: Raw, feedId: number): NewEntry | null {
 }
 
 /**
- * 包里的 `llm.json` → 待落库的模型配置。
+ * 包里的 `llm.json` → 待落库的厂商 / 模型配置。
+ *
+ * 兼容三代包形状：
+ * - 0017：`vendors[]` + `models[]`（模型只带 vendorId）；
+ * - 0015：`providers[]`（厂商与模型混在一行，按「地址 + Key」归并成厂商）；
+ * - 更早：只有顶层默认槽三件套。
+ * 老形状全部翻译成「厂商 → 模型」两层再落库，新界面不会出现列表空空、
+ * 配置却藏在旧默认槽里的情况。
  *
  * 三条边界：
  * - **明文 Key 绝不原样落库**：导出时勾出来的 `apiKey` 是解密后的明文，这里用**本机**主
@@ -294,54 +310,188 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
   const raw = asRecord(await readOptionalJson(dir, 'llm.json'));
   if (!raw) return { outcome: 'absent' };
 
-  const baseUrl = str(raw.baseUrl).trim().replace(/\/+$/, '');
-  const model = str(raw.model).trim();
+  const baseUrl = normalizeBaseUrl(raw.baseUrl);
+  const modelName = str(raw.model).trim();
   const apiKey = str(raw.apiKey).trim();
-  // 0015：老包只有默认槽三件套；新包可能只有 providers（默认槽为空）。
-  // 两种都不能误判成 absent，否则多路配置或旧包会被丢掉。
-  const rawProviders = Array.isArray(raw.providers) ? raw.providers : [];
-  if (!baseUrl && !model && !apiKey && !rawProviders.length) return { outcome: 'absent' };
-
-  // 每个模型的地址都要过同一条 SSRF 字面量基线（导入不查 DNS）
-  for (const p of rawProviders) {
-    const u = asRecord(p) ? str((p as Record<string, unknown>).baseUrl).trim() : '';
-    if (u) {
-      try { await assertPublicHost(u, { resolve: false }); }
-      catch { return { outcome: 'url-blocked' }; }
-    }
+  const recordsOf = (v: unknown): Raw[] =>
+    Array.isArray(v) ? v.map(asRecord).filter((x): x is Raw => x !== null) : [];
+  const rawVendors = recordsOf(raw.vendors);
+  const rawModels = recordsOf(raw.models);
+  const rawProviders = recordsOf(raw.providers);
+  if (
+    !baseUrl && !modelName && !apiKey &&
+    !rawVendors.length && !rawModels.length && !rawProviders.length
+  ) {
+    return { outcome: 'absent' };
   }
-  if (baseUrl) {
-    try {
-      await assertPublicHost(baseUrl, { resolve: false });
-    } catch {
-      return { outcome: 'url-blocked' };
-    }
+
+  // 每个地址都要过同一条 SSRF 字面量基线（导入不查 DNS）
+  const urls = [
+    baseUrl,
+    ...rawVendors.map((v) => normalizeBaseUrl(v.baseUrl)),
+    ...rawModels.map((m) => normalizeBaseUrl(m.baseUrl)),
+    ...rawProviders.map((p) => normalizeBaseUrl(p.baseUrl)),
+  ].filter(Boolean);
+  for (const u of urls) {
+    try { await assertPublicHost(u, { resolve: false }); }
+    catch { return { outcome: 'url-blocked' }; }
   }
 
   const secret = await getCryptoSecret(db);
-  const providers: NewLlmProvider[] = [];
-  const validIds = new Set<string>();
-  for (const p of rawProviders) {
-    if (!asRecord(p)) continue;
-    const r = p as Record<string, unknown>;
-    const id = str(r.id) || crypto.randomUUID();
-    const key = str(r.apiKey).trim();
-    validIds.add(id);
-    providers.push({
-      id, userId,
-      name: str(r.name).slice(0, 60),
-      encryptedKey: key ? encryptSecret(key, secret) : null,
-      baseUrl: str(r.baseUrl).trim().replace(/\/+$/, '') || null,
-      model: str(r.model).trim() || null,
-      temperature: r.temperature === null || r.temperature === undefined ? null : clampTemperature(r.temperature),
-      thinking: r.thinking === true,
-      thinkingDepth: normalizeThinkingDepth(r.thinkingDepth),
-      isDefault: r.isDefault === true,
+  const encrypt = (key: string): string | null => (key ? encryptSecret(key, secret) : null);
+
+  const vendors: NewLlmVendor[] = [];
+  /** 包里的厂商 id → 落库后的 id（同地址同 Key 的重复厂商会合并）。 */
+  const vendorIdMap = new Map<string, string>();
+  /** 地址 + Key → 厂商 id：把老形状的逐行配置归并到同一个厂商。 */
+  const byCredential = new Map<string, string>();
+  const credentialKey = (url: string, key: string): string => `${url}\u0000${key}`;
+
+  const ensureVendor = (input: {
+    pkgId?: string;
+    name?: string;
+    baseUrl: string;
+    apiKey: string;
+  }): string => {
+    const cred = credentialKey(input.baseUrl, input.apiKey);
+    const existing = byCredential.get(cred);
+    if (existing) {
+      if (input.pkgId) vendorIdMap.set(input.pkgId, existing);
+      return existing;
+    }
+    const id = input.pkgId || crypto.randomUUID();
+    byCredential.set(cred, id);
+    if (input.pkgId) vendorIdMap.set(input.pkgId, id);
+    vendors.push({
+      id,
+      userId,
+      name: vendorLabel(str(input.name), input.baseUrl).slice(0, 60),
+      baseUrl: input.baseUrl,
+      encryptedKey: encrypt(input.apiKey),
       updatedAt: new Date(),
+    });
+    return id;
+  };
+
+  for (const v of rawVendors) {
+    const pkgId = str(v.id) || crypto.randomUUID();
+    if (vendorIdMap.has(pkgId)) continue;
+    ensureVendor({
+      pkgId,
+      name: str(v.name),
+      baseUrl: normalizeBaseUrl(v.baseUrl),
+      apiKey: str(v.apiKey).trim(),
     });
   }
 
-  // 路由表：只保留白名单能力键，且 providerId 必须指向本次导入的提供商或 'default'；
+  const models: NewLlmProvider[] = [];
+  const modelIds = new Set<string>();
+  const addModel = (input: {
+    id?: string;
+    vendorId: string;
+    name?: string;
+    model: string;
+    temperature: unknown;
+    thinking: unknown;
+    thinkingDepth: unknown;
+    isDefault: boolean;
+  }): void => {
+    const id = input.id || crypto.randomUUID();
+    if (modelIds.has(id)) return;
+    modelIds.add(id);
+    models.push({
+      id,
+      userId,
+      vendorId: input.vendorId,
+      name: str(input.name).slice(0, 60),
+      model: input.model || null,
+      temperature: input.temperature === null || input.temperature === undefined
+        ? null
+        : clampTemperature(input.temperature),
+      thinking: input.thinking === true,
+      thinkingDepth: normalizeThinkingDepth(input.thinkingDepth),
+      isDefault: input.isDefault,
+      // 连接信息只挂在厂商上；模型行不再写地址与 Key
+      baseUrl: null,
+      encryptedKey: null,
+      updatedAt: new Date(),
+    });
+  };
+
+  if (rawModels.length) {
+    // 0017 新形状：连接信息从厂商取；厂商缺失的旧行自带地址与 Key
+    for (const m of rawModels) {
+      let vendorId = vendorIdMap.get(str(m.vendorId)) || '';
+      const legacyUrl = normalizeBaseUrl(m.baseUrl);
+      if (!vendorId && legacyUrl) {
+        vendorId = ensureVendor({
+          name: str(m.name),
+          baseUrl: legacyUrl,
+          apiKey: str(m.apiKey).trim(),
+        });
+      }
+      if (!vendorId) continue; // 没有可连接的厂商，落库也调不通
+      addModel({
+        id: str(m.id),
+        vendorId,
+        name: str(m.name),
+        model: str(m.model).trim(),
+        temperature: m.temperature,
+        thinking: m.thinking,
+        thinkingDepth: m.thinkingDepth,
+        isDefault: m.isDefault === true,
+      });
+    }
+  } else {
+    // 0015 及更早：厂商与模型混在一行，按地址 + Key 归并成厂商
+    for (const p of rawProviders) {
+      const url = normalizeBaseUrl(p.baseUrl);
+      if (!url) continue; // 没有地址的行调不通，留着只会让界面显示坏配置
+      const vendorId = ensureVendor({
+        name: str(p.name),
+        baseUrl: url,
+        apiKey: str(p.apiKey).trim(),
+      });
+      addModel({
+        id: str(p.id),
+        vendorId,
+        name: str(p.name),
+        model: str(p.model).trim(),
+        temperature: p.temperature,
+        thinking: p.thinking,
+        thinkingDepth: p.thinkingDepth,
+        isDefault: p.isDefault === true,
+      });
+    }
+  }
+
+  /* 默认模型：包里标了多个只留第一个；一个都没标时，若顶层还带着旧默认槽
+   * （0015 包真正生效的那份配置），补成默认模型；连顶层也没有才用最早一行兜底。 */
+  let defaultSeen = false;
+  for (const m of models) {
+    if (m.isDefault && !defaultSeen) defaultSeen = true;
+    else if (m.isDefault) m.isDefault = false;
+  }
+  if (!defaultSeen && modelName && baseUrl) {
+    const vendorId = ensureVendor({ name: '', baseUrl, apiKey });
+    const same = models.find((m) => m.vendorId === vendorId && m.model === modelName);
+    if (same) {
+      same.isDefault = true;
+    } else {
+      addModel({
+        vendorId,
+        model: modelName,
+        temperature: raw.temperature,
+        thinking: raw.thinking,
+        thinkingDepth: raw.thinkingDepth,
+        isDefault: true,
+      });
+    }
+  } else if (!defaultSeen && models.length) {
+    models[0]!.isDefault = true;
+  }
+
+  // 路由表：只保留白名单能力键，且 providerId 必须指向本次导入的模型或 'default'；
   // 指向不存在的一律清成 default，避免还原后路由悬空。
   const routes: LlmRoutes = {};
   const rawRoutes = asRecord(raw.routes) ? (raw.routes as Record<string, unknown>) : {};
@@ -351,13 +501,13 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
     const item: LlmRoutes[string] = {};
     if (typeof r.enabled === 'boolean') item.enabled = r.enabled;
     const pid = str(r.providerId);
-    item.providerId = pid && (pid === 'default' || validIds.has(pid)) ? pid : 'default';
+    item.providerId = pid && (pid === 'default' || modelIds.has(pid)) ? pid : 'default';
     const acts = asRecord(r.actions) ? (r.actions as Record<string, unknown>) : {};
     const cleanActs: Record<string, string> = {};
     for (const [ak, av] of Object.entries(acts)) {
       if (!(ENTRY_AI_ACTIONS as readonly string[]).includes(ak)) continue;
       const v = str(av);
-      cleanActs[ak] = v && (v === 'default' || validIds.has(v)) ? v : 'default';
+      cleanActs[ak] = v && (v === 'default' || modelIds.has(v)) ? v : 'default';
     }
     item.actions = cleanActs;
     routes[cap] = item;
@@ -367,9 +517,9 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
     outcome: 'pending',
     row: {
       userId,
-      encryptedKey: apiKey ? encryptSecret(apiKey, secret) : null,
+      encryptedKey: encrypt(apiKey),
       baseUrl: baseUrl || null,
-      model: model || null,
+      model: modelName || null,
       // 未导出温度 = 沿用默认（NULL 由视图层回落 0.3）
       temperature: raw.temperature === null || raw.temperature === undefined
         ? null
@@ -379,7 +529,8 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
       routes,
       updatedAt: new Date(),
     },
-    providers,
+    vendors,
+    models,
   };
 }
 
@@ -511,16 +662,25 @@ export async function importUserArchive(
         .from(userLlm)
         .where(sql`${userLlm.userId} = ${userId}`)
         .limit(1);
-      if (had && (had.encryptedKey || had.baseUrl || had.model)) {
+      const [hadAny] = await tx
+        .select({ id: llmProviders.id })
+        .from(llmProviders)
+        .where(sql`${llmProviders.userId} = ${userId}`)
+        .limit(1);
+      if (hadAny || (had && (had.encryptedKey || had.baseUrl || had.model))) {
         llmOutcome = 'already-configured';
       } else {
         await tx
           .insert(userLlm)
           .values(llmPlan.row)
           .onConflictDoNothing({ target: userLlm.userId });
-        // 0015：多路提供商与默认槽同一个事务落库，避免只恢复一半。
-        if (llmPlan.providers.length) {
-          await tx.insert(llmProviders).values(llmPlan.providers).onConflictDoNothing();
+        // 0017：厂商先落库，模型行才能建立外键
+        if (llmPlan.vendors.length) {
+          await tx.insert(llmVendors).values(llmPlan.vendors).onConflictDoNothing();
+        }
+        // 非默认槽的模型与默认槽同一个事务落库，避免只恢复一半。
+        if (llmPlan.models.length) {
+          await tx.insert(llmProviders).values(llmPlan.models).onConflictDoNothing();
         }
         llmOutcome = 'applied';
       }
@@ -683,6 +843,8 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
   const feedRows = asArray(await readJson(dir, 'feeds.json'), 'feeds.json');
   const digestRows = asArray(await readJson(dir, 'digests.json'), 'digests.json');
   const llmRows = asArray(await readJson(dir, 'user_llm.json'), 'user_llm.json');
+  // 0017：厂商表；老备份没有这个文件，按空数组处理（向后兼容）
+  const vendorRows = asArray(await readOptionalJson(dir, 'llm_vendors.json') ?? [], 'llm_vendors.json');
   // 0015：老备份没有这个文件，按空数组处理（向后兼容）
   const providerRows = asArray(await readOptionalJson(dir, 'llm_providers.json') ?? [], 'llm_providers.json');
   const settingRows = asArray(await readJson(dir, 'settings.json'), 'settings.json');
@@ -695,7 +857,7 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
   const counts = await db.transaction(async (tx) => {
     await tx.execute(sql`
       truncate table users, sessions, accounts, verifications, feeds, entries,
-        digests, user_llm, llm_providers, settings, image_cache, article_cache
+        digests, user_llm, llm_vendors, llm_providers, settings, image_cache, article_cache
       restart identity cascade
     `);
 
@@ -803,13 +965,34 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
     });
     if (mappedLlm.length) await tx.insert(userLlm).values(mappedLlm);
 
+    // 0017：厂商（密文原样搬运，与 user_llm 同口径：整站备份不换主密钥）
+    const mappedVendors = vendorRows.map((raw) => {
+      const userId = str(raw.userId);
+      const id = str(raw.id);
+      if (!userId || !id) throw invalid('bad llm_vendors.json record');
+      return {
+        id,
+        userId,
+        name: str(raw.name).slice(0, 60),
+        baseUrl: str(raw.baseUrl),
+        encryptedKey: strOrNull(raw.encryptedKey),
+        createdAt: dateOr(raw.createdAt, new Date()),
+        updatedAt: dateOr(raw.updatedAt, new Date()),
+      };
+    });
+    if (mappedVendors.length) await tx.insert(llmVendors).values(mappedVendors);
+
     // 0015：多路提供商（密文原样搬运，与 user_llm 同口径：整站备份不换主密钥）
+    const vendorIds = new Set(mappedVendors.map((v) => v.id));
     const mappedProviders = providerRows.map((raw) => {
       const userId = str(raw.userId);
       const id = str(raw.id);
       if (!userId || !id) throw invalid('bad llm_providers.json record');
+      const vendorId = strOrNull(raw.vendorId);
+      if (vendorId && !vendorIds.has(vendorId)) throw invalid('bad llm_providers.json record: unknown vendor');
       return {
         id, userId,
+        vendorId,
         name: str(raw.name),
         encryptedKey: strOrNull(raw.encryptedKey),
         baseUrl: strOrNull(raw.baseUrl),

@@ -58,11 +58,14 @@ import {
 import { expireWatchTags } from '../lib/watch-expire';
 import { assertPublicHost } from '../lib/net';
 import {
-  listLlmProviders,
+  listLlmVendors,
+  listLlmModels,
   loadLlmRoutes,
   saveLlmRoutes,
-  upsertLlmProvider,
-  deleteLlmProvider,
+  upsertLlmVendor,
+  deleteLlmVendor,
+  upsertLlmModel,
+  deleteLlmModel,
 } from '../lib/llmProviders';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 
@@ -110,10 +113,26 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
         .limit(1);
 
       const secret = await getCryptoSecret(db);
-      const [llmProvidersView, llmRoutesView] = await Promise.all([
-        listLlmProviders(db, uid),
+      const [llmVendorsView, llmModelsView, llmRoutesView] = await Promise.all([
+        listLlmVendors(db, uid),
+        listLlmModels(db, uid),
         loadLlmRoutes(db, uid),
       ]);
+      /* `llm` 是 0015 之前的旧视图，新前端不再读它；这里从默认模型回填，
+       * 让仍按旧形状读的客户端（或回滚后的旧界面）拿到一致的默认配置。
+       * 没有任何模型时才回落到 user_llm 旧默认槽。 */
+      const defaultModel = llmModelsView.find((m) => m.isDefault) || null;
+      const llmView = defaultModel
+        ? {
+          baseUrl: defaultModel.baseUrl,
+          model: defaultModel.model,
+          temperature: defaultModel.temperature,
+          thinking: defaultModel.thinking,
+          thinkingDepth: defaultModel.thinkingDepth,
+          apiKeySet: defaultModel.apiKeySet,
+          apiKeyHint: defaultModel.apiKeyHint,
+        }
+        : userLlmForView(llmRow, secret);
       const prefs = userRow.prefs;
 
       const payload = assertResponse(
@@ -127,8 +146,9 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           webhookUrl: userWebhook(prefs),
           digest: userDigest(prefs),
           rules: userRules(prefs),
-          llm: userLlmForView(llmRow, secret),
-          llmProviders: llmProvidersView,
+          llm: llmView,
+          llmVendors: llmVendorsView,
+          llmModels: llmModelsView,
           llmRoutes: llmRoutesView,
         },
         'GET /api/prefs',
@@ -268,13 +288,19 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           }
         }
 
-        /* ---- 多路提供商（0015）：单条 upsert / 删除 / 路由合并 ----
-         * 三项互不依赖，但都写 user_llm 或 llm_providers，串行执行避免同一行竞态。 */
-        if (body.llmProvider) {
-          await upsertLlmProvider(db, uid, body.llmProvider);
+        /* ---- 厂商 / 模型（0017）：单条 upsert / 删除 / 路由合并 ----
+         * 都写 user_llm 或 llm_vendors / llm_providers，串行执行避免同一行竞态。 */
+        if (body.llmVendor) {
+          await upsertLlmVendor(db, uid, body.llmVendor);
         }
-        if (body.llmProviderDelete) {
-          await deleteLlmProvider(db, uid, body.llmProviderDelete);
+        if (body.llmVendorDelete) {
+          await deleteLlmVendor(db, uid, body.llmVendorDelete);
+        }
+        if (body.llmModel) {
+          await upsertLlmModel(db, uid, body.llmModel);
+        }
+        if (body.llmModelDelete) {
+          await deleteLlmModel(db, uid, body.llmModelDelete);
         }
         if (body.llmRoutes) {
           await saveLlmRoutes(db, uid, body.llmRoutes);
