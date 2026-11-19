@@ -19,7 +19,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq, sql } from 'drizzle-orm';
-import { createDb, sessions, users } from '@feedlore/db';
+import { createDb, createPool, sessions, users } from '@feedlore/db';
 import { getAuth } from './auth';
 import { ensureAuthSecret } from './lib/auth-secret';
 import { newOneTimePassword, saveInitialAdmin, type InitialAdminCredential } from './lib/initialPassword';
@@ -29,6 +29,44 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const now = (): string => new Date().toISOString().slice(11, 19);
 const log = (...a: unknown[]): void => console.log(`[${now()}] [bootstrap]`, ...a);
 const warn = (...a: unknown[]): void => console.warn(`[${now()}] [bootstrap] ⚠️`, ...a);
+
+/**
+ * 目标库不存在就建。
+ *
+ * Postgres 容器启动时只创建 `POSTGRES_DB`（默认 `feedlore`），而 app 连的是
+ * `feedlore_v2`——以前这个库由 upgrade 容器创建，upgrade 下线后全新安装会直接连不上
+ * （`database "feedlore_v2" does not exist`，app 反复重启）。
+ *
+ * 连到同实例的 postgres 库判断 + 创建，幂等。外部托管库无建库权限时只告警不阻断，
+ * 让运维按提示手工建库，与结构迁移的容错策略保持一致。
+ */
+async function ensureTargetDatabase(targetUrl: string): Promise<void> {
+  let target: URL;
+  try {
+    target = new URL(targetUrl);
+  } catch {
+    return; // 非标准 URL 形式交给后续步骤报错
+  }
+
+  const name = decodeURIComponent(target.pathname.replace(/^\//, ''));
+  if (!name || name === 'postgres') return;
+
+  const admin = new URL(targetUrl);
+  admin.pathname = '/postgres';
+  const pool = createPool(admin.toString());
+  try {
+    const found = await pool.query('select 1 from pg_database where datname = $1', [name]);
+    if (found.rowCount) return;
+    // 库名是标识符，不能参数化：双引号包裹并转义内部引号。
+    await pool.query(`create database "${name.replace(/"/g, '""')}"`);
+    log(`Database "${name}" was missing (fresh install), created it`);
+  } catch (e) {
+    warn(`Could not ensure database "${name}": ${(e as Error)?.message ?? e}`);
+    warn(`Create it manually then restart: CREATE DATABASE "${name}";`);
+  } finally {
+    await pool.end().catch(() => {});
+  }
+}
 
 /** 启动时的幂等结构迁移。失败只告警不阻断（外部托管库可能没有 DDL 权限）。 */
 function migrateV2(url: string): void {
@@ -142,6 +180,7 @@ export async function bootstrap(): Promise<void> {
   const source = process.env.DATABASE_URL?.trim();
   if (!source) return;
 
+  await ensureTargetDatabase(source);
   migrateV2(source);
   await ensureAuthSecret(source);
   await ensureDefaultAdmin();
