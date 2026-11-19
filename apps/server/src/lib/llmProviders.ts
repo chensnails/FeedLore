@@ -35,6 +35,7 @@ import type {
 import { AI_CAPABILITIES, ENTRY_AI_ACTIONS } from '@feedlore/contract';
 import { type Db, llmProviders, llmVendors, userLlm } from '@feedlore/db';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { ApiException } from './apiError';
 import {
   loadDefaultModel,
@@ -57,17 +58,20 @@ export function vendorLabel(name: string, baseUrl: string): string {
 
 /** 厂商列表（不含明文 Key），附带模型数量。 */
 export async function listLlmVendors(db: Db, uid: string): Promise<LlmVendorView[]> {
+  // 子查询必须写死带别名的限定名：Drizzle 在 sql`` 模板里插值 Column 时会丢掉表限定
+  // （生成 `"vendor_id" = "id"`，子查询里的 id 被解析成 llm_providers.id，计数恒为 0）。
+  const vendor = alias(llmVendors, 'vendor');
   const rows = await db
     .select({
-      id: llmVendors.id,
-      name: llmVendors.name,
-      baseUrl: llmVendors.baseUrl,
-      encryptedKey: llmVendors.encryptedKey,
-      modelCount: sql<number>`(select count(*)::int from ${llmProviders} where ${llmProviders.vendorId} = ${llmVendors.id})`,
+      id: vendor.id,
+      name: vendor.name,
+      baseUrl: vendor.baseUrl,
+      encryptedKey: vendor.encryptedKey,
+      modelCount: sql<number>`(select count(*)::int from "llm_providers" p where p."vendor_id" = vendor."id")`,
     })
-    .from(llmVendors)
-    .where(eq(llmVendors.userId, uid))
-    .orderBy(asc(llmVendors.createdAt));
+    .from(vendor)
+    .where(eq(vendor.userId, uid))
+    .orderBy(asc(vendor.createdAt));
   const secret = await getCryptoSecret(db);
   return rows.map((r) => {
     const enc = typeof r.encryptedKey === 'string' ? r.encryptedKey : '';
