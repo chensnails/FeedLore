@@ -54,6 +54,18 @@ export const HealthSchema = z.object({
 });
 export type Health = z.infer<typeof HealthSchema>;
 
+/**
+ * 初始管理员密码（固定值，公开写在文档里）。
+ *
+ * 为什么不用随机口令：部署后拿密码要靠日志 / CLI 二次操作，对自托管场景太重。
+ * 代价是「任何看过文档的人都知道它」—— 所以首次登录必须改密由服务端强制
+ * （users.must_change_password + E_PASSWORD_CHANGE_REQUIRED），改完就不再有效。
+ *
+ * ⚠️ 空站点播种、`initial-password --reset`、登录页提示三处共用此值；
+ *    老账号（升级前已存在）不会被重置成它。
+ */
+export const INITIAL_ADMIN_PASSWORD = 'Admin2026';
+
 /** 当前会话快照（GET /api/session）。 */
 export const SessionSchema = z.object({
   authenticated: z.boolean(),
@@ -61,6 +73,9 @@ export const SessionSchema = z.object({
   role: RoleSchema.nullable(),
   id: z.string().nullable(),
   dbReady: z.boolean(),
+  /* 首次登录必须改密（老账号升级后恒为 false）。前端据此把用户挡在改密页，
+   * 服务端另有一道拦截（E_PASSWORD_CHANGE_REQUIRED），这里只是让界面提前引导。 */
+  mustChangePassword: z.boolean(),
 });
 export type Session = z.infer<typeof SessionSchema>;
 

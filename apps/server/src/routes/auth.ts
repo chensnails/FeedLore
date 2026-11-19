@@ -12,9 +12,9 @@
 
 import { Hono, type Context } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { AuthInstance } from '@feedlore/auth';
-import type { Db } from '@feedlore/db';
+import { users, type Db } from '@feedlore/db';
 import { auth as authSpec, loginBody } from '@feedlore/contract';
 import { assertResponse, BadRequest } from '../lib/validate';
 import { apiError } from '../lib/apiError';
@@ -114,13 +114,33 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
         }
 
         const data = (await res.json().catch(() => ({}))) as {
-          user?: { username?: string; role?: string };
+          user?: { id?: string; username?: string; role?: string };
         };
         const role = normalizeRole(data.user?.role);
 
+        /* 首次部署的初始账号带「必须改密」标记：登录页据此直接跳改密页，
+         * 省掉「先进首页再被 403 弹回来」的一跳。查库失败按 false 处理 ——
+         * 主站启动读 /api/session 时还有一次判定，不会漏。 */
+        let mustChangePassword = false;
+        if (db && data.user?.id) {
+          try {
+            const [row] = await db
+              .select({ m: users.mustChangePassword })
+              .from(users)
+              .where(eq(users.id, data.user.id))
+              .limit(1);
+            mustChangePassword = row?.m === true;
+          } catch { /* 保持 false */ }
+        }
+
         const payload = assertResponse(
           authSpec.login.response,
-          { ok: true, username: data.user?.username ?? body.username, role },
+          {
+            ok: true,
+            username: data.user?.username ?? body.username,
+            role,
+            mustChangePassword,
+          },
           'POST /api/login',
         );
         forwardCookies(c, res);
@@ -171,7 +191,12 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
       }
 
       const u = session
-        ? (session.user as unknown as { id: string; username?: string; role?: string })
+        ? (session.user as unknown as {
+            id: string;
+            username?: string;
+            role?: string;
+            mustChangePassword?: boolean;
+          })
         : null;
 
       const payload = assertResponse(
@@ -182,6 +207,8 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
           role: u ? normalizeRole(u.role) : null,
           id: u?.id ?? null,
           dbReady,
+          /* 未登录时为 false；前端只用它决定是否把人挡在改密页。 */
+          mustChangePassword: u?.mustChangePassword === true,
         },
         'GET /api/session',
       );

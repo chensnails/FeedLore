@@ -56,6 +56,7 @@ export default defineConfig({
       input: {
         index: path.resolve(import.meta.dirname, 'index.html'),
         login: path.resolve(import.meta.dirname, 'login.html'),
+        changePassword: path.resolve(import.meta.dirname, 'change-password.html'),
       },
       output: {
         assetFileNames: 'assets/[name]-[hash][extname]',

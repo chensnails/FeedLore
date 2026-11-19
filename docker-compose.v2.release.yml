@@ -12,9 +12,9 @@
 # 共享主机/多容器环境建议覆盖 PG_PASSWORD 与 WATCHTOWER_HTTP_API_TOKEN。
 # 库名统一 feedlore_v2：全新安装由 postgres 直接建该库，老站点的既有卷原样沿用
 # （POSTGRES_DB 只在空数据目录初始化时生效，改不动已有库）。
-# 空站点首次启动自动建管理员并生成一次性随机密码：横幅完整显示一次，
-# 24h 内可用 `docker exec -it feedlore pnpm --filter @feedlore/server initial-password` 查回。
-# 升级部署不会动已有账号的密码。
+# 空站点首次启动自动建管理员：初始密码固定为 Admin2026，登录后**必须先改密**
+# 才能使用其他功能（服务端强制）；升级部署不会动已有账号的密码，也不要求改密。
+# 忘记密码：docker exec -it feedlore initial-password --reset
 #
 # 升级到新版：默认镜像钉版本号（ghcr.io/chensnails/feedlore:2.5.2），不自己漂移；
 # 改 V2_IMAGE 后 up -d。想跟 latest 滚动就设为 ghcr.io/chensnails/feedlore:latest，
@@ -90,7 +90,9 @@ services:
       # 公开注册默认关闭（空值即关闭）；=1 才放行 /api/auth/sign-up
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-}
 
-      # ---- 初始管理员（仅空站点首次启动生效；不填密码则生成一次性随机口令）----
+      # ---- 初始管理员（仅空站点首次启动生效）----
+      # 不填 ADMIN_PASS 时用固定的 Admin2026，登录后强制改密；
+      # 填了就用你指定的密码，同样要求首次登录后改掉。
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASS: ${ADMIN_PASS:-}
       # 对外访问地址：只用于首启横幅与登录链接提示，不参与鉴权。

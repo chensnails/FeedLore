@@ -134,6 +134,13 @@
       "when": 1795062000000,
       "tag": "0018_sort_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795148400000,
+      "tag": "0019_must_change_password",
+      "breakpoints": true
     }
   ]
 }

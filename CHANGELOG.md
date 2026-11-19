@@ -15,10 +15,12 @@
 
 ### 新增
 
-- **首启直接回显账密与登录链接**：空站点首次部署时，服务监听成功后打印醒目横幅
-  （访问地址 / 初始用户名 / 一次性密码 / 下一步）；升级部署不会动原密码，只回显登录链接。
-- **一次性密码可查回**：`docker exec -it feedlore pnpm --filter @feedlore/server initial-password`
-  在生成后 24 小时内可查回密码与剩余时间（加密落库，`--json` 输出，退出码 0/2/1）。
+- **固定初始密码 + 首次登录强制改密**：空站点首次部署创建管理员 `admin`，初始密码固定为
+  `Admin2026`（可用 `ADMIN_PASS` 覆盖）。首次登录后必须先设置新密码，未改密前除改密接口外的
+  所有请求返回 403 `E_PASSWORD_CHANGE_REQUIRED`，界面自动停在 `/change-password.html`。
+  老账号升级后**不受影响**：不会被打上该标记，不会被要求改密，登录态与权限完全不变。
+- **密码可重置回初始值**：`docker exec -it feedlore initial-password --reset`，
+  重置为 `Admin2026`、作废该账号全部会话，登录后同样要求先改密。
 - **纯命令行部署**：README / 帮助文档给出可整段复制的命令，海外直连与国内代理站
   （`gh-proxy.org` 下载 compose、`ghcr.nju.edu.cn` 拉镜像后 tag 回官方名）各一套，
   按「全新安装 / 已有数据升级」两条路径组织；部署末尾用 `compose logs -f app`
@@ -26,6 +28,13 @@
 
 ### 变更
 
+- **随机一次性口令下线**：空站点不再生成随机口令，`settings.initialAdminCredential` 的加密
+  查询窗口（24h）与 `initial-password` 的「查回」语义一并移除；该命令现在只做「告诉你初始密码 /
+  重置回初始密码」两件事。数据库里残留的旧记录不再读取，可忽略。
+- **数据库名统一 `feedlore_v2`**：compose 的 `POSTGRES_DB` 与 app 连接的库同名，全新安装由
+  postgres 直接创建该库，不再出现 `database "feedlore_v2" does not exist` 的重启循环；
+  db 健康检查固定探 `postgres` 库。老站点既有数据卷原样沿用（`POSTGRES_DB` 只在空数据目录
+  初始化时生效），无需任何操作。
 - **v1 → v2 自动数据迁移下线**：`upgrade` 容器、`migrate-legacy.ts`、`upgrade:v1` 命令已移除，
   1.x 库不再自动搬数据。需要从 1.x 迁移的用户，请先在 1.7.4 用「设置 → 数据 → 导出」备份，
   再全新安装 2.x 后导入。已有 2.x 站点的密码（含 1.x 迁移过来的账号）照常可用。

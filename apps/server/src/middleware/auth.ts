@@ -34,7 +34,20 @@ interface AuthUserLike {
   name?: string | null;
   email?: string | null;
   role?: string | null;
+  /** additionalFields 暴露的「首次登录必须改密」标记。 */
+  mustChangePassword?: boolean | null;
 }
+
+/**
+ * 未完成首次改密时仍放行的接口。
+ *
+ * 除这两条以外，所有业务接口一律 403 —— 前端隐藏按钮不算防护，直接打接口同样被拒。
+ * - `/api/session`：改密页要读当前状态（它本身是公开端点，不经过这里，列上只为意图明确）
+ * - `/api/account`：提交新密码的唯一入口（仍要求校验当前密码）
+ * better-auth 的直通端点（change-password / sign-out / get-session）不走这个中间件，
+ * 天然放行，正好覆盖「登出」这条退路。
+ */
+const ALLOWED_WHILE_PASSWORD_CHANGE = new Set(['/api/session', '/api/account']);
 
 export function requireAuth(
   auth: AuthInstance | null,
@@ -51,6 +64,14 @@ export function requireAuth(
 
     const u = session.user as unknown as AuthUserLike;
     const current = session.session as unknown as { id?: string };
+
+    /* 首次登录必须改密：只放行改密本身（见 ALLOWED_WHILE_PASSWORD_CHANGE）。
+     * 标记只由空站点播种置位，改密成功后清掉；升级前就存在的账号恒为 false，
+     * 所以老用户不会被拦。 */
+    if (u.mustChangePassword === true && !ALLOWED_WHILE_PASSWORD_CHANGE.has(c.req.path)) {
+      return apiError(c, 'E_PASSWORD_CHANGE_REQUIRED');
+    }
+
     const role = normalizeRole(u.role);
     if (level === 'admin' && role !== 'admin') {
       return apiError(c, 'E_ADMIN_ONLY');

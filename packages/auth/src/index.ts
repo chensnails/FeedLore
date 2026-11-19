@@ -125,6 +125,22 @@ export function createAuth(opts: CreateAuthOptions) {
       // 只替换 verify：新密码仍用 better-auth 默认 scrypt(r=16) 生成
       password: { verify: verifyPasswordHash },
     },
+    /* 业务字段：首次登录必须改密。
+     *
+     * 放在 additionalFields 而不是每次请求查库：getSession 会把它一起带回来，
+     * 中间件与前端都零额外往返。`input: false` 表示客户端不能通过
+     * /api/auth/update-user 之类把它改成 false 来绕过强制改密 —— 只有
+     * 服务端（/api/account 改密成功后）直接写库才能清掉这个标记。 */
+    user: {
+      additionalFields: {
+        mustChangePassword: {
+          type: 'boolean',
+          required: false,
+          defaultValue: false,
+          input: false,
+        },
+      },
+    },
     /* 登录统一走 /api/login（外层已按客户端 IP 限流），直连 /api/auth/sign-in/*
      * 在 app.ts 被拒。这里关掉 better-auth 的登录桶：它拿不到可信 IP 时会退化成
      * 全站共享的 3 次/10 秒桶，让一个人就能把所有人锁在门外。 */

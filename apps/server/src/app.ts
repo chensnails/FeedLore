@@ -107,15 +107,19 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
     return c.html(applyCspNonce(await injectBootLayout(html, c, deps), c.get('cspNonce')));
   });
 
-  /* 登录页是独立文档（v1 的 MPA 入口）。同样 no-cache：它是版本的另一个入口，
-   * 缓存住会让改过的登录逻辑在用户机器上「永远不生效」。
-   * 不再用 serveStatic：需要在响应前给内联脚本注入 CSP nonce。 */
-  app.use('/login.html', cache('no-cache'));
-  app.get('/login.html', async (c) => {
-    const html = await readFile(join(root, 'login.html'), 'utf8').catch(() => null);
-    if (html === null) return c.text('Not found', 404);
-    return c.html(applyCspNonce(html, c.get('cspNonce')));
-  });
+  /* 登录页 / 改密页是独立文档（v1 的 MPA 入口）。同样 no-cache：它们是版本的另一个
+   * 入口，缓存住会让改过的逻辑在用户机器上「永远不生效」。
+   * 不再用 serveStatic：需要在响应前给内联脚本注入 CSP nonce。
+   * ⚠️ 新增独立页面必须加进这张表，否则会落到 notFound 返回一段 JSON。 */
+  const PLAIN_PAGES = ['/login.html', '/change-password.html'];
+  for (const page of PLAIN_PAGES) {
+    app.use(page, cache('no-cache'));
+    app.get(page, async (c) => {
+      const html = await readFile(join(root, page), 'utf8').catch(() => null);
+      if (html === null) return c.text('Not found', 404);
+      return c.html(applyCspNonce(html, c.get('cspNonce')));
+    });
+  }
 
   /* 根级静态文件（PWA 的 manifest / service worker / 图标）。
    *

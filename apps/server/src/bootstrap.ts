@@ -6,8 +6,9 @@
  *      只重建 app 容器，库会停留在旧结构导致接口 500。迁移挪进启动流程后就不可能漏。
  *      失败**不退出**：外部托管库常无 DDL 权限，直接崩会把本来能跑的站点弄成起不来。
  *   2. AUTH_SECRET 补枚（见 lib/auth-secret.ts）：没设时生成并存 settings，重建会话不掉线。
- *   3. 空站点播种：没有任何账号时建初始管理员；随机口令加密落库 + 首启横幅打印一次
- *      （见 lib/initialPassword.ts）。
+ *   3. 空站点播种：没有任何账号时建初始管理员，密码固定为 INITIAL_ADMIN_PASSWORD
+ *      （ADMIN_PASS 可覆盖），并标记「首次登录必须改密」；首启横幅在监听后打印。
+ *      已有账号的站点只提示重置通道，不碰密码、不打标记。
  *
  * TZ=UTC 是硬约束：v2 的 timestamp 列按 UTC 壁钟存值，进程时区一变历史时间整体偏移。
  *
@@ -20,9 +21,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq, sql } from 'drizzle-orm';
 import { createDb, createPool, sessions, users } from '@feedlore/db';
+import { INITIAL_ADMIN_PASSWORD } from '@feedlore/contract';
 import { getAuth } from './auth';
 import { ensureAuthSecret } from './lib/auth-secret';
-import { newOneTimePassword, saveInitialAdmin, type InitialAdminCredential } from './lib/initialPassword';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -89,15 +90,15 @@ function migrateV2(url: string): void {
 }
 
 /**
- * 本次启动生成的初始凭据，供 index.ts 在**服务真正监听之后**打印首启横幅。
- * 只在空站点随机生成时设置；配了 ADMIN_PASS 的不算「一次性口令」，不进这里。
+ * 本次启动播种的初始管理员，供 index.ts 在**服务真正监听之后**打印首启横幅。
+ * 只在空站点新建账号时设置；已有账号的站点为 null（升级不产生任何横幅）。
  * 横幅必须在 listen 之后打：启动自举可能耗时，早打的横幅会被迁移日志埋掉。
  */
-let startupCredential: InitialAdminCredential | null = null;
-export function consumeStartupCredential(): InitialAdminCredential | null {
-  const c = startupCredential;
-  startupCredential = null;
-  return c;
+let startupAdmin: { username: string; customPassword: boolean } | null = null;
+export function consumeStartupAdmin(): { username: string; customPassword: boolean } | null {
+  const a = startupAdmin;
+  startupAdmin = null;
+  return a;
 }
 
 /** 空站点播种：没有任何账号时创建初始管理员（ADMIN_USER/ADMIN_PASS 可覆盖）。 */
@@ -112,21 +113,20 @@ async function ensureDefaultAdmin(): Promise<void> {
     return;
   }
   if (count > 0) {
-    /* 已有账号时不动密码，但必须把「为什么没有密码、怎么拿回来」喊清楚 ——
-     * 否则用户升级部署后只看到一堆启动日志、以为哪里配错了。
-     * 密码是哈希存的，日志里不可能回显明文；这里给的是重置通道。 */
-    log(`数据库已有 ${count} 个账号：沿用原有密码，跳过生成初始密码 / existing accounts found, keeping the current password (skipping generation)`);
+    /* 已有账号：**不动密码、不置强制改密标记**。这是升级路径的核心承诺 ——
+     * 老用户升级后照旧登录，不会被要求改密，权限也不变。
+     * 只把「忘记密码怎么救」喊清楚，否则升级部署后只看到一堆启动日志会以为配错了。 */
+    log(`数据库已有 ${count} 个账号：沿用原有密码，不重置、不要求改密 / existing accounts found, keeping the current password`);
     log('  忘记密码？在容器内执行 / forgot it? run inside the container:');
-    log('    docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset');
+    log('    docker exec -it feedlore initial-password --reset');
     return;
   }
 
   const username = process.env.ADMIN_USER?.trim() || 'admin';
-  /* 不再回落到 admin/admin：默认口令等于把刚部署、还没来得及改密的实例直接送人。
-   * 没设 ADMIN_PASS 时生成一次性随机密码：加密落库（24h 查询窗口），
-   * 明文只在启动横幅里出现一次，不再用 warn 长期留在 docker logs 里。 */
-  const configuredPassword = process.env.ADMIN_PASS?.trim();
-  const password = configuredPassword || newOneTimePassword();
+  /* 固定初始密码（contract 常量，文档里公开）。没设 ADMIN_PASS 时用它；
+   * 该账号带 must_change_password 标记，首次登录必须改密，改完这枚公开口令即失效。 */
+  const custom = process.env.ADMIN_PASS?.trim();
+  const password = custom || INITIAL_ADMIN_PASSWORD;
   try {
     const auth = getAuth(db);
     // 与 seed.ts 一致：better-auth 必须要有 email，登录标识仍是 username
@@ -138,9 +138,13 @@ async function ensureDefaultAdmin(): Promise<void> {
         username,
       } as never,
     });
-    await db.update(users).set({ role: 'admin' }).where(eq(users.username, username));
+    await db
+      .update(users)
+      .set({ role: 'admin', mustChangePassword: true })
+      .where(eq(users.username, username));
     /* 进程内 signUpEmail 会顺带签一张会话（better-auth 默认 autoSignIn），
-     * 但令牌没交给任何人；留着它会在「登录设备」里多出一台来路不明的设备。 */
+     * 但令牌没交给任何人；留着它会在「登录设备」里多出一台来路不明的设备。
+     * 顺带说明：让用户必须自己登录一次，改密标记才会在真实会话上生效。 */
     const created = await db
       .select({ id: users.id })
       .from(users)
@@ -152,25 +156,8 @@ async function ensureDefaultAdmin(): Promise<void> {
     return;
   }
 
-  if (!configuredPassword) {
-    /* 加密落库失败不能让站点起不来：口令已经在 signUpEmail 里生效，
-     * 至少启动横幅还会完整打印一次，管理员仍能登录进去改密。
-     * 这里刻意不把 password 写进任何 warn —— 那正是要消除的旧行为。 */
-    try {
-      startupCredential = await saveInitialAdmin(db, username, password);
-      log(`Empty site: created initial admin ${username}; one-time password saved (queryable for 24h via CLI)`);
-    } catch (e) {
-      startupCredential = {
-        username,
-        password,
-        generatedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 24 * 3600_000).toISOString(),
-      };
-      warn(`Initial admin created, but the password could not be saved for later query: ${(e as Error)?.message ?? e}`);
-    }
-  } else {
-    log(`Empty site: created the admin with ADMIN_USER=${username}`);
-  }
+  startupAdmin = { username, customPassword: Boolean(custom) };
+  log(`Empty site: created the initial admin "${username}"; the first sign-in must change the password`);
 }
 
 /* ============================ 主流程 ============================ */

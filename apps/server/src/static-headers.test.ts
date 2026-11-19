@@ -25,6 +25,8 @@ test('静态文件按档设缓存，且 compress 不会吞掉 Cache-Control', as
       '<p>' + 'x'.repeat(2048) + '</p></body></html>',
   );
   await writeFile(join(root, 'login.html'), '<html><body>' + 'y'.repeat(2048) + '</body></html>');
+  // 改密页是第二个独立文档入口：同样必须 no-cache，否则改过的逻辑永远不生效
+  await writeFile(join(root, 'change-password.html'), '<html><body>' + 'w'.repeat(2048) + '</body></html>');
   await writeFile(join(root, 'manifest.json'), '{"name":"t"}');
   await writeFile(join(root, 'sw.js'), '/* sw */' + 'z'.repeat(300));
   await writeFile(join(root, 'assets', 'a.js'), 'console.log(1);');
@@ -43,6 +45,7 @@ test('静态文件按档设缓存，且 compress 不会吞掉 Cache-Control', as
     const cases: Array<[string, string]> = [
       ['/', 'no-cache'],
       ['/login.html', 'no-cache'],
+      ['/change-password.html', 'no-cache'],
       ['/sw.js', 'no-cache'],
       ['/manifest.json', 'public, max-age=3600'],
       ['/assets/a.js', 'public, max-age=31536000, immutable'],

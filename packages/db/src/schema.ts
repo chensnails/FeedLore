@@ -64,6 +64,9 @@ export const users = pgTable('users', {
   banExpires: timestamp('ban_expires', { mode: 'date' }),
   // 业务扩展：布局/过滤/关注屏蔽/日报配置（每用户加密 LLM key 不在此，见 user_llm；外观存浏览器本机）
   prefs: jsonb('prefs').$type<Record<string, unknown>>().notNull().default({}),
+  /* 首次登录必须改密：只有「空站点首次启动」播种出来的初始管理员为 true，
+   * 改密成功后由 /api/account 置回 false。迁移默认 false，老账号升级后不受影响。 */
+  mustChangePassword: boolean('must_change_password').notNull().default(false),
   createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
 });

@@ -400,6 +400,17 @@ export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
             } catch (e) {
               console.warn('[account] failed to revoke other sessions:', (e as Error)?.message ?? e);
             }
+            /* 首次登录必须改密：改密成功即在库里清掉标记 —— 这是唯一的清除路径
+             * （better-auth 的 additionalFields 已设 input:false，客户端改不了它）。
+             * 二次确认写完再返回，避免「页面放行、下一跳又被 403」的抖动。 */
+            try {
+              await db
+                .update(users)
+                .set({ mustChangePassword: false, updatedAt: new Date() })
+                .where(eq(users.id, me.id));
+            } catch (e) {
+              return apiError(c, 'E_PASSWORD_UPDATE_FAILED', { detail: (e as Error)?.message ?? e });
+            }
           } catch (e) {
             return apiError(c, 'E_PASSWORD_UPDATE_FAILED', { detail: (e as Error)?.message ?? e });
           }

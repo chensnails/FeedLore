@@ -52,6 +52,14 @@ RUN pnpm install --prod --frozen-lockfile
 # 前端产物由阶段 1 拷入；WEB_ROOT 让 Hono 托管它（同源，无需 CORS）
 COPY --from=web /app/apps/web/dist ./apps/web/dist
 
+# 容器内短命令：docker exec -it feedlore initial-password [--reset] [--json]
+# 免去每次记 `pnpm --filter @feedlore/server ...` 的完整路径。
+# 镜像里源码由 tsx 直跑（不带 dist），所以这里只是转发一层，没有构建产物依赖。
+RUN printf '%s\n' '#!/bin/sh' \
+      'exec pnpm --filter @feedlore/server initial-password "$@"' \
+      > /usr/local/bin/initial-password \
+    && chmod +x /usr/local/bin/initial-password
+
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV WEB_ROOT=/app/apps/web/dist

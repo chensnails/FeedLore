@@ -1,74 +1,85 @@
 /**
- * 查询 / 重置管理员的一次性密码（仅容器内能跑，不开 HTTP 接口）。
+ * 初始管理员密码的说明与重置（仅容器内能跑，不开 HTTP 接口）。
  *
- *   docker exec -it feedlore pnpm --filter @feedlore/server initial-password
- *   docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset
+ *   docker exec -it feedlore initial-password           # 告诉你初始密码是什么
+ *   docker exec -it feedlore initial-password --reset   # 把它重置回初始密码
  *
- * 不带参数：查回「空站点首次启动、且没设 ADMIN_PASS」时生成的那枚口令，
- * 只有生成后 24 小时内可取（过期、已改密、显式配了密码都返回退出码 2）。
+ * 镜像把上面这条短命令装在 /usr/local/bin（见 Dockerfile），等价于
+ * `pnpm --filter @feedlore/server initial-password`；老镜像没有该命令时用完整形式。
  *
- * --reset：给已有站点用。生成一枚新随机口令、把管理员密码改成它、
- * 作废该账号的全部会话，并写进 24h 查询窗口，所以之后还能用不带参数的
- * 形式查回。适用于「忘了初始密码、日志也轮转没了」的救援场景 ——
- * 能执行 docker exec 的人本来就能改库，这不会扩大权限面。
+ * 初始密码是固定值（contract 的 INITIAL_ADMIN_PASSWORD），不存在「查不到」的情况；
+ * 因此不带参数时只是把它打印出来，附带「改过就失效、用 --reset 找回」的提示。
  *
- * 退出码：0 = 查到/重置成功；2 = 没有可查凭据（过期 / 已改密 / 显式配了密码）；
- *         1 = 连库失败等运行错误。便于脚本化判读。
+ * --reset：写出新哈希、把 must_change_password 重新置 true、作废该账号全部会话。
+ * 适用于「升级前的老账号忘了密码」与「初始密码被改掉后忘了新密码」两种救援场景 ——
+ * 能执行 docker exec 的人本来就能改库，这不扩大权限面。重置后那次登录同样必须先改密，
+ * 重置出来的公开口令不会长期有效。
+ *
+ * 退出码：0 = 成功；1 = 连库失败 / 用户不存在等运行错误。便于脚本化判读。
  */
 
 import { eq } from 'drizzle-orm';
 import { createDb, getPool, sessions, users } from '@feedlore/db';
-import { readInitialAdmin, formatRemaining, newOneTimePassword, saveInitialAdmin } from '../src/lib/initialPassword';
+import { INITIAL_ADMIN_PASSWORD } from '@feedlore/contract';
 import { ensureAuthSecret } from '../src/lib/auth-secret';
 import { getAuth } from '../src/auth';
 
 const wantJson = process.argv.includes('--json');
 const wantReset = process.argv.includes('--reset');
 
-function printCredential(username: string, password: string, expiresAt: string, note?: string): void {
-  const remaining = formatRemaining(expiresAt);
+function targetUsername(): string {
+  return process.env.ADMIN_USER?.trim() || 'admin';
+}
+
+function printCredential(name: string, reset: boolean): void {
   if (wantJson) {
-    console.log(JSON.stringify({ ok: true, username, password, expiresAt, remaining, reset: wantReset }));
+    console.log(JSON.stringify({ ok: true, username: name, password: INITIAL_ADMIN_PASSWORD, reset }));
     return;
   }
-  console.log(wantReset ? 'FeedLore 管理员密码已重置 / admin password reset' : 'FeedLore 初始管理员凭据 / initial admin credentials');
-  console.log(`  用户名 / username : ${username}`);
-  console.log(`  初始密码 / password: ${password}`);
-  console.log(`  查询窗口 / query window: ${remaining}（截至 ${expiresAt}）`);
-  if (note) console.log(`  ${note}`);
-  console.log('  请登录后立即修改密码。 / Sign in and change this password now.');
+  console.log(reset
+    ? 'FeedLore 管理员密码已重置 / admin password reset'
+    : 'FeedLore 初始管理员密码 / initial admin password');
+  console.log(`  用户名 / username : ${name}`);
+  console.log(`  初始密码 / password: ${INITIAL_ADMIN_PASSWORD}`);
+  console.log('');
+  if (reset) {
+    console.log('  旧会话已全部失效，请用上面的密码重新登录 —— 登录后必须先设置新密码。');
+    console.log('  All old sessions were revoked. Sign in with it, then set a new password.');
+  } else {
+    console.log('  这枚密码只在「首次部署、还没改过密码」时有效。改过之后请用 --reset 重置。');
+    console.log('  It only works before the first password change; use --reset to restore it.');
+  }
 }
 
 /**
- * 重置管理员密码：生成新口令 → better-auth 算哈希写库 → 作废旧会话 → 写 24h 查询窗口。
+ * 重置管理员密码：新哈希写库 → 重新置「必须改密」→ 作废旧会话。
  * 返回退出码。密码学全部交给 better-auth，这里不手写哈希。
  */
 async function resetPassword(url: string): Promise<number> {
   /* getAuth 需要 AUTH_SECRET：CLI 是新进程，启动自举没跑过，先从 settings 读进环境变量。 */
   await ensureAuthSecret(url);
   const db = createDb(url);
-  const username = process.env.ADMIN_USER?.trim() || 'admin';
+  const name = targetUsername();
 
   const [row] = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.username, username))
+    .where(eq(users.username, name))
     .limit(1);
   if (!row) {
-    console.error(`[initial-password] User "${username}" does not exist. Set ADMIN_USER to the account you want to reset.`);
+    console.error(`[initial-password] User "${name}" does not exist. Set ADMIN_USER to the account you want to reset.`);
     return 1;
   }
 
-  const password = newOneTimePassword();
   const auth = getAuth(db);
   try {
-    await auth.api.setUserPassword({ body: { userId: row.id, newPassword: password } });
+    await auth.api.setUserPassword({ body: { userId: row.id, newPassword: INITIAL_ADMIN_PASSWORD } });
   } catch (e) {
     /* setUserPassword 属于 admin 类接口，没有请求上下文时部分版本会要求会话；
      * 退化到内部适配器（同样是 better-auth 自己算哈希）。 */
     try {
       const ctx = await auth.$context;
-      const hash = await ctx.password.hash(password);
+      const hash = await ctx.password.hash(INITIAL_ADMIN_PASSWORD);
       await ctx.internalAdapter.updatePassword(row.id, hash);
     } catch (e2) {
       console.error(`[initial-password] failed to update the password: ${(e2 as Error)?.message ?? e2}`);
@@ -76,12 +87,15 @@ async function resetPassword(url: string): Promise<number> {
     }
   }
 
-  // 改密后作废该账号所有会话：旧 Cookie 不能继续用。
+  /* 重新置「首次登录必须改密」：重置出的是公开口令，不能让它长期有效。
+   * 同时作废该账号所有会话，旧 Cookie 不能继续用。 */
+  await db
+    .update(users)
+    .set({ mustChangePassword: true, updatedAt: new Date() })
+    .where(eq(users.id, row.id));
   await db.delete(sessions).where(eq(sessions.userId, row.id));
 
-  const cred = await saveInitialAdmin(db, username, password);
-  printCredential(cred.username, cred.password, cred.expiresAt,
-    '旧会话已全部失效，需要用上面的新密码重新登录。');
+  printCredential(name, true);
   return 0;
 }
 
@@ -92,26 +106,17 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  if (wantReset) return resetPassword(url);
-
-  let cred;
-  try {
-    cred = await readInitialAdmin(createDb(url));
-  } catch (e) {
-    console.error(`[initial-password] database error: ${(e as Error)?.message ?? e}`);
-    return 1;
+  if (wantReset) {
+    try {
+      return await resetPassword(url);
+    } catch (e) {
+      console.error(`[initial-password] database error: ${(e as Error)?.message ?? e}`);
+      return 1;
+    }
   }
 
-  if (!cred) {
-    const msg =
-      '[initial-password] No retrievable initial password. It may have expired (24h window), ' +
-      'already been used, or ADMIN_PASS was set at first start. Reset it from Settings → Account as admin.';
-    if (wantJson) console.log(JSON.stringify({ ok: false, error: msg }));
-    else console.error(msg);
-    return 2;
-  }
-
-  printCredential(cred.username, cred.password, cred.expiresAt);
+  /* 不带参数：不碰库，只把约定值说清楚。 */
+  printCredential(targetUsername(), false);
   return 0;
 }
 

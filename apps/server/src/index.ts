@@ -14,11 +14,11 @@
 import { serve } from '@hono/node-server';
 import { createDb, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
+import { INITIAL_ADMIN_PASSWORD } from '@feedlore/contract';
 import { APP_VERSION, HOST, PORT } from './env';
 import { getAuth } from './auth';
 import { createApp } from './app';
-import { bootstrap, consumeStartupCredential } from './bootstrap';
-import { formatRemaining, type InitialAdminCredential } from './lib/initialPassword';
+import { bootstrap, consumeStartupAdmin } from './bootstrap';
 import { startScheduler } from './lib/fetcher';
 import { startDigestScheduler } from './lib/digest';
 import { startAiTagScheduler } from './lib/aiTag';
@@ -31,16 +31,19 @@ let db: Db | null = null;
 let auth: AuthInstance | null = null;
 
 /**
- * 首启横幅：只在本次「空站点随机生成管理员口令」时打印一次。
+ * 首启横幅：只在本次「空站点播种初始管理员」时打印一次。
  *
- * 为什么在 listen 回调里打：启动自举可能跑几分钟（v1 大库迁移），早打的横幅
- * 会被迁移日志冲掉，用户还以为服务没起来。这里 print 时端口已确定可访问。
+ * 为什么在 listen 回调里打：启动自举可能耗时，早打的横幅会被迁移日志冲掉，
+ * 用户还以为服务没起来。这里 print 时端口已确定可访问。
  *
  * 访问地址优先读 PUBLIC_URL（反代域名 / 对外 IP:端口），没有就用容器内的
  * HOST:PORT —— 明确标注后者只在容器网络内可达，免得用户拿 0.0.0.0:3000 去浏览器。
- * 口令只出现在这一个横幅里，CLI 查询走 24h 窗口，见 lib/initialPassword.ts。
+ *
+ * 密码是公开的固定值（contract 的 INITIAL_ADMIN_PASSWORD），所以日志里写明文没有
+ * 额外泄露面；真正的保护是「首次登录必须改密」的服务端拦截。用 ADMIN_PASS 覆盖时
+ * 不打印明文（那是用户自己 .env 里的值，且会长期留在 docker logs 里）。
  */
-function printFirstRunBanner(c: InitialAdminCredential, port: number): void {
+function printFirstRunBanner(a: { username: string; customPassword: boolean }, port: number): void {
   const configured = process.env.PUBLIC_URL?.trim();
   const url = configured || (HOST === '0.0.0.0' || HOST === '::'
     ? `http://localhost:${port}`
@@ -52,17 +55,19 @@ function printFirstRunBanner(c: InitialAdminCredential, port: number): void {
   const line = (s: string): void => console.log(`  ${s}`);
   console.log('');
   console.log(rule);
-  line('FEEDLORE FIRST RUN / 首次启动凭据');
+  line('FEEDLORE FIRST RUN / 首次登录凭据');
   console.log(rule);
   line(`访问地址   ${url} ${note}`);
-  line(`初始用户名 ${c.username}`);
-  line(`初始密码   ${c.password}`);
+  line(`初始用户名 ${a.username}`);
+  line(a.customPassword
+    ? '初始密码   你在 ADMIN_PASS 里配置的那个密码（此处不回显）'
+    : `初始密码   ${INITIAL_ADMIN_PASSWORD}`);
   line('');
-  line('密码查询   docker exec -it feedlore pnpm --filter @feedlore/server initial-password');
-  line(`查询窗口   ${formatRemaining(c.expiresAt)}（生成于 ${c.generatedAt}）`);
+  line('⚠️ 首次登录后必须先设置新密码，改完才能使用其他功能。');
+  line('   （初始密码是公开的固定值，不改等于站点没上锁。）');
+  line('忘记密码   docker exec -it feedlore initial-password --reset');
   line('');
-  line('下一步：打开上面的地址 → 用初始用户名/密码登录 → 立刻在「设置 → 账户」改掉密码。');
-  line('提示：查询窗口过期后无法再取回密码，只能请管理员重置。');
+  line(`下一步：打开 ${url} → 用上面的用户名/密码登录 → 按提示设置新密码。`);
   console.log(rule);
   console.log('');
 }
@@ -159,9 +164,9 @@ async function main(): Promise<void> {
     console.log(
       `[v2] endpoints: GET /api/health, GET /api/session, POST /api/login, POST /api/logout, GET /api/feeds(user)`,
     );
-    /* 只打一次：bootstrap 在空站点随机生成口令时留下凭据，consume 后清空，
-     * 后续重启（账号已存在）不会再印横幅，也不会把口令留在滚动日志里。 */
-    const firstRun = consumeStartupCredential();
+    /* 只打一次：bootstrap 在空站点播种管理员时留下用户名，consume 后清空，
+     * 后续重启（账号已存在）不会再印横幅 —— 那时密码是用户自己的，没得可印。 */
+    const firstRun = consumeStartupAdmin();
     if (firstRun) printFirstRunBanner(firstRun, info.port);
   });
 }

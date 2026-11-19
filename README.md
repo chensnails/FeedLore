@@ -55,18 +55,17 @@ docker compose -f docker-compose.v2.release.yml up -d
 docker compose -f docker-compose.v2.release.yml logs -f app
 ```
 
-日志里出现 `FEEDLORE FIRST RUN` 横幅，其中 `初始密码` 一行就是口令；`Ctrl+C` 后用 `admin` 登录。
-只想看横幅而不想翻整屏日志：
+部署完打开 `http://<主机>:3210`，用初始用户名 `admin` / 初始密码 `Admin2026` 登录。
+**首次登录必须先设置新密码**，改完才能使用其他功能 —— 这条由服务端强制，不是提示：
+未改密时除改密接口外的请求一律返回 403。初始密码是公开值，改掉之前站点等于没上锁。
+
+日志里出现 `FEEDLORE FIRST RUN` 横幅即表示初始化完成（密码是固定的，横幅只是确认部署成功）：
 
 ```bash
 docker compose -f docker-compose.v2.release.yml logs app | grep -A6 'FEEDLORE FIRST RUN'
 ```
 
-错过横幅（`up -d` 已经跑完）也随时能查回，24 小时内有效：
-
-```bash
-docker exec -it feedlore pnpm --filter @feedlore/server initial-password
-```
+忘记初始密码、或已经改过又忘了：见下方「忘记密码」。
 
 ### 已有站点升级
 
@@ -90,15 +89,17 @@ docker pull ghcr.io/chensnails/feedlore:2.5.3
 V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose -f docker-compose.v2.release.yml up -d
 ```
 
-把 `2.5.3` 换成目标版本。密码与数据不变。
+把 `2.5.3` 换成目标版本。密码与数据不变；**已有账号不会被要求改密**，登录态和权限也不受影响
+（强制改密只挂在全新部署创建的那个 `admin` 上，升级时不会给任何老账号打标记）。
 
 ### 忘记密码
 
 ```bash
-docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset
+docker exec -it feedlore initial-password --reset
 ```
 
-访问 `http://<主机>:3210`。
+重置为 `Admin2026`，该账号所有旧会话立即作废；用它登录后同样必须先设置新密码。
+旧镜像没有 `initial-password` 这条短命令时，换成 `pnpm --filter @feedlore/server initial-password --reset`。
 
 ## 配置与升级
 

@@ -105,6 +105,16 @@ export async function apiFetch(url, opts = {}) {
         location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
         throw new Error('未登录');
       }
+      /* 首次登录未改密：服务端对所有业务接口回 403 E_PASSWORD_CHANGE_REQUIRED。
+       * 这里统一把人送到改密页 —— 各调用方自己弹「未授权」只会让人以为账号坏了。
+       * clone() 读码不消费原响应体，调用方拿到 res 仍能正常解析。 */
+      if (res.status === 403 && !o.skipPasswordGate) {
+        const body = await res.clone().json().catch(() => null);
+        if (body && body.error === 'E_PASSWORD_CHANGE_REQUIRED') {
+          location.replace('/change-password.html');
+          throw new Error('需要先修改初始密码');
+        }
+      }
       if (i + 1 < attempts && idempotent && isRetryableStatus(res.status)) {
         lastErr = new Error('HTTP ' + res.status);   // 不消费 body，留给最终那次响应
       } else {

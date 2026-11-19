@@ -42,6 +42,7 @@ export const API_ERROR_CODES = [
   'E_USER_CREATE_FAILED',
   'E_USER_NOT_PERSISTED',
   'E_PASSWORD_UPDATE_FAILED',
+  'E_PASSWORD_CHANGE_REQUIRED',
   'E_SESSION_NOT_FOUND',
   'E_CANNOT_REVOKE_CURRENT',
   'E_BACKUP_IN_PROGRESS',
@@ -163,6 +164,12 @@ export const API_ERROR_DEFAULTS = {
   E_USER_CREATE_FAILED: { status: 400, message: 'Failed to create the user' },
   E_USER_NOT_PERSISTED: { status: 500, message: 'Failed to create the user: it is not in the database' },
   E_PASSWORD_UPDATE_FAILED: { status: 400, message: 'Failed to change the password' },
+  /* 首次登录必须改密：拦截所有业务接口，只放行改密与读取会话状态。
+   * 前端收到该码应跳到 /change-password.html，而不是当成普通权限错误弹提示。 */
+  E_PASSWORD_CHANGE_REQUIRED: {
+    status: 403,
+    message: 'The initial password must be changed before using the site',
+  },
   E_SESSION_NOT_FOUND: { status: 404, message: 'Device session not found' },
   E_CANNOT_REVOKE_CURRENT: {
     status: 400,

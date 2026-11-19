@@ -38,6 +38,7 @@ const CN = {
   E_USER_CREATE_FAILED: '创建失败',
   E_USER_NOT_PERSISTED: '创建失败：用户未落库',
   E_PASSWORD_UPDATE_FAILED: '改密失败',
+  E_PASSWORD_CHANGE_REQUIRED: '请先修改初始密码，改完才能继续使用',
   E_SESSION_NOT_FOUND: '这台设备已不在登录列表中',
   E_CANNOT_REVOKE_CURRENT: '不能在这里退出当前设备，请用「退出登录」',
   E_BACKUP_IN_PROGRESS: '已经有一份整站备份在生成，等它完成后再试',

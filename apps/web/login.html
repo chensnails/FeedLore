@@ -72,7 +72,9 @@
     <button type="submit" id="submitBtn">登 录</button>
     <div class="error" id="error" role="alert" aria-live="assertive"></div>
 
-    <p class="tip">首次部署的初始密码见容器启动日志（也可用 <code>ADMIN_PASS</code> 指定），登录后请及时修改</p>
+    <!-- 初始密码是 contract 里的固定常量（INITIAL_ADMIN_PASSWORD），登录页是独立 HTML，
+         拿不到模块，这里硬编码一份；改常量时两处一起改（回归由 e2e 文案断言守着）。 -->
+    <p class="tip">首次部署的初始密码为 <code>Admin2026</code>（可用 <code>ADMIN_PASS</code> 指定），登录后必须先修改才能使用</p>
   </form>
 
 <script>
@@ -199,6 +201,12 @@
         // 跳转是整文档导航：按钮文字先切过去，主站的启动层会接住下一段空白
         entering = true;
         btn.textContent = '正在进入…';
+        /* 首次部署的初始账号：服务端要求先改密，直接去改密页，
+           不先跳首页再被 403 弹回来（那一下会闪出半截主界面）。 */
+        if (data.mustChangePassword) {
+          location.replace('/change-password.html');
+          return;
+        }
         const next = new URLSearchParams(location.search).get('next');
         location.replace(safeNext(next));
         return;

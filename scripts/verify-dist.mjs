@@ -31,6 +31,13 @@ check(/<link[^>]+rel="manifest"[^>]+href="\/manifest\.json"/.test(html), 'index.
 check(/<meta[^>]+name="theme-color"/.test(html), 'index.html 有 theme-color');
 check(/<meta[^>]+name="color-scheme"[^>]*content="light dark"/.test(html), 'index.html 有 color-scheme 兜底');
 
+/* 两个独立文档入口（登录 / 首次登录强制改密）：忘了在 vite 的 input 里登记时，
+ * 它们不会进 dist，线上直接 404 —— 而 index.html 看起来完全正常，
+ * 只有走登录或改密的人才会撞上，最容易漏。 */
+for (const page of ['login.html', 'change-password.html']) {
+  check(existsSync(join(DIST, page)), `${page} 存在（独立文档入口）`);
+}
+
 // 静态资源必须带内容哈希：固定名会被 CDN/浏览器缓存住，导致「新 HTML + 旧 CSS」
 const assets = html.match(/\/assets\/[A-Za-z0-9._-]+/g) ?? [];
 const unhashed = assets.filter((a) => /\/assets\/(index|main|style)\.(js|css)$/.test(a));

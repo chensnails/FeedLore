@@ -28,7 +28,7 @@ import assert from 'node:assert/strict';
 import { gunzipSync } from 'node:zlib';
 import { sql, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { createDb, feeds as feedsTable, entries as entriesTable } from '@feedlore/db';
+import { createDb, feeds as feedsTable, entries as entriesTable, users } from '@feedlore/db';
 import { createAuth } from '@feedlore/auth';
 import { ENCRYPTED_PREFIX, decryptSecret, getCryptoSecret } from '@feedlore/ai';
 import {
@@ -526,6 +526,56 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         '其它设备应被踢下线',
       );
       await loginAs(name, 'self-pass-5678');
+    });
+
+    /* ---------------------------------------------------------------- 首次登录强制改密 */
+    await t.test('首次登录必须改密：业务接口 403，改密后恢复且标记清除', async () => {
+      const name = `itest_first_${Date.now().toString(36)}`;
+      const created = await call('/api/users', {
+        method: 'POST',
+        json: { username: name, password: 'first-pass-1234', role: 'user' },
+      });
+      assert.equal(created.status, 200);
+
+      /* 模拟空站点播种：正常由 bootstrap 在创建初始管理员时写这个标记。
+       * 这里直接改库，避免为了一个用例去跑整段启动自举。 */
+      await db.update(users).set({ mustChangePassword: true }).where(eq(users.username, name));
+      try {
+        const cookie = await loginAs(name, 'first-pass-1234');
+
+        const blocked = await app.request('/api/feeds', { headers: { cookie } });
+        assert.equal(blocked.status, 403, '未改密时业务接口应 403');
+        assert.equal((await blocked.json() as { error?: string }).error, 'E_PASSWORD_CHANGE_REQUIRED');
+
+        /* 会话状态必须仍可读：改密页靠它决定自己该不该在，否则会被自己的 403 挡住。 */
+        const before = parse(
+          SessionSchema,
+          await (await app.request('/api/session', { headers: { cookie } })).json(),
+          'GET /api/session',
+        );
+        assert.equal(before.mustChangePassword, true);
+
+        const changed = await app.request('/api/account', {
+          method: 'POST',
+          headers: { origin: ORIGIN, cookie, 'content-type': 'application/json' },
+          body: JSON.stringify({ currentPassword: 'first-pass-1234', newPassword: 'first-pass-5678' }),
+        });
+        assert.equal(changed.status, 200, '改密接口必须放行');
+
+        assert.equal(
+          (await app.request('/api/feeds', { headers: { cookie } })).status,
+          200,
+          '改密后业务接口应恢复',
+        );
+        const after = parse(
+          SessionSchema,
+          await (await app.request('/api/session', { headers: { cookie } })).json(),
+          'GET /api/session',
+        );
+        assert.equal(after.mustChangePassword, false, '改密成功后标记必须清除');
+      } finally {
+        await db.update(users).set({ mustChangePassword: false }).where(eq(users.username, name));
+      }
     });
 
     /* ---------------------------------------------------------------- 设备管理 */

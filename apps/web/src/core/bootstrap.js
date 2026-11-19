@@ -100,6 +100,12 @@ async function waitViewFirstPaint(tab) {
   }
   state.username = s.username;
   state.role = s.role || 'user';
+  /* 首次部署的初始账号还没改密：直接送去改密页，不渲染主界面。
+   * 这层只是体验（不闪一下首页再被 403 弹回）；真拦截在服务端 requireAuth。 */
+  if (s.mustChangePassword) {
+    location.replace('/change-password.html');
+    return;
+  }
   applyRoleUI();
 
   if (feedsRes.status === 'rejected') {

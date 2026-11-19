@@ -54,7 +54,13 @@ export const auth = {
     path: '/api/login',
     auth: 'public',
     body: loginBody,
-    response: z.object({ ok: z.boolean(), username: z.string(), role: C.RoleSchema }),
+    response: z.object({
+      ok: z.boolean(),
+      username: z.string(),
+      role: C.RoleSchema,
+      /** 登录后是否必须先改密（首次部署的初始账号为 true）。 */
+      mustChangePassword: z.boolean(),
+    }),
   },
   logout: {
     method: 'post',
