@@ -73,10 +73,11 @@ async function ensureDefaultAdmin(): Promise<void> {
     return;
   }
   if (count > 0) {
-    /* 已有账号时不动密码，但要把「怎么拿到密码」喊出来 —— 否则用户升级部署后
-     * 只看到一堆启动日志、找不到凭据。口令是哈希存的，这里给的是重置通道。 */
-    log(`Existing site (${count} account${count === 1 ? '' : 's'}): admin password unchanged.`);
-    log('  Forgot it? Run inside the container:');
+    /* 已有账号时不动密码，但必须把「为什么没有密码、怎么拿回来」喊清楚 ——
+     * 否则用户升级部署后只看到一堆启动日志、以为哪里配错了。
+     * 密码是哈希存的，日志里不可能回显明文；这里给的是重置通道。 */
+    log(`数据库已有 ${count} 个账号：沿用原有密码，跳过生成初始密码 / existing accounts found, keeping the current password (skipping generation)`);
+    log('  忘记密码？在容器内执行 / forgot it? run inside the container:');
     log('    docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset');
     return;
   }
