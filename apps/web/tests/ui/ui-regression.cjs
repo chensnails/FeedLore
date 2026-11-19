@@ -2230,24 +2230,33 @@ const withEFP = (el, fn) => {
 (async () => {
   await sleep(60);
   const results = [];
+  /* V4.0：每条用例打上类别标签，报告时分成「行为测试」与「架构契约」两组。
+   * 判定依据：函数体读源码文本（fs.readFileSync / readFile）即为架构契约守卫 —— 它钉的是
+   * 「源码/CSS 长这样」，不是用户可见行为。V4 后续重构会重命名模块、换掉自研实现，
+   * 这类守卫的红灯是「预期契约变更」的信号，和行为回归要分开看，避免混在一起误判。
+   * 用函数源码静态判定，不改任何一条既有用例。 */
+  const kindOf = (fn) =>
+    /\breadFileSync\b|\breadFile\b/.test(String(fn)) ? 'contract' : 'behavior';
   const t = (name, fn) => {
+    const kind = kindOf(fn);
     try {
       fn();
-      results.push(['PASS', name]);
+      results.push(['PASS', name, kind]);
     } catch (e) {
-      results.push(['FAIL', name + ' —— ' + e.message]);
+      results.push(['FAIL', name + ' —— ' + e.message, kind]);
     }
   };
   /* 异步用例必须排队串行（用 ta 注册）：它们会临时替换 fetch 桩、改共享 state，
      并发启动会互相踩桩 —— 表现为「同一份代码这次过、下次挂」的假失败。 */
   let pending = Promise.resolve();
   const ta = (name, fn) => {
+    const kind = kindOf(fn);
     pending = pending.then(async () => {
       try {
         await fn();
-        results.push(['PASS', name]);
+        results.push(['PASS', name, kind]);
       } catch (e) {
-        results.push(['FAIL', name + ' —— ' + (e && e.message)]);
+        results.push(['FAIL', name + ' —— ' + (e && e.message), kind]);
       }
     });
     return pending;
@@ -12711,7 +12720,17 @@ const withEFP = (el, fn) => {
     if (s === 'FAIL') fail++;
     console.log(s, n);
   });
+  const byKind = (kind) => results.filter((r) => (r[2] || 'behavior') === kind);
+  const behavior = byKind('behavior');
+  const contract = byKind('contract');
+  const countFail = (rows) => rows.filter((r) => r[0] === 'FAIL').length;
   console.log(`\n共 ${results.length} 项，通过 ${results.length - fail}，失败 ${fail}`);
+  console.log(
+    `  ├ 行为测试 ${behavior.length} 项（DOM/API 真实交互）：通过 ${behavior.length - countFail(behavior)}，失败 ${countFail(behavior)}`,
+  );
+  console.log(
+    `  └ 架构契约 ${contract.length} 项（读源码/CSS 文本；重构期红灯=预期契约变更，需人工确认）：通过 ${contract.length - countFail(contract)}，失败 ${countFail(contract)}`,
+  );
   process.exit(fail ? 1 : 0);
 })().catch((e) => {
   console.error('FATAL', e);
