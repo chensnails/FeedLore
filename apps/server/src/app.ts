@@ -76,7 +76,7 @@ export interface AppDeps {
 /**
  * 托管前端产物（同一容器、同源部署，因此不需要 CORS，Cookie 也是同站的）。
  *
- * 缓存策略遵循 v1.x 的 CDN 铁律：
+ * 缓存策略遵循既有的 CDN 铁律：
  * - `assets/*` 由 Vite 打上内容哈希 → immutable，可长缓存；
  * - `index.html` 无哈希 → no-cache，否则新 HTML 配旧 JS/CSS（1.4.0 搜索框事故）。
  */
@@ -95,7 +95,7 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
   app.use('/assets/*', serveStatic({ root }));
 
   app.use('/', cache('no-cache'));
-  /* 已登录访问首页：把该账号的布局注入 <head>（与 v1 同款）。
+  /* 已登录访问首页：把该账号的布局注入 <head>。
    *
    * 外观（主题 / 字号 / 正文排版）只存在浏览器本机，服务端不再注入；
    * 布局（视图 / 排序 / 侧栏宽度 / 折叠分组）仍按账号走 —— 前端启动只认
@@ -107,7 +107,7 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
     return c.html(applyCspNonce(await injectBootLayout(html, c, deps), c.get('cspNonce')));
   });
 
-  /* 登录页 / 改密页是独立文档（v1 的 MPA 入口）。同样 no-cache：它们是版本的另一个
+  /* 登录页 / 改密页是独立文档（MPA 入口）。同样 no-cache：它们是版本的另一个
    * 入口，缓存住会让改过的逻辑在用户机器上「永远不生效」。
    * 不再用 serveStatic：需要在响应前给内联脚本注入 CSP nonce。
    * ⚠️ 新增独立页面必须加进这张表，否则会落到 notFound 返回一段 JSON。 */
@@ -185,7 +185,7 @@ export async function injectBootLayout(html: string, c: Context<AppEnv>, deps: A
 export function createApp({ db, auth }: AppDeps) {
   const app = new Hono<AppEnv>();
 
-  /* 文本响应 gzip（v1 的 server.js 一直有，v2 迁移时漏了）。
+  /* 文本响应 gzip。
    * CSS / JS / HTML 在弱网下是最大的一笔首屏成本：不压缩等于把 100KB+ 原样发出去。
    * compress 只对文本型 content-type 生效，图片（/api/img）本身已压缩会被跳过。 */
   app.use(compress());

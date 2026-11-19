@@ -124,7 +124,7 @@ if (cssFile) {
   // 阅读层令牌：正文排版全靠这几个变量，被改名/删掉会让设置项变成死开关
   check(/--reader-fs/.test(css), 'CSS 含 --reader-fs 令牌');
   check(/--reader-width/.test(css), 'CSS 含 --reader-width 令牌');
-  // 抽屉：窄屏导航的唯一实现方式（v1 用 body 上的状态类 + 侧栏位移）
+  // 抽屉：窄屏导航的唯一实现方式（早期用 body 上的状态类 + 侧栏位移）
   check(/body\.reader-drawer-open \.reader-side/.test(css), 'CSS 含阅读页抽屉展开态（body.reader-drawer-open .reader-side）');
   check(/body\.cards-drawer-open \.cards-side/.test(css), 'CSS 含卡片页抽屉展开态（body.cards-drawer-open .cards-side）');
 
@@ -133,13 +133,13 @@ if (cssFile) {
   check(/@keyframes *cardIn\b/.test(css), '卡片入场错峰 cardIn 关键帧在产物里');
   check(/\.mini-tag/.test(css), '正文标签按钮 .mini-tag 在（阅读层点标签筛列表的唯一入口）');
 
-  // v1 后续版本删掉的东西必须也不在（被哪轮顺手加回来，这里拦住）
+  // 已下线功能必须也不在（被哪轮顺手加回来，这里拦住）
   check(!/\.tag-btn/.test(css), 'CSS 无已删除的 .tag-btn（顶部标签云）');
   check(!/\.tag-bar/.test(css), 'CSS 无已删除的 .tag-bar');
   check(!/\.reader-nav[^-a-z]/.test(css), 'CSS 无已删除的 .reader-nav（阅读层翻篇）');
 
   /* 玻璃模糊预算：只有两个全屏遮罩（.modal-mask / .cmdk-mask）允许模糊。
-   * 滚动容器与长列表每帧重采样必掉帧 —— 这是 v1 用性能实测换来的规矩。
+   * 滚动容器与长列表每帧重采样必掉帧 —— 这是性能实测换来的规矩。
    * 2 个类 × 标准属性 + webkit 双写 = 4 条声明。 */
   const blurDecls = (css.match(/backdrop-filter:\s*blur\(/g) ?? []).length;
   check(blurDecls <= 4, `活跃 backdrop-filter 声明 ${blurDecls} 条（≤4：两个遮罩 × webkit 双写）`);
@@ -148,7 +148,7 @@ if (cssFile) {
 /* ---------------- JS 侧：阅读层标签入口 ---------------- */
 const jsRef = html.match(/\/assets\/index-[A-Za-z0-9._-]+\.js/)?.[0];
 const js = jsRef ? readFileSync(join(DIST, jsRef.replace(/^\//, '')), 'utf8') : '';
-/* 阅读层正文标签是筛列表的唯一入口（v1.6.0 撤掉顶部标签云后）。
+/* 阅读层正文标签是筛列表的唯一入口（顶部标签云已撤掉）。
  * core 导出对象的属性名不会被压缩，掉了说明桥接断了。 */
 check(/readerTagToCards/.test(js), 'core 暴露 readerTagToCards（阅读层点标签筛列表的桥）');
 check(/feedlore\.appearance\.v2/.test(js), '外观偏好读写本机 feedlore.appearance.v2');

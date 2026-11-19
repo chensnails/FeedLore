@@ -4,7 +4,7 @@ import { IdSchema, IsoDateTime, RoleSchema } from './common';
 /**
  * @feedlore/contract — 领域模型
  * 对应 legacy `lib/dto.js` 的 `toFeedDto` / `toCard` 输出，以及各偏好 sanitize 后的结构。
- * 字段命名与 v1.x 响应保持一致（下个落地的 Hono 层需满足这些 schema），便于平滑切换。
+ * 字段命名与既有响应保持一致，便于平滑切换。
  */
 
 /* ============================ 频道（Feed） ============================ */
@@ -45,7 +45,7 @@ export type Feed = z.infer<typeof FeedSchema>;
 /**
  * 阅读页正文的结构化块（bodyVersion = 2）。
  *
- * 为什么不是 HTML：v1 把正文压成「纯文本段落 + 图片」，标题 / 列表 / 引用 / 代码 /
+ * 为什么不是 HTML：早期把正文压成「纯文本段落 + 图片」，标题 / 列表 / 引用 / 代码 /
  * 正文链接全丢；直接存原文 HTML 又会把 XSS 面重新打开。这里只保留**语义**，
  * 前端用 React 组件渲染，样式仍由本站主题控制（暗色、字号、行宽都能统一）。
  *

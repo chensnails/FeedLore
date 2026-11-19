@@ -1,11 +1,11 @@
 /**
  * FeedLore v2 —— apps/server（Hono）进程入口。
  *
- * 只做副作用：自举（1.x → v2 零配置切换）、连库、初始化 better-auth、装配 app、监听端口。
+ * 只做副作用：自举（建库 / 结构迁移 / 密钥 / 播种）、连库、初始化 better-auth、装配 app、监听端口。
  * 路由与类型在 app.ts（那里导出的 AppType 供前端 hc 推导）。
  *
- * - 启动前先跑 `bootstrap()`：DATABASE_URL 指向 1.x 库时自动完成建库/迁移/校验，
- *   并把连接串改写成新库；普通 v2 站点只是补一枚零配置 AUTH_SECRET（见 bootstrap.ts）。
+ * - 启动前先跑 `bootstrap()`：目标库不存在时先建库，再做结构迁移、补一枚零配置
+ *   AUTH_SECRET、空站点播种（见 bootstrap.ts）。
  * - DATABASE_URL 缺失时仍启动（健康检查报 db.ready=false），便于容器排错。
  * - 鉴权交给 better-auth：其自带 /api/auth/** 直接挂载，业务侧另按契约提供
  *   /api/login、/api/logout、/api/session。
@@ -86,8 +86,8 @@ function scheduleImagePrune(database: Db): void {
 }
 
 async function main(): Promise<void> {
-  /* 自举可能耗时数分钟（大库迁移）。失败就退出，让容器重启重试 ——
-   * 迁移是幂等的，重启不会写出半套数据；1.x 的库全程只读。 */
+  /* 自举可能耗时数分钟（结构迁移）。失败就退出，让容器重启重试 ——
+   * 迁移是幂等的，重启不会写出半套数据。 */
   await bootstrap();
   const databaseUrl = process.env.DATABASE_URL?.trim() ?? '';
 

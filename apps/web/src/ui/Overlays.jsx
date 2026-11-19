@@ -5,7 +5,7 @@
  * ui.lightboxState）并派发 `__overlaysTick`，本组件监听后重读快照重绘 —— 与顶栏
  * `__shellTick` 同一套范式。
  *
- * v1.3.8-test2 起：确认框也住在这里（替代原生 confirm / prompt），toast 补了
+ * 确认框也住在这里（替代原生 confirm / prompt），toast 补了
  * role="status" / aria-live，不再有「屏幕阅读器听不到保存成功」的问题。
  */
 import React, { useEffect, useRef, useState } from 'react';
@@ -17,7 +17,7 @@ import { registerLayer } from './overlayStack.js';
 const S = () => core;
 
 /* 覆盖层渲染 toast / 新内容浮标 / 图片灯箱 / 确认框。
- * 快捷键说明自 v1.1.7 起迁至 设置 → 帮助 面板，不再在此渲染浮层。 */
+ * 快捷键说明迁至 设置 → 帮助 面板，不再在此渲染浮层。 */
 
 function ConfirmDialog({ c }) {
   const valueRef = useRef(null);

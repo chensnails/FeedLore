@@ -35,11 +35,11 @@ function inlineCriticalShell(): Plugin {
 }
 
 /**
- * 多页面应用（MPA），与 v1 一致：
+ * 多页面应用（MPA）：
  *   index.html  主站（阅读 / 卡片 / AI / 设置）
  *   login.html  登录页（独立文档，内联脚本，只为把 login.css 纳入打包）
  *
- * `@core` 是 v1 的核心逻辑单例（src/core/index.js），组件统一 `import { core } from '@core'`。
+ * `@core` 是核心逻辑单例（src/core/index.js），组件统一 `import { core } from '@core'`。
  * 开发态仍把 /api 代理到本地 Hono（3000），生产由同一容器静态托管，前端不写绝对地址。
  */
 export default defineConfig({

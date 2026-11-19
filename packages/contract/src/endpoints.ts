@@ -8,7 +8,7 @@ import * as M from './models';
  * 这是前后端唯一真相源的第一份完整草稿，从 apps/legacy/server.js 的真实路由反推而来。
  * 每个端点声明：方法、路径、鉴权级别、请求查询/体、响应 schema。
  * 后续 Hono 层用 `app` 满足这些 schema，前端 `hc<typeof app>` 据此生成类型化客户端，
- * 从而彻底取代 v1.x 的 `core` 字符串事件 + 全局可变 state。
+ * 从而彻底取代 `core` 字符串事件 + 全局可变 state。
  */
 
 export type HttpMethod = 'get' | 'post' | 'patch' | 'put' | 'delete';
@@ -409,7 +409,7 @@ export const entriesQuery = z.object({
    * 几百个频道（每个 id + 逗号约 10 字符），正常分组筛选远到不了。 */
   feeds: z.string().max(4000).optional(),
   /* name = 按标题排。契约里必须有这一档：LEGACY 的 layout.sort 就写着 new/old/name，
-   * 只让服务端支持前两档的话，v1 用户存了 name 的账号迁过来会静默退回「新→旧」——
+   * 只让服务端支持前两档的话，存了 name 的账号会静默退回「新→旧」——
    * 设置里显示「按名称」而列表按时间排，是最难查的那类不一致。 */
   sort: z.enum(['new', 'old', 'name']).optional(),
 });

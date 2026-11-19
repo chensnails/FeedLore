@@ -1,7 +1,7 @@
 /* 独立文档入口：只为把 login.css 纳入 Vite 打包（产物带内容哈希）。
  * login.html 与 change-password.html 都是纯 HTML + 内联脚本、没有 React，
  * 两者共用这一份卡片外观，所以共用一个入口。
- * v1.5.0：login.css 从 public/ 移入 src/ —— 此前固定路径 /login.css
+ * login.css 从 public/ 移入 src/ —— 此前固定路径 /login.css
  * 会被 CDN 缓存 1~4 小时，与主站同样的版本错配风险。 */
 import './login.css';
 import { errorText } from './core/errorText.js';

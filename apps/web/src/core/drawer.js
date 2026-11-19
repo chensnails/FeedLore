@@ -1,6 +1,6 @@
 /* 笺川核心逻辑 · 移动端侧滑抽屉手势（文章页 / 卡片页共用）
  *
- * v1.3.10 起从 reader.js 抽出来：卡片页也有了频道抽屉，两页的手势规则一模一样，
+ * 从 reader.js 抽出来：卡片页也有了频道抽屉，两页的手势规则一模一样，
  * 没有理由各写一份。差异只在「用哪个抽屉」——由 state.tab 决定：
  *   reader → #readerSide / #readerMask / body.reader-drawer-open
  *   cards  → #cardsSide  / #cardsMask  / body.cards-drawer-open

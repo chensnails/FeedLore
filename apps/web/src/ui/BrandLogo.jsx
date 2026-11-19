@@ -1,4 +1,4 @@
-/* 品牌 logo（笺川）：v1.6.0 起不再挂在顶栏，而是放到底部频道栏顶部。
+/* 品牌 logo（笺川）：放在底部频道栏顶部。
  * 颜色走 --accent / --logo-fg 令牌，三主题自适应；尺寸由 .brand-logo / .side-brand 控制。 */
 export function BrandLogo({ className = '' }) {
   return (

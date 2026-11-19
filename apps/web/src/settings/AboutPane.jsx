@@ -1,7 +1,7 @@
-/* 设置弹层「关于」面板（v1.3.0 起 React 化，原 index.html 内联 DOM + app.js 绑定迁移至此）。
+/* 设置弹层「关于」面板（原 index.html 内联 DOM + app.js 绑定迁移至此）。
  * 行为与旧实现等价：进入面板拉一次 /api/version，检查更新 POST /api/version/check，
  * 三态结果（upd / ok / err）复用旧 test-result 类名，样式零改动。
- * v1.1.0：新增「一键更新」（POST /api/update → watchtower 拉镜像重启，仅管理员）：
+ * 新增「一键更新」（POST /api/update → watchtower 拉镜像重启，仅管理员）：
  * 触发后轮询 /api/version 直到版本号变化（请求失败视为容器重启中），完成后刷新。 */
 
 import { core } from '@core';
@@ -57,7 +57,7 @@ export function AboutPane() {
     }
   };
 
-  /* 一键更新（v1.1.0）：触发 watchtower 立即检查 → 拉新镜像 → 重启容器。
+  /* 一键更新：触发 watchtower 立即检查 → 拉新镜像 → 重启容器。
    * 轮询 /api/version 直至版本号变化；期间请求失败 = 容器正在重启，继续等。 */
   const doUpdate = async () => {
     const ok = await S().confirm({

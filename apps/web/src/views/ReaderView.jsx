@@ -1,4 +1,4 @@
-/* 文章（reader）视图（v1.9.0 起 React 化，原 index.html 的 #readerView 内联 DOM +
+/* 文章（reader）视图（已 React 化，原 index.html 的 #readerView 内联 DOM +
  * app.js 的阅读页渲染迁移至此，P3c）。
  *
  * 迁移策略（沿用 CardsView 的「共享状态 + tick」约定）：
@@ -197,7 +197,7 @@ function Inline({ nodes }) {
   });
 }
 
-/** 块级节点。列表 / 引用内部递归复用；连续图片合并成图集（与 v1 一致）。 */
+/** 块级节点。列表 / 引用内部递归复用；连续图片合并成图集。 */
 function RichBlocks({ blocks }) {
   const out = [];
   for (let i = 0; i < blocks.length; i++) {
@@ -762,7 +762,7 @@ export function ReaderView() {
     <>
       <div className="reader-mask" id="readerMask" onClick={() => s.readerCloseDrawer && s.readerCloseDrawer()} />
       <aside className="reader-side" id="readerSide">
-        {/* 品牌 logo 移到频道栏顶部（v1.6.0：顶栏并入内容行后，品牌标识落在这里） */}
+        {/* 品牌 logo 在频道栏顶部（顶栏并入内容行后的位置） */}
         <div className="side-brand">
           <BrandLogo />
           <span className="side-brand-name">笺川</span>

@@ -11,7 +11,7 @@ import type { AppEnv } from '../middleware/auth';
 
 /**
  * 内联脚本一律用 nonce 放行（HTML 入口里都有首屏主题脚本，注入的偏好脚本也是内联的）。
- * 样式仍允许 inline：v1 的样式注入大量依赖 style 属性与内联 <style>。
+ * 样式仍允许 inline：界面样式注入大量依赖 style 属性与内联 <style>。
  * 图片全部经 /api/img 同源代理，因此 img-src 不需要放行外部域。
  */
 const CSP_TEMPLATE = [

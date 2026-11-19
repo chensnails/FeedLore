@@ -79,11 +79,11 @@ P3 实现时优先前者，限流状态存进程内存（单实例部署足够�
 
 ## 6. 密码哈希迁移（最大坑）
 
-> 历史记录：v1→v2 自动数据迁移已于 2026-11-19 下线、1.x 库已删。legacy 哈希兼容仍保留给已迁移账号，但不再从 1.x 库搬运。
+> 历史记录：旧版自动数据迁移已于 2026-11-19 下线。legacy 哈希兼容仍保留给已迁移账号，但不再从旧库搬运。
 
 legacy `hashPassword` = `scryptSync(password, salt, 64)`（Node 默认 N=16384、r=8、p=1）；better-auth 默认 scrypt 的 r=16 —— 两者不能共用同一条校验路径。
 
-迁移脚本拿不到明文，所以不重算：把 legacy 的 `salt` / `password_hash` 以 `legacy$<salt>$<hash>` 标记写进 v2 的 `accounts.password`。`emailAndPassword.password.verify` 识别该前缀，按 v1 参数校验；首次成功登录（`/sign-in/username` 或 `/sign-in/email`）后，after 钩子用 better-auth 默认的 r=16 重算并原地覆盖。老格式随用户登录自然退场，**v1 用户升级后原密码直接可登录**。
+迁移脚本拿不到明文，所以不重算：把 legacy 的 `salt` / `password_hash` 以 `legacy$<salt>$<hash>` 标记写进 v2 的 `accounts.password`。`emailAndPassword.password.verify` 识别该前缀，按早期参数校验；首次成功登录（`/sign-in/username` 或 `/sign-in/email`）后，after 钩子用 better-auth 默认的 r=16 重算并原地覆盖。老格式随用户登录自然退场，**已迁移账号升级后原密码直接可登录**。
 
 - 只替换 `verify`，不替换 `hash`：新密码、改密、重置仍走 better-auth 默认 KDF。
 - 钩子失败只记日志：密码已校验通过，不能因为后台升级失败把用户挡在门外。

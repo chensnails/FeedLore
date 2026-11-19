@@ -264,13 +264,13 @@ export function render() {
   emit(EVENT.CARDS);
 }
 
-/* 卡片页的「滚动到底自动加载」在 src/views/CardsView.jsx 的 effect 里实现（v1.6.0-test6）：
+/* 卡片页的「滚动到底自动加载」在 src/views/CardsView.jsx 的 effect 里实现：
  * App Shell 之后滚动容器是 main.wrap 而不是 window，这里的 window 滚动监听永远收不到
  * 事件（实测自动加载失灵的根因之一），已随「加载更多」按钮一起移除 —— 触发统一走
  * CardsView 的 document 捕获监听 + #cardsSentinel 哨兵几何判定。 */
 
 /* ---------------- 移动端：卡片页的频道抽屉 ----------------
- * 与文章页同一套交互（v1.3.10）：标题栏左侧「频道」按钮开合，右滑从左边推出，
+ * 与文章页同一套交互：标题栏左侧「频道」按钮开合，右滑从左边推出，
  * 点遮罩 / 关闭按钮 / 左滑收起。状态照旧落在 <body> 的类上 —— 类名由 CSS 接管动画，
  * 手势（src/core/drawer.js）读同一个类判断开合，不需要再传一份状态。
  * 宽屏没有抽屉（频道筛选走工具栏下拉），窗口变宽时自动收起。

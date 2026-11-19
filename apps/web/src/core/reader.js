@@ -16,7 +16,7 @@ import { emit, EVENT, on } from '../kernel/events.js';
 
 /* ============================================================
  * 阅读页（文章）：逻辑归 app.js，渲染归 React（src/views/ReaderView.jsx）
- * v1.9.0 起阅读页 React 化：频道侧栏 / 头部工具 / 搜索 / 条目与正文渲染全部移除，
+ * 阅读页 React 化：频道侧栏 / 头部工具 / 搜索 / 条目与正文渲染全部移除，
  * 这里只保留数据 / 加载 / 交互逻辑，需要刷新 UI 时派发 __readerTick（组件监听后读实时 state 重绘）。
  * ============================================================ */
 
@@ -286,7 +286,7 @@ function readerHeadOffset() {
 
 /** 把文章列表滚到「某篇的标题行对齐内容区顶部」，并把页面级滚动一并归零。
  *
- *  踩过的坑（v1.7.0 修复「切换文章后新文章不从顶部开始」的老问题）：
+ *  踩过的坑（「切换文章后新文章不从顶部开始」的老问题）：
  *  单纯用 el.scrollIntoView({ block:'start' }) 不够——手风琴模式下展开新的一篇
  *  会**收起上一篇**，那一下让列表上方少了一大截高度（上一篇正文越长，差得越多）。
  *  scrollIntoView 在**收起前**的布局里算好目标位置，等 DOM 提交后列表整体上移，
@@ -844,7 +844,7 @@ export function readerMarkUnread(id) {
   });
 }
 
-/* ---------- 频道栏分组折叠（v1.4.0-test） ----------
+/* ---------- 频道栏分组折叠 ----------
  * 与设置面板的 collapsedGroups 各存一份（layout.rdCollapsedGroups）：数据源面板收起的是
  * 管理清单，频道栏收起的是阅读时的干扰项，两件事不该互相牵连。 */
 export function rdCollapsedGroups() {
@@ -1031,7 +1031,7 @@ export function setReaderDrawer(open) {
 }
 
 /** 换了频道 / 范围 / 分组 = 换了一整个列表，把视线带回顶部，别停在新列表中间。
- *  App Shell（v1.6.0-test2）后阅读列表的滚动容器是 .reader-main，window 根本不动 ——
+ *  App Shell 后阅读列表的滚动容器是 .reader-main，window 根本不动 ——
  *  所以先滚真正的容器，窗口本身（窄屏抽屉态等没有独立容器的场合）兜底。 */
 export function scrollReaderTop() {
   const main = document.querySelector('#readerView .reader-main');
@@ -1051,7 +1051,7 @@ window.addEventListener('resize', () => {
   resizeDrawerTimer = setTimeout(() => { if (window.innerWidth > 720) setReaderDrawer(false); }, 150);
 });
 
-/* 侧滑出手势已抽到 src/core/drawer.js（v1.3.10 起文章页与卡片页共用同一套）。 */
+/* 侧滑出手势已抽到 src/core/drawer.js（文章页与卡片页共用同一套）。 */
 
 export let readerAutoBusy = false;
 
@@ -1074,7 +1074,7 @@ export async function readerAutoLoad() {
   }
 }
 
-/* 滚动到底自动加载（v1.6.0-test5 修复）：
+/* 滚动到底自动加载：
  * App Shell 之后阅读列表在 .reader-main 里滚动，window 的 scroll 事件永远不触发 ——
  * 这就是自动加载失灵的根因。scroll 事件不冒泡但**能被捕获**，document 上挂捕获监听
  * 一处收齐所有滚动容器的滚动（侧栏 / 列表 / 窗口），命中与否交给哨兵几何判定，

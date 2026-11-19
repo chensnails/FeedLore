@@ -1,20 +1,15 @@
 # 更新日志
 
-本文件记录 2.x 的用户可见变化与部署相关变更。
+本文件记录 2.5.3 及此前 2.x 版本的用户可见变化与部署相关变更。
 
-- 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
-- 从 1.x 迁移：在 1.7.4 里「设置 → 数据 → 导出」，装好 2.x 后导入。
+## 2.5.3 — 2026-11-19
 
-## 2.5.3-rc.1 — 预发布（2026-11-19）
-
-> 预发布只推 `ghcr.io/chensnails/feedlore:2.5.3-rc.1`，**不推 `latest`、不建 GitHub Release**，
-> 存量站点与 Watchtower 不受影响；正式版 2.5.3 发布时再把 `latest` 移过去。
-
-> **⚠️ 升级前必读（手动 `docker compose up -d` 的用户）**：本版移除了 `upgrade` 一次性容器
-> 和 `upgrade:v1` 命令。如果你手里的 `docker-compose.v2.release.yml` 是旧版（还含 `upgrade` 服务），
-> **先下载新 compose 再 `up -d`**，否则 upgrade 容器会调用不存在的命令、退出码 1，
-> 把 app 挡在启动之前。Watchtower / 「设置 → 一键更新」路径只重建 app，**不受影响**。
-> 下载：`curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml`
+> **⚠️ 手动升级必读**：本版移除了 `upgrade` 一次性容器和旧升级命令。
+> 手里的 compose 若还是旧版（带 `upgrade` 服务），**必须先重新下载启动文件再启动**，
+> 否则 upgrade 容器会调用已删除的命令、退出码 1，把 app 挡在启动之前。
+> 海外：`curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml`
+> 国内：`curl -fsSL -o docker-compose.yml 'https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml'`
+> 然后 `docker compose up -d`。Watchtower /「设置 → 关于 → 一键更新」只重建 app，**不受影响**。
 
 ### 新增
 
@@ -38,9 +33,9 @@
   postgres 直接创建该库，不再出现 `database "feedlore_v2" does not exist` 的重启循环；
   db 健康检查固定探 `postgres` 库。老站点既有数据卷原样沿用（`POSTGRES_DB` 只在空数据目录
   初始化时生效），无需任何操作。
-- **v1 → v2 自动数据迁移下线**：`upgrade` 容器、`migrate-legacy.ts`、`upgrade:v1` 命令已移除，
-  1.x 库不再自动搬数据。需要从 1.x 迁移的用户，请先在 1.7.4 用「设置 → 数据 → 导出」备份，
-  再全新安装 2.x 后导入。已有 2.x 站点的密码（含 1.x 迁移过来的账号）照常可用。
+- **旧版自动数据迁移下线**：`upgrade` 容器、`migrate-legacy.ts` 与旧升级命令已移除，
+  不再自动搬运旧库数据。需要从旧版迁移的用户，请先在旧版用「设置 → 数据 → 导出」备份，
+  再全新安装后导入。已有 2.x 站点的密码（含旧版迁移过来的账号）照常可用。
 - **结构迁移改由 app 启动自举完成**：每次启动跑一次 drizzle migrate（幂等），
   不再依赖只在 `docker compose up` 时执行的 upgrade 服务；`PUBLIC_URL` 可设对外访问地址，
   仅用于横幅提示，不参与鉴权。
@@ -443,7 +438,7 @@
 - **在后台标签页打开不再误报「加载时间超出预期」**：启动层收口原来只等渲染帧，而浏览器不给
   不可见的页面排帧，12 秒看门狗于是抢先把「你还没切过来」报成加载失败。现在帧与定时双通道，
   谁先到算谁；首屏主题 / 视图模式同样补了兜底，切回后台打开的那一页不会跳一次主题。
-- **「添加到主屏幕」后标签栏下面那条蓝色带**：清单里的 `theme_color` 还是 v1 遗留的品牌蓝，
+- **「添加到主屏幕」后标签栏下面那条蓝色带**：清单里的 `theme_color` 还是早期遗留的品牌蓝，
   宿主浏览器拿它填 Home 指示条那一带，于是底部标签栏底下露出一条与页面无关的色带。
   改成与顶栏底色一致的白色后消失；登录页的 viewport 也补齐 `viewport-fit=cover`，与主站同源。
 - **深色系统首屏不再先闪一条白**：`theme-color` 之前只有一条白色兜底，JS 跑起来之前状态栏
@@ -681,7 +676,7 @@
   `entries.body_version` 列与 `feeds.full_text`、`article_cache`，但只有
   `docker compose up` 才会执行 compose 里的 `upgrade` 服务；Watchtower、
   设置页一键更新、`up -d --no-deps app` 都只重建 app 容器，库仍是旧结构。
-- v2 站点（含 1.x 已升级站点）现在**每次启动都补跑一次结构迁移**，迁移幂等，
+- 所有 2.x 站点现在**每次启动都补跑一次结构迁移**，迁移幂等，
   结构已是最新时只多几秒启动时间。
 
 ### 部署
@@ -713,10 +708,10 @@
 
 - 镜像：`ghcr.io/chensnails/feedlore:2.0.5`（amd64 + arm64），`latest` 指向同一 digest。
 - **本次包含数据库迁移**（`feeds.full_text` 列、`article_cache` 表）：
-  - 发布版 compose 的 `upgrade` 服务会执行迁移；1.x 首次升级由启动自举执行。
+  - 当时发布版 compose 的 `upgrade` 服务会执行迁移，首次升级由启动自举执行。
   - 只重建 app（`docker compose up -d --no-deps app`）时需手动执行
     `docker exec feedlore pnpm --filter @feedlore/db migrate`。
-- 旧条目的正文仍是 v1 纯文本，刷新该频道后新抓取的条目才会使用 v2 结构化排版。
+- 旧条目的正文仍是早期纯文本，刷新该频道后新抓取的条目才会使用结构化排版。
 
 ## 2.0.4 — 2026-11-01
 
@@ -787,13 +782,13 @@
   `docker compose -f docker-compose.v2.release.yml up -d` 之后站点直接可用。
 - **空站点自动创建初始管理员**：v2 启动时若一个账号都没有，自动建 `admin / admin`
   （可用 `ADMIN_USER` / `ADMIN_PASS` 覆盖）。已有账号的站点不受影响。
-- 1.x 迁移路径同样受益：源库没有账号时，应用启动后自动补一个 `admin / admin`，
+- 迁移路径同样受益：源库没有账号时，应用启动后自动补一个 `admin / admin`，
   不再要求手工执行 seed。
 
 ### 变更
 
 - compose 默认值改为容器内自洽：`PG_PASSWORD=feedlore`、`WATCHTOWER_HTTP_API_TOKEN=feedlore-update`
-  （两者都只在 Docker 内部网络使用，端口不映射到宿主机）。已有 1.x 站点升级时仍必须沿用原 `PG_PASSWORD`。
+  （两者都只在 Docker 内部网络使用，端口不映射到宿主机）。已有站点升级时仍必须沿用原 `PG_PASSWORD`。
 - `.env.example` 从「必填模板」改为「可选覆盖项」。
 
 ### 安全提示
@@ -811,9 +806,9 @@
 
 ### 新增
 
-- **1.x 零配置升级**：2.x 容器启动时若发现 1.x 库结构，会自动快照 `<库名>_backup`、
+- **旧版零配置升级（该能力已在 2.5.3 移除）**：2.x 容器启动时若发现旧版库结构，会自动快照 `<库名>_backup`、
   建 `<库名>_v2`（库级 UTC）、执行结构迁移与数据迁移，并校验条数、凭据与站点主密钥；
-  成功后写完成标记，之后启动只做一次探测。开着 Watchtower 的 1.x 站点无需改任何配置。
+  成功后写完成标记，之后启动只做一次探测。开着 Watchtower 的旧版站点无需改任何配置。
 - **手动 / 受控升级**：`docker-compose.v2.release.yml` 的 `upgrade` 一次性服务先迁移，
   成功后才替换应用容器；全新安装同样适用。
 - **零配置鉴权**：`AUTH_SECRET` 未配置时自动生成并持久化到 `settings.authSecret`；
@@ -822,26 +817,26 @@
 
 ### 变更
 
-- 前端整体回退到 1.x 的界面与交互（三视图、分组折叠、卡片详情、频道抽屉、PWA），
+- 前端整体回退到早期版本的界面与交互（三视图、分组折叠、卡片详情、频道抽屉、PWA），
   服务端、契约与部署链路不变。
 - 仓库收敛为单一 `main` 主线：移除 `apps/legacy`、旧的 v2 compose 与一次性运维脚本；
-  1.x 源码与 compose 只保留在 tag `v1.7.4`。
+  旧版源码与 compose 只保留在历史 tag 中。
 - CI 只对 `main` 运行（类型检查、单测、真库集成、前端构建与产物校验、amd64/arm64 镜像构建）。
-- 版本号单一真源改为根 `package.json`（不再有 `VERSION` 文件）；`release.yml` 拒绝 1.x tag。
+- 版本号单一真源改为根 `package.json`（不再有 `VERSION` 文件）；`release.yml` 拒绝旧主线 tag。
 - 公开文档只保留仓库根的 `README.md`、`CHANGELOG.md`、`UPGRADE-v2.md`、`LICENSE`。
 
 ### 修复
 
-- 1.x 密码无损迁移：原 scrypt 哈希以 `legacy$<salt>$<hash>` 写入 2.x，首次登录校验通过后
+- 密码无损迁移：原 scrypt 哈希以 `legacy$<salt>$<hash>` 写入 2.x，首次登录校验通过后
   自动改写为 better-auth 哈希，用户无需重设密码。
-- 用户名规则对齐 1.x：允许 `-`、`@`，保留大小写，长度 1–40。
+- 用户名规则对齐早期版本：允许 `-`、`@`，保留大小写，长度 1–40。
 - 迁移后时间列不再偏移 8 小时（迁移容器、服务端与数据库统一 `TZ=UTC`）。
 
 ### 部署
 
 - 镜像：`ghcr.io/chensnails/feedlore:2.0.1`（amd64 + arm64），`latest` 指向同一 digest。
 - 默认 compose 钉版本号；需要滚动升级时把 `V2_IMAGE` 设为 `…:latest`。
-- 回滚：用 1.x 的 `docker-compose.release.yml` 重新拉起（1.x 库与卷从未被写入）。
+- 回滚：用旧版的 `docker-compose.release.yml` 重新拉起（旧库与卷从未被写入）。
 
 ## 2.0.0 — 2026-10-31
 

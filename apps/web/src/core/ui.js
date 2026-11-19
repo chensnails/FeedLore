@@ -165,7 +165,7 @@ export function switchView(name, opts) {
     if (name !== 'reader') setReaderDrawer(false);
     // 置顶只管当前这一次进入：离开文章页就作废，回来后的翻页不该再按旧目标重校
     if (name !== 'reader') clearReaderPin();
-    // 卡片页的频道抽屉同理（v1.3.10）
+    // 卡片页的频道抽屉同理
     if (name !== 'cards') setCardsDrawer(false);
 
     $('#readerView').hidden = name !== 'reader';
@@ -254,7 +254,7 @@ export function readerTagToCards(tag, ai = false) {
  * index.html 与 style.css 里一直有 .lightbox，但之前没有任何 JS 接上它，
  * 于是图片上写着「点击查看大图」却点不动。这里补齐：点图看大图，点任意处或 Esc 关闭。
  * v2.1.0 起灯箱 DOM 改由 src/ui/Overlays.jsx 渲染，核心只维护状态并派发 __overlaysTick。
- * v1.6.0-test4 起：同一篇正文里的图组成一组，支持 ← → 翻看；关闭时把焦点还给触发图。
+ * 同一篇正文里的图组成一组，支持 ← → 翻看；关闭时把焦点还给触发图。
  */
 export let lightboxState = { src: '', show: false, list: [], index: 0 };
 /** 触发灯箱的元素（不放进 state：它是 DOM 引用，进 state 会跟着快照到处传） */

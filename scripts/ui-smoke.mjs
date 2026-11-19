@@ -1,5 +1,5 @@
 /**
- * v1 界面运行期冒烟（Edge headless + CDP）。
+ * 界面运行期冒烟（Edge headless + CDP）。
  *
  * 守的是 jsdom 单测与产物校验都看不见的那一层：
  * - 未登录 → /login.html 的真实跳转（服务端没有拦住，是前端 bootstrap 在跳）；
@@ -141,7 +141,7 @@ try {
   check(await waitFor("location.pathname === '/login.html'"), '未登录访问 / → 跳到 /login.html');
   check(await waitFor("!!document.querySelector('#loginForm #username')"), '登录页有用户名输入框');
   check(await evalJs("!!document.querySelector('#loginForm #submitBtn')"), '登录页有提交按钮');
-  await shot('ui-v1-login.png');
+  await shot('ui-login.png');
 
   /* 2) 登录 → 回主站并完成启动 */
   if (!pass) throw new Error('缺少密码参数');
@@ -204,7 +204,7 @@ try {
   })());
   check(bodyLen > 20, `正文已渲染（${bodyLen} 字）`);
   check(await evalJs("/^#reader\\/art\\/.+/.test(location.hash)"), `展开后 hash 指向条目（${await evalJs('location.hash')}）`);
-  await shot('ui-v1-reader.png');
+  await shot('ui-reader.png');
 
   /* 4) 卡片页：切过去有卡片，视图导航高亮跟着走 */
   await evalJs("document.querySelector('.viewnav-btn[data-view=\"cards\"]')?.click()");
@@ -213,7 +213,7 @@ try {
   check(await waitFor(`[...document.querySelectorAll('.viewnav-btn[data-view="cards"]')]
     .some((b) => b.classList.contains('active') && b.getBoundingClientRect().width > 0)`, 5000),
   '卡片视图导航高亮');
-  await shot('ui-v1-cards.png');
+  await shot('ui-cards.png');
 
   await evalJs("document.querySelector('.viewnav-btn[data-view=\"reader\"]')?.click()");
   check(await waitFor("!!document.querySelector('#readerList')"), '切回文章页');
@@ -228,7 +228,7 @@ try {
     console.log('  - 日报已关闭，跳过入口检查');
   }
 
-  /* 6) 设置：入口在 ⋮ 溢出菜单（v1.7.0 起），检查页签数量 + 数据源里的每频道采集间隔 */
+  /* 6) 设置：入口在 ⋮ 溢出菜单，检查页签数量 + 数据源里的每频道采集间隔 */
   await evalJs("document.querySelector('.overflow-btn')?.click()");
   check(await waitFor("!!document.querySelector('.overflow-menu')"), '⋮ 溢出菜单可展开');
   await evalJs(`[...document.querySelectorAll('.overflow-menu .overflow-item')]
@@ -244,7 +244,7 @@ try {
   await waitFor("!!document.querySelector('.ds-sheet')", 5000);
   const freqCount = (await evalJs("document.querySelectorAll('.ds-sheet .feed-freq').length")) ?? 0;
   check(freqCount > 0, `每频道采集间隔下拉 ${freqCount} 个（详情层内）`);
-  await shot('ui-v1-settings.png');
+  await shot('ui-settings.png');
   await evalJs("document.querySelector('#settingsClose')?.click()");
   check(await waitFor("!document.querySelector('.modal-mask:not([hidden])')"), '设置弹层可关闭');
 
@@ -273,7 +273,7 @@ try {
   })()`);
   check(!!sideRect && sideRect.w > 0 && sideRect.w < 390,
     `抽屉宽度合理（${sideRect?.w ?? 0}px，left ${sideRect?.left ?? '-'}）`);
-  await shot('ui-v1-phone-drawer.png');
+  await shot('ui-phone-drawer.png');
   await evalJs("document.querySelector('#readerSideClose')?.click()");
   check(await waitFor("!document.body.classList.contains('reader-drawer-open')"), '抽屉可收起');
   await send('Emulation.clearDeviceMetricsOverride');

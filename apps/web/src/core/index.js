@@ -53,7 +53,7 @@ export const core = {
   cycleTheme: S.cycleTheme,
   scrollTop: () => S.scrollActiveTop(U.prefersReducedMotion() ? 'auto' : 'smooth'),
   activeScrollTop: S.activeScrollTop,
-  // —— 设置弹层 / 外观 / 关于（v1.3.0 起 React 化） ——
+  // —— 设置弹层 / 外观 / 关于（已 React 化） ——
   apiFetch: U.apiFetch, httpError: U.httpError, errText: U.errText, uploadArchive: U.uploadArchive, goLogin: U.goLogin,
   // 模型调用的前端上限（200s）：AI 相关 POST 一律传 timeoutMs: core.AI_TIMEOUT_MS，
   // 否则会被 30s 写超时误杀（服务端一次调用允许 180s）
@@ -153,7 +153,7 @@ export const core = {
   cardsAiTag: (t) => cardsTagFilter(t, true),
   cardsLoadMore: () => F.loadPage(false),
   cardsRetryMore: () => { S.state.loadMoreErr = false; return F.loadPage(false); },
-  // 窄屏频道抽屉（与文章页同一套交互，v1.3.10）
+  // 窄屏频道抽屉（与文章页同一套交互）
   cardsToggleDrawer: F.cardsToggleDrawer, cardsCloseDrawer: F.cardsCloseDrawer,
   cardsSetFlag: (id, patch) => UI.cardSetFlag(id, patch),
   cardsDetailRead: (id) => UI.cardDetailRead(id),
@@ -177,7 +177,7 @@ export const core = {
   restoreReaderArt: R.restoreReaderArt,
   readerToggleAccordion: R.readerToggleAccordion, readerAccordionOn: R.readerAccordionOn,
   readerToggleDrawer: R.readerToggleDrawer, readerCloseDrawer: R.readerCloseDrawer,
-  // —— 频道栏分组折叠 + 栏宽（v1.4.0-test） ——
+  // —— 频道栏分组折叠 + 栏宽 ——
   readerCollapsedGroups: R.rdCollapsedGroups,
   readerToggleGroupCollapse: R.readerToggleGroupCollapse,
   readerToggleAllGroups: R.readerToggleAllGroups,

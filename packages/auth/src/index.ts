@@ -14,10 +14,10 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
  */
 
 /**
- * v1（legacy）密码哈希的兼容标记。
+ * 旧版（legacy）密码哈希的兼容标记。
  *
  * legacy 用 `scryptSync(pwd, salt, 64)`（Node 默认 N=16384,r=8,p=1），better-auth
- * 默认是 r=16 —— 两者不能走同一条校验路径。迁移脚本把 v1 的 `salt` / `password_hash`
+ * 默认是 r=16 —— 两者不能走同一条校验路径。迁移脚本把旧版的 `salt` / `password_hash`
  * 原样存成 `legacy$<salt>$<hex>`，这里识别该前缀并复刻 legacy 的派生参数；
  * 首次成功登录后由 after 钩子换成 better-auth 的哈希（r=16），老格式随即退场。
  *
@@ -34,7 +34,7 @@ export function isLegacyPasswordHash(hash: string | null | undefined): boolean {
   return typeof hash === 'string' && hash.startsWith(LEGACY_PASSWORD_PREFIX);
 }
 
-/** v1 用户名校验规则：`/^[\w.\-@]{1,40}$/`，区分大小写。 */
+/** 用户名校验规则：`/^[\w.\-@]{1,40}$/`，区分大小写。 */
 export function isLegacyUsername(value: string): boolean {
   return /^[\w.\-@]{1,40}$/.test(value);
 }
@@ -58,8 +58,8 @@ async function verifyLegacyPassword(hash: string, password: string): Promise<boo
 }
 
 /**
- * 密码校验入口：legacy 标记走 v1 参数，其余交给 better-auth 默认实现。
- * 导出是为了让「迁移后仍能用 v1 密码登录」有独立的回归测试。
+ * 密码校验入口：legacy 标记走旧版参数，其余交给 better-auth 默认实现。
+ * 导出是为了让「迁移后仍能用原密码登录」有独立的回归测试。
  */
 export async function verifyPasswordHash(data: { hash: string; password: string }): Promise<boolean> {
   if (isLegacyPasswordHash(data.hash)) return verifyLegacyPassword(data.hash, data.password);
@@ -69,7 +69,7 @@ export async function verifyPasswordHash(data: { hash: string; password: string 
 /**
  * 受信来源：静态列表，或按请求推导的函数。
  *
- * 零配置部署里域名是未知的（1.x 用户升级前不填任何东西），只能从请求的 Host
+ * 零配置部署里域名是未知的（不填任何东西），只能从请求的 Host
  * 推出「同源」候选。浏览器带来的 Origin 无法伪造：跨站请求的 Origin 是攻击者
  * 域名，与本站 Host 对不上，仍会被拒。
  */
@@ -151,7 +151,7 @@ export function createAuth(opts: CreateAuthOptions) {
       },
     },
     // username：保持 legacy「用户名即登录标识」的体验（better-auth 默认走 email）。
-    // 默认插件只收 [A-Za-z0-9_.] 且强制小写；v1 的规则是 [\w.\-@]{1,40} 且区分大小写，
+    // 默认插件只收 [A-Za-z0-9_.] 且强制小写；本站规则是 [\w.\-@]{1,40} 且区分大小写，
     // 不放宽的话，带 `-`/`@` 或大写的存量用户名迁移后根本登不进来。
     // admin：提供 /api/auth/admin/* 与 user.role 列，替代手写 isAdmin()
     // openAPI：可选，便于生成客户端与文档

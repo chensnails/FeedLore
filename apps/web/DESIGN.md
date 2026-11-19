@@ -1,7 +1,7 @@
 # 笺川 v2 · 界面约定
 
 > 适用范围：`apps/web`。
-> 前端沿用 v1 的交互与界面（整体搬入，未重设计）。权威实现：
+> 前端沿用既有交互与界面（整体搬入，未重设计）。权威实现：
 > - 样式分两层：`apps/web/src/style.css`（历史布局层，顶部有断点索引，改之前先读）
 >   + `apps/web/src/hig.css`（Apple HIG 视觉系统层：令牌 / 材质 / 圆角 / 反馈 / 控件形态）。
 >   后者由 `main.jsx` 在前者**之后**导入，靠「后写者胜」覆盖视觉声明，不复制任何布局规则。
@@ -24,7 +24,7 @@
    子菜单要按 `(hover: hover) and (pointer: fine)` 分流：触屏点击会合成 `mouseenter`，
    与 `onClick` 的 toggle 叠在一起会「刚开又关」。
 3. **玻璃模糊只给静止表面**（`.modal-mask` / `.cmdk-mask`）。sticky / fixed 的长列表元素
-   禁用 `backdrop-filter`：每帧重采样必掉帧，这是 v1 实测换来的规矩。
+   禁用 `backdrop-filter`：每帧重采样必掉帧，这是早期实测换来的规矩。
 4. **字号与栏宽走令牌**：`--reader-fs` / `--reader-width` / `--reader-side-w`；
    设置里的「字号 / 栏宽」开关直接写这些变量，写死数值会让开关变成死的。
    Row1 的实测高度由 JS 写入 `--topbar-h`，供吸顶元素对齐。

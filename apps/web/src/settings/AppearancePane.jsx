@@ -1,4 +1,4 @@
-/* 设置弹层「外观」面板（v1.3.0 起 React 化，原 index.html 内联 DOM + app.js 绑定迁移至此）。
+/* 设置弹层「外观」面板（原 index.html 内联 DOM + app.js 绑定迁移至此）。
  * 行为与旧实现等价且实现更干净：
  * - 选中态不再由旧 applyAppearance 回写 DOM，React 从偏好数据直接推导；
  * - 「GitHub 主题固定主色」不再轮询 <html data-fixed-accent>，由 theme === 'github' 等价推导

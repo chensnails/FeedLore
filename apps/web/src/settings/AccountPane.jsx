@@ -1,4 +1,4 @@
-/* 设置弹层「账号」面板（v1.6.0 起 React 化，原 index.html 内联 DOM + app.js 绑定迁移至此，P2d）。
+/* 设置弹层「账号」面板（原 index.html 内联 DOM + app.js 绑定迁移至此）。
  *
  * 结构（v2.5.0 设置 A 方案）：
  * - 登录信息 / 数据导出 / 导入 / 备份 / 还原 / 安装仍按折叠分组摆放（表单类，见 primitives.Section）；

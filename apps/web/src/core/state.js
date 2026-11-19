@@ -255,7 +255,7 @@ state.srcGroupsOpen = layoutPref.srcGroupsOpen;
 /* ============================================================
  * 设置面板
  * ============================================================ */
-// 设置弹层自 v1.3.0 起外壳 React 化（挂载点 #settingsRoot，组件见 src/settings/）：
+// 设置弹层外壳 React 化（挂载点 #settingsRoot，组件见 src/settings/）：
 // 开合状态由 React 组件同步到 window.__settingsOpen，旧 #settingsMask / #settingsSummary
 // DOM 已移除；openSettings / closeSettings 委托给 React 宿主 window.__settingsHost。
 
@@ -538,7 +538,7 @@ export function saveAppearance(pref) {
 }
 
 /** 写进 <html> 属性（样式全挂在属性选择器上）。
- *  控件选中态自 v1.3.0 起由 React 外观面板（src/settings/AppearancePane.jsx）从
+ *  控件选中态由 React 外观面板（src/settings/AppearancePane.jsx）从
  *  偏好数据直接推导、不再回写 DOM；末尾派发 __appearanceChanged 通知面板同步，
  *  覆盖 ⋮ 菜单的主题图标、恢复默认、localStorage 迁移等一切外部改动。 */
 export function applyAppearance(pref) {

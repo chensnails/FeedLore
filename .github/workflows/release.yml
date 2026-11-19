@@ -3,16 +3,13 @@ name: Release
 # 2.x 发布：构建双架构镜像推 ghcr.io/chensnails/feedlore，并自动创建 GitHub Release。
 # 发版 = git tag -a vX.Y.Z && git push origin --tags。
 #
-# 镜像通道：2.x **占用 ghcr.io/chensnails/feedlore**（1.x 用的同一个仓库）。
-# 这是「1.x 用户无感升级」的关键：1.x 容器的 watchtower 盯的是 feedlore:latest，
-# 正式版把 latest 移过来，watchtower 拉到的就是 v2 镜像；v2 进程启动时自举
-# （建 feedlore_v2、结构迁移、改成 UTC），用户不用改任何配置。
-# 因此 **feedlore-v2 这个通道已退役**，不要再往里推东西。
+# 镜像通道：ghcr.io/chensnails/feedlore。latest 是滚动通道，Watchtower 自动升级
+# 与设置页「一键更新」都跟它走；想钉死版本就把 compose 里的 image 写成
+# feedlore:<版本号>。
 #
-# main 是唯一主线（2.x monorepo），1.x 已冻结在 v1.7.4（只存在于 tag，不再从本仓库发布）。
-# 因此 v1.x tag 会被 gate 直接拒绝：latest 归 2.x，发 1.x = 把存量用户降级。
+# main 是唯一主线，版本历史靠 tag 保留；发布只认 2.x tag，旧主线 tag 会被 gate 拒绝。
 #
-# 发布闸门（沿用 1.3.11 起的规则）：tag 推上来不等于对外发布。gate job 按 tag 分三档：
+# 发布闸门：tag 推上来不等于对外发布。gate job 按 tag 分三档：
 #   ① 正式版 vX.Y.Z        → 构建镜像，推版本号标签 + latest，并建 GitHub Release
 #   ② 预发布 vX.Y.Z-xxx    → 构建镜像，**只推版本号标签**（不碰 latest，不影响存量用户）
 #   ③ 其它（分支名等）     → 不构建
@@ -83,12 +80,12 @@ jobs:
 
           WANT="${TAG#v}"
 
-          # 2) 这份工作流只发布 2.x。1.x 已冻结（只存在于 v1.7.4 tag），
-          #    万一误打了 v1.x tag，这里直接拦下，避免旧代码被推成 feedlore:latest ——
-          #    那会直接把存量用户「升级」成旧版本。
+          # 2) 这份工作流只发布 2.x。旧主线已冻结，
+          #    万一误打了旧主线 tag，这里直接拦下，避免旧代码被推成 feedlore:latest ——
+          #    那会把存量用户「升级」成旧版本。
           MAJOR="${WANT%%.*}"
           if (( 10#$MAJOR < 2 )); then
-            echo "::error title=版本号不属于 2.x::tag=v$WANT 会被推到 feedlore 镜像 —— 1.x 已冻结，不再发布"
+            echo "::error title=版本号不属于 2.x::tag=v$WANT 会被推到 feedlore 镜像 —— 旧主线已冻结，不再发布"
             exit 1
           fi
 
@@ -125,8 +122,8 @@ jobs:
           echo "publish=true" >> "$GITHUB_OUTPUT"
           echo "latest=true" >> "$GITHUB_OUTPUT"
 
-          # 7) 防回退：latest 是滚动通道，只能前进。补丁分支事后补打的旧版本 tag
-          #    （比如远端已有 v2.5.2，又补发 v2.3.9）仍然构建、仍然发 Release，
+          # 7) 防回退：latest 是滚动通道，只能前进。事后补打的旧版本 tag
+          #    （比如远端已有更高版本，又补发一个旧号）仍然构建、仍然发 Release，
           #    但绝不能把 latest 拽回去 —— 否则所有站点的 watchtower 会集体降级。
           #    基准取远端已有正式 tag 的版本最大值，不依赖 registry 当前状态：
           #    latest 丢没丢都不影响这条判断。
@@ -237,8 +234,8 @@ jobs:
           echo "merging:$refs"
 
           # 版本号标签人人都有；latest 只给「正式版且不比现有最新版旧」的一版。
-          # latest 是滚动通道：1.x 用户容器里的 watchtower 盯的就是它，把 latest
-          # 移过来 = 存量站点自动升级到 v2，无需改任何配置。
+          # latest 是滚动通道：存量站点的 watchtower 盯的就是它，把 latest
+          # 移过来 = 这些站点自动升级到本版，无需改任何配置。
           docker buildx imagetools create $refs --tag "${{ env.REGISTRY_IMAGE }}:$VERSION"
           if [[ "$PUBLISH" == "true" && "${{ needs.gate.outputs.latest }}" == "true" ]]; then
             docker buildx imagetools create $refs --tag "${{ env.REGISTRY_IMAGE }}:latest"
@@ -263,17 +260,30 @@ jobs:
           NOTES=$(cat <<'EOT'
           镜像：`ghcr.io/chensnails/feedlore:${{ steps.merge.outputs.version }}`（amd64 + arm64）${{ needs.gate.outputs.latest == 'true' && '，`latest` 已指向这一版。' || '。`latest` 未移动（该版本低于已发布的最新正式版）。' }}
 
-          ## 从 1.x 升级（无感）
+          ## 手动升级必读
 
-          已经装了 Watchtower 的 1.x 站点**什么都不用做**：Watchtower 会拉取 `feedlore:latest`
-          并重建容器，v2 进程在启动时自动完成建库、结构迁移、数据迁移与校验
-          （源库只读，另留一份 `<库名>_backup` 快照）。首次启动要多等几分钟，日志里看到
-          `Bootstrap complete` 即可。原账号密码直接可登录。
+          本版移除了旧 compose 里的 `upgrade` 一次性容器和旧升级命令。
+          **手动部署的老站点必须先重新下载最新启动文件，再启动**：沿用旧文件直接 `up -d`
+          会调用已删除的命令，把 app 挡在启动之前。已跟随 `latest` 的 Watchtower 站点
+          与用「设置 → 关于 → 一键更新」的站点不受影响。
 
-          ## 手动 / 全新部署
+          海外：
+          ```bash
+          curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
+          V2_IMAGE=ghcr.io/chensnails/feedlore:${{ steps.merge.outputs.version }} docker compose up -d
+          ```
+          国内（compose 走 gh-proxy，镜像走南大镜像站）：
+          ```bash
+          curl -fsSL -o docker-compose.yml 'https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml'
+          V2_IMAGE=ghcr.nju.edu.cn/chensnails/feedlore:${{ steps.merge.outputs.version }} docker compose up -d
+          ```
+          数据与账号不变，老账号不会被要求改密。
 
-          见仓库根目录 `README.md` 的「快速开始」。
-          `AUTH_SECRET`、`AUTH_BASE_URL` 都可以不填（自动生成并持久化 / 按访问域名同源校验）。
+          ## 全新安装
+
+          见仓库根目录 `README.md` 的「快速开始」。初始用户名 `admin`，初始密码 `Admin2026`，
+          首次登录必须先改密。`AUTH_SECRET`、`AUTH_BASE_URL` 都可以不填
+          （自动生成并持久化 / 按访问域名同源校验）。
 
           ## 之后怎么更新
 

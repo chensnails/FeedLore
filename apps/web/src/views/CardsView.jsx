@@ -1,4 +1,4 @@
-/* 卡片视图（v1.8.0 起 React 化，原 index.html 的 #cardsView 内联 DOM + app.js 的卡片渲染迁移至此，P3b）。
+/* 卡片视图（已 React 化，原 index.html 的 #cardsView 内联 DOM + app.js 的卡片渲染迁移至此）。
  *
  * 迁移策略（沿用 SourcePane 的「共享状态 + tick」约定）：
  * - 数据与状态仍由旧 app.js 持有（state.entries / tags / q / tag / feedFilter / sort /
@@ -39,7 +39,7 @@ const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块�
 
 /** 懒加载图片：首次失败带 ?r=1 重试一次，再失败走兜底 */
 /**
- * 图片：默认懒加载；首屏前几张改成高优先级（v1.5.0）。
+ * 图片：默认懒加载；首屏前几张改成高优先级。
  * 弱网下浏览器只有 6 条并发连接，若 30 张缩略图同权重排队，
  * 首屏那几张真正看得见的图反而排在第 20 位 —— 首屏图不加载，卡片墙就是一片灰骨架。
  * eager + fetchpriority=high 让浏览器先抢这几条连接。
@@ -84,7 +84,7 @@ function LazyImg({ src, srcSet, sizes, alt, fallbackClass, fbIcon, priority, onF
 
 /* 卡片与列表行都做成 memo：一次 __cardsTick 会把整列重新 map，
  * 而条目对象只在状态真的变化时换新（core/reader.js 的 applyEntryFlag），没变的卡面不必重渲染。
- * v1.6.0：卡片 / 列表项不再展示标签（标签栏与卡面标签整体下线），仅文章正文保留标签。 */
+ * 卡片 / 列表项不再展示标签（标签栏与卡面标签整体下线），仅文章正文保留标签。 */
 const Card = memo(function Card({ e, onOpen, priority }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
@@ -308,7 +308,7 @@ export function CardsView() {
   // 任何一次列表重置（换频道 / 分组 / 搜索 / 后台重拉）都重新收闸
   useEffect(() => { autoLoadArmed.current = false; }, [st.listEpoch]);
 
-  // 滚动到底部自动加载（v1.6.0-test5 统一版，与文章页同一套判据）：
+  // 滚动到底部自动加载（与文章页同一套判据）：
   // App Shell 后卡片列表在 main.wrap 里滚动，window 的 scroll 事件收不到 ——
   // 之前只有手动「加载更多」能用就是这里失效。scroll 不冒泡但能被捕获，
   // document 捕获监听一处收齐所有容器；命中与否交给 #cardsSentinel 的
@@ -502,7 +502,7 @@ export function CardsView() {
     const name = s.shortFeedName ? s.shortFeedName(title) : title;
     return `${name}（${s.fmtBadge(Number(f.unreadCount || 0))}）`;
   };
-  // 频道 / 排序下拉选项（v1.1.9 起用自定义弹层 Dropdown 渲染，替代原生 select 的系统弹窗）
+  // 频道 / 排序下拉选项（用自定义弹层 Dropdown 渲染，替代原生 select 的系统弹窗）
   // 「全部频道」的括号与侧栏一致：卡片频道里的未读总数
   const cardUnread = cardFeeds.reduce((n, f) => n + Number(f.unreadCount || 0), 0);
   const feedOpts = [{ value: '', label: `全部频道（${s.fmtBadge(cardUnread)}）` }];
@@ -629,7 +629,7 @@ export function CardsView() {
 
         {showGrid ? (
           <div id="grid" className={'grid' + (view === 'list' ? ' list-mode' : '')}>
-            {/* 前 6 张给高优先级（v1.5.0）：弱网下浏览器并发只有 6 条，
+            {/* 前 6 张给高优先级：弱网下浏览器并发只有 6 条，
                 同权重排队会让首屏可见的那几张图排在第 20 位，卡片墙只剩灰骨架。 */}
             {list.map((e, i) => (view === 'list'
               ? <Row e={e} onOpen={onOpenCard} key={e.id} />
@@ -648,7 +648,7 @@ export function CardsView() {
         ) : <div id="empty" className="empty" hidden><div className="empty-ico"><svg className="ico" aria-hidden="true" focusable="false"><use href="#i-inbox" /></svg></div><p /></div>}
 
         <div className="loadmore-wrap">
-          {/* 「加载更多」按钮已移除（v1.6.0-test5）：滚动到底自动加载是唯一入口，
+          {/* 「加载更多」按钮已移除：滚动到底自动加载是唯一入口，
               这里只剩加载态圆点与滚动哨兵（几何判定用的隐形 1px 锚点）。 */}
           {st.loadMoreErr ? (
             <div className="load-retry" role="alert">

@@ -1,4 +1,4 @@
-/* 设置弹层「状态」面板（v1.6.0 起 React 化，原 app.js 的 renderStatus/loadStatusForm 迁移至此，P2d）。
+/* 设置弹层「状态」面板（原 app.js 的 renderStatus/loadStatusForm 迁移至此）。
  *
  * 迁移说明（对照旧实现）：
  * - 只读体检页，数据来自 GET /api/status 一次快照；停留时每 30s 自动拉一次，

@@ -1,9 +1,9 @@
-/* AI 视图（v1.7.0 起 React 化，原 index.html 的 #aiView 内联 DOM + app.js 的日报/日报设置逻辑迁移至此，P3a）。
+/* AI 视图（已 React 化，原 index.html 的 #aiView 内联 DOM + app.js 的日报逻辑迁移至此）。
  *
  * 迁移说明（对照旧实现）：
  * - 视图容器仍是 index.html 的 `<div class="wrap" id="aiView">`（switchView 负责显隐），
  *   内容整体由本组件渲染到其内的 `#aiRoot` 挂载点；顶栏 #viewNav / #stat 不属本视图，仍在旧代码。
- * - 只有一页：日报。「日报设置」在 v1.4.0 里整块搬进了「设置 → 日报」（改按账号配置后
+ * - 只有一页：日报。「日报设置」整块搬进了「设置 → 日报」（改按账号配置后
  *   它就不再是管理员的站点设置，留在 AI 页会变成两个入口）；
  *   二级导航只剩「日报」一项，因此一并删掉——一条只有一个按钮的导航不传达任何信息。
  * - 日报展示由 innerHTML 字符串拼接改为 JSX；条目复制按钮 / 图片兜底改由 React 处理。
@@ -175,7 +175,7 @@ export function AiView() {
      日期选择器与正文对不上。回包时对不上代际就整包丢弃（与两页列表同一套做法）。 */
   const reqGen = useRef(0);
   const [feedsInfo, setFeedsInfo] = useState({ total: 0, enabled: 0 });
-  // 摘要范围读本账号的 prefs.digest（v1.4.0 起不再有站点级那一份）
+  // 摘要范围读本账号的 prefs.digest（不设站点级那一份）
   const [scope, setScope] = useState({ mode: 'enabled', feeds: [] });
 
   // 视图激活感知（React 常驻挂载，只在切到 AI 页时拉数据）
