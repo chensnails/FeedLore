@@ -53,15 +53,15 @@ RUN pnpm install --prod --frozen-lockfile
 COPY --from=web /app/apps/web/dist ./apps/web/dist
 
 # 容器内短命令：
-#   docker exec -it feedlore initial-password [--reset] [--json]
-#   docker exec -it feedlore doctor [--json]
+#   docker exec feedlore initial-password [--reset] [--json]
+#   docker exec feedlore doctor [--json]
 # 免去每次记 `pnpm --filter @feedlore/server ...` 的完整路径。
 # 镜像里源码由 tsx 直跑（不带 dist），所以这里只是转发一层，没有构建产物依赖。
 RUN printf '%s\n' '#!/bin/sh' \
       'exec pnpm --filter @feedlore/server initial-password "$@"' \
       > /usr/local/bin/initial-password \
     && printf '%s\n' '#!/bin/sh' \
-      'exec pnpm --filter @feedlore/server doctor "$@"' \
+      'exec pnpm --filter @feedlore/server run doctor "$@"' \
       > /usr/local/bin/doctor \
     && chmod +x /usr/local/bin/initial-password /usr/local/bin/doctor
 
