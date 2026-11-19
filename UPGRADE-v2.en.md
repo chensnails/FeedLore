@@ -2,16 +2,14 @@
 
 # Upgrading from 1.x to 2.x
 
-2.x uses a **side-by-side upgrade**: a new database inside the same Postgres (by default
-`feedlore_v2`). The 1.x database and its data volume stay **read-only** throughout, and the
-migration only writes into the new database. After the upgrade you sign in with your original
-username and password (they are re-hashed into the 2.x format automatically on first login).
+> **⚠️ This guide only applies to 2.5.2 and earlier (2026-11-19)**. Starting with 2.5.3 the
+> automatic 1.x → 2.x data migration is removed: no `upgrade` container, no `migrate-legacy` command.
+> If you are still on 1.x, export your data via "Settings → Data → Export" on 1.7.4, then import
+> it into a fresh 2.5.3+ install (see the help doc, "Data → Import").
+> Sites already on 2.x are unaffected; upgrade as usual (manual `up -d` requires the new compose
+> first — see CHANGELOG).
 
-| Your situation | What to do |
-| --- | --- |
-| 1.x + Watchtower (the default 1.x deployment) | **Do nothing** — wait for the automatic upgrade (see A) |
-| You want a manual / step-by-step upgrade | Use `docker-compose.v2.release.yml` (see B) |
-| Fresh install | The same compose file, started with zero configuration (see C); the admin is created automatically and a one-time random password is printed |
+Older builds (≤2.5.2) used a side-by-side upgrade: a new `feedlore_v2` database in the same Postgres, with the 1.x database left read-only. The steps below only apply to those builds.
 
 ---
 
@@ -139,11 +137,13 @@ docker compose -f docker-compose.v2.release.yml up -d
 ```
 
 When `upgrade` finds no 1.x data it skips migration and only creates the tables; after the
-application starts, if the site has no accounts at all it automatically creates the initial admin
-`admin` and generates a one-time random password, **printed exactly once in that start's log**:
+application starts, if the site has no accounts at all it automatically creates the initial admin `admin`.
+Up to 2.5.2 the password was printed once in the log; 2.5.3+ uses a `FEEDLORE FIRST RUN` banner plus a
+24h CLI lookup:
 
 ```bash
-docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time password'
+docker compose -f docker-compose.v2.release.yml logs app
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password
 ```
 
 Right after signing in, go to "Settings → Account" and change the password. To choose your own
@@ -178,7 +178,7 @@ same network, override them in `.env` (see `.env.example`).
 | --- | --- |
 | Site unreachable after the automatic upgrade | The bootstrap is still running (a large database takes a few minutes) — `docker logs -f feedlore` and wait for `Bootstrap complete`; if the container keeps restarting, the log gives the concrete failure reason |
 | Straight after login you are back to signed out / 403 | A reverse proxy rewrote the Host: add `AUTH_BASE_URL`; or under HTTPS `AUTH_SECURE_COOKIES=1` was not set, or it was set to `1` on plain HTTP |
-| `upgrade` exits with a failure | Check the reason with `logs upgrade`. On failure `app` does not start and 1.x keeps serving; fix it and run `up -d` again (idempotent) |
+| `upgrade` exits with a failure (≤2.5.2 only) | 2.5.3+ has no upgrade service: download the new compose before manual `up -d`, otherwise the old upgrade service calls a removed command and the app will not start |
 | Permission error when creating the database | The database user needs the `CREATEDB` privilege (the `feedlore` user in the official image has it); for an externally hosted database, create it manually first, or point at the target database with `V2_DATABASE_URL` |
 | Snapshot creation failed (⚠️ in the log) | Another connection was holding the 1.x database during migration; the migration itself is read-only and unaffected, but take your own `pg_dump` backup |
 | `upgrade` seems stuck on the image cache | Normal when there are many images; set `UPGRADE_SKIP_IMAGE_CACHE=1` and run `up -d` again |

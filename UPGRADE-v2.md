@@ -2,14 +2,12 @@ English: [UPGRADE-v2.en.md](UPGRADE-v2.en.md)
 
 # 从 1.x 升级到 2.x
 
-2.x 走**旁路升级**：同一台 Postgres 里的新库（默认 `feedlore_v2`），1.x 的库与数据卷
-全程**只读**，数据迁移只往里写新库。升级后原账号密码直接可登录（首次登录自动换成 2.x 的哈希）。
+> **⚠️ 本文仅适用于 2.5.2 及更早版本（2026-11-19）**。2.5.3 起已移除 v1 → v2 自动数据迁移：
+> 不再有 `upgrade` 容器和 `migrate-legacy` 命令。若你还在 1.x，请先在 1.7.4 用
+> 「设置 → 数据 → 导出」备份，再全新安装 2.5.3+ 后导入（见帮助文档「数据 → 导入」）。
+> 已升级到 2.x 的老站点不受影响，照常升级即可（手动 up -d 需先换新版 compose，见 CHANGELOG）。
 
-| 你的情况 | 该怎么做 |
-| --- | --- |
-| 1.x + Watchtower（1.x 默认部署方式） | **什么都不用做**，等它自动升级（见 A） |
-| 想手动/分步升级 | 用 `docker-compose.v2.release.yml`（见 B） |
-| 全新安装 | 同一份 compose，零配置直接起（见 C），自动创建管理员并打印一次性随机密码 |
+旧版（≤2.5.2）采用旁路升级：同一台 Postgres 里的新库 `feedlore_v2`，1.x 库全程只读。下文步骤只对那批版本有效。
 
 ---
 
@@ -128,10 +126,12 @@ docker compose -f docker-compose.v2.release.yml up -d
 ```
 
 `upgrade` 检测不到 1.x 数据会跳过迁移，只建表；应用启动后若站点没有任何账号，
-会自动创建初始管理员 `admin`，并生成一次性随机密码，**只在当次启动日志中打印一次**：
+会自动创建初始管理员 `admin`。旧版（≤2.5.2）一次性密码只在启动日志打印一次；
+2.5.3+ 改为首启横幅 `FEEDLORE FIRST RUN` + 24h 内 CLI 查回：
 
 ```bash
-docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time password'
+docker compose -f docker-compose.v2.release.yml logs app
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password
 ```
 
 登录后请立即到「设置 → 账号」修改密码。想自己指定初始口令，就在首次启动前设
@@ -160,7 +160,7 @@ docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time passwo
 | --- | --- |
 | 自动升级后站点打不开 | 自举还在跑（大库要几分钟），`docker logs -f feedlore` 等 `Bootstrap complete`；若反复重启，日志里会有具体失败原因 |
 | 登录后马上又回到未登录 / 403 | 反代改写了 Host：补 `AUTH_BASE_URL`；HTTPS 下没设 `AUTH_SECURE_COOKIES=1` 或纯 HTTP 反而设了 `1` |
-| `upgrade` 失败退出 | `logs upgrade` 看原因。失败时 `app` 不会启动，1.x 继续服务；修好后重新 `up -d`（幂等） |
+| `upgrade` 失败退出（仅 ≤2.5.2） | 2.5.3+ 已无 upgrade 服务：手动 `up -d` 前先下载新版 compose，否则旧 compose 的 upgrade 会调用已删除的命令导致 app 起不来 |
 | 建库报权限错误 | 数据库用户需要 `CREATEDB` 权限（官方镜像的 `feedlore` 用户有）；外部托管库请先手动建库，或用 `V2_DATABASE_URL` 指定目标库 |
 | 快照创建失败（日志有 ⚠️） | 迁移期间有别的连接占着 1.x 库；迁移本身只读、不受影响，但请自行 `pg_dump` 备份 |
 | upgrade 卡在图片缓存 | 图片多时正常；可 `UPGRADE_SKIP_IMAGE_CACHE=1` 后重新 `up -d` |

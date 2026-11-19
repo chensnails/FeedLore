@@ -6,7 +6,7 @@
 > Multi-user · no ads · no telemetry · all data in your own PostgreSQL.
 
 **Live demo**: https://feedlore.669600.xyz (`demo` / `demo`)
-Current version **2.4.7** · [Changelog](CHANGELOG.en.md) · [Upgrade & deployment](UPGRADE-v2.en.md)
+Current version **2.5.2** (2.5.3 unreleased) · [Changelog](CHANGELOG.en.md) · [Upgrade & deployment](UPGRADE-v2.en.md)
 
 ## Highlights
 
@@ -39,13 +39,14 @@ curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-co
 docker compose -f docker-compose.v2.release.yml up -d
 ```
 
-The first start creates the database and may take a few minutes; check progress with
-`docker compose -f docker-compose.v2.release.yml logs upgrade`.
-A new site creates admin `admin` with a one-time random password printed once in the log:
+Recommended: use the deploy script — it runs `up -d`, waits for healthy, and **prints the login URL and initial credentials right in the terminal**:
 
 ```bash
-docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time password'
+curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/scripts/deploy.sh && chmod +x deploy.sh && ./deploy.sh
 ```
+
+For China networks use `scripts/deploy-cn.sh` instead. Manual deploys print a `FEEDLORE FIRST RUN` banner on a fresh site (password shown once);
+recover it within 24h with `docker exec -it feedlore pnpm --filter @feedlore/server initial-password`. Upgrades never change an existing password.
 
 Open `http://<host>:3210`, sign in and change the password immediately, then add RSS / Atom feeds or import OPML under Settings → Sources.
 
@@ -53,7 +54,7 @@ Open `http://<host>:3210`, sign in and change the password immediately, then add
 
 Defaults work out of the box. To change the port, run behind an HTTPS reverse proxy, reuse a database password or set the initial account, copy [`.env.example`](.env.example) to `.env` (every variable is documented) and re-run `up -d`.
 
-- **Upgrading from 1.x**: sites with Watchtower migrate automatically and keep their passwords; manual steps, rollback and backups in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
+- **Upgrading from 1.x**: automatic 1.x → 2.x data migration is removed (1.x databases deleted). Export from 1.7.4 via Settings → Data → Export, then import here. See [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 - **Updating**: images are pinned to a version — change `V2_IMAGE` to switch; `:latest` follows Watchtower, or use the one-click update under Settings → About.
 
 ## Local development

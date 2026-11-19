@@ -7,6 +7,38 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - The full 1.x history lives in tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) and the corresponding GitHub Releases.
 - The upgrade steps from 1.x are in [UPGRADE-v2.en.md](UPGRADE-v2.en.md).
 
+## 2.5.3 — unreleased
+
+> **⚠️ Read before upgrading (anyone using manual `docker compose up -d`)**: this release removes
+> the one-shot `upgrade` container and the `upgrade:v1` command. If your local
+> `docker-compose.v2.release.yml` is the old version (still defining an `upgrade` service),
+> **download the new compose before running `up -d`** — otherwise the upgrade container calls a
+> command that no longer exists, exits 1, and blocks the app from starting.
+> Watchtower / "Settings → One-click update" only recreate the app container and are **unaffected**.
+> Download: `curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml`
+
+### Added
+
+- **First-run credentials printed at deploy time**: on a fresh empty site, once the server is
+  listening it prints a prominent banner (URL / initial username / one-time password / next step).
+  Upgrade deployments never touch the existing password and only print the login URL.
+- **Retrievable one-time password**: `docker exec -it feedlore pnpm --filter @feedlore/server initial-password`
+  returns the password and remaining validity within 24h of generation (encrypted at rest,
+  `--json` output, exit codes 0/2/1).
+- **Deploy scripts**: `scripts/deploy.sh` runs up -d, waits for healthy, and echoes credentials;
+  `scripts/deploy-cn.sh` is the China-network variant (multi-source compose download + ghcr
+  mirrors, re-tagged to the official name).
+
+### Changed
+
+- **Automatic 1.x → 2.x data migration removed**: the `upgrade` container, `migrate-legacy.ts`,
+  and `upgrade:v1` are gone; 1.x databases are no longer migrated automatically. To move from 1.x,
+  export via "Settings → Data → Export" on 1.7.4, then import into a fresh 2.x install.
+  Existing 2.x passwords (including accounts migrated from 1.x) keep working.
+- **Schema migration now runs at app startup**: every start runs an idempotent drizzle migrate
+  instead of relying on the upgrade service that only ran during `docker compose up`.
+  `PUBLIC_URL` sets the external URL shown in the banner; it is display-only and not used for auth.
+
 ## 2.5.2 — 2026-11-18
 
 ### Fixed

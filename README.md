@@ -6,7 +6,7 @@ English: [README.en.md](README.en.md)
 > 多用户 · 无广告 · 无遥测 · 数据全在你自己的 PostgreSQL。
 
 **在线体验**：https://feedlore.669600.xyz  （`demo` / `demo`）
-当前版本 **2.4.7** · [更新日志](CHANGELOG.md) · [升级与部署](UPGRADE-v2.md)
+当前版本 **2.5.2**（2.5.3 待发布） · [更新日志](CHANGELOG.md) · [升级与部署](UPGRADE-v2.md)
 
 ## 亮点
 
@@ -39,12 +39,17 @@ curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-co
 docker compose -f docker-compose.v2.release.yml up -d
 ```
 
-首次启动建库需几分钟，进度看 `docker compose -f docker-compose.v2.release.yml logs upgrade`。
-全新站点创建管理员 `admin`，一次性随机密码只在启动日志打印一次：
+推荐用部署脚本一步完成：`curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/scripts/deploy.sh && chmod +x deploy.sh && ./deploy.sh`，
+它会在 `up -d` 后等 app healthy，并**在终端直接回显登录链接与初始账密**。国内网络用 `scripts/deploy-cn.sh`。
+
+手动部署时，空站点首次启动会打印 `FEEDLORE FIRST RUN` 横幅（含一次性密码，只这一次）：
 
 ```bash
-docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time password'
+docker compose -f docker-compose.v2.release.yml logs app
+# 错过横幅可 24h 内查回：docker exec -it feedlore pnpm --filter @feedlore/server initial-password
 ```
+
+升级部署不会动原密码，只回显登录链接。
 
 访问 `http://<主机>:3210` 登录并立即改密，然后在「设置 → 数据源」添加 RSS / Atom 或导入 OPML 即可阅读。
 
@@ -53,7 +58,7 @@ docker compose -f docker-compose.v2.release.yml logs app | grep 'one-time passwo
 默认值开箱可用。改端口、走 HTTPS 反代、复用数据库密码或指定初始账号时，把 [`.env.example`](.env.example)
 复制为 `.env`（每项含义都在注释里），改完重新 `up -d`。
 
-- **从 1.x 升级**：开着 Watchtower 的站点自动迁移并保留账号密码；手动步骤、回滚与备份见 [UPGRADE-v2.md](UPGRADE-v2.md)。
+- **从 1.x 升级**：v1→v2 自动数据迁移已下线（1.x 库已删）；老站点请用 1.7.4 的「设置 → 数据 → 导出」+ 本版导入。详见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 - **更新**：镜像默认钉版本号，换版本改 `V2_IMAGE`；设为 `:latest` 跟随 Watchtower 滚动升级，也可在「设置 → 关于」一键更新。
 
 ## 本地开发

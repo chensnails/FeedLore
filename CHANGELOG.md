@@ -7,6 +7,32 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
 
+## 2.5.3 — 待发布
+
+> **⚠️ 升级前必读（手动 `docker compose up -d` 的用户）**：本版移除了 `upgrade` 一次性容器
+> 和 `upgrade:v1` 命令。如果你手里的 `docker-compose.v2.release.yml` 是旧版（还含 `upgrade` 服务），
+> **先下载新 compose 再 `up -d`**，否则 upgrade 容器会调用不存在的命令、退出码 1，
+> 把 app 挡在启动之前。Watchtower / 「设置 → 一键更新」路径只重建 app，**不受影响**。
+> 下载：`curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml`
+
+### 新增
+
+- **首启直接回显账密与登录链接**：空站点首次部署时，服务监听成功后打印醒目横幅
+  （访问地址 / 初始用户名 / 一次性密码 / 下一步）；升级部署不会动原密码，只回显登录链接。
+- **一次性密码可查回**：`docker exec -it feedlore pnpm --filter @feedlore/server initial-password`
+  在生成后 24 小时内可查回密码与剩余时间（加密落库，`--json` 输出，退出码 0/2/1）。
+- **部署脚本**：`scripts/deploy.sh` 执行 up -d、等 healthy、直接回显账密与链接；
+  `scripts/deploy-cn.sh` 为国内网络版，多源下载 compose + ghcr 反代拉镜像（拉后 tag 回官方名）。
+
+### 变更
+
+- **v1 → v2 自动数据迁移下线**：`upgrade` 容器、`migrate-legacy.ts`、`upgrade:v1` 命令已移除，
+  1.x 库不再自动搬数据。需要从 1.x 迁移的用户，请先在 1.7.4 用「设置 → 数据 → 导出」备份，
+  再全新安装 2.x 后导入。已有 2.x 站点的密码（含 1.x 迁移过来的账号）照常可用。
+- **结构迁移改由 app 启动自举完成**：每次启动跑一次 drizzle migrate（幂等），
+  不再依赖只在 `docker compose up` 时执行的 upgrade 服务；`PUBLIC_URL` 可设对外访问地址，
+  仅用于横幅提示，不参与鉴权。
+
 ## 2.5.2 — 2026-11-18
 
 ### 修复
