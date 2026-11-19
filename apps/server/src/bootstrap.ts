@@ -28,13 +28,13 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { eq, sql } from 'drizzle-orm';
 import { createDb, createPool, sessions, users } from '@feedlore/db';
 import { getAuth } from './auth';
 import { ensureAuthSecret } from './lib/auth-secret';
+import { newOneTimePassword, saveInitialAdmin, type InitialAdminCredential } from './lib/initialPassword';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const MARKER_KEY = 'v1Upgrade';
@@ -303,6 +303,19 @@ async function writeMarker(targetUrl: string, counts: Counts): Promise<void> {
   }
 }
 
+/**
+ * 本次启动生成的初始凭据，供 index.ts 在**服务真正监听之后**打印首启横幅。
+ * 只在空站点随机生成时设置；配了 ADMIN_PASS 的不算「一次性口令」，不进这里。
+ * 横幅必须在 listen 之后打：启动自举可能跑几分钟，早打的横幅会被迁移日志埋掉，
+ * 用户还以为服务没起来。
+ */
+let startupCredential: InitialAdminCredential | null = null;
+export function consumeStartupCredential(): InitialAdminCredential | null {
+  const c = startupCredential;
+  startupCredential = null;
+  return c;
+}
+
 /** 空站点播种：没有任何账号时创建初始管理员（ADMIN_USER/ADMIN_PASS 可覆盖）。 */
 async function ensureDefaultAdmin(): Promise<void> {
   const db = createDb();
@@ -318,9 +331,10 @@ async function ensureDefaultAdmin(): Promise<void> {
 
   const username = process.env.ADMIN_USER?.trim() || 'admin';
   /* 不再回落到 admin/admin：默认口令等于把刚部署、还没来得及改密的实例直接送人。
-   * 没设 ADMIN_PASS 时生成一次性随机密码，只在本次启动日志里打印一次。 */
+   * 没设 ADMIN_PASS 时生成一次性随机密码：加密落库（24h 查询窗口），
+   * 明文只在启动横幅里出现一次，不再用 warn 长期留在 docker logs 里。 */
   const configuredPassword = process.env.ADMIN_PASS?.trim();
-  const password = configuredPassword || randomBytes(12).toString('base64url');
+  const password = configuredPassword || newOneTimePassword();
   try {
     const auth = getAuth(db);
     // 与 seed.ts 一致：better-auth 必须要有 email，登录标识仍是 username
@@ -347,8 +361,21 @@ async function ensureDefaultAdmin(): Promise<void> {
   }
 
   if (!configuredPassword) {
-    warn(`Empty site: created initial admin ${username}, one-time password: ${password}`);
-    warn('This password appears in this startup log only once; sign in and change it now. Set ADMIN_PASS for the next deployment.');
+    /* 加密落库失败不能让站点起不来：口令已经在 signUpEmail 里生效，
+     * 至少启动横幅还会完整打印一次，管理员仍能登录进去改密。
+     * 这里刻意不把 password 写进任何 warn —— 那正是要消除的旧行为。 */
+    try {
+      startupCredential = await saveInitialAdmin(db, username, password);
+      log(`Empty site: created initial admin ${username}; one-time password saved (queryable for 24h via CLI)`);
+    } catch (e) {
+      startupCredential = {
+        username,
+        password,
+        generatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 24 * 3600_000).toISOString(),
+      };
+      warn(`Initial admin created, but the password could not be saved for later query: ${(e as Error)?.message ?? e}`);
+    }
   } else {
     log(`Empty site: created the admin with ADMIN_USER=${username}`);
   }
