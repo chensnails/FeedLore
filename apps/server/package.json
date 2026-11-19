@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "migrate:legacy": "tsx scripts/migrate-legacy.ts",
-    "upgrade:v1": "tsx scripts/upgrade.ts"
+    "upgrade:v1": "tsx scripts/upgrade.ts",
+    "initial-password": "tsx scripts/initial-password.ts"
   },
   "dependencies": {
     "@feedlore/ai": "workspace:*",

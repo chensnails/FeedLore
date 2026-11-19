@@ -17,7 +17,8 @@ import type { AuthInstance } from '@feedlore/auth';
 import { APP_VERSION, HOST, PORT } from './env';
 import { getAuth } from './auth';
 import { createApp } from './app';
-import { bootstrap } from './bootstrap';
+import { bootstrap, consumeStartupCredential } from './bootstrap';
+import { formatRemaining, type InitialAdminCredential } from './lib/initialPassword';
 import { startScheduler } from './lib/fetcher';
 import { startDigestScheduler } from './lib/digest';
 import { startAiTagScheduler } from './lib/aiTag';
@@ -28,6 +29,43 @@ import { pruneImageCache } from './routes/img';
 
 let db: Db | null = null;
 let auth: AuthInstance | null = null;
+
+/**
+ * 首启横幅：只在本次「空站点随机生成管理员口令」时打印一次。
+ *
+ * 为什么在 listen 回调里打：启动自举可能跑几分钟（v1 大库迁移），早打的横幅
+ * 会被迁移日志冲掉，用户还以为服务没起来。这里 print 时端口已确定可访问。
+ *
+ * 访问地址优先读 PUBLIC_URL（反代域名 / 对外 IP:端口），没有就用容器内的
+ * HOST:PORT —— 明确标注后者只在容器网络内可达，免得用户拿 0.0.0.0:3000 去浏览器。
+ * 口令只出现在这一个横幅里，CLI 查询走 24h 窗口，见 lib/initialPassword.ts。
+ */
+function printFirstRunBanner(c: InitialAdminCredential, port: number): void {
+  const configured = process.env.PUBLIC_URL?.trim();
+  const url = configured || (HOST === '0.0.0.0' || HOST === '::'
+    ? `http://localhost:${port}`
+    : `http://${HOST}:${port}`);
+  const note = configured
+    ? '（PUBLIC_URL 指定的对外地址）'
+    : '（容器网络内地址；对外访问请在 .env 设 PUBLIC_URL=http://你的域名或IP:端口）';
+  const rule = '='.repeat(72);
+  const line = (s: string): void => console.log(`  ${s}`);
+  console.log('');
+  console.log(rule);
+  line('FEEDLORE FIRST RUN / 首次启动凭据');
+  console.log(rule);
+  line(`访问地址   ${url} ${note}`);
+  line(`初始用户名 ${c.username}`);
+  line(`初始密码   ${c.password}`);
+  line('');
+  line('密码查询   docker exec -it feedlore pnpm --filter @feedlore/server initial-password');
+  line(`查询窗口   ${formatRemaining(c.expiresAt)}（生成于 ${c.generatedAt}）`);
+  line('');
+  line('下一步：打开上面的地址 → 用初始用户名/密码登录 → 立刻在「设置 → 账户」改掉密码。');
+  line('提示：查询窗口过期后无法再取回密码，只能请管理员重置。');
+  console.log(rule);
+  console.log('');
+}
 
 function scheduleImagePrune(database: Db): void {
   const run = (): void => {
@@ -121,6 +159,10 @@ async function main(): Promise<void> {
     console.log(
       `[v2] endpoints: GET /api/health, GET /api/session, POST /api/login, POST /api/logout, GET /api/feeds(user)`,
     );
+    /* 只打一次：bootstrap 在空站点随机生成口令时留下凭据，consume 后清空，
+     * 后续重启（账号已存在）不会再印横幅，也不会把口令留在滚动日志里。 */
+    const firstRun = consumeStartupCredential();
+    if (firstRun) printFirstRunBanner(firstRun, info.port);
   });
 }
 
