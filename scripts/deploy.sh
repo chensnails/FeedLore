@@ -68,9 +68,14 @@ say '  app healthy ✓'
 # 访问地址：PUBLIC_URL 优先；否则读 HOST_PORT 拼 localhost。
 pub_url="$(sed -n 's/^PUBLIC_URL=\(.*\)$/\1/p' .env 2>/dev/null | head -1 | tr -d '"'\''')"
 host_port="$(sed -n 's/^HOST_PORT=\(.*\)$/\1/p' .env 2>/dev/null | head -1 | tr -d '"'\''')"
-[[ -z "$host_port" ]] && host_port=3210
+# 注意：set -e 下不要用 `[[ ... ]] && var=...`，条件为假时整个脚本会静默退出。
+if [[ -z "$host_port" ]]; then host_port=3210; fi
 url="${pub_url:-http://localhost:${host_port}}"
-[[ -n "$pub_url" ]] && url_note='（PUBLIC_URL 指定的对外地址）' || url_note='（对外访问请在 .env 设 PUBLIC_URL）'
+if [[ -n "$pub_url" ]]; then
+  url_note='（PUBLIC_URL 指定的对外地址）'
+else
+  url_note='（对外访问请在 .env 设 PUBLIC_URL）'
+fi
 
 say '[3/3] 读取凭据…'
 say ''

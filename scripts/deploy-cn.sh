@@ -92,19 +92,25 @@ line 'FEEDLORE CN DEPLOY / 中国网络部署'
 say "$RULE"
 
 say '[1/4] 准备 compose 与部署脚本…'
+# 已存在的文件要验内容：旧版 compose（含 upgrade 服务）必须覆盖，否则新镜像下 app 起不来。
+if [[ -f "$COMPOSE_FILE" ]] && grep -q '^  upgrade:' "$COMPOSE_FILE"; then
+  line "检测到旧版 compose（含 upgrade 服务），重新下载新版…"
+  rm -f "$COMPOSE_FILE"
+fi
 download_file "$COMPOSE_FILE" "$COMPOSE_FILE" "$COMPOSE_FILE"
 download_file "scripts/$DEPLOY_SCRIPT" "$DEPLOY_SCRIPT" "$DEPLOY_SCRIPT"
 chmod +x "$DEPLOY_SCRIPT"
 
 # --- 2. 从 compose 读出实际镜像（跟随版本升级，不硬编码）------------------------
+# 兼容两种写法：`image: ${V2_IMAGE:-x}` 与旧版的 `image: &v2-image ${V2_IMAGE:-x}`。
 image_from_compose() {
-  sed -n 's|^[[:space:]]*image:[[:space:]]*\${V2_IMAGE:-\([^}]*\)}.*|\1|p' "$COMPOSE_FILE" | head -1
+  sed -n 's|^[[:space:]]*image:[[:space:]]*\(&v2-image[[:space:]]*\)\?\${V2_IMAGE:-\([^}]*\)}.*|\2|p' "$COMPOSE_FILE" | head -1
 }
 parsed="$(image_from_compose)"
-[[ -n "$parsed" ]] && IMAGE="$parsed"
+if [[ -n "$parsed" ]]; then IMAGE="$parsed"; fi
 # 允许 .env 里的 V2_IMAGE 覆盖（用户钉了版本时尊重它）
 env_image="$(sed -n 's/^V2_IMAGE=\(.*\)$/\1/p' .env 2>/dev/null | head -1 | tr -d '"'\''')"
-[[ -n "$env_image" ]] && IMAGE="$env_image"
+if [[ -n "$env_image" ]]; then IMAGE="$env_image"; fi
 line "目标镜像：$IMAGE"
 
 # --- 3. ghcr 反代拉取 + tag 回官方名 --------------------------------------------
@@ -125,7 +131,7 @@ pull_via_mirror() {
 say '[2/4] 拉取镜像（公共 ghcr 反代，逐个尝试）…'
 pulled=0
 for m in "${GHCR_MIRRORS[@]}"; do
-  [[ -z "$m" ]] && continue
+  if [[ -z "$m" ]]; then continue; fi
   if pull_via_mirror "$m" "$IMAGE"; then
     pulled=1
     break
