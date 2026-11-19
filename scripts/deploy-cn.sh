@@ -56,6 +56,14 @@ say() { printf '%s\n' "$*"; }
 line() { printf '  %s\n' "$*"; }
 die() { echo "错误：$*" >&2; exit 1; }
 
+# 读 .env 里的键。必须做成函数：set -o pipefail 下 `sed .env`（文件不存在时退出码 2）
+# 会让赋值语句失败并静默退出——「没 .env 时跑到 [1/4] 就回提示符」的根因之一。
+read_env() {
+  local key="$1"
+  [[ -f .env ]] || return 0
+  sed -n "s/^${key}=\(.*\)\$/\1/p" .env | head -1 | tr -d '"'\'''
+}
+
 # --- 1. 下载 compose / deploy.sh -------------------------------------------------
 fetch_one() {
   local url="$1" out="$2"
@@ -128,7 +136,7 @@ image_from_compose() {
 parsed="$(image_from_compose)"
 if [[ -n "$parsed" ]]; then IMAGE="$parsed"; fi
 # 允许 .env 里的 V2_IMAGE 覆盖（用户钉了版本时尊重它）
-env_image="$(sed -n 's/^V2_IMAGE=\(.*\)$/\1/p' .env 2>/dev/null | head -1 | tr -d '"'\''')"
+env_image="$(read_env V2_IMAGE)"
 if [[ -n "$env_image" ]]; then IMAGE="$env_image"; fi
 line "目标镜像：$IMAGE"
 

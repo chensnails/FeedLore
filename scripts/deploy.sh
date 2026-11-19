@@ -108,10 +108,17 @@ if [[ $ready -ne 1 ]]; then
 fi
 say '  app healthy ✓'
 
+# 读 .env 里的键。必须做成函数：set -o pipefail 下 `sed .env`（文件不存在时退出码 2）
+# 会让整个赋值语句失败并静默退出——这正是「没 .env 时脚本跑到一半就回提示符」的根因。
+read_env() {
+  local key="$1"
+  [[ -f .env ]] || return 0
+  sed -n "s/^${key}=\(.*\)\$/\1/p" .env | head -1 | tr -d '"'\'''
+}
+
 # 访问地址：PUBLIC_URL 优先；否则读 HOST_PORT 拼 localhost。
-pub_url="$(sed -n 's/^PUBLIC_URL=\(.*\)$/\1/p' .env 2>/dev/null | head -1 | tr -d '"'\''')"
-host_port="$(sed -n 's/^HOST_PORT=\(.*\)$/\1/p' .env 2>/dev/null | head -1 | tr -d '"'\''')"
-# 注意：set -e 下不要用 `[[ ... ]] && var=...`，条件为假时整个脚本会静默退出。
+pub_url="$(read_env PUBLIC_URL)"
+host_port="$(read_env HOST_PORT)"
 if [[ -z "$host_port" ]]; then host_port=3210; fi
 url="${pub_url:-http://localhost:${host_port}}"
 if [[ -n "$pub_url" ]]; then
