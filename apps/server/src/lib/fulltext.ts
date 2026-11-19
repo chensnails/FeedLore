@@ -11,13 +11,13 @@
  * 只在频道开了 `feeds.full_text` 时调用（见 fetcher.ts）。
  */
 
-import { log } from './logger';
-import { Readability } from '@mozilla/readability';
-import { parseHTML } from 'linkedom';
-import { inArray, sql } from 'drizzle-orm';
 import { articleCache, type Db } from '@feedlore/db';
-import { safeFetch } from './net';
+import { Readability } from '@mozilla/readability';
+import { inArray, sql } from 'drizzle-orm';
+import { parseHTML } from 'linkedom';
 import { parseArticleHtml } from './article';
+import { log } from './logger';
+import { safeFetch } from './net';
 import type { NormalizedItem } from './rss';
 
 /* ----------------------------------------------------------------------------
@@ -85,7 +85,10 @@ function validHttpUrl(raw: string | null | undefined): string | null {
  * linkedom 先建文档再塞一个 `<base href>`：Readability 内部靠 `document.baseURI`
  * 补全相对链接，没有 base 时相册 / 站内链接会变成不可点的一串相对路径。
  */
-export function extractArticleFromHtml(html: string, opts: ExtractOptions = {}): ExtractedArticle | null {
+export function extractArticleFromHtml(
+  html: string,
+  opts: ExtractOptions = {},
+): ExtractedArticle | null {
   const src = String(html ?? '');
   if (!src.trim()) return null;
 
@@ -275,8 +278,10 @@ export async function enhanceWithFullText(
 ): Promise<NormalizedItem[]> {
   const candidates = items
     .map((item, index) => ({ item, index, url: articleUrlOf(item) }))
-    .filter((c): c is { item: NormalizedItem; index: number; url: string } =>
-      Boolean(c.url) && isThinContent(c.item));
+    .filter(
+      (c): c is { item: NormalizedItem; index: number; url: string } =>
+        Boolean(c.url) && isThinContent(c.item),
+    );
   if (!candidates.length) return items;
 
   const ttl = Number(opts.ttlMs) > 0 ? Number(opts.ttlMs) : CACHE_TTL_MS;
@@ -314,8 +319,11 @@ export async function enhanceWithFullText(
       const c = missing[idx];
       if (!c) return;
 
-      const got = await fetchArticle(c.url, { url: c.url, siteUrl: opts.siteUrl, timeoutMs: opts.timeoutMs })
-        .catch(() => null);
+      const got = await fetchArticle(c.url, {
+        url: c.url,
+        siteUrl: opts.siteUrl,
+        timeoutMs: opts.timeoutMs,
+      }).catch(() => null);
       if (!got) continue;
 
       await db

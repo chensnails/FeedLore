@@ -20,54 +20,50 @@
  *    否则用户每改一次别的选项就会把「今天已跑过」抹掉，调度器会在同一时间点反复重跑。
  */
 
-import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
-import { eq, sql } from 'drizzle-orm';
-import { users, userLlm, type Db } from '@feedlore/db';
+import { getCryptoSecret, userLlmForStore, userLlmForView } from '@feedlore/ai';
 import type { AuthInstance } from '@feedlore/auth';
 import {
-  prefs as prefsSpec,
-  prefsResponse,
-  prefsPatchBody,
   type PrefsPatchBody,
+  prefsPatchBody,
+  prefsResponse,
+  prefs as prefsSpec,
 } from '@feedlore/contract';
-import { apiError, ApiException } from '../lib/apiError';
-import { assertResponse, BadRequest } from '../lib/validate';
+import { type Db, userLlm, users } from '@feedlore/db';
+import { zValidator } from '@hono/zod-validator';
+import { eq, sql } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { ApiException, apiError } from '../lib/apiError';
 import {
-  getCryptoSecret,
-  userLlmForStore,
-  userLlmForView,
-} from '@feedlore/ai';
+  deleteLlmModel,
+  deleteLlmVendor,
+  listLlmModels,
+  listLlmVendors,
+  loadLlmRoutes,
+  saveLlmRoutes,
+  upsertLlmModel,
+  upsertLlmVendor,
+} from '../lib/llmProviders';
+import { assertPublicHost } from '../lib/net';
 import {
   sanitizeDigest,
   sanitizeFilters,
   sanitizeLayout,
-  sanitizeWatchRules,
+  sanitizeRules,
   sanitizeWatchExpireDays,
+  sanitizeWatchRules,
   sanitizeWebhook,
   userDigest,
-  sanitizeRules,
-  userRules,
   userFilters,
   userGroupOrder,
   userLayout,
+  userRules,
   userWatchExpireDays,
   userWatchRules,
   userWebhook,
 } from '../lib/prefs';
+import { assertResponse, BadRequest } from '../lib/validate';
 import { expireWatchTags } from '../lib/watch-expire';
-import { assertPublicHost } from '../lib/net';
-import {
-  listLlmVendors,
-  listLlmModels,
-  loadLlmRoutes,
-  saveLlmRoutes,
-  upsertLlmVendor,
-  deleteLlmVendor,
-  upsertLlmModel,
-  deleteLlmModel,
-} from '../lib/llmProviders';
-import { requireAuth, type AppEnv } from '../middleware/auth';
+import { type AppEnv, requireAuth } from '../middleware/auth';
 
 /**
  * 模型配置行 → 契约视图（`lib/ai` 的 `userLlmForView`）。
@@ -85,99 +81,13 @@ function groupOf(prefs: PrefsBag, key: string): Record<string, unknown> {
 }
 
 export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
-  return new Hono<AppEnv>()
-    /* ---------------- GET /api/prefs ---------------- */
-    .get(prefsSpec.get.path, requireAuth(auth, 'user'), async (c) => {
-      if (!db) return apiError(c, 'E_DB_NOT_READY');
-
-      const uid = c.get('user').id;
-
-      const [userRow] = await db
-        .select({ prefs: users.prefs })
-        .from(users)
-        .where(eq(users.id, uid))
-        .limit(1);
-      if (!userRow) return apiError(c, 'E_USER_NOT_FOUND', { status: 401 });
-
-      const [llmRow] = await db
-        .select({
-          encryptedKey: userLlm.encryptedKey,
-          baseUrl: userLlm.baseUrl,
-          model: userLlm.model,
-          temperature: userLlm.temperature,
-          thinking: userLlm.thinking,
-          thinkingDepth: userLlm.thinkingDepth,
-        })
-        .from(userLlm)
-        .where(eq(userLlm.userId, uid))
-        .limit(1);
-
-      const secret = await getCryptoSecret(db);
-      const [llmVendorsView, llmModelsView, llmRoutesView] = await Promise.all([
-        listLlmVendors(db, uid),
-        listLlmModels(db, uid),
-        loadLlmRoutes(db, uid),
-      ]);
-      /* `llm` 是 0015 之前的旧视图，新前端不再读它；这里从默认模型回填，
-       * 让仍按旧形状读的客户端（或回滚后的旧界面）拿到一致的默认配置。
-       * 没有任何模型时才回落到 user_llm 旧默认槽。 */
-      const defaultModel = llmModelsView.find((m) => m.isDefault) || null;
-      const llmView = defaultModel
-        ? {
-          baseUrl: defaultModel.baseUrl,
-          model: defaultModel.model,
-          temperature: defaultModel.temperature,
-          thinking: defaultModel.thinking,
-          thinkingDepth: defaultModel.thinkingDepth,
-          apiKeySet: defaultModel.apiKeySet,
-          apiKeyHint: defaultModel.apiKeyHint,
-        }
-        : userLlmForView(llmRow, secret);
-      const prefs = userRow.prefs;
-
-      const payload = assertResponse(
-        prefsResponse,
-        {
-          groupOrder: userGroupOrder(prefs),
-          layout: userLayout(prefs),
-          filters: userFilters(prefs),
-          watchRules: userWatchRules(prefs),
-          watchExpireDays: userWatchExpireDays(prefs),
-          webhookUrl: userWebhook(prefs),
-          digest: userDigest(prefs),
-          rules: userRules(prefs),
-          llm: llmView,
-          llmVendors: llmVendorsView,
-          llmModels: llmModelsView,
-          llmRoutes: llmRoutesView,
-        },
-        'GET /api/prefs',
-      );
-      return c.json(payload);
-    })
-
-    /* ---------------- POST /api/prefs ---------------- */
-    .post(
-      prefsSpec.update.path,
-      requireAuth(auth, 'user'),
-      zValidator('json', prefsPatchBody, (result) => {
-        if (!result.success) throw new BadRequest('POST /api/prefs', result.error.issues);
-      }),
-      async (c) => {
+  return (
+    new Hono<AppEnv>()
+      /* ---------------- GET /api/prefs ---------------- */
+      .get(prefsSpec.get.path, requireAuth(auth, 'user'), async (c) => {
         if (!db) return apiError(c, 'E_DB_NOT_READY');
 
         const uid = c.get('user').id;
-        const body: PrefsPatchBody = c.req.valid('json');
-
-        /* 只读账户仍可调整「怎么看」（布局 / 分组顺序；外观已存浏览器本机、不走本接口），
-         * 但不能再改「抓什么、怎么处理」：过滤规则、关注屏蔽、Webhook、日报、模型全部拒绝。 */
-        if (c.get('user').role === 'readonly') {
-          const blocked = (['filters', 'watchRules', 'watchExpireDays', 'webhookUrl', 'digest', 'rules', 'llm'] as const)
-            .filter((k) => body[k] !== undefined);
-          if (blocked.length) {
-            throw new ApiException('E_READONLY_RULES');
-          }
-        }
 
         const [userRow] = await db
           .select({ prefs: users.prefs })
@@ -186,142 +96,243 @@ export function prefsRoutes(db: Db | null, auth: AuthInstance | null) {
           .limit(1);
         if (!userRow) return apiError(c, 'E_USER_NOT_FOUND', { status: 401 });
 
-        const prev = (userRow.prefs ?? {}) as PrefsBag;
-        const next: PrefsBag = { ...prev };
+        const [llmRow] = await db
+          .select({
+            encryptedKey: userLlm.encryptedKey,
+            baseUrl: userLlm.baseUrl,
+            model: userLlm.model,
+            temperature: userLlm.temperature,
+            thinking: userLlm.thinking,
+            thinkingDepth: userLlm.thinkingDepth,
+          })
+          .from(userLlm)
+          .where(eq(userLlm.userId, uid))
+          .limit(1);
 
-        if (Array.isArray(body.groupOrder)) {
-          next.groupOrder = body.groupOrder
-            .filter((g): g is string => typeof g === 'string')
-            .map((g) => g.trim().slice(0, 40))
-            .filter(Boolean);
-        }
-
-        // 合并后再清洗：只改一个布局键不该把其余项重置成默认值
-        if (body.layout) {
-          next.layout = sanitizeLayout({ ...groupOf(prev, 'layout'), ...body.layout });
-        }
-        // 规则整组替换（非法规则被清洗器丢弃，而不是整体报错）
-        if (Array.isArray(body.filters)) {
-          next.filters = sanitizeFilters(body.filters);
-        }
-        if (Array.isArray(body.watchRules)) {
-          next.watchRules = sanitizeWatchRules(body.watchRules);
-        }
-        if (body.watchExpireDays !== undefined) {
-          next.watchExpireDays = sanitizeWatchExpireDays(body.watchExpireDays);
-        }
-
-        if (typeof body.webhookUrl === 'string') {
-          const hook = sanitizeWebhook(body.webhookUrl);
-          /* 保存即校验（S-06）：地址一旦落库，之后每次命中关注规则都会向它 POST。
-           * 空串表示「清空」，放行。 */
-          if (hook) {
-            try {
-              await assertPublicHost(hook);
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : String(e);
-              throw new ApiException('E_WEBHOOK_URL_UNREACHABLE', { detail: msg });
+        const secret = await getCryptoSecret(db);
+        const [llmVendorsView, llmModelsView, llmRoutesView] = await Promise.all([
+          listLlmVendors(db, uid),
+          listLlmModels(db, uid),
+          loadLlmRoutes(db, uid),
+        ]);
+        /* `llm` 是 0015 之前的旧视图，新前端不再读它；这里从默认模型回填，
+         * 让仍按旧形状读的客户端（或回滚后的旧界面）拿到一致的默认配置。
+         * 没有任何模型时才回落到 user_llm 旧默认槽。 */
+        const defaultModel = llmModelsView.find((m) => m.isDefault) || null;
+        const llmView = defaultModel
+          ? {
+              baseUrl: defaultModel.baseUrl,
+              model: defaultModel.model,
+              temperature: defaultModel.temperature,
+              thinking: defaultModel.thinking,
+              thinkingDepth: defaultModel.thinkingDepth,
+              apiKeySet: defaultModel.apiKeySet,
+              apiKeyHint: defaultModel.apiKeyHint,
             }
-          }
-          next.webhookUrl = hook;
-        }
-
-        if (body.digest) {
-          const prevDigest = groupOf(prev, 'digest');
-          const merged = sanitizeDigest({ ...prevDigest, ...body.digest });
-          // lastAuto 只归服务端调度器写
-          merged.lastAuto = typeof prevDigest.lastAuto === 'string' ? prevDigest.lastAuto : '';
-          next.digest = merged;
-        }
-
-        if (Array.isArray(body.rules)) {
-          next.rules = sanitizeRules(body.rules);
-        }
-
-        await db
-          .update(users)
-          .set({ prefs: next, updatedAt: sql`now()` })
-          .where(eq(users.id, uid));
-
-        // 缩短保留期要立刻生效，不必等下一轮抓取
-        if (body.watchExpireDays !== undefined) {
-          await expireWatchTags(db, uid).catch(() => 0);
-        }
-
-        /* ---- 模型配置：写 user_llm 侧表 ----
-         * apiKey 走 packages/ai 的 AEAD 加密（与 legacy 密文格式兼容，迁移不用重填）。
-         * 三态语义：字符串非空 → 换新密文；空串 → 清除；未提交 → 不动。
-         * 不区分的话，前端「只改模型名」会把已存的 Key 一起冲掉。 */
-        if (body.llm) {
-          // 模型地址也是出网口（服务端会带着 Key 向它 POST）——只在真的改了时才校验
-          const nextBase = typeof body.llm.baseUrl === 'string' ? body.llm.baseUrl.trim() : '';
-          if (nextBase) {
-            try {
-              await assertPublicHost(nextBase);
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : String(e);
-              throw new ApiException('E_MODEL_URL_UNREACHABLE', { detail: msg });
-            }
-          }
-
-          const secret = await getCryptoSecret(db);
-          const llmSet = userLlmForStore(
-            {
-              ...(body.llm.apiKey !== undefined ? { apiKey: body.llm.apiKey.trim() } : {}),
-              ...(body.llm.baseUrl !== undefined ? { baseUrl: body.llm.baseUrl } : {}),
-              ...(body.llm.model !== undefined ? { model: body.llm.model } : {}),
-              ...(body.llm.temperature !== undefined ? { temperature: body.llm.temperature } : {}),
-              ...(body.llm.thinking !== undefined ? { thinking: body.llm.thinking } : {}),
-              ...(body.llm.thinkingDepth !== undefined ? { thinkingDepth: body.llm.thinkingDepth } : {}),
-            },
-            secret,
-          );
-
-          if (Object.keys(llmSet).length) {
-            await db
-              .insert(userLlm)
-              .values({ userId: uid, ...llmSet })
-              .onConflictDoUpdate({
-                target: userLlm.userId,
-                set: { ...llmSet, updatedAt: sql`now()` },
-              });
-          }
-        }
-
-        /* ---- 厂商 / 模型（0017）：单条 upsert / 删除 / 路由合并 ----
-         * 都写 user_llm 或 llm_vendors / llm_providers，串行执行避免同一行竞态。 */
-        if (body.llmVendor) {
-          await upsertLlmVendor(db, uid, body.llmVendor);
-        }
-        if (body.llmVendorDelete) {
-          await deleteLlmVendor(db, uid, body.llmVendorDelete);
-        }
-        if (body.llmModel) {
-          await upsertLlmModel(db, uid, body.llmModel);
-        }
-        if (body.llmModelDelete) {
-          await deleteLlmModel(db, uid, body.llmModelDelete);
-        }
-        if (body.llmRoutes) {
-          await saveLlmRoutes(db, uid, body.llmRoutes);
-        }
+          : userLlmForView(llmRow, secret);
+        const prefs = userRow.prefs;
 
         const payload = assertResponse(
-          prefsSpec.update.response,
+          prefsResponse,
           {
-            ok: true,
-            groupOrder: userGroupOrder(next),
-            layout: userLayout(next),
-            filters: userFilters(next),
-            watchRules: userWatchRules(next),
-            watchExpireDays: userWatchExpireDays(next),
-            webhookUrl: userWebhook(next),
-            digest: userDigest(next),
-            rules: userRules(next),
+            groupOrder: userGroupOrder(prefs),
+            layout: userLayout(prefs),
+            filters: userFilters(prefs),
+            watchRules: userWatchRules(prefs),
+            watchExpireDays: userWatchExpireDays(prefs),
+            webhookUrl: userWebhook(prefs),
+            digest: userDigest(prefs),
+            rules: userRules(prefs),
+            llm: llmView,
+            llmVendors: llmVendorsView,
+            llmModels: llmModelsView,
+            llmRoutes: llmRoutesView,
           },
-          'POST /api/prefs',
+          'GET /api/prefs',
         );
         return c.json(payload);
-      },
-    );
+      })
+
+      /* ---------------- POST /api/prefs ---------------- */
+      .post(
+        prefsSpec.update.path,
+        requireAuth(auth, 'user'),
+        zValidator('json', prefsPatchBody, (result) => {
+          if (!result.success) throw new BadRequest('POST /api/prefs', result.error.issues);
+        }),
+        async (c) => {
+          if (!db) return apiError(c, 'E_DB_NOT_READY');
+
+          const uid = c.get('user').id;
+          const body: PrefsPatchBody = c.req.valid('json');
+
+          /* 只读账户仍可调整「怎么看」（布局 / 分组顺序；外观已存浏览器本机、不走本接口），
+           * 但不能再改「抓什么、怎么处理」：过滤规则、关注屏蔽、Webhook、日报、模型全部拒绝。 */
+          if (c.get('user').role === 'readonly') {
+            const blocked = (
+              [
+                'filters',
+                'watchRules',
+                'watchExpireDays',
+                'webhookUrl',
+                'digest',
+                'rules',
+                'llm',
+              ] as const
+            ).filter((k) => body[k] !== undefined);
+            if (blocked.length) {
+              throw new ApiException('E_READONLY_RULES');
+            }
+          }
+
+          const [userRow] = await db
+            .select({ prefs: users.prefs })
+            .from(users)
+            .where(eq(users.id, uid))
+            .limit(1);
+          if (!userRow) return apiError(c, 'E_USER_NOT_FOUND', { status: 401 });
+
+          const prev = (userRow.prefs ?? {}) as PrefsBag;
+          const next: PrefsBag = { ...prev };
+
+          if (Array.isArray(body.groupOrder)) {
+            next.groupOrder = body.groupOrder
+              .filter((g): g is string => typeof g === 'string')
+              .map((g) => g.trim().slice(0, 40))
+              .filter(Boolean);
+          }
+
+          // 合并后再清洗：只改一个布局键不该把其余项重置成默认值
+          if (body.layout) {
+            next.layout = sanitizeLayout({ ...groupOf(prev, 'layout'), ...body.layout });
+          }
+          // 规则整组替换（非法规则被清洗器丢弃，而不是整体报错）
+          if (Array.isArray(body.filters)) {
+            next.filters = sanitizeFilters(body.filters);
+          }
+          if (Array.isArray(body.watchRules)) {
+            next.watchRules = sanitizeWatchRules(body.watchRules);
+          }
+          if (body.watchExpireDays !== undefined) {
+            next.watchExpireDays = sanitizeWatchExpireDays(body.watchExpireDays);
+          }
+
+          if (typeof body.webhookUrl === 'string') {
+            const hook = sanitizeWebhook(body.webhookUrl);
+            /* 保存即校验（S-06）：地址一旦落库，之后每次命中关注规则都会向它 POST。
+             * 空串表示「清空」，放行。 */
+            if (hook) {
+              try {
+                await assertPublicHost(hook);
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                throw new ApiException('E_WEBHOOK_URL_UNREACHABLE', { detail: msg });
+              }
+            }
+            next.webhookUrl = hook;
+          }
+
+          if (body.digest) {
+            const prevDigest = groupOf(prev, 'digest');
+            const merged = sanitizeDigest({ ...prevDigest, ...body.digest });
+            // lastAuto 只归服务端调度器写
+            merged.lastAuto = typeof prevDigest.lastAuto === 'string' ? prevDigest.lastAuto : '';
+            next.digest = merged;
+          }
+
+          if (Array.isArray(body.rules)) {
+            next.rules = sanitizeRules(body.rules);
+          }
+
+          await db
+            .update(users)
+            .set({ prefs: next, updatedAt: sql`now()` })
+            .where(eq(users.id, uid));
+
+          // 缩短保留期要立刻生效，不必等下一轮抓取
+          if (body.watchExpireDays !== undefined) {
+            await expireWatchTags(db, uid).catch(() => 0);
+          }
+
+          /* ---- 模型配置：写 user_llm 侧表 ----
+           * apiKey 走 packages/ai 的 AEAD 加密（与 legacy 密文格式兼容，迁移不用重填）。
+           * 三态语义：字符串非空 → 换新密文；空串 → 清除；未提交 → 不动。
+           * 不区分的话，前端「只改模型名」会把已存的 Key 一起冲掉。 */
+          if (body.llm) {
+            // 模型地址也是出网口（服务端会带着 Key 向它 POST）——只在真的改了时才校验
+            const nextBase = typeof body.llm.baseUrl === 'string' ? body.llm.baseUrl.trim() : '';
+            if (nextBase) {
+              try {
+                await assertPublicHost(nextBase);
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                throw new ApiException('E_MODEL_URL_UNREACHABLE', { detail: msg });
+              }
+            }
+
+            const secret = await getCryptoSecret(db);
+            const llmSet = userLlmForStore(
+              {
+                ...(body.llm.apiKey !== undefined ? { apiKey: body.llm.apiKey.trim() } : {}),
+                ...(body.llm.baseUrl !== undefined ? { baseUrl: body.llm.baseUrl } : {}),
+                ...(body.llm.model !== undefined ? { model: body.llm.model } : {}),
+                ...(body.llm.temperature !== undefined
+                  ? { temperature: body.llm.temperature }
+                  : {}),
+                ...(body.llm.thinking !== undefined ? { thinking: body.llm.thinking } : {}),
+                ...(body.llm.thinkingDepth !== undefined
+                  ? { thinkingDepth: body.llm.thinkingDepth }
+                  : {}),
+              },
+              secret,
+            );
+
+            if (Object.keys(llmSet).length) {
+              await db
+                .insert(userLlm)
+                .values({ userId: uid, ...llmSet })
+                .onConflictDoUpdate({
+                  target: userLlm.userId,
+                  set: { ...llmSet, updatedAt: sql`now()` },
+                });
+            }
+          }
+
+          /* ---- 厂商 / 模型（0017）：单条 upsert / 删除 / 路由合并 ----
+           * 都写 user_llm 或 llm_vendors / llm_providers，串行执行避免同一行竞态。 */
+          if (body.llmVendor) {
+            await upsertLlmVendor(db, uid, body.llmVendor);
+          }
+          if (body.llmVendorDelete) {
+            await deleteLlmVendor(db, uid, body.llmVendorDelete);
+          }
+          if (body.llmModel) {
+            await upsertLlmModel(db, uid, body.llmModel);
+          }
+          if (body.llmModelDelete) {
+            await deleteLlmModel(db, uid, body.llmModelDelete);
+          }
+          if (body.llmRoutes) {
+            await saveLlmRoutes(db, uid, body.llmRoutes);
+          }
+
+          const payload = assertResponse(
+            prefsSpec.update.response,
+            {
+              ok: true,
+              groupOrder: userGroupOrder(next),
+              layout: userLayout(next),
+              filters: userFilters(next),
+              watchRules: userWatchRules(next),
+              watchExpireDays: userWatchExpireDays(next),
+              webhookUrl: userWebhook(next),
+              digest: userDigest(next),
+              rules: userRules(next),
+            },
+            'POST /api/prefs',
+          );
+          return c.json(payload);
+        },
+      )
+  );
 }

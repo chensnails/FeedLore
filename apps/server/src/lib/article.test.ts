@@ -12,19 +12,25 @@ import { parseArticleHtml } from './article';
  */
 
 const B = (html: string, opts = {}): ArticleBlock[] => parseArticleHtml(html, opts).blocks;
-const text = (nodes: ArticleInline[]): string => nodes.map((n) => (
-  n.t === 'text' || n.t === 'code' ? n.v : n.t === 'br' ? '\n' : 'v' in n ? text(n.v) : ''
-)).join('');
+const text = (nodes: ArticleInline[]): string =>
+  nodes
+    .map((n) =>
+      n.t === 'text' || n.t === 'code' ? n.v : n.t === 'br' ? '\n' : 'v' in n ? text(n.v) : '',
+    )
+    .join('');
 
 test('标题：h1/h2 归为 2 级，h3-h6 归为 3 级', () => {
   const blocks = B('<h1>大标题</h1><h2>二</h2><h3>三</h3><h4>四</h4><h6>六</h6>');
-  assert.deepEqual(blocks.map((b) => (b.t === 'h' ? b.level : b.t)), [2, 2, 3, 3, 3]);
+  assert.deepEqual(
+    blocks.map((b) => (b.t === 'h' ? b.level : b.t)),
+    [2, 2, 3, 3, 3],
+  );
 });
 
 test('段落与行内语义：链接 / 加粗 / 斜体 / 行内代码 / 删除线 / 换行都保留', () => {
   const [p] = B(
-    '<p>看 <a href="https://x.com/a">这里</a> <strong>粗</strong> <em>斜</em> '
-      + '<code>a&lt;b</code> <del>删</del><br>下一行</p>',
+    '<p>看 <a href="https://x.com/a">这里</a> <strong>粗</strong> <em>斜</em> ' +
+      '<code>a&lt;b</code> <del>删</del><br>下一行</p>',
   );
   assert.equal(p?.t, 'p');
   if (p?.t !== 'p') return;
@@ -33,7 +39,10 @@ test('段落与行内语义：链接 / 加粗 / 斜体 / 行内代码 / 删除�
   assert.deepEqual(link, { t: 'a', href: 'https://x.com/a', v: [{ t: 'text', v: '这里' }] });
   assert.equal(p.v.filter((n) => n.t === 'strong').length, 1);
   assert.equal(p.v.filter((n) => n.t === 'em').length, 1);
-  assert.deepEqual(p.v.find((n) => n.t === 'code'), { t: 'code', v: 'a<b' });
+  assert.deepEqual(
+    p.v.find((n) => n.t === 'code'),
+    { t: 'code', v: 'a<b' },
+  );
   assert.equal(p.v.filter((n) => n.t === 'del').length, 1);
 });
 
@@ -54,8 +63,8 @@ test('列表：有序 / 无序，嵌套列表留在列表项里', () => {
 
 test('引用与代码块：嵌套块 / 语言标记 / 缩进原样保留', () => {
   const blocks = B(
-    '<blockquote><p>引用一</p><p>引用二</p></blockquote>'
-      + '<pre><code class="language-ts">if (a) {\n  b();\n}</code></pre>',
+    '<blockquote><p>引用一</p><p>引用二</p></blockquote>' +
+      '<pre><code class="language-ts">if (a) {\n  b();\n}</code></pre>',
   );
   assert.equal(blocks[0]?.t, 'quote');
   if (blocks[0]?.t === 'quote') {
@@ -67,8 +76,8 @@ test('引用与代码块：嵌套块 / 语言标记 / 缩进原样保留', () =>
 
 test('相对 URL：按条目落地页补全；非法协议只留文字', () => {
   const blocks = B(
-    '<p><a href="/next">下一</a> <a href="javascript:alert(1)">坏</a></p>'
-      + '<img src="pic.png" alt="图" width="640" height="480">',
+    '<p><a href="/next">下一</a> <a href="javascript:alert(1)">坏</a></p>' +
+      '<img src="pic.png" alt="图" width="640" height="480">',
     { baseUrl: 'https://example.com/posts/1' },
   );
   const p = blocks[0];
@@ -90,9 +99,9 @@ test('相对 URL：按条目落地页补全；非法协议只留文字', () => {
 
 test('图片：data-src 优先、srcset 取最大、tracking pixel 丢弃', () => {
   const blocks = B(
-    '<img src="/placeholder.png" data-src="/real.jpg">'
-      + '<img src="data:image/gif;base64,AAA" srcset="https://a.com/s-320.jpg 320w, https://a.com/s-800.jpg 800w">'
-      + '<img src="https://a.com/px.gif" width="1" height="1">',
+    '<img src="/placeholder.png" data-src="/real.jpg">' +
+      '<img src="data:image/gif;base64,AAA" srcset="https://a.com/s-320.jpg 320w, https://a.com/s-800.jpg 800w">' +
+      '<img src="https://a.com/px.gif" width="1" height="1">',
     { baseUrl: 'https://example.com/p/1' },
   );
   assert.deepEqual(blocks, [
@@ -103,11 +112,11 @@ test('图片：data-src 优先、srcset 取最大、tracking pixel 丢弃', () =
 
 test('XSS：脚本 / 样式 / iframe / 事件属性都不会进入块', () => {
   const blocks = B(
-    '<p>前<script>alert(1)</script>后</p>'
-      + '<style>body{display:none}</style>'
-      + '<iframe src="https://evil.example"><p>内嵌</p></iframe>'
-      + '<img src="https://a.com/ok.jpg" onerror="alert(1)">'
-      + '<p><a href="vbscript:msgbox(1)">点我</a><img src="javascript:alert(1)"></p>',
+    '<p>前<script>alert(1)</script>后</p>' +
+      '<style>body{display:none}</style>' +
+      '<iframe src="https://evil.example"><p>内嵌</p></iframe>' +
+      '<img src="https://a.com/ok.jpg" onerror="alert(1)">' +
+      '<p><a href="vbscript:msgbox(1)">点我</a><img src="javascript:alert(1)"></p>',
   );
   const json = JSON.stringify(blocks);
   for (const bad of ['script', 'iframe', 'onerror', 'javascript:', 'vbscript:', 'display:none']) {
@@ -131,11 +140,14 @@ test('纯文本：换行拆成独立段落，单行内空白折叠', () => {
 
 test('容器透明：div/section 展开，figure 收成图注块', () => {
   const blocks = B(
-    '<div><section><p>一</p><figure><img src="https://a.com/1.jpg" alt="图">'
-      + '<figcaption>图注 <a href="/more">来源</a></figcaption></figure><p>二</p></section></div>',
+    '<div><section><p>一</p><figure><img src="https://a.com/1.jpg" alt="图">' +
+      '<figcaption>图注 <a href="/more">来源</a></figcaption></figure><p>二</p></section></div>',
     { baseUrl: 'https://a.com/post/1' },
   );
-  assert.deepEqual(blocks.map((b) => b.t), ['p', 'figure', 'p']);
+  assert.deepEqual(
+    blocks.map((b) => b.t),
+    ['p', 'figure', 'p'],
+  );
   const fig = blocks[1];
   assert.ok(fig?.t === 'figure');
   assert.equal(fig.img.src, 'https://a.com/1.jpg');
@@ -147,15 +159,18 @@ test('容器透明：div/section 展开，figure 收成图注块', () => {
 
 test('figure：没有图片时按普通容器展开，图注丢弃', () => {
   const blocks = B('<figure><figcaption>说明</figcaption><p>正文</p></figure>');
-  assert.deepEqual(blocks.map((b) => b.t), ['p']);
+  assert.deepEqual(
+    blocks.map((b) => b.t),
+    ['p'],
+  );
   assert.equal(text((blocks[0] as { t: 'p'; v: ArticleInline[] }).v), '正文');
 });
 
 test('表格：thead 作表头、tbody 作数据行，单元格保留链接与加粗', () => {
   const [table] = B(
-    '<table><thead><tr><th>名称</th><th>说明</th></tr></thead>'
-      + '<tbody><tr><td><a href="https://x.com">甲</a></td><td><strong>乙</strong></td></tr>'
-      + '<tr><td>丙</td><td></td></tr></tbody></table>',
+    '<table><thead><tr><th>名称</th><th>说明</th></tr></thead>' +
+      '<tbody><tr><td><a href="https://x.com">甲</a></td><td><strong>乙</strong></td></tr>' +
+      '<tr><td>丙</td><td></td></tr></tbody></table>',
   );
   assert.equal(table?.t, 'table');
   if (table?.t !== 'table') return;
@@ -168,7 +183,9 @@ test('表格：thead 作表头、tbody 作数据行，单元格保留链接与�
 });
 
 test('表格：没有 thead 时，首行全是 th 才当表头', () => {
-  const withHead = B('<table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>')[0];
+  const withHead = B(
+    '<table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>',
+  )[0];
   assert.ok(withHead?.t === 'table' && withHead.head.length === 2 && withHead.rows.length === 1);
 
   const noHead = B('<table><tr><td>1</td><td>2</td></tr></table>')[0];
@@ -177,8 +194,8 @@ test('表格：没有 thead 时，首行全是 th 才当表头', () => {
 
 test('表格：单元格里的块按换行摊平，colspan/rowspan 不展开', () => {
   const [table] = B(
-    '<table><tr><td rowspan="2" colspan="2"><p>第一行</p><ul><li>项</li></ul></td>'
-      + '<td>尾</td></tr></table>',
+    '<table><tr><td rowspan="2" colspan="2"><p>第一行</p><ul><li>项</li></ul></td>' +
+      '<td>尾</td></tr></table>',
   );
   assert.ok(table?.t === 'table');
   assert.equal(table.rows.length, 1);
@@ -187,7 +204,9 @@ test('表格：单元格里的块按换行摊平，colspan/rowspan 不展开', (
 });
 
 test('上限：图片最多 20 张，块最多 300，超出后仍是合法 JSON', () => {
-  const imgs = B(Array.from({ length: 40 }, (_, i) => `<img src="https://a.com/${i}.jpg">`).join(''));
+  const imgs = B(
+    Array.from({ length: 40 }, (_, i) => `<img src="https://a.com/${i}.jpg">`).join(''),
+  );
   assert.equal(imgs.filter((b) => b.t === 'img').length, 20);
 
   const many = B(Array.from({ length: 400 }, (_, i) => `<p>段落 ${i}</p>`).join(''));
@@ -209,8 +228,9 @@ test('空正文 / 只有空白：没有块，bodyJson 为 null', () => {
 test('畸形 HTML 不抛错（未闭合标签 / 未转义 &）', () => {
   const blocks = B('<p>a & b<p>下一段<ul><li>项<img src="https://a.com/x.jpg"></ul>');
   assert.ok(blocks.length >= 2);
-  const flat = (bs: ArticleBlock[]): ArticleBlock[] => bs.flatMap((b) => (
-    b.t === 'list' ? b.items.flatMap(flat) : b.t === 'quote' ? flat(b.blocks) : [b]
-  ));
+  const flat = (bs: ArticleBlock[]): ArticleBlock[] =>
+    bs.flatMap((b) =>
+      b.t === 'list' ? b.items.flatMap(flat) : b.t === 'quote' ? flat(b.blocks) : [b],
+    );
   assert.ok(flat(blocks).some((b) => b.t === 'img'));
 });

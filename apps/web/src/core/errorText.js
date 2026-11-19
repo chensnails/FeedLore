@@ -53,7 +53,8 @@ const CN = {
   /**
    * @param {*} [p]
    */
-  E_FEED_URL_DUPLICATE: (p) => (p.name ? `这个地址已经是你的另一个频道：${p.name}` : '这个地址已经是你的另一个频道'),
+  E_FEED_URL_DUPLICATE: (p) =>
+    p.name ? `这个地址已经是你的另一个频道：${p.name}` : '这个地址已经是你的另一个频道',
   E_ENTRY_NOT_FOUND: '条目不存在',
   E_NO_FLAGS_TO_UPDATE: '没有要修改的标记',
   E_EMPTY_OPML: '未收到 OPML 内容',

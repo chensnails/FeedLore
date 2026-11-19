@@ -64,7 +64,12 @@ test('导出会对 & < > " 转义（标题里出现这些字符是常事）', ()
 
 test('往返：导出再导入，URL / 标题 / 分组三者都不变', () => {
   const src = [
-    { title: '少数派', url: 'https://sspai.com/feed', siteUrl: 'https://sspai.com', groupName: '科技' },
+    {
+      title: '少数派',
+      url: 'https://sspai.com/feed',
+      siteUrl: 'https://sspai.com',
+      groupName: '科技',
+    },
     { title: 'IT之家', url: 'https://www.ithome.com/rss/', siteUrl: null, groupName: '科技' },
     { title: '独立博客', url: 'https://blog.example.com/atom.xml', siteUrl: null, groupName: '' },
   ];

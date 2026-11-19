@@ -51,7 +51,10 @@ export function securityHeaders(): MiddlewareHandler<AppEnv> {
       c.header('X-Content-Type-Options', 'nosniff');
       c.header('X-Frame-Options', 'DENY');
       c.header('Referrer-Policy', 'same-origin');
-      c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+      c.header(
+        'Permissions-Policy',
+        'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+      );
       // COOP / HSTS 只在安全上下文生效：HTTP 下浏览器会忽略并打一条控制台错误
       if (isHttps(c)) {
         c.header('Cross-Origin-Opener-Policy', 'same-origin');

@@ -1,6 +1,6 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseChatUsage, modelsEndpoint, parseModelList } from '@feedlore/ai';
+import test from 'node:test';
+import { modelsEndpoint, parseChatUsage, parseModelList } from '@feedlore/ai';
 import { shiftDate } from './aiUsage';
 
 /* ---------------- usage 解析（上游不返回时必须是 null，且不能抛） ---------------- */
@@ -13,10 +13,11 @@ test('parseChatUsage: 标准 OpenAI 字段', () => {
 });
 
 test('parseChatUsage: 缺 total 时用两者之和补齐', () => {
-  assert.deepEqual(
-    parseChatUsage({ prompt_tokens: 10, completion_tokens: 5 }),
-    { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-  );
+  assert.deepEqual(parseChatUsage({ prompt_tokens: 10, completion_tokens: 5 }), {
+    promptTokens: 10,
+    completionTokens: 5,
+    totalTokens: 15,
+  });
 });
 
 test('parseChatUsage: 全空 / 非对象 / 全零 → null（不记 token 但不影响调用）', () => {
@@ -28,10 +29,11 @@ test('parseChatUsage: 全空 / 非对象 / 全零 → null（不记 token 但不
 });
 
 test('parseChatUsage: 负数与非数字按 0 处理，不产生负用量', () => {
-  assert.deepEqual(
-    parseChatUsage({ prompt_tokens: -5, completion_tokens: 'x', total_tokens: 7 }),
-    { promptTokens: 0, completionTokens: 0, totalTokens: 7 },
-  );
+  assert.deepEqual(parseChatUsage({ prompt_tokens: -5, completion_tokens: 'x', total_tokens: 7 }), {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 7,
+  });
 });
 
 /* ---------------- 日期位移（统计窗口的边界） ---------------- */
@@ -54,7 +56,10 @@ test('modelsEndpoint: base / /v1 / 完整对话路径都落到同一个 /models'
   assert.equal(modelsEndpoint('https://api.example.com/'), 'https://api.example.com/v1/models');
   assert.equal(modelsEndpoint('https://api.example.com/v1'), 'https://api.example.com/v1/models');
   assert.equal(modelsEndpoint('https://api.example.com/v1/'), 'https://api.example.com/v1/models');
-  assert.equal(modelsEndpoint('https://api.example.com/v1/chat/completions'), 'https://api.example.com/v1/models');
+  assert.equal(
+    modelsEndpoint('https://api.example.com/v1/chat/completions'),
+    'https://api.example.com/v1/models',
+  );
   assert.throws(() => modelsEndpoint(''));
 });
 

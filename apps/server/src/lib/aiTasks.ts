@@ -11,27 +11,27 @@
  * 同步路由收敛成 `{ok:false,result}`（降级可读），任务执行器记成 `failed` 状态。
  */
 
-import { and, desc, eq, sql } from 'drizzle-orm';
-import { entries as entriesTable, entryAiTags, feeds, users, type Db } from '@feedlore/db';
-import type { EntryAiBody, ExploreResult, ExploreHistory } from '@feedlore/contract';
 import {
-  chat,
+  AI_TAG_PROMPT_VERSION,
   type ChatMessage,
+  chat,
   extractJson,
   generateDigest,
+  type ResolvedLlm,
   shanghaiDate,
   suggestEntryTags,
-  AI_TAG_PROMPT_VERSION,
-  type ResolvedLlm,
 } from '@feedlore/ai';
-import { resolveLlmForTask } from './llm';
-import { assertPublicHost, safeFetch } from './net';
+import type { EntryAiBody, ExploreHistory, ExploreResult } from '@feedlore/contract';
+import { type Db, entries as entriesTable, entryAiTags, feeds, users } from '@feedlore/db';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { recordAiUsage } from './aiUsage';
 import { ApiException } from './apiError';
 import { resolveDigestScope } from './digest';
-import { userDigest, userLayout } from './prefs';
-import { CARD_COLUMNS, entryConditions } from './entriesQuery';
 import { toCard } from './dto';
+import { CARD_COLUMNS, entryConditions } from './entriesQuery';
+import { resolveLlmForTask } from './llm';
+import { assertPublicHost, safeFetch } from './net';
+import { userDigest, userLayout } from './prefs';
 
 /** 真实日期判定：格式对不代表日期存在（`2026-02-30` 也是「格式合法」）。 */
 export function isRealDate(s: string): boolean {
@@ -107,7 +107,8 @@ export function truncateForAi(
  * 单篇动作（摘要 / 要点 / 翻译 / 解释）都不需要深度推理，所以默认关；
  * 账号在设置里显式开了「模型思考」才跟随 —— 那个开关是账号级全局配置。
  */
-export const thinkingDirective = (llm: ResolvedLlm): string => (llm.thinking ? ' /think' : ' /no_think');
+export const thinkingDirective = (llm: ResolvedLlm): string =>
+  llm.thinking ? ' /think' : ' /no_think';
 
 /**
  * 按动作构造系统提示词。用户自定义只在此范围内生效（不接收外部 prompt 注入），
@@ -145,7 +146,9 @@ export async function assertLlmHost(llm: ResolvedLlm): Promise<void> {
   try {
     await assertPublicHost(llm.baseUrl);
   } catch (e) {
-    throw new ApiException('E_MODEL_URL_UNREACHABLE', { detail: (e as Error)?.message ?? String(e) });
+    throw new ApiException('E_MODEL_URL_UNREACHABLE', {
+      detail: (e as Error)?.message ?? String(e),
+    });
   }
 }
 
@@ -184,12 +187,14 @@ export async function execEntryAi(
   const messages: ChatMessage[] = [
     {
       role: 'system',
-      content: entryAiSystemPrompt(input.action, input.targetLang ?? '简体中文') + thinkingDirective(llm),
+      content:
+        entryAiSystemPrompt(input.action, input.targetLang ?? '简体中文') + thinkingDirective(llm),
     },
     {
       role: 'user',
-      content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}`
-        + (cut.truncated ? '\n\n（正文过长已截断，请基于以上内容作答，不要臆测后续内容）' : ''),
+      content:
+        `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}` +
+        (cut.truncated ? '\n\n（正文过长已截断，请基于以上内容作答，不要臆测后续内容）' : ''),
     },
   ];
 
@@ -242,17 +247,41 @@ export async function execEntryTags(
     const { tags } = await suggestEntryTags(entry.title ?? '', entry.content ?? '', llm, safeFetch);
     await db
       .insert(entryAiTags)
-      .values({ id, userId: uid, entryId, tags, model: llm.model, promptVersion: AI_TAG_PROMPT_VERSION, status: 'done' })
+      .values({
+        id,
+        userId: uid,
+        entryId,
+        tags,
+        model: llm.model,
+        promptVersion: AI_TAG_PROMPT_VERSION,
+        status: 'done',
+      })
       .onConflictDoUpdate({
         target: [entryAiTags.userId, entryAiTags.entryId],
-        set: { tags, model: llm.model, promptVersion: AI_TAG_PROMPT_VERSION, status: 'done', error: null, updatedAt: sql`now()` },
+        set: {
+          tags,
+          model: llm.model,
+          promptVersion: AI_TAG_PROMPT_VERSION,
+          status: 'done',
+          error: null,
+          updatedAt: sql`now()`,
+        },
       });
     return { tags, model: llm.model };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     await db
       .insert(entryAiTags)
-      .values({ id, userId: uid, entryId, tags: [], model: llm.model, promptVersion: AI_TAG_PROMPT_VERSION, status: 'failed', error: message.slice(0, 500) })
+      .values({
+        id,
+        userId: uid,
+        entryId,
+        tags: [],
+        model: llm.model,
+        promptVersion: AI_TAG_PROMPT_VERSION,
+        status: 'failed',
+        error: message.slice(0, 500),
+      })
       .onConflictDoUpdate({
         target: [entryAiTags.userId, entryAiTags.entryId],
         set: { status: 'failed', error: message.slice(0, 500), updatedAt: sql`now()` },
@@ -279,10 +308,15 @@ export async function execDigest(
   uid: string,
   input: { date?: string; force?: boolean; feeds?: number[] | null },
 ): Promise<DigestRunResult> {
-  const [userRow] = await db.select({ prefs: users.prefs }).from(users).where(eq(users.id, uid)).limit(1);
+  const [userRow] = await db
+    .select({ prefs: users.prefs })
+    .from(users)
+    .where(eq(users.id, uid))
+    .limit(1);
   if (!userRow) throw new ApiException('E_USER_NOT_FOUND', { status: 401 });
 
-  if (userLayout(userRow.prefs).digestEnabled === false) throw new ApiException('E_DIGEST_DISABLED');
+  if (userLayout(userRow.prefs).digestEnabled === false)
+    throw new ApiException('E_DIGEST_DISABLED');
 
   const date = (input.date ?? '').trim() || shanghaiDate();
   if (!isRealDate(date)) throw new ApiException('E_DATE_INVALID');
@@ -355,7 +389,8 @@ const EXPLORE_EXPAND_CACHE_MAX = 200;
 export const EXPLORE_TIMEOUT_MS = 60_000;
 
 /** 中文问答里的高频虚词：从关键词里剔掉，避免「的/什么/最近」把召回带偏。 */
-const EXPLORE_STOPWORDS = /最近|近期|现在|目前|有什么|哪些|什么|怎么|如何|推荐|一下|帮我|请问|有没|有没有|这个|那个|我|的|了|吗|呢|啊|么|在|是|和|与|及|或|给|看|说|到|对|把|被|从|为|关于|文章|条目|内容/g;
+const EXPLORE_STOPWORDS =
+  /最近|近期|现在|目前|有什么|哪些|什么|怎么|如何|推荐|一下|帮我|请问|有没|有没有|这个|那个|我|的|了|吗|呢|啊|么|在|是|和|与|及|或|给|看|说|到|对|把|被|从|为|关于|文章|条目|内容/g;
 
 /**
  * 从自然语言问题里抽出召回关键词。
@@ -367,7 +402,7 @@ export function exploreKeywords(question: string): string[] {
   const cleaned = String(question || '')
     .toLowerCase()
     .replace(EXPLORE_STOPWORDS, ' ')
-    .replace(/[\s，。！？、；：,.!?;:'"“”‘’()（）\[\]【】<>《》/\\|~`@#$%^&*+=_-]+/g, ' ')
+    .replace(/[\s，。！？、；：,.!?;:'"“”‘’()（）[\]【】<>《》/\\|~`@#$%^&*+=_-]+/g, ' ')
     .trim();
   if (!cleaned) return [];
   const out: string[] = [];
@@ -424,7 +459,10 @@ async function expandExploreKeywords(
     const { content } = await chat(
       [
         { role: 'system', content: system },
-        { role: 'user', content: `问题：${question}\n已有的字面关键词：${seed.join('、') || '无'}` },
+        {
+          role: 'user',
+          content: `问题：${question}\n已有的字面关键词：${seed.join('、') || '无'}`,
+        },
       ],
       { ...llm, thinking: false },
       {
@@ -438,7 +476,10 @@ async function expandExploreKeywords(
     const terms = Array.isArray(parsed.terms) ? parsed.terms : [];
     const out: string[] = [];
     for (const v of terms) {
-      const t = String(v ?? '').trim().toLowerCase().slice(0, 12);
+      const t = String(v ?? '')
+        .trim()
+        .toLowerCase()
+        .slice(0, 12);
       if (t.length >= 2 && !out.includes(t)) out.push(t);
       if (out.length >= EXPLORE_QUERY_TERMS) break;
     }
@@ -472,11 +513,15 @@ const RELEVANCE_FIELD_WEIGHT = { title: 3, description: 2, tag: 1 } as const;
 const RELEVANCE_LITERAL_WEIGHT = 1;
 const RELEVANCE_EXPANDED_WEIGHT = 0.6;
 
-export function exploreRelevance(row: {
-  title: string | null;
-  description: string | null;
-  tags: string[];
-}, literal: string[], expanded: string[] = []): number {
+export function exploreRelevance(
+  row: {
+    title: string | null;
+    description: string | null;
+    tags: string[];
+  },
+  literal: string[],
+  expanded: string[] = [],
+): number {
   const title = String(row.title || '').toLowerCase();
   const desc = String(row.description || '').toLowerCase();
   const tags = row.tags.map((t) => String(t).toLowerCase());
@@ -521,7 +566,8 @@ export function exploreSampleByEra<T extends { publishedAt: Date | null }>(
   let left = total;
   // 先按配额取；某段不够时把剩余名额留给后面的段。
   for (let i = 0; i < buckets.length && left > 0; i++) {
-    const want = i === buckets.length - 1 ? left : Math.min(left, Math.ceil(total * EXPLORE_ERA_QUOTA[i]!));
+    const want =
+      i === buckets.length - 1 ? left : Math.min(left, Math.ceil(total * EXPLORE_ERA_QUOTA[i]!));
     const take = buckets[i]!.slice(0, want);
     out.push(...take);
     left -= take.length;
@@ -531,7 +577,10 @@ export function exploreSampleByEra<T extends { publishedAt: Date | null }>(
     const picked = new Set(out);
     for (const r of ranked) {
       if (left <= 0) break;
-      if (!picked.has(r)) { out.push(r); left--; }
+      if (!picked.has(r)) {
+        out.push(r);
+        left--;
+      }
     }
   }
   return out;
@@ -614,27 +663,43 @@ export async function execExplore(
     : [];
 
   // 近期打底：关键词没命中或问「最近」时仍有候选；命中集已够多时可省掉这次查询。
-  const recent = keywordRows.length >= EXPLORE_FEED_LIMIT
-    ? []
-    : await db
-        .select(CARD_COLUMNS)
-        .from(entriesTable)
-        .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
-        .where(and(...entryConditions(db, uid, { feedIds: null })))
-        .orderBy(desc(entriesTable.publishedAt), desc(entriesTable.id))
-        .limit(EXPLORE_RECENT_SEED);
+  const recent =
+    keywordRows.length >= EXPLORE_FEED_LIMIT
+      ? []
+      : await db
+          .select(CARD_COLUMNS)
+          .from(entriesTable)
+          .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+          .where(and(...entryConditions(db, uid, { feedIds: null })))
+          .orderBy(desc(entriesTable.publishedAt), desc(entriesTable.id))
+          .limit(EXPLORE_RECENT_SEED);
 
   const byId = new Map<number, (typeof recent)[number]>();
   for (const r of keywordRows) byId.set(r.id, r);
   for (const r of recent) if (!byId.has(r.id)) byId.set(r.id, r);
   // ① 相关度排序（字段加权 + 词源加权），同分按时间倒序（稳定排序保留 SQL 次序；命中集无 SQL 序时按 id 兜底）。
   const scored = [...byId.values()]
-    .map((r) => ({ r, score: exploreRelevance(r, terms.filter((t) => literalSet.has(t)), usedExpanded) }))
-    .sort((a, b) => b.score - a.score || (b.r.publishedAt?.getTime() ?? 0) - (a.r.publishedAt?.getTime() ?? 0) || b.r.id - a.r.id);
+    .map((r) => ({
+      r,
+      score: exploreRelevance(
+        r,
+        terms.filter((t) => literalSet.has(t)),
+        usedExpanded,
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        (b.r.publishedAt?.getTime() ?? 0) - (a.r.publishedAt?.getTime() ?? 0) ||
+        b.r.id - a.r.id,
+    );
   // ② 分时段取样：近/中/老各留配额，让老条目不被近期条目挤掉。取样结果已是 top-N
   //    条数，之后按分数重排只调整喂给模型的顺序、不减量（slice 仅作数量保险），
   //    所以老条目的配额名额不会被这步排序挤掉。
-  const eraSampled = exploreSampleByEra(scored.map((x) => x.r), EXPLORE_FEED_LIMIT);
+  const eraSampled = exploreSampleByEra(
+    scored.map((x) => x.r),
+    EXPLORE_FEED_LIMIT,
+  );
   const scoreById = new Map(scored.map((x) => [x.r.id, x.score]));
   const pool = eraSampled
     .sort((a, b) => (scoreById.get(b.id) ?? 0) - (scoreById.get(a.id) ?? 0))
@@ -642,20 +707,28 @@ export async function execExplore(
 
   // 没有候选就不必烧模型：直接给一句人话，refs 为空。
   if (!pool.length) {
-    await recordAiUsage(db, uid, 'explore', null, true, 0, { model: llm.model, label, durationMs: Date.now() - started });
+    await recordAiUsage(db, uid, 'explore', null, true, 0, {
+      model: llm.model,
+      label,
+      durationMs: Date.now() - started,
+    });
     return {
       answer: '你的订阅里暂时没有条目可供检索，先添加几个数据源或等抓取一批内容后再来问。',
-      refs: [], model: llm.model, matched: 0,
+      refs: [],
+      model: llm.model,
+      matched: 0,
     };
   }
 
   // ② 编号化候选：一条一行，带来源/日期/标签/摘要前 180 字；日期让「最近」类问题有依据。
   const cards = pool.map(toCard);
-  const candidateText = cards.map((c, i) => {
-    const tags = c.tags.length ? ` 标签:${c.tags.slice(0, 5).join('/')}` : '';
-    const desc = (c.desc || '').replace(/\s+/g, ' ').slice(0, 180);
-    return `#${i + 1} ${c.name}（来源:${c.feedName} · ${c.date || '日期未知'}${tags}）\n   ${desc}`;
-  }).join('\n');
+  const candidateText = cards
+    .map((c, i) => {
+      const tags = c.tags.length ? ` 标签:${c.tags.slice(0, 5).join('/')}` : '';
+      const desc = (c.desc || '').replace(/\s+/g, ' ').slice(0, 180);
+      return `#${i + 1} ${c.name}（来源:${c.feedName} · ${c.date || '日期未知'}${tags}）\n   ${desc}`;
+    })
+    .join('\n');
 
   const history = Array.isArray(input.history) ? input.history : [];
   const system = [
@@ -663,7 +736,9 @@ export async function execExplore(
     '候选条目每条以 #编号 开头，编号是引用凭证。回答用简体中文，简洁清楚（3~8 句）。',
     '在答案里提到某条时，紧跟 [#编号] 标注来源，例如「据 #2 …」。可引用多条，但只准用候选里出现过的编号。',
     '输出严格 JSON：{"answer":"答案正文（含 [#编号] 标注）","refs":[编号数组，按出现顺序]}。refs 只能来自候选编号；没有相关条目就给 refs:[] 并如实说明。',
-    history.length ? '下面是你和用户之前的对话（历史里的《条目名》是当时引用过的条目）。用户可能在追问，请结合上下文理解「那个/第二部」等指代，但引用仍只能用本次候选的新编号。' : '',
+    history.length
+      ? '下面是你和用户之前的对话（历史里的《条目名》是当时引用过的条目）。用户可能在追问，请结合上下文理解「那个/第二部」等指代，但引用仍只能用本次候选的新编号。'
+      : '',
     thinkingDirective(llm),
   ].join('\n');
 
@@ -696,18 +771,26 @@ export async function execExplore(
       seen.add(n);
       const c = cards[n - 1]!;
       refs.push({
-        id: c.id, name: c.name, feedName: c.feedName,
-        date: c.date || '', desc: c.desc, image: c.image || null,
+        id: c.id,
+        name: c.name,
+        feedName: c.feedName,
+        date: c.date || '',
+        desc: c.desc,
+        image: c.image || null,
       });
     }
 
     await recordAiUsage(db, uid, 'explore', usage, true, 1, {
-      model: llm.model, label, durationMs: Date.now() - started,
+      model: llm.model,
+      label,
+      durationMs: Date.now() - started,
     });
     return { answer, refs, model: llm.model, matched: pool.length };
   } catch (e) {
     await recordAiUsage(db, uid, 'explore', null, false, 1, {
-      model: llm.model, label, durationMs: Date.now() - started,
+      model: llm.model,
+      label,
+      durationMs: Date.now() - started,
       error: (e as Error)?.message ?? String(e),
     });
     throw e;

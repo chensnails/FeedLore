@@ -18,18 +18,18 @@
  * 由 registerLayer 返回的清理函数销账。
  */
 
-const EXPECTED_TIMEOUT_MS = 400;   // back() 被浏览器取消 / 被别的 pushState 吞掉时的兜底
+const EXPECTED_TIMEOUT_MS = 400; // back() 被浏览器取消 / 被别的 pushState 吞掉时的兜底
 
 /** @type {*} */
 const layers = [];
-let barrier = false;      // 历史里有一条属于弹层栈的哨兵
-let expected = false;     // 下一次 popstate 是栈自己 history.back() 引起的
-let savedHash = '';       // 发起关闭那一刻的地址，用于纠正 back() 回到的旧快照
+let barrier = false; // 历史里有一条属于弹层栈的哨兵
+let expected = false; // 下一次 popstate 是栈自己 history.back() 引起的
+let savedHash = ''; // 发起关闭那一刻的地址，用于纠正 back() 回到的旧快照
 /** @type {any} */
 let expectedTimer = 0;
 /** @type {any} */
-let closeTimer = 0;       // 最后一层关闭时延一拍退哨兵：同一帧内又开一层就复用
-let processing = false;   // 栈顶 dismiss 还没返回，期间的返回键只补哨兵
+let closeTimer = 0; // 最后一层关闭时延一拍退哨兵：同一帧内又开一层就复用
+let processing = false; // 栈顶 dismiss 还没返回，期间的返回键只补哨兵
 let seq = 0;
 
 function pushBarrier() {
@@ -37,7 +37,9 @@ function pushBarrier() {
   try {
     history.pushState({ __feedloreOverlay: true }, '', location.href);
     barrier = true;
-  } catch (_) { /* 沙箱 / 不允许改历史：退化成没有返回键支持，弹层本身照常工作 */ }
+  } catch (_) {
+    /* 沙箱 / 不允许改历史：退化成没有返回键支持，弹层本身照常工作 */
+  }
 }
 
 function ensureBarrier() {
@@ -61,7 +63,12 @@ function consumeBarrier() {
       ensureBarrier();
     }, EXPECTED_TIMEOUT_MS);
     if (expectedTimer && typeof expectedTimer.unref === 'function') expectedTimer.unref();
-    try { history.back(); } catch (_) { expected = false; savedHash = ''; }
+    try {
+      history.back();
+    } catch (_) {
+      expected = false;
+      savedHash = '';
+    }
   }, 0);
   if (closeTimer && typeof closeTimer.unref === 'function') closeTimer.unref();
 }
@@ -69,7 +76,7 @@ function consumeBarrier() {
 /** 注册一层弹层。dismiss 是这一层的关闭动作（可返回 Promise<boolean>）。
  *  返回清理函数：组件卸载 / 正常关闭时调用，由它负责把哨兵一起销掉。
  *@param {*} [dismiss]
-*/
+ */
 export function registerLayer(dismiss) {
   const token = ++seq;
   layers.push({ token, dismiss });
@@ -80,7 +87,10 @@ export function registerLayer(dismiss) {
     if (i < 0) return;
     layers.splice(i, 1);
     // 下面还有层：哨兵继续留着，交给下一击返回键
-    if (layers.length) { ensureBarrier(); return; }
+    if (layers.length) {
+      ensureBarrier();
+      return;
+    }
     // 最后一层关掉了：把哨兵退回去，历史里不留下多余的条目
     consumeBarrier();
   };
@@ -95,14 +105,18 @@ export function handleOverlayPop() {
     const want = savedHash;
     savedHash = '';
     if (want && typeof location !== 'undefined' && location.hash !== want) {
-      try { history.replaceState(history.state, '', want); } catch (_) { /* 地址栏不允许就放弃纠正 */ }
+      try {
+        history.replaceState(history.state, '', want);
+      } catch (_) {
+        /* 地址栏不允许就放弃纠正 */
+      }
     }
     ensureBarrier();
     return true;
   }
   if (!layers.length) return false;
 
-  barrier = false;   // 用户这一击已经用掉了哨兵
+  barrier = false; // 用户这一击已经用掉了哨兵
   if (processing) {
     ensureBarrier();
     return true;
@@ -116,13 +130,18 @@ export function handleOverlayPop() {
   processing = true;
   Promise.resolve()
     .then(() => top.dismiss())
-    .then(/** @param {*} [ok] */ (ok) => {
+    .then(
+      /** @param {*} [ok] */ (ok) => {
+        processing = false;
+        // false = 用户选择保留这一层（设置脏态确认 / 详情层退回列表），哨兵必须补回。
+        // 真正关掉的层会随即卸载，由 registerLayer 的清理函数销账（关到最后一层时退掉哨兵）；
+        // 这里不主动补，否则每次返回键关闭都会多压再退一次，历史里白白走两趟。
+        if (ok === false) ensureBarrier();
+      },
+    )
+    .catch(() => {
       processing = false;
-      // false = 用户选择保留这一层（设置脏态确认 / 详情层退回列表），哨兵必须补回。
-      // 真正关掉的层会随即卸载，由 registerLayer 的清理函数销账（关到最后一层时退掉哨兵）；
-      // 这里不主动补，否则每次返回键关闭都会多压再退一次，历史里白白走两趟。
-      if (ok === false) ensureBarrier();
-    })
-    .catch(() => { processing = false; ensureBarrier(); });
+      ensureBarrier();
+    });
   return true;
 }

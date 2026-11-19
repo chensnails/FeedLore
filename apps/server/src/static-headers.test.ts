@@ -7,11 +7,11 @@
  *
  * 首页带账号布局注入，缓存住就是「A 的偏好发给 B」，必须是 no-cache。 */
 
-import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { test } from 'node:test';
 import { serve } from '@hono/node-server';
 
 test('静态文件按档设缓存，且 compress 不会吞掉 Cache-Control', async () => {
@@ -22,11 +22,16 @@ test('静态文件按档设缓存，且 compress 不会吞掉 Cache-Control', as
     join(root, 'index.html'),
     '<html><head><link rel="manifest" href="/manifest.json">' +
       '<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)"></head><body>' +
-      '<p>' + 'x'.repeat(2048) + '</p></body></html>',
+      '<p>' +
+      'x'.repeat(2048) +
+      '</p></body></html>',
   );
   await writeFile(join(root, 'login.html'), '<html><body>' + 'y'.repeat(2048) + '</body></html>');
   // 改密页是第二个独立文档入口：同样必须 no-cache，否则改过的逻辑永远不生效
-  await writeFile(join(root, 'change-password.html'), '<html><body>' + 'w'.repeat(2048) + '</body></html>');
+  await writeFile(
+    join(root, 'change-password.html'),
+    '<html><body>' + 'w'.repeat(2048) + '</body></html>',
+  );
   await writeFile(join(root, 'manifest.json'), '{"name":"t"}');
   await writeFile(join(root, 'sw.js'), '/* sw */' + 'z'.repeat(300));
   await writeFile(join(root, 'assets', 'a.js'), 'console.log(1);');
@@ -72,10 +77,15 @@ test('布局注入容忍 manifest link 的额外属性，插在标签之后', as
   const c = { req: { raw: { headers: new Headers() } } };
   const deps = {
     auth: { api: { getSession: async () => ({ user: { id: 'u1' } }) } },
-    db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ prefs: null }] }) }) }) },
+    db: {
+      select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ prefs: null }] }) }) }),
+    },
   };
   const out = await injectBootLayout(html, c as never, deps as never);
   const injected = out.indexOf('<script>window.__LAYOUT__');
   assert.ok(injected > 0, '布局没注入：锚点失配');
-  assert.ok(injected > out.indexOf('crossorigin="use-credentials">'), '注入位置应在 manifest link 标签闭合之后');
+  assert.ok(
+    injected > out.indexOf('crossorigin="use-credentials">'),
+    '注入位置应在 manifest link 标签闭合之后',
+  );
 });

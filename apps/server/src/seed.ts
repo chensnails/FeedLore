@@ -13,10 +13,10 @@
  * - username 插件启用后 signUpEmail 的 body 可带 username，之后即可用用户名登录。
  */
 
-import { log } from './lib/logger';
-import { eq } from 'drizzle-orm';
 import { createDb, schema } from '@feedlore/db';
+import { eq } from 'drizzle-orm';
 import { getAuth } from './auth';
+import { log } from './lib/logger';
 
 async function main(): Promise<void> {
   const username = process.env.ADMIN_USER ?? 'admin';

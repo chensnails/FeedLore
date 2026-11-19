@@ -16,7 +16,8 @@ import sharp from 'sharp';
 export const IMG_MAX_BYTES = 8 * 1024 * 1024;
 
 const MAX_DIM = Number(process.env.IMG_MAX_DIM) > 0 ? Number(process.env.IMG_MAX_DIM) : 1280;
-const WEBP_QUALITY = Number(process.env.IMG_WEBP_QUALITY) > 0 ? Number(process.env.IMG_WEBP_QUALITY) : 78;
+const WEBP_QUALITY =
+  Number(process.env.IMG_WEBP_QUALITY) > 0 ? Number(process.env.IMG_WEBP_QUALITY) : 78;
 
 /**
  * 只重编码常见栅格图。
@@ -106,7 +107,12 @@ export async function compressImage(
     let pipe = img;
     // 只缩不放：小图放大只会变模糊，体积还翻倍
     if (Math.max(meta.width, meta.height) > maxDim) {
-      pipe = pipe.resize({ width: maxDim, height: maxDim, fit: 'inside', withoutEnlargement: true });
+      pipe = pipe.resize({
+        width: maxDim,
+        height: maxDim,
+        fit: 'inside',
+        withoutEnlargement: true,
+      });
     }
     const out = await pipe.webp({ quality, effort: 4 }).toBuffer({ resolveWithObject: true });
 

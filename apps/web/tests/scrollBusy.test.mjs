@@ -8,8 +8,9 @@
  *   4. dispose 之后不再挂类。
  * 真实浏览器里的收益由 .workbuddy/ui-lab/perf.mjs 量（真滚轮事件）。
  */
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { installScrollBusy } from '../src/ui/scrollBusy.js';
 
 /** 造一个假 document：classList 记状态，addEventListener 记监听器 */
@@ -18,27 +19,41 @@ function fakeDoc() {
   const listeners = [];
   const body = {
     classList: {
-      toggle(name, on) { if (on) classes.add(name); else classes.delete(name); },
+      toggle(name, on) {
+        if (on) classes.add(name);
+        else classes.delete(name);
+      },
       contains: (name) => classes.has(name),
     },
   };
   const doc = {
     body,
     scrollingElement: { nodeType: 1, matches: () => false },
-    addEventListener(type, fn) { listeners.push({ type, fn }); },
+    addEventListener(type, fn) {
+      listeners.push({ type, fn });
+    },
     removeEventListener(type, fn) {
       const i = listeners.findIndex((l) => l.type === type && l.fn === fn);
       if (i >= 0) listeners.splice(i, 1);
     },
     has: (name) => classes.has(name),
-    fire(target) { for (const l of listeners) l.fn({ target }); },
+    fire(target) {
+      for (const l of listeners) l.fn({ target });
+    },
     listenerCount: () => listeners.length,
   };
   return doc;
 }
 
 /** 造一个能命中 SCROLLERS 的滚动容器 */
-const scroller = (sel = '.reader-main') => ({ nodeType: 1, matches: (s) => sel.split(',').map((x) => x.trim()).includes(sel) });
+const scroller = (sel = '.reader-main') => ({
+  nodeType: 1,
+  matches: (_s) =>
+    sel
+      .split(',')
+      .map((x) => x.trim())
+      .includes(sel),
+});
 
 test('内容区滚动时挂类，停下后摘掉', async () => {
   const doc = fakeDoc();

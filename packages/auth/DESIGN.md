@@ -7,10 +7,12 @@
 采用 **better-auth**（Hono 适配器 + Drizzle 适配器 + admin/username/openAPI 插件）。
 
 替代方案与落选原因（已在 P0 决策会议确认）：
+
 - 保留自研 HMAC：零迁移，但认证是已被业界解决的高危域，长期自维护是债；与「工程化 + 大量 AI 能力」目标相悖。
 - 其他库（Lucia 已归档、Clerk/Auth0 等 SaaS）：自托管场景不适合引入外部依赖。
 
 better-auth 契合点：
+
 - 会话/令牌/角色 machinery 交给持续维护、被审计的库，少一类回归（与「修复 SSRF 交给 `lib/net.js`」同一工程纪律）。
 - 有官方 **Hono 适配器**与 **Drizzle 适配器**，可干净落进 `packages/auth` + `packages/db`。
 - `admin` 插件直接提供 `/api/auth/admin/*` 与 `user.role` 列，省掉手写角色竞态（对应 legacy 那条「`state.role` 必须在 `fetch('/api/session')` 之后才赋值」的坑）。
@@ -20,8 +22,8 @@ better-auth 契合点：
 
 ```ts
 const auth = betterAuth({
-  database: drizzleAdapter(db, { provider: 'pg' }),   // db 来自 packages/db（NodePgDatabase）
-  secret: process.env.AUTH_SECRET!,                   // 对应 legacy 的 sessionSecret
+  database: drizzleAdapter(db, { provider: 'pg' }), // db 来自 packages/db（NodePgDatabase）
+  secret: process.env.AUTH_SECRET!, // 对应 legacy 的 sessionSecret
   baseURL: process.env.BETTER_AUTH_URL!,
   trustedOrigins: [process.env.FRONTEND_URL!],
   emailAndPassword: { enabled: true, minPasswordLength: 4 },
@@ -51,13 +53,13 @@ legacy `users` 表字段：`id, username, password_hash, salt, role, prefs(jsonb
 
 better-auth 用自有 schema（`user` / `session` / `account` / `verification`），通过 `npx @better-auth/cli generate` 生成 Drizzle 表定义，再 `drizzle-kit migrate`。需要保留/对齐：
 
-| legacy 字段 | 落点 |
-|---|---|
-| `id` | better-auth `user.id`（建议保留原值，避免外键重建） |
-| `username` | better-auth `username` 插件列（非 email） |
-| `role` | **admin 插件的 `role` 列**（不再手写）；`isAdmin()` 被 `requireAdmin` 中间件取代 |
-| `prefs` | 保留为 `user.prefs` JSON 列（布局/过滤/关注/屏蔽/日报/llm 配置都在此；外观自 2.2 起存浏览器本机） |
-| `password_hash` + `salt` | **迁移难点**，见第 6 节 |
+| legacy 字段              | 落点                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------- |
+| `id`                     | better-auth `user.id`（建议保留原值，避免外键重建）                                               |
+| `username`               | better-auth `username` 插件列（非 email）                                                         |
+| `role`                   | **admin 插件的 `role` 列**（不再手写）；`isAdmin()` 被 `requireAdmin` 中间件取代                  |
+| `prefs`                  | 保留为 `user.prefs` JSON 列（布局/过滤/关注/屏蔽/日报/llm 配置都在此；外观自 2.2 起存浏览器本机） |
+| `password_hash` + `salt` | **迁移难点**，见第 6 节                                                                           |
 
 `prefs` 中的 `llm` 字段（每用户加密 API Key）**不进 better-auth**，见第 4 节。
 
@@ -72,6 +74,7 @@ legacy 的 `users.prefs.llm.apiKey` 是加密存储的，这是 FeedLore 业务�
 ## 5. 登录限流（抗枚举）
 
 legacy 的 `loginKey = ip|username` + 指数退避（60s→15min，有上限）+ Map 清扫，必须保留其「**用户名不存在也走一次哈希**」的抗枚举行为。两种接法：
+
 - 简单：better-auth 前置中间件复用 legacy 限流逻辑（推荐，行为可控）。
 - 或：better-auth 自带 `rateLimit`，但默认不覆盖「伪用户名也走哈希」，需配合 `onAPIError` 钩子补足。
 

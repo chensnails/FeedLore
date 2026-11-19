@@ -16,7 +16,7 @@ export function useTopbarHeight(ref) {
       if (el.getClientRects().length === 0) return; // 当前视图未显示（display:none）
       document.documentElement.style.setProperty(
         '--topbar-h',
-        Math.ceil(el.getBoundingClientRect().height) + 'px'
+        Math.ceil(el.getBoundingClientRect().height) + 'px',
       );
     };
     apply();
@@ -27,7 +27,10 @@ export function useTopbarHeight(ref) {
     window.addEventListener('orientationchange', onResize);
     /** @type {any} */
     let ro = null;
-    if (window.ResizeObserver) { ro = new ResizeObserver(apply); ro.observe(el); }
+    if (window.ResizeObserver) {
+      ro = new ResizeObserver(apply);
+      ro.observe(el);
+    }
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);

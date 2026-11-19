@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { FilterRule } from './prefs';
 import { applyFilters, ruleHit } from './filter';
+import type { FilterRule } from './prefs';
 
 /**
  * 条目过滤规则（抓取写库前的那道闸门）。
@@ -11,15 +11,18 @@ import { applyFilters, ruleHit } from './filter';
  */
 
 function rule(p: Partial<FilterRule>): FilterRule {
-  return Object.assign({
-    id: 'r1',
-    on: true,
-    act: 'block',
-    field: 'all',
-    kind: 'kw',
-    pattern: '',
-    scope: { all: true, groups: [], feeds: [] },
-  } as FilterRule, p);
+  return Object.assign(
+    {
+      id: 'r1',
+      on: true,
+      act: 'block',
+      field: 'all',
+      kind: 'kw',
+      pattern: '',
+      scope: { all: true, groups: [], feeds: [] },
+    } as FilterRule,
+    p,
+  );
 }
 
 const item = { title: 'iPhone 17 发布', description: '新一代旗舰', content: '正文正文' };
@@ -48,15 +51,14 @@ test('正则规则：命中 / 不命中 / 非法正则视为不命中', () => {
 
 test('空 pattern 不命中，也不会把空标题误判', () => {
   assert.equal(ruleHit(rule({ pattern: '' }), item), false);
-  assert.equal(ruleHit(rule({ pattern: 'x' }), { title: '', description: null, content: null }), false);
+  assert.equal(
+    ruleHit(rule({ pattern: 'x' }), { title: '', description: null, content: null }),
+    false,
+  );
 });
 
 test('屏蔽与只收同时存在：先拉黑，再拉白', () => {
-  const items = [
-    { title: '广告：买一送一' },
-    { title: '招聘：后端工程师' },
-    { title: '闲聊' },
-  ];
+  const items = [{ title: '广告：买一送一' }, { title: '招聘：后端工程师' }, { title: '闲聊' }];
   const rules = [
     rule({ id: 'b', act: 'block', pattern: '广告' }),
     rule({ id: 'a', act: 'allow', pattern: '招聘' }),
@@ -68,11 +70,11 @@ test('屏蔽与只收同时存在：先拉黑，再拉白', () => {
     ['招聘：后端工程师'],
   );
 
-  const both = applyFilters(
-    [{ title: '广告招聘' }, { title: '招聘' }],
-    rules,
+  const both = applyFilters([{ title: '广告招聘' }, { title: '招聘' }], rules);
+  assert.deepEqual(
+    both.map((x) => x.title),
+    ['招聘'],
   );
-  assert.deepEqual(both.map((x) => x.title), ['招聘']);
 });
 
 test('停用的规则（on:false）不参与过滤', () => {

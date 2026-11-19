@@ -16,22 +16,32 @@
  *   - 关闭态下的左滑直接放弃，避免把抽屉反向误拉出。
  * ============================================================ */
 
-import { state } from './state.js';
-import { setReaderDrawer } from './reader.js';
-import { setCardsDrawer } from './feeds.js';
 import { isOn } from '../kernel/bridge.js';
+import { setCardsDrawer } from './feeds.js';
+import { setReaderDrawer } from './reader.js';
+import { state } from './state.js';
 
-const THRESH = 48;                                              // 松手判定开 / 关的最小位移（px）
-const OPEN_ZONE = () => Math.round(window.innerWidth * 2 / 3);  // 关闭态下可起手的左 2/3 屏幕宽
-const drawerMode = () => window.innerWidth <= 720;              // 与 style.css 的 720px 抽屉断点一致
+const THRESH = 48; // 松手判定开 / 关的最小位移（px）
+const OPEN_ZONE = () => Math.round((window.innerWidth * 2) / 3); // 关闭态下可起手的左 2/3 屏幕宽
+const drawerMode = () => window.innerWidth <= 720; // 与 style.css 的 720px 抽屉断点一致
 
 /** 当前页面用哪套抽屉；不是带抽屉的页面则返回 null */
 function target() {
   if (state.tab === 'cards') {
-    return { sideId: 'cardsSide', maskId: 'cardsMask', cls: 'cards-drawer-open', set: setCardsDrawer };
+    return {
+      sideId: 'cardsSide',
+      maskId: 'cardsMask',
+      cls: 'cards-drawer-open',
+      set: setCardsDrawer,
+    };
   }
   if (state.tab === 'reader') {
-    return { sideId: 'readerSide', maskId: 'readerMask', cls: 'reader-drawer-open', set: setReaderDrawer };
+    return {
+      sideId: 'readerSide',
+      maskId: 'readerMask',
+      cls: 'reader-drawer-open',
+      set: setReaderDrawer,
+    };
   }
   return null;
 }
@@ -47,13 +57,17 @@ const sideOf = (t) => (t ? document.getElementById(t.sideId) : null);
 const maskOf = (t) => (t ? document.getElementById(t.maskId) : null);
 
 /** @type {*} */
-let x0 = 0, y0 = 0, dragging = false, decided = false, dir = 0;
+let x0 = 0,
+  y0 = 0,
+  dragging = false,
+  decided = false,
+  dir = 0;
 /** @type {any} */
 let active = null;
 
 /** px = 抽屉已滑出的像素（0=关，抽屉宽=开）→ 换算成 translateX 百分比
-*@param {*} [px]
-*/
+ *@param {*} [px]
+ */
 function place(px) {
   const w = SIDE_W();
   px = Math.max(0, Math.min(w, px));
@@ -75,8 +89,8 @@ function place(px) {
 }
 
 /** 触摸点是否落在可横向滚动的容器内（如 <pre> 代码块）：是则把横滑让给容器，不抢抽屉手势
-*@param {*} [el]
-*/
+ *@param {*} [el]
+ */
 function inHorizontalScroller(el) {
   let n = el;
   while (n && n.nodeType === 1 && n !== document.body) {
@@ -89,62 +103,109 @@ function inHorizontalScroller(el) {
   return false;
 }
 
-document.addEventListener('touchstart', /** @param {*} [ev] */ (ev) => {
-  const t = ev.touches && ev.touches[0];
-  if (!t) return;
-  // 宽屏并排布局 / 当前页面没有抽屉，不拦截（避免误锁页面滚动）
-  const cur = drawerMode() ? target() : null;
-  if (!cur) { dragging = false; active = null; return; }
-  if (isOn('settingsOpen') || isOn('cmdkOpen')) return;
-  const open = document.body.classList.contains(cur.cls);
-  // 关闭态：仅在左 2/3 区域内可起手（右滑拉出）；其余区域交给内容本身
-  if (!open && t.clientX > OPEN_ZONE()) { dragging = false; return; }
-  // 触摸点在可横向滚动容器里时，让容器自己滚，不抢手势
-  if (!open && inHorizontalScroller(ev.target)) { dragging = false; return; }
-  x0 = t.clientX; y0 = t.clientY; dragging = true; decided = false; dir = 0; active = cur;
-}, { passive: true });
+document.addEventListener(
+  'touchstart',
+  /** @param {*} [ev] */ (ev) => {
+    const t = ev.touches && ev.touches[0];
+    if (!t) return;
+    // 宽屏并排布局 / 当前页面没有抽屉，不拦截（避免误锁页面滚动）
+    const cur = drawerMode() ? target() : null;
+    if (!cur) {
+      dragging = false;
+      active = null;
+      return;
+    }
+    if (isOn('settingsOpen') || isOn('cmdkOpen')) return;
+    const open = document.body.classList.contains(cur.cls);
+    // 关闭态：仅在左 2/3 区域内可起手（右滑拉出）；其余区域交给内容本身
+    if (!open && t.clientX > OPEN_ZONE()) {
+      dragging = false;
+      return;
+    }
+    // 触摸点在可横向滚动容器里时，让容器自己滚，不抢手势
+    if (!open && inHorizontalScroller(ev.target)) {
+      dragging = false;
+      return;
+    }
+    x0 = t.clientX;
+    y0 = t.clientY;
+    dragging = true;
+    decided = false;
+    dir = 0;
+    active = cur;
+  },
+  { passive: true },
+);
 
-document.addEventListener('touchmove', /** @param {*} [ev] */ (ev) => {
-  if (!dragging || !active) return;
-  const t = ev.touches && ev.touches[0];
-  if (!t) return;
-  const dx = t.clientX - x0, dy = t.clientY - y0;
-  if (!decided) {
-    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;        // 等方向明确
-    if (Math.abs(dy) > Math.abs(dx)) { dragging = false; return; }  // 竖滑 → 不接管
-    decided = true; dir = dx >= 0 ? 1 : -1;
-    const open = document.body.classList.contains(active.cls);
-    // 关闭态只接受「右滑拉出」；左滑直接放弃，避免把抽屉反向误拉出
-    if (!open && dir < 0) { dragging = false; return; }
-    const side0 = sideOf(active); if (side0) side0.style.transition = 'none';   // 跟手期间关掉过渡
-  }
-  if (dir > 0) place(Math.max(0, dx));                        // 从 0 滑出
-  else place(SIDE_W() + dx);                                  // 已开 → 从满位左收（dx 为负）
-  if (ev.cancelable) ev.preventDefault();                     // 拦掉默认横滑 / 回弹
-}, { passive: false });
+document.addEventListener(
+  'touchmove',
+  /** @param {*} [ev] */ (ev) => {
+    if (!dragging || !active) return;
+    const t = ev.touches && ev.touches[0];
+    if (!t) return;
+    const dx = t.clientX - x0,
+      dy = t.clientY - y0;
+    if (!decided) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return; // 等方向明确
+      if (Math.abs(dy) > Math.abs(dx)) {
+        dragging = false;
+        return;
+      } // 竖滑 → 不接管
+      decided = true;
+      dir = dx >= 0 ? 1 : -1;
+      const open = document.body.classList.contains(active.cls);
+      // 关闭态只接受「右滑拉出」；左滑直接放弃，避免把抽屉反向误拉出
+      if (!open && dir < 0) {
+        dragging = false;
+        return;
+      }
+      const side0 = sideOf(active);
+      if (side0) side0.style.transition = 'none'; // 跟手期间关掉过渡
+    }
+    if (dir > 0)
+      place(Math.max(0, dx)); // 从 0 滑出
+    else place(SIDE_W() + dx); // 已开 → 从满位左收（dx 为负）
+    if (ev.cancelable) ev.preventDefault(); // 拦掉默认横滑 / 回弹
+  },
+  { passive: false },
+);
 
-document.addEventListener('touchend', /** @param {*} [ev] */ (ev) => {
-  if (!dragging || !active) return;
-  dragging = false;
-  if (!decided) return;                                       // 只是轻点，没拖动
-  const t = ev.changedTouches && ev.changedTouches[0];
-  if (!t) return;
-  const cur = active;
-  const dx = t.clientX - x0;
-  const open = dir > 0 ? dx >= THRESH                        // 右滑够距 → 开
-                       : (dx <= -THRESH ? false : true);     // 左滑够距 → 关，否则维持开
-  const sideEl = sideOf(cur);
-  if (sideEl) {
-    sideEl.style.transition = '';                             // 恢复过渡，交给 CSS 吸附
-    sideEl.style.transform = open ? 'translateX(0%)' : 'translateX(-104%)';
-  }
-  const maskEl = maskOf(cur);
-  if (maskEl) maskEl.style.opacity = open ? '1' : '0';
-  cur.set(open);                                              // 类切换 + 页面滚动锁
-  // 吸附动画结束后把内联样式交还给 CSS，避免后续用按钮开关时内联值压住类样式
-  setTimeout(() => {
-    const side1 = sideOf(cur); if (side1) { side1.style.transform = ''; side1.style.visibility = ''; }
-    const mask1 = maskOf(cur); if (mask1) { mask1.style.opacity = ''; mask1.style.visibility = ''; }
-    active = null;
-  }, 300);
-}, { passive: true });
+document.addEventListener(
+  'touchend',
+  /** @param {*} [ev] */ (ev) => {
+    if (!dragging || !active) return;
+    dragging = false;
+    if (!decided) return; // 只是轻点，没拖动
+    const t = ev.changedTouches && ev.changedTouches[0];
+    if (!t) return;
+    const cur = active;
+    const dx = t.clientX - x0;
+    const open =
+      dir > 0
+        ? dx >= THRESH // 右滑够距 → 开
+        : !(dx <= -THRESH); // 左滑够距 → 关，否则维持开
+    const sideEl = sideOf(cur);
+    if (sideEl) {
+      sideEl.style.transition = ''; // 恢复过渡，交给 CSS 吸附
+      sideEl.style.transform = open ? 'translateX(0%)' : 'translateX(-104%)';
+    }
+    const maskEl = maskOf(cur);
+    if (maskEl) maskEl.style.opacity = open ? '1' : '0';
+    cur.set(open); // 类切换 + 页面滚动锁
+    // 吸附动画结束后把内联样式交还给 CSS，避免后续用按钮开关时内联值压住类样式
+    setTimeout(() => {
+      const side1 = sideOf(cur);
+      if (side1) {
+        side1.style.transform = '';
+        side1.style.visibility = '';
+      }
+      const mask1 = maskOf(cur);
+      if (mask1) {
+        mask1.style.opacity = '';
+        mask1.style.visibility = '';
+      }
+      active = null;
+    }, 300);
+  },
+  { passive: true },
+);

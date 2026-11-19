@@ -13,7 +13,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -60,8 +60,9 @@ function send(method, params = {}) {
 }
 
 function evalJs(expression) {
-  return send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })
-    .then((r) => r.result?.result?.value);
+  return send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }).then(
+    (r) => r.result?.result?.value,
+  );
 }
 
 /** 轮询直到表达式为真。固定 sleep 在慢网下必然误报，这里给足超时、条件一到就走。 */
@@ -162,15 +163,24 @@ try {
   check(filled === 'ok', '登录表单已填并提交');
 
   check(await waitFor("location.pathname === '/'", 20000), '登录成功 → 回到 /');
-  check(await waitFor("document.querySelectorAll('.viewnav-btn').length >= 2"), '顶栏视图导航已渲染');
+  check(
+    await waitFor("document.querySelectorAll('.viewnav-btn').length >= 2"),
+    '顶栏视图导航已渲染',
+  );
   /* 布局仍由服务端按账号注入；外观只存本机，服务端不该再注入 __APPEARANCE__ */
-  check(await evalJs("typeof window.__LAYOUT__ === 'object' && window.__LAYOUT__ != null"),
-    '服务端注入了 window.__LAYOUT__');
-  check(await evalJs("window.__APPEARANCE__ === undefined"),
-    '服务端不再注入 window.__APPEARANCE__（外观只存本机）');
+  check(
+    await evalJs("typeof window.__LAYOUT__ === 'object' && window.__LAYOUT__ != null"),
+    '服务端注入了 window.__LAYOUT__',
+  );
+  check(
+    await evalJs('window.__APPEARANCE__ === undefined'),
+    '服务端不再注入 window.__APPEARANCE__（外观只存本机）',
+  );
   // 外观只存本机；applyTheme 启动时会把当前主题写回（{"theme":"auto"}），
   // 所以不要求为空，只要求它不含账号维度的字段、且服务端不注入（上一条已断言）。
-  const apprSafe = await evalJs("(()=>{try{const a=JSON.parse(localStorage.getItem('feedlore.appearance.v2')||'null');return a===null||(typeof a==='object'&&!('username' in a)&&!('userId' in a));}catch(e){return false;}})()");
+  const apprSafe = await evalJs(
+    "(()=>{try{const a=JSON.parse(localStorage.getItem('feedlore.appearance.v2')||'null');return a===null||(typeof a==='object'&&!('username' in a)&&!('userId' in a));}catch(e){return false;}})()",
+  );
   check(apprSafe, '外观只存本机、不含账号字段');
   /* 首页里带着这个账号的外观/布局；一旦可被缓存，代理就会把 A 的偏好发给 B。
    * Hono 的 compress 在 finalized 后补 Vary 会重建 Response、丢掉 c.res.headers 上的头，
@@ -180,7 +190,10 @@ try {
 
   /* 3) 文章页：频道栏 + 列表 + 展开正文 */
   check(await waitFor("document.querySelectorAll('.rd-ch').length > 0"), '文章页频道栏有频道');
-  check(await waitFor("document.querySelectorAll('#readerList .art-item').length > 0", 20000), '文章列表加载出条目');
+  check(
+    await waitFor("document.querySelectorAll('#readerList .art-item').length > 0", 20000),
+    '文章列表加载出条目',
+  );
 
   const expanded = await evalJs(`(() => {
     const head = document.querySelector('#readerList .art-item .art-head');
@@ -189,41 +202,63 @@ try {
     return 'clicked';
   })()`);
   check(expanded === 'clicked', '点开第一条');
-  check(await waitFor("!!document.querySelector('#readerList .art-item.open .art-body .art-inner')", 20000),
-    '阅读层展开并出现正文容器');
+  check(
+    await waitFor(
+      "!!document.querySelector('#readerList .art-item.open .art-body .art-inner')",
+      20000,
+    ),
+    '阅读层展开并出现正文容器',
+  );
   /* 正文是异步拉的：容器先出现、内容后到，所以等「有字」而不是等容器。 */
-  const bodyLen = (await (async () => {
+  const bodyLen = await (async () => {
     const deadline = Date.now() + 20000;
     let n = 0;
     while (Date.now() < deadline) {
-      n = (await evalJs("document.querySelector('#readerList .art-item.open .art-body')?.innerText.length ?? 0")) ?? 0;
+      n =
+        (await evalJs(
+          "document.querySelector('#readerList .art-item.open .art-body')?.innerText.length ?? 0",
+        )) ?? 0;
       if (n > 20) break;
       await sleep(300);
     }
     return n;
-  })());
+  })();
   check(bodyLen > 20, `正文已渲染（${bodyLen} 字）`);
-  check(await evalJs("/^#reader\\/art\\/.+/.test(location.hash)"), `展开后 hash 指向条目（${await evalJs('location.hash')}）`);
+  check(
+    await evalJs('/^#reader\\/art\\/.+/.test(location.hash)'),
+    `展开后 hash 指向条目（${await evalJs('location.hash')}）`,
+  );
   await shot('ui-reader.png');
 
   /* 4) 卡片页：切过去有卡片，视图导航高亮跟着走 */
-  await evalJs("document.querySelector('.viewnav-btn[data-view=\"cards\"]')?.click()");
-  check(await waitFor("!!document.querySelector('#grid .card, #grid .row-item')", 20000), '卡片页渲染出卡片');
+  await evalJs('document.querySelector(\'.viewnav-btn[data-view="cards"]\')?.click()');
+  check(
+    await waitFor("!!document.querySelector('#grid .card, #grid .row-item')", 20000),
+    '卡片页渲染出卡片',
+  );
   /* 三视图各自渲染一份 ViewNav，DOM 里有多组同名按钮；只认「看得见的那组」高亮。 */
-  check(await waitFor(`[...document.querySelectorAll('.viewnav-btn[data-view="cards"]')]
-    .some((b) => b.classList.contains('active') && b.getBoundingClientRect().width > 0)`, 5000),
-  '卡片视图导航高亮');
+  check(
+    await waitFor(
+      `[...document.querySelectorAll('.viewnav-btn[data-view="cards"]')]
+    .some((b) => b.classList.contains('active') && b.getBoundingClientRect().width > 0)`,
+      5000,
+    ),
+    '卡片视图导航高亮',
+  );
   await shot('ui-cards.png');
 
-  await evalJs("document.querySelector('.viewnav-btn[data-view=\"reader\"]')?.click()");
+  await evalJs('document.querySelector(\'.viewnav-btn[data-view="reader"]\')?.click()');
   check(await waitFor("!!document.querySelector('#readerList')"), '切回文章页');
 
   /* 5) 日报：关掉时入口本就不该在，开着才验 */
-  const hasDigest = await evalJs("!!document.querySelector('.viewnav-btn[data-view=\"ai\"]')");
+  const hasDigest = await evalJs('!!document.querySelector(\'.viewnav-btn[data-view="ai"]\')');
   if (hasDigest) {
-    await evalJs("document.querySelector('.viewnav-btn[data-view=\"ai\"]')?.click()");
-    check(await waitFor("(document.querySelector('#aiRoot')?.innerText.length ?? 0) > 10", 20000), '日报页渲染出内容');
-    await evalJs("document.querySelector('.viewnav-btn[data-view=\"reader\"]')?.click()");
+    await evalJs('document.querySelector(\'.viewnav-btn[data-view="ai"]\')?.click()');
+    check(
+      await waitFor("(document.querySelector('#aiRoot')?.innerText.length ?? 0) > 10", 20000),
+      '日报页渲染出内容',
+    );
+    await evalJs('document.querySelector(\'.viewnav-btn[data-view="reader"]\')?.click()');
   } else {
     console.log('  - 日报已关闭，跳过入口检查');
   }
@@ -233,11 +268,17 @@ try {
   check(await waitFor("!!document.querySelector('.overflow-menu')"), '⋮ 溢出菜单可展开');
   await evalJs(`[...document.querySelectorAll('.overflow-menu .overflow-item')]
     .find((b) => b.innerText.trim() === '设置')?.click()`);
-  check(await waitFor("!!document.querySelector('.modal-mask:not([hidden]) .settings-modal')"), '设置弹层打开');
+  check(
+    await waitFor("!!document.querySelector('.modal-mask:not([hidden]) .settings-modal')"),
+    '设置弹层打开',
+  );
   const tabCount = (await evalJs("document.querySelectorAll('#tabs .tab').length")) ?? 0;
   check(tabCount >= 7, `设置页签 ${tabCount} 个（≥7）`);
-  await evalJs("document.querySelector('#tabs .tab[data-tab=\"source\"]')?.click()");
-  check(await waitFor("!!document.querySelector('#settingsPanel #srcRefresh')"), '数据源页渲染出全局采集间隔');
+  await evalJs('document.querySelector(\'#tabs .tab[data-tab="source"]\')?.click()');
+  check(
+    await waitFor("!!document.querySelector('#settingsPanel #srcRefresh')"),
+    '数据源页渲染出全局采集间隔',
+  );
   // feed-freq 在「列表 + 详情两层」重构后只存在于频道详情层（FeedSheet）内，
   // 冒烟这里没打开任何频道，所以要先点开一行再数（否则恒为 0）。
   await evalJs("document.querySelector('#settingsPanel .feed-row')?.click()");
@@ -250,7 +291,10 @@ try {
 
   /* 7) 窄屏：频道抽屉是手机端唯一入口，桌面断点下打不开就是死路 */
   await send('Emulation.setDeviceMetricsOverride', {
-    width: 390, height: 844, deviceScaleFactor: 3, mobile: true,
+    width: 390,
+    height: 844,
+    deviceScaleFactor: 3,
+    mobile: true,
   });
   await sleep(600);
   const menuVisible = await evalJs(`(() => {
@@ -259,20 +303,31 @@ try {
   })()`);
   check(menuVisible, '390px 下频道抽屉按钮可见');
   await evalJs("document.querySelector('#readerMenuBtn')?.click()");
-  check(await waitFor("document.body.classList.contains('reader-drawer-open')"), '点按钮后 body 进入抽屉态');
+  check(
+    await waitFor("document.body.classList.contains('reader-drawer-open')"),
+    '点按钮后 body 进入抽屉态',
+  );
   /* 抽屉是 transition 滑入的，class 先到、位移后到，要等它真正进到视口里。 */
-  check(await waitFor(`(() => {
+  check(
+    await waitFor(
+      `(() => {
     const r = document.querySelector('#readerSide')?.getBoundingClientRect();
     return !!r && r.width > 0 && r.left >= 0;
-  })()`, 5000), '抽屉滑入视口');
+  })()`,
+      5000,
+    ),
+    '抽屉滑入视口',
+  );
   const sideRect = await evalJs(`(() => {
     const el = document.querySelector('#readerSide');
     if (!el) return null;
     const r = el.getBoundingClientRect();
     return { w: Math.round(r.width), left: Math.round(r.left) };
   })()`);
-  check(!!sideRect && sideRect.w > 0 && sideRect.w < 390,
-    `抽屉宽度合理（${sideRect?.w ?? 0}px，left ${sideRect?.left ?? '-'}）`);
+  check(
+    !!sideRect && sideRect.w > 0 && sideRect.w < 390,
+    `抽屉宽度合理（${sideRect?.w ?? 0}px，left ${sideRect?.left ?? '-'}）`,
+  );
   await shot('ui-phone-drawer.png');
   await evalJs("document.querySelector('#readerSideClose')?.click()");
   check(await waitFor("!document.body.classList.contains('reader-drawer-open')"), '抽屉可收起');
@@ -280,13 +335,24 @@ try {
 
   /* 8) 控制台：真机上不该有任何未捕获错误 */
   const realErrors = errors.filter((e) => !/favicon/i.test(e));
-  check(realErrors.length === 0, `控制台错误 ${realErrors.length} 条${realErrors.length ? `：${realErrors.slice(0, 3).join(' | ')}` : ''}`);
+  check(
+    realErrors.length === 0,
+    `控制台错误 ${realErrors.length} 条${realErrors.length ? `：${realErrors.slice(0, 3).join(' | ')}` : ''}`,
+  );
 } catch (err) {
   fails.push(String(err?.message ?? err));
   console.error(`✗ 冒烟中断：${err?.message ?? err}`);
 } finally {
-  try { ws?.close(); } catch { /* 忽略 */ }
-  try { edge.kill(); } catch { /* 忽略 */ }
+  try {
+    ws?.close();
+  } catch {
+    /* 忽略 */
+  }
+  try {
+    edge.kill();
+  } catch {
+    /* 忽略 */
+  }
 }
 
 console.log(`\n冒烟结果：通过 ${oks.length}，失败 ${fails.length}`);

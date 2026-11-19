@@ -31,7 +31,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 # 同一时间只允许一个发布在跑：两个 tag 并行构建时，谁最后合并 manifest 谁写 latest，
 # 顺序并不由版本新旧决定。这里排队而非取消（cancel-in-progress: false）—— 已经在
@@ -41,8 +41,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write      # 建 Release
-  packages: write      # 推 ghcr
+  contents: write # 建 Release
+  packages: write # 推 ghcr
 
 env:
   REGISTRY_IMAGE: ghcr.io/chensnails/feedlore

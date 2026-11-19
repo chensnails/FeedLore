@@ -9,29 +9,28 @@
  * 本文件不碰密钥明文以外的事：`@feedlore/ai` 的 resolveUserLlm 负责解密与完整性。
  */
 
-import { and, eq } from 'drizzle-orm';
-import { llmProviders, llmVendors, userLlm, type Db, type LlmRoutes } from '@feedlore/db';
+import { getCryptoSecret, type ResolvedLlm, resolveUserLlm } from '@feedlore/ai';
 import type { AiCapability } from '@feedlore/contract';
-import {
-  getCryptoSecret,
-  resolveUserLlm,
-  type ResolvedLlm,
-} from '@feedlore/ai';
+import { type Db, type LlmRoutes, llmProviders, llmVendors, userLlm } from '@feedlore/db';
+import { and, eq } from 'drizzle-orm';
 import { ApiException } from './apiError';
 
 /** 读该账号的 user_llm 行（默认槽 + 路由表）；没有则返回 undefined。 */
 export async function loadLlmRow(
   db: Db,
   uid: string,
-): Promise<{
-  encryptedKey: string | null;
-  baseUrl: string | null;
-  model: string | null;
-  temperature?: number | null;
-  thinking: boolean;
-  thinkingDepth: number;
-  routes: LlmRoutes;
-} | undefined> {
+): Promise<
+  | {
+      encryptedKey: string | null;
+      baseUrl: string | null;
+      model: string | null;
+      temperature?: number | null;
+      thinking: boolean;
+      thinkingDepth: number;
+      routes: LlmRoutes;
+    }
+  | undefined
+> {
   const [row] = await db
     .select({
       encryptedKey: userLlm.encryptedKey,
@@ -48,7 +47,10 @@ export async function loadLlmRow(
   return row;
 }
 
-/** 能力键 → 中文名（错误详情与界面用）。 */export const CAPABILITY_LABEL: Record<AiCapability, string> = {
+/** 能力键 → 中文名（错误详情与界面用）。 */ export const CAPABILITY_LABEL: Record<
+  AiCapability,
+  string
+> = {
   entry_ai: '单篇 AI',
   ai_tags: 'AI 标签',
   digest: '日报',
@@ -153,14 +155,17 @@ export async function loadDefaultModel(db: Db, uid: string): Promise<ModelRow | 
 /** 模型行 → 可请求配置：有厂商时连接信息以厂商为准（厂商清掉 Key 不能回落到旧列）。 */
 export function resolveModelLlm(row: ModelRow, secret: string): ResolvedLlm {
   const hasVendor = Boolean(row.vendorId);
-  return resolveUserLlm({
-    baseUrl: hasVendor ? row.vendorBaseUrl : row.baseUrl,
-    encryptedKey: hasVendor ? row.vendorEncryptedKey : row.encryptedKey,
-    model: row.model,
-    temperature: row.temperature,
-    thinking: row.thinking,
-    thinkingDepth: row.thinkingDepth,
-  }, secret);
+  return resolveUserLlm(
+    {
+      baseUrl: hasVendor ? row.vendorBaseUrl : row.baseUrl,
+      encryptedKey: hasVendor ? row.vendorEncryptedKey : row.encryptedKey,
+      model: row.model,
+      temperature: row.temperature,
+      thinking: row.thinking,
+      thinkingDepth: row.thinkingDepth,
+    },
+    secret,
+  );
 }
 
 /**
@@ -215,7 +220,11 @@ export async function resolveLlmForTask(
  *   0016 把旧开关的开启状态平移进 routes，所以这里特判不会让老用户突然被扣额度。
  *   AI 标签现在是单一开关（routes.ai_tags），prefs.aiTags 已废弃。
  */
-export async function isCapabilityEnabled(db: Db, uid: string, task: AiCapability): Promise<boolean> {
+export async function isCapabilityEnabled(
+  db: Db,
+  uid: string,
+  task: AiCapability,
+): Promise<boolean> {
   const base = await loadLlmRow(db, uid);
   return isRouteEnabled(safeRoutes(base?.routes), task);
 }

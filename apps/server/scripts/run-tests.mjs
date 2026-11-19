@@ -52,7 +52,9 @@ if ((tier === 'integration' || tier === 'all') && !process.env.DATABASE_URL) {
 const names = selected.map((f) => relative(root, f).split(sep).join('/'));
 console.log(`[test:${tier}] ${selected.length} 个文件`);
 if (tier === 'unit') {
-  console.log(`[test:unit] 已排除 ${integration.length} 个接口级用例（需 DATABASE_URL，见 test:integration）`);
+  console.log(
+    `[test:unit] 已排除 ${integration.length} 个接口级用例（需 DATABASE_URL，见 test:integration）`,
+  );
 } else {
   console.log(`[test:${tier}] ${names.join(', ')}`);
 }

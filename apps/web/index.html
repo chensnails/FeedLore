@@ -29,12 +29,12 @@
    只存在本机（feedlore.appearance.v2），不跟账号走；新设备一律用全「中」默认。
    必须在样式表之前把这些属性写到 <html> 上，否则首屏会先按默认值画一遍再跳一下。
    取值合法性也在这里兜一层：localStorage 是用户可改的，脏值不该让页面崩掉。 */
-(function () {
+(() => {
   var el = document.documentElement;
-  var pick = function (v, list, dflt) { return list.indexOf(v) >= 0 ? v : dflt; };
+  var pick = (v, list, dflt) => list.indexOf(v) >= 0 ? v : dflt;
   var ACCENTS = ['blue', 'violet', 'teal', 'green', 'amber', 'rose'];
   var ap = {};
-  try { ap = JSON.parse(localStorage.getItem('feedlore.appearance.v2') || 'null') || {}; } catch (e) { ap = {}; }
+  try { ap = JSON.parse(localStorage.getItem('feedlore.appearance.v2') || 'null') || {}; } catch (_e) { ap = {}; }
 
   var mode = pick(ap.theme, ['auto', 'light', 'dark', 'github'], 'auto');
   el.setAttribute('data-theme-mode', mode);
@@ -157,14 +157,14 @@ html.boot-lock { overflow: hidden; }
   </div>
 </div>
 <script>
-(function () {
+(() => {
   var el = document.getElementById('appBoot');
   if (!el) return;
   var tip = el.querySelector('.boot-tip');
   var errText = el.querySelector('.boot-err-text');
   /* 不用 onclick 内联属性：CSP 只放行带 nonce 的 <script>，内联事件处理器会被拦掉 */
   var retry = el.querySelector('.boot-retry');
-  if (retry) retry.addEventListener('click', function () { location.reload(); });
+  if (retry) retry.addEventListener('click', () => { location.reload(); });
   var t0 = performance.now();
   var done = false;
   var timer;
@@ -184,17 +184,17 @@ html.boot-lock { overflow: hidden; }
       for (var ri = 0; ri < rs.length; ri++) {
         if (/\/assets\/[^/]+-[A-Za-z0-9_-]{8,}\./.test(rs[ri].name) && rs[ri].transferSize === 0) { warm = true; break; }
       }
-    } catch (e) { /* 老浏览器没有 resource timing：按冷启动处理 */ }
+    } catch (_e) { /* 老浏览器没有 resource timing：按冷启动处理 */ }
     var wait = warm ? 0 : Math.max(0, 350 - (performance.now() - t0));
-    setTimeout(function () {
+    setTimeout(() => {
       el.classList.add('is-done');
-      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
+      setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
     }, wait);
   }
   window.__boot = {
     ready: dismiss,
-    tip: function (text) { if (text && !done) tip.textContent = text; },
-    fail: function (text) {
+    tip: (text) => { if (text && !done) tip.textContent = text; },
+    fail: (text) => {
       if (done) return;
       clearTimeout(timer);
       /* 失败也可能只是「数据接口慢」，应用外壳早就渲染好了：
@@ -206,7 +206,7 @@ html.boot-lock { overflow: hidden; }
   };
   /* 启动层现在只等「外壳渲染」，不等数据，正常几百毫秒就 ready；
      这里只兜「JS 根本没跑起来」的情况，给弱网留足余量再到 20s。 */
-  timer = setTimeout(function () { window.__boot.fail('加载时间超出预期，请检查网络后重试'); }, 20000);
+  timer = setTimeout(() => { window.__boot.fail('加载时间超出预期，请检查网络后重试'); }, 20000);
 })();
 </script>
 

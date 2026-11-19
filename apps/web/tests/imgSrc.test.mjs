@@ -11,7 +11,14 @@ test('widthVariant: 代理地址追加档位，外链先补代理', () => {
 });
 
 test('widthVariant: data / 空值 / 其它协议不做变体', () => {
-  for (const bad of ['', null, undefined, 'data:image/png;base64,xx', 'javascript:alert(1)', '/local.png']) {
+  for (const bad of [
+    '',
+    null,
+    undefined,
+    'data:image/png;base64,xx',
+    'javascript:alert(1)',
+    '/local.png',
+  ]) {
     assert.equal(widthVariant(bad, 320), '', `应跳过 ${String(bad)}`);
   }
 });

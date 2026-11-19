@@ -5,9 +5,9 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { toast, emitShell, apiFetch } from './util.js';
-import { emit, EVENT } from '../kernel/events.js';
 import { get } from '../kernel/bridge.js';
+import { EVENT, emit } from '../kernel/events.js';
+import { apiFetch, emitShell, toast } from './util.js';
 
 /* ---------------- 常量 ----------------
  * 分页长度固定：卡片页 50 条，文章页 40 篇。
@@ -24,51 +24,51 @@ export const state = {
   entries: [],
   offset: 0,
   hasMore: true,
-  total: 0,           // 服务端返回的命中总数（工具栏「共 N 篇」与搜索反馈用）
+  total: 0, // 服务端返回的命中总数（工具栏「共 N 篇」与搜索反馈用）
   loading: false,
-  loadError: false,   // 首屏加载失败（React 卡片视图据此显示错误空态）
+  loadError: false, // 首屏加载失败（React 卡片视图据此显示错误空态）
   loadMoreErr: false, // 翻页失败（列表底部给重试按钮，并暂停自动加载）
   loadMoreErrMsg: '', // 加载失败的具体原因（错误空态 / 底部重试条显示，errText 译好的中文）
   /* 列表重置代数：每次 loadPage(reset) 自增。CardsView 的手势闸门用它收闸 ——
      换了列表就要求先出现一次真实滚动输入才允许触底续拉。 */
   listEpoch: 0,
   q: '',
-  sort: 'new',        // 阅读页排序：new 最新 / old 最早 / name 名称（按账号持久化）
-  tag: null,          // 手动标签筛选（entries.tags）
-  aiTag: null,        // AI 标签筛选（entry_ai_tags）；与 tag 互斥，点一个清另一个
-  view: 'grid',       // 'grid' 卡片视图 | 'list' 列表视图（按账号持久化）
+  sort: 'new', // 阅读页排序：new 最新 / old 最早 / name 名称（按账号持久化）
+  tag: null, // 手动标签筛选（entries.tags）
+  aiTag: null, // AI 标签筛选（entry_ai_tags）；与 tag 互斥，点一个清另一个
+  view: 'grid', // 'grid' 卡片视图 | 'list' 列表视图（按账号持久化）
   pageSize: DEFAULT_PAGE_SIZE,
   readerPageSize: DEFAULT_READER_PAGE,
   tagline: '拾取值得读的',
-  feedFilter: null,   // 列表页的频道筛选：null = 全部已开启卡片开关的频道
-  cardGroup: null,    // 卡片页的分组筛选：null = 不限分组；'' 表示「未分组」
-  feedList: null,     // /api/feeds 的 feeds 数组
-  feedMeta: null,     // /api/feeds 的整体信息（total / enabled / cardEnabled / groups）
-  groupOrder: [],     // 分组顺序（显式保存的串名数组，未分组不计入）
-  collapsedGroups: new Set(),  // 分组折叠状态（折叠的分组名集合，按账号持久化）
-  srcGroupsOpen: [],  // 数据源面板「展开的分组名」集合（A 方案：命名分组默认收起，展开态按账号持久化）
-  tags: [],           // 服务端返回的标签计数
+  feedFilter: null, // 列表页的频道筛选：null = 全部已开启卡片开关的频道
+  cardGroup: null, // 卡片页的分组筛选：null = 不限分组；'' 表示「未分组」
+  feedList: null, // /api/feeds 的 feeds 数组
+  feedMeta: null, // /api/feeds 的整体信息（total / enabled / cardEnabled / groups）
+  groupOrder: [], // 分组顺序（显式保存的串名数组，未分组不计入）
+  collapsedGroups: new Set(), // 分组折叠状态（折叠的分组名集合，按账号持久化）
+  srcGroupsOpen: [], // 数据源面板「展开的分组名」集合（A 方案：命名分组默认收起，展开态按账号持久化）
+  tags: [], // 服务端返回的标签计数
   username: null,
-  role: null,         // 'admin' | 'user' | 'readonly' —— 决定设置里哪些 tab / 分组可见
+  role: null, // 'admin' | 'user' | 'readonly' —— 决定设置里哪些 tab / 分组可见
 
   /* ---- 阅读页（文章）----
    * 跟卡片页各自持有自己的一份列表，互不干扰：阅读页按「当前选中的频道」拉，
    * 卡片页按工具栏的筛选条件拉。展开状态只存在内存里，刷新页面就回到全部收起。 */
-  tab: 'reader',        // 当前页面：reader 文章 / cards 卡片 / ai AI（按账号持久化）
-  rdScope: 'all',       // 阅读页默认范围：all 全部 / unread 未读 / favorite 收藏（按账号持久化）
-  rdFeedId: null,       // 阅读页选中的频道：null = 全部已开启频道
-  rdGroup: null,        // 阅读页选中的分组：null = 不限分组；'' 表示「未分组」
-  rdWatch: null,        // 关注 / 屏蔽虚拟视图（v21）：null 常规 / 'watch' 关注 / 'block' 屏蔽。
-                        // 命中条目不打搬动、只打标记（entries.watch_state），这里选中的是
-                        // 「WHERE watch_state = ?」的聚合视图，与范围（未读/收藏）可叠加。
-  rdQ: '',              // 阅读页搜索关键词（走服务端检索）
-  rdTag: null,          // 阅读页手动标签筛选（与卡片页 tag 独立，互斥 rdAiTag）
-  rdAiTag: null,        // 阅读页 AI 标签筛选（服务端按 entry_ai_tags 命中）
-  rdFlags: { total: 0, unread: 0, favorite: 0, watching: 0, blocked: 0 },   // 侧栏计数（含关注/屏蔽命中数）
+  tab: 'reader', // 当前页面：reader 文章 / cards 卡片 / ai AI（按账号持久化）
+  rdScope: 'all', // 阅读页默认范围：all 全部 / unread 未读 / favorite 收藏（按账号持久化）
+  rdFeedId: null, // 阅读页选中的频道：null = 全部已开启频道
+  rdGroup: null, // 阅读页选中的分组：null = 不限分组；'' 表示「未分组」
+  rdWatch: null, // 关注 / 屏蔽虚拟视图（v21）：null 常规 / 'watch' 关注 / 'block' 屏蔽。
+  // 命中条目不打搬动、只打标记（entries.watch_state），这里选中的是
+  // 「WHERE watch_state = ?」的聚合视图，与范围（未读/收藏）可叠加。
+  rdQ: '', // 阅读页搜索关键词（走服务端检索）
+  rdTag: null, // 阅读页手动标签筛选（与卡片页 tag 独立，互斥 rdAiTag）
+  rdAiTag: null, // 阅读页 AI 标签筛选（服务端按 entry_ai_tags 命中）
+  rdFlags: { total: 0, unread: 0, favorite: 0, watching: 0, blocked: 0 }, // 侧栏计数（含关注/屏蔽命中数）
   rdEntries: [],
   rdOffset: 0,
   rdHasMore: true,
-  rdTotal: 0,          // 当前筛选条件下的命中总数（搜索反馈 / 空态文案用）
+  rdTotal: 0, // 当前筛选条件下的命中总数（搜索反馈 / 空态文案用）
   rdLoading: false,
   rdLoadMoreErr: false, // 翻页失败（列表底部给重试按钮，并暂停自动加载）
   /* 频道栏里收起的分组名（数组，与 layout.rdCollapsedGroups 同源）。
@@ -76,10 +76,10 @@ export const state = {
    * 只读 layoutPref 的话外部拿不到变化信号，折叠点击会「写进去了但界面不动」。
    * 写入统一走 setLayout('rdCollapsedGroups', …)，由 setLayout 负责回填这里。 */
   rdCollapsedGroups: [],
-  rdExpanded: new Set(),   // 已展开的条目 id
-  rdBody: new Map(),       // id -> 正文（展开时才拉，拉过就缓存）
-  rdBodyErr: new Set(),    // 拉正文失败的 id，避免反复重试
-  rdReadError: false,      // 首屏加载失败（React 阅读页据此显示错误空态）
+  rdExpanded: new Set(), // 已展开的条目 id
+  rdBody: new Map(), // id -> 正文（展开时才拉，拉过就缓存）
+  rdBodyErr: new Set(), // 拉正文失败的 id，避免反复重试
+  rdReadError: false, // 首屏加载失败（React 阅读页据此显示错误空态）
   rdReadErrorMsg: '',
   /* 刚从卡片页跳过来、要在文章框上闪一下高亮的那条 id（字符串比较）；
      只活一瞬（core/reader.js 的 focusReaderArt 设、定时器清），不落任何持久化。 */
@@ -99,7 +99,7 @@ export function activeScrollEl() {
 
 export function activeScrollTop() {
   const el = activeScrollEl();
-  return el ? el.scrollTop : (window.scrollY || 0);
+  return el ? el.scrollTop : window.scrollY || 0;
 }
 
 /**
@@ -107,7 +107,10 @@ export function activeScrollTop() {
  */
 export function scrollActiveTop(behavior = 'auto') {
   const el = activeScrollEl();
-  if (!el) { window.scrollTo({ top: 0, behavior }); return; }
+  if (!el) {
+    window.scrollTo({ top: 0, behavior });
+    return;
+  }
   // jsdom / 老浏览器没有 Element.scrollTo，退回直接写 scrollTop
   if (typeof el.scrollTo === 'function') el.scrollTo({ top: 0, behavior });
   else el.scrollTop = 0;
@@ -164,11 +167,17 @@ export function restoreViewScroll(tab = state.tab) {
     // 途中又切走了：这次恢复作废，别把新页的容器滚走
     if (tab !== state.tab) return;
     const el = activeScrollEl();
-    if (!el) { window.scrollTo({ top: want, behavior: 'auto' }); return; }
+    if (!el) {
+      window.scrollTo({ top: want, behavior: 'auto' });
+      return;
+    }
     const sh = el.scrollHeight || 0;
     const ch = el.clientHeight || 0;
     // 读不到布局（jsdom / 隐藏视图）：照旧写原值，由浏览器自己的夹取规则兜底
-    if (!sh && !ch) { write(el, want); return; }
+    if (!sh && !ch) {
+      write(el, want);
+      return;
+    }
     /* 列表还没铺开（首屏在途 / 图片尚未占位）：此刻写进去会被夹到当前最大高度，
        等布局随后撑开，停下的位置就不是离开时那一处 —— 用户看到「自己滚到了底部」。
        等容器可滚动再落地，最多等约 0.5s；超时就按当前可达位置恢复。 */
@@ -190,13 +199,13 @@ export function restoreViewScroll(tab = state.tab) {
  * 松手才调一次 setReaderSideWidth 落账号偏好 —— 与主题 / 字号同一条防抖写入通道。
  * 两道上限：持久化只按硬边界 180~400 收（换设备屏幕不同，不该把值改没），
  * 渲染时再按 40vw 自适应收紧（窄笔记本上拖不爆内容区）。 */
-export const READER_SIDE_DEFAULT = 232;   // 与 style.css 里 --reader-side-w 的回退值同源
+export const READER_SIDE_DEFAULT = 232; // 与 style.css 里 --reader-side-w 的回退值同源
 export const READER_SIDE_MIN = 180;
 export const READER_SIDE_MAX = 400;
 
 /** 持久化用的硬边界：非法值（0 / NaN / 串）一律回落默认
-*@param {*} [px]
-*/
+ *@param {*} [px]
+ */
 export function clampReaderSide(px) {
   const n = Math.round(Number(px));
   if (!Number.isFinite(n) || n <= 0) return READER_SIDE_DEFAULT;
@@ -205,7 +214,10 @@ export function clampReaderSide(px) {
 
 /** 渲染上限：硬边界之内再按屏幕宽度收一道 */
 export function readerSideCap() {
-  return Math.max(READER_SIDE_MIN, Math.min(READER_SIDE_MAX, Math.floor((window.innerWidth || 1280) * 0.4)));
+  return Math.max(
+    READER_SIDE_MIN,
+    Math.min(READER_SIDE_MAX, Math.floor((window.innerWidth || 1280) * 0.4)),
+  );
 }
 
 /**
@@ -234,9 +246,26 @@ export function setReaderSideWidth(px) {
  * 换设备也一致。首屏初值由 server.js 注入的 window.__LAYOUT__ 提供。
  * 单一可信源是 window.__LAYOUT__（缺省回落默认）。 */
 /** @type {Record<string, any>} */
-export const LAYOUT_DEFAULTS = { view: 'grid', tab: 'reader', collapsedGroups: [], srcGroupsOpen: [], accordion: true, sections: {}, sort: 'new', rdScope: 'all', rdCollapsedGroups: [], readerSideWidth: READER_SIDE_DEFAULT, digestEnabled: true };
+export const LAYOUT_DEFAULTS = {
+  view: 'grid',
+  tab: 'reader',
+  collapsedGroups: [],
+  srcGroupsOpen: [],
+  accordion: true,
+  sections: {},
+  sort: 'new',
+  rdScope: 'all',
+  rdCollapsedGroups: [],
+  readerSideWidth: READER_SIDE_DEFAULT,
+  digestEnabled: true,
+};
 /** @type {Record<string, any>} */
-export const LAYOUT_VALUES = { view: ['grid', 'list'], tab: ['reader', 'cards', 'ai'], sort: ['new', 'old', 'name'], rdScope: ['all', 'unread', 'favorite'] };
+export const LAYOUT_VALUES = {
+  view: ['grid', 'list'],
+  tab: ['reader', 'cards', 'ai'],
+  sort: ['new', 'old', 'name'],
+  rdScope: ['all', 'unread', 'favorite'],
+};
 /**
  * @param {*} [raw]
  */
@@ -246,28 +275,38 @@ export function sanitizeLayoutLocal(raw) {
     if (LAYOUT_VALUES.view.indexOf(raw.view) >= 0) out.view = raw.view;
     if (LAYOUT_VALUES.tab.indexOf(raw.tab) >= 0) out.tab = raw.tab;
     if (Array.isArray(raw.collapsedGroups)) {
-      out.collapsedGroups = raw.collapsedGroups.filter(/** @param {*} [g] */ (g) => typeof g === 'string').map(/** @param {*} [g] */ (g) => g.slice(0, 40));
+      out.collapsedGroups = raw.collapsedGroups
+        .filter(/** @param {*} [g] */ (g) => typeof g === 'string')
+        .map(/** @param {*} [g] */ (g) => g.slice(0, 40));
     }
     // 数据源面板展开的分组（A 方案默认收起，这里记「显式展开」的组名）
     if (Array.isArray(raw.srcGroupsOpen)) {
-      out.srcGroupsOpen = raw.srcGroupsOpen.filter(/** @param {*} [g] */ (g) => typeof g === 'string').map(/** @param {*} [g] */ (g) => g.slice(0, 40));
+      out.srcGroupsOpen = raw.srcGroupsOpen
+        .filter(/** @param {*} [g] */ (g) => typeof g === 'string')
+        .map(/** @param {*} [g] */ (g) => g.slice(0, 40));
     }
-    out.accordion = raw.accordion === false ? false : true;
+    out.accordion = raw.accordion !== false;
     if (raw.sections && typeof raw.sections === 'object') {
       /** @type {Record<string, any>} */
       const sec = {};
-      Object.keys(raw.sections).forEach(/** @param {*} [k] */ (k) => { sec[k] = raw.sections[k] === true; });
+      Object.keys(raw.sections).forEach(
+        /** @param {*} [k] */ (k) => {
+          sec[k] = raw.sections[k] === true;
+        },
+      );
       out.sections = sec;
     }
     if (LAYOUT_VALUES.sort.indexOf(raw.sort) >= 0) out.sort = raw.sort;
     if (LAYOUT_VALUES.rdScope.indexOf(raw.rdScope) >= 0) out.rdScope = raw.rdScope;
     // 阅读页频道栏的分组折叠：与设置面板的 collapsedGroups 各存一份，互不影响
     if (Array.isArray(raw.rdCollapsedGroups)) {
-      out.rdCollapsedGroups = raw.rdCollapsedGroups.filter(/** @param {*} [g] */ (g) => typeof g === 'string').map(/** @param {*} [g] */ (g) => g.slice(0, 40));
+      out.rdCollapsedGroups = raw.rdCollapsedGroups
+        .filter(/** @param {*} [g] */ (g) => typeof g === 'string')
+        .map(/** @param {*} [g] */ (g) => g.slice(0, 40));
     }
     out.readerSideWidth = clampReaderSide(raw.readerSideWidth);
     // 日报对本账号是否开启（与服务端 lib/prefs.js 同一口径：只有显式 false 才关）
-    out.digestEnabled = raw.digestEnabled === false ? false : true;
+    out.digestEnabled = raw.digestEnabled !== false;
   }
   return out;
 }
@@ -337,7 +376,7 @@ export function unlockPageScroll() {
   document.body.classList.remove('modal-open');
   document.body.style.top = '';
   document.body.style.removeProperty('--sbw');
-  window.scrollTo(0, scrollLockY);   // 回到打开弹层前的位置
+  window.scrollTo(0, scrollLockY); // 回到打开弹层前的位置
 }
 
 /** 打开设置弹层（外壳 React 化后仅作为委托入口：锁屏 / tab 副作用 / 面板加载
@@ -346,10 +385,13 @@ export function unlockPageScroll() {
  *  区分「进设置列表」和「直达某分区」（见 SettingsModal 的 mobilePane 判定）；
  *  桌面端的默认分区由 SettingsModal 自己兜底，语义不变。
  *@param {*} [tab]
-*/
+ */
 export function openSettings(tab) {
   const host = get('settingsHost');
-  if (host && host.open) { host.open(tab); return; }
+  if (host && host.open) {
+    host.open(tab);
+    return;
+  }
   // 设置弹层自 v2.2.0 起按需加载：宿主还没注册时交给入口去拉 chunk，
   // 拉完由 SettingsModal 读取 __settingsPending 补上这次打开。
   const mount = get('mountSettings');
@@ -375,8 +417,8 @@ export function getSettingsSummary() {
 }
 
 /** 推送副标题给 React 外壳（宿主未就绪时静默）
-*@param {*} [text]
-*/
+ *@param {*} [text]
+ */
 export function setSettingsSummary(text) {
   const host = get('settingsHost');
   if (host && host.setSummary) host.setSummary(text);
@@ -402,7 +444,10 @@ export const THEME_META = {
 // 主色固定 GitHub 蓝（不对应 6 套 accent，所以外观页要把主色调板禁掉）。
 /** @type {Record<string, any>} */
 export const THEME_DATA_ATTR = {
-  auto: null, light: 'light', dark: 'dark', github: 'github',
+  auto: null,
+  light: 'light',
+  dark: 'dark',
+  github: 'github',
 };
 // 这些主题自带主色，不随 6 套主色调板变
 /** @type {Record<string, any>} */
@@ -416,7 +461,9 @@ export function prefersDark() {
 }
 
 export function currentThemeMode() {
-  return (appearancePref && THEME_MODES.indexOf(appearancePref.theme) >= 0) ? appearancePref.theme : 'auto';
+  return appearancePref && THEME_MODES.indexOf(appearancePref.theme) >= 0
+    ? appearancePref.theme
+    : 'auto';
 }
 
 /**
@@ -464,8 +511,10 @@ export function applyTheme(mode, animate) {
   const cssRoot = typeof getComputedStyle === 'function' ? getComputedStyle(el) : null;
   const bg = cssRoot ? String(cssRoot.getPropertyValue('--bg') || '').trim() : '';
   const color = bg || (dark ? '#242424' : '#f4f5f7');
-  document.querySelectorAll('meta[name="theme-color"]').forEach(/** @param {*} [tc] */ (tc) => tc.setAttribute('content', color));
-  emitShell();   // ⋮ 菜单里的夜间模式图标由 React 重绘
+  document
+    .querySelectorAll('meta[name="theme-color"]')
+    .forEach(/** @param {*} [tc] */ (tc) => tc.setAttribute('content', color));
+  emitShell(); // ⋮ 菜单里的夜间模式图标由 React 重绘
 
   // 外观页的主题分段控件已 React 化：选中态由窗口级 __appearanceChanged 事件回流，
   // 不再在这里直接操作 DOM
@@ -482,7 +531,9 @@ try {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
     if (currentThemeMode() === 'auto') applyTheme('auto', false);
   });
-} catch (_) { /* 老浏览器不支持 addEventListener，忽略 */ }
+} catch (_) {
+  /* 老浏览器不支持 addEventListener，忽略 */
+}
 
 /* ============================================================
  * 外观偏好（主题 / 主色调 / 字号 / 阅读字体 / 行高 / 阅读宽度）
@@ -494,7 +545,17 @@ try {
 export const APPR_STORAGE_KEY = 'feedlore.appearance.v2';
 // 默认值：尺寸类一律中间档，主题跟随系统、主色蓝、正文字体无衬线
 /** @type {Record<string, any>} */
-export const APPR_DEFAULTS = { theme: 'auto', accent: 'blue', fontSize: 'm', density: 'compact', listDensity: 'compact', readerFont: 'sans', readerLh: 'm', readerFs: 'm', readerWidth: 'm' };
+export const APPR_DEFAULTS = {
+  theme: 'auto',
+  accent: 'blue',
+  fontSize: 'm',
+  density: 'compact',
+  listDensity: 'compact',
+  readerFont: 'sans',
+  readerLh: 'm',
+  readerFs: 'm',
+  readerWidth: 'm',
+};
 // 键名 → html 属性名；同时这个属性名就是控件上用来标值的 data 属性名
 /** @type {Record<string, any>} */
 export const APPR_ATTR = {
@@ -563,12 +624,25 @@ export function saveUserPrefs() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ layout: layoutPref }),
-    }).then(/** @param {*} [res] */ (res) => {
-      if (res && res.ok) { prefsFailToast = false; return; }
-      if (!prefsFailToast) { prefsFailToast = true; toast('界面设置没有同步到服务器，稍后会自动重试', false); }
-    }).catch(() => {
-      if (!prefsFailToast) { prefsFailToast = true; toast('界面设置没有同步到服务器，稍后会自动重试', false); }
-    });
+    })
+      .then(
+        /** @param {*} [res] */ (res) => {
+          if (res && res.ok) {
+            prefsFailToast = false;
+            return;
+          }
+          if (!prefsFailToast) {
+            prefsFailToast = true;
+            toast('界面设置没有同步到服务器，稍后会自动重试', false);
+          }
+        },
+      )
+      .catch(() => {
+        if (!prefsFailToast) {
+          prefsFailToast = true;
+          toast('界面设置没有同步到服务器，稍后会自动重试', false);
+        }
+      });
   }, 150);
 }
 
@@ -596,7 +670,9 @@ export function saveAppearance(pref) {
   appearancePref = sanitizeAppearanceLocal(pref);
   try {
     localStorage.setItem(APPR_STORAGE_KEY, JSON.stringify(appearancePref));
-  } catch (_) { /* 隐私模式 / 配额满：本次会话仍生效，只是不持久化 */ }
+  } catch (_) {
+    /* 隐私模式 / 配额满：本次会话仍生效，只是不持久化 */
+  }
 }
 
 /** 写进 <html> 属性（样式全挂在属性选择器上）。
@@ -604,10 +680,12 @@ export function saveAppearance(pref) {
  *  偏好数据直接推导、不再回写 DOM；末尾派发 __appearanceChanged 通知面板同步，
  *  覆盖 ⋮ 菜单的主题图标、恢复默认、localStorage 迁移等一切外部改动。
  *@param {*} [pref]
-*/
+ */
 export function applyAppearance(pref) {
   const el = document.documentElement;
-  Object.keys(APPR_ATTR).forEach(/** @param {*} [k] */ (k) => el.setAttribute(APPR_ATTR[k], pref[k]));
+  Object.keys(APPR_ATTR).forEach(
+    /** @param {*} [k] */ (k) => el.setAttribute(APPR_ATTR[k], pref[k]),
+  );
   emit(EVENT.APPEARANCE);
 }
 
@@ -641,32 +719,58 @@ applyAppearance(readAppearance());
 // 旧版把布局偏好存在本机 localStorage：升级后迁移到账号（仅执行一次），随后清掉本机副本。
 // 外观不走这条迁移：外观改存本机 feedlore.appearance.v2，旧账号里的 appearance 不再读取。
 (function migrateLegacyLayoutPrefs() {
-  let lpref = Object.assign({}, layoutPref);
+  const lpref = Object.assign({}, layoutPref);
   let lChanged = false;
   try {
     const v = localStorage.getItem('feedlore.view.v1') || '';
-    if (LAYOUT_VALUES.view.indexOf(v) >= 0) { lpref.view = v; lChanged = true; }
+    if (LAYOUT_VALUES.view.indexOf(v) >= 0) {
+      lpref.view = v;
+      lChanged = true;
+    }
     const tb = localStorage.getItem('feedlore.tab.v1') || '';
-    if (LAYOUT_VALUES.tab.indexOf(tb) >= 0) { lpref.tab = tb; lChanged = true; }
+    if (LAYOUT_VALUES.tab.indexOf(tb) >= 0) {
+      lpref.tab = tb;
+      lChanged = true;
+    }
     const cg = JSON.parse(localStorage.getItem('feedlore.collapsedGroups.v1') || 'null');
     if (Array.isArray(cg)) {
-      lpref.collapsedGroups = cg.filter(/** @param {*} [g] */ (g) => typeof g === 'string').map(/** @param {*} [g] */ (g) => g.slice(0, 40));
+      lpref.collapsedGroups = cg
+        .filter(/** @param {*} [g] */ (g) => typeof g === 'string')
+        .map(/** @param {*} [g] */ (g) => g.slice(0, 40));
       lChanged = true;
     }
     const ac = localStorage.getItem('feedlore.reader.accordion.v1');
-    if (ac === '0' || ac === '1') { lpref.accordion = ac !== '0'; lChanged = true; }
+    if (ac === '0' || ac === '1') {
+      lpref.accordion = ac !== '0';
+      lChanged = true;
+    }
     const sec = JSON.parse(localStorage.getItem('feedlore.settings.sections.v1') || 'null');
-    if (sec && typeof sec === 'object') { lpref.sections = sec; lChanged = true; }
-  } catch (_) { return; }
+    if (sec && typeof sec === 'object') {
+      lpref.sections = sec;
+      lChanged = true;
+    }
+  } catch (_) {
+    return;
+  }
   if (lChanged) {
     layoutPref = sanitizeLayoutLocal(lpref);
     // 迁移是整体替换 layoutPref 的另一条写入路径，镜像字段要一并回填
-    LAYOUT_MIRROR.forEach(/** @param {*} [k] */ (k) => { state[k] = layoutPref[k]; });
+    LAYOUT_MIRROR.forEach(
+      /** @param {*} [k] */ (k) => {
+        state[k] = layoutPref[k];
+      },
+    );
     saveUserPrefs();
   }
   try {
-    ['feedlore.view.v1', 'feedlore.tab.v1', 'feedlore.collapsedGroups.v1',
-     'feedlore.reader.accordion.v1', 'feedlore.settings.sections.v1']
-      .forEach(/** @param {*} [k] */ (k) => localStorage.removeItem(k));
-  } catch (_) { /* 忽略 */ }
+    [
+      'feedlore.view.v1',
+      'feedlore.tab.v1',
+      'feedlore.collapsedGroups.v1',
+      'feedlore.reader.accordion.v1',
+      'feedlore.settings.sections.v1',
+    ].forEach(/** @param {*} [k] */ (k) => localStorage.removeItem(k));
+  } catch (_) {
+    /* 忽略 */
+  }
 })();

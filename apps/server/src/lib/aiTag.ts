@@ -9,18 +9,18 @@
  * - 模型失败写入 status='failed'（避免每 tick 空转重试），用户改好 Key 后可按需 POST 重算。
  */
 
-import { log } from './logger';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import { entries, entryAiTags, feeds, userLlm, users, type Db } from '@feedlore/db';
 import {
   AI_TAG_PROMPT_VERSION,
   llmComplete,
-  suggestEntryTags,
   type ResolvedLlm,
+  suggestEntryTags,
 } from '@feedlore/ai';
-import { assertPublicHost, safeFetch } from './net';
+import { type Db, entries, entryAiTags, feeds, userLlm, users } from '@feedlore/db';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { recordAiUsage } from './aiUsage';
-import { resolveLlmForTask, isCapabilityEnabled } from './llm';
+import { isCapabilityEnabled, resolveLlmForTask } from './llm';
+import { log } from './logger';
+import { assertPublicHost, safeFetch } from './net';
 
 const TICK_MS = 60 * 1000;
 /** 每账号每 tick 最多处理的篇数：控制单次模型调用量，避免一上来把整库额度烧光。 */
@@ -33,7 +33,11 @@ interface UntaggedEntry {
 }
 
 /** 取该用户「还没有 AI 标签」的若干条目（owner 隔离 + 按发布时间倒序）。 */
-export async function findUntaggedEntries(db: Db, uid: string, limit: number): Promise<UntaggedEntry[]> {
+export async function findUntaggedEntries(
+  db: Db,
+  uid: string,
+  limit: number,
+): Promise<UntaggedEntry[]> {
   return db
     .select({ id: entries.id, title: entries.title, content: entries.content })
     .from(entries)
@@ -51,12 +55,22 @@ export async function tagEntry(
   uid: string,
   entry: UntaggedEntry,
   llm: ResolvedLlm,
-): Promise<{ status: 'done' | 'failed'; tags: string[]; error?: string; usage?: { promptTokens: number; completionTokens: number; totalTokens: number } }> {
+): Promise<{
+  status: 'done' | 'failed';
+  tags: string[];
+  error?: string;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+}> {
   const id = crypto.randomUUID();
   const started = Date.now();
   const label = (entry.title ?? '').trim() || 'AI 标签';
   try {
-    const { tags, usage } = await suggestEntryTags(entry.title, entry.content ?? '', llm, safeFetch);
+    const { tags, usage } = await suggestEntryTags(
+      entry.title,
+      entry.content ?? '',
+      llm,
+      safeFetch,
+    );
     // 只记聚合：定时打标一分钟能跑 20 篇，逐篇落明细会把「模型状态」列表刷满
     await recordAiUsage(db, uid, 'ai_tags', usage, true, 1, {
       model: llm.model,
@@ -77,7 +91,14 @@ export async function tagEntry(
       })
       .onConflictDoUpdate({
         target: [entryAiTags.userId, entryAiTags.entryId],
-        set: { tags, model: llm.model, promptVersion: AI_TAG_PROMPT_VERSION, status: 'done', error: null, updatedAt: sql`now()` },
+        set: {
+          tags,
+          model: llm.model,
+          promptVersion: AI_TAG_PROMPT_VERSION,
+          status: 'done',
+          error: null,
+          updatedAt: sql`now()`,
+        },
       });
     return { status: 'done', tags, usage: usage ?? undefined };
   } catch (e) {
@@ -164,7 +185,7 @@ async function runAiTagTickOnce(db: Db, _now: Date): Promise<number> {
         }
         if (r.status === 'failed') {
           failCount += 1;
-          firstError = firstError || (r.error || '打标失败');
+          firstError = firstError || r.error || '打标失败';
           log.warn(`[ai-tags] user ${u.id} entry ${e.id} tagging failed: ${r.error}`);
         } else {
           okCount += 1;
@@ -219,7 +240,9 @@ export function startAiTagScheduler(db: Db): void {
     );
   }, TICK_MS);
   timer.unref?.();
-  log.info('[ai-tags] scheduled per account: untagged entries tagged every minute (enabled accounts only)');
+  log.info(
+    '[ai-tags] scheduled per account: untagged entries tagged every minute (enabled accounts only)',
+  );
 }
 
 export function stopAiTagScheduler(): void {

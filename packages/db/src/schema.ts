@@ -16,20 +16,20 @@
 
 import { relations } from 'drizzle-orm';
 import {
-  pgTable,
-  text,
-  boolean,
-  timestamp,
-  jsonb,
-  bigserial,
   bigint,
-  integer,
-  smallint,
-  real,
-  date,
+  bigserial,
+  boolean,
   customType,
-  uniqueIndex,
+  date,
+  integer,
+  jsonb,
+  pgTable,
   primaryKey,
+  real,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -183,9 +183,7 @@ export const entries = pgTable(
     // 进入「关注」的时刻：规则可设置保留天数，到期自动移除关注标记（屏蔽不受影响）
     watchTaggedAt: timestamp('watch_tagged_at', { mode: 'date' }),
   },
-  (t) => [
-    uniqueIndex('entries_feed_id_guid_key').on(t.feedId, t.guid),
-  ],
+  (t) => [uniqueIndex('entries_feed_id_guid_key').on(t.feedId, t.guid)],
 );
 
 export const digests = pgTable(
@@ -258,7 +256,9 @@ export const userLlm = pgTable('user_llm', {
  */
 export const llmVendors = pgTable('llm_vendors', {
   id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull().default(''),
   baseUrl: text('base_url').notNull().default(''),
   encryptedKey: text('encrypted_key'),
@@ -273,7 +273,9 @@ export const llmVendors = pgTable('llm_vendors', {
  */
 export const llmProviders = pgTable('llm_providers', {
   id: text('id').primaryKey(),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   vendorId: text('vendor_id').references(() => llmVendors.id, { onDelete: 'cascade' }),
   name: text('name').notNull().default(''),
   encryptedKey: text('encrypted_key'),
@@ -343,9 +345,7 @@ export const aiUsageDaily = pgTable(
     promptTokens: bigint('prompt_tokens', { mode: 'number' }).notNull().default(0),
     completionTokens: bigint('completion_tokens', { mode: 'number' }).notNull().default(0),
   },
-  (t) => [
-    primaryKey({ columns: [t.userId, t.date, t.kind] }),
-  ],
+  (t) => [primaryKey({ columns: [t.userId, t.date, t.kind] })],
 );
 
 /**
@@ -375,9 +375,7 @@ export const entryAiTags = pgTable(
     createdAt: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
   },
-  (t) => [
-    uniqueIndex('entry_ai_tags_user_entry_key').on(t.userId, t.entryId),
-  ],
+  (t) => [uniqueIndex('entry_ai_tags_user_entry_key').on(t.userId, t.entryId)],
 );
 
 /**

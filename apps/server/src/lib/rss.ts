@@ -18,9 +18,21 @@ import { parseArticleHtml } from './article';
  * ==========================================================================*/
 
 const NAMED_ENTITIES: Record<string, string> = {
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0',
-  copy: '\u00a9', reg: '\u00ae', hellip: '\u2026', mdash: '\u2014',
-  ndash: '\u2013', lsquo: '\u2018', rsquo: '\u2019', ldquo: '\u201c', rdquo: '\u201d',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: '\u00a0',
+  copy: '\u00a9',
+  reg: '\u00ae',
+  hellip: '\u2026',
+  mdash: '\u2014',
+  ndash: '\u2013',
+  lsquo: '\u2018',
+  rsquo: '\u2019',
+  ldquo: '\u201c',
+  rdquo: '\u201d',
 };
 
 /** 单遍解码实体，避免 `&amp;lt;` 被二次解码成 `<` */
@@ -29,9 +41,10 @@ export function decodeEntities(s: string | null | undefined): string {
     /&(#[0-9]+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g,
     (m, body: string) => {
       if (body.startsWith('#')) {
-        const cp = body[1] === 'x' || body[1] === 'X'
-          ? parseInt(body.slice(2), 16)
-          : parseInt(body.slice(1), 10);
+        const cp =
+          body[1] === 'x' || body[1] === 'X'
+            ? parseInt(body.slice(2), 16)
+            : parseInt(body.slice(1), 10);
         if (!Number.isFinite(cp) || cp < 0 || cp > 0x10ffff) return m;
         try {
           return String.fromCodePoint(cp);
@@ -246,19 +259,31 @@ export function parseFeed(xml: string): ParsedFeed {
   }
 
   const imgNode = child(feedNode, 'image');
-  const icon = textOf(feedNode, 'icon') || textOf(feedNode, 'logo')
-    || (imgNode ? imgNode.attrs.href || textOf(imgNode, 'url') : '') || '';
+  const icon =
+    textOf(feedNode, 'icon') ||
+    textOf(feedNode, 'logo') ||
+    (imgNode ? imgNode.attrs.href || textOf(imgNode, 'url') : '') ||
+    '';
 
   const items: RawItem[] = itemNodes
     .map((it) => {
       const guid = textOf(it, 'guid') || textOf(it, 'id') || pickLink(it) || textOf(it, 'title');
       // RSS 的 content:encoded 比 description 完整，优先用
-      const body = textOf(it, 'encoded') || textOf(it, 'content') || textOf(it, 'description')
-        || textOf(it, 'summary');
-      const enc = children(it, 'enclosure').find((e) => /^image\//i.test(e.attrs.type || '')
-        || /\.(?:jpe?g|png|webp|gif)$/i.test(e.attrs.url || ''));
-      const dateStr = textOf(it, 'pubDate') || textOf(it, 'published') || textOf(it, 'updated')
-        || textOf(it, 'date');
+      const body =
+        textOf(it, 'encoded') ||
+        textOf(it, 'content') ||
+        textOf(it, 'description') ||
+        textOf(it, 'summary');
+      const enc = children(it, 'enclosure').find(
+        (e) =>
+          /^image\//i.test(e.attrs.type || '') ||
+          /\.(?:jpe?g|png|webp|gif)$/i.test(e.attrs.url || ''),
+      );
+      const dateStr =
+        textOf(it, 'pubDate') ||
+        textOf(it, 'published') ||
+        textOf(it, 'updated') ||
+        textOf(it, 'date');
       return {
         guid: String(guid || '').trim() || textOf(it, 'title').slice(0, 120),
         title: textOf(it, 'title'),
@@ -283,25 +308,50 @@ export function parseFeed(xml: string): ParsedFeed {
  * 3. 条目归一化（沿用原先在 CommaFeed 版本里验证过的解析规则）
  * ==========================================================================*/
 
-const FIELD_WORDS = ['名称', '描述', '链接', '百度', '夸克', '阿里', '迅雷', '大小', '标签',
-  '直达链接', '主题', '分类', '发布者', '时间', '内容预览', '作者', '简介', '标题', '正文'];
+const FIELD_WORDS = [
+  '名称',
+  '描述',
+  '链接',
+  '百度',
+  '夸克',
+  '阿里',
+  '迅雷',
+  '大小',
+  '标签',
+  '直达链接',
+  '主题',
+  '分类',
+  '发布者',
+  '时间',
+  '内容预览',
+  '作者',
+  '简介',
+  '标题',
+  '正文',
+];
 const FIELD_LINE = new RegExp(
-  '^[\\s\\u{1F000}-\\u{1FAFF}\\u{2600}-\\u{27BF}\\uFE0F]*('
-  + FIELD_WORDS.map((w) => w.split('').join('\\s*')).join('|')
-  + ')\\s*[：:]',
+  '^[\\s\\u{1F000}-\\u{1FAFF}\\u{2600}-\\u{27BF}\\uFE0F]*(' +
+    FIELD_WORDS.map((w) => w.split('').join('\\s*')).join('|') +
+    ')\\s*[：:]',
   'u',
 );
 const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\uFE0F]/gu;
-const DETAIL_HINT = /\/(?:post-\d+|t\/\d+|topic\/|thread\/|article\/|archives\/|detail|p\/\d+|\d+\.html)/i;
+const DETAIL_HINT =
+  /\/(?:post-\d+|t\/\d+|topic\/|thread\/|article\/|archives\/|detail|p\/\d+|\d+\.html)/i;
 
-const PAN_RE = /https?:\/\/(?:pan\.baidu\.com|(?:www\.)?aliyundrive\.com|(?:www\.)?alipan\.com|cloud\.189\.cn|(?:www\.)?115\.com|pan\.quark\.cn|(?:www\.)?quark\.cn|(?:www\.)?123pan\.com|(?:www\.)?123684\.com|mypikpak\.com|(?:www\.)?aliyundrive\.net)\/[^\s"'<>）)]*/i;
+const PAN_RE =
+  /https?:\/\/(?:pan\.baidu\.com|(?:www\.)?aliyundrive\.com|(?:www\.)?alipan\.com|cloud\.189\.cn|(?:www\.)?115\.com|pan\.quark\.cn|(?:www\.)?quark\.cn|(?:www\.)?123pan\.com|(?:www\.)?123684\.com|mypikpak\.com|(?:www\.)?aliyundrive\.net)\/[^\s"'<>）)]*/i;
 
 export function stripTags(html: string): string {
   return decodeEntities(String(html).replace(/<[^>]+>/g, ''));
 }
 
 export function plainText(html: string): string {
-  return decodeEntities(String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ''));
+  return decodeEntities(
+    String(html)
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ''),
+  );
 }
 
 function field(txt: string, label: string): string {
@@ -311,7 +361,10 @@ function field(txt: string, label: string): string {
 }
 
 function isNoiseLine(l: string): boolean {
-  const stripped = l.replace(/#[^\s#]+/g, '').replace(EMOJI_RE, '').replace(/[\s\-–—·|,，、]+/g, '');
+  const stripped = l
+    .replace(/#[^\s#]+/g, '')
+    .replace(EMOJI_RE, '')
+    .replace(/[\s\-–—·|,，、]+/g, '');
   return stripped.length === 0;
 }
 
@@ -329,7 +382,7 @@ function validUrl(u: string): boolean {
 
 function cleanTitle(t: string): string {
   return stripTags(t || '')
-    .replace(/^[^\u4e00-\u9fa5A-Za-z0-9【\[(]+/, '')
+    .replace(/^[^\u4e00-\u9fa5A-Za-z0-9【[(]+/, '')
     .replace(/^\s*(?:主\s*题|标\s*题|名\s*称|题\s*目)\s*[：:]\s*/, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -408,7 +461,9 @@ export function normalizeItem(
     const seen = new Set<string>();
     const add = (u: string | null | undefined): void => {
       if (!u) return;
-      let s = decodeEntities(String(u)).trim().replace(/[)\]}>"'）】。，；、]+$/, '');
+      let s = decodeEntities(String(u))
+        .trim()
+        .replace(/[)\]}>"'）】。，；、]+$/, '');
       if (!/^https?:\/\//i.test(s)) return;
       let host = '';
       try {
@@ -461,9 +516,14 @@ export function normalizeItem(
 
   let desc = field(txt, '描述');
   if (!desc) {
-    desc = txt.split('\n').map((l) => l.trim()).filter(Boolean)
+    desc = txt
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
       .filter((l) => !FIELD_LINE.test(l) && !isNoiseLine(l))
-      .join(' ').replace(/\s+/g, ' ').trim();
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
   const size = field(txt, '大小').replace(/^[^\w\d.]*/, '');
 
@@ -475,7 +535,10 @@ export function normalizeItem(
   if (!tags.length) {
     const tm = txt.match(/标签\s*[：:]\s*([^\n]*)/);
     if (tm?.[1]) {
-      tags = tm[1].split(/[\s,，]+/).map((s) => s.replace(/^#/, '').trim()).filter(Boolean);
+      tags = tm[1]
+        .split(/[\s,，]+/)
+        .map((s) => s.replace(/^#/, '').trim())
+        .filter(Boolean);
     }
   }
   tags = [...new Set(tags)].slice(0, 8);

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  clearImgFail,
   IMG_FAIL_MAX,
   IMG_FAIL_TTL_MS,
-  clearImgFail,
   imgFailKey,
   isImgFailed,
   markImgFailed,
@@ -57,7 +57,10 @@ test('clearImgFail: 手动刷新后所有图重新尝试', () => {
 test('mark: 离线时不记录（断网失败不是图片本身的问题）', () => {
   const original = globalThis.navigator;
   try {
-    Object.defineProperty(globalThis, 'navigator', { value: { onLine: false }, configurable: true });
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { onLine: false },
+      configurable: true,
+    });
     clearImgFail();
     markImgFailed('/api/img?u=offline');
     assert.equal(isImgFailed('/api/img?u=offline'), false);

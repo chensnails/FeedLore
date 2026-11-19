@@ -13,15 +13,22 @@
  */
 
 import { createReadStream } from 'node:fs';
-import { readFile, readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { sql } from 'drizzle-orm';
+import {
+  clampTemperature,
+  encryptSecret,
+  getCryptoSecret,
+  normalizeThinkingDepth,
+} from '@feedlore/ai';
+import { AI_CAPABILITIES, ENTRY_AI_ACTIONS, type LlmRoutes } from '@feedlore/contract';
 import {
   accounts,
   aiRequestLog,
   aiUsageDaily,
   articleCache,
+  type Db,
   digests,
   entries,
   entryAiTags,
@@ -30,28 +37,21 @@ import {
   llmProviders,
   llmVendors,
   mcpTokens,
+  type NewEntry,
+  type NewFeed,
+  type NewLlmProvider,
+  type NewLlmVendor,
+  type NewUserLlm,
   settings,
   userLlm,
   users,
-  type Db,
-  type NewEntry,
-  type NewFeed,
-  type NewUserLlm,
-  type NewLlmProvider,
-  type NewLlmVendor,
 } from '@feedlore/db';
-import {
-  clampTemperature,
-  encryptSecret,
-  getCryptoSecret,
-  normalizeThinkingDepth,
-} from '@feedlore/ai';
-import { AI_CAPABILITIES, ENTRY_AI_ACTIONS, type LlmRoutes } from '@feedlore/contract';
+import { sql } from 'drizzle-orm';
 import { ApiException } from './apiError';
-import { isSafeImageKey } from './tar-read';
-import { assertPublicHost } from './net';
 import { safeRoutes } from './llm';
 import { vendorLabel } from './llmProviders';
+import { assertPublicHost } from './net';
+import { isSafeImageKey } from './tar-read';
 
 const FORMAT = 'feedlore-backup';
 const FORMAT_VERSION = 1;
@@ -67,11 +67,11 @@ export interface ImportCount {
 type LlmPlan =
   | { outcome: 'absent' | 'url-blocked' }
   | {
-    outcome: 'pending';
-    row: NewUserLlm;
-    vendors: NewLlmVendor[];
-    models: NewLlmProvider[];
-  };
+      outcome: 'pending';
+      row: NewUserLlm;
+      vendors: NewLlmVendor[];
+      models: NewLlmProvider[];
+    };
 
 export type LlmImportOutcome = 'applied' | 'absent' | 'already-configured' | 'url-blocked';
 
@@ -130,8 +130,7 @@ const numOrNull = (v: unknown): number | null => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
-const boolOr = (v: unknown, fallback: boolean): boolean =>
-  typeof v === 'boolean' ? v : fallback;
+const boolOr = (v: unknown, fallback: boolean): boolean => (typeof v === 'boolean' ? v : fallback);
 const dateOrNull = (v: unknown): Date | null => {
   if (v === null || v === undefined || v === '') return null;
   const d = new Date(String(v));
@@ -289,8 +288,7 @@ function mapUserEntry(raw: Raw, feedId: number): NewEntry | null {
     bodyJson: strOrNull(raw.bodyJson),
     bodyVersion: intOr(raw.bodyVersion, 1),
     links: Array.isArray(raw.links) ? arrStr(raw.links) : null,
-    watchState:
-      raw.watchState === 'watch' || raw.watchState === 'block' ? raw.watchState : null,
+    watchState: raw.watchState === 'watch' || raw.watchState === 'block' ? raw.watchState : null,
     watchRule: strOrNull(raw.watchRule),
     watchTaggedAt: dateOrNull(raw.watchTaggedAt),
   };
@@ -327,8 +325,12 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
   const rawModels = recordsOf(raw.models);
   const rawProviders = recordsOf(raw.providers);
   if (
-    !baseUrl && !modelName && !apiKey &&
-    !rawVendors.length && !rawModels.length && !rawProviders.length
+    !baseUrl &&
+    !modelName &&
+    !apiKey &&
+    !rawVendors.length &&
+    !rawModels.length &&
+    !rawProviders.length
   ) {
     return { outcome: 'absent' };
   }
@@ -341,8 +343,11 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
     ...rawProviders.map((p) => normalizeBaseUrl(p.baseUrl)),
   ].filter(Boolean);
   for (const u of urls) {
-    try { await assertPublicHost(u, { resolve: false }); }
-    catch { return { outcome: 'url-blocked' }; }
+    try {
+      await assertPublicHost(u, { resolve: false });
+    } catch {
+      return { outcome: 'url-blocked' };
+    }
   }
 
   const secret = await getCryptoSecret(db);
@@ -413,9 +418,10 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
       vendorId: input.vendorId,
       name: str(input.name).slice(0, 60),
       model: input.model || null,
-      temperature: input.temperature === null || input.temperature === undefined
-        ? null
-        : clampTemperature(input.temperature),
+      temperature:
+        input.temperature === null || input.temperature === undefined
+          ? null
+          : clampTemperature(input.temperature),
       thinking: input.thinking === true,
       thinkingDepth: normalizeThinkingDepth(input.thinkingDepth),
       isDefault: input.isDefault,
@@ -529,9 +535,10 @@ async function planUserLlm(db: Db, userId: string, dir: string): Promise<LlmPlan
       baseUrl: baseUrl || null,
       model: modelName || null,
       // 未导出温度 = 沿用默认（NULL 由视图层回落 0.3）
-      temperature: raw.temperature === null || raw.temperature === undefined
-        ? null
-        : clampTemperature(raw.temperature),
+      temperature:
+        raw.temperature === null || raw.temperature === undefined
+          ? null
+          : clampTemperature(raw.temperature),
       thinking: raw.thinking === true,
       thinkingDepth: normalizeThinkingDepth(raw.thinkingDepth),
       routes,
@@ -666,7 +673,11 @@ export async function importUserArchive(
     }
     if (llmPlan.outcome === 'pending') {
       const [had] = await tx
-        .select({ encryptedKey: userLlm.encryptedKey, baseUrl: userLlm.baseUrl, model: userLlm.model })
+        .select({
+          encryptedKey: userLlm.encryptedKey,
+          baseUrl: userLlm.baseUrl,
+          model: userLlm.model,
+        })
         .from(userLlm)
         .where(sql`${userLlm.userId} = ${userId}`)
         .limit(1);
@@ -886,16 +897,31 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
   const digestRows = asArray(await readJson(dir, 'digests.json'), 'digests.json');
   const llmRows = asArray(await readJson(dir, 'user_llm.json'), 'user_llm.json');
   // 0017：厂商表；老备份没有这个文件，按空数组处理（向后兼容）
-  const vendorRows = asArray(await readOptionalJson(dir, 'llm_vendors.json') ?? [], 'llm_vendors.json');
+  const vendorRows = asArray(
+    (await readOptionalJson(dir, 'llm_vendors.json')) ?? [],
+    'llm_vendors.json',
+  );
   // 0015：老备份没有这个文件，按空数组处理（向后兼容）
-  const providerRows = asArray(await readOptionalJson(dir, 'llm_providers.json') ?? [], 'llm_providers.json');
+  const providerRows = asArray(
+    (await readOptionalJson(dir, 'llm_providers.json')) ?? [],
+    'llm_providers.json',
+  );
   const settingRows = asArray(await readJson(dir, 'settings.json'), 'settings.json');
   const imageRows = asArray(await readJson(dir, 'image_cache.json'), 'image_cache.json');
   // AI 标签 / MCP 令牌 / AI 用量是后补进备份的：老备份没有这些文件，按空处理
   const aiTagFiles = await listBatches(dir, /^entry_ai_tags-\d{4}\.jsonl$/);
-  const mcpRows = asArray(await readOptionalJson(dir, 'mcp_tokens.json') ?? [], 'mcp_tokens.json');
-  const usageRows = asArray(await readOptionalJson(dir, 'ai_usage_daily.json') ?? [], 'ai_usage_daily.json');
-  const requestRows = asArray(await readOptionalJson(dir, 'ai_request_log.json') ?? [], 'ai_request_log.json');
+  const mcpRows = asArray(
+    (await readOptionalJson(dir, 'mcp_tokens.json')) ?? [],
+    'mcp_tokens.json',
+  );
+  const usageRows = asArray(
+    (await readOptionalJson(dir, 'ai_usage_daily.json')) ?? [],
+    'ai_usage_daily.json',
+  );
+  const requestRows = asArray(
+    (await readOptionalJson(dir, 'ai_request_log.json')) ?? [],
+    'ai_request_log.json',
+  );
   const entryFiles = await listBatches(dir, /^entries-\d{4}\.jsonl$/);
   const articleFiles = await listBatches(dir, /^article_cache-\d{4}\.jsonl$/);
 
@@ -1036,9 +1062,11 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
       const id = str(raw.id);
       if (!userId || !id) throw invalid('bad llm_providers.json record');
       const vendorId = strOrNull(raw.vendorId);
-      if (vendorId && !vendorIds.has(vendorId)) throw invalid('bad llm_providers.json record: unknown vendor');
+      if (vendorId && !vendorIds.has(vendorId))
+        throw invalid('bad llm_providers.json record: unknown vendor');
       return {
-        id, userId,
+        id,
+        userId,
         vendorId,
         name: str(raw.name),
         encryptedKey: strOrNull(raw.encryptedKey),
@@ -1077,7 +1105,8 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
       const name = str(raw.name);
       const tokenHash = str(raw.tokenHash);
       const prefix = str(raw.prefix);
-      if (!id || !userId || !name || !tokenHash || !prefix) throw invalid('bad mcp_tokens.json record');
+      if (!id || !userId || !name || !tokenHash || !prefix)
+        throw invalid('bad mcp_tokens.json record');
       return {
         id,
         userId,
@@ -1096,7 +1125,8 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
       const userId = str(raw.userId);
       const date = str(raw.date);
       const kind = str(raw.kind);
-      if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !kind) throw invalid('bad ai_usage_daily.json record');
+      if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !kind)
+        throw invalid('bad ai_usage_daily.json record');
       return {
         userId,
         date,

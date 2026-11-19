@@ -11,5 +11,7 @@
  * @param {*} opts
  */
 export const Icon = ({ n }) => (
-  <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
+  <svg className="ico" aria-hidden="true" focusable="false">
+    <use href={'#i-' + n} />
+  </svg>
 );

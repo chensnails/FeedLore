@@ -11,13 +11,13 @@
  *   `MCP_ENABLED=0` 可整体关闭。
  */
 
-import { Hono } from 'hono';
-import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
 import type { Db } from '@feedlore/db';
-import { apiError } from '../lib/apiError';
-import { mcpAuth, type McpEnv } from '../middleware/mcpAuth';
-import { buildMcpServer } from '../mcp/tools';
+import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
+import { Hono } from 'hono';
 import { MCP_ENABLED } from '../env';
+import { apiError } from '../lib/apiError';
+import { buildMcpServer } from '../mcp/tools';
+import { type McpEnv, mcpAuth } from '../middleware/mcpAuth';
 
 export function isMcpEnabled(): boolean {
   return MCP_ENABLED;
@@ -44,7 +44,7 @@ export function mcpRoutes(db: Db | null) {
       const server = buildMcpServer(db, user);
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined, // 无状态：没有会话表
-        enableJsonResponse: true,      // 纯 JSON：反代零配置
+        enableJsonResponse: true, // 纯 JSON：反代零配置
       });
       await server.connect(transport);
       try {

@@ -11,8 +11,8 @@
  *    这里不自己实现一套，因为两套实现迟早会漂移，而漂移的那一套就是漏洞。
  */
 
-import { maskSecret, decryptSecret, encryptSecret } from './crypto';
 import type { LlmView } from '@feedlore/contract';
+import { decryptSecret, encryptSecret, maskSecret } from './crypto';
 
 /** 调用方注入的出网实现（服务端传 `safeFetch`）。签名与全局 fetch 一致，便于直接透传。 */
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
@@ -38,7 +38,8 @@ export function normalizeThinkingDepth(raw: unknown): number {
   return d >= 1 && d <= 3 ? d : THINKING_DEPTH_DEFAULT;
 }
 
-export const thinkingBudget = (depth: unknown): number => THINKING_BUDGET[normalizeThinkingDepth(depth)] ?? 2048;
+export const thinkingBudget = (depth: unknown): number =>
+  THINKING_BUDGET[normalizeThinkingDepth(depth)] ?? 2048;
 
 /** 默认温度：legacy 同值。温度影响的是「选材发散度」，日报要稳定，所以偏低。 */
 export const TEMPERATURE_DEFAULT = 0.3;
@@ -114,7 +115,14 @@ export function userLlmForView(row: LlmRow | undefined | null, cryptoSecret: str
  * 不区分这三种，前端「只改模型名」就会把已存的 Key 一起冲掉。
  */
 export function userLlmForStore(
-  raw: { apiKey?: string; baseUrl?: string; model?: string; temperature?: number; thinking?: boolean; thinkingDepth?: number },
+  raw: {
+    apiKey?: string;
+    baseUrl?: string;
+    model?: string;
+    temperature?: number;
+    thinking?: boolean;
+    thinkingDepth?: number;
+  },
   cryptoSecret: string,
 ): {
   encryptedKey?: string | null;
@@ -140,7 +148,8 @@ export function userLlmForStore(
   if (raw.model !== undefined) out.model = raw.model.trim() || null;
   if (raw.temperature !== undefined) out.temperature = clampTemperature(raw.temperature);
   if (raw.thinking !== undefined) out.thinking = raw.thinking === true;
-  if (raw.thinkingDepth !== undefined) out.thinkingDepth = normalizeThinkingDepth(raw.thinkingDepth);
+  if (raw.thinkingDepth !== undefined)
+    out.thinkingDepth = normalizeThinkingDepth(raw.thinkingDepth);
   return out;
 }
 
@@ -148,7 +157,9 @@ export function userLlmForStore(
 
 /** 模型地址补全到 `/chat/completions`（用户填 base 或完整路径都认）。 */
 export function llmEndpoint(baseUrl: string): string {
-  const base = String(baseUrl || '').trim().replace(/\/+$/, '');
+  const base = String(baseUrl || '')
+    .trim()
+    .replace(/\/+$/, '');
   if (!base) throw aiError('E_AI_NOT_CONFIGURED', 'the model base URL is empty');
   if (/\/chat\/completions$/i.test(base)) return base;
   if (/\/v\d+$/i.test(base)) return base + '/chat/completions';
@@ -156,7 +167,9 @@ export function llmEndpoint(baseUrl: string): string {
 }
 
 const clamp = (s: string, n: number): string => {
-  const t = String(s || '').replace(/\s+/g, ' ').trim();
+  const t = String(s || '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return t.length > n ? t.slice(0, n) + '…' : t;
 };
 
@@ -191,10 +204,12 @@ export function aiError(code: string, detail?: string): Error {
 export function isAbortError(e: unknown, depth = 0): boolean {
   if (!e || typeof e !== 'object' || depth > 2) return false;
   const err = e as { name?: unknown; message?: unknown; code?: unknown; cause?: unknown };
-  if (err.name === 'AbortError' || err.name === 'TimeoutError' || err.code === 'ABORT_ERR') return true;
+  if (err.name === 'AbortError' || err.name === 'TimeoutError' || err.code === 'ABORT_ERR')
+    return true;
   const msg = typeof err.message === 'string' ? err.message : '';
   // undici 读响应体时中断会抛 `TypeError: terminated`，同样归到「请求被中断」
-  if (/\babort(ed)?\b/i.test(msg) || /\btimed? ?out\b/i.test(msg) || /\bterminated\b/i.test(msg)) return true;
+  if (/\babort(ed)?\b/i.test(msg) || /\btimed? ?out\b/i.test(msg) || /\bterminated\b/i.test(msg))
+    return true;
   return isAbortError(err.cause, depth + 1);
 }
 
@@ -203,7 +218,9 @@ function cleanUpstreamError(text: string): string {
   if (!t) return 'The upstream returned an empty response';
   if (/^<(!doctype|html|\?xml)/i.test(t)) {
     const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(t)?.[1]?.replace(/\s+/g, ' ').trim();
-    return title ? `The upstream returned an HTML page (${clamp(title, 60)})` : 'The upstream returned an HTML page instead of JSON';
+    return title
+      ? `The upstream returned an HTML page (${clamp(title, 60)})`
+      : 'The upstream returned an HTML page instead of JSON';
   }
   return clamp(t, 160);
 }
@@ -232,7 +249,8 @@ export interface ChatResult {
 export function parseChatUsage(raw: unknown): ChatUsage | null {
   if (!raw || typeof raw !== 'object') return null;
   const u = raw as Record<string, unknown>;
-  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : 0);
+  const num = (v: unknown): number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : 0;
   const promptTokens = num(u.prompt_tokens);
   const completionTokens = num(u.completion_tokens);
   const totalTokens = num(u.total_tokens) || promptTokens + completionTokens;
@@ -282,8 +300,7 @@ function networkError(e: unknown): Error {
 }
 
 /** 已经是 `E_AI_*` 的错误原样上抛，避免被二次包成「网络错误」。 */
-const isAiError = (e: unknown): boolean =>
-  e instanceof Error && /^E_AI_[A-Z_]+/.test(e.message);
+const isAiError = (e: unknown): boolean => e instanceof Error && /^E_AI_[A-Z_]+/.test(e.message);
 
 /**
  * 记录「不接受这些可选字段的上游」（按 host 记忆）。
@@ -300,15 +317,19 @@ const noThinkingField = new Set<string>();
 const noBudgetField = new Set<string>();
 
 const hostOf = (baseUrl: string): string => {
-  try { return new URL(baseUrl).host; } catch { return baseUrl; }
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return baseUrl;
+  }
 };
 
 /** 上游明确说「不认识这个字段」。 */
 const isUnknownField = (e: unknown, field: string): boolean =>
-  e instanceof Error
-  && e.message.startsWith('E_AI_HTTP')
-  && /UNKNOWN_FIELD|未知请求字段|unknown field/i.test(e.message)
-  && e.message.includes(field);
+  e instanceof Error &&
+  e.message.startsWith('E_AI_HTTP') &&
+  /UNKNOWN_FIELD|未知请求字段|unknown field/i.test(e.message) &&
+  e.message.includes(field);
 
 /**
  * 调一次 OpenAI 兼容接口，取 `choices[0].message.content` 与 token 用量。
@@ -331,7 +352,9 @@ export async function chat(
   }
 
   const temperature =
-    opts.temperature !== undefined ? clampTemperature(opts.temperature) : clampTemperature(llm.temperature);
+    opts.temperature !== undefined
+      ? clampTemperature(opts.temperature)
+      : clampTemperature(llm.temperature);
 
   const body: Record<string, unknown> = { model, temperature, messages };
   // 输出上限：不传就一直写到模型自己觉得够了，白等几十秒
@@ -387,8 +410,10 @@ export async function chat(
       }
       /* ② 空内容：模型只吐了思考链，允许重试一次。 */
       if (
-        opts.retryOnEmpty && !emptyRetried
-        && e instanceof Error && e.message.startsWith('E_AI_NO_CONTENT')
+        opts.retryOnEmpty &&
+        !emptyRetried &&
+        e instanceof Error &&
+        e.message.startsWith('E_AI_NO_CONTENT')
       ) {
         emptyRetried = true;
         continue;
@@ -396,7 +421,10 @@ export async function chat(
       throw e;
     }
   }
-  throw lastErr ?? aiError('E_AI_TIMEOUT', `no response within ${Math.max(1, Math.round(budget / 1000))}s`);
+  throw (
+    lastErr ??
+    aiError('E_AI_TIMEOUT', `no response within ${Math.max(1, Math.round(budget / 1000))}s`)
+  );
 }
 
 /** 发一次请求。重试、预算与 body 组装都在 `chat` 里，这里只管单次往返。 */
@@ -440,7 +468,11 @@ async function chatOnce(
     const usage = parseChatUsage(data.usage);
     if (usage) {
       // 统计是旁路：回调里抛错不能把已经成功的模型调用变成失败
-      try { opts.onUsage?.(usage); } catch { /* ignore */ }
+      try {
+        opts.onUsage?.(usage);
+      } catch {
+        /* ignore */
+      }
     }
     return { content, usage };
   } catch (e) {
@@ -449,7 +481,10 @@ async function chatOnce(
       /* 主动取消与「到点超时」是两件事：混成一句「超时」会让排障完全跑偏
        * （用户切走、服务端关闭连接时，模型其实没超时）。 */
       if (opts.signal?.aborted) throw aiError('E_AI_ABORTED', 'the request was cancelled');
-      throw aiError('E_AI_TIMEOUT', `no response within ${Math.max(1, Math.round(timeoutMs / 1000))}s`);
+      throw aiError(
+        'E_AI_TIMEOUT',
+        `no response within ${Math.max(1, Math.round(timeoutMs / 1000))}s`,
+      );
     }
     throw networkError(e);
   } finally {
@@ -480,7 +515,9 @@ export function extractJson(text: string): Record<string, unknown> {
  * 用户填 base、`/v1` 还是完整对话路径，都落到同一个列表地址上。
  */
 export function modelsEndpoint(baseUrl: string): string {
-  const base = String(baseUrl || '').trim().replace(/\/+$/, '');
+  const base = String(baseUrl || '')
+    .trim()
+    .replace(/\/+$/, '');
   if (!base) throw aiError('E_AI_NOT_CONFIGURED', 'the model base URL is empty');
   const chat = base.replace(/\/chat\/completions$/i, '');
   if (chat !== base) return chat + '/models';
@@ -548,12 +585,16 @@ export async function listModels(
       throw aiError('E_AI_BAD_RESPONSE', 'the /models response is not valid JSON');
     }
     const models = parseModelList(data);
-    if (!models.length) throw aiError('E_AI_NO_MODELS', 'the upstream returned an empty model list');
+    if (!models.length)
+      throw aiError('E_AI_NO_MODELS', 'the upstream returned an empty model list');
     return models;
   } catch (e) {
     if (isAiError(e)) throw e;
     if (isAbortError(e)) {
-      throw aiError('E_AI_TIMEOUT', `no response within ${Math.max(1, Math.round(timeoutMs / 1000))}s`);
+      throw aiError(
+        'E_AI_TIMEOUT',
+        `no response within ${Math.max(1, Math.round(timeoutMs / 1000))}s`,
+      );
     }
     throw networkError(e);
   } finally {
@@ -574,7 +615,10 @@ export async function testLlm(
     const { content } = await chat(
       [
         // 带上思考指令，让「测试模型」真的走一遍保存后的实际请求形态
-        { role: 'system', content: '你是一个测试助手，只输出 JSON。' + (llm.thinking ? ' /think' : ' /no_think') },
+        {
+          role: 'system',
+          content: '你是一个测试助手，只输出 JSON。' + (llm.thinking ? ' /think' : ' /no_think'),
+        },
         { role: 'user', content: '输出 {"ok": true, "msg": "连接正常"}' },
       ],
       llm,

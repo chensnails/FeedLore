@@ -9,18 +9,14 @@
  * 判断是否跑过，容器半夜重启也不会漏掉谁的那一次。
  */
 
-import { log } from './logger';
+import { generateDigest, llmComplete, shanghaiDate } from '@feedlore/ai';
+import { type Db, feeds, users } from '@feedlore/db';
 import { eq, sql } from 'drizzle-orm';
-import { feeds, users, type Db } from '@feedlore/db';
-import {
-  generateDigest,
-  llmComplete,
-  shanghaiDate,
-} from '@feedlore/ai';
-import { userDigest, userLayout } from './prefs';
-import { safeFetch } from './net';
 import { recordAiUsage } from './aiUsage';
-import { resolveLlmForTask, isCapabilityEnabled } from './llm';
+import { isCapabilityEnabled, resolveLlmForTask } from './llm';
+import { log } from './logger';
+import { safeFetch } from './net';
+import { userDigest, userLayout } from './prefs';
 
 const TICK_MS = 60 * 1000;
 
@@ -39,7 +35,10 @@ export async function resolveDigestScope(
   override: number[] | null,
   cfg: { mode: string; feeds: number[] },
 ): Promise<number[] | null> {
-  const owned = await db.select({ id: feeds.id, enabled: feeds.enabled }).from(feeds).where(eq(feeds.ownerId, ownerId));
+  const owned = await db
+    .select({ id: feeds.id, enabled: feeds.enabled })
+    .from(feeds)
+    .where(eq(feeds.ownerId, ownerId));
 
   if (override && override.length) {
     const ok = new Set(owned.filter((f) => f.enabled).map((f) => f.id));
@@ -116,7 +115,9 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
       const llm = await resolveLlmForTask(db, u.id, 'digest');
 
       if (!llmComplete(llm)) {
-        log.info(`[digest] user ${u.id}: scheduled time reached but LLM config is incomplete, skipping (no retry today)`);
+        log.info(
+          `[digest] user ${u.id}: scheduled time reached but LLM config is incomplete, skipping (no retry today)`,
+        );
         continue;
       }
 
@@ -147,7 +148,9 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
           (r.digest.fallback ? ' (rule fallback)' : ` (${r.digest.model})`),
       );
     } catch (e) {
-      log.error(`[digest] auto-generation failed for user ${u.id}: ` + ((e as Error)?.message ?? e));
+      log.error(
+        `[digest] auto-generation failed for user ${u.id}: ` + ((e as Error)?.message ?? e),
+      );
     }
   }
 
@@ -165,7 +168,9 @@ export function startDigestScheduler(db: Db): void {
   }, TICK_MS);
   // 不阻止进程退出（测试 / 优雅停机时不用特意 clear）
   timer.unref?.();
-  log.info('[digest] auto-generation scheduled per account: each account toggle and time checked every minute');
+  log.info(
+    '[digest] auto-generation scheduled per account: each account toggle and time checked every minute',
+  );
 }
 
 export function stopDigestScheduler(): void {

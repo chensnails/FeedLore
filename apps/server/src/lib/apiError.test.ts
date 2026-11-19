@@ -4,9 +4,10 @@
  * 这三件事分别是前端词典、HTTP 语义与「抓取失败原因」展示的地基，
  * 改坏了不会报错，只会让界面掉到英文或让tooltip 变成裸码。
  */
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
-import { apiErrorBody, apiErrorKey, ApiException, isApiErrorCode } from './apiError';
+import test from 'node:test';
+import { ApiException, apiErrorBody, apiErrorKey, isApiErrorCode } from './apiError';
 
 test('apiErrorBody 用码表默认文案与状态码', () => {
   assert.deepEqual(apiErrorBody('E_DB_NOT_READY'), {

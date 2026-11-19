@@ -6,7 +6,7 @@
  * 本文件不碰数据库，也不自己出网（fetch 由调用方注入 `safeFetch`）。
  */
 
-import { chat, type ChatMessage, type ChatUsage, type FetchLike, type ResolvedLlm } from './llm';
+import { type ChatMessage, type ChatUsage, chat, type FetchLike, type ResolvedLlm } from './llm';
 
 /** 提示词版本：标签生成逻辑变了就 +1，落库以便之后按版本重算。 */
 export const AI_TAG_PROMPT_VERSION = 1;

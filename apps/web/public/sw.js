@@ -33,20 +33,24 @@ const PRECACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil((async () => {
-    const cache = await caches.open(CACHE);
-    // 单个资源失败不影响整体安装
-    await Promise.allSettled(PRECACHE.map((u) => cache.add(new Request(u, { cache: 'reload' }))));
-    await self.skipWaiting();
-  })());
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(CACHE);
+      // 单个资源失败不影响整体安装
+      await Promise.allSettled(PRECACHE.map((u) => cache.add(new Request(u, { cache: 'reload' }))));
+      await self.skipWaiting();
+    })(),
+  );
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k)));
-    await self.clients.claim();
-  })());
+  event.waitUntil(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k)));
+      await self.clients.claim();
+    })(),
+  );
 });
 
 self.addEventListener('fetch', (event) => {
@@ -57,11 +61,24 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return; // 只接管同源
   if (url.pathname.startsWith('/api/')) return; // 接口始终走网络
 
-  event.respondWith((async () => {
-    // 带哈希的资源：缓存优先
-    if (HASHED.test(url.pathname)) {
-      const hit = await caches.match(req);
-      if (hit) return hit;
+  event.respondWith(
+    (async () => {
+      // 带哈希的资源：缓存优先
+      if (HASHED.test(url.pathname)) {
+        const hit = await caches.match(req);
+        if (hit) return hit;
+        try {
+          const res = await fetch(req);
+          if (res && res.ok && res.type === 'basic') {
+            const cache = await caches.open(CACHE);
+            void cache.put(req, res.clone());
+          }
+          return res;
+        } catch {
+          return Response.error();
+        }
+      }
+      // 其余：网络优先，失败回退缓存
       try {
         const res = await fetch(req);
         if (res && res.ok && res.type === 'basic') {
@@ -70,26 +87,15 @@ self.addEventListener('fetch', (event) => {
         }
         return res;
       } catch {
+        const cached = await caches.match(req);
+        if (cached) return cached;
+        if (req.mode === 'navigate') {
+          // SPA 只有一个入口：任何导航失败都回退到缓存的 '/'，而不是离线错误页
+          const shell = await caches.match('/');
+          if (shell) return shell;
+        }
         return Response.error();
       }
-    }
-    // 其余：网络优先，失败回退缓存
-    try {
-      const res = await fetch(req);
-      if (res && res.ok && res.type === 'basic') {
-        const cache = await caches.open(CACHE);
-        void cache.put(req, res.clone());
-      }
-      return res;
-    } catch {
-      const cached = await caches.match(req);
-      if (cached) return cached;
-      if (req.mode === 'navigate') {
-        // SPA 只有一个入口：任何导航失败都回退到缓存的 '/'，而不是离线错误页
-        const shell = await caches.match('/');
-        if (shell) return shell;
-      }
-      return Response.error();
-    }
-  })());
+    })(),
+  );
 });

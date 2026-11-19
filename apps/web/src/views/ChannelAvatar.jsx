@@ -7,7 +7,7 @@
  * 弱网下这些请求会占满浏览器的 6 条并发连接，把真正该先到的首屏图片挤到后面。
  * 抽屉打开时由 IntersectionObserver 触发加载；用户看不到的东西不占带宽。
  */
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
 
 /**
@@ -26,12 +26,21 @@ export function ChannelAvatar({ icon, name }) {
     if (visible || !icon) return undefined;
     const el = ref.current;
     if (!el) return undefined;
-    if (typeof IntersectionObserver === 'undefined') { setVisible(true); return undefined; }
-    const io = new IntersectionObserver(/** @param {*} [entries] */ (entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting) { setVisible(true); io.disconnect(); }
-      }
-    }, { rootMargin: '200px' });
+    if (typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return undefined;
+    }
+    const io = new IntersectionObserver(
+      /** @param {*} [entries] */ (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setVisible(true);
+            io.disconnect();
+          }
+        }
+      },
+      { rootMargin: '200px' },
+    );
     io.observe(el);
     return () => io.disconnect();
   }, [visible, icon]);
@@ -42,8 +51,17 @@ export function ChannelAvatar({ icon, name }) {
   return (
     <span className="rd-ch-avatar-wrap" ref={ref}>
       {visible ? (
-        <img className="rd-ch-avatar" src={icon} alt="" loading="lazy" decoding="async"
-          onError={() => { markImgFailed(icon); setFailed(true); }} />
+        <img
+          className="rd-ch-avatar"
+          src={icon}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => {
+            markImgFailed(icon);
+            setFailed(true);
+          }}
+        />
       ) : null}
     </span>
   );

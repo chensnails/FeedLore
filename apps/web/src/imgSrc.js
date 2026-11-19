@@ -20,9 +20,9 @@ export function widthVariant(src, w) {
 }
 
 /** 拼 srcset；拿不到任何代理变体时返回 undefined，<img> 就只发 src 一张。
-*@param {*} [src]
+ *@param {*} [src]
  * @param {*} [widths]
-*/
+ */
 export function widthSrcSet(src, widths) {
   const list = [];
   for (const w of widths) {

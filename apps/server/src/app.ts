@@ -10,36 +10,24 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { Hono, type Context } from 'hono';
-import { compress } from 'hono/compress';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { serveStatic } from '@hono/node-server/serve-static';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { eq } from 'drizzle-orm';
+import type { AuthInstance } from '@feedlore/auth';
 import type { Db } from '@feedlore/db';
 import { users } from '@feedlore/db';
-import type { AuthInstance } from '@feedlore/auth';
-import type { AppEnv } from './middleware/auth';
-import { WEB_ROOT, getAuthTrustedOrigins, isSignupAllowed } from './env';
+import { serveStatic } from '@hono/node-server/serve-static';
+import { eq } from 'drizzle-orm';
+import { type Context, Hono } from 'hono';
+import { compress } from 'hono/compress';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { sameOriginCandidates } from './auth';
-import { applyCspNonce, securityHeaders } from './lib/security-headers';
+import { getAuthTrustedOrigins, isSignupAllowed, WEB_ROOT } from './env';
 import { apiError, apiErrorBody, isApiErrorCode } from './lib/apiError';
 import { log, logContext } from './lib/logger';
 import { userLayout } from './lib/prefs';
 import { normalizeRole } from './lib/roles';
-import { healthRoutes } from './routes/health';
-import { authRoutes } from './routes/auth';
-import { feedsRoutes } from './routes/feeds';
-import { entriesRoutes } from './routes/entries';
-import { prefsRoutes } from './routes/prefs';
-import { sessionRoutes } from './routes/sessions';
-import { exportRoutes } from './routes/export';
-import { importRoutes } from './routes/import';
-import { imgRoutes } from './routes/img';
-import { aiRoutes } from './routes/ai';
-import { mcpRoutes } from './routes/mcp';
-import { mcpTokenRoutes } from './routes/mcpTokens';
+import { applyCspNonce, securityHeaders } from './lib/security-headers';
+import type { AppEnv } from './middleware/auth';
 import {
   adminAccountRoutes,
   adminConfigRoutes,
@@ -48,6 +36,18 @@ import {
   adminUserRoutes,
   adminVersionRoutes,
 } from './routes/admin';
+import { aiRoutes } from './routes/ai';
+import { authRoutes } from './routes/auth';
+import { entriesRoutes } from './routes/entries';
+import { exportRoutes } from './routes/export';
+import { feedsRoutes } from './routes/feeds';
+import { healthRoutes } from './routes/health';
+import { imgRoutes } from './routes/img';
+import { importRoutes } from './routes/import';
+import { mcpRoutes } from './routes/mcp';
+import { mcpTokenRoutes } from './routes/mcpTokens';
+import { prefsRoutes } from './routes/prefs';
+import { sessionRoutes } from './routes/sessions';
 
 /**
  * 只读账户禁止直连的 better-auth 端点：改用户名 / 改密码 / 改邮箱 / 找回密码。
@@ -157,7 +157,11 @@ function mountWeb(app: Hono<AppEnv>, root: string, deps: AppDeps): void {
  * 未登录 / 没连库时原样返回，交给前端默认值兜底。
  * 外观不再注入：它只存在浏览器本机 localStorage。
  */
-export async function injectBootLayout(html: string, c: Context<AppEnv>, deps: AppDeps): Promise<string> {
+export async function injectBootLayout(
+  html: string,
+  c: Context<AppEnv>,
+  deps: AppDeps,
+): Promise<string> {
   /* 不锚 theme-color meta：它已拆成亮 / 暗两条（带 media），按固定 color 串匹配
    * 会在改配色时静默失配，布局注入无声丢掉。manifest link 与配色无关。
    * 只匹配到 `<link rel="manifest"`，再找到本标签的 `>`：link 上的属性（id / href）

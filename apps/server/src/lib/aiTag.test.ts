@@ -1,6 +1,6 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTagList, AI_TAG_MAX, suggestEntryTags, type ResolvedLlm } from '@feedlore/ai';
+import test from 'node:test';
+import { AI_TAG_MAX, parseTagList, type ResolvedLlm, suggestEntryTags } from '@feedlore/ai';
 import { runAiTagTick } from './aiTag';
 
 /**
@@ -58,14 +58,21 @@ const openAiFetch = async (_url: string, _init?: unknown): Promise<Response> =>
   });
 
 test('suggestEntryTags: 调用 fetch 并解析标签', async () => {
-  const r = await suggestEntryTags('一篇关于锂电的文章', '正文……', fakeLlm, openAiFetch as unknown as typeof fetch);
+  const r = await suggestEntryTags(
+    '一篇关于锂电的文章',
+    '正文……',
+    fakeLlm,
+    openAiFetch as unknown as typeof fetch,
+  );
   assert.deepEqual(r.tags, ['a', 'b', 'c']);
   assert.ok(typeof r.raw === 'string' && r.raw.length > 0);
 });
 
 test('runAiTagTick: 上一轮没跑完时直接跳过，不叠并发打标', async () => {
   let release!: () => void;
-  const gate = new Promise<void>((r) => { release = r; });
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
   let selectCalls = 0;
   const db = {
     select() {
@@ -73,7 +80,7 @@ test('runAiTagTick: 上一轮没跑完时直接跳过，不叠并发打标', asy
       const q = {
         from: () => q,
         innerJoin: () => q,
-        where: () => gate.then(() => []),   // 空账号列表：一轮立即结束
+        where: () => gate.then(() => []), // 空账号列表：一轮立即结束
       };
       return q;
     },

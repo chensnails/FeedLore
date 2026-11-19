@@ -17,16 +17,21 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { CommandPalette } from '../cmdk/CommandPalette.jsx';
+import { Overlays } from '../ui/Overlays.jsx';
+import { ScrollTop } from '../ui/ScrollTop.jsx';
+import { ViewNav } from '../ui/ViewNav.jsx';
 import { CardsView } from '../views/CardsView.jsx';
 import { ReaderView } from '../views/ReaderView.jsx';
-import { ViewNav } from '../ui/ViewNav.jsx';
-import { ScrollTop } from '../ui/ScrollTop.jsx';
-import { Overlays } from '../ui/Overlays.jsx';
+import { get, provide } from './bridge.js';
 import { MOUNT_POINTS } from './mount-points.js';
-import { provide, get } from './bridge.js';
 
 const COMPONENTS = {
-  CommandPalette, CardsView, ReaderView, Overlays, ViewNav, ScrollTop,
+  CommandPalette,
+  CardsView,
+  ReaderView,
+  Overlays,
+  ViewNav,
+  ScrollTop,
 };
 const LOADERS = {
   SettingsModal: () => import('../settings/SettingsModal.jsx'),
@@ -34,11 +39,16 @@ const LOADERS = {
 };
 
 /** 完整装配描述（数据 + 组件引用），供诊断与测试使用。 */
-export const MOUNTS = Object.freeze(MOUNT_POINTS.map(/** @param {*} [p] */ (p) => Object.freeze({
-  ...p,
-  component: /** @type {any} */ (COMPONENTS)[p.component],
-  load: p.lazy ? /** @type {any} */ (LOADERS)[p.exportName] : undefined,
-})));
+export const MOUNTS = Object.freeze(
+  MOUNT_POINTS.map(
+    /** @param {*} [p] */ (p) =>
+      Object.freeze({
+        ...p,
+        component: /** @type {any} */ (COMPONENTS)[p.component],
+        load: p.lazy ? /** @type {any} */ (LOADERS)[p.exportName] : undefined,
+      }),
+  ),
+);
 
 const roots = new Map();
 const loading = new Map();
@@ -52,7 +62,11 @@ function render(id, Component) {
   if (!host || roots.has(id) || !Component) return;
   const root = createRoot(host);
   roots.set(id, root);
-  root.render(<React.StrictMode><Component /></React.StrictMode>);
+  root.render(
+    <React.StrictMode>
+      <Component />
+    </React.StrictMode>,
+  );
 }
 
 /**
@@ -63,13 +77,20 @@ function loadMount(id) {
   if (!loading.has(id)) {
     const m = MOUNTS.find(/** @param {*} [x] */ (x) => x.id === id);
     if (!m || !m.load) return Promise.resolve();
-    const p = m.load()
-      .then(/** @param {*} [mod] */ (mod) => { render(id, mod[m.exportName]); })
-      .catch(/** @param {*} [err] */ (err) => {
-        loading.delete(id);              // 允许下次重试，别把失败永久缓存
-        console.error(`[kernel] 按需加载 ${id} 失败`, err);
-        throw err;
-      });
+    const p = m
+      .load()
+      .then(
+        /** @param {*} [mod] */ (mod) => {
+          render(id, mod[m.exportName]);
+        },
+      )
+      .catch(
+        /** @param {*} [err] */ (err) => {
+          loading.delete(id); // 允许下次重试，别把失败永久缓存
+          console.error(`[kernel] 按需加载 ${id} 失败`, err);
+          throw err;
+        },
+      );
     loading.set(id, p);
   }
   return loading.get(id);
@@ -80,12 +101,17 @@ function loadMount(id) {
  */
 function openSettings(tab) {
   const host = get('settingsHost');
-  if (host && host.open) { host.open(tab); return Promise.resolve(); }
+  if (host && host.open) {
+    host.open(tab);
+    return Promise.resolve();
+  }
   provide('settingsPending', { tab });
   return loadMount('settingsRoot');
 }
 
-function openAi() { return loadMount('aiRoot'); }
+function openAi() {
+  return loadMount('aiRoot');
+}
 
 /** 唯一的启动入口：挂全部常驻视图，并把两个按需加载器登记到能力桥。 */
 export function mountAll() {

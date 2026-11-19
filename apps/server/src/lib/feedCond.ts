@@ -41,10 +41,10 @@ export function condHost(url: string): string {
 
 /** 一次条件请求的结果。 */
 export type CondOutcome =
-  | { kind: 'hit' }                                   // 304
-  | { kind: 'fresh'; etag?: string | null; lastModified?: string | null }  // 200，头变了
+  | { kind: 'hit' } // 304
+  | { kind: 'fresh'; etag?: string | null; lastModified?: string | null } // 200，头变了
   | { kind: 'ignored'; etag?: string | null; lastModified?: string | null } // 200，头没变
-  | { kind: 'skip' };                                 // 没有条件头可带
+  | { kind: 'skip' }; // 没有条件头可带
 
 /** 判一次响应算哪种结果。纯函数，便于单测。 */
 export function classifyCond(
@@ -57,7 +57,8 @@ export function classifyCond(
 
   // 两侧都有同一类校验头且完全相同 → 源站没更新却仍回 200，等于忽略了条件头
   const sameEtag = !!sent.etag && !!got.etag && sent.etag === got.etag;
-  const sameLast = !!sent.lastModified && !!got.lastModified && sent.lastModified === got.lastModified;
+  const sameLast =
+    !!sent.lastModified && !!got.lastModified && sent.lastModified === got.lastModified;
   if (sameEtag || sameLast) return 'ignored';
 
   // 只要有一侧缺头就无从比较；这种源不能判定为「忽略」，按正常更新处理，避免误伤
@@ -86,10 +87,20 @@ export function condFactor(host: string): number {
 }
 
 /** 状态页用：当前被降频的 host 列表。 */
-export function condPenalties(): Array<{ host: string; misses: number; factor: number; lastAt: string }> {
+export function condPenalties(): Array<{
+  host: string;
+  misses: number;
+  factor: number;
+  lastAt: string;
+}> {
   return [...stats.entries()]
     .filter(([, v]) => v.factor > 1)
-    .map(([host, v]) => ({ host, misses: v.misses, factor: v.factor, lastAt: new Date(v.lastAt).toISOString() }))
+    .map(([host, v]) => ({
+      host,
+      misses: v.misses,
+      factor: v.factor,
+      lastAt: new Date(v.lastAt).toISOString(),
+    }))
     .sort((a, b) => b.factor - a.factor || a.host.localeCompare(b.host));
 }
 

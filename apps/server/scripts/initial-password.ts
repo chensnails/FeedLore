@@ -18,12 +18,12 @@
  * 退出码：0 = 成功；1 = 连库失败 / 用户不存在等运行错误。便于脚本化判读。
  */
 
-import { log } from '../src/lib/logger';
-import { eq } from 'drizzle-orm';
-import { createDb, getPool, sessions, users } from '@feedlore/db';
 import { INITIAL_ADMIN_PASSWORD } from '@feedlore/contract';
-import { ensureAuthSecret } from '../src/lib/auth-secret';
+import { createDb, getPool, sessions, users } from '@feedlore/db';
+import { eq } from 'drizzle-orm';
 import { getAuth } from '../src/auth';
+import { ensureAuthSecret } from '../src/lib/auth-secret';
+import { log } from '../src/lib/logger';
 
 const wantJson = process.argv.includes('--json');
 const wantReset = process.argv.includes('--reset');
@@ -35,12 +35,16 @@ function targetUsername(): string {
 function printCredential(name: string, reset: boolean): void {
   if (wantJson) {
     // --json 是给脚本消费的协议输出，不是日志：必须原样一行 JSON，不套 pino 外壳。
-    process.stdout.write(JSON.stringify({ ok: true, username: name, password: INITIAL_ADMIN_PASSWORD, reset }) + '\n');
+    process.stdout.write(
+      JSON.stringify({ ok: true, username: name, password: INITIAL_ADMIN_PASSWORD, reset }) + '\n',
+    );
     return;
   }
-  log.info(reset
-    ? 'FeedLore 管理员密码已重置 / admin password reset'
-    : 'FeedLore 初始管理员密码 / initial admin password');
+  log.info(
+    reset
+      ? 'FeedLore 管理员密码已重置 / admin password reset'
+      : 'FeedLore 初始管理员密码 / initial admin password',
+  );
   log.info(`  用户名 / username : ${name}`);
   log.info(`  初始密码 / password: ${INITIAL_ADMIN_PASSWORD}`);
   log.info('');
@@ -69,14 +73,18 @@ async function resetPassword(url: string): Promise<number> {
     .where(eq(users.username, name))
     .limit(1);
   if (!row) {
-    log.error(`[initial-password] User "${name}" does not exist. Set ADMIN_USER to the account you want to reset.`);
+    log.error(
+      `[initial-password] User "${name}" does not exist. Set ADMIN_USER to the account you want to reset.`,
+    );
     return 1;
   }
 
   const auth = getAuth(db);
   try {
-    await auth.api.setUserPassword({ body: { userId: row.id, newPassword: INITIAL_ADMIN_PASSWORD } });
-  } catch (e) {
+    await auth.api.setUserPassword({
+      body: { userId: row.id, newPassword: INITIAL_ADMIN_PASSWORD },
+    });
+  } catch (_e) {
     /* setUserPassword 属于 admin 类接口，没有请求上下文时部分版本会要求会话；
      * 退化到内部适配器（同样是 better-auth 自己算哈希）。 */
     try {
@@ -84,7 +92,9 @@ async function resetPassword(url: string): Promise<number> {
       const hash = await ctx.password.hash(INITIAL_ADMIN_PASSWORD);
       await ctx.internalAdapter.updatePassword(row.id, hash);
     } catch (e2) {
-      log.error(`[initial-password] failed to update the password: ${(e2 as Error)?.message ?? e2}`);
+      log.error(
+        `[initial-password] failed to update the password: ${(e2 as Error)?.message ?? e2}`,
+      );
       return 1;
     }
   }
@@ -124,10 +134,14 @@ async function main(): Promise<number> {
 
 try {
   const code = await main();
-  await getPool()?.end().catch(() => {});
+  await getPool()
+    ?.end()
+    .catch(() => {});
   process.exitCode = code;
 } catch (e) {
   log.error('[initial-password] unexpected error:', (e as Error)?.stack ?? e);
-  await getPool()?.end().catch(() => {});
+  await getPool()
+    ?.end()
+    .catch(() => {});
   process.exitCode = 1;
 }

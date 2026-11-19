@@ -5,8 +5,8 @@
  * 这里覆盖「配错会导致运行期诡异行为」的边界，确保 fail-fast 既不误报也不漏报。
  */
 
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { validateConfig } from './env';
 
 test('validateConfig: 空环境（全部可选变量缺失）无任何问题', () => {
@@ -31,11 +31,20 @@ test('validateConfig: postgresql:// 协议同样合法', () => {
 
 test('validateConfig: PORT 非法（非整数 / 越界）逐条报错', () => {
   const a = validateConfig({ PORT: '0' });
-  assert.equal(a.some((i) => i.key === 'PORT'), true);
+  assert.equal(
+    a.some((i) => i.key === 'PORT'),
+    true,
+  );
   const b = validateConfig({ PORT: '65536' });
-  assert.equal(b.some((i) => i.key === 'PORT'), true);
+  assert.equal(
+    b.some((i) => i.key === 'PORT'),
+    true,
+  );
   const c = validateConfig({ PORT: 'abc' });
-  assert.equal(c.some((i) => i.key === 'PORT'), true);
+  assert.equal(
+    c.some((i) => i.key === 'PORT'),
+    true,
+  );
 });
 
 test('validateConfig: DATABASE_URL 协议错误 / 非法 URL 报错', () => {

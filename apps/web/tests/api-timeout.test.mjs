@@ -6,8 +6,9 @@
  * 2) AI 类长任务不能吃 30s 写超时 —— 服务端一次模型调用允许 180s，
  *    实测出现「前端 30s 报错、服务端 99s 才成功」。
  */
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import {
   apiFetch,
   NET_AI_TIMEOUT_MS,
@@ -18,15 +19,25 @@ import {
 /** 模拟「上游一直不回」：只有 abort 时才 reject，且抛的是浏览器那句底层英文。 */
 function installHangingFetch(holder) {
   const real = globalThis.fetch;
-  globalThis.fetch = (url, opts) => new Promise((_, reject) => {
-    const sig = opts && opts.signal;
-    if (!sig) return;                       // 永不 settle
-    if (sig.aborted) return reject(sig.reason ?? new DOMException('signal is aborted without reason', 'AbortError'));
-    sig.addEventListener('abort', () => {
-      reject(sig.reason ?? new DOMException('signal is aborted without reason', 'AbortError'));
-    }, { once: true });
-  });
-  holder.restore = () => { globalThis.fetch = real; };
+  globalThis.fetch = (_url, opts) =>
+    new Promise((_, reject) => {
+      const sig = opts && opts.signal;
+      if (!sig) return; // 永不 settle
+      if (sig.aborted)
+        return reject(
+          sig.reason ?? new DOMException('signal is aborted without reason', 'AbortError'),
+        );
+      sig.addEventListener(
+        'abort',
+        () => {
+          reject(sig.reason ?? new DOMException('signal is aborted without reason', 'AbortError'));
+        },
+        { once: true },
+      );
+    });
+  holder.restore = () => {
+    globalThis.fetch = real;
+  };
 }
 
 test('超时文案是中文，不漏底层 abort 英文', async () => {

@@ -23,14 +23,19 @@ export const AI_JOB_MAX_MS = 240_000;
 /**
  * @param {*} [ms]
  */
-const sleep = (ms) => new Promise(/** @param {*} [resolve] */ (resolve) => { setTimeout(resolve, ms); });
+const sleep = (ms) =>
+  new Promise(
+    /** @param {*} [resolve] */ (resolve) => {
+      setTimeout(resolve, ms);
+    },
+  );
 
 /**
  * 提交任务。失败抛错（message 里是已经翻译过的中文）：
  * 提交阶段就会返回 4xx —— 条目不存在、越权、日期非法、任务过多都在这里。
-  * @param {*} [core]
+ * @param {*} [core]
  * @param {*} [body]
-*/
+ */
 export async function submitAiJob(core, body) {
   const res = await core.apiFetch('/api/ai/jobs', {
     method: 'POST',
@@ -53,7 +58,7 @@ export async function submitAiJob(core, body) {
  *   onStatus 每次拿到新状态时回调（更新「排队中 / 生成中」）；
  *   isCancelled 返回 true 就停轮询（组件卸载 / 用户切走）
  * @returns {Promise<any>} 成功时的完整 job（含 result）
-*/
+ */
 export async function pollAiJob(core, jobId, opts = {}) {
   const onStatus = typeof opts.onStatus === 'function' ? opts.onStatus : null;
   const isCancelled = typeof opts.isCancelled === 'function' ? opts.isCancelled : () => false;

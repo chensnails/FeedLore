@@ -10,53 +10,102 @@
  *   每项的类名、data 属性与 aria 保持原样，样式与测试可以继续按单行定位。 */
 
 import { core } from '@core';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { EVENT, on } from '../kernel/events.js';
 import { PaneFoot } from './primitives.jsx';
-import { on, EVENT } from '../kernel/events.js';
 
-const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
+const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
 // 分段控件行：key 为外观偏好键，attr 即旧控件上标值的 data 属性名，options 与旧 HTML 一一对应
 const ROWS = {
   theme: {
-    key: 'theme', label: '主题', attr: 'data-theme-mode',
+    key: 'theme',
+    label: '主题',
+    attr: 'data-theme-mode',
     small: '前三套可跟随系统；「暗黑」是整套配色包，主色固定为蓝色',
-    options: [['auto', '跟随系统'], ['light', '浅色'], ['dark', '暖灰'], ['github', '暗黑']],
+    options: [
+      ['auto', '跟随系统'],
+      ['light', '浅色'],
+      ['dark', '暖灰'],
+      ['github', '暗黑'],
+    ],
   },
   fontSize: {
-    key: 'fontSize', label: '界面字号', attr: 'data-font-size',
+    key: 'fontSize',
+    label: '界面字号',
+    attr: 'data-font-size',
     small: '整站等比缩放（含正文）；正文大小可再用下面的「正文字号」微调',
-    options: [['s', '小'], ['m', '中'], ['l', '大']],
+    options: [
+      ['s', '小'],
+      ['m', '中'],
+      ['l', '大'],
+    ],
   },
   density: {
-    key: 'density', label: '卡片密度', attr: 'data-density',
+    key: 'density',
+    label: '卡片密度',
+    attr: 'data-density',
     small: '紧凑 = 同屏更多卡片（默认）；舒适 = 更大的卡片与留白',
-    options: [['cozy', '舒适'], ['compact', '紧凑']],
+    options: [
+      ['cozy', '舒适'],
+      ['compact', '紧凑'],
+    ],
   },
   listDensity: {
-    key: 'listDensity', label: '文章密度', attr: 'data-list-density',
+    key: 'listDensity',
+    label: '文章密度',
+    attr: 'data-list-density',
     small: '紧凑 = 标题 / 来源 / 时间压成一行（默认）；舒适 = 标题 + 摘要 + 来源时间 + 缩略图',
-    options: [['cozy', '舒适'], ['compact', '紧凑']],
+    options: [
+      ['cozy', '舒适'],
+      ['compact', '紧凑'],
+    ],
   },
   readerFont: {
-    key: 'readerFont', label: '正文字体', attr: 'data-reader-font',
+    key: 'readerFont',
+    label: '正文字体',
+    attr: 'data-reader-font',
     small: '只作用于文章正文，界面字体不变',
-    options: [['sans', '无衬线'], ['serif', '衬线']],
+    options: [
+      ['sans', '无衬线'],
+      ['serif', '衬线'],
+    ],
   },
   readerLh: {
-    key: 'readerLh', label: '正文行高', attr: 'data-reader-lh',
+    key: 'readerLh',
+    label: '正文行高',
+    attr: 'data-reader-lh',
     small: '',
-    options: [['s', '紧凑'], ['m', '标准'], ['l', '宽松']],
+    options: [
+      ['s', '紧凑'],
+      ['m', '标准'],
+      ['l', '宽松'],
+    ],
   },
   readerFs: {
-    key: 'readerFs', label: '正文字号', attr: 'data-reader-fs',
+    key: 'readerFs',
+    label: '正文字号',
+    attr: 'data-reader-fs',
     small: '只作用于文章正文，界面字号不受影响',
-    options: [['xs', '特小'], ['s', '小'], ['m', '中'], ['l', '大'], ['xl', '特大']],
+    options: [
+      ['xs', '特小'],
+      ['s', '小'],
+      ['m', '中'],
+      ['l', '大'],
+      ['xl', '特大'],
+    ],
   },
   readerWidth: {
-    key: 'readerWidth', label: '阅读宽度', attr: 'data-reader-width',
+    key: 'readerWidth',
+    label: '阅读宽度',
+    attr: 'data-reader-width',
     small: '越窄每行字数越少，读起来越省力',
-    options: [['s', '窄'], ['m', '标准'], ['l', '宽'], ['full', '全宽']],
+    options: [
+      ['s', '窄'],
+      ['m', '标准'],
+      ['l', '宽'],
+      ['full', '全宽'],
+    ],
   },
 };
 
@@ -71,8 +120,12 @@ const GROUPS = [
 
 // 主色调板：与旧 HTML 的 title / aria-label 一致
 const ACCENTS = [
-  ['blue', '蓝'], ['violet', '靛紫'], ['teal', '青'],
-  ['green', '翠绿'], ['amber', '琥珀'], ['rose', '玫红'],
+  ['blue', '蓝'],
+  ['violet', '靛紫'],
+  ['teal', '青'],
+  ['green', '翠绿'],
+  ['amber', '琥珀'],
+  ['rose', '玫红'],
 ];
 
 const ACCENT_HINT_DEFAULT = '中性底色只有一套且已校准，这里只换强调色';
@@ -84,12 +137,20 @@ const NARROW_QUERY = '(max-width: 720px)';
 function useNarrowViewport() {
   /** @type {any} */
   const [narrow, setNarrow] = useState(() => {
-    try { return !!(window.matchMedia && window.matchMedia(NARROW_QUERY).matches); } catch (_) { return false; }
+    try {
+      return !!(window.matchMedia && window.matchMedia(NARROW_QUERY).matches);
+    } catch (_) {
+      return false;
+    }
   });
   useEffect(() => {
     /** @type {any} */
     let mq = null;
-    try { mq = window.matchMedia ? window.matchMedia(NARROW_QUERY) : null; } catch (_) { mq = null; }
+    try {
+      mq = window.matchMedia ? window.matchMedia(NARROW_QUERY) : null;
+    } catch (_) {
+      mq = null;
+    }
     if (!mq) return undefined;
     /**
      * @param {*} [e]
@@ -147,7 +208,7 @@ export function AppearancePane() {
    * @param {*} [value]
    */
   const onAccent = (value) => {
-    if (fixedAccent) return;   // GitHub 主题下连点也不改（与旧逻辑一致）
+    if (fixedAccent) return; // GitHub 主题下连点也不改（与旧逻辑一致）
     const s = S();
     if (s && s.setAppearance) s.setAppearance('accent', value);
   };
@@ -171,23 +232,25 @@ export function AppearancePane() {
         </div>
         <div className="appr-ctl">
           <div className="seg" id={row.key === 'theme' ? 'apprTheme' : undefined}>
-            {row.options.map(/** @param {*} arr */ ([value, text]) => {
-              const on = pref[row.key] === value;
-              return (
-                <button
-                  key={value}
-                  className={'seg-btn' + (on ? ' active' : '')}
-                  type="button"
-                  {...{ [row.attr]: value }}
-                  aria-pressed={on ? 'true' : 'false'}
-                  disabled={widthLocked}
-                  aria-disabled={widthLocked ? 'true' : undefined}
-                  onClick={() => onSeg(row.key, value)}
-                >
-                  {text}
-                </button>
-              );
-            })}
+            {row.options.map(
+              /** @param {*} arr */ ([value, text]) => {
+                const on = pref[row.key] === value;
+                return (
+                  <button
+                    key={value}
+                    className={'seg-btn' + (on ? ' active' : '')}
+                    type="button"
+                    {...{ [row.attr]: value }}
+                    aria-pressed={on ? 'true' : 'false'}
+                    disabled={widthLocked}
+                    aria-disabled={widthLocked ? 'true' : undefined}
+                    onClick={() => onSeg(row.key, value)}
+                  >
+                    {text}
+                  </button>
+                );
+              },
+            )}
           </div>
         </div>
       </div>
@@ -202,22 +265,24 @@ export function AppearancePane() {
       </div>
       <div className="appr-ctl">
         <div className={'swatches' + (fixedAccent ? ' disabled' : '')} id="apprAccent">
-          {ACCENTS.map(/** @param {*} arr */ ([value, title]) => {
-            const on = !fixedAccent && pref.accent === value;
-            return (
-              <button
-                key={value}
-                className={'swatch' + (on ? ' active' : '')}
-                type="button"
-                data-accent={value}
-                title={title}
-                aria-label={title}
-                aria-pressed={on ? 'true' : 'false'}
-                aria-disabled={fixedAccent ? 'true' : 'false'}
-                onClick={() => onAccent(value)}
-              />
-            );
-          })}
+          {ACCENTS.map(
+            /** @param {*} arr */ ([value, title]) => {
+              const on = !fixedAccent && pref.accent === value;
+              return (
+                <button
+                  key={value}
+                  className={'swatch' + (on ? ' active' : '')}
+                  type="button"
+                  data-accent={value}
+                  title={title}
+                  aria-label={title}
+                  aria-pressed={on ? 'true' : 'false'}
+                  aria-disabled={fixedAccent ? 'true' : 'false'}
+                  onClick={() => onAccent(value)}
+                />
+              );
+            },
+          )}
         </div>
       </div>
     </div>
@@ -227,24 +292,38 @@ export function AppearancePane() {
     <div className="tab-pane" data-pane="appearance">
       <div className="pane-scroll">
         <div className="appr">
-          {GROUPS.map(/** @param {*} [group] */ (group) => (
-            <section className="appr-group" key={group.title}>
-              <h3 className="appr-group-h">{group.title}</h3>
-              {group.rows.map(renderRow)}
-              {group.accent ? accentRow : null}
-            </section>
-          ))}
+          {GROUPS.map(
+            /** @param {*} [group] */ (group) => (
+              <section className="appr-group" key={group.title}>
+                <h3 className="appr-group-h">{group.title}</h3>
+                {group.rows.map(renderRow)}
+                {group.accent ? accentRow : null}
+              </section>
+            ),
+          )}
 
           {/* 预览：不用切回文章页就能看出字号 / 字体 / 行高的效果 */}
           <div className="appr-preview">
             <p className="appr-preview-h">正文预览</p>
-            <p className="appr-preview-t">笺川是一个自托管的 RSS 阅读站。这一段的字体、字号与行高会跟着上面的选择变，不用切回文章页反复试。</p>
+            <p className="appr-preview-t">
+              笺川是一个自托管的 RSS
+              阅读站。这一段的字体、字号与行高会跟着上面的选择变，不用切回文章页反复试。
+            </p>
           </div>
         </div>
       </div>
 
       <PaneFoot
-        lead={<button className="btn btn-ghost btn-sm" id="apprResetBtn" type="button" onClick={onReset}>恢复默认</button>}
+        lead={
+          <button
+            className="btn btn-ghost btn-sm"
+            id="apprResetBtn"
+            type="button"
+            onClick={onReset}
+          >
+            恢复默认
+          </button>
+        }
         note="外观只存这台设备（换设备或清缓存后回到默认）；视图 / 排序 / 侧栏宽度等布局按账号保存，换设备登录会跟随账号"
       />
     </div>

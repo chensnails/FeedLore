@@ -4,9 +4,10 @@
  *
  * 之前视图切换埋在溢出菜单里（二级操作），对三视图产品的核心导航而言层级太深；
  * 现在三视图各自顶栏右簇都有常驻入口，点哪切哪，当前视图用 --accent-soft 打底高亮。 */
-import React, { useEffect, useState } from 'react';
+
 import { core } from '@core';
-import { onAny, EVENT } from '../kernel/events.js';
+import { useEffect, useState } from 'react';
+import { EVENT, onAny } from '../kernel/events.js';
 
 const VIEWS = [
   { id: 'reader', label: '文章', ico: 'inbox' },
@@ -15,7 +16,11 @@ const VIEWS = [
 ];
 
 function readShell() {
-  try { return core.getShell(); } catch (_) { return {}; }
+  try {
+    return core.getShell();
+  } catch (_) {
+    return {};
+  }
 }
 
 export function ViewNav() {
@@ -24,7 +29,7 @@ export function ViewNav() {
      文章页，表现成「按钮点了没反应」。readShell() 每次都返回新对象，setSnap
      因此必然触发一次渲染（与 OverflowMenu 的写法一致）。 */
   /** @type {any} */
-  const [snap, setSnap] = useState(readShell);
+  const [_snap, setSnap] = useState(readShell);
 
   useEffect(() => {
     const onTick = () => setSnap(readShell());
@@ -36,27 +41,33 @@ export function ViewNav() {
   const views = VIEWS;
 
   return (
-    <nav className="viewnav" role="navigation" aria-label="视图切换">
-      {views.map(/** @param {*} [v] */ (v) => {
-        const active = view === v.id;
-        return (
-          <button
-            type="button"
-            key={v.id}
-            className={'viewnav-btn' + (active ? ' active' : '')}
-            data-view={v.id}
-            /* 窄屏把 .btn-label 设为 display:none（移出无障碍树），按钮就只剩一枚无名图标。
+    <nav className="viewnav" aria-label="视图切换">
+      {views.map(
+        /** @param {*} [v] */ (v) => {
+          const active = view === v.id;
+          return (
+            <button
+              type="button"
+              key={v.id}
+              className={'viewnav-btn' + (active ? ' active' : '')}
+              data-view={v.id}
+              /* 窄屏把 .btn-label 设为 display:none（移出无障碍树），按钮就只剩一枚无名图标。
                名字必须显式给到 aria-label，title 只作鼠标提示。 */
-            aria-label={v.label}
-            title={v.label}
-            aria-current={active ? 'page' : undefined}
-            onClick={() => core.switchView(v.id, { restoreScroll: true, retap: true })}
-          >
-            <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + v.ico} /></svg>
-            <span className="btn-label" aria-hidden="true">{v.label}</span>
-          </button>
-        );
-      })}
+              aria-label={v.label}
+              title={v.label}
+              aria-current={active ? 'page' : undefined}
+              onClick={() => core.switchView(v.id, { restoreScroll: true, retap: true })}
+            >
+              <svg className="ico" aria-hidden="true" focusable="false">
+                <use href={'#i-' + v.ico} />
+              </svg>
+              <span className="btn-label" aria-hidden="true">
+                {v.label}
+              </span>
+            </button>
+          );
+        },
+      )}
     </nav>
   );
 }

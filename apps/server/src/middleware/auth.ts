@@ -5,11 +5,11 @@
  * 并把 better-auth 的用户映射成契约里的 SessionUser 注入 context。
  */
 
-import { log } from '../lib/logger';
-import type { MiddlewareHandler } from 'hono';
 import type { AuthInstance } from '@feedlore/auth';
 import type { Role } from '@feedlore/contract';
+import type { MiddlewareHandler } from 'hono';
 import { apiError } from '../lib/apiError';
+import { log } from '../lib/logger';
 import { normalizeRole } from '../lib/roles';
 
 export interface SessionUser {

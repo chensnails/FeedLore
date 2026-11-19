@@ -11,11 +11,11 @@
  * 避免「无条件规则命中一切」把全库刷成收藏。
  */
 
+import { type Db, entries } from '@feedlore/db';
 import { and, eq } from 'drizzle-orm';
-import { entries, type Db } from '@feedlore/db';
+import type { Rule } from './prefs';
 import { scopeAllows } from './scope';
 import { entryText } from './watch';
-import type { Rule } from './prefs';
 
 // Rule / RuleWhen / RuleThen 定义在 lib/prefs.ts（与 WatchRule 同处，sanitize 也在那），
 // 这里用 type-only import 避免运行时环依赖。
@@ -67,7 +67,11 @@ export function ruleMatches(rule: Rule, entry: RuleEntry, feed: RuleFeed): boole
 }
 
 /** 合并所有命中规则的动作；没有任何规则命中返回 null。 */
-export function mergeRuleEffects(rules: Rule[], entry: RuleEntry, feed: RuleFeed): RuleEffect | null {
+export function mergeRuleEffects(
+  rules: Rule[],
+  entry: RuleEntry,
+  feed: RuleFeed,
+): RuleEffect | null {
   const tags = new Set<string>();
   const notifyRules: string[] = [];
   let favorite = false;
@@ -119,7 +123,10 @@ export async function applyRulesToFresh(
       readAt: Date;
     }> = {};
     if (eff.tags.length) {
-      const merged = [...new Set([...(Array.isArray(it.tags) ? it.tags : []), ...eff.tags])].slice(0, 24);
+      const merged = [...new Set([...(Array.isArray(it.tags) ? it.tags : []), ...eff.tags])].slice(
+        0,
+        24,
+      );
       set.tags = merged;
     }
     if (eff.favorite) {
@@ -139,7 +146,12 @@ export async function applyRulesToFresh(
     }
 
     for (const name of eff.notifyRules) {
-      hits.push({ ruleName: name, title: it.title ?? '', link: it.link ?? null, publishedAt: it.publishedAt ?? null });
+      hits.push({
+        ruleName: name,
+        title: it.title ?? '',
+        link: it.link ?? null,
+        publishedAt: it.publishedAt ?? null,
+      });
     }
   }
 

@@ -366,9 +366,7 @@ export type LlmView = z.infer<typeof LlmViewSchema>;
 /* ==================== 多路提供商与任务路由（0015） ==================== */
 
 /** 可独立开关/分配模型的 AI 能力。auto = 日报与标签的定时调度。 */
-export const AI_CAPABILITIES = [
-  'entry_ai', 'ai_tags', 'digest', 'explore', 'mcp', 'auto',
-] as const;
+export const AI_CAPABILITIES = ['entry_ai', 'ai_tags', 'digest', 'explore', 'mcp', 'auto'] as const;
 export const AiCapabilitySchema = z.enum(AI_CAPABILITIES);
 export type AiCapability = z.infer<typeof AiCapabilitySchema>;
 
@@ -465,9 +463,7 @@ export type DigestItem = z.infer<typeof DigestItemSchema>;
 
 export const DigestSectionSchema = z.object({
   title: z.string(),
-  items: z.array(
-    z.object({ comment: z.string(), item: DigestItemSchema.nullable() })
-  ),
+  items: z.array(z.object({ comment: z.string(), item: DigestItemSchema.nullable() })),
 });
 export type DigestSection = z.infer<typeof DigestSectionSchema>;
 
@@ -486,9 +482,7 @@ export const DigestSchema = z.object({
     feeds: z.number().int(),
   }),
   overview: z.string(),
-  highlights: z.array(
-    z.object({ text: z.string(), item: DigestItemSchema.nullable() })
-  ),
+  highlights: z.array(z.object({ text: z.string(), item: DigestItemSchema.nullable() })),
   sections: z.array(DigestSectionSchema),
 });
 export type Digest = z.infer<typeof DigestSchema>;

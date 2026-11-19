@@ -36,7 +36,10 @@ export interface WatchVerdict {
 }
 
 /** 判定一条条目归属；未命中任何规则返回 null。 */
-export function decide(rules: WatchRule[], text: string): { state: 'watch' | 'block'; rule: string } | null {
+export function decide(
+  rules: WatchRule[],
+  text: string,
+): { state: 'watch' | 'block'; rule: string } | null {
   let watch: { state: 'watch'; rule: string } | null = null;
   for (const r of rules) {
     if (!r || r.on === false) continue;

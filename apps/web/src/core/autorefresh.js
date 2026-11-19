@@ -5,11 +5,11 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { apiFetch, httpError, toast, emitShell, emitOverlays } from './util.js';
-import { state, activeScrollTop, scrollActiveTop, forgetViewScroll } from './state.js';
-import { render, loadFeeds, applyCardScope } from './feeds.js';
-import { renderReader, readerFilterParams } from './reader.js';
 import { isOn } from '../kernel/bridge.js';
+import { applyCardScope, loadFeeds, render } from './feeds.js';
+import { readerFilterParams, renderReader } from './reader.js';
+import { activeScrollTop, forgetViewScroll, scrollActiveTop, state } from './state.js';
+import { apiFetch, emitOverlays, emitShell, httpError, toast } from './util.js';
 
 /* ============================================================
  * 网页自动刷新
@@ -20,9 +20,9 @@ import { isOn } from '../kernel/bridge.js';
  * ============================================================ */
 /** @type {any} */
 export let autoRefreshTimer = null;
-export let autoRefreshLastAt = 0;    // 上一次检查的时刻（回到前台时判断要不要补一次）
+export let autoRefreshLastAt = 0; // 上一次检查的时刻（回到前台时判断要不要补一次）
 /** @type {any} */
-export let pendingFresh = null;      // { view, data, n } 已拉到但还没套用的新内容
+export let pendingFresh = null; // { view, data, n } 已拉到但还没套用的新内容
 
 /** 「N 条新内容」浮标的可视图状态，由 src/ui/Overlays.jsx 渲染（v2.1.0 起不再直接改 DOM） */
 export let newPillState = { show: false, text: '' };
@@ -42,21 +42,26 @@ export function autoRefreshMinutes() {
 }
 
 export function scheduleAutoRefresh() {
-  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
   const mins = autoRefreshMinutes();
   if (!mins) return;
   autoRefreshLastAt = Date.now();
   autoRefreshTimer = setInterval(() => {
-    if (document.hidden) return;                        // 后台不跑，回到前台再补
-    if (isOn('settingsOpen')) return;   // 正在改设置就别动列表
+    if (document.hidden) return; // 后台不跑，回到前台再补
+    if (isOn('settingsOpen')) return; // 正在改设置就别动列表
     autoRefreshLastAt = Date.now();
-    checkForNew().catch(() => { /* 自动刷新失败就静默跳过，不打扰用户 */ });
+    checkForNew().catch(() => {
+      /* 自动刷新失败就静默跳过，不打扰用户 */
+    });
   }, mins * 60000);
 }
 
 /** 按当前页面的筛选条件拉一页首屏（卡片页的 tag / sort 也已服务端化，须一并带上）
-*@param {*} [view]
-*/
+ *@param {*} [view]
+ */
 export async function fetchHead(view) {
   const params = new URLSearchParams();
   const loaded = view === 'reader' ? state.rdEntries.length : state.entries.length;
@@ -82,9 +87,9 @@ export async function fetchHead(view) {
 }
 
 /** 只数「排在当前最头条目之前」的那些，避免把翻页拿到的旧条目也算成新的
-*@param {*} [fresh]
+ *@param {*} [fresh]
  * @param {*} [current]
-*/
+ */
 export function countNewHead(fresh, current) {
   const known = new Set(current.map(/** @param {*} [e] */ (e) => String(e.id)));
   let n = 0;
@@ -101,8 +106,8 @@ export function hideNewPill() {
 }
 
 /** 把拉到的新首屏套进当前列表
-*@param {*} opts
-*/
+ *@param {*} opts
+ */
 export function applyFresh({ view, data }) {
   const list = data.entries || [];
   if (view === 'reader') {
@@ -131,8 +136,12 @@ export function applyFresh({ view, data }) {
   // 新条目会改变侧栏的未读计数与频道角标：只换列表不刷频道，数字会停在旧值。
   // loadFeeds 只发 __cardsTick，阅读页侧栏另需一次 __readerTick 才会重读 state。
   loadFeeds()
-    .then(() => { if (view === 'reader') renderReader(); })
-    .catch(() => { /* 频道刷新失败不影响列表本身 */ });
+    .then(() => {
+      if (view === 'reader') renderReader();
+    })
+    .catch(() => {
+      /* 频道刷新失败不影响列表本身 */
+    });
 }
 
 /* 定时检查 + 回前台补检查可能撞在一起，弱网下叠请求只会更慢。 */
@@ -142,7 +151,7 @@ export async function checkForNew() {
   if (checking) return 0;
   checking = true;
   try {
-    if (state.tab === 'ai') return 0;                   // AI 页（日报按日期取、设置是表单）不参与自动刷新
+    if (state.tab === 'ai') return 0; // AI 页（日报按日期取、设置是表单）不参与自动刷新
     // 收藏列表里不可能冒出新内容（新条目默认都不是收藏），别白拉一次
     if (state.tab === 'reader' && state.rdScope === 'favorite') return 0;
     if (state.loading || state.rdLoading) return 0;

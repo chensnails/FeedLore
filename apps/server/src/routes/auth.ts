@@ -10,18 +10,18 @@
  * ⚠️ 三个端点必须链式返回（见 health.ts 注释），否则 hc<AppType> 取不到它们。
  */
 
-import { Hono, type Context } from 'hono';
+import type { AuthInstance } from '@feedlore/auth';
+import { auth as authSpec, loginBody } from '@feedlore/contract';
+import { type Db, users } from '@feedlore/db';
 import { zValidator } from '@hono/zod-validator';
 import { eq, sql } from 'drizzle-orm';
-import type { AuthInstance } from '@feedlore/auth';
-import { users, type Db } from '@feedlore/db';
-import { auth as authSpec, loginBody } from '@feedlore/contract';
-import { assertResponse, BadRequest } from '../lib/validate';
+import { type Context, Hono } from 'hono';
+import { getAuthBaseUrl, PORT } from '../env';
 import { apiError } from '../lib/apiError';
-import { normalizeRole } from '../lib/roles';
 import { clientIpOf, takeLoginAttempt } from '../lib/rate-limit';
-import { requireAuth, type AppEnv } from '../middleware/auth';
-import { PORT, getAuthBaseUrl } from '../env';
+import { normalizeRole } from '../lib/roles';
+import { assertResponse, BadRequest } from '../lib/validate';
+import { type AppEnv, requireAuth } from '../middleware/auth';
 
 /** Node 22 的 Headers 支持 getSetCookie；这里做一次安全取用，兼容类型差异。 */
 function setCookiesOf(res: Response): string[] {
@@ -60,159 +60,163 @@ function originOf(c: { req: { url: string; header: (n: string) => string | undef
 }
 
 export function authRoutes(db: Db | null, auth: AuthInstance | null) {
-  return new Hono<AppEnv>()
-    /* ---------------- POST /api/login ---------------- */
-    // zValidator 有两个作用，缺一不可：
-    //   1) 运行期按契约校验请求体，不合规直接 400（不再依赖 handler 里手写 parseBody）；
-    //   2) **类型层面**把 body schema 注册进路由，hc 的 `$post({ json })` 才有字段约束——
-    //      否则前端传错字段名也能编译通过，只剩运行期 400 兜着。
-    .post(
-      authSpec.login.path,
-      zValidator('json', loginBody, (result) => {
-        if (!result.success) {
-          throw new BadRequest('POST /api/login', result.error.issues);
-        }
-      }),
-      async (c) => {
+  return (
+    new Hono<AppEnv>()
+      /* ---------------- POST /api/login ---------------- */
+      // zValidator 有两个作用，缺一不可：
+      //   1) 运行期按契约校验请求体，不合规直接 400（不再依赖 handler 里手写 parseBody）；
+      //   2) **类型层面**把 body schema 注册进路由，hc 的 `$post({ json })` 才有字段约束——
+      //      否则前端传错字段名也能编译通过，只剩运行期 400 兜着。
+      .post(
+        authSpec.login.path,
+        zValidator('json', loginBody, (result) => {
+          if (!result.success) {
+            throw new BadRequest('POST /api/login', result.error.issues);
+          }
+        }),
+        async (c) => {
+          if (!auth) return apiError(c, 'E_AUTH_NOT_READY');
+
+          const body = c.req.valid('json');
+
+          /* 按真实客户端 IP 计桶。不能依赖 better-auth 的默认限流：内部请求
+           * 没有可信 IP 时它会退化成全站共享的 3 次/10 秒桶，等于给了一个
+           * 低成本的登录拒绝服务入口。 */
+          const limit = takeLoginAttempt('login:' + clientIpOf(c));
+          if (!limit.allowed) {
+            c.header('Retry-After', String(limit.retryAfter));
+            return apiError(c, 'E_RATE_LIMITED', { params: { retryAfter: limit.retryAfter } });
+          }
+
+          /* 设备清单要显示浏览器 / 系统和来源 IP，而 better-auth 只从
+           * user-agent 与 x-forwarded-for 两个头里取值；重构请求时漏掉它们，
+           * 会话记录里的 user_agent / ip_address 会一直是空串。
+           * IP 用 clientIpOf 的结果回填：它已经按 TRUST_PROXY 决定信不信反代头，
+           * 客户端自己带来的 XFF 不会被原样传下去。 */
+          const clientIp = clientIpOf(c);
+          const signInHeaders: Record<string, string> = {
+            'content-type': 'application/json',
+            origin: originOf(c),
+            'user-agent': c.req.header('user-agent') ?? '',
+          };
+          if (clientIp !== 'unknown') signInHeaders['x-forwarded-for'] = clientIp;
+
+          // 交给 better-auth 的 username 登录端点（真正校验密码并签发会话）
+          const res = await auth.handler(
+            new Request(new URL('/api/auth/sign-in/username', baseURLOf(c)), {
+              method: 'POST',
+              headers: signInHeaders,
+              body: JSON.stringify({ username: body.username, password: body.password }),
+            }),
+          );
+
+          if (!res.ok) {
+            // 不区分「用户不存在」与「密码错误」，避免账号枚举
+            return apiError(c, 'E_BAD_CREDENTIALS');
+          }
+
+          const data = (await res.json().catch(() => ({}))) as {
+            user?: { id?: string; username?: string; role?: string };
+          };
+          const role = normalizeRole(data.user?.role);
+
+          /* 首次部署的初始账号带「必须改密」标记：登录页据此直接跳改密页，
+           * 省掉「先进首页再被 403 弹回来」的一跳。查库失败按 false 处理 ——
+           * 主站启动读 /api/session 时还有一次判定，不会漏。 */
+          let mustChangePassword = false;
+          if (db && data.user?.id) {
+            try {
+              const [row] = await db
+                .select({ m: users.mustChangePassword })
+                .from(users)
+                .where(eq(users.id, data.user.id))
+                .limit(1);
+              mustChangePassword = row?.m === true;
+            } catch {
+              /* 保持 false */
+            }
+          }
+
+          const payload = assertResponse(
+            authSpec.login.response,
+            {
+              ok: true,
+              username: data.user?.username ?? body.username,
+              role,
+              mustChangePassword,
+            },
+            'POST /api/login',
+          );
+          forwardCookies(c, res);
+          return c.json(payload);
+        },
+      )
+
+      /* ---------------- POST /api/logout ---------------- */
+      .post(authSpec.logout.path, requireAuth(auth, 'user'), async (c) => {
         if (!auth) return apiError(c, 'E_AUTH_NOT_READY');
 
-        const body = c.req.valid('json');
-
-        /* 按真实客户端 IP 计桶。不能依赖 better-auth 的默认限流：内部请求
-         * 没有可信 IP 时它会退化成全站共享的 3 次/10 秒桶，等于给了一个
-         * 低成本的登录拒绝服务入口。 */
-        const limit = takeLoginAttempt('login:' + clientIpOf(c));
-        if (!limit.allowed) {
-          c.header('Retry-After', String(limit.retryAfter));
-          return apiError(c, 'E_RATE_LIMITED', { params: { retryAfter: limit.retryAfter } });
-        }
-
-        /* 设备清单要显示浏览器 / 系统和来源 IP，而 better-auth 只从
-         * user-agent 与 x-forwarded-for 两个头里取值；重构请求时漏掉它们，
-         * 会话记录里的 user_agent / ip_address 会一直是空串。
-         * IP 用 clientIpOf 的结果回填：它已经按 TRUST_PROXY 决定信不信反代头，
-         * 客户端自己带来的 XFF 不会被原样传下去。 */
-        const clientIp = clientIpOf(c);
-        const signInHeaders: Record<string, string> = {
-          'content-type': 'application/json',
-          origin: originOf(c),
-          'user-agent': c.req.header('user-agent') ?? '',
-        };
-        if (clientIp !== 'unknown') signInHeaders['x-forwarded-for'] = clientIp;
-
-        // 交给 better-auth 的 username 登录端点（真正校验密码并签发会话）
+        // ⚠️ 只透传 Cookie，不要原样转发 c.req.raw.headers：
+        // 原请求带 content-length 而这里新构造的 Request 若不带 body，会让 better-auth
+        // 解析失败 → 返回 ok:false 且**会话并未失效**（登出形同无效）。
         const res = await auth.handler(
-          new Request(new URL('/api/auth/sign-in/username', baseURLOf(c)), {
+          new Request(new URL('/api/auth/sign-out', baseURLOf(c)), {
             method: 'POST',
-            headers: signInHeaders,
-            body: JSON.stringify({ username: body.username, password: body.password }),
+            headers: {
+              cookie: c.req.header('cookie') ?? '',
+              'content-type': 'application/json',
+              origin: originOf(c),
+            },
+            body: '{}',
           }),
         );
 
-        if (!res.ok) {
-          // 不区分「用户不存在」与「密码错误」，避免账号枚举
-          return apiError(c, 'E_BAD_CREDENTIALS');
-        }
-
-        const data = (await res.json().catch(() => ({}))) as {
-          user?: { id?: string; username?: string; role?: string };
-        };
-        const role = normalizeRole(data.user?.role);
-
-        /* 首次部署的初始账号带「必须改密」标记：登录页据此直接跳改密页，
-         * 省掉「先进首页再被 403 弹回来」的一跳。查库失败按 false 处理 ——
-         * 主站启动读 /api/session 时还有一次判定，不会漏。 */
-        let mustChangePassword = false;
-        if (db && data.user?.id) {
-          try {
-            const [row] = await db
-              .select({ m: users.mustChangePassword })
-              .from(users)
-              .where(eq(users.id, data.user.id))
-              .limit(1);
-            mustChangePassword = row?.m === true;
-          } catch { /* 保持 false */ }
-        }
-
         const payload = assertResponse(
-          authSpec.login.response,
-          {
-            ok: true,
-            username: data.user?.username ?? body.username,
-            role,
-            mustChangePassword,
-          },
-          'POST /api/login',
+          authSpec.logout.response,
+          { ok: res.ok },
+          'POST /api/logout',
         );
         forwardCookies(c, res);
         return c.json(payload);
-      },
-    )
+      })
 
-    /* ---------------- POST /api/logout ---------------- */
-    .post(authSpec.logout.path, requireAuth(auth, 'user'), async (c) => {
-      if (!auth) return apiError(c, 'E_AUTH_NOT_READY');
+      /* ---------------- GET /api/session ---------------- */
+      .get(authSpec.session.path, async (c) => {
+        const session = auth ? await auth.api.getSession({ headers: c.req.raw.headers }) : null;
 
-      // ⚠️ 只透传 Cookie，不要原样转发 c.req.raw.headers：
-      // 原请求带 content-length 而这里新构造的 Request 若不带 body，会让 better-auth
-      // 解析失败 → 返回 ok:false 且**会话并未失效**（登出形同无效）。
-      const res = await auth.handler(
-        new Request(new URL('/api/auth/sign-out', baseURLOf(c)), {
-          method: 'POST',
-          headers: {
-            cookie: c.req.header('cookie') ?? '',
-            'content-type': 'application/json',
-            origin: originOf(c),
-          },
-          body: '{}',
-        }),
-      );
-
-      const payload = assertResponse(
-        authSpec.logout.response,
-        { ok: res.ok },
-        'POST /api/logout',
-      );
-      forwardCookies(c, res);
-      return c.json(payload);
-    })
-
-    /* ---------------- GET /api/session ---------------- */
-    .get(authSpec.session.path, async (c) => {
-      const session = auth ? await auth.api.getSession({ headers: c.req.raw.headers }) : null;
-
-      let dbReady = false;
-      if (db) {
-        try {
-          await db.execute(sql`select 1`);
-          dbReady = true;
-        } catch {
-          dbReady = false;
+        let dbReady = false;
+        if (db) {
+          try {
+            await db.execute(sql`select 1`);
+            dbReady = true;
+          } catch {
+            dbReady = false;
+          }
         }
-      }
 
-      const u = session
-        ? (session.user as unknown as {
-            id: string;
-            username?: string;
-            role?: string;
-            mustChangePassword?: boolean;
-          })
-        : null;
+        const u = session
+          ? (session.user as unknown as {
+              id: string;
+              username?: string;
+              role?: string;
+              mustChangePassword?: boolean;
+            })
+          : null;
 
-      const payload = assertResponse(
-        authSpec.session.response,
-        {
-          authenticated: Boolean(session),
-          username: u?.username ?? null,
-          role: u ? normalizeRole(u.role) : null,
-          id: u?.id ?? null,
-          dbReady,
-          /* 未登录时为 false；前端只用它决定是否把人挡在改密页。 */
-          mustChangePassword: u?.mustChangePassword === true,
-        },
-        'GET /api/session',
-      );
-      return c.json(payload);
-    });
+        const payload = assertResponse(
+          authSpec.session.response,
+          {
+            authenticated: Boolean(session),
+            username: u?.username ?? null,
+            role: u ? normalizeRole(u.role) : null,
+            id: u?.id ?? null,
+            dbReady,
+            /* 未登录时为 false；前端只用它决定是否把人挡在改密页。 */
+            mustChangePassword: u?.mustChangePassword === true,
+          },
+          'GET /api/session',
+        );
+        return c.json(payload);
+      })
+  );
 }

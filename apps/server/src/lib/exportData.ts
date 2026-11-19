@@ -13,12 +13,13 @@
  * 是管理员级、需要妥善保管的敏感文件，恢复也由运维手工完成。
  */
 
-import { and, asc, eq, gt, sql } from 'drizzle-orm';
+import { decryptSecret, getCryptoSecret, resolveUserLlm } from '@feedlore/ai';
 import {
   accounts,
   aiRequestLog,
   aiUsageDaily,
   articleCache,
+  type Db,
   digests,
   entries,
   entryAiTags,
@@ -30,9 +31,8 @@ import {
   settings,
   userLlm,
   users,
-  type Db,
 } from '@feedlore/db';
-import { decryptSecret, getCryptoSecret, resolveUserLlm } from '@feedlore/ai';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import { APP_VERSION } from '../env';
 import type { TarGzArchive } from './tar';
 
@@ -83,29 +83,29 @@ export async function writeUserExport(ar: TarGzArchive, input: UserExportInput):
         .where(entryWhere),
     ),
     digests: await countOf(
-      db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(digests)
-        .where(eq(digests.ownerId, userId)),
+      db.select({ n: sql<number>`count(*)::int` }).from(digests).where(eq(digests.ownerId, userId)),
     ),
   };
 
-  await ar.add('manifest.json', json({
-    format: FORMAT,
-    formatVersion: FORMAT_VERSION,
-    kind: 'user',
-    appVersion: APP_VERSION,
-    createdAt: isoNow(),
-    username,
-    counts,
-    includes: { llm: includeLlm, feeds: true, entries: true, digests: true, prefs: true },
-    notes: [
-      'entries-*.jsonl 每行一篇文章，feedUrl 对应 feeds.json 里的订阅地址。',
-      '不含登录会话、图片缓存与全文抓取缓存；模型配置默认不含，导出时勾选才会写入 llm.json。',
-      '已读 / 收藏 / 关注标记都在每行文章记录里，换机后可按需要恢复。',
-      '在「设置 · 账号 · 数据导入」上传本包即可合并恢复：已存在的频道与文章会跳过，不改动现有标记。',
-    ],
-  }));
+  await ar.add(
+    'manifest.json',
+    json({
+      format: FORMAT,
+      formatVersion: FORMAT_VERSION,
+      kind: 'user',
+      appVersion: APP_VERSION,
+      createdAt: isoNow(),
+      username,
+      counts,
+      includes: { llm: includeLlm, feeds: true, entries: true, digests: true, prefs: true },
+      notes: [
+        'entries-*.jsonl 每行一篇文章，feedUrl 对应 feeds.json 里的订阅地址。',
+        '不含登录会话、图片缓存与全文抓取缓存；模型配置默认不含，导出时勾选才会写入 llm.json。',
+        '已读 / 收藏 / 关注标记都在每行文章记录里，换机后可按需要恢复。',
+        '在「设置 · 账号 · 数据导入」上传本包即可合并恢复：已存在的频道与文章会跳过，不改动现有标记。',
+      ],
+    }),
+  );
 
   await ar.add('feeds.json', json(feedRows));
 
@@ -192,14 +192,14 @@ export async function writeUserExport(ar: TarGzArchive, input: UserExportInput):
     const secret = await getCryptoSecret(db);
     const vendorKey = (id: string | null): string => {
       const v = vendorRows.find((x) => x.id === id);
-      return v?.encryptedKey ? (decryptSecret(v.encryptedKey, secret) || '') : '';
+      return v?.encryptedKey ? decryptSecret(v.encryptedKey, secret) || '' : '';
     };
     const vendors = vendorRows.map((v) => ({
       id: v.id,
       name: v.name,
       baseUrl: v.baseUrl || '',
       // 勾选导出才解密；文件落到本机后请自行保管
-      apiKey: v.encryptedKey ? (decryptSecret(v.encryptedKey, secret) || '') : '',
+      apiKey: v.encryptedKey ? decryptSecret(v.encryptedKey, secret) || '' : '',
     }));
     const models = modelRows.map((m) => ({
       id: m.id,
@@ -211,10 +211,12 @@ export async function writeUserExport(ar: TarGzArchive, input: UserExportInput):
       thinkingDepth: m.thinkingDepth,
       isDefault: m.isDefault,
       // 旧行没有 vendor_id 时，连接信息还在行上
-      ...(m.vendorId ? {} : {
-        baseUrl: m.baseUrl || '',
-        apiKey: m.encryptedKey ? (decryptSecret(m.encryptedKey, secret) || '') : '',
-      }),
+      ...(m.vendorId
+        ? {}
+        : {
+            baseUrl: m.baseUrl || '',
+            apiKey: m.encryptedKey ? decryptSecret(m.encryptedKey, secret) || '' : '',
+          }),
     }));
     const providers = modelRows.map((m) => {
       const v = vendorRows.find((x) => x.id === m.vendorId);
@@ -228,7 +230,7 @@ export async function writeUserExport(ar: TarGzArchive, input: UserExportInput):
         thinking: m.thinking,
         thinkingDepth: m.thinkingDepth,
         isDefault: m.isDefault,
-        apiKey: enc ? (decryptSecret(enc, secret) || '') : '',
+        apiKey: enc ? decryptSecret(enc, secret) || '' : '',
       };
     });
 
@@ -240,26 +242,30 @@ export async function writeUserExport(ar: TarGzArchive, input: UserExportInput):
     if (row || vendors.length || models.length) {
       const legacy = defaultModel
         ? {
-          baseUrl: (defaultVendor ? defaultVendor.baseUrl : defaultModel.baseUrl) || '',
-          model: defaultModel.model || '',
-          temperature: defaultModel.temperature ?? 0.3,
-          thinking: defaultModel.thinking === true,
-          thinkingDepth: defaultModel.thinkingDepth || 0,
-          apiKey: defaultVendor
-            ? vendorKey(defaultVendor.id)
-            : (defaultModel.encryptedKey ? (decryptSecret(defaultModel.encryptedKey, secret) || '') : ''),
-        }
-        : (row ? (() => {
-          const llm = resolveUserLlm(row, secret);
-          return {
-            baseUrl: llm.baseUrl,
-            model: llm.model,
-            temperature: llm.temperature,
-            thinking: llm.thinking,
-            thinkingDepth: llm.thinkingDepth,
-            apiKey: llm.apiKey,
-          };
-        })() : null);
+            baseUrl: (defaultVendor ? defaultVendor.baseUrl : defaultModel.baseUrl) || '',
+            model: defaultModel.model || '',
+            temperature: defaultModel.temperature ?? 0.3,
+            thinking: defaultModel.thinking === true,
+            thinkingDepth: defaultModel.thinkingDepth || 0,
+            apiKey: defaultVendor
+              ? vendorKey(defaultVendor.id)
+              : defaultModel.encryptedKey
+                ? decryptSecret(defaultModel.encryptedKey, secret) || ''
+                : '',
+          }
+        : row
+          ? (() => {
+              const llm = resolveUserLlm(row, secret);
+              return {
+                baseUrl: llm.baseUrl,
+                model: llm.model,
+                temperature: llm.temperature,
+                thinking: llm.thinking,
+                thinkingDepth: llm.thinkingDepth,
+                apiKey: llm.apiKey,
+              };
+            })()
+          : null;
       payload = {
         ...(legacy || {}),
         routes: row?.routes || {},
@@ -282,7 +288,10 @@ export async function writeSiteExport(ar: TarGzArchive, db: Db): Promise<void> {
   const userRows = await db.select().from(users);
   const accountRows = await db.select().from(accounts);
   const feedRows = await db.select().from(feeds);
-  const digestRows = await db.select().from(digests).orderBy(asc(digests.ownerId), asc(digests.date));
+  const digestRows = await db
+    .select()
+    .from(digests)
+    .orderBy(asc(digests.ownerId), asc(digests.date));
   const llmRows = await db.select().from(userLlm);
   const vendorRows = await db.select().from(llmVendors);
   const settingRows = await db.select().from(settings).orderBy(asc(settings.key));
@@ -298,39 +307,42 @@ export async function writeSiteExport(ar: TarGzArchive, db: Db): Promise<void> {
     mcpTokens: await countOf(db.select({ n: sql<number>`count(*)::int` }).from(mcpTokens)),
   };
 
-  await ar.add('manifest.json', json({
-    format: FORMAT,
-    formatVersion: FORMAT_VERSION,
-    kind: 'site',
-    appVersion: APP_VERSION,
-    createdAt: isoNow(),
-    counts,
-    includes: {
-      users: true,
-      accounts: true,
-      feeds: true,
-      entries: true,
-      digests: true,
-      llm: true,
-      settings: true,
-      images: true,
-      articleCache: true,
-      aiTags: true,
-      mcpTokens: true,
-      aiUsage: true,
-      aiRequestLog: true,
-      // 异步任务是一次性的，进程重启都会清扫，没有还原价值
-      aiJobs: false,
-      sessions: false,
-    },
-    notes: [
-      '敏感文件：含账号密码哈希、加密后的模型 Key 与站点设置，请勿外传。',
-      'images/<key> 是图片缓存原文件，键与 image_cache.json 一一对应；article_cache-*.jsonl 是全文抓取缓存。',
-      'entry_ai_tags-*.jsonl 是 AI 标签，mcp_tokens.json 是 MCP 令牌（仅哈希），ai_usage_daily.json / ai_request_log.json 是 AI 用量统计与最近请求明细。',
-      '不含 sessions / verifications：恢复后所有人需要重新登录；不含 ai_jobs：异步任务不跨备份保留。',
-      '在「设置 · 账号 · 整站还原」上传本包即可整体还原：会清空并替换当前全站数据，所有人需要重新登录。',
-    ],
-  }));
+  await ar.add(
+    'manifest.json',
+    json({
+      format: FORMAT,
+      formatVersion: FORMAT_VERSION,
+      kind: 'site',
+      appVersion: APP_VERSION,
+      createdAt: isoNow(),
+      counts,
+      includes: {
+        users: true,
+        accounts: true,
+        feeds: true,
+        entries: true,
+        digests: true,
+        llm: true,
+        settings: true,
+        images: true,
+        articleCache: true,
+        aiTags: true,
+        mcpTokens: true,
+        aiUsage: true,
+        aiRequestLog: true,
+        // 异步任务是一次性的，进程重启都会清扫，没有还原价值
+        aiJobs: false,
+        sessions: false,
+      },
+      notes: [
+        '敏感文件：含账号密码哈希、加密后的模型 Key 与站点设置，请勿外传。',
+        'images/<key> 是图片缓存原文件，键与 image_cache.json 一一对应；article_cache-*.jsonl 是全文抓取缓存。',
+        'entry_ai_tags-*.jsonl 是 AI 标签，mcp_tokens.json 是 MCP 令牌（仅哈希），ai_usage_daily.json / ai_request_log.json 是 AI 用量统计与最近请求明细。',
+        '不含 sessions / verifications：恢复后所有人需要重新登录；不含 ai_jobs：异步任务不跨备份保留。',
+        '在「设置 · 账号 · 整站还原」上传本包即可整体还原：会清空并替换当前全站数据，所有人需要重新登录。',
+      ],
+    }),
+  );
 
   await ar.add('users.json', json(userRows));
   await ar.add('accounts.json', json(accountRows));

@@ -53,13 +53,13 @@ curl -s https://你的域名/mcp \
 
 ## 2. 工具一览（全部只读）
 
-| 工具 | 入参 | 说明 |
-| --- | --- | --- |
-| `feedlore_list_feeds` | `{}` | 全部频道：id、标题、分组、启用状态、总条数与未读数。找文章先调它拿 `feedId` |
+| 工具                    | 入参                                                                               | 说明                                                                                                                      |
+| ----------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `feedlore_list_feeds`   | `{}`                                                                               | 全部频道：id、标题、分组、启用状态、总条数与未读数。找文章先调它拿 `feedId`                                               |
 | `feedlore_list_entries` | `feeds?` `q?` `tag?` `unread?` `fav?` `watch?` `scope?` `sort?` `offset?` `limit?` | 文章列表（标题+摘要，不含正文）。`q` 覆盖标题/摘要/正文/标签；`sort` = `new`/`old`/`name`（默认 new）；`scope` 默认 `all` |
-| `feedlore_get_entry` | `id` | 单篇全文；超过 24000 字符截断并返回 `truncated: true` 与 `totalChars` |
-| `feedlore_list_digests` | `{}` | 已生成日报的日期列表（新→旧，最多 120 天） |
-| `feedlore_get_digest` | `date?`（YYYY-MM-DD） | 某天日报全文（总览+精选+分组摘要）；不传默认今天（上海时区） |
+| `feedlore_get_entry`    | `id`                                                                               | 单篇全文；超过 24000 字符截断并返回 `truncated: true` 与 `totalChars`                                                     |
+| `feedlore_list_digests` | `{}`                                                                               | 已生成日报的日期列表（新→旧，最多 120 天）                                                                                |
+| `feedlore_get_digest`   | `date?`（YYYY-MM-DD）                                                              | 某天日报全文（总览+精选+分组摘要）；不传默认今天（上海时区）                                                              |
 
 约束：`limit` 默认 20、**硬上限 50**（控制 AI 上下文体积）；列表条目按令牌归属账号过滤，
 AI 只能看到这枚令牌主人自己的订阅。
@@ -95,14 +95,14 @@ AI 只能看到这枚令牌主人自己的订阅。
 
 ### 错误码
 
-| 码 | HTTP | 含义 |
-| --- | --- | --- |
-| `E_MCP_TOKEN_INVALID` | 401 | 缺失或无效的令牌 |
-| `E_MCP_RATE_LIMITED` | 429 | 超过限流（响应 `params.retryAfter` 为等待秒数） |
-| `E_MCP_DISABLED` | 404 | 服务端关闭了 MCP（`MCP_ENABLED=0`） |
-| `E_MCP_SCOPE_DENIED` | 403 | 令牌权限档不够（为写工具预留） |
-| `E_MCP_TOKEN_LIMIT` | 400 | 令牌数量达上限 |
-| `E_MCP_TOKEN_NOT_FOUND` | 404 | 令牌不存在或已吊销 |
+| 码                      | HTTP | 含义                                            |
+| ----------------------- | ---- | ----------------------------------------------- |
+| `E_MCP_TOKEN_INVALID`   | 401  | 缺失或无效的令牌                                |
+| `E_MCP_RATE_LIMITED`    | 429  | 超过限流（响应 `params.retryAfter` 为等待秒数） |
+| `E_MCP_DISABLED`        | 404  | 服务端关闭了 MCP（`MCP_ENABLED=0`）             |
+| `E_MCP_SCOPE_DENIED`    | 403  | 令牌权限档不够（为写工具预留）                  |
+| `E_MCP_TOKEN_LIMIT`     | 400  | 令牌数量达上限                                  |
+| `E_MCP_TOKEN_NOT_FOUND` | 404  | 令牌不存在或已吊销                              |
 
 > 说明：401 故意**不带** `WWW-Authenticate` 头 —— 部分客户端看到它会进入 OAuth 发现
 > 流程，发现不到反而报出更迷惑的错误。本服务器走「静态 Bearer 令牌」模型，不走 OAuth。
@@ -111,9 +111,9 @@ AI 只能看到这枚令牌主人自己的订阅。
 
 ## 4. 服务端配置
 
-| 环境变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `MCP_ENABLED` | `1` | 设 `0` 关闭 `/mcp`（返回 `E_MCP_DISABLED`） |
+| 环境变量      | 默认 | 说明                                        |
+| ------------- | ---- | ------------------------------------------- |
+| `MCP_ENABLED` | `1`  | 设 `0` 关闭 `/mcp`（返回 `E_MCP_DISABLED`） |
 
 反向代理（nginx / Caddy）无需任何特殊配置：响应是纯 JSON，没有 SSE 长连，
 只需保证 `Authorization` 头透传（默认行为）。

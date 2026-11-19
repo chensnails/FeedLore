@@ -27,21 +27,32 @@
  *    那会变成同源 XSS）。
  */
 
-import { log } from '../lib/logger';
-import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
-import { eq, sql } from 'drizzle-orm';
-import { z } from 'zod';
-import { imageCache, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import { img as imgSpec } from '@feedlore/contract';
-import { ApiException } from '../lib/apiError';
-import { assertPublicHost, safeFetch } from '../lib/net';
-import { compressImage, imageVariantKey, normalizeImageWidth, isImageType, IMG_MAX_BYTES } from '../lib/image';
-import { negativeCacheGet, negativeCacheSet, negativeCacheDelete, resetNegativeCache } from '../lib/imgNegative';
-import { requireAuth, type AppEnv } from '../middleware/auth';
+import { type Db, imageCache } from '@feedlore/db';
+import { zValidator } from '@hono/zod-validator';
+import { eq, sql } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { z } from 'zod';
 import { APP_VERSION } from '../env';
+import { ApiException } from '../lib/apiError';
+import {
+  compressImage,
+  IMG_MAX_BYTES,
+  imageVariantKey,
+  isImageType,
+  normalizeImageWidth,
+} from '../lib/image';
+import {
+  negativeCacheDelete,
+  negativeCacheGet,
+  negativeCacheSet,
+  resetNegativeCache,
+} from '../lib/imgNegative';
+import { log } from '../lib/logger';
+import { assertPublicHost, safeFetch } from '../lib/net';
 import { sourceSnapshot } from '../lib/settings';
+import { type AppEnv, requireAuth } from '../middleware/auth';
 
 /* ============================================================================
  * 参数
@@ -119,7 +130,10 @@ const upstreamError = (message: string, status: number): UpstreamError =>
  * 只在「完全无 Referer」时才拦，另一些只在「Referer 不是自家域名」时放行。
  * 先不带，被拒了再带图片自身的 origin —— 两种情况都能过，且不多发请求。
  */
-async function fetchUpstream(url: string, signal: AbortSignal): Promise<{ buf: Buffer; type: string; origSize: number }> {
+async function fetchUpstream(
+  url: string,
+  signal: AbortSignal,
+): Promise<{ buf: Buffer; type: string; origSize: number }> {
   const base = {
     'User-Agent': UA,
     Accept: 'image/avif,image/webp,image/*,*/*;q=0.8',
@@ -146,7 +160,10 @@ async function fetchUpstream(url: string, signal: AbortSignal): Promise<{ buf: B
     } catch {
       /* noop */
     }
-    throw upstreamError(`upstream ${resp.status}`, resp.status >= 400 && resp.status <= 599 ? resp.status : 502);
+    throw upstreamError(
+      `upstream ${resp.status}`,
+      resp.status >= 400 && resp.status <= 599 ? resp.status : 502,
+    );
   }
 
   // 缺 Content-Type 的源不少（尤其老论坛），按 jpeg 兜底 —— nosniff 下这是安全的，
@@ -174,22 +191,25 @@ async function fetchUpstream(url: string, signal: AbortSignal): Promise<{ buf: B
 
 /** 回源 → 压缩 → 写 L2/L1。失败抛带 status 的错误，调用方决定怎么回。
  *  `width` 是前端指定的变体宽度（0 = 默认长边），压缩上限取它与站点设置里较小者。 */
-async function fetchAndCache(db: Db | null, key: string, url: string, width: number): Promise<Cached> {
+async function fetchAndCache(
+  db: Db | null,
+  key: string,
+  url: string,
+  width: number,
+): Promise<Cached> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), UPSTREAM_TIMEOUT_MS);
   try {
     const { buf: raw, type, origSize } = await fetchUpstream(url, ctl.signal);
 
     const snap = sourceSnapshot();
-    const cap = Number(snap?.imgMaxDim) > 0 ? Number(snap?.imgMaxDim) : 0;
-    const maxDim = width > 0 ? (cap > 0 ? Math.min(width, cap) : width) : (cap || undefined);
+    const cap = Math.max(Number(snap?.imgMaxDim) || 0, 0);
+    const maxDim = width > 0 ? (cap > 0 ? Math.min(width, cap) : width) : cap || undefined;
     const comp = await compressImage(raw, type, {
       maxDim,
       quality: snap?.imgQuality,
     });
-    const out: Cached = comp
-      ? { type: comp.contentType, buf: comp.buf }
-      : { type, buf: raw };
+    const out: Cached = comp ? { type: comp.contentType, buf: comp.buf } : { type, buf: raw };
 
     if (db) {
       try {
@@ -238,7 +258,10 @@ async function fetchAndCache(db: Db | null, key: string, url: string, width: num
 
 function imageResponse(v: Cached): Response {
   // 必须切出独立 ArrayBuffer：Buffer 常是池化切片，直接给 buffer 会带出无关字节
-  const ab = v.buf.buffer.slice(v.buf.byteOffset, v.buf.byteOffset + v.buf.byteLength) as ArrayBuffer;
+  const ab = v.buf.buffer.slice(
+    v.buf.byteOffset,
+    v.buf.byteOffset + v.buf.byteLength,
+  ) as ArrayBuffer;
   return new Response(ab, {
     status: 200,
     headers: {
@@ -301,7 +324,11 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
       if (db) {
         try {
           const [row] = await db
-            .select({ contentType: imageCache.contentType, data: imageCache.data, createdAt: imageCache.createdAt })
+            .select({
+              contentType: imageCache.contentType,
+              data: imageCache.data,
+              createdAt: imageCache.createdAt,
+            })
             .from(imageCache)
             .where(eq(imageCache.key, key))
             .limit(1);

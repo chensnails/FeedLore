@@ -11,20 +11,22 @@
  * 网络用例需要 ALLOW_PRIVATE_HOSTS=1（本地 127.0.0.1 源站）；未设置时自动跳过网络部分，
  * 纯逻辑部分（dueFeeds）照常运行，保证本地 pnpm test 不失败也不挂住。
  */
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { fetchFeedRaw, dueFeeds, feedIntervalMs, type FeedRow } from './fetcher';
+import test from 'node:test';
 import { apiErrorKey } from './apiError';
-import { condFactor, condHost, noteCond, resetCondForTest, COND_MISS_LIMIT } from './feedCond';
+import { COND_MISS_LIMIT, condFactor, condHost, noteCond, resetCondForTest } from './feedCond';
+import { dueFeeds, type FeedRow, feedIntervalMs, fetchFeedRaw } from './fetcher';
 
-const RSS = '<?xml version="1.0"?><rss version="2.0"><channel><title>t</title><link>http://x</link><description>d</description></channel></rss>';
+const RSS =
+  '<?xml version="1.0"?><rss version="2.0"><channel><title>t</title><link>http://x</link><description>d</description></channel></rss>';
 
 type Mode = 'ok' | 'hang' | 'unauth' | 'flaky503' | 'notmod' | 'ignoreCond';
 const state: { mode: Mode; hits: number } = { mode: 'ok', hits: 0 };
 
 function makeServer(): Promise<{ srv: Server; url: string }> {
-  const srv = createServer((req, res) => {
+  const srv = createServer((_req, res) => {
     state.hits += 1;
     if (state.mode === 'hang') return; // 永不响应，制造单次超时
     if (state.mode === 'unauth') {
@@ -124,7 +126,11 @@ test('fetcher 边界（本地假源站）', async (t) => {
     for (let i = 0; i < COND_MISS_LIMIT; i += 1) {
       await fetchFeedRaw(url, { etag: '"fixed"', timeoutMs: 1000 });
     }
-    assert.equal(condFactor(host), 2, `连续 ${COND_MISS_LIMIT} 次忽略后应翻倍，实际 ${condFactor(host)}`);
+    assert.equal(
+      condFactor(host),
+      2,
+      `连续 ${COND_MISS_LIMIT} 次忽略后应翻倍，实际 ${condFactor(host)}`,
+    );
   });
 });
 
@@ -132,11 +138,24 @@ test('fetcher 边界（本地假源站）', async (t) => {
 
 function row(over: Partial<FeedRow> = {}): FeedRow {
   return {
-    id: 'r1', ownerId: 'u1', url: 'http://ignored.example/feed', title: 't', siteUrl: null,
-    description: null, iconUrl: null, enabled: true, refreshMinutes: 10,
+    id: 'r1',
+    ownerId: 'u1',
+    url: 'http://ignored.example/feed',
+    title: 't',
+    siteUrl: null,
+    description: null,
+    iconUrl: null,
+    enabled: true,
+    refreshMinutes: 10,
     lastFetchedAt: new Date(Date.now() - 15 * 60_000), // 15 分钟前，超过 10 分钟间隔
-    lastStatus: '200', lastError: null, failCount: 0, feedCreatedAt: null,
-    sortOrder: 0, createdAt: new Date(), bodyHash: null, ...over,
+    lastStatus: '200',
+    lastError: null,
+    failCount: 0,
+    feedCreatedAt: null,
+    sortOrder: 0,
+    createdAt: new Date(),
+    bodyHash: null,
+    ...over,
   } as FeedRow;
 }
 
@@ -147,8 +166,12 @@ test('dueFeeds：正常间隔到期；host 被降频后 4 倍间隔内不再到�
   // 15 分钟前抓过、10 分钟间隔 → 正常应到期
   assert.ok(dueFeeds([feed]).length === 1, '未降频时应到期');
   // 把该 host 顶到 4 倍（间隔 40 分钟），15 分钟前抓过 → 不应到期
-  noteCond(host, 'ignored'); noteCond(host, 'ignored'); noteCond(host, 'ignored');
-  noteCond(host, 'ignored'); noteCond(host, 'ignored'); noteCond(host, 'ignored');
+  noteCond(host, 'ignored');
+  noteCond(host, 'ignored');
+  noteCond(host, 'ignored');
+  noteCond(host, 'ignored');
+  noteCond(host, 'ignored');
+  noteCond(host, 'ignored');
   assert.equal(condFactor(host), 4);
   assert.ok(dueFeeds([feed]).length === 0, '降频 4 倍后 15 分钟内不应到期');
   // 恢复后重新到期

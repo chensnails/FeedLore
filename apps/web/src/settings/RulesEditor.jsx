@@ -9,8 +9,8 @@
 
 import { core } from '@core';
 import { useEffect, useState } from 'react';
-import { Section } from './primitives.jsx';
 import { Dropdown } from '../views/Dropdown.jsx';
+import { Section } from './primitives.jsx';
 
 const S = () => core;
 
@@ -19,11 +19,19 @@ const newId = () => 'r' + Date.now().toString(36) + Math.floor(Math.random() * 1
 /**
  * @param {*} [text]
  */
-const parseLines = (text) => String(text || '').split(/\r?\n/).map(/** @param {*} [x] */ (x) => x.trim()).filter(Boolean);
+const parseLines = (text) =>
+  String(text || '')
+    .split(/\r?\n/)
+    .map(/** @param {*} [x] */ (x) => x.trim())
+    .filter(Boolean);
 /**
  * @param {*} [text]
  */
-const parseComma = (text) => String(text || '').split(/[,，]/).map(/** @param {*} [x] */ (x) => x.trim()).filter(Boolean);
+const parseComma = (text) =>
+  String(text || '')
+    .split(/[,，]/)
+    .map(/** @param {*} [x] */ (x) => x.trim())
+    .filter(Boolean);
 
 const ALL_SCOPE = { all: true, groups: [], feeds: [] };
 
@@ -75,8 +83,9 @@ const blank = () => toDraft(null);
 /**
  * @param {*} [d]
  */
-const isComplete = (d) => (parseLines(d.keywords).length > 0 || String(d.tag || '').trim())
-  && (parseComma(d.addTags).length > 0 || d.favorite || d.markRead || d.notify);
+const isComplete = (d) =>
+  (parseLines(d.keywords).length > 0 || String(d.tag || '').trim()) &&
+  (parseComma(d.addTags).length > 0 || d.favorite || d.markRead || d.notify);
 
 export function RulesEditor() {
   /** @type {any} */
@@ -92,7 +101,9 @@ export function RulesEditor() {
   /** @type {any} */
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -115,11 +126,18 @@ export function RulesEditor() {
    * @param {*} [id]
    * @param {*} [patch]
    */
-  const update = (id, patch) => setDrafts(/** @param {*} [list] */ (list) => list.map(/** @param {*} [d] */ (d) => (d.id === id ? { ...d, ...patch } : d)));
+  const update = (id, patch) =>
+    setDrafts(
+      /** @param {*} [list] */ (list) =>
+        list.map(/** @param {*} [d] */ (d) => (d.id === id ? { ...d, ...patch } : d)),
+    );
   /**
    * @param {*} [id]
    */
-  const remove = (id) => setDrafts(/** @param {*} [list] */ (list) => list.filter(/** @param {*} [d] */ (d) => d.id !== id));
+  const remove = (id) =>
+    setDrafts(
+      /** @param {*} [list] */ (list) => list.filter(/** @param {*} [d] */ (d) => d.id !== id),
+    );
   const add = () => setDrafts(/** @param {*} [list] */ (list) => [...list, blank()]);
 
   async function onSave() {
@@ -138,7 +156,10 @@ export function RulesEditor() {
         body: JSON.stringify({ rules: drafts.map(toPayload) }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: S().errText ? S().errText(data, '保存失败') : '保存失败' }); return; }
+      if (!res.ok) {
+        setResult({ ok: false, msg: S().errText ? S().errText(data, '保存失败') : '保存失败' });
+        return;
+      }
       const list = Array.isArray(data.rules) ? data.rules.map(toDraft) : [];
       setDrafts(list);
       setSaved(JSON.stringify(list));
@@ -153,68 +174,164 @@ export function RulesEditor() {
   const dirty = JSON.stringify(drafts) !== saved;
 
   return (
-    <Section secKey="watch-rules-engine" title="自动化规则" open
-      sub={drafts.length ? `${drafts.length} 条 · 新文章入库时执行` : '还没配置'}>
+    <Section
+      secKey="watch-rules-engine"
+      title="自动化规则"
+      open
+      sub={drafts.length ? `${drafts.length} 条 · 新文章入库时执行` : '还没配置'}
+    >
       {loading ? <div className="sl-empty">正在读取规则…</div> : null}
-      {error ? <div className="sl-empty" role="alert">{error}</div> : null}
+      {error ? (
+        <div className="sl-empty" role="alert">
+          {error}
+        </div>
+      ) : null}
 
       {!loading && !error ? (
         <div className="sl-list">
-          {drafts.length ? drafts.map(/** @param {*} [d] */ (d) => (
-            <div className="rule-card" key={d.id}>
-              <div className="rule-card-head">
-                <label className="switch" title={d.on ? '已启用' : '已停用'}>
-                  <input type="checkbox" checked={d.on} onChange={/** @param {*} [e] */ (e) => update(d.id, { on: e.target.checked })} />
-                  <span className="switch-slider" />
-                </label>
-                <input className="rule-name" type="text" placeholder="规则名称（可选）" value={d.name}
-                  onChange={/** @param {*} [e] */ (e) => update(d.id, { name: e.target.value })} />
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => remove(d.id)}>删除</button>
-              </div>
-              <div className="rule-grid">
-                <label>
-                  <span>关键词（一行一个，任选其一→ any）</span>
-                  <textarea rows={2} spellCheck="false" placeholder={'锂电\n新能源'}
-                    value={d.keywords} onChange={/** @param {*} [e] */ (e) => update(d.id, { keywords: e.target.value })} />
-                </label>
-                <label>
-                  <span>匹配方式</span>
-                  <Dropdown id={'ruleMatch-' + d.id} wrapId={'ruleMatchDD-' + d.id}
-                    title="匹配方式" ariaLabel="匹配方式" value={d.match}
-                    onChange={/** @param {*} [v] */ (v) => update(d.id, { match: v })}
-                    options={[
-                      { value: 'any', label: '命中任一关键词' },
-                      { value: 'all', label: '需同时命中全部关键词' },
-                    ]} />
-                </label>
-                <label>
-                  <span>标签（可选，需已有该标签）</span>
-                  <input type="text" placeholder="AI" value={d.tag} onChange={/** @param {*} [e] */ (e) => update(d.id, { tag: e.target.value })} />
-                </label>
-                <label>
-                  <span>加标签（逗号分隔）</span>
-                  <input type="text" placeholder="新能源, 关注" value={d.addTags}
-                    onChange={/** @param {*} [e] */ (e) => update(d.id, { addTags: e.target.value })} />
-                </label>
-              </div>
-              <div className="rule-actions">
-                <label><input type="checkbox" checked={d.favorite} onChange={/** @param {*} [e] */ (e) => update(d.id, { favorite: e.target.checked })} /> 收藏</label>
-                <label><input type="checkbox" checked={d.markRead} onChange={/** @param {*} [e] */ (e) => update(d.id, { markRead: e.target.checked })} /> 标记已读</label>
-                <label><input type="checkbox" checked={d.notify} onChange={/** @param {*} [e] */ (e) => update(d.id, { notify: e.target.checked })} /> 通知（webhook）</label>
-              </div>
+          {drafts.length ? (
+            drafts.map(
+              /** @param {*} [d] */ (d) => (
+                <div className="rule-card" key={d.id}>
+                  <div className="rule-card-head">
+                    <label className="switch" title={d.on ? '已启用' : '已停用'}>
+                      <input
+                        type="checkbox"
+                        checked={d.on}
+                        onChange={
+                          /** @param {*} [e] */ (e) => update(d.id, { on: e.target.checked })
+                        }
+                      />
+                      <span className="switch-slider" />
+                    </label>
+                    <input
+                      className="rule-name"
+                      type="text"
+                      placeholder="规则名称（可选）"
+                      value={d.name}
+                      onChange={/** @param {*} [e] */ (e) => update(d.id, { name: e.target.value })}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => remove(d.id)}
+                    >
+                      删除
+                    </button>
+                  </div>
+                  <div className="rule-grid">
+                    <label>
+                      <span>关键词（一行一个，任选其一→ any）</span>
+                      <textarea
+                        rows={2}
+                        spellCheck="false"
+                        placeholder={'锂电\n新能源'}
+                        value={d.keywords}
+                        onChange={
+                          /** @param {*} [e] */ (e) => update(d.id, { keywords: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>匹配方式</span>
+                      <Dropdown
+                        id={'ruleMatch-' + d.id}
+                        wrapId={'ruleMatchDD-' + d.id}
+                        title="匹配方式"
+                        ariaLabel="匹配方式"
+                        value={d.match}
+                        onChange={/** @param {*} [v] */ (v) => update(d.id, { match: v })}
+                        options={[
+                          { value: 'any', label: '命中任一关键词' },
+                          { value: 'all', label: '需同时命中全部关键词' },
+                        ]}
+                      />
+                    </label>
+                    <label>
+                      <span>标签（可选，需已有该标签）</span>
+                      <input
+                        type="text"
+                        placeholder="AI"
+                        value={d.tag}
+                        onChange={
+                          /** @param {*} [e] */ (e) => update(d.id, { tag: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>加标签（逗号分隔）</span>
+                      <input
+                        type="text"
+                        placeholder="新能源, 关注"
+                        value={d.addTags}
+                        onChange={
+                          /** @param {*} [e] */ (e) => update(d.id, { addTags: e.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div className="rule-actions">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={d.favorite}
+                        onChange={
+                          /** @param {*} [e] */ (e) => update(d.id, { favorite: e.target.checked })
+                        }
+                      />{' '}
+                      收藏
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={d.markRead}
+                        onChange={
+                          /** @param {*} [e] */ (e) => update(d.id, { markRead: e.target.checked })
+                        }
+                      />{' '}
+                      标记已读
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={d.notify}
+                        onChange={
+                          /** @param {*} [e] */ (e) => update(d.id, { notify: e.target.checked })
+                        }
+                      />{' '}
+                      通知（webhook）
+                    </label>
+                  </div>
+                </div>
+              ),
+            )
+          ) : (
+            <div className="sl-empty">
+              还没有自动化规则。点「新增规则」，比如：标题含「锂电」→ 加标签「新能源」并收藏。
             </div>
-          )) : <div className="sl-empty">还没有自动化规则。点「新增规则」，比如：标题含「锂电」→ 加标签「新能源」并收藏。</div>}
+          )}
         </div>
       ) : null}
 
       <div className="rule-foot">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={add} disabled={busy}>新增规则</button>
-        <button type="button" className="btn btn-primary btn-sm" onClick={onSave} disabled={busy || !dirty}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={add} disabled={busy}>
+          新增规则
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={onSave}
+          disabled={busy || !dirty}
+        >
           {busy ? '保存中…' : '保存规则'}
         </button>
       </div>
 
-      {result ? <div className={'hint ' + (result.ok ? 'ok' : 'err')} role="status">{result.msg}</div> : null}
+      {result ? (
+        <div className={'hint ' + (result.ok ? 'ok' : 'err')} role="status">
+          {result.msg}
+        </div>
+      ) : null}
     </Section>
   );
 }

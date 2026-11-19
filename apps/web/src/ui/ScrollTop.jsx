@@ -7,9 +7,10 @@
  * 统一在 document 上捕获监听；按帧节流，一次滚动只读一次 scrollTop。
  * 位置在「N 条新内容」浮标（底部居中）与悬浮标签栏之间，互不遮挡。
  */
-import React, { useEffect, useRef, useState } from 'react';
+
 import { core } from '@core';
-import { on, EVENT } from '../kernel/events.js';
+import { useEffect, useRef, useState } from 'react';
+import { EVENT, on } from '../kernel/events.js';
 
 const SHOW_AFTER = 600;
 
@@ -42,9 +43,18 @@ export function ScrollTop() {
 
   if (!show) return null;
   return (
-    <button type="button" className="scroll-top" aria-label="回到顶部" title="回到顶部"
-      onClick={() => { if (core.scrollTop) core.scrollTop(); }}>
-      <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevrons-up" /></svg>
+    <button
+      type="button"
+      className="scroll-top"
+      aria-label="回到顶部"
+      title="回到顶部"
+      onClick={() => {
+        if (core.scrollTop) core.scrollTop();
+      }}
+    >
+      <svg className="ico" aria-hidden="true" focusable="false">
+        <use href="#i-chevrons-up" />
+      </svg>
     </button>
   );
 }

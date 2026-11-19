@@ -15,13 +15,13 @@
  * 要走标准 OAuth 发现见评估文档 P3。
  */
 
-import type { MiddlewareHandler } from 'hono';
-import { eq } from 'drizzle-orm';
-import { mcpTokens, users, type Db } from '@feedlore/db';
 import type { Role } from '@feedlore/contract';
-import { normalizeRole } from '../lib/roles';
+import { type Db, mcpTokens, users } from '@feedlore/db';
+import { eq } from 'drizzle-orm';
+import type { MiddlewareHandler } from 'hono';
 import { apiErrorBody } from '../lib/apiError';
 import { bearerFromHeader, hashMcpToken, mcpRateLimit } from '../lib/mcpToken';
+import { normalizeRole } from '../lib/roles';
 import type { SessionUser } from './auth';
 
 export interface McpUser {
@@ -73,7 +73,7 @@ export function mcpAuth(db: Db | null): MiddlewareHandler<McpEnv> {
       .limit(1);
 
     const row = rows[0];
-    if (!row || row.scope !== 'read' && row.scope !== 'write') {
+    if (!row || (row.scope !== 'read' && row.scope !== 'write')) {
       return c.json(apiErrorBody('E_MCP_TOKEN_INVALID'), 401);
     }
 
@@ -87,7 +87,9 @@ export function mcpAuth(db: Db | null): MiddlewareHandler<McpEnv> {
       .update(mcpTokens)
       .set({ lastUsedAt: new Date() })
       .where(eq(mcpTokens.id, row.tokenId))
-      .catch(() => { /* 设置页少一次「最近使用」更新，可接受 */ });
+      .catch(() => {
+        /* 设置页少一次「最近使用」更新，可接受 */
+      });
 
     c.set('mcpUser', {
       id: row.userId,

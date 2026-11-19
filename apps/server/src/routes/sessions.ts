@@ -10,15 +10,15 @@
  *    走「退出登录」，那条路径会正确清 Cookie。
  */
 
-import { log } from '../lib/logger';
-import { Hono } from 'hono';
-import { and, desc, eq, gt, ne } from 'drizzle-orm';
-import { sessions, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import { auth as authSpec } from '@feedlore/contract';
-import { assertResponse } from '../lib/validate';
+import { type Db, sessions } from '@feedlore/db';
+import { and, desc, eq, gt, ne } from 'drizzle-orm';
+import { Hono } from 'hono';
 import { apiError } from '../lib/apiError';
-import { requireAuth, type AppEnv } from '../middleware/auth';
+import { log } from '../lib/logger';
+import { assertResponse } from '../lib/validate';
+import { type AppEnv, requireAuth } from '../middleware/auth';
 
 export function sessionRoutes(db: Db | null, auth: AuthInstance | null) {
   return new Hono<AppEnv>()
@@ -95,6 +95,8 @@ export function sessionRoutes(db: Db | null, auth: AuthInstance | null) {
         .returning({ id: sessions.id });
 
       if (!removed.length) return apiError(c, 'E_SESSION_NOT_FOUND');
-      return c.json(assertResponse(authSpec.sessionRevoke.response, { ok: true }, 'DELETE /api/sessions/:id'));
+      return c.json(
+        assertResponse(authSpec.sessionRevoke.response, { ok: true }, 'DELETE /api/sessions/:id'),
+      );
     });
 }

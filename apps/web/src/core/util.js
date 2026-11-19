@@ -10,8 +10,10 @@
  * @param {*} [s]
  */
 export const $ = (s) => document.querySelector(s);
+
+import { EVENT, emit } from '../kernel/events.js';
 import { errorText } from './errorText.js';
-import { emit, EVENT } from '../kernel/events.js';
+
 export { errorText as errText };
 /* ---------------- 网络层 ----------------
  * 弱网下「请求挂住不返回」比「请求失败」更糟：调用方的 loading 闸门一直不释放，
@@ -44,7 +46,7 @@ function isRetryableStatus(status) {
  * @param {*} opts
  * @param {*} [timeoutMs]
  * @param {*} [outerSignal]
-*/
+ */
 function fetchOnce(url, opts, timeoutMs, outerSignal) {
   const clean = { ...opts };
   delete clean.timeoutMs;
@@ -52,44 +54,57 @@ function fetchOnce(url, opts, timeoutMs, outerSignal) {
   const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
   if (ctrl) clean.signal = ctrl.signal;
 
-  const onOuterAbort = () => { if (ctrl) ctrl.abort(); };
+  const onOuterAbort = () => {
+    if (ctrl) ctrl.abort();
+  };
   if (ctrl && outerSignal) {
     if (outerSignal.aborted) onOuterAbort();
     else outerSignal.addEventListener('abort', onOuterAbort, { once: true });
   }
 
   const req = fetch(url, clean);
-  req.catch(() => {});   // 超时胜出后，被 abort 的请求可能晚一步 reject，别留悬空 rejection
+  req.catch(() => {}); // 超时胜出后，被 abort 的请求可能晚一步 reject，别留悬空 rejection
   /** @type {*} */
   let timer = null;
   /** @type {*} */
   let timeoutErr = null;
-  const timeout = timeoutMs > 0
-    ? new Promise(/** @param {*} [_] @param {*} [reject] */ (_, reject) => {
-      timer = setTimeout(() => {
-        /* 顺序很重要：先把可读错误交给 race，再 abort 真实请求。
-         * 反过来的话，abort 会让 fetch 立刻 reject 一个底层英文
-         * （Chrome 是 `signal is aborted without reason`），它抢在中文提示前面，
-         * 用户看到的就是这句天书 —— 实测线上截图就是这个。 */
-        const err = new Error(`网络请求超时（${Math.round(timeoutMs / 1000)} 秒），请稍后重试`);
-        err.name = 'TimeoutError';
-        timeoutErr = err;
-        reject(err);
-        if (ctrl) {
-          // 带 reason 的 abort：个别实现即使同步 reject，拿到的也是我们的可读错误
-          try { ctrl.abort(err); } catch { ctrl.abort(); }
-        }
-      }, timeoutMs);
-    })
-    : null;
+  const timeout =
+    timeoutMs > 0
+      ? new Promise(
+          /** @param {*} [_] @param {*} [reject] */ (_, reject) => {
+            timer = setTimeout(() => {
+              /* 顺序很重要：先把可读错误交给 race，再 abort 真实请求。
+               * 反过来的话，abort 会让 fetch 立刻 reject 一个底层英文
+               * （Chrome 是 `signal is aborted without reason`），它抢在中文提示前面，
+               * 用户看到的就是这句天书 —— 实测线上截图就是这个。 */
+              const err = new Error(
+                `网络请求超时（${Math.round(timeoutMs / 1000)} 秒），请稍后重试`,
+              );
+              err.name = 'TimeoutError';
+              timeoutErr = err;
+              reject(err);
+              if (ctrl) {
+                // 带 reason 的 abort：个别实现即使同步 reject，拿到的也是我们的可读错误
+                try {
+                  ctrl.abort(err);
+                } catch {
+                  ctrl.abort();
+                }
+              }
+            }, timeoutMs);
+          },
+        )
+      : null;
 
   const raced = timeout ? Promise.race([req, timeout]) : req;
   return raced
-    .catch(/** @param {*} [err] */ (err) => {
-      // 兜一层：某些实现对 abort 是同步 reject，仍可能抢在中文错误前面
-      if (timeoutErr && err !== timeoutErr) throw timeoutErr;
-      throw err;
-    })
+    .catch(
+      /** @param {*} [err] */ (err) => {
+        // 兜一层：某些实现对 abort 是同步 reject，仍可能抢在中文错误前面
+        if (timeoutErr && err !== timeoutErr) throw timeoutErr;
+        throw err;
+      },
+    )
     .finally(() => {
       if (timer) clearTimeout(timer);
       if (ctrl && outerSignal) outerSignal.removeEventListener('abort', onOuterAbort);
@@ -97,9 +112,9 @@ function fetchOnce(url, opts, timeoutMs, outerSignal) {
 }
 
 /** 带登录态处理的 fetch：401 时跳登录页；GET 失败有限重试；所有请求都有超时上限。
-*@param {*} [url]
+ *@param {*} [url]
  * @param {*} opts
-*/
+ */
 export async function apiFetch(url, opts = {}) {
   const o = opts || {};
   const method = String(o.method || 'GET').toUpperCase();
@@ -107,11 +122,12 @@ export async function apiFetch(url, opts = {}) {
   const attempts = idempotent && o.retry !== false ? 2 : 1;
   // 调用方自带 signal 且没写 timeoutMs → 由它自己负责超时；
   // 显式给了 timeoutMs（哪怕同时带 signal，比如列表请求的取消链）→ 仍按这个上限超时。
-  const timeoutMs = o.timeoutMs === 0
-    ? 0
-    : (o.signal && o.timeoutMs == null
+  const timeoutMs =
+    o.timeoutMs === 0
       ? 0
-      : (o.timeoutMs || (idempotent ? NET_TIMEOUT_MS : NET_WRITE_TIMEOUT_MS)));
+      : o.signal && o.timeoutMs == null
+        ? 0
+        : o.timeoutMs || (idempotent ? NET_TIMEOUT_MS : NET_WRITE_TIMEOUT_MS);
 
   /** @type {any} */
   let lastErr = null;
@@ -119,27 +135,32 @@ export async function apiFetch(url, opts = {}) {
     try {
       const res = await fetchOnce(url, o, timeoutMs, o.signal);
       if (res.status === 401) {
-        location.replace('/login.html?next=' + encodeURIComponent(location.pathname + location.search));
+        location.replace(
+          '/login.html?next=' + encodeURIComponent(location.pathname + location.search),
+        );
         throw new Error('未登录');
       }
       /* 首次登录未改密：服务端对所有业务接口回 403 E_PASSWORD_CHANGE_REQUIRED。
        * 这里统一把人送到改密页 —— 各调用方自己弹「未授权」只会让人以为账号坏了。
        * clone() 读码不消费原响应体，调用方拿到 res 仍能正常解析。 */
       if (res.status === 403 && !o.skipPasswordGate) {
-        const body = await res.clone().json().catch(() => null);
+        const body = await res
+          .clone()
+          .json()
+          .catch(() => null);
         if (body && body.error === 'E_PASSWORD_CHANGE_REQUIRED') {
           location.replace('/change-password.html');
           throw new Error('需要先修改初始密码');
         }
       }
       if (i + 1 < attempts && idempotent && isRetryableStatus(res.status)) {
-        lastErr = new Error('HTTP ' + res.status);   // 不消费 body，留给最终那次响应
+        lastErr = new Error('HTTP ' + res.status); // 不消费 body，留给最终那次响应
       } else {
         return res;
       }
     } catch (err) {
-      if (err && err.message === '未登录') throw err;          // 401 不重试
-      if (o.signal && o.signal.aborted) throw err;             // 调用方主动取消
+      if (err && err.message === '未登录') throw err; // 401 不重试
+      if (o.signal && o.signal.aborted) throw err; // 调用方主动取消
       lastErr = err;
       if (i + 1 >= attempts) throw err;
     }
@@ -157,15 +178,15 @@ export function goLogin() {
  * 上传导出包：请求体就是文件本身（服务端按 `application/gzip` 原始流接收），
  * 不套 multipart。浏览器给 File 请求体自动带 Content-Length；同源 POST 自带
  * Origin / Referer，CSRF 中间件照常放行。401 仍由 apiFetch 统一跳登录页。
-  * @param {*} [url]
+ * @param {*} [url]
  * @param {*} [file]
-*/
+ */
 export async function uploadArchive(url, file) {
   return apiFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/gzip' },
     body: file,
-    timeoutMs: 0,   // 导入 / 还原包可能几十 MB，弱网下上传很久，别被 30s 写超时误杀
+    timeoutMs: 0, // 导入 / 还原包可能几十 MB，弱网下上传很久，别被 30s 写超时误杀
   });
 }
 
@@ -181,13 +202,13 @@ export async function uploadArchive(url, file) {
  *  ⚠️ 会消费 res 的 body，只能在失败分支调用；成功分支的 `res.json()` 各走各的，
  *  互斥分支不受影响（各处本来就是这个结构）。
  *@param {*} [res]
-*/
+ */
 export async function httpError(res) {
   let msg = '';
   try {
     const d = await res.json();
     msg = errorText(d);
-  } catch (e) {
+  } catch (_e) {
     /* 非 JSON（网关 HTML、空 body、被截断）→ 退回状态码 */
   }
   /** @type {any} */
@@ -201,9 +222,9 @@ export async function httpError(res) {
  *  计数会随文章无限增长，直接显示会把频道行撑变形。不足 1000 原样显示；
  *  之后按量级换单位，并保留一位小数（四舍五入；到 10 个单位以上只用整数），
  *  例如 1234 → 1.2k、9999 → 10k、12345 → 1.2w。精确值仍放在 tooltip 里。
-  * @param {*} [v]
+ * @param {*} [v]
  * @param {*} [unit]
-*/
+ */
 function compactUnit(v, unit) {
   const tenths = Math.round(v / (unit / 10));
   if (tenths >= 100) return String(Math.round(tenths / 10));
@@ -222,8 +243,8 @@ export function fmtBadge(n) {
 }
 
 /** 完整时间戳，用于 title 提示与展开体的发布时间
-*@param {*} [ts]
-*/
+ *@param {*} [ts]
+ */
 export function fmtFull(ts) {
   if (!ts) return '';
   const d = new Date(ts);
@@ -235,8 +256,8 @@ export function fmtFull(ts) {
 }
 
 /** 文章日期：始终显示到分钟。今天/昨天给「今天 HH:mm」，同年给「MM-DD HH:mm」，跨年补上年份
-*@param {*} [ts]
-*/
+ *@param {*} [ts]
+ */
 export function fmtDate(ts) {
   if (!ts) return '';
   const d = new Date(ts);
@@ -250,7 +271,8 @@ export function fmtDate(ts) {
   const yesterday = new Date(now.getTime() - 86400000).toDateString() === d.toDateString();
   if (sameDay) return `今天 ${hm}`;
   if (yesterday) return `昨天 ${hm}`;
-  if (d.getFullYear() === now.getFullYear()) return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
+  if (d.getFullYear() === now.getFullYear())
+    return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
 }
 
@@ -300,7 +322,7 @@ export function toast(msg, ok = true, opts = {}) {
   const ms = (opts && opts.ms) || (action ? 6000 : 1900);
   // 失败提示照旧立刻出现（比撤销更急）；普通成功提示排队，别把撤销按钮挤掉
   if (!action && ok && toastState.show && typeof toastState.action === 'function') {
-    pendingToast = { msg, ok, ms };   // 排队，等撤销窗口结束后再露出来
+    pendingToast = { msg, ok, ms }; // 排队，等撤销窗口结束后再露出来
     return;
   }
   pendingToast = null;
@@ -312,7 +334,13 @@ export function runToastAction() {
   const action = toastState.action;
   if (typeof action !== 'function') return;
   clearTimeout(toastTimer);
-  toastState = { msg: toastState.msg, ok: toastState.ok, show: false, action: null, actionText: '' };
+  toastState = {
+    msg: toastState.msg,
+    ok: toastState.ok,
+    show: false,
+    action: null,
+    actionText: '',
+  };
   emitOverlays();
   /** @type {*} */
   const queued = pendingToast;
@@ -332,15 +360,20 @@ export function runToastAction() {
  *   const pwd = await confirm({ title: '设置新密码', input: { placeholder: '至少 4 位', type: 'password' } });
  */
 export let confirmState = {
-  open: false, title: '', desc: '', confirmText: '确定', cancelText: '取消',
-  danger: false, input: null,
+  open: false,
+  title: '',
+  desc: '',
+  confirmText: '确定',
+  cancelText: '取消',
+  danger: false,
+  input: null,
 };
 /** @type {*} */
 let confirmResolve = null;
 
 /** 打开确认框；返回 Promise<boolean|string|null>
-*@param {*} opts
-*/
+ *@param {*} opts
+ */
 export function confirm(opts = {}) {
   // 上一个还没结束就先按「取消」结算，避免 Promise 永久挂起
   if (confirmResolve) {
@@ -348,7 +381,7 @@ export function confirm(opts = {}) {
     confirmResolve = null;
     prev(confirmState.input ? null : false);
   }
-  const o = typeof opts === 'string' ? { title: opts } : (opts || {});
+  const o = typeof opts === 'string' ? { title: opts } : opts || {};
   confirmState = {
     open: true,
     title: o.title || '确认操作',
@@ -359,13 +392,17 @@ export function confirm(opts = {}) {
     input: o.input || null,
   };
   emitOverlays();
-  return new Promise(/** @param {*} [resolve] */ (resolve) => { confirmResolve = resolve; });
+  return new Promise(
+    /** @param {*} [resolve] */ (resolve) => {
+      confirmResolve = resolve;
+    },
+  );
 }
 
 /** 结算确认框：ok=true 时返回 true（或有输入框时返回输入值）
-*@param {*} [ok]
+ *@param {*} [ok]
  * @param {*} [value]
-*/
+ */
 export function settleConfirm(ok, value) {
   /** @type {*} */
   const r = confirmResolve;
@@ -374,12 +411,17 @@ export function settleConfirm(ok, value) {
   confirmState = { ...confirmState, open: false };
   emitOverlays();
   if (!r) return;
-  if (!ok) { r(withInput ? null : false); return; }
+  if (!ok) {
+    r(withInput ? null : false);
+    return;
+  }
   r(withInput ? String(value == null ? '' : value) : true);
 }
 
 /** 点遮罩 / 右键 / Esc 都走「取消」 */
-export function cancelConfirm() { settleConfirm(false); }
+export function cancelConfirm() {
+  settleConfirm(false);
+}
 
 /**
  * @param {*} [text]
@@ -390,7 +432,9 @@ export async function copyText(text) {
       await navigator.clipboard.writeText(text);
       return true;
     }
-  } catch (_) { /* 降级 */ }
+  } catch (_) {
+    /* 降级 */
+  }
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -401,7 +445,9 @@ export async function copyText(text) {
     const ok = document.execCommand('copy');
     document.body.removeChild(ta);
     return ok;
-  } catch (_) { return false; }
+  } catch (_) {
+    return false;
+  }
 }
 
 /**
@@ -409,30 +455,39 @@ export async function copyText(text) {
  */
 export function escapeHtml(s) {
   return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**
  * @param {*} [n]
  */
 export function shortFeedName(n) {
-  return String(n || '').replace(/\s*-\s*Telegram Channel\s*$/i, '').trim();
+  return String(n || '')
+    .replace(/\s*-\s*Telegram Channel\s*$/i, '')
+    .trim();
 }
 
 /** 频道的展示名：自定义名优先，否则抓取来的标题，再否则 url
-*@param {*} [f]
-*/
+ *@param {*} [f]
+ */
 export function feedTitle(f) {
   if (!f || typeof f !== 'object') return f || '';
   return f.customTitle || f.title || f.url || '';
 }
 
 /** 通知视图导航 / ⋮ 菜单重绘：它们监听 __shellTick 后重读 getShell() */
-export function emitShell() { emit(EVENT.SHELL); }
+export function emitShell() {
+  emit(EVENT.SHELL);
+}
 
 /** 通知覆盖层（src/ui/Overlays.jsx）重绘：toast / 新内容浮标 / 图片灯箱都归它渲染 */
-export function emitOverlays() { emit(EVENT.OVERLAYS); }
+export function emitOverlays() {
+  emit(EVENT.OVERLAYS);
+}
 
 /* ---------------- 链接：标签 / 复制 / 打开原文 ---------------- */
 
@@ -453,13 +508,17 @@ export const HOST_LABELS = [
  */
 export function linkLabel(url) {
   let host = '';
-  try { host = new URL(url).hostname.toLowerCase(); } catch (_) { return '链接'; }
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch (_) {
+    return '链接';
+  }
   for (const [re, name] of HOST_LABELS) if (re.test(host)) return name;
   return host.replace(/^www\./, '');
 }
 /** 菜单里显示的短地址：去协议、超长中间省略
-*@param {*} [url]
-*/
+ *@param {*} [url]
+ */
 export function shortUrl(url) {
   const s = String(url).replace(/^https?:\/\//i, '');
   return s.length > 46 ? s.slice(0, 30) + '…' + s.slice(-12) : s;
@@ -501,7 +560,10 @@ export function onLinkMenuKey(ev) {
     closeLinkMenu();
     return;
   }
-  if (ev.key === 'Tab') { closeLinkMenu(); return; }
+  if (ev.key === 'Tab') {
+    closeLinkMenu();
+    return;
+  }
   if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Home' || ev.key === 'End') {
     ev.preventDefault();
     ev.stopPropagation();
@@ -511,7 +573,11 @@ export function onLinkMenuKey(ev) {
     let next;
     if (ev.key === 'Home') next = 0;
     else if (ev.key === 'End') next = items.length - 1;
-    else next = Math.max(0, Math.min(items.length - 1, (idx < 0 ? 0 : idx) + (ev.key === 'ArrowDown' ? 1 : -1)));
+    else
+      next = Math.max(
+        0,
+        Math.min(items.length - 1, Math.max(idx, 0) + (ev.key === 'ArrowDown' ? 1 : -1)),
+      );
     items[next].focus();
   }
 }
@@ -527,11 +593,15 @@ export function openLinkMenu(anchor, urls, onPick) {
   const menu = document.createElement('div');
   menu.className = 'link-menu';
   menu.setAttribute('role', 'menu');
-  menu.innerHTML = urls.map(/** @param {*} [u] @param {*} [i] */ (u, i) => `
+  menu.innerHTML = urls
+    .map(
+      /** @param {*} [u] @param {*} [i] */ (u, i) => `
     <button type="button" class="link-menu-item" role="menuitem" data-i="${i}">
       <span class="link-menu-label">${escapeHtml(linkLabel(u))}</span>
       <span class="link-menu-url">${escapeHtml(shortUrl(u))}</span>
-    </button>`).join('');
+    </button>`,
+    )
+    .join('');
   document.body.appendChild(menu);
   linkMenuEl = menu;
 
@@ -539,7 +609,8 @@ export function openLinkMenu(anchor, urls, onPick) {
   const gap = 6;
   const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - menu.offsetWidth - 8));
   let top = r.bottom + gap;
-  if (top + menu.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - menu.offsetHeight - gap);
+  if (top + menu.offsetHeight > window.innerHeight - 8)
+    top = Math.max(8, r.top - menu.offsetHeight - gap);
   menu.style.left = left + 'px';
   menu.style.top = top + 'px';
 
@@ -548,13 +619,16 @@ export function openLinkMenu(anchor, urls, onPick) {
   const first = menu.querySelector('.link-menu-item');
   if (first) first.focus();
 
-  menu.addEventListener('click', /** @param {*} [ev] */ (ev) => {
-    const item = ev.target.closest('.link-menu-item');
-    if (!item) return;
-    const u = urls[Number(item.getAttribute('data-i'))];
-    closeLinkMenu();
-    if (u) onPick(u);
-  });
+  menu.addEventListener(
+    'click',
+    /** @param {*} [ev] */ (ev) => {
+      const item = ev.target.closest('.link-menu-item');
+      if (!item) return;
+      const u = urls[Number(item.getAttribute('data-i'))];
+      closeLinkMenu();
+      if (u) onPick(u);
+    },
+  );
   // 延后一帧再挂「点外面关闭」，否则这次点击本身就会把刚弹出的菜单关掉
   setTimeout(() => {
     document.addEventListener('click', onLinkMenuDocClick, true);
@@ -582,12 +656,14 @@ export function writeHash(hash) {
     if (!hash) return;
     if (location.hash === hash) return;
     history.replaceState(null, '', hash);
-  } catch (_) { /* 老浏览器 / 沙箱环境忽略 */ }
+  } catch (_) {
+    /* 老浏览器 / 沙箱环境忽略 */
+  }
 }
 
 /** 从 hash 里解析「视图 + 条目」：#cards / #reader / #reader/art/<id> / #ai …
-*@param {*} [hash]
-*/
+ *@param {*} [hash]
+ */
 export function parseHash(hash) {
   const h = hash || '';
   if (h.startsWith('#reader/art/')) return { tab: 'reader', artId: h.slice('#reader/art/'.length) };

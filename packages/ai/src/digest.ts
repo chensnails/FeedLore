@@ -13,10 +13,17 @@
  *    解析不到的直接丢弃（模型偶尔会编出「#99」）。宁可少一条，也不给用户一个死链。
  */
 
+import { type Digest, type DigestItem, DigestSchema, imgUrl } from '@feedlore/contract';
+import { type Db, digests, entries, feeds } from '@feedlore/db';
 import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
-import { digests, entries, feeds, type Db } from '@feedlore/db';
-import { DigestSchema, imgUrl, type Digest, type DigestItem } from '@feedlore/contract';
-import { chat, extractJson, type ChatMessage, type ChatUsage, type FetchLike, type ResolvedLlm } from './llm';
+import {
+  type ChatMessage,
+  type ChatUsage,
+  chat,
+  extractJson,
+  type FetchLike,
+  type ResolvedLlm,
+} from './llm';
 
 const WINDOW_MS = 24 * 3600 * 1000;
 const COLLECT_LIMIT = 3000;
@@ -45,7 +52,9 @@ export function shanghaiDate(d: Date = new Date()): string {
 }
 
 const clamp = (s: unknown, n: number): string => {
-  const t = String(s ?? '').replace(/\s+/g, ' ').trim();
+  const t = String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return t.length > n ? t.slice(0, n) + '…' : t;
 };
 
@@ -81,7 +90,13 @@ function toLine(e: PoolEntry, idx: number | ''): string {
   if (e.feedName) parts.push(`[${shortFeed(e.feedName)}]`);
   parts.push(e.name);
   if (e.desc) parts.push(`— ${clamp(e.desc, 80)}`);
-  if (e.tags.length) parts.push(e.tags.slice(0, 4).map((t) => '#' + t).join(' '));
+  if (e.tags.length)
+    parts.push(
+      e.tags
+        .slice(0, 4)
+        .map((t) => '#' + t)
+        .join(' '),
+    );
   if (e.size) parts.push(`(${e.size})`);
   return parts.join(' ');
 }
@@ -104,11 +119,13 @@ const SYSTEM_BODY =
   '你只输出 JSON，不输出任何解释性文字、不使用 Markdown 代码块。' +
   '注意：条目前的 #编号 仅用于标记引用，你在 comment 和 text 中不要重复输出该编号。';
 
-const systemPrompt = (llm: ResolvedLlm): string => SYSTEM_BODY + (llm.thinking ? ' /think' : ' /no_think');
+const systemPrompt = (llm: ResolvedLlm): string =>
+  SYSTEM_BODY + (llm.thinking ? ' /think' : ' /no_think');
 
 /* 用户自定义的「风格要求」只能追加在这句之后：JSON 骨架、键名和 ref 编号是解析契约，
  * 用户写飞了最多是日报难读，不该把结构改坏（改坏会静默降级成规则摘要）。 */
-const STYLE_GUARD = '额外要求（只影响选材、语气与篇幅；上面的 JSON 结构、键名和 #编号 约定不得改变）：';
+const STYLE_GUARD =
+  '额外要求（只影响选材、语气与篇幅；上面的 JSON 结构、键名和 #编号 约定不得改变）：';
 
 interface DigestMeta {
   range: string;
@@ -170,10 +187,20 @@ export interface AiUsageTotal {
   totalTokens: number;
 }
 
-export const EMPTY_USAGE: AiUsageTotal = { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+export const EMPTY_USAGE: AiUsageTotal = {
+  calls: 0,
+  promptTokens: 0,
+  completionTokens: 0,
+  totalTokens: 0,
+};
 
 /** 采集：过去 24 小时、该账号自己频道里的条目。 */
-async function collect(db: Db, ownerId: string, feedIds: number[] | null | undefined, sinceMs: number): Promise<PoolEntry[]> {
+async function collect(
+  db: Db,
+  ownerId: string,
+  feedIds: number[] | null | undefined,
+  sinceMs: number,
+): Promise<PoolEntry[]> {
   const since = new Date(sinceMs);
   const where = [
     // ⚠️ 这一条是多租户隔离的全部：entries 没有 owner 列，漏了就串数据
@@ -284,8 +311,10 @@ async function mapReduce(
 
   /* 分片并发：结果按批号回填，顺序与串行完全一致（终稿靠批号拼「第 N 批」），
    * 所以并发只影响耗时，不影响产物。单批失败仍按「这批没挑出东西」降级。 */
-  const mini: Array<{ base: PoolEntry[]; data: { summary?: unknown; notable?: Array<{ ref?: unknown; why?: unknown }> } }> =
-    new Array(chunks.length);
+  const mini: Array<{
+    base: PoolEntry[];
+    data: { summary?: unknown; notable?: Array<{ ref?: unknown; why?: unknown }> };
+  }> = new Array(chunks.length);
   let cursor = 0;
 
   const runChunk = async (ci: number): Promise<void> => {
@@ -322,13 +351,15 @@ async function mapReduce(
 
   const workers: Array<Promise<void>> = [];
   for (let w = 0; w < Math.min(MAP_CONCURRENCY, chunks.length); w += 1) {
-    workers.push((async () => {
-      while (cursor < chunks.length) {
-        const ci = cursor;
-        cursor += 1;
-        await runChunk(ci);
-      }
-    })());
+    workers.push(
+      (async () => {
+        while (cursor < chunks.length) {
+          const ci = cursor;
+          cursor += 1;
+          await runChunk(ci);
+        }
+      })(),
+    );
   }
   await Promise.all(workers);
 
@@ -340,12 +371,15 @@ async function mapReduce(
       const e = m.base[Number(n.ref) - 1];
       if (!e) continue;
       flat.push(e);
-      digestLines.push(`#${flat.length} ${toLine(e, '').replace(/^#\s*/, '')} — 关注点：${clamp(n.why, 20)}`);
+      digestLines.push(
+        `#${flat.length} ${toLine(e, '').replace(/^#\s*/, '')} — 关注点：${clamp(n.why, 20)}`,
+      );
     }
   });
 
   // 全部批次都没挑出东西（模型全在胡说）→ 退回单轮，拿前 90 条直出
-  if (!flat.length) return singlePass(compact.slice(0, SINGLE_LIMIT), meta, llm, style, fetchImpl, onUsage);
+  if (!flat.length)
+    return singlePass(compact.slice(0, SINGLE_LIMIT), meta, llm, style, fetchImpl, onUsage);
 
   const { content } = await chat(
     [
@@ -361,10 +395,16 @@ async function mapReduce(
 }
 
 /** 降级：不调模型，按频道分布 + 最新条目拼一份摘要。 */
-function ruleDigest(compact: PoolEntry[], reason: string): {
+function ruleDigest(
+  compact: PoolEntry[],
+  reason: string,
+): {
   overview: string;
   highlights: Array<{ text: string }>;
-  sections: Array<{ title: string; items: Array<{ comment: string; item?: DigestItem | null; ref?: number }> }>;
+  sections: Array<{
+    title: string;
+    items: Array<{ comment: string; item?: DigestItem | null; ref?: number }>;
+  }>;
   fallback: true;
 } {
   const byFeed = new Map<string, number>();
@@ -380,7 +420,12 @@ function ruleDigest(compact: PoolEntry[], reason: string): {
   return {
     overview:
       `过去 24 小时共采集 ${compact.length} 条更新，覆盖 ${byFeed.size} 个频道。` +
-      (topTags.length ? `高频标签：${topTags.slice(0, 6).map(([t]) => t).join('、')}。` : '') +
+      (topTags.length
+        ? `高频标签：${topTags
+            .slice(0, 6)
+            .map(([t]) => t)
+            .join('、')}。`
+        : '') +
       `（模型摘要不可用：${reason}）`,
     highlights: topFeeds.slice(0, 3).map(([f, n]) => ({ text: `${f} 更新 ${n} 条` })),
     sections: [
@@ -421,10 +466,7 @@ function ruleDigest(compact: PoolEntry[], reason: string): {
  */
 export async function fillDigestImages(db: Db, ownerId: string, digest: Digest): Promise<Digest> {
   type Holder = { item: DigestItem | null };
-  const holders: Holder[] = [
-    ...digest.highlights,
-    ...digest.sections.flatMap((s) => s.items),
-  ];
+  const holders: Holder[] = [...digest.highlights, ...digest.sections.flatMap((s) => s.items)];
   const missing = holders.filter((h) => h.item && !h.item.image && h.item.link);
   if (!missing.length) return digest;
 
@@ -472,7 +514,10 @@ export async function readDigest(db: Db, ownerId: string, date: string): Promise
   if (!row) return null;
   const parsed = DigestSchema.safeParse(row.payload);
   if (!parsed.success) {
-    console.error('[digest] the stored digest does not match the contract, treating it as missing:', parsed.error.issues[0]?.message);
+    console.error(
+      '[digest] the stored digest does not match the contract, treating it as missing:',
+      parsed.error.issues[0]?.message,
+    );
     return null;
   }
   return fillDigestImages(db, ownerId, parsed.data);
@@ -544,12 +589,18 @@ export async function generateDigest(input: GenerateInput): Promise<GenerateResu
   const style = typeof input.style === 'string' ? input.style.trim() : '';
 
   if (!compact.length) {
-    raw = { overview: '过去 24 小时没有采集到新条目。', highlights: [], sections: [], fallback: true };
+    raw = {
+      overview: '过去 24 小时没有采集到新条目。',
+      highlights: [],
+      sections: [],
+      fallback: true,
+    };
   } else {
     try {
-      const used = compact.length > SINGLE_LIMIT
-        ? await mapReduce(compact, meta, llm, style, fetchImpl, onUsage)
-        : await singlePass(compact, meta, llm, style, fetchImpl, onUsage);
+      const used =
+        compact.length > SINGLE_LIMIT
+          ? await mapReduce(compact, meta, llm, style, fetchImpl, onUsage)
+          : await singlePass(compact, meta, llm, style, fetchImpl, onUsage);
       // map-reduce 会把「终稿候选池」塞在 __pool 里带出来，ref 要按它解析
       const carried = used.__pool;
       if (Array.isArray(carried)) pool = carried as PoolEntry[];
@@ -566,8 +617,12 @@ export async function generateDigest(input: GenerateInput): Promise<GenerateResu
     return e ? itemOf(e) : null;
   };
 
-  const highlightsRaw = Array.isArray(raw.highlights) ? (raw.highlights as Array<Record<string, unknown>>) : [];
-  const sectionsRaw = Array.isArray(raw.sections) ? (raw.sections as Array<Record<string, unknown>>) : [];
+  const highlightsRaw = Array.isArray(raw.highlights)
+    ? (raw.highlights as Array<Record<string, unknown>>)
+    : [];
+  const sectionsRaw = Array.isArray(raw.sections)
+    ? (raw.sections as Array<Record<string, unknown>>)
+    : [];
 
   const digest: Digest = {
     date,
@@ -595,7 +650,8 @@ export async function generateDigest(input: GenerateInput): Promise<GenerateResu
         items: (Array.isArray(s.items) ? (s.items as Array<Record<string, unknown>>) : [])
           .map((it) => ({
             comment: clamp(stripRef(it.comment ?? ''), 60),
-            item: it.item && typeof it.item === 'object' ? (it.item as DigestItem) : resolve(it.ref),
+            item:
+              it.item && typeof it.item === 'object' ? (it.item as DigestItem) : resolve(it.ref),
           }))
           .filter((it): it is { comment: string; item: DigestItem } => Boolean(it.item))
           .slice(0, 8),

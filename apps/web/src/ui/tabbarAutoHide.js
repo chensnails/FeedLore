@@ -19,12 +19,12 @@
  * 就是多一处会跟 CSS 走散的真源 —— 这个项目以前吃过亏（断点合并 / 令牌失配）。
  */
 
-import { on, EVENT } from '../kernel/events.js';
+import { EVENT, on } from '../kernel/events.js';
 
-const HIDE_AFTER = 24;   // 向下累计到这个位移才收起
-const SHOW_AFTER = 6;    // 向上只要这么多就回来
-const EDGE = 32;         // 贴顶 / 贴底这么大范围内强制展开
-const COOLDOWN = 120;    // 两次收起之间的最小间隔
+const HIDE_AFTER = 24; // 向下累计到这个位移才收起
+const SHOW_AFTER = 6; // 向上只要这么多就回来
+const EDGE = 32; // 贴顶 / 贴底这么大范围内强制展开
+const COOLDOWN = 120; // 两次收起之间的最小间隔
 const CLASS = 'tabbar-tucked';
 // 只认这三个滚动容器：抽屉 / 弹层 / 卡片详情里的滚动不该让底栏"消失"
 const SCROLLERS = '.reader-main, #cardsRoot > main.wrap, #aiView';
@@ -38,9 +38,9 @@ export function installTabbarAutoHide(doc = document, options = {}) {
   const cooldown = typeof options.cooldown === 'number' ? options.cooldown : COOLDOWN;
 
   /** @type {*} */
-  let nav = null;        // 当前跟踪的滚动容器
+  let nav = null; // 当前跟踪的滚动容器
   let lastTop = 0;
-  let acc = 0;           // 带符号累计位移：正 = 向下，负 = 向上
+  let acc = 0; // 带符号累计位移：正 = 向下，负 = 向上
   let tucked = false;
   let lastFlip = 0;
 
@@ -71,32 +71,51 @@ export function installTabbarAutoHide(doc = document, options = {}) {
     const el = target && target.nodeType === 9 ? doc.scrollingElement : target;
     if (!el || el.nodeType !== 1 || typeof el.matches !== 'function') return;
     if (!el.matches(SCROLLERS)) return;
-    if (el.scrollHeight <= el.clientHeight) return;   // 不可滚动的容器不管
+    if (el.scrollHeight <= el.clientHeight) return; // 不可滚动的容器不管
 
     const top = el.scrollTop;
     const max = el.scrollHeight - el.clientHeight;
 
     // 换容器（切视图）：基准归零，并保证导航是展开的
-    if (el !== nav) { nav = el; lastTop = top; acc = 0; apply(false); return; }
+    if (el !== nav) {
+      nav = el;
+      lastTop = top;
+      acc = 0;
+      apply(false);
+      return;
+    }
 
     const dy = top - lastTop;
     lastTop = top;
 
     // 贴顶 / 贴底：无视方向，强制展开（滚到底想切视图时这一步是刚需）
-    if (top <= EDGE || top >= max - EDGE) { acc = 0; apply(false); return; }
+    if (top <= EDGE || top >= max - EDGE) {
+      acc = 0;
+      apply(false);
+      return;
+    }
 
     // 拖滚动条 / 深链跳转：一帧跨过整屏，方向不可信，只更新基准
-    if (Math.abs(dy) > el.clientHeight) { acc = 0; return; }
+    if (Math.abs(dy) > el.clientHeight) {
+      acc = 0;
+      return;
+    }
 
     // 只累计「有意义」的那一侧：收起后只认上翻，展开后只认下翻。
     // 反方向的位移直接把累积清零 —— 否则收起后继续下滚会把 acc 顶在正数，
     // 随后 20px 的上翻会被吞掉，用户会遇到「往上翻没反应」。
     if (tucked) {
       acc = dy < 0 ? acc + dy : 0;
-      if (-acc >= SHOW_AFTER) { acc = 0; apply(false); }
+      if (-acc >= SHOW_AFTER) {
+        acc = 0;
+        apply(false);
+      }
     } else {
       acc = dy > 0 ? acc + dy : 0;
-      if (acc >= HIDE_AFTER && Date.now() - lastFlip >= cooldown) { acc = 0; apply(true); }
+      if (acc >= HIDE_AFTER && Date.now() - lastFlip >= cooldown) {
+        acc = 0;
+        apply(true);
+      }
     }
   }
 

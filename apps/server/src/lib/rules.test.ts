@@ -1,7 +1,7 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ruleMatches, mergeRuleEffects } from './rules';
-import { sanitizeRules, type Rule } from './prefs';
+import test from 'node:test';
+import { type Rule, sanitizeRules } from './prefs';
+import { mergeRuleEffects, ruleMatches } from './rules';
 
 const feed = { id: 10, groupName: '科技' };
 const otherFeed = { id: 99, groupName: '其它' };
@@ -11,7 +11,12 @@ function rule(over: Partial<Rule> = {}): Rule {
     id: 'r1',
     name: '锂电',
     on: true,
-    when: { scope: { all: true, groups: [], feeds: [] }, keywords: ['锂电'], match: 'any', tag: '' },
+    when: {
+      scope: { all: true, groups: [], feeds: [] },
+      keywords: ['锂电'],
+      match: 'any',
+      tag: '',
+    },
     then: { addTags: ['新能源'], favorite: false, markRead: false, notify: false },
     ...over,
   };
@@ -26,13 +31,22 @@ test('ruleMatches: 关键词不命中', () => {
 });
 
 test('ruleMatches: match=all 需要全部关键词', () => {
-  const r = rule({ when: { scope: { all: true, groups: [], feeds: [] }, keywords: ['锂电', '财报'], match: 'all', tag: '' } });
+  const r = rule({
+    when: {
+      scope: { all: true, groups: [], feeds: [] },
+      keywords: ['锂电', '财报'],
+      match: 'all',
+      tag: '',
+    },
+  });
   assert.equal(ruleMatches(r, { guid: 'g', title: '锂电财报' }, feed), true);
   assert.equal(ruleMatches(r, { guid: 'g', title: '锂电新闻' }, feed), false);
 });
 
 test('ruleMatches: 标签条件', () => {
-  const r = rule({ when: { scope: { all: true, groups: [], feeds: [] }, keywords: [], match: 'any', tag: 'AI' } });
+  const r = rule({
+    when: { scope: { all: true, groups: [], feeds: [] }, keywords: [], match: 'any', tag: 'AI' },
+  });
   assert.equal(ruleMatches(r, { guid: 'g', title: 'x', tags: ['ai'] }, feed), true);
   assert.equal(ruleMatches(r, { guid: 'g', title: 'x', tags: ['财经'] }, feed), false);
 });
@@ -42,7 +56,14 @@ test('ruleMatches: on=false 不命中', () => {
 });
 
 test('ruleMatches: scope 限定频道', () => {
-  const r = rule({ when: { scope: { all: false, groups: [], feeds: [999] }, keywords: ['锂电'], match: 'any', tag: '' } });
+  const r = rule({
+    when: {
+      scope: { all: false, groups: [], feeds: [999] },
+      keywords: ['锂电'],
+      match: 'any',
+      tag: '',
+    },
+  });
   assert.equal(ruleMatches(r, { guid: 'g', title: '锂电' }, feed), false);
   assert.equal(ruleMatches(r, { guid: 'g', title: '锂电' }, otherFeed), false);
 });
@@ -50,7 +71,11 @@ test('ruleMatches: scope 限定频道', () => {
 test('mergeRuleEffects: 合并标签/收藏/通知', () => {
   const rules = [
     rule({ id: 'a', then: { addTags: ['新能源'], favorite: true, markRead: false, notify: true } }),
-    rule({ id: 'b', name: '行业', then: { addTags: ['科技'], favorite: false, markRead: true, notify: true } }),
+    rule({
+      id: 'b',
+      name: '行业',
+      then: { addTags: ['科技'], favorite: false, markRead: true, notify: true },
+    }),
   ];
   const eff = mergeRuleEffects(rules, { guid: 'g', title: '锂电行业' }, feed);
   assert.ok(eff);
@@ -65,7 +90,10 @@ test('mergeRuleEffects: 无命中返回 null', () => {
 });
 
 test('sanitizeRules: 丢弃无条件规则', () => {
-  assert.equal(sanitizeRules([{ when: { keywords: [], tag: '' }, then: { favorite: true } }]).length, 0);
+  assert.equal(
+    sanitizeRules([{ when: { keywords: [], tag: '' }, then: { favorite: true } }]).length,
+    0,
+  );
 });
 
 test('sanitizeRules: 丢弃无动作规则', () => {

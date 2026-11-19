@@ -5,9 +5,9 @@
  * 触发后轮询 /api/version 直到版本号变化（请求失败视为容器重启中），完成后刷新。 */
 
 import { core } from '@core';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
+const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
 const GH_REPO = 'https://github.com/chensnails/feedlore';
 
@@ -21,7 +21,7 @@ export function AboutPane() {
   /** @type {any} */
   const [checking, setChecking] = useState(false);
   /** @type {any} */
-  const [updating, setUpdating] = useState(false);   // 一键更新：已触发，等 watchtower 拉镜像重启
+  const [updating, setUpdating] = useState(false); // 一键更新：已触发，等 watchtower 拉镜像重启
   /** @type {*} */
   const [updateEnabled, setUpdateEnabled] = useState(null); // 是否接入一键更新通道（镜像+watchtower）；null=未知
 
@@ -36,11 +36,13 @@ export function AboutPane() {
         const d = await res.json();
         if (!dead) setVersion('v' + (d.version || '—'));
         if (!dead && d.updateEnabled !== undefined) setUpdateEnabled(!!d.updateEnabled);
-      } catch (err) {
+      } catch (_err) {
         if (!dead) setVersion('读取失败');
       }
     })();
-    return () => { dead = true; };
+    return () => {
+      dead = true;
+    };
   }, []);
 
   const check = async () => {
@@ -51,7 +53,12 @@ export function AboutPane() {
       const d = await res.json().catch(() => ({}));
       if (!d.ok) throw new Error(S().errText(d, 'HTTP ' + res.status));
       if (d.hasUpdate) {
-        setResult({ kind: 'upd', latest: d.latest, current: d.current, releaseUrl: d.releaseUrl || '' });
+        setResult({
+          kind: 'upd',
+          latest: d.latest,
+          current: d.current,
+          releaseUrl: d.releaseUrl || '',
+        });
       } else {
         setResult({ kind: 'ok', current: d.current });
       }
@@ -92,7 +99,9 @@ export function AboutPane() {
           setTimeout(() => window.location.reload(), 1200);
           return;
         }
-      } catch (_) { /* 重启中：连接失败继续等 */ }
+      } catch (_) {
+        /* 重启中：连接失败继续等 */
+      }
       if (Date.now() - started > 5 * 60 * 1000) {
         setUpdating(false);
         S().toast('更新等待超时（5 分钟），请稍后手动刷新查看版本', false);
@@ -108,7 +117,9 @@ export function AboutPane() {
       <div className="about-brand">
         <img className="about-logo" src="/favicon.svg" alt="笺川" width="56" height="56" />
         <div className="about-brand-txt">
-          <h3 className="about-name">笺川 <span className="about-en">FeedLore</span></h3>
+          <h3 className="about-name">
+            笺川 <span className="about-en">FeedLore</span>
+          </h3>
           <p className="about-slogan">拾取值得读的 —— 自托管 RSS 阅读器 · 卡片墙</p>
         </div>
       </div>
@@ -119,11 +130,19 @@ export function AboutPane() {
         </div>
         <div className="about-kv-row">
           <dt>仓库地址</dt>
-          <dd><a href={GH_REPO} target="_blank" rel="noopener">github.com/chensnails/feedlore</a></dd>
+          <dd>
+            <a href={GH_REPO} target="_blank" rel="noopener">
+              github.com/chensnails/feedlore
+            </a>
+          </dd>
         </div>
         <div className="about-kv-row">
           <dt>开源许可</dt>
-          <dd><a href={GH_REPO + '/blob/main/LICENSE'} target="_blank" rel="noopener">GPL-3.0</a></dd>
+          <dd>
+            <a href={GH_REPO + '/blob/main/LICENSE'} target="_blank" rel="noopener">
+              GPL-3.0
+            </a>
+          </dd>
         </div>
       </dl>
       <div className="about-check">
@@ -138,7 +157,10 @@ export function AboutPane() {
         </button>
       </div>
       {isAdmin && updateEnabled === false && (
-        <p className="about-note">当前部署未接入一键更新通道（仅镜像模式 + Watchtower 支持）。检测到新版本时，请手动更新部署。</p>
+        <p className="about-note">
+          当前部署未接入一键更新通道（仅镜像模式 + Watchtower
+          支持）。检测到新版本时，请手动更新部署。
+        </p>
       )}
       {result && result.kind === 'upd' && (
         <div className="test-result show upd" role="status">
@@ -146,7 +168,9 @@ export function AboutPane() {
           {result.releaseUrl && (
             <>
               {' · '}
-              <a href={result.releaseUrl} target="_blank" rel="noopener">查看发布</a>
+              <a href={result.releaseUrl} target="_blank" rel="noopener">
+                查看发布
+              </a>
             </>
           )}
           {isAdmin && updateEnabled && !updating && (
@@ -167,12 +191,18 @@ export function AboutPane() {
         </div>
       )}
       {result && result.kind === 'ok' && (
-        <div className="test-result show ok" role="status">已是最新版本（v{result.current}）</div>
+        <div className="test-result show ok" role="status">
+          已是最新版本（v{result.current}）
+        </div>
       )}
       {result && result.kind === 'err' && (
-        <div className="test-result show err" role="alert" aria-live="assertive">{result.msg}</div>
+        <div className="test-result show err" role="alert" aria-live="assertive">
+          {result.msg}
+        </div>
       )}
-      <p className="about-note">版本检测会向 GitHub 查询最新的 Release / Tag（结果缓存 10 分钟，不会频繁请求）。</p>
+      <p className="about-note">
+        版本检测会向 GitHub 查询最新的 Release / Tag（结果缓存 10 分钟，不会频繁请求）。
+      </p>
     </div>
   );
 }

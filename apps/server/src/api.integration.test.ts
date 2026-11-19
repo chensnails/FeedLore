@@ -23,25 +23,25 @@
  *    级联清掉（schema 里所有业务表对 users 都是 on delete cascade），但请只指向测试库。
  */
 
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { gunzipSync } from 'node:zlib';
-import { sql, eq } from 'drizzle-orm';
-import { z } from 'zod';
-import { createDb, feeds as feedsTable, entries as entriesTable, users } from '@feedlore/db';
+import { decryptSecret, ENCRYPTED_PREFIX, getCryptoSecret } from '@feedlore/ai';
 import { createAuth } from '@feedlore/auth';
-import { ENCRYPTED_PREFIX, decryptSecret, getCryptoSecret } from '@feedlore/ai';
 import {
-  feedsListResponse,
-  entriesListResponse,
   entries as entriesContract,
+  entriesListResponse,
+  feedsListResponse,
   HealthSchema,
   SessionDeviceSchema,
   SessionSchema,
 } from '@feedlore/contract';
+import { createDb, entries as entriesTable, feeds as feedsTable, users } from '@feedlore/db';
+import { eq, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { createApp } from './app';
-import { createTarGz } from './lib/tar';
 import { resetLoginAttempts } from './lib/rate-limit';
+import { createTarGz } from './lib/tar';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? '';
 
@@ -52,9 +52,7 @@ const ORIGIN = 'http://127.0.0.1:3211';
 process.env.AUTH_BASE_URL = ORIGIN;
 process.env.AUTH_TRUSTED_ORIGINS = ORIGIN;
 
-const SKIP = DATABASE_URL
-  ? false
-  : '未设置 DATABASE_URL —— 接口级测试需要一个已迁移的 Postgres';
+const SKIP = DATABASE_URL ? false : '未设置 DATABASE_URL —— 接口级测试需要一个已迁移的 Postgres';
 
 /** 断言语义：这些响应必须能被契约 schema 原样解析。 */
 function parse<T>(schema: z.ZodType<T>, body: unknown, what: string): T {
@@ -83,9 +81,20 @@ function readTarGz(raw: ArrayBuffer | Buffer): Map<string, Buffer> {
   for (;;) {
     const h = tar.subarray(off, off + 512);
     if (h.length < 512 || h.every((b) => b === 0)) break;
-    const text = (from: number, to: number) => h.subarray(from, to).toString('utf8').replace(/\0[\s\S]*$/, '');
+    const text = (from: number, to: number) =>
+      h
+        .subarray(from, to)
+        .toString('utf8')
+        .replace(/\0[\s\S]*$/, '');
     const name = text(0, 100);
-    const size = parseInt(h.subarray(124, 136).toString('ascii').replace(/\0[\s\S]*$/, '').trim() || '0', 8);
+    const size = parseInt(
+      h
+        .subarray(124, 136)
+        .toString('ascii')
+        .replace(/\0[\s\S]*$/, '')
+        .trim() || '0',
+      8,
+    );
     files.set(name, tar.subarray(off + 512, off + 512 + size));
     off += 512 + Math.ceil(size / 512) * 512;
   }
@@ -184,7 +193,14 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     });
 
     await t.test('未登录访问受保护端点：401 而不是 500', async () => {
-      for (const path of ['/api/feeds', '/api/entries', '/api/users', '/api/prefs', '/api/export', '/api/backup']) {
+      for (const path of [
+        '/api/feeds',
+        '/api/entries',
+        '/api/users',
+        '/api/prefs',
+        '/api/export',
+        '/api/backup',
+      ]) {
         const res = await call(path);
         assert.equal(res.status, 401, `${path} 未登录应为 401（500 说明中间件或 DB 抛了）`);
       }
@@ -366,7 +382,11 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     await t.test('批量已读：回执带批次时间戳，撤销只回滚这一批', async () => {
       const [feed] = await db
         .insert(feedsTable)
-        .values({ ownerId: userId, url: 'https://example.com/itest-undo.xml', title: '撤销测试频道' })
+        .values({
+          ownerId: userId,
+          url: 'https://example.com/itest-undo.xml',
+          title: '撤销测试频道',
+        })
         .returning({ id: feedsTable.id });
       assert.ok(feed);
 
@@ -377,9 +397,16 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
           { feedId: feed.id, guid: 'itest-undo-3', title: '撤销三' },
         ]);
 
-        const r = await call('/api/entries/read-all', { method: 'POST', json: { feeds: [feed.id] } });
+        const r = await call('/api/entries/read-all', {
+          method: 'POST',
+          json: { feeds: [feed.id] },
+        });
         assert.equal(r.status, 200);
-        const body = parse(entriesContract.readAll.response, await r.json(), 'POST /api/entries/read-all');
+        const body = parse(
+          entriesContract.readAll.response,
+          await r.json(),
+          'POST /api/entries/read-all',
+        );
         assert.equal(body.updated, 3);
         assert.ok(body.undo.at.length >= 10, '撤销凭据必须是批次时间戳');
 
@@ -389,7 +416,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
           .values({ feedId: feed.id, guid: 'itest-undo-late', title: '批次之后标读' })
           .returning({ id: entriesTable.id });
         assert.ok(later);
-        const patch = await call(`/api/entries/${later.id}`, { method: 'PATCH', json: { isRead: true } });
+        const patch = await call(`/api/entries/${later.id}`, {
+          method: 'PATCH',
+          json: { isRead: true },
+        });
         assert.equal(patch.status, 200);
 
         const u = await call('/api/entries/read-all/undo', {
@@ -397,11 +427,19 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
           json: { feeds: [feed.id], at: body.undo.at },
         });
         assert.equal(u.status, 200);
-        const ub = parse(entriesContract.readAllUndo.response, await u.json(), 'POST /api/entries/read-all/undo');
+        const ub = parse(
+          entriesContract.readAllUndo.response,
+          await u.json(),
+          'POST /api/entries/read-all/undo',
+        );
         assert.equal(ub.reverted, 3);
 
         const rows = await db
-          .select({ guid: entriesTable.guid, isRead: entriesTable.isRead, readAt: entriesTable.readAt })
+          .select({
+            guid: entriesTable.guid,
+            isRead: entriesTable.isRead,
+            readAt: entriesTable.readAt,
+          })
           .from(entriesTable)
           .where(eq(entriesTable.feedId, feed.id));
         const byGuid = new Map(rows.map((row) => [row.guid, row]));
@@ -409,7 +447,11 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
           assert.equal(byGuid.get(guid)?.isRead, false, `${guid} 应被撤销`);
           assert.equal(byGuid.get(guid)?.readAt, null, `${guid} 的 read_at 应清空`);
         }
-        assert.equal(byGuid.get('itest-undo-late')?.isRead, true, '撤销误伤了批次之后单独标记的条目');
+        assert.equal(
+          byGuid.get('itest-undo-late')?.isRead,
+          true,
+          '撤销误伤了批次之后单独标记的条目',
+        );
 
         // 重复撤销：这一批已经回滚完，应返回 0 而不是再翻一遍别的行
         const again = await call('/api/entries/read-all/undo', {
@@ -417,7 +459,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
           json: { feeds: [feed.id], at: body.undo.at },
         });
         assert.equal(again.status, 200);
-        assert.equal(parse(entriesContract.readAllUndo.response, await again.json(), 'undo ×2').reverted, 0);
+        assert.equal(
+          parse(entriesContract.readAllUndo.response, await again.json(), 'undo ×2').reverted,
+          0,
+        );
       } finally {
         await db.execute(sql`delete from feeds where id = ${feed.id}`);
       }
@@ -545,7 +590,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
 
         const blocked = await app.request('/api/feeds', { headers: { cookie } });
         assert.equal(blocked.status, 403, '未改密时业务接口应 403');
-        assert.equal((await blocked.json() as { error?: string }).error, 'E_PASSWORD_CHANGE_REQUIRED');
+        assert.equal(
+          ((await blocked.json()) as { error?: string }).error,
+          'E_PASSWORD_CHANGE_REQUIRED',
+        );
 
         /* 会话状态必须仍可读：改密页靠它决定自己该不该在，否则会被自己的 403 挡住。 */
         const before = parse(
@@ -558,7 +606,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         const changed = await app.request('/api/account', {
           method: 'POST',
           headers: { origin: ORIGIN, cookie, 'content-type': 'application/json' },
-          body: JSON.stringify({ currentPassword: 'first-pass-1234', newPassword: 'first-pass-5678' }),
+          body: JSON.stringify({
+            currentPassword: 'first-pass-1234',
+            newPassword: 'first-pass-5678',
+          }),
         });
         assert.equal(changed.status, 200, '改密接口必须放行');
 
@@ -581,7 +632,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     /* ---------------------------------------------------------------- 设备管理 */
     await t.test('设备清单：只列本账号活跃会话，标记本机且不泄露 token', async () => {
       const name = `itest_dev_${Date.now().toString(36)}`;
-      await call('/api/users', { method: 'POST', json: { username: name, password: 'dev-pass-1234', role: 'user' } });
+      await call('/api/users', {
+        method: 'POST',
+        json: { username: name, password: 'dev-pass-1234', role: 'user' },
+      });
       const UA_DESKTOP = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0';
       const UA_PHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Version/17.0 Mobile Safari/604.1';
       const first = await loginAs(name, 'dev-pass-1234', UA_DESKTOP);
@@ -623,7 +677,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         headers: { origin: ORIGIN, cookie: first },
       });
       assert.equal(selfRevoke.status, 400);
-      assert.equal(((await selfRevoke.json()) as { error: string }).error, 'E_CANNOT_REVOKE_CURRENT');
+      assert.equal(
+        ((await selfRevoke.json()) as { error: string }).error,
+        'E_CANNOT_REVOKE_CURRENT',
+      );
       assert.equal((await app.request('/api/feeds', { headers: { cookie: first } })).status, 200);
 
       // 不存在的 id → 404 而不是 500
@@ -659,7 +716,11 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         });
 
       assert.equal((await post({})).status, 403, '没有 Origin/Referer 时应拒绝');
-      assert.equal((await post({ origin: 'https://evil.example' })).status, 403, '外站 Origin 应拒绝');
+      assert.equal(
+        (await post({ origin: 'https://evil.example' })).status,
+        403,
+        '外站 Origin 应拒绝',
+      );
       assert.equal(
         (await post({ referer: 'https://evil.example/phish.html' })).status,
         403,
@@ -688,7 +749,9 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       const files = readTarGz(raw);
 
       const manifest = JSON.parse(files.get('manifest.json')!.toString('utf8')) as {
-        kind: string; username: string; counts: { feeds: number; entries: number };
+        kind: string;
+        username: string;
+        counts: { feeds: number; entries: number };
       };
       assert.equal(manifest.kind, 'user');
       assert.equal(manifest.username, username);
@@ -696,7 +759,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal(manifest.counts.entries, 2);
 
       const feeds = JSON.parse(files.get('feeds.json')!.toString('utf8')) as Array<{ url: string }>;
-      assert.deepEqual(feeds.map((f) => f.url), ['https://example.com/itest-feed.xml']);
+      assert.deepEqual(
+        feeds.map((f) => f.url),
+        ['https://example.com/itest-feed.xml'],
+      );
 
       const batches = [...files.keys()].filter((k) => /^entries-\d{4}\.jsonl$/.test(k));
       assert.equal(batches.length, 1, '两条条目应只写一个批次文件');
@@ -714,7 +780,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.ok(files.has('digests.json'));
       assert.ok(files.has('prefs.json'));
       assert.ok(!files.has('llm.json'), '未勾选时不应出现 llm.json');
-      assert.ok(![...files.keys()].some((k) => /session|verification/i.test(k)), '包里不应有会话文件');
+      assert.ok(
+        ![...files.keys()].some((k) => /session|verification/i.test(k)),
+        '包里不应有会话文件',
+      );
     });
 
     await t.test('账号导出：勾选且确有配置时才带 llm.json', async () => {
@@ -762,7 +831,13 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
 
       const manifest = JSON.parse(files.get('manifest.json')!.toString('utf8')) as {
         kind: string;
-        includes: { sessions: boolean; aiTags: boolean; mcpTokens: boolean; aiUsage: boolean; aiJobs: boolean };
+        includes: {
+          sessions: boolean;
+          aiTags: boolean;
+          mcpTokens: boolean;
+          aiUsage: boolean;
+          aiJobs: boolean;
+        };
       };
       assert.equal(manifest.kind, 'site');
       assert.equal(manifest.includes.sessions, false);
@@ -771,11 +846,22 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal(manifest.includes.aiUsage, true);
       assert.equal(manifest.includes.aiJobs, false, '一次性异步任务不入备份');
 
-      const users = JSON.parse(files.get('users.json')!.toString('utf8')) as Array<{ username: string }>;
-      assert.ok(users.some((u) => u.username === username), '备份应包含本账号');
+      const users = JSON.parse(files.get('users.json')!.toString('utf8')) as Array<{
+        username: string;
+      }>;
+      assert.ok(
+        users.some((u) => u.username === username),
+        '备份应包含本账号',
+      );
       for (const name of [
-        'accounts.json', 'settings.json', 'user_llm.json', 'image_cache.json', 'feeds.json',
-        'mcp_tokens.json', 'ai_usage_daily.json', 'ai_request_log.json',
+        'accounts.json',
+        'settings.json',
+        'user_llm.json',
+        'image_cache.json',
+        'feeds.json',
+        'mcp_tokens.json',
+        'ai_usage_daily.json',
+        'ai_request_log.json',
       ]) {
         assert.ok(files.has(name), `备份缺 ${name}`);
       }
@@ -794,11 +880,14 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       const feedId = Number(fd.rows[0]!.id);
 
       // 导出包里的这两条是「未读 / 未收藏」；导入必须跳过它们，而不是把标记刷回去
-      await db.execute(sql`update entries set is_read = true, is_favorite = true where feed_id = ${feedId}`);
+      await db.execute(
+        sql`update entries set is_read = true, is_favorite = true where feed_id = ${feedId}`,
+      );
       const res = await call('/api/import', { method: 'POST', body: userArchive });
       assert.equal(res.status, 200, await res.clone().text());
       const out = (await res.json()) as {
-        ok: boolean; kind: string;
+        ok: boolean;
+        kind: string;
         feeds: { inserted: number; skipped: number };
         entries: { inserted: number; skipped: number };
         prefs: boolean;
@@ -818,17 +907,33 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
 
     await t.test('账号导入：补缺失频道与文章，按 (频道, guid) 去重', async () => {
       const archive = await buildArchive({
-        'manifest.json': JSON.stringify({ format: 'feedlore-backup', formatVersion: 1, kind: 'user' }),
+        'manifest.json': JSON.stringify({
+          format: 'feedlore-backup',
+          formatVersion: 1,
+          kind: 'user',
+        }),
         'feeds.json': JSON.stringify([
           { url: 'https://example.com/import-feed.xml', title: '导入频道' },
         ]),
         'digests.json': '[]',
         'entries-0001.jsonl': [
           // 新频道的新文章：应写入，且保留包里的已读标记
-          { feedUrl: 'https://example.com/import-feed.xml', guid: 'imp-1', title: '导入文章', isRead: true },
+          {
+            feedUrl: 'https://example.com/import-feed.xml',
+            guid: 'imp-1',
+            title: '导入文章',
+            isRead: true,
+          },
           // 已有文章的 guid：应跳过，且不把库里的标记改回 false
-          { feedUrl: 'https://example.com/itest-feed.xml', guid: 'itest-1', title: '冲突文章', isRead: false },
-        ].map((r) => JSON.stringify(r)).join('\n'),
+          {
+            feedUrl: 'https://example.com/itest-feed.xml',
+            guid: 'itest-1',
+            title: '冲突文章',
+            isRead: false,
+          },
+        ]
+          .map((r) => JSON.stringify(r))
+          .join('\n'),
       });
 
       const res = await call('/api/import', { method: 'POST', body: archive });
@@ -868,19 +973,39 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       delete process.env.ALLOW_PRIVATE_HOSTS; // 出网校验的逃生口会整体放行，本组断言要求它关着
       try {
         const llmFile = (patch: Record<string, unknown>) =>
-          JSON.stringify({ baseUrl: 'https://api.example.com/v1', model: 'gpt-test', apiKey: 'sk-plain-123', ...patch });
+          JSON.stringify({
+            baseUrl: 'https://api.example.com/v1',
+            model: 'gpt-test',
+            apiKey: 'sk-plain-123',
+            ...patch,
+          });
         const baseFiles: Record<string, string> = {
-          'manifest.json': JSON.stringify({ format: 'feedlore-backup', formatVersion: 1, kind: 'user' }),
-          'feeds.json': JSON.stringify([{ url: 'https://example.com/llm-feed.xml', title: '模型频道' }]),
+          'manifest.json': JSON.stringify({
+            format: 'feedlore-backup',
+            formatVersion: 1,
+            kind: 'user',
+          }),
+          'feeds.json': JSON.stringify([
+            { url: 'https://example.com/llm-feed.xml', title: '模型频道' },
+          ]),
           'digests.json': '[]',
         };
         const withLlm = (llmJson: string) => ({ ...baseFiles, 'llm.json': llmJson });
 
-        const res = await call('/api/import', { method: 'POST', body: await buildArchive(withLlm(llmFile({ temperature: 0.3, thinking: true, thinkingDepth: 3 }))) });
+        const res = await call('/api/import', {
+          method: 'POST',
+          body: await buildArchive(
+            withLlm(llmFile({ temperature: 0.3, thinking: true, thinkingDepth: 3 })),
+          ),
+        });
         assert.equal(res.status, 200, await res.clone().text());
         const out = (await res.json()) as { llm: string; feeds: { inserted: number } };
         assert.equal(out.llm, 'applied');
-        assert.deepEqual(out.feeds, { inserted: 1, skipped: 0 }, '模型地址合规时不应拖累其余数据的导入');
+        assert.deepEqual(
+          out.feeds,
+          { inserted: 1, skipped: 0 },
+          '模型地址合规时不应拖累其余数据的导入',
+        );
 
         const secret = await getCryptoSecret(db);
         const stored = (await db.execute(sql`
@@ -888,15 +1013,23 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
           from user_llm where user_id = ${userId}
         `)) as unknown as {
           rows: Array<{
-            encrypted_key: string | null; base_url: string | null; model: string | null;
-            temperature: number | null; thinking: boolean; thinking_depth: string | null;
+            encrypted_key: string | null;
+            base_url: string | null;
+            model: string | null;
+            temperature: number | null;
+            thinking: boolean;
+            thinking_depth: string | null;
           }>;
         };
         assert.equal(stored.rows.length, 1);
         const row = stored.rows[0]!;
         assert.ok(row.encrypted_key?.startsWith(ENCRYPTED_PREFIX), '入库的应是本机加密格式');
         assert.ok(!row.encrypted_key!.includes('sk-plain-123'), '明文 Key 不得落库');
-        assert.equal(decryptSecret(row.encrypted_key, secret), 'sk-plain-123', '必须能用本机主密钥解回');
+        assert.equal(
+          decryptSecret(row.encrypted_key, secret),
+          'sk-plain-123',
+          '必须能用本机主密钥解回',
+        );
         assert.equal(row.base_url, 'https://api.example.com/v1');
         assert.equal(row.model, 'gpt-test');
         assert.equal(row.temperature, 0.3);
@@ -904,7 +1037,9 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         assert.equal(row.thinking_depth, 3);
 
         // 已经有配置了：再导一次只报「未覆盖」，库里那行一个字都不能动
-        await db.execute(sql`update user_llm set model = 'keep-me', encrypted_key = NULL where user_id = ${userId}`);
+        await db.execute(
+          sql`update user_llm set model = 'keep-me', encrypted_key = NULL where user_id = ${userId}`,
+        );
         const twiceBody = await buildArchive(withLlm(llmFile({})));
         const twiceRes = await call('/api/import', { method: 'POST', body: twiceBody });
         assert.equal(twiceRes.status, 200);
@@ -921,7 +1056,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
           method: 'POST',
           body: await buildArchive(withLlm(llmFile({ baseUrl: 'http://127.0.0.1:11434/v1' }))),
         });
-        const blockedOut = (await blockedRes.json()) as { llm: string; feeds: { inserted: number; skipped: number } };
+        const blockedOut = (await blockedRes.json()) as {
+          llm: string;
+          feeds: { inserted: number; skipped: number };
+        };
         assert.equal(blockedRes.status, 200);
         assert.equal(blockedOut.llm, 'url-blocked');
         assert.deepEqual(blockedOut.feeds, { inserted: 0, skipped: 1 }, '这份包的频道上一轮已并入');
@@ -936,9 +1074,18 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         await db.execute(sql`delete from llm_providers where user_id = ${userId}`);
         await db.execute(sql`delete from llm_vendors where user_id = ${userId}`);
         const multiLlm = JSON.stringify({
-          baseUrl: 'https://api.example.com/v1', model: 'default-model', apiKey: 'sk-plain-123',
+          baseUrl: 'https://api.example.com/v1',
+          model: 'default-model',
+          apiKey: 'sk-plain-123',
           providers: [
-            { id: 'p-cheap', name: '便宜模型', baseUrl: 'https://api.example.com/v1', model: 'cheap-model', apiKey: 'sk-cheap-key', isDefault: true },
+            {
+              id: 'p-cheap',
+              name: '便宜模型',
+              baseUrl: 'https://api.example.com/v1',
+              model: 'cheap-model',
+              apiKey: 'sk-cheap-key',
+              isDefault: true,
+            },
           ],
           routes: {
             digest: { providerId: 'p-cheap', enabled: true },
@@ -946,13 +1093,24 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
             entry_ai: { actions: { translate: 'p-cheap', summary: 'ghost' } },
           },
         });
-        const multiRes = await call('/api/import', { method: 'POST', body: await buildArchive(withLlm(multiLlm)) });
+        const multiRes = await call('/api/import', {
+          method: 'POST',
+          body: await buildArchive(withLlm(multiLlm)),
+        });
         assert.equal(multiRes.status, 200, await multiRes.clone().text());
         assert.equal(((await multiRes.json()) as { llm: string }).llm, 'applied');
         // 0017：Key 归厂商行，模型行只保留 vendor_id
         const prov = (await db.execute(sql`
           select id, name, model, vendor_id, is_default from llm_providers where user_id = ${userId}
-        `)) as unknown as { rows: Array<{ id: string; name: string; model: string; vendor_id: string | null; is_default: boolean }> };
+        `)) as unknown as {
+          rows: Array<{
+            id: string;
+            name: string;
+            model: string;
+            vendor_id: string | null;
+            is_default: boolean;
+          }>;
+        };
         assert.equal(prov.rows.length, 1, '应恢复一路提供商');
         assert.equal(prov.rows[0]!.id, 'p-cheap');
         assert.ok(prov.rows[0]!.vendor_id, '模型行应挂到厂商');
@@ -964,7 +1122,14 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         assert.equal(decryptSecret(vend.rows[0]!.encrypted_key, secret), 'sk-cheap-key');
         const rt = (await db.execute(sql`
           select routes from user_llm where user_id = ${userId}
-        `)) as unknown as { rows: Array<{ routes: Record<string, { providerId?: string; enabled?: boolean; actions?: Record<string, string> }> }> };
+        `)) as unknown as {
+          rows: Array<{
+            routes: Record<
+              string,
+              { providerId?: string; enabled?: boolean; actions?: Record<string, string> }
+            >;
+          }>;
+        };
         const routes = rt.rows[0]!.routes;
         assert.equal(routes.digest?.providerId, 'p-cheap', '有效引用应保留');
         assert.equal(routes.explore?.providerId, 'default', '悬空引用应清成 default');
@@ -973,7 +1138,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         assert.equal(routes.entry_ai?.actions?.summary, 'default', '动作级悬空引用也要清');
 
         // 没勾选导出的包：根本没有 llm.json
-        const absentRes = await call('/api/import', { method: 'POST', body: await buildArchive(baseFiles) });
+        const absentRes = await call('/api/import', {
+          method: 'POST',
+          body: await buildArchive(baseFiles),
+        });
         assert.equal(absentRes.status, 200);
         assert.equal(((await absentRes.json()) as { llm: string }).llm, 'absent');
       } finally {
@@ -988,12 +1156,18 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
 
       const wrongKind = await call('/api/import', { method: 'POST', body: siteArchive });
       assert.equal(wrongKind.status, 400);
-      assert.equal(((await wrongKind.json()) as { error: string }).error, 'E_ARCHIVE_IS_SITE_BACKUP');
+      assert.equal(
+        ((await wrongKind.json()) as { error: string }).error,
+        'E_ARCHIVE_IS_SITE_BACKUP',
+      );
 
       // 反过来：账号导出包传进整站还原，应指出该去「数据导入」，而不是笼统的坏包
       const wrongRestore = await call('/api/restore', { method: 'POST', body: userArchive });
       assert.equal(wrongRestore.status, 400);
-      assert.equal(((await wrongRestore.json()) as { error: string }).error, 'E_ARCHIVE_IS_USER_EXPORT');
+      assert.equal(
+        ((await wrongRestore.json()) as { error: string }).error,
+        'E_ARCHIVE_IS_USER_EXPORT',
+      );
     });
 
     /* ---------------------------------------------------------------- 只读角色 */
@@ -1009,7 +1183,10 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal((await call('/api/entries/flags')).status, 200);
 
       // 阅读体验偏好（外观 / 布局）仍可写
-      assert.equal((await call('/api/prefs', { method: 'POST', json: { layout: { view: 'list' } } })).status, 200);
+      assert.equal(
+        (await call('/api/prefs', { method: 'POST', json: { layout: { view: 'list' } } })).status,
+        200,
+      );
 
       // 配置写接口被服务端拒绝（不能只靠前端隐藏按钮）
       const denied: Array<[string, string, unknown]> = [
@@ -1068,18 +1245,26 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       // 老版本备份没有 AI 标签 / MCP / 用量文件：先还原一遍降级包，必须照常成功
       const oldFiles = readTarGz(siteArchive);
       const added = [...oldFiles.keys()].filter(
-        (n) => /^entry_ai_tags-\d{4}\.jsonl$/.test(n)
-          || ['mcp_tokens.json', 'ai_usage_daily.json', 'ai_request_log.json'].includes(n),
+        (n) =>
+          /^entry_ai_tags-\d{4}\.jsonl$/.test(n) ||
+          ['mcp_tokens.json', 'ai_usage_daily.json', 'ai_request_log.json'].includes(n),
       );
       assert.equal(added.length, 4, '完整备份应带三类 JSON 与一个 AI 标签批次');
       for (const name of added) oldFiles.delete(name);
       const oldArchive = await rebuildArchive(oldFiles);
 
-      jar = before;   // 登出用例已经清空了主 Cookie 罐
+      jar = before; // 登出用例已经清空了主 Cookie 罐
       const oldRes = await call('/api/restore', { method: 'POST', body: oldArchive });
       assert.equal(oldRes.status, 200, await oldRes.clone().text());
       const oldOut = (await oldRes.json()) as {
-        counts: { feeds: number; entries: number; aiTags: number; mcpTokens: number; aiUsage: number; aiRequestLog: number };
+        counts: {
+          feeds: number;
+          entries: number;
+          aiTags: number;
+          mcpTokens: number;
+          aiUsage: number;
+          aiRequestLog: number;
+        };
       };
       assert.equal(oldOut.counts.feeds, 1);
       assert.equal(oldOut.counts.entries, 2);
@@ -1088,15 +1273,21 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal(oldOut.counts.aiUsage, 0);
       assert.equal(oldOut.counts.aiRequestLog, 0);
 
-      jar = await loginAs(username, password);   // 还原清掉了会话，重新登录
+      jar = await loginAs(username, password); // 还原清掉了会话，重新登录
       const res = await call('/api/restore', { method: 'POST', body: siteArchive });
       assert.equal(res.status, 200, await res.clone().text());
       const out = (await res.json()) as {
         ok: boolean;
         kind: string;
         counts: {
-          users: number; feeds: number; entries: number; images: number;
-          aiTags: number; mcpTokens: number; aiUsage: number; aiRequestLog: number;
+          users: number;
+          feeds: number;
+          entries: number;
+          images: number;
+          aiTags: number;
+          mcpTokens: number;
+          aiUsage: number;
+          aiRequestLog: number;
         };
       };
       assert.equal(out.ok, true);
@@ -1149,11 +1340,16 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     /* 级联清库：users 下所有业务表都是 on delete cascade，删这一行就够。
      * 再按用户名前缀兜一层，防止中途 return 留下孤儿（比如注册成功但没走到取 id）。 */
     try {
-      await db.execute(sql`delete from users where username like 'itest\_%' or username = ${username}`);
+      await db.execute(
+        sql`delete from users where username like 'itest\_%' or username = ${username}`,
+      );
       // image_cache 没有 owner，不属于 users 级联范围：跑失败时也要清掉测试键
       await db.execute(sql`delete from image_cache where key like 'itestimg%'`);
     } catch (e) {
-      console.error('[itest] cleanup failed (test verdict is unaffected, but check the test database manually):', (e as Error).message);
+      console.error(
+        '[itest] cleanup failed (test verdict is unaffected, but check the test database manually):',
+        (e as Error).message,
+      );
     }
   }
 });

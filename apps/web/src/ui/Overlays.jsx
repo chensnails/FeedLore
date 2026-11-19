@@ -8,10 +8,11 @@
  * 确认框也住在这里（替代原生 confirm / prompt），toast 补了
  * role="status" / aria-live，不再有「屏幕阅读器听不到保存成功」的问题。
  */
-import React, { useEffect, useRef, useState } from 'react';
+
 import { core } from '@core';
-import { on, EVENT } from '../kernel/events.js';
-import { provide, revoke, isOn } from '../kernel/bridge.js';
+import React, { useEffect, useRef, useState } from 'react';
+import { isOn, provide, revoke } from '../kernel/bridge.js';
+import { EVENT, on } from '../kernel/events.js';
 import { registerLayer } from './overlayStack.js';
 
 const S = () => core;
@@ -57,7 +58,8 @@ function ConfirmDialog({ c }) {
     if (c.open) return;
     const op = openerRef.current;
     openerRef.current = null;
-    if (op && op !== document.body && document.contains(op) && typeof op.focus === 'function') op.focus();
+    if (op && op !== document.body && document.contains(op) && typeof op.focus === 'function')
+      op.focus();
   }, [c.open]);
 
   // Esc = 取消。用捕获阶段并阻断冒泡，避免同一击把设置弹层 / 命令面板也关掉。
@@ -83,15 +85,28 @@ function ConfirmDialog({ c }) {
       if (ev.key !== 'Tab') return;
       const root = formRef.current;
       if (!root) return;
-      const items = Array.from(root.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])'))
-        .filter(/** @param {*} [el] */ (el) => !el.disabled);
-      if (!items.length) { ev.preventDefault(); return; }
+      const items = Array.from(
+        root.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])'),
+      ).filter(/** @param {*} [el] */ (el) => !el.disabled);
+      if (!items.length) {
+        ev.preventDefault();
+        return;
+      }
       const first = items[0];
       const last = items[items.length - 1];
       const at = document.activeElement;
-      if (!root.contains(at)) { ev.preventDefault(); first.focus(); return; }
-      if (ev.shiftKey && at === first) { ev.preventDefault(); last.focus(); }
-      else if (!ev.shiftKey && at === last) { ev.preventDefault(); first.focus(); }
+      if (!root.contains(at)) {
+        ev.preventDefault();
+        first.focus();
+        return;
+      }
+      if (ev.shiftKey && at === first) {
+        ev.preventDefault();
+        last.focus();
+      } else if (!ev.shiftKey && at === last) {
+        ev.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
@@ -119,7 +134,11 @@ function ConfirmDialog({ c }) {
     <div
       className="modal-mask confirm-mask"
       role="presentation"
-      onMouseDown={/** @param {*} [ev] */ (ev) => { if (ev.target === ev.currentTarget) S().cancelConfirm(); }}
+      onMouseDown={
+        /** @param {*} [ev] */ (ev) => {
+          if (ev.target === ev.currentTarget) S().cancelConfirm();
+        }
+      }
     >
       <form
         ref={formRef}
@@ -133,16 +152,31 @@ function ConfirmDialog({ c }) {
         <div className="modal-head">
           <div className="confirm-head-txt">
             <h2 id="confirmTitle">{c.title}</h2>
-            {c.desc ? <p className="modal-sub" id="confirmDesc">{c.desc}</p> : null}
+            {c.desc ? (
+              <p className="modal-sub" id="confirmDesc">
+                {c.desc}
+              </p>
+            ) : null}
           </div>
-          <button className="modal-close" type="button" aria-label="取消" onClick={() => S().cancelConfirm()}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+          <button
+            className="modal-close"
+            type="button"
+            aria-label="取消"
+            onClick={() => S().cancelConfirm()}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-x" />
+            </svg>
           </button>
         </div>
 
         {c.input ? (
           <div className="confirm-body">
-            {c.input.label ? <label className="confirm-label" htmlFor="confirmInput">{c.input.label}</label> : null}
+            {c.input.label ? (
+              <label className="confirm-label" htmlFor="confirmInput">
+                {c.input.label}
+              </label>
+            ) : null}
             <input
               id="confirmInput"
               ref={valueRef}
@@ -153,10 +187,17 @@ function ConfirmDialog({ c }) {
               value={value}
               aria-invalid={err ? 'true' : undefined}
               aria-describedby={err ? 'confirmErr' : undefined}
-              onChange={/** @param {*} [ev] */ (ev) => { setValue(ev.target.value); if (err) setErr(''); }}
+              onChange={
+                /** @param {*} [ev] */ (ev) => {
+                  setValue(ev.target.value);
+                  if (err) setErr('');
+                }
+              }
             />
             {/* 常驻 DOM：从 display:none 切出来时部分读屏不播报，空态只收高度 */}
-            <p className="confirm-err" id="confirmErr" role="alert">{err}</p>
+            <p className="confirm-err" id="confirmErr" role="alert">
+              {err}
+            </p>
           </div>
         ) : null}
 
@@ -164,7 +205,11 @@ function ConfirmDialog({ c }) {
           <button className="btn btn-ghost" type="button" onClick={() => S().cancelConfirm()}>
             {c.cancelText}
           </button>
-          <button className={'btn ' + (c.danger ? 'btn-danger-solid' : 'btn-primary')} type="submit" ref={okRef}>
+          <button
+            className={'btn ' + (c.danger ? 'btn-danger-solid' : 'btn-primary')}
+            type="submit"
+            ref={okRef}
+          >
             {c.confirmText}
           </button>
         </div>
@@ -220,10 +265,14 @@ function Lightbox({ box, close }) {
         ev.stopPropagation();
         close();
       } else if (ev.key === 'Tab') {
-        if (isOn('confirmOpen')) return;   // 确认框叠在上面时，Tab 归它管
+        if (isOn('confirmOpen')) return; // 确认框叠在上面时，Tab 归它管
         // 灯箱里所有按钮（上一张 / 下一张 / 关闭）一起循环，键盘也能切图
         const f = rootRef.current ? Array.from(rootRef.current.querySelectorAll('button')) : [];
-        if (!f.length) { ev.preventDefault(); if (rootRef.current) rootRef.current.focus(); return; }
+        if (!f.length) {
+          ev.preventDefault();
+          if (rootRef.current) rootRef.current.focus();
+          return;
+        }
         ev.preventDefault();
         const idx = f.indexOf(document.activeElement);
         f[(idx + (ev.shiftKey ? -1 : 1) + f.length) % f.length].focus();
@@ -238,7 +287,10 @@ function Lightbox({ box, close }) {
   /**
    * @param {*} [d]
    */
-  const step = (d) => { const s = S(); if (s && s.stepLightbox) s.stepLightbox(d); };
+  const step = (d) => {
+    const s = S();
+    if (s && s.stepLightbox) s.stepLightbox(d);
+  };
 
   return (
     <div
@@ -257,19 +309,35 @@ function Lightbox({ box, close }) {
             className="lightbox-nav is-prev"
             type="button"
             aria-label="上一张"
-            onClick={/** @param {*} [ev] */ (ev) => { ev.stopPropagation(); step(-1); }}
+            onClick={
+              /** @param {*} [ev] */ (ev) => {
+                ev.stopPropagation();
+                step(-1);
+              }
+            }
           >
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-chevron-right" />
+            </svg>
           </button>
           <button
             className="lightbox-nav is-next"
             type="button"
             aria-label="下一张"
-            onClick={/** @param {*} [ev] */ (ev) => { ev.stopPropagation(); step(1); }}
+            onClick={
+              /** @param {*} [ev] */ (ev) => {
+                ev.stopPropagation();
+                step(1);
+              }
+            }
           >
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-chevron-right" />
+            </svg>
           </button>
-          <p className="lightbox-count" aria-live="polite">{box.index + 1} / {list.length}</p>
+          <p className="lightbox-count" aria-live="polite">
+            {box.index + 1} / {list.length}
+          </p>
         </React.Fragment>
       ) : null}
       {/* 根节点的 onClick 也是 close：关闭按钮必须拦住冒泡，否则一次点击调两次
@@ -279,11 +347,20 @@ function Lightbox({ box, close }) {
         className="lightbox-close"
         type="button"
         aria-label="关闭预览"
-        onClick={/** @param {*} [ev] */ (ev) => { ev.stopPropagation(); close(); }}
+        onClick={
+          /** @param {*} [ev] */ (ev) => {
+            ev.stopPropagation();
+            close();
+          }
+        }
       >
-        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+        <svg className="ico" aria-hidden="true" focusable="false">
+          <use href="#i-x" />
+        </svg>
       </button>
-      <p className="lightbox-hint">{multi ? '← → 切换 · 点击任意处或按 Esc 关闭' : '点击任意处或按 Esc 关闭'}</p>
+      <p className="lightbox-hint">
+        {multi ? '← → 切换 · 点击任意处或按 Esc 关闭' : '点击任意处或按 Esc 关闭'}
+      </p>
     </div>
   );
 }
@@ -297,10 +374,13 @@ export function Overlays() {
   }, []);
 
   const s = S();
-  const toast = (s && s.getToastState) ? s.getToastState() : { msg: '', ok: true, show: false, action: null, actionText: '' };
-  const pill = (s && s.getNewPillState) ? s.getNewPillState() : { show: false, text: '' };
-  const box = (s && s.getLightboxState) ? s.getLightboxState() : { src: '', show: false };
-  const cfm = (s && s.getConfirmState) ? s.getConfirmState() : { open: false };
+  const toast =
+    s && s.getToastState
+      ? s.getToastState()
+      : { msg: '', ok: true, show: false, action: null, actionText: '' };
+  const pill = s && s.getNewPillState ? s.getNewPillState() : { show: false, text: '' };
+  const box = s && s.getLightboxState ? s.getLightboxState() : { src: '', show: false };
+  const cfm = s && s.getConfirmState ? s.getConfirmState() : { open: false };
 
   // 确认框打开期间锁住背景滚动（与设置弹层用同一个计数器，关掉时只解自己那一层），
   // 同时把「确认框在最上层」告诉其他 Esc 处理器（见 core/ui.js）。
@@ -308,7 +388,10 @@ export function Overlays() {
     provide('confirmOpen', !!cfm.open);
     if (!cfm.open || !s) return undefined;
     s.lockPageScroll();
-    return () => { revoke('confirmOpen'); s.unlockPageScroll(); };
+    return () => {
+      revoke('confirmOpen');
+      s.unlockPageScroll();
+    };
   }, [cfm.open]);
 
   if (!s) return null;
@@ -323,16 +406,28 @@ export function Overlays() {
         aria-live={toast.ok ? 'polite' : 'assertive'}
         aria-atomic="true"
       >
-        {toast.ok
-          ? <svg className="ico toast-ico" aria-hidden="true" focusable="false"><use href="#i-check" /></svg>
-          : <svg className="ico toast-ico err" aria-hidden="true" focusable="false"><use href="#i-alert" /></svg>}
+        {toast.ok ? (
+          <svg className="ico toast-ico" aria-hidden="true" focusable="false">
+            <use href="#i-check" />
+          </svg>
+        ) : (
+          <svg className="ico toast-ico err" aria-hidden="true" focusable="false">
+            <use href="#i-alert" />
+          </svg>
+        )}
         {toast.msg}
         {/* 行内动作（批量已读的「撤销」）：toast 本身 pointer-events:none，
             有按钮时样式才放开命中。按钮不主动抢焦点（不打断阅读），但保留 Tab 可达，
             键盘用户不必只能用鼠标撤销；触屏命中区由 CSS 补到 44px。 */}
-        {toast.action
-          ? <button type="button" className="toast-act" onClick={() => s.runToastAction && s.runToastAction()}>{toast.actionText || '撤销'}</button>
-          : null}
+        {toast.action ? (
+          <button
+            type="button"
+            className="toast-act"
+            onClick={() => s.runToastAction && s.runToastAction()}
+          >
+            {toast.actionText || '撤销'}
+          </button>
+        ) : null}
       </div>
 
       {/* 自动刷新发现了新内容、但用户已经滚下去了：点它才套用，避免列表在眼皮底下跳 */}
@@ -342,7 +437,9 @@ export function Overlays() {
         hidden={!pill.show}
         onClick={() => s.applyPendingFresh()}
       >
-        <svg className="new-pill-ico" aria-hidden="true" focusable="false"><use href="#i-arrow-up" /></svg>
+        <svg className="new-pill-ico" aria-hidden="true" focusable="false">
+          <use href="#i-arrow-up" />
+        </svg>
         <span>{pill.text}</span>
       </button>
 

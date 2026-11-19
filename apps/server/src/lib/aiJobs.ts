@@ -13,12 +13,19 @@
  * 的 100 秒代理读超时。提交请求从此是毫秒级短连接，网关超时不再生效。
  */
 
-import { log } from './logger';
-import { and, count, eq, inArray, sql } from 'drizzle-orm';
-import { aiJobs, type AiJobRow, type Db } from '@feedlore/db';
 import type { AiJob, AiJobBody, ExploreHistory } from '@feedlore/contract';
+import { type AiJobRow, aiJobs, type Db } from '@feedlore/db';
+import { and, count, eq, inArray, sql } from 'drizzle-orm';
+import {
+  execDigest,
+  execEntryAi,
+  execEntryTags,
+  execExplore,
+  isRealDate,
+  loadOwnedEntry,
+} from './aiTasks';
 import { ApiException } from './apiError';
-import { execDigest, execEntryAi, execEntryTags, execExplore, loadOwnedEntry, isRealDate } from './aiTasks';
+import { log } from './logger';
 
 /** 同一账号同时排队/运行的任务上限。超了直接 429，别让「连点五次」变成五个并发模型调用。 */
 export const AI_JOB_MAX_ACTIVE = 4;
@@ -33,7 +40,9 @@ export const AI_JOB_POLL_MS = 1_500;
 const ERROR_MAX = 500;
 
 const clip = (s: unknown, n: number): string => {
-  const t = String(s ?? '').replace(/\s+/g, ' ').trim();
+  const t = String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return t.length > n ? t.slice(0, n) + '…' : t;
 };
 
@@ -65,7 +74,13 @@ export function toJobView(row: AiJobRow, now = Date.now()): AiJob {
  */
 async function insertIfUnderLimit(
   db: Db,
-  values: { id: string; userId: string; kind: string; label: string; input: Record<string, unknown> },
+  values: {
+    id: string;
+    userId: string;
+    kind: string;
+    label: string;
+    input: Record<string, unknown>;
+  },
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
     // hashtext → int4，advisory lock 接受两个 int4（这里第二参固定 0）
@@ -128,7 +143,7 @@ export async function createJob(db: Db, uid: string, body: AiJobBody): Promise<A
     entryId = n;
     // 提交时校验 owner 并取标题：既做标签，也把「找不到条目」提前到提交阶段
     const entry = await loadOwnedEntry(db, uid, n);
-    label = kind === 'ai_tags' ? 'AI 标签' : ((entry.title ?? '').trim() || '单篇 AI');
+    label = kind === 'ai_tags' ? 'AI 标签' : (entry.title ?? '').trim() || '单篇 AI';
     if (kind === 'ai_tags') action = 'summary';
   } else if (kind === 'explore') {
     const q = (body.question ?? '').trim();
@@ -159,7 +174,11 @@ export async function createJob(db: Db, uid: string, body: AiJobBody): Promise<A
   const id = crypto.randomUUID();
   // 原子准入：超限返回 false → 429。绝不能拆成「先 count 再 insert」，并发会绕过。
   const inserted = await insertIfUnderLimit(db, {
-    id, userId: uid, kind, label: clip(label, 120), input,
+    id,
+    userId: uid,
+    kind,
+    label: clip(label, 120),
+    input,
   });
   if (!inserted) throw new ApiException('E_AI_BUSY');
 
@@ -214,7 +233,10 @@ export async function runJob(db: Db, id: string): Promise<void> {
     let result: unknown;
     if (job.kind === 'entry_ai') {
       const action = (typeof input.action === 'string' ? input.action : 'summary') as
-        'summary' | 'keypoints' | 'translate' | 'explain';
+        | 'summary'
+        | 'keypoints'
+        | 'translate'
+        | 'explain';
       const targetLang = typeof input.targetLang === 'string' ? input.targetLang : undefined;
       result = await execEntryAi(db, job.userId, { entryId, action, targetLang });
     } else if (job.kind === 'ai_tags') {
@@ -236,7 +258,13 @@ export async function runJob(db: Db, id: string): Promise<void> {
 
     await db
       .update(aiJobs)
-      .set({ status: 'succeeded', result: result as object, error: '', finishedAt: sql`now()`, updatedAt: sql`now()` })
+      .set({
+        status: 'succeeded',
+        result: result as object,
+        error: '',
+        finishedAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
       .where(eq(aiJobs.id, id));
   } catch (e) {
     const message = jobErrorMessage(e) || 'AI 调用失败';

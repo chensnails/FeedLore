@@ -4,9 +4,10 @@
  * 关键点：组件统一 `import { core } from '@core'`，这里把 `@core` 别名指向 tests/ui/stub-core.js，
  * 于是测试能完全接管核心逻辑（不再需要挂 window.feedlore）。真实的 src/core 只由 core-entry.js
  * （冒烟用，不做别名）加载。 */
-import { build } from 'esbuild';
+
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { build } from 'esbuild';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const STUB = path.join(DIR, 'stub-core.js');
@@ -31,12 +32,16 @@ const TARGETS = [
   ['ui-entry.js', '.build/ui.cjs'],
 ];
 
-await Promise.all(TARGETS.map(([infile, outfile]) => build({
-  ...COMMON,
-  entryPoints: [path.join(DIR, infile)],
-  outfile: path.join(DIR, outfile),
-  alias: { '@core': STUB },
-})));
+await Promise.all(
+  TARGETS.map(([infile, outfile]) =>
+    build({
+      ...COMMON,
+      entryPoints: [path.join(DIR, infile)],
+      outfile: path.join(DIR, outfile),
+      alias: { '@core': STUB },
+    }),
+  ),
+);
 
 // 冒烟：真实核心模块（不加别名），打成 IIFE 由测试内联进 index.html 执行
 await build({
@@ -46,4 +51,7 @@ await build({
   outfile: path.join(DIR, '.build/core-iife.js'),
 });
 
-console.log('ui test bundles built →', [...TARGETS.map(([, o]) => o), '.build/core-iife.js'].join(', '));
+console.log(
+  'ui test bundles built →',
+  [...TARGETS.map(([, o]) => o), '.build/core-iife.js'].join(', '),
+);

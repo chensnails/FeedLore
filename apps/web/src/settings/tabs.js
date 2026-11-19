@@ -3,48 +3,77 @@
 
 export const SETTINGS_TABS = [
   {
-    name: 'source', label: '数据源', group: '内容', icon: 'inbox',
+    name: 'source',
+    label: '数据源',
+    group: '内容',
+    icon: 'inbox',
     desc: '订阅、分组与抓取参数',
     keywords: '订阅 rss feed 频道 分组 抓取 频率 并发 超时 代理 图片 缓存 压缩 source',
   },
   {
-    name: 'watch', label: '规则', group: '内容', icon: 'filter',
+    name: 'watch',
+    label: '规则',
+    group: '内容',
+    icon: 'filter',
     desc: '关注/屏蔽规则、过滤与通知',
     keywords: '关注 屏蔽 规则 过滤 关键词 webhook 通知 推送 保留 天数 watch filter',
   },
   {
-    name: 'model', label: '模型', group: '智能', icon: 'sparkle',
+    name: 'model',
+    label: '模型',
+    group: '智能',
+    icon: 'sparkle',
     desc: '厂商接入、模型参数与任务分配',
-    keywords: '模型 llm 厂商 vendor 接入 地址 api key 密钥 温度 思考 深度 默认模型 任务分配 能力 标签 智能标签 打标 aitags 运行状态 model',
+    keywords:
+      '模型 llm 厂商 vendor 接入 地址 api key 密钥 温度 思考 深度 默认模型 任务分配 能力 标签 智能标签 打标 aitags 运行状态 model',
   },
   {
     // 「日报」依赖 AI 模型生成，归到「智能」组、排在「模型」之下（用户 2026-11-18 指定）。
-    name: 'digest', label: '日报', group: '智能', icon: 'file',
+    name: 'digest',
+    label: '日报',
+    group: '智能',
+    icon: 'file',
     desc: '日报时间、范围与风格',
     keywords: '日报 生成 时间 自动 范围 条数 风格 提示词 digest ai',
   },
   {
-    name: 'account', label: '账号', group: '账户', icon: 'user',
+    name: 'account',
+    label: '账号',
+    group: '账户',
+    icon: 'user',
     desc: '用户名、密码与用户管理',
     keywords: '账号 用户名 密码 用户 管理 权限 角色 只读 管理员 安装 手机 account user',
   },
   {
-    name: 'mcp', label: 'MCP 接口', group: '账户', icon: 'link',
+    name: 'mcp',
+    label: 'MCP 接口',
+    group: '账户',
+    icon: 'link',
     desc: '外部 AI 接入令牌：创建、吊销与最近使用',
     keywords: 'mcp ai 智能体 接口 令牌 token api 密钥 外部 客户端 claude 接入',
   },
   {
-    name: 'appearance', label: '外观', group: '账户', icon: 'palette',
+    name: 'appearance',
+    label: '外观',
+    group: '账户',
+    icon: 'palette',
     desc: '主题、文章密度与阅读宽度',
-    keywords: '外观 主题 深色 浅色 字号 字体 阅读宽度 行距 列表 密度 文章密度 紧凑 舒适 缩略图 摘要 appearance theme density compact comfortable thumbnail summary',
+    keywords:
+      '外观 主题 深色 浅色 字号 字体 阅读宽度 行距 列表 密度 文章密度 紧凑 舒适 缩略图 摘要 appearance theme density compact comfortable thumbnail summary',
   },
   {
-    name: 'status', label: '状态', group: '系统', icon: 'activity',
+    name: 'status',
+    label: '状态',
+    group: '系统',
+    icon: 'activity',
     desc: '运行健康、队列与诊断',
     keywords: '状态 运行 健康 诊断 日志 数据库 队列 错误 status health',
   },
   {
-    name: 'about', label: '关于', group: '系统', icon: 'info',
+    name: 'about',
+    label: '关于',
+    group: '系统',
+    icon: 'info',
     desc: '版本、更新与项目信息',
     keywords: '关于 版本 更新 升级 github 项目 about version',
   },
@@ -57,31 +86,39 @@ export const ADMIN_TABS = ['status'];
 // 只读账户只保留「阅读体验 / 账号信息 / 关于」
 export const READONLY_TABS = ['account', 'appearance', 'about'];
 
-export const TAB_BY_NAME = SETTINGS_TABS.reduce(/** @param {*} [m] @param {*} [t] */ (m, t) => {
-  m[t.name] = t;
-  return m;
-}, {});
+export const TAB_BY_NAME = SETTINGS_TABS.reduce(
+  /** @param {*} [m] @param {*} [t] */ (m, t) => {
+    m[t.name] = t;
+    return m;
+  },
+  {},
+);
 
 /**
  * @param {*} [admin]
  * @param {*} [readonly]
  */
 export function visibleTabs(admin, readonly) {
-  return SETTINGS_TABS.filter(/** @param {*} [t] */ (t) => {
-    if (ADMIN_TABS.indexOf(t.name) >= 0 && !admin) return false;
-    if (readonly && READONLY_TABS.indexOf(t.name) < 0) return false;
-    return true;
-  });
+  return SETTINGS_TABS.filter(
+    /** @param {*} [t] */ (t) => {
+      if (ADMIN_TABS.indexOf(t.name) >= 0 && !admin) return false;
+      if (readonly && READONLY_TABS.indexOf(t.name) < 0) return false;
+      return true;
+    },
+  );
 }
 
 /** 搜索匹配 label / desc / keywords / 分组名；空查询返回全部。
-*@param {*} [tabs]
+ *@param {*} [tabs]
  * @param {*} [query]
-*/
+ */
 export function matchTabs(tabs, query) {
-  const q = String(query || '').trim().toLowerCase();
+  const q = String(query || '')
+    .trim()
+    .toLowerCase();
   if (!q) return tabs;
-  return tabs.filter(/** @param {*} [t] */ (t) => (
-    (t.label + ' ' + t.desc + ' ' + t.keywords + ' ' + t.group).toLowerCase().indexOf(q) >= 0
-  ));
+  return tabs.filter(
+    /** @param {*} [t] */ (t) =>
+      (t.label + ' ' + t.desc + ' ' + t.keywords + ' ' + t.group).toLowerCase().indexOf(q) >= 0,
+  );
 }

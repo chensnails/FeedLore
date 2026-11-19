@@ -14,39 +14,44 @@
  * - 路由表按能力键**合并**，不是整表替换，避免并发保存把别的键冲掉。
  */
 
-import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
-import { llmProviders, llmVendors, userLlm, type Db } from '@feedlore/db';
-import type {
-  LlmModelInput,
-  LlmModelView,
-  LlmVendorInput,
-  LlmVendorView,
-  LlmRoutes,
-  AiCapability,
-} from '@feedlore/contract';
 import {
-  AI_CAPABILITIES,
-  ENTRY_AI_ACTIONS,
-} from '@feedlore/contract';
-import {
+  clampTemperature,
   decryptSecret,
   encryptSecret,
   getCryptoSecret,
   maskSecret,
-  clampTemperature,
   normalizeThinkingDepth,
-  resolveUserLlm,
   type ResolvedLlm,
+  resolveUserLlm,
 } from '@feedlore/ai';
+import type {
+  AiCapability,
+  LlmModelInput,
+  LlmModelView,
+  LlmRoutes,
+  LlmVendorInput,
+  LlmVendorView,
+} from '@feedlore/contract';
+import { AI_CAPABILITIES, ENTRY_AI_ACTIONS } from '@feedlore/contract';
+import { type Db, llmProviders, llmVendors, userLlm } from '@feedlore/db';
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { ApiException } from './apiError';
+import {
+  loadDefaultModel,
+  loadLlmRow,
+  loadModelWithVendor,
+  resolveModelLlm,
+  safeRoutes,
+} from './llm';
 import { assertPublicHost } from './net';
-import { loadDefaultModel, loadLlmRow, loadModelWithVendor, resolveModelLlm, safeRoutes } from './llm';
 
 /** 地址 → 展示名：没有手填名称时用主机名（tokenrhythm.studio 这种一眼能认）。 */
 export function vendorLabel(name: string, baseUrl: string): string {
   const trimmed = String(name || '').trim();
   if (trimmed) return trimmed;
-  const host = String(baseUrl || '').replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '').split('/')[0];
+  const host = String(baseUrl || '')
+    .replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '')
+    .split('/')[0];
   return host || '未命名厂商';
 }
 
@@ -128,9 +133,14 @@ export async function upsertLlmVendor(db: Db, uid: string, input: LlmVendorInput
   const secret = await getCryptoSecret(db);
 
   const set: Record<string, unknown> = { updatedAt: sql`now()` };
-  if (input.name !== undefined) set.name = String(input.name || '').trim().slice(0, 60);
+  if (input.name !== undefined)
+    set.name = String(input.name || '')
+      .trim()
+      .slice(0, 60);
   if (input.baseUrl !== undefined) {
-    const url = String(input.baseUrl || '').trim().replace(/\/+$/, '');
+    const url = String(input.baseUrl || '')
+      .trim()
+      .replace(/\/+$/, '');
     if (!url) throw new ApiException('E_MODEL_INCOMPLETE', { detail: 'vendor.baseUrl' });
     // 地址是出网口：与测试连接、导入同一条 SSRF 基线
     try {
@@ -201,10 +211,14 @@ export async function upsertLlmModel(db: Db, uid: string, input: LlmModelInput):
     model,
     updatedAt: sql`now()`,
   };
-  if (input.name !== undefined) set.name = String(input.name || '').trim().slice(0, 60);
+  if (input.name !== undefined)
+    set.name = String(input.name || '')
+      .trim()
+      .slice(0, 60);
   if (input.temperature !== undefined) set.temperature = clampTemperature(input.temperature);
   if (input.thinking !== undefined) set.thinking = input.thinking === true;
-  if (input.thinkingDepth !== undefined) set.thinkingDepth = normalizeThinkingDepth(input.thinkingDepth);
+  if (input.thinkingDepth !== undefined)
+    set.thinkingDepth = normalizeThinkingDepth(input.thinkingDepth);
 
   if (input.id) {
     const [exists] = await db
@@ -226,7 +240,8 @@ export async function upsertLlmModel(db: Db, uid: string, input: LlmModelInput):
       model,
       temperature: input.temperature === undefined ? null : clampTemperature(input.temperature),
       thinking: input.thinking === true,
-      thinkingDepth: input.thinkingDepth === undefined ? 0 : normalizeThinkingDepth(input.thinkingDepth),
+      thinkingDepth:
+        input.thinkingDepth === undefined ? 0 : normalizeThinkingDepth(input.thinkingDepth),
       isDefault: false,
     });
   }

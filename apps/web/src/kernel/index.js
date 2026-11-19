@@ -5,5 +5,6 @@
  * 因为它会静态引入全部视图组件，从组件侧绕进来会形成循环依赖并拖大分包。
  * mounts.jsx 只由 main.jsx 引用一次。
  */
+
+export { BRIDGE, bridgeSnapshot, get, isOn, provide, requireBridge, revoke } from './bridge.js';
 export { EVENT, emit, on, onAny } from './events.js';
-export { BRIDGE, provide, get, isOn, requireBridge, revoke, bridgeSnapshot } from './bridge.js';

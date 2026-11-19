@@ -5,15 +5,51 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { $, apiFetch, httpError, toast, emitShell, emitOverlays, prefersReducedMotion, feedTitle, writeHash, parseHash } from './util.js';
-import { state, layoutPref, setLayout, openSettings, closeSettings, lockPageScroll, unlockPageScroll, scrollActiveTop, rememberViewScroll, restoreViewScroll, THEME_MODES, THEME_META, currentThemeMode } from './state.js';
-import { TABS, loadFeeds, loadPage, render, subtitleText, setCardsDrawer } from './feeds.js';
-import { renderReader, renderReaderChannels, loadReader, setReaderDrawer, scrollReaderTop, markEntryRead, setEntryFlag, focusReaderArt, restoreReaderArt, clearReaderPin, readerSetTag } from './reader.js';
-import { hideNewPill } from './autorefresh.js';
 import { clearImgFail } from '../imgFail.js';
-import { emit, EVENT } from '../kernel/events.js';
 import { get, isOn } from '../kernel/bridge.js';
+import { EVENT, emit } from '../kernel/events.js';
 import { handleOverlayPop } from '../ui/overlayStack.js';
+import { hideNewPill } from './autorefresh.js';
+import { loadFeeds, loadPage, render, setCardsDrawer, subtitleText, TABS } from './feeds.js';
+import {
+  clearReaderPin,
+  focusReaderArt,
+  loadReader,
+  markEntryRead,
+  readerSetTag,
+  renderReader,
+  renderReaderChannels,
+  restoreReaderArt,
+  scrollReaderTop,
+  setEntryFlag,
+  setReaderDrawer,
+} from './reader.js';
+import {
+  closeSettings,
+  currentThemeMode,
+  layoutPref,
+  lockPageScroll,
+  rememberViewScroll,
+  restoreViewScroll,
+  scrollActiveTop,
+  setLayout,
+  state,
+  THEME_META,
+  THEME_MODES,
+  unlockPageScroll,
+} from './state.js';
+import {
+  $,
+  apiFetch,
+  emitOverlays,
+  emitShell,
+  feedTitle,
+  httpError,
+  parseHash,
+  prefersReducedMotion,
+  toast,
+  writeHash,
+} from './util.js';
 
 /* ============================================================
  * 事件绑定
@@ -31,7 +67,7 @@ let refreshing = false;
 export async function refreshFeeds() {
   if (refreshing) return;
   refreshing = true;
-  hideNewPill();   // 手动刷新了，自动刷新挂的那个「有新内容」提示就作废了
+  hideNewPill(); // 手动刷新了，自动刷新挂的那个「有新内容」提示就作废了
   // 用户主动刷新 = 再给失败图一次机会（图源恢复、换了网络都会走到这里）
   clearImgFail();
   try {
@@ -46,9 +82,12 @@ export async function refreshFeeds() {
     // 两页列表互不依赖，并行发出：旧实现串行 4 个请求，弱网下延迟直接累加。
     await Promise.all([
       loadPage(true),
-      (state.tab === 'reader' || state.rdEntries.length) ? loadReader({ reset: true }) : Promise.resolve(),
+      state.tab === 'reader' || state.rdEntries.length
+        ? loadReader({ reset: true })
+        : Promise.resolve(),
     ]);
-    if (data.failed && data.failed.length) toast(`已刷新，${data.failed.length} 个频道抓取失败`, false);
+    if (data.failed && data.failed.length)
+      toast(`已刷新，${data.failed.length} 个频道抓取失败`, false);
     else toast(data.added ? `已刷新，新增 ${data.added} 条` : '已刷新，没有新内容');
   } catch (err) {
     toast('刷新失败：' + (err.message || err), false);
@@ -65,12 +104,19 @@ export async function refreshFeeds() {
 export function exportOpml() {
   /** @type {*} */
   const feeds = state.feedList || [];
-  if (!feeds.length) { toast('没有可导出的订阅源', false); return; }
+  if (!feeds.length) {
+    toast('没有可导出的订阅源', false);
+    return;
+  }
   /**
    * @param {*} [s]
    */
-  const esc = (s) => String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const esc = (s) =>
+    String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   /**
    * @param {*} [f]
    */
@@ -78,8 +124,17 @@ export function exportOpml() {
     const title = feedTitle(f) || f.url || '未命名订阅源';
     const xml = f.url || '';
     const html = f.siteUrl || '';
-    return '    <outline type="rss" text="' + esc(title) + '" title="' + esc(title)
-      + '" xmlUrl="' + esc(xml) + '" htmlUrl="' + esc(html) + '"/>';
+    return (
+      '    <outline type="rss" text="' +
+      esc(title) +
+      '" title="' +
+      esc(title) +
+      '" xmlUrl="' +
+      esc(xml) +
+      '" htmlUrl="' +
+      esc(html) +
+      '"/>'
+    );
   };
   // 按分组归类；未分组的放在顶层
   /** @type {Record<string, any>} */
@@ -91,22 +146,35 @@ export function exportOpml() {
     else ungrouped.push(f);
   }
   let body = '';
-  for (const g of Object.keys(groups).sort(/** @param {*} [a] @param {*} [b] */ (a, b) => a.localeCompare(b, 'zh'))) {
-    body += '  <outline text="' + esc(g) + '" title="' + esc(g) + '">\n'
-      + groups[g].map(feedOutline).join('\n') + '\n'
-      + '  </outline>\n';
+  for (const g of Object.keys(groups).sort(
+    /** @param {*} [a] @param {*} [b] */ (a, b) => a.localeCompare(b, 'zh'),
+  )) {
+    body +=
+      '  <outline text="' +
+      esc(g) +
+      '" title="' +
+      esc(g) +
+      '">\n' +
+      groups[g].map(feedOutline).join('\n') +
+      '\n' +
+      '  </outline>\n';
   }
   body += ungrouped.map(feedOutline).join('\n') + (ungrouped.length ? '\n' : '');
-  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    + '<opml version="2.0">\n'
-    + '  <head><title>FeedLore 订阅导出</title></head>\n'
-    + '  <body>\n' + body + '  </body>\n</opml>\n';
+  const xml =
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<opml version="2.0">\n' +
+    '  <head><title>FeedLore 订阅导出</title></head>\n' +
+    '  <body>\n' +
+    body +
+    '  </body>\n</opml>\n';
   const blob = new Blob([xml], { type: 'text/x-opml' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = 'feedlore-subscriptions-' + new Date().toISOString().slice(0, 10) + '.opml';
-  document.body.appendChild(a); a.click(); a.remove();
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('已导出 ' + feeds.length + ' 个订阅源');
 }
@@ -114,8 +182,8 @@ export function exportOpml() {
 /**
  * 触发一次同源 GET 下载。服务端用 Content-Disposition 给文件名，所以不给 download
  * 属性（给了浏览器会覆盖掉服务端命名）。临时锚点即点即弃，不打断当前页面。
-  * @param {*} [url]
-*/
+ * @param {*} [url]
+ */
 export function downloadUrl(url) {
   const a = document.createElement('a');
   a.href = url;
@@ -125,26 +193,28 @@ export function downloadUrl(url) {
   a.remove();
 }
 
-
 /* Esc = 关闭「最上面那一层」。这里只负责设置弹层，但要先看有没有更上层的覆盖物：
    整屏下拉弹层 / 命令面板 / 灯箱 / 确认框开着时，这一击归它们，不能顺手把设置也关掉。 */
-document.addEventListener('keydown', /** @param {*} [ev] */ (ev) => {
-  if (ev.key !== 'Escape' || !isOn('settingsOpen')) return;
-  if (document.querySelector('.dd-mask')) return;                    // 移动端整屏下拉
-  // 设置里的详情层（列表 → 详情）自己处理 Esc：输入框里第一击只失焦、第二击才关层。
-  // 不让位的话，这一击会穿过详情层把整个设置弹层关掉。
-  if (document.querySelector('.ds-sheet')) return;
-  if (document.querySelector('.rule-scope-pop')) return;              // 规则适用范围浮层
-  const cmdk = document.querySelector('.cmdk-mask:not([hidden])');
-  if (cmdk) return;                                                  // 命令面板
-  if (document.querySelector('.lightbox')) return;                   // 图片灯箱
-  if (isOn('confirmOpen')) return;                                  // 统一确认框
-  // 最后交给宿主：移动端停在「分区内容」这一层时，Esc 应先退回设置列表，
-  // 只有已经在列表上才整层关闭（与「返回」按钮一致）。返回 true = 已消化。
-  const host = get('settingsHost');
-  if (host && typeof host.escape === 'function' && host.escape()) return;
-  closeSettings();
-});
+document.addEventListener(
+  'keydown',
+  /** @param {*} [ev] */ (ev) => {
+    if (ev.key !== 'Escape' || !isOn('settingsOpen')) return;
+    if (document.querySelector('.dd-mask')) return; // 移动端整屏下拉
+    // 设置里的详情层（列表 → 详情）自己处理 Esc：输入框里第一击只失焦、第二击才关层。
+    // 不让位的话，这一击会穿过详情层把整个设置弹层关掉。
+    if (document.querySelector('.ds-sheet')) return;
+    if (document.querySelector('.rule-scope-pop')) return; // 规则适用范围浮层
+    const cmdk = document.querySelector('.cmdk-mask:not([hidden])');
+    if (cmdk) return; // 命令面板
+    if (document.querySelector('.lightbox')) return; // 图片灯箱
+    if (isOn('confirmOpen')) return; // 统一确认框
+    // 最后交给宿主：移动端停在「分区内容」这一层时，Esc 应先退回设置列表，
+    // 只有已经在列表上才整层关闭（与「返回」按钮一致）。返回 true = 已消化。
+    const host = get('settingsHost');
+    if (host && typeof host.escape === 'function' && host.escape()) return;
+    closeSettings();
+  },
+);
 
 /* ============================================================
  * 页面切换（文章 / 卡片 / AI）
@@ -172,8 +242,8 @@ export function switchView(name, opts) {
   }
   const apply = () => {
     state.tab = name;
-    setLayout('tab', name);   // 按账号持久化当前页面，刷新后保持一致
-    hideNewPill();   // 浮标里的新内容是上一个页面拉到的，切页就作废
+    setLayout('tab', name); // 按账号持久化当前页面，刷新后保持一致
+    hideNewPill(); // 浮标里的新内容是上一个页面拉到的，切页就作废
     // 离开文章页时把频道抽屉收掉（否则它会盖在卡片/AI 页上，还占着页面滚动锁）
     if (name !== 'reader') setReaderDrawer(false);
     // 置顶只管当前这一次进入：离开文章页就作废，回来后的翻页不该再按旧目标重校
@@ -227,13 +297,18 @@ export function switchView(name, opts) {
       started = true;
       // 快速连续切页时浏览器会跳过上一段过渡并抛 AbortError；
       // 视图已经切过去了，这里只需吞掉悬空的 rejection，避免控制台噪声。
-      if (transition && transition.finished && transition.finished.catch) transition.finished.catch(() => {});
-      if (transition && transition.ready && transition.ready.catch) transition.ready.catch(() => {});
+      if (transition && transition.finished && transition.finished.catch)
+        transition.finished.catch(() => {});
+      if (transition && transition.ready && transition.ready.catch)
+        transition.ready.catch(() => {});
       // apply 是异步落地的（旧画面快照后才执行）；返回 updateCallbackDone，
       // 让启动流程能等到「视图已切、首屏请求已发出」再做后续判断。
-      if (transition && transition.updateCallbackDone) return transition.updateCallbackDone.catch(() => {});
+      if (transition && transition.updateCallbackDone)
+        return transition.updateCallbackDone.catch(() => {});
       return Promise.resolve();
-    } catch (_) { /* 老实现同步抛错 → 走无动画路径 */ }
+    } catch (_) {
+      /* 老实现同步抛错 → 走无动画路径 */
+    }
     if (!started) apply();
     return Promise.resolve();
   }
@@ -261,7 +336,7 @@ window.addEventListener('popstate', () => {
  *  统一走 reader.js#readerSetTag，两排标签同一套逻辑。
  *@param {*} [tag]
  * @param {*} [ai]
-*/
+ */
 export function readerTagToCards(tag, ai = false) {
   readerSetTag(tag, ai);
 }
@@ -287,7 +362,7 @@ export function openLightbox(src, opts) {
   const list = Array.isArray(o.list) && o.list.length ? o.list : [src];
   const i = list.indexOf(src);
   lightboxOpener = o.opener || null;
-  lightboxState = { src, show: true, list, index: i < 0 ? 0 : i };
+  lightboxState = { src, show: true, list, index: Math.max(i, 0) };
   emitOverlays();
   lockPageScroll();
 }
@@ -311,35 +386,52 @@ export function closeLightbox() {
 }
 
 /** 组内翻页（±1）。只有一张图时是空操作。
-*@param {*} [d]
-*/
+ *@param {*} [d]
+ */
 export function stepLightbox(d) {
   const st = lightboxState;
   if (!st.show || !st.list || st.list.length < 2) return;
   const n = st.list.length;
-  const i = ((st.index + d) % n + n) % n;
+  const i = (((st.index + d) % n) + n) % n;
   lightboxState = { ...st, src: st.list[i] || '', index: i };
   emitOverlays();
 }
 
-document.addEventListener('click', /** @param {*} [ev] */ (ev) => {
-  if (lightboxState.show) { closeLightbox(); return; }   // 开着的时候点哪儿都关
-  const img = ev.target.closest ? ev.target.closest('.art-img') : null;
-  if (!img) return;
-  // 同一篇正文内的图算一组：卡片详情 / 文章页正文 / 列表展开体
-  const scope = img.closest('.art-body, .cd-body, .cd-modal, .art-item') || document;
-  const list = Array.prototype.map
-    .call(scope.querySelectorAll('.art-img'), /** @param {*} [el] */ (el) => el.getAttribute('src'))
-    .filter(Boolean);
-  openLightbox(img.getAttribute('src'), { list, opener: img });
-});
+document.addEventListener(
+  'click',
+  /** @param {*} [ev] */ (ev) => {
+    if (lightboxState.show) {
+      closeLightbox();
+      return;
+    } // 开着的时候点哪儿都关
+    const img = ev.target.closest ? ev.target.closest('.art-img') : null;
+    if (!img) return;
+    // 同一篇正文内的图算一组：卡片详情 / 文章页正文 / 列表展开体
+    const scope = img.closest('.art-body, .cd-body, .cd-modal, .art-item') || document;
+    const list = Array.prototype.map
+      .call(
+        scope.querySelectorAll('.art-img'),
+        /** @param {*} [el] */ (el) => el.getAttribute('src'),
+      )
+      .filter(Boolean);
+    openLightbox(img.getAttribute('src'), { list, opener: img });
+  },
+);
 
-document.addEventListener('keydown', /** @param {*} [ev] */ (ev) => {
-  if (!lightboxState.show) return;
-  if (ev.key === 'Escape') closeLightbox();
-  else if (ev.key === 'ArrowRight') { ev.preventDefault(); stepLightbox(1); }
-  else if (ev.key === 'ArrowLeft') { ev.preventDefault(); stepLightbox(-1); }
-});
+document.addEventListener(
+  'keydown',
+  /** @param {*} [ev] */ (ev) => {
+    if (!lightboxState.show) return;
+    if (ev.key === 'Escape') closeLightbox();
+    else if (ev.key === 'ArrowRight') {
+      ev.preventDefault();
+      stepLightbox(1);
+    } else if (ev.key === 'ArrowLeft') {
+      ev.preventDefault();
+      stepLightbox(-1);
+    }
+  },
+);
 
 /* ============================================================
  * PWA：Service Worker + 「添加到手机」
@@ -347,19 +439,24 @@ document.addEventListener('keydown', /** @param {*} [ev] */ (ev) => {
 // 注册 Service Worker（仅 https / localhost 会生效；用 http 的局域网 IP 访问时静默忽略）
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => { /* 非安全上下文，忽略 */ });
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* 非安全上下文，忽略 */
+    });
   });
 }
 
 // 安装到手机：Chromium 系（Edge / Chrome）满足条件时会触发 beforeinstallprompt
 /** @type {any} */
-export let deferredInstall = null;   // 捕获到的 beforeinstallprompt 事件（账号面板「一键安装」经桥 promptInstall 触发）
+export let deferredInstall = null; // 捕获到的 beforeinstallprompt 事件（账号面板「一键安装」经桥 promptInstall 触发）
 
-window.addEventListener('beforeinstallprompt', /** @param {*} [ev] */ (ev) => {
-  ev.preventDefault();
-  deferredInstall = ev;
-  emitShell();   // 顶栏「添加到手机」按钮由 React 按 installReady 显隐
-});
+window.addEventListener(
+  'beforeinstallprompt',
+  /** @param {*} [ev] */ (ev) => {
+    ev.preventDefault();
+    deferredInstall = ev;
+    emitShell(); // 顶栏「添加到手机」按钮由 React 按 installReady 显隐
+  },
+);
 
 window.addEventListener('appinstalled', () => {
   deferredInstall = null;
@@ -372,7 +469,11 @@ export async function promptInstall() {
   if (!deferredInstall) return false;
   deferredInstall.prompt();
   let outcome = 'dismissed';
-  try { ({ outcome } = await deferredInstall.userChoice); } catch (_) { /* 忽略 */ }
+  try {
+    ({ outcome } = await deferredInstall.userChoice);
+  } catch (_) {
+    /* 忽略 */
+  }
   deferredInstall = null;
   emitShell();
   if (outcome === 'accepted') toast('已添加到手机');
@@ -386,7 +487,8 @@ export function syncThemeColor() {
   const metas = document.querySelectorAll('meta[name="theme-color"]');
   // 与主题同源：取当前主题的 --bg（亮/暗/GitHub 三主题各自不同）。
   // 不取 --panel —— 页面顶部与底栏下方露出的都是 --bg，报 --panel 会差一档灰。
-  const cs = typeof getComputedStyle === 'function' ? getComputedStyle(document.documentElement) : null;
+  const cs =
+    typeof getComputedStyle === 'function' ? getComputedStyle(document.documentElement) : null;
   const bg = cs ? String(cs.getPropertyValue('--bg') || '').trim() : '';
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
   const color = bg || (dark ? '#242424' : '#f4f5f7');
@@ -401,7 +503,8 @@ export function syncThemeColor() {
 }
 syncThemeColor();
 new MutationObserver(syncThemeColor).observe(document.documentElement, {
-  attributes: true, attributeFilter: ['data-theme'],
+  attributes: true,
+  attributeFilter: ['data-theme'],
 });
 
 /* ============================================================
@@ -411,7 +514,7 @@ new MutationObserver(syncThemeColor).observe(document.documentElement, {
  * 开合状态按账号持久化（users.prefs.layout.sections），不再落浏览器 localStorage。
  * ============================================================ */
 export function savedSections() {
-  return (layoutPref.sections && typeof layoutPref.sections === 'object') ? layoutPref.sections : {};
+  return layoutPref.sections && typeof layoutPref.sections === 'object' ? layoutPref.sections : {};
 }
 
 /**
@@ -427,17 +530,19 @@ export function saveSectionState(key, open) {
  * 给 root 里所有 details.sec 套上记住的开合状态，并挂上变化监听。
  * 静态区域在启动时调一次就够；**动态重绘的区域每次渲染后都要再调一次**
  * —— 状态页每 30s 重绘一遍，不重新绑定的话展开态会被冲掉。
-  * @param {*} [root]
-*/
+ * @param {*} [root]
+ */
 export function bindSections(root) {
   const saved = savedSections();
-  (root || document).querySelectorAll('details.sec[data-sec]').forEach(/** @param {*} [d] */ (d) => {
-    if (d.dataset.secBound === '1') return;   // 已经绑过，别重复挂监听
-    d.dataset.secBound = '1';
-    const k = d.getAttribute('data-sec');
-    if (k in saved) d.open = !!saved[k];
-    d.addEventListener('toggle', () => saveSectionState(k, d.open));
-  });
+  (root || document).querySelectorAll('details.sec[data-sec]').forEach(
+    /** @param {*} [d] */ (d) => {
+      if (d.dataset.secBound === '1') return; // 已经绑过，别重复挂监听
+      d.dataset.secBound = '1';
+      const k = d.getAttribute('data-sec');
+      if (k in saved) d.open = !!saved[k];
+      d.addEventListener('toggle', () => saveSectionState(k, d.open));
+    },
+  );
 }
 
 bindSections(document);
@@ -474,14 +579,14 @@ export function selectScope(scope) {
  *  focusId 只在这一次跳转里用，不写进任何持久化偏好。
  *@param {*} [id]
  * @param {*} [focusId]
-*/
+ */
 export function jumpToFeed(id, focusId) {
   // 先落筛选条件再切页：switchView 在列表为空时会自动加载，用目标频道的筛选才不白拉一次
   state.rdScope = 'all';
   state.rdFeedId = Number(id);
   state.rdGroup = null;
-  state.rdWatch = null;   // 从关注/屏蔽视图点进具体频道，得退出聚合视图
-  if (focusId != null) state.rdQ = '';   // 搜索框里的旧关键词会把目标文章筛掉
+  state.rdWatch = null; // 从关注/屏蔽视图点进具体频道，得退出聚合视图
+  if (focusId != null) state.rdQ = ''; // 搜索框里的旧关键词会把目标文章筛掉
   // 首屏请求由下面这一处发：让 switchView 别再补一次重置（见 apply 里的 skipReaderLoad）
   switchView('reader', { skipReaderLoad: focusId != null });
   renderReaderChannels();
@@ -495,7 +600,7 @@ export function jumpToFeed(id, focusId) {
 export function focusSearchBox() {
   if (state.tab === 'cards') {
     const focusCards = get('cardsFocusSearch');
-    if (focusCards) focusCards();   // 卡片搜索框已 React 化
+    if (focusCards) focusCards(); // 卡片搜索框已 React 化
     return;
   }
   if (state.tab !== 'reader') switchView('reader');
@@ -505,17 +610,20 @@ export function focusSearchBox() {
 
 // 「/」聚焦搜索：命令面板里一直写着这个提示，之前却没有对应的按键处理。
 // 正在输入框里打字时不抢（用户可能真的要打斜杠），任何弹层开着时也不抢。
-document.addEventListener('keydown', /** @param {*} [ev] */ (ev) => {
-  if (ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
-  const t = ev.target;
-  if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
-  if (isOn('settingsOpen') || isOn('cmdkOpen') || isOn('confirmOpen')) return;
-  // 设置弹层常驻挂载（关闭时只是 hidden），必须排除隐藏态，否则「/」永远被它吃掉
-  if (document.querySelector('.lightbox, .modal-mask:not([hidden]), .dd-mask:not([hidden])')) return;
-  ev.preventDefault();
-  focusSearchBox();
-});
-
+document.addEventListener(
+  'keydown',
+  /** @param {*} [ev] */ (ev) => {
+    if (ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const t = ev.target;
+    if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
+    if (isOn('settingsOpen') || isOn('cmdkOpen') || isOn('confirmOpen')) return;
+    // 设置弹层常驻挂载（关闭时只是 hidden），必须排除隐藏态，否则「/」永远被它吃掉
+    if (document.querySelector('.lightbox, .modal-mask:not([hidden]), .dd-mask:not([hidden])'))
+      return;
+    ev.preventDefault();
+    focusSearchBox();
+  },
+);
 
 /* 卡片页条目收藏/已读：与阅读页走同一套标记逻辑（reader.js 的 setEntryFlag）——
  * 两页列表各持一份条目对象，统一入口才能保证改一处、两边同时换新对象并同步计数。 */
@@ -542,7 +650,7 @@ export const digestIsEnabled = () => layoutPref.digestEnabled !== false;
 /** 开 / 关日报（设置面板的开关经桥调用）。
  *  探索页常驻：关掉日报只隐藏页内「日报」tab，不再把人带离探索页。
  *@param {*} [on]
-*/
+ */
 export function setDigestEnabled(on) {
   const next = on !== false;
   if (digestIsEnabled() === next) return;

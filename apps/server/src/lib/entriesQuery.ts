@@ -6,8 +6,8 @@
  * 抽到 lib 让 HTTP 路由与 MCP 工具共同 import，避免第二份真源悄悄走样。
  */
 
-import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
-import { entries, entryAiTags, feeds, type Db } from '@feedlore/db';
+import { type Db, entries, entryAiTags, feeds } from '@feedlore/db';
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 
 /** 条目查询公共列（详情另加 content）。字段名与 CardRow 一一对应。 */
 export const CARD_COLUMNS = {
@@ -21,7 +21,9 @@ export const CARD_COLUMNS = {
   tags: entries.tags,
   // AI 标签：与手动 tags 物理隔离；按 (entry_id, feeds.owner_id) 取本人那份。
   // 列表/详情都 innerJoin(feeds)，所以 feeds.ownerId 在此可见。
-  aiTags: sql<string[]>`coalesce((select ${entryAiTags.tags} from ${entryAiTags} where ${entryAiTags.entryId} = ${entries.id} and ${entryAiTags.userId} = ${feeds.ownerId}), ARRAY[]::text[])`,
+  aiTags: sql<
+    string[]
+  >`coalesce((select ${entryAiTags.tags} from ${entryAiTags} where ${entryAiTags.entryId} = ${entries.id} and ${entryAiTags.userId} = ${feeds.ownerId}), ARRAY[]::text[])`,
   image: entries.image,
   images: entries.images,
   links: entries.links,
@@ -60,10 +62,7 @@ export function parseFeedIds(raw: string | undefined): number[] | null {
 /** 筛选条件（列表与「全部已读」共用）。owner 走子查询，因此 UPDATE 也能直接用。 */
 export function entryConditions(db: Db, uid: string, f: EntryFilter): SQL[] {
   const conds: SQL[] = [
-    inArray(
-      entries.feedId,
-      db.select({ id: feeds.id }).from(feeds).where(eq(feeds.ownerId, uid)),
-    ),
+    inArray(entries.feedId, db.select({ id: feeds.id }).from(feeds).where(eq(feeds.ownerId, uid))),
   ];
   if (f.feedIds !== null) conds.push(inArray(entries.feedId, f.feedIds));
   if (f.tag) conds.push(sql`${f.tag} = any(${entries.tags})`);

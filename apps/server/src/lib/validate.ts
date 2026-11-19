@@ -7,9 +7,9 @@
  *   只在服务端日志里留痕。这正是 1.7.2 那类「读不存在字段」事故的编译期+运行期双重护栏。
  */
 
-import { log } from './logger';
 import type { z } from 'zod';
 import { ApiException } from './apiError';
+import { log } from './logger';
 
 /** 契约违规（响应侧）= 服务端缺陷。 */
 export class ContractViolation extends ApiException {

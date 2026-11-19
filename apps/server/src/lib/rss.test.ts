@@ -34,7 +34,10 @@ test('normalizeItem：产出 v2 正文块，图片按正文顺序且相对地址
   assert.equal(it.bodyVersion, 2);
   assert.deepEqual(it.images, ['https://example.com/a.jpg']);
   const blocks = JSON.parse(it.bodyJson ?? '[]');
-  assert.deepEqual(blocks.map((b: { t: string }) => b.t), ['p', 'img', 'p']);
+  assert.deepEqual(
+    blocks.map((b: { t: string }) => b.t),
+    ['p', 'img', 'p'],
+  );
   assert.equal(blocks[1].src, 'https://example.com/a.jpg');
 });
 

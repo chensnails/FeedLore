@@ -8,8 +8,9 @@
  * 都调同一个 setter，所以从标签条选完，抽屉里的高亮同步跟着变，不存在第二套筛选。
  * 只在 ≤720px 显示（CSS 控制），桌面继续用常驻侧栏。
  */
-import React, { useEffect, useRef, useState } from 'react';
+
 import { core } from '@core';
+import { useEffect, useRef, useState } from 'react';
 
 const S = () => core;
 
@@ -55,7 +56,8 @@ export function ChannelTabs({
 
   // 分组筛选在抽屉里选，标签条上没有对应项：仍把「全部」标上，
   // 否则整条看起来一个选中项都没有，像是筛选丢了。
-  let activeKey = baseAll && activeWatch == null ? 'scope:' + (isReader ? activeScope : 'all') : null;
+  let activeKey =
+    baseAll && activeWatch == null ? 'scope:' + (isReader ? activeScope : 'all') : null;
   if (activeWatch) activeKey = 'watch:' + activeWatch;
   if (feedId != null) activeKey = 'feed:' + feedId;
 
@@ -158,8 +160,12 @@ export function ChannelTabs({
   };
 
   return (
-    <nav ref={navRef} className={'chan-tabs' + (atEnd ? ' at-end' : '')}
-      aria-label="频道切换，可横向滚动，方向键可换频道" onKeyDown={onKeyDown}>
+    <nav
+      ref={navRef}
+      className={'chan-tabs' + (atEnd ? ' at-end' : '')}
+      aria-label="频道切换，可横向滚动，方向键可换频道"
+      onKeyDown={onKeyDown}
+    >
       {isReader
         ? tab('scope:all', '全部', scopeOn('all'), () => onScope && onScope('all'))
         : tab('scope:all', '全部', baseAll, () => onFeed && onFeed(null))}
@@ -170,17 +176,27 @@ export function ChannelTabs({
           {tab('watch:watch', '关注', watchOn('watch'), () => onWatch && onWatch('watch'))}
         </>
       ) : null}
-      {feeds.map(/** @param {*} [f] */ (f) => tab(
-        'feed:' + f.id,
-        feedName(f),
-        feedId != null && String(feedId) === String(f.id),
-        () => onFeed && onFeed(f.id),
-        f.enabled === false ? `${feedName(f)}（已停止采集）` : feedName(f),
-      ))}
-      <button type="button" className="chan-tab chan-tabs-more" tabIndex={-1}
+      {feeds.map(
+        /** @param {*} [f] */ (f) =>
+          tab(
+            'feed:' + f.id,
+            feedName(f),
+            feedId != null && String(feedId) === String(f.id),
+            () => onFeed && onFeed(f.id),
+            f.enabled === false ? `${feedName(f)}（已停止采集）` : feedName(f),
+          ),
+      )}
+      <button
+        type="button"
+        className="chan-tab chan-tabs-more"
+        tabIndex={-1}
         aria-label={`打开完整频道列表，共 ${feeds.length} 个订阅频道`}
-        title="完整频道列表" onClick={onManage}>
-        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg>
+        title="完整频道列表"
+        onClick={onManage}
+      >
+        <svg className="ico" aria-hidden="true" focusable="false">
+          <use href="#i-menu" />
+        </svg>
         <span className="chan-tabs-more-n">{feeds.length}</span>
       </button>
     </nav>

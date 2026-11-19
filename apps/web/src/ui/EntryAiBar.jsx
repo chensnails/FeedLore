@@ -48,7 +48,10 @@ export function EntryAiBar({ entryId }) {
     setBusyKey(k);
     return true;
   };
-  const end = () => { busyRef.current = null; setBusyKey(null); };
+  const end = () => {
+    busyRef.current = null;
+    setBusyKey(null);
+  };
   const anyBusy = busyKey !== null;
 
   /* 已等待秒数：单篇生成实测可能跑 1~2 分钟（长文 + 慢上游），只显示一个「…」
@@ -86,19 +89,26 @@ export function EntryAiBar({ entryId }) {
    * 结果仍会写进「模型状态」列表，只是这个组件不再更新。 */
   /** @type {any} */
   const aliveRef = useRef(true);
-  useEffect(() => () => { aliveRef.current = false; }, []);
+  useEffect(
+    () => () => {
+      aliveRef.current = false;
+    },
+    [],
+  );
 
   if (!writable || id == null) return null;
 
   /** 提交并轮询一个任务；成功返回 job，失败抛出已翻译的错误。
-  *@param {*} [body]
- * @param {*} [onPhase]
-*/
+   *@param {*} [body]
+   * @param {*} [onPhase]
+   */
   async function runJob(body, onPhase) {
     const job = await s.submitAiJob(body);
     if (aliveRef.current) onPhase(job.status || 'queued');
     return s.pollAiJob(job.id, {
-      onStatus: /** @param {*} [j] */ (j) => { if (aliveRef.current) onPhase(j.status); },
+      onStatus: /** @param {*} [j] */ (j) => {
+        if (aliveRef.current) onPhase(j.status);
+      },
       isCancelled: () => !aliveRef.current,
     });
   }
@@ -125,7 +135,8 @@ export function EntryAiBar({ entryId }) {
       setOpen(true);
     } catch (err) {
       if (!aliveRef.current) return;
-      const msg = s && s.errText ? s.errText(err, 'AI 调用失败') : String((err && err.message) || err);
+      const msg =
+        s && s.errText ? s.errText(err, 'AI 调用失败') : String((err && err.message) || err);
       setError(msg);
     } finally {
       if (aliveRef.current) setPhase('');
@@ -162,31 +173,49 @@ export function EntryAiBar({ entryId }) {
   return (
     <div className="entry-ai">
       <div className="entry-ai-actions">
-        <span className="entry-ai-label" aria-hidden="true">AI</span>
-        {AI_ACTIONS.map(/** @param {*} [a] */ (a) => (
-          <button key={a.k} type="button" className="btn btn-ghost btn-sm"
-            disabled={anyBusy} aria-busy={busyKey === a.k ? 'true' : undefined}
-            aria-label={'AI' + a.label}
-            onClick={() => run(a.k)}>
-            {busyKey === a.k ? '…' : a.label}
-          </button>
-        ))}
-        <button key="tags" type="button" className="btn btn-ghost btn-sm"
-          disabled={anyBusy} aria-busy={busyKey === 'tags' ? 'true' : undefined}
+        <span className="entry-ai-label" aria-hidden="true">
+          AI
+        </span>
+        {AI_ACTIONS.map(
+          /** @param {*} [a] */ (a) => (
+            <button
+              key={a.k}
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={anyBusy}
+              aria-busy={busyKey === a.k ? 'true' : undefined}
+              aria-label={'AI' + a.label}
+              onClick={() => run(a.k)}
+            >
+              {busyKey === a.k ? '…' : a.label}
+            </button>
+          ),
+        )}
+        <button
+          key="tags"
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={anyBusy}
+          aria-busy={busyKey === 'tags' ? 'true' : undefined}
           aria-label="AI 标签"
-          onClick={runTags}>
+          onClick={runTags}
+        >
           {busyKey === 'tags' ? '…' : '标签'}
         </button>
         {anyBusy && phase === 'queued' ? (
           <span className="entry-ai-wait">
-            <span className="sr-only" role="status">AI 已提交，排队中</span>
+            <span className="sr-only" role="status">
+              AI 已提交，排队中
+            </span>
             <span aria-hidden="true">排队中…</span>
           </span>
         ) : null}
         {anyBusy && phase === 'running' ? (
           <span className="entry-ai-wait">
             {/* 秒数每秒变，aria-hidden；读屏只播报一次「生成中」 */}
-            <span className="sr-only" role="status">AI 正在生成</span>
+            <span className="sr-only" role="status">
+              AI 正在生成
+            </span>
             <span aria-hidden="true">
               {elapsed >= 3 ? `生成中 · 已等待 ${elapsed}s` : '生成中…'}
             </span>
@@ -197,7 +226,14 @@ export function EntryAiBar({ entryId }) {
         <div className="entry-ai-result" role="region" aria-live="polite">
           <div className="entry-ai-res-head">
             <span>AI 生成结果</span>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} aria-label="收起结果">收起</button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setOpen(false)}
+              aria-label="收起结果"
+            >
+              收起
+            </button>
           </div>
           <div className="entry-ai-res-body">{result}</div>
         </div>
@@ -206,16 +242,28 @@ export function EntryAiBar({ entryId }) {
         <div className="entry-ai-tags" role="region" aria-live="polite">
           <span className="entry-ai-tags-label">AI 标签</span>
           {tagResult.length ? (
-            tagResult.map(/** @param {*} [t] */ (t) => (
-              <span key={t} className="mini-tag mini-tag-ai">#{t}</span>
-            ))
+            tagResult.map(
+              /** @param {*} [t] */ (t) => (
+                <span key={t} className="mini-tag mini-tag-ai">
+                  #{t}
+                </span>
+              ),
+            )
           ) : (
             <span className="hint">未生成标签</span>
           )}
         </div>
       ) : null}
-      {error ? <div className="entry-ai-error hint" role="alert">{error}</div> : null}
-      {tagError ? <div className="entry-ai-error hint" role="alert">{tagError}</div> : null}
+      {error ? (
+        <div className="entry-ai-error hint" role="alert">
+          {error}
+        </div>
+      ) : null}
+      {tagError ? (
+        <div className="entry-ai-error hint" role="alert">
+          {tagError}
+        </div>
+      ) : null}
     </div>
   );
 }

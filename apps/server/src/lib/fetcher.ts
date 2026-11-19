@@ -16,31 +16,29 @@
  * - 入库用「先查已存在 guid + 一次多行 upsert」，比 legacy 的逐条 INSERT 少 N 次往返。
  */
 
-import { log } from './logger';
+import type { ApiErrorCode } from '@feedlore/contract';
+import { type Db, entries, feeds, users } from '@feedlore/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { entries, feeds, users, type Db } from '@feedlore/db';
-import { safeFetch } from './net';
-import { apiErrorBody, apiErrorKey } from './apiError';
-import { API_ERROR_DEFAULTS, type ApiErrorCode } from '@feedlore/contract';
-import { normalizeItem, parseFeed, type NormalizedItem } from './rss';
-import { applyFilters } from './filter';
-import { classify, notifyRuleNames, type WatchVerdict } from './watch';
-import { expireWatchTags } from './watch-expire';
-import { userFilters, userRules, userWatchRules, userWebhook } from './prefs';
-import { applyRulesToFresh } from './rules';
-import { scopeAllows } from './scope';
-import { enhanceWithFullText, pruneArticleCache } from './fulltext';
 import {
   DEFAULT_KEEP_DAYS,
   DEFAULT_REFRESH_MINUTES,
-  FEED_FAIL_LIMIT,
   FETCH_TIMEOUT_MS,
   KEEP_PER_FEED,
-  REFRESH_CONCURRENCY,
   SCHEDULER_ENABLED,
 } from '../env';
-import { getSource, sourceSnapshot, type SourceConfig } from './settings';
+import { apiErrorBody, apiErrorKey } from './apiError';
 import { classifyCond, condFactor, condHost, noteCond } from './feedCond';
+import { applyFilters } from './filter';
+import { enhanceWithFullText, pruneArticleCache } from './fulltext';
+import { log } from './logger';
+import { safeFetch } from './net';
+import { userFilters, userRules, userWatchRules, userWebhook } from './prefs';
+import { type NormalizedItem, normalizeItem, parseFeed } from './rss';
+import { applyRulesToFresh } from './rules';
+import { scopeAllows } from './scope';
+import { getSource, type SourceConfig, sourceSnapshot } from './settings';
+import { classify, notifyRuleNames, type WatchVerdict } from './watch';
+import { expireWatchTags } from './watch-expire';
 
 export type FeedRow = typeof feeds.$inferSelect;
 
@@ -82,7 +80,8 @@ class FeedError extends Error {
   ) {
     super(apiErrorBody(code, { detail: opts.detail }).message);
     this.code = code;
-    this.detail = opts.detail === undefined || opts.detail === null ? undefined : String(opts.detail);
+    this.detail =
+      opts.detail === undefined || opts.detail === null ? undefined : String(opts.detail);
     this.status = opts.status;
     this.permanent = opts.permanent;
   }
@@ -103,11 +102,16 @@ export interface FetchOnce {
  */
 export async function fetchFeedRaw(
   url: string,
-  { etag, lastModified, timeoutMs }: { etag?: string | null; lastModified?: string | null; timeoutMs?: number } = {},
+  {
+    etag,
+    lastModified,
+    timeoutMs,
+  }: { etag?: string | null; lastModified?: string | null; timeoutMs?: number } = {},
 ): Promise<FetchOnce> {
   const headers: Record<string, string> = {
     'User-Agent': UA,
-    Accept: 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5',
+    Accept:
+      'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5',
   };
   if (etag) headers['If-None-Match'] = etag;
   if (lastModified) headers['If-Modified-Since'] = lastModified;
@@ -132,7 +136,11 @@ export async function fetchFeedRaw(
 
       if (!resp.ok) {
         const status = resp.status;
-        throw new FeedError('E_FETCH_HTTP_STATUS', { detail: status, status, permanent: !retryableStatus(status) });
+        throw new FeedError('E_FETCH_HTTP_STATUS', {
+          detail: status,
+          status,
+          permanent: !retryableStatus(status),
+        });
       }
 
       const len = Number(resp.headers.get('content-length') ?? 0);
@@ -157,7 +165,13 @@ export async function fetchFeedRaw(
 
       const resEtag = resp.headers.get('etag');
       const resLast = resp.headers.get('last-modified');
-      noteCond(host, classifyCond({ etag, lastModified }, { status: resp.status, etag: resEtag, lastModified: resLast }));
+      noteCond(
+        host,
+        classifyCond(
+          { etag, lastModified },
+          { status: resp.status, etag: resEtag, lastModified: resLast },
+        ),
+      );
       return {
         notModified: false,
         status: resp.status,
@@ -177,10 +191,11 @@ export async function fetchFeedRaw(
 
       const permanent = err?.permanent === true;
       const msg = String(err?.message ?? err);
-      const maybeTransient = err?.permanent === false
-        || err?.code === 'E_FETCH_TIMEOUT'
-        || err?.code === 'E_FETCH_TOO_LARGE'
-        || /ECONN|EAI_|fetch failed|socket hang up|network/i.test(msg);
+      const maybeTransient =
+        err?.permanent === false ||
+        err?.code === 'E_FETCH_TIMEOUT' ||
+        err?.code === 'E_FETCH_TOO_LARGE' ||
+        /ECONN|EAI_|fetch failed|socket hang up|network/i.test(msg);
       if (permanent || attempt >= RETRY_MAX || !maybeTransient) throw lastErr;
       const backoff = Math.round(RETRY_BASE_MS * RETRY_FACTOR ** (attempt - 1));
       // 退避也要落在总预算里，否则「睡完再发起一次完整超时」照样破上限
@@ -312,7 +327,11 @@ export function dedupeByGuid(items: NormalizedItem[]): NormalizedItem[] {
  * legacy 是逐条 INSERT ... ON CONFLICT 再用 `xmax = 0` 判新增 —— 50 条就是 50 次往返；
  * 这里两次往返搞定，新增集合由「查之前」的差集得出（并发双抓已由 inFlight 去重挡掉）。
  */
-export async function upsertEntries(db: Db, feedId: number, items: NormalizedItem[]): Promise<UpsertResult> {
+export async function upsertEntries(
+  db: Db,
+  feedId: number,
+  items: NormalizedItem[],
+): Promise<UpsertResult> {
   const list = dedupeByGuid(items);
   if (!list.length) return { inserted: 0, fresh: [] };
 
@@ -434,7 +453,10 @@ function groupKey(url: string): string {
 }
 
 /** 批量取用户偏好（一次查询，避免逐 feed N+1） */
-async function loadPrefs(db: Db, ownerIds: string[]): Promise<Map<string, Record<string, unknown>>> {
+async function loadPrefs(
+  db: Db,
+  ownerIds: string[],
+): Promise<Map<string, Record<string, unknown>>> {
   const out = new Map<string, Record<string, unknown>>();
   const ids = [...new Set(ownerIds)];
   if (!ids.length) return out;
@@ -457,7 +479,10 @@ interface WatchHit {
 }
 let pendingHits: WatchHit[] = [];
 
-async function flushWatchNotify(db: Db, prefs: Map<string, Record<string, unknown>>): Promise<void> {
+async function flushWatchNotify(
+  _db: Db,
+  prefs: Map<string, Record<string, unknown>>,
+): Promise<void> {
   if (!pendingHits.length) return;
   const batch = pendingHits;
   pendingHits = [];
@@ -503,7 +528,12 @@ async function flushWatchNotify(db: Db, prefs: Map<string, Record<string, unknow
 }
 
 /** 抓一组「订阅了同一 URL」的频道：只回源一次，结果写回组内每个 feed 行 */
-async function refreshGroup(db: Db, key: string, members: FeedRow[], src: SourceConfig): Promise<GroupResult> {
+async function refreshGroup(
+  db: Db,
+  key: string,
+  members: FeedRow[],
+  src: SourceConfig,
+): Promise<GroupResult> {
   const running = inFlight.get(key);
   if (running) return { ...(await running), skipped: 'in-flight' };
 
@@ -512,7 +542,12 @@ async function refreshGroup(db: Db, key: string, members: FeedRow[], src: Source
   return p;
 }
 
-async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: SourceConfig): Promise<GroupResult> {
+async function doRefreshGroup(
+  db: Db,
+  key: string,
+  members: FeedRow[],
+  cfg: SourceConfig,
+): Promise<GroupResult> {
   // 5s 内刚抓过这个 URL → 跳过（防连点刷新打爆源站）
   const last = recentFetchMs.get(key);
   if (last && Date.now() - last < REFRESH_MIN_INTERVAL_MS) {
@@ -520,13 +555,17 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
   }
 
   // 用「最近抓过且带条件头」的那个成员的 etag/last_modified 打条件请求（命中 304 概率最高）
-  const src = members
-    .filter((m) => m.etag || m.lastModified)
-    .sort((a, b) => (b.lastFetchedAt?.getTime() ?? 0) - (a.lastFetchedAt?.getTime() ?? 0))[0]
-    ?? members[0]!;
+  const src =
+    members
+      .filter((m) => m.etag || m.lastModified)
+      .sort((a, b) => (b.lastFetchedAt?.getTime() ?? 0) - (a.lastFetchedAt?.getTime() ?? 0))[0] ??
+    members[0]!;
 
   const first = members[0]!;
-  const prefs = await loadPrefs(db, members.map((m) => m.ownerId));
+  const prefs = await loadPrefs(
+    db,
+    members.map((m) => m.ownerId),
+  );
 
   try {
     const r = await loadFeed(first.url, {
@@ -550,19 +589,23 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
 
       // 条目过滤规则按成员 owner 逐人生效（同一 URL 多用户订阅时各过各的）；
       // 规则自身的适用范围再按这个 feed 的分组 / id 收窄，空选 = 不生效。
-      const items = applyFilters(r.items, userFilters(memberPrefs).filter((rule) => scopeAllows(rule.scope, m)));
+      const items = applyFilters(
+        r.items,
+        userFilters(memberPrefs).filter((rule) => scopeAllows(rule.scope, m)),
+      );
       filtered += r.items.length - items.length;
 
       // 开了「全文」的频道：摘要型正文去原文页补全。失败只保留订阅正文，不能影响入库。
-      const enriched = m.fullText && items.length
-        ? await enhanceWithFullText(db, items, {
-          siteUrl: r.siteUrl,
-          timeoutMs: Math.min(cfg.timeoutSeconds * 1000, 12_000),
-        }).catch((e: unknown) => {
-          log.error('[rss] full-text fetch failed:', (e as Error)?.message ?? e);
-          return items;
-        })
-        : items;
+      const enriched =
+        m.fullText && items.length
+          ? await enhanceWithFullText(db, items, {
+              siteUrl: r.siteUrl,
+              timeoutMs: Math.min(cfg.timeoutSeconds * 1000, 12_000),
+            }).catch((e: unknown) => {
+              log.error('[rss] full-text fetch failed:', (e as Error)?.message ?? e);
+              return items;
+            })
+          : items;
 
       const up = await upsertEntries(db, m.id, enriched);
       added += up.inserted;
@@ -625,7 +668,14 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
       }).catch(() => {});
     }
 
-    return { url: key, notModified: false, added, total: r.items.length, filtered, feeds: members.length };
+    return {
+      url: key,
+      notModified: false,
+      added,
+      total: r.items.length,
+      filtered,
+      feeds: members.length,
+    };
   } catch (e) {
     const msg = apiErrorKey(e);
     const autoOff: Array<{ id: number; title: string }> = [];
@@ -633,11 +683,18 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
     for (const m of members) {
       await saveFeedMeta(db, m.id, { status: 'error', error: msg }).catch(() => {});
       const streak = await bumpFailStreak(db, m.id).catch(() => 0);
-      if (streak >= cfg.feedFailLimit && m.enabled) autoOff.push({ id: m.id, title: m.customTitle || m.title || m.url });
+      if (streak >= cfg.feedFailLimit && m.enabled)
+        autoOff.push({ id: m.id, title: m.customTitle || m.title || m.url });
     }
     for (const f of autoOff) {
-      await db.update(feeds).set({ enabled: false, updatedAt: new Date() }).where(eq(feeds.id, f.id)).catch(() => {});
-      log.info(`[rss] feed failed ${cfg.feedFailLimit} times in a row, collection auto-disabled: ${f.title}`);
+      await db
+        .update(feeds)
+        .set({ enabled: false, updatedAt: new Date() })
+        .where(eq(feeds.id, f.id))
+        .catch(() => {});
+      log.info(
+        `[rss] feed failed ${cfg.feedFailLimit} times in a row, collection auto-disabled: ${f.title}`,
+      );
     }
 
     return { url: key, error: msg, added: 0, feeds: members.length, autoDisabled: autoOff.length };
@@ -680,7 +737,11 @@ export async function pruneEntries(db: Db, cfg?: SourceConfig): Promise<number> 
 }
 
 /** 并发抓一批频道，抓完清理并汇总。手动「刷新全部」与定时 tick 都走这里。 */
-export async function refreshFeeds(db: Db, rows: FeedRow[], label = 'manual'): Promise<RefreshSummary> {
+export async function refreshFeeds(
+  db: Db,
+  rows: FeedRow[],
+  label = 'manual',
+): Promise<RefreshSummary> {
   const startedAt = Date.now();
   // 站点参数每轮读一次快照（保存配置后立即失效，不需要重启进程）
   const cfg = await getSource(db);
@@ -713,7 +774,10 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = 'manual'): P
   }
 
   // 关注命中先推送（需要 prefs，直接用本轮已经查过的）
-  const prefs = await loadPrefs(db, rows.map((r) => r.ownerId));
+  const prefs = await loadPrefs(
+    db,
+    rows.map((r) => r.ownerId),
+  );
   await flushWatchNotify(db, prefs);
 
   const pruned = await pruneEntries(db, cfg).catch(() => 0);
@@ -741,14 +805,14 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = 'manual'): P
   };
 
   log.info(
-    `[rss] refresh (${label}) done: ${groups.size} URL groups / ${rows.length} feeds, ${added} new entries`
-    + (skipped ? `, ${skipped} skipped` : '')
-    + (failed.length ? `, ${failed.length} failed` : '')
-    + (autoDisabled ? `, ${autoDisabled} auto-disabled after repeated failures` : '')
-    + (filtered ? `, ${filtered} dropped by filter rules` : '')
-    + (watchExpired ? `, ${watchExpired} watch tags expired` : '')
-    + (pruned ? `, ${pruned} pruned` : '')
-    + `, took ${Date.now() - startedAt}ms`,
+    `[rss] refresh (${label}) done: ${groups.size} URL groups / ${rows.length} feeds, ${added} new entries` +
+      (skipped ? `, ${skipped} skipped` : '') +
+      (failed.length ? `, ${failed.length} failed` : '') +
+      (autoDisabled ? `, ${autoDisabled} auto-disabled after repeated failures` : '') +
+      (filtered ? `, ${filtered} dropped by filter rules` : '') +
+      (watchExpired ? `, ${watchExpired} watch tags expired` : '') +
+      (pruned ? `, ${pruned} pruned` : '') +
+      `, took ${Date.now() - startedAt}ms`,
   );
 
   return { at: lastRefreshAt, added, failed, skipped, autoDisabled, filtered, pruned, results };
@@ -859,8 +923,14 @@ export function startScheduler(db: Db): void {
   if (timer) clearInterval(timer);
   // 预热快照：首个 tick 不该因为「还没读过库」而用 env 默认值算间隔
   void getSource(db)
-    .then((cfg) => log.info(`[rss] scheduler ready: global interval ${cfg.refreshMinutes} min, due feeds checked every minute`))
-    .catch((e: unknown) => log.error('[rss] failed to read collection settings:', (e as Error)?.message ?? e));
+    .then((cfg) =>
+      log.info(
+        `[rss] scheduler ready: global interval ${cfg.refreshMinutes} min, due feeds checked every minute`,
+      ),
+    )
+    .catch((e: unknown) =>
+      log.error('[rss] failed to read collection settings:', (e as Error)?.message ?? e),
+    );
   timer = setInterval(() => {
     void tickRefresh(db).catch((e: unknown) =>
       log.error('[rss] scheduled refresh failed:', (e as Error)?.message ?? e),

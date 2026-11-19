@@ -7,11 +7,11 @@
  * 是本项目 v2 里最容易踩一次的坑。
  */
 
-import { log } from '../lib/logger';
-import { Hono } from 'hono';
-import { sql } from 'drizzle-orm';
-import type { Db } from '@feedlore/db';
 import { HealthSchema } from '@feedlore/contract';
+import type { Db } from '@feedlore/db';
+import { sql } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { log } from '../lib/logger';
 import { assertResponse } from '../lib/validate';
 import type { AppEnv } from '../middleware/auth';
 

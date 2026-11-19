@@ -19,49 +19,49 @@
  * ```
  */
 
-import { hc } from 'hono/client';
-import type { AppType } from '@feedlore/server';
-import type { z } from 'zod';
 import {
-  HealthSchema,
-  SessionSchema,
-  OkSchema,
-  admin as adminEndpoints,
-  auth as authEndpoints,
-  entries as entriesEndpoints,
-  feeds as feedsEndpoints,
-  prefs as prefsEndpoints,
-  entriesListResponse,
-  EntryDetailSchema,
-  EntryFlagsSchema,
-  feedsListResponse,
-  prefsResponse,
   type AccountBody,
   type AdminUser,
+  admin as adminEndpoints,
+  ai as aiEndpoints,
+  auth as authEndpoints,
   type ConfigGetResponse,
   type ConfigPatchBody,
-  type EntryDetail,
-  type EntryFlags,
+  type DigestGenerateBody,
   type EntriesListResponse,
+  type EntryDetail,
+  EntryDetailSchema,
   type EntryFlagPatchBody,
-  type FeedPatchBody,
+  type EntryFlags,
+  EntryFlagsSchema,
+  entries as entriesEndpoints,
+  entriesListResponse,
   type FeedCreateBody,
+  type FeedPatchBody,
   type FeedReorderBody,
+  type FeedsListResponse,
+  feeds as feedsEndpoints,
+  feedsListResponse,
   type Health,
+  HealthSchema,
+  type LlmConfig,
   type LoginBody,
+  OkSchema,
   type PrefsPatchBody,
   type PrefsResponse,
+  prefs as prefsEndpoints,
+  prefsResponse,
   type ReadAllBody,
   type Session,
-  type FeedsListResponse,
-  type DigestGenerateBody,
-  type LlmConfig,
-  ai as aiEndpoints,
+  SessionSchema,
   type UserCreateBody,
   type UserPatchBody,
   type VersionCheck,
   type VersionInfo,
 } from '@feedlore/contract';
+import type { AppType } from '@feedlore/server';
+import { hc } from 'hono/client';
+import type { z } from 'zod';
 
 /**
  * 列表查询参数的类型**直接取自 hc**，而不是手抄：
@@ -70,7 +70,9 @@ import {
  * 手写一份必然漂移（`z.coerce.number()` 的 z.input 是 unknown，抄过来对不上）。
  */
 type HcClient = ReturnType<typeof hc<AppType>>;
-export type EntriesListQuery = NonNullable<Parameters<HcClient['api']['entries']['$get']>[0]>['query'];
+export type EntriesListQuery = NonNullable<
+  Parameters<HcClient['api']['entries']['$get']>[0]
+>['query'];
 
 /* ============================ 错误类型 ============================ */
 

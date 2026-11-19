@@ -9,10 +9,9 @@
  * - **用量只在上游返回 usage 时累加**，没回就是 0，所以 tokens 可能小于 calls 的预期。
  */
 
-import { and, desc, eq, gte } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
-import { aiRequestLog, aiUsageDaily, type Db } from '@feedlore/db';
 import { shanghaiDate } from '@feedlore/ai';
+import { aiRequestLog, aiUsageDaily, type Db } from '@feedlore/db';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 
 /** 功能分类。新增调用点时必须在这里登记，否则前端「按功能」里看不到。 */
 export const AI_USAGE_KINDS = ['digest', 'entry_ai', 'ai_tags', 'mcp', 'test', 'explore'] as const;
@@ -53,7 +52,9 @@ export interface AiRequestMeta {
 }
 
 const clip = (s: unknown, n: number): string => {
-  const t = String(s ?? '').replace(/\s+/g, ' ').trim();
+  const t = String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return t.length > n ? t.slice(0, n) + '…' : t;
 };
 
@@ -211,7 +212,13 @@ export interface UsageSummary {
   series: Array<{ date: string; calls: number; totalTokens: number }>;
 }
 
-const emptyTotal = (): UsageTotal => ({ calls: 0, fails: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 });
+const emptyTotal = (): UsageTotal => ({
+  calls: 0,
+  fails: 0,
+  promptTokens: 0,
+  completionTokens: 0,
+  totalTokens: 0,
+});
 
 /** 读某个账号近 `days` 天的用量（含今日），顺带算出今日 / 近 7 天两个口径的合计。 */
 export async function readAiUsageSummary(db: Db, userId: string, days = 30): Promise<UsageSummary> {
@@ -235,7 +242,10 @@ export async function readAiUsageSummary(db: Db, userId: string, days = 30): Pro
   const todayTotal = emptyTotal();
   const weekTotal = emptyTotal();
   const monthTotal = emptyTotal();
-  const byKind = new Map<string, { kind: string; calls: number; fails: number; totalTokens: number }>();
+  const byKind = new Map<
+    string,
+    { kind: string; calls: number; fails: number; totalTokens: number }
+  >();
   const byDate = new Map<string, { date: string; calls: number; totalTokens: number }>();
 
   for (const r of rows) {

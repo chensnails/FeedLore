@@ -5,16 +5,16 @@
  * 业务侧另按 packages/contract 的形状提供 /api/login、/api/logout、/api/session。
  */
 
-import { log } from './lib/logger';
-import { createAuth, type AuthInstance, type TrustedOrigins } from '@feedlore/auth';
+import { type AuthInstance, createAuth, type TrustedOrigins } from '@feedlore/auth';
 import type { Db } from '@feedlore/db';
 import {
-  PORT,
   getAuthBaseUrl,
   getAuthTrustedOrigins,
   isAuthSecureCookies,
   isTrustProxy,
+  PORT,
 } from './env';
+import { log } from './lib/logger';
 
 function required(name: string): string {
   const v = process.env[name];
@@ -40,15 +40,20 @@ export function sameOriginCandidates(request?: Request): string[] {
   let urlHost = '';
   try {
     urlHost = new URL(request.url).host;
-  } catch { /* 非法 URL 时退回只看头 */ }
+  } catch {
+    /* 非法 URL 时退回只看头 */
+  }
 
-  const host = trimmed(headers.get('x-forwarded-host') ?? undefined)
-    || trimmed(headers.get('host') ?? undefined)
-    || urlHost;
+  const host =
+    trimmed(headers.get('x-forwarded-host') ?? undefined) ||
+    trimmed(headers.get('host') ?? undefined) ||
+    urlHost;
   if (!host) return [];
 
   const list = [`http://${host}`, `https://${host}`];
-  const proto = trimmed(headers.get('x-forwarded-proto') ?? undefined).split(',')[0]?.trim();
+  const proto = trimmed(headers.get('x-forwarded-proto') ?? undefined)
+    .split(',')[0]
+    ?.trim();
   if (proto === 'http' || proto === 'https') list.unshift(`${proto}://${host}`);
   return [...new Set(list)];
 }
@@ -63,7 +68,9 @@ export function getAuth(db: Db): AuthInstance {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  const trustedOrigins: TrustedOrigins = configuredOrigins.length ? configuredOrigins : sameOriginCandidates;
+  const trustedOrigins: TrustedOrigins = configuredOrigins.length
+    ? configuredOrigins
+    : sameOriginCandidates;
   const baseURL = getAuthBaseUrl() || `http://127.0.0.1:${PORT}`;
 
   _auth = createAuth({
@@ -77,9 +84,9 @@ export function getAuth(db: Db): AuthInstance {
   });
 
   log.info(
-    `[auth] better-auth ready | baseURL=${getAuthBaseUrl() || '(from request Host)'}`
-      + ` | origins=${configuredOrigins.length || 'same-origin (dynamic)'} | secureCookies=${secureCookies}`
-      + ` | trustProxy=${isTrustProxy()}`,
+    `[auth] better-auth ready | baseURL=${getAuthBaseUrl() || '(from request Host)'}` +
+      ` | origins=${configuredOrigins.length || 'same-origin (dynamic)'} | secureCookies=${secureCookies}` +
+      ` | trustProxy=${isTrustProxy()}`,
   );
   return _auth;
 }

@@ -16,12 +16,12 @@
  */
 
 export const EVENT = Object.freeze({
-  VIEW: '__viewChanged',            // detail: 切换后的 tab 名（'reader' | 'cards' | 'ai' | ...）
-  SHELL: '__shellTick',             // 顶栏快照（getShell）需要重读
-  CARDS: '__cardsTick',             // 卡片列需要重绘
-  READER: '__readerTick',           // 文章列需要重绘
+  VIEW: '__viewChanged', // detail: 切换后的 tab 名（'reader' | 'cards' | 'ai' | ...）
+  SHELL: '__shellTick', // 顶栏快照（getShell）需要重读
+  CARDS: '__cardsTick', // 卡片列需要重绘
+  READER: '__readerTick', // 文章列需要重绘
   APPEARANCE: '__appearanceChanged', // 本机外观偏好被外部改动
-  OVERLAYS: '__overlaysTick',       // 灯箱 / 提示 / 确认框快照需要重读
+  OVERLAYS: '__overlaysTick', // 灯箱 / 提示 / 确认框快照需要重读
 });
 
 const KNOWN = new Set(Object.values(EVENT));
@@ -33,28 +33,29 @@ const KNOWN = new Set(Object.values(EVENT));
 function assertKnown(kind, name) {
   if (KNOWN.has(name)) return;
   // 不阻断：迁移期允许尚未登记的调用点先跑起来，但让拼写错误立刻可见。
-  console.warn(`[kernel] ${kind} 使用了未登记的事件名 "${name}"，请在 kernel/events.js 的 EVENT 里声明`);
+  console.warn(
+    `[kernel] ${kind} 使用了未登记的事件名 "${name}"，请在 kernel/events.js 的 EVENT 里声明`,
+  );
 }
 
 /** 派发事件。detail 为空时用 Event，有值时用 CustomEvent（读 ev.detail）。
-*@param {*} [name]
+ *@param {*} [name]
  * @param {*} [detail]
-*/
+ */
 export function emit(name, detail) {
   assertKnown('emit', name);
   // 显式取 window 上的构造器：jsdom / iframe 等跨 realm 场景里，裸 Event 属于
   // 另一个 realm，dispatchEvent 会抛 "parameter 1 is not of type 'Event'"。
-  const ev = detail === undefined
-    ? new window.Event(name)
-    : new window.CustomEvent(name, { detail });
+  const ev =
+    detail === undefined ? new window.Event(name) : new window.CustomEvent(name, { detail });
   window.dispatchEvent(ev);
   return ev;
 }
 
 /** 订阅事件，返回 unsubscribe。组件里 `useEffect(() => on(EVENT.X, fn), [])` 即可。
-*@param {*} [name]
+ *@param {*} [name]
  * @param {*} [handler]
-*/
+ */
 export function on(name, handler) {
   assertKnown('on', name);
   window.addEventListener(name, handler);
@@ -62,10 +63,12 @@ export function on(name, handler) {
 }
 
 /** 一次订阅多个事件（ViewNav 同时关心视图切换与顶栏快照）。
-*@param {*} [names]
+ *@param {*} [names]
  * @param {*} [handler]
-*/
+ */
 export function onAny(names, handler) {
   const stops = names.map(/** @param {*} [n] */ (n) => on(n, handler));
-  return () => { for (const stop of stops) stop(); };
+  return () => {
+    for (const stop of stops) stop();
+  };
 }

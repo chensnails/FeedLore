@@ -11,19 +11,19 @@
  *   /api/login、/api/logout、/api/session。
  */
 
-import { log } from './lib/logger';
-import { serve } from '@hono/node-server';
-import { createDb, createPool, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import { INITIAL_ADMIN_PASSWORD } from '@feedlore/contract';
-import { APP_VERSION, HOST, PORT, getDatabaseUrl, getPublicUrl, validateConfig } from './env';
-import { getAuth } from './auth';
+import { createDb, createPool, type Db } from '@feedlore/db';
+import { serve } from '@hono/node-server';
 import { createApp } from './app';
+import { getAuth } from './auth';
 import { bootstrap, consumeStartupAdmin } from './bootstrap';
-import { startScheduler } from './lib/fetcher';
-import { startDigestScheduler } from './lib/digest';
-import { startAiTagScheduler } from './lib/aiTag';
+import { APP_VERSION, getDatabaseUrl, getPublicUrl, HOST, PORT, validateConfig } from './env';
 import { markInterruptedJobs } from './lib/aiJobs';
+import { startAiTagScheduler } from './lib/aiTag';
+import { startDigestScheduler } from './lib/digest';
+import { startScheduler } from './lib/fetcher';
+import { log } from './lib/logger';
 import { undiciVersionMismatch, undiciVersions } from './lib/net';
 import { reloadSource } from './lib/settings';
 import { pruneImageCache } from './routes/img';
@@ -46,9 +46,9 @@ let auth: AuthInstance | null = null;
  */
 function printFirstRunBanner(a: { username: string; customPassword: boolean }, port: number): void {
   const configured = getPublicUrl();
-  const url = configured || (HOST === '0.0.0.0' || HOST === '::'
-    ? `http://localhost:${port}`
-    : `http://${HOST}:${port}`);
+  const url =
+    configured ||
+    (HOST === '0.0.0.0' || HOST === '::' ? `http://localhost:${port}` : `http://${HOST}:${port}`);
   const note = configured
     ? '（PUBLIC_URL 指定的对外地址）'
     : '（容器网络内地址；对外访问请在 .env 设 PUBLIC_URL=http://你的域名或IP:端口）';
@@ -91,7 +91,9 @@ function scheduleImagePrune(database: Db): void {
       .then((n) => {
         if (n > 0) log.info(`[img] pruned ${n} expired image cache rows`);
       })
-      .catch(() => { /* pruneImageCache 内部已记录 */ });
+      .catch(() => {
+        /* pruneImageCache 内部已记录 */
+      });
   };
   // unref：定时器不阻止进程退出（容器 stop 时不必等它）
   setTimeout(run, 10 * 60_000).unref();
@@ -129,7 +131,9 @@ async function probeDatabaseOrExit(url: string): Promise<void> {
   try {
     await pool.query('select 1');
   } catch (e) {
-    log.error(`[boot] 数据库不可达，拒绝启动 / database unreachable, refusing to start: ${(e as Error)?.message ?? e}`);
+    log.error(
+      `[boot] 数据库不可达，拒绝启动 / database unreachable, refusing to start: ${(e as Error)?.message ?? e}`,
+    );
     await pool.end().catch(() => {});
     process.exit(1);
   }
@@ -174,7 +178,10 @@ async function main(): Promise<void> {
    * 否则进程刚起的几分钟里会静默用 env 默认值（管理员改过的配置看起来没生效）。 */
   if (db) {
     void reloadSource(db).then((s) => {
-      if (s) log.info(`[settings] fetch parameters: refresh ${s.refreshMinutes} min / concurrency ${s.concurrency} / keep ${s.keepPerFeed} entries per feed`);
+      if (s)
+        log.info(
+          `[settings] fetch parameters: refresh ${s.refreshMinutes} min / concurrency ${s.concurrency} / keep ${s.keepPerFeed} entries per feed`,
+        );
     });
   }
 
@@ -195,7 +202,9 @@ async function main(): Promise<void> {
    * 不标失败的话前端会一直轮询到一个永远不变的 running。
    * 不自动续跑：模型调用不幂等，用户很可能已经重试过。 */
   if (db) {
-    void markInterruptedJobs(db).catch(() => { /* 内部已记录 */ });
+    void markInterruptedJobs(db).catch(() => {
+      /* 内部已记录 */
+    });
   }
 
   /* 图片缓存清理：`image_cache` 随阅读量线性增长，不清会悄悄吃掉磁盘。
@@ -207,8 +216,8 @@ async function main(): Promise<void> {
   if (undiciVersionMismatch()) {
     const v = undiciVersions();
     log.warn(
-      `[net] ⚠️ undici version mismatch (built-in ${v.builtin} / dependency ${v.installed}): `
-      + 'IP pinning will break, pin undici in apps/server to the same major version as the Node built-in',
+      `[net] ⚠️ undici version mismatch (built-in ${v.builtin} / dependency ${v.installed}): ` +
+        'IP pinning will break, pin undici in apps/server to the same major version as the Node built-in',
     );
   } else {
     const v = undiciVersions();

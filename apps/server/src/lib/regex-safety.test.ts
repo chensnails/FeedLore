@@ -1,7 +1,7 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeFilters } from './prefs';
+import test from 'node:test';
 import { ruleHit } from './filter';
+import { sanitizeFilters } from './prefs';
 import { isSafeRegex } from './regex-safety';
 
 test('正则安全：普通规则放行，嵌套量词与反向引用判为危险', () => {
@@ -21,7 +21,10 @@ test('保存过滤规则时丢掉有灾难性回溯风险的写法', () => {
     { id: 'bad', kind: 're', pattern: '(a+)+$' },
     { id: 'kw', kind: 'kw', pattern: '(a+)+$' },
   ]);
-  assert.deepEqual(rules.map((r) => r.id), ['ok', 'kw']);
+  assert.deepEqual(
+    rules.map((r) => r.id),
+    ['ok', 'kw'],
+  );
 });
 
 test('匹配层兜底：存量不安全规则视为不命中，不执行正则', () => {

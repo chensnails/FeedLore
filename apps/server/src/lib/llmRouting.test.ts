@@ -3,10 +3,10 @@
  * 不依赖真 PG：把 jsonb 容错与 providerId 选取抽成纯函数，回落链由集成测试/CI 覆盖。
  */
 
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { safeRoutes, pickProviderId, isRouteEnabled, CAPABILITY_LABEL } from './llm';
+import test from 'node:test';
 import { AI_CAPABILITIES } from '@feedlore/contract';
+import { CAPABILITY_LABEL, isRouteEnabled, pickProviderId, safeRoutes } from './llm';
 
 test('safeRoutes: 非对象/数组/null 一律回落空表', () => {
   for (const bad of [null, undefined, 42, 'x', [], ['a']]) {
@@ -62,8 +62,16 @@ test('isRouteEnabled: 通用能力默认开，仅显式 false 关闭（0015 语�
 });
 
 test('isRouteEnabled: ai_tags 是单开关且默认关，必须显式 true（0016）', () => {
-  assert.equal(isRouteEnabled(safeRoutes({}), 'ai_tags'), false, '未配置 = 关，避免升级后全库自动打标烧额度');
-  assert.equal(isRouteEnabled(safeRoutes({ ai_tags: {} }), 'ai_tags'), false, '只有 providerId 不算开');
+  assert.equal(
+    isRouteEnabled(safeRoutes({}), 'ai_tags'),
+    false,
+    '未配置 = 关，避免升级后全库自动打标烧额度',
+  );
+  assert.equal(
+    isRouteEnabled(safeRoutes({ ai_tags: {} }), 'ai_tags'),
+    false,
+    '只有 providerId 不算开',
+  );
   assert.equal(isRouteEnabled(safeRoutes({ ai_tags: { enabled: false } }), 'ai_tags'), false);
   assert.equal(isRouteEnabled(safeRoutes({ ai_tags: { enabled: true } }), 'ai_tags'), true);
   // 其它能力不受影响：ai_tags 关着，digest 仍默认开

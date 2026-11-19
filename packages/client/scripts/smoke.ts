@@ -7,7 +7,7 @@
  *   API_BASE=http://127.0.0.1:3211 ADMIN_USER=admin ADMIN_PASS=xxxx pnpm --filter @feedlore/client smoke
  */
 
-import { createApiClient, ApiError } from '../src/index';
+import { ApiError, createApiClient } from '../src/index';
 import { createCookieJarFetch } from '../src/node';
 
 const BASE = process.env.API_BASE ?? 'http://127.0.0.1:3211';
@@ -107,7 +107,10 @@ async function main(): Promise<void> {
   // 7) 条目徽标
   try {
     const flags = await api.entries.flags();
-    ok('GET /api/entries/flags', `total=${flags.total} unread=${flags.unread} fav=${flags.favorite}`);
+    ok(
+      'GET /api/entries/flags',
+      `total=${flags.total} unread=${flags.unread} fav=${flags.favorite}`,
+    );
   } catch (e) {
     bad('GET /api/entries/flags', e);
   }
@@ -281,7 +284,8 @@ async function main(): Promise<void> {
     /* P5 起新增会立即抓一次：example.com/feed.xml 是 404，
      * 所以这里 added=0 **且** status='error' —— 频道建成功、源站报错，两件事要同时成立。 */
     if (created.added !== 0) throw new Error(`404 地址竟抓到 ${created.added} 条`);
-    if (created.feed.status !== 'error') throw new Error(`404 地址的 status 应为 error，实际 ${created.feed.status}`);
+    if (created.feed.status !== 'error')
+      throw new Error(`404 地址的 status 应为 error，实际 ${created.feed.status}`);
     ok(
       'POST /api/feeds 新增（源站 404）',
       `id=${created.feed.id} existed=${created.existed} added=${created.added} status=${created.feed.status}`,
@@ -301,7 +305,8 @@ async function main(): Promise<void> {
     });
     if (patched.feed.groupName !== 'smoke 已改') throw new Error('分组未更新');
     if (!patched.feed.cardEnabled) throw new Error('卡片开关未更新');
-    if (patched.feed.refreshMinutes !== 5) throw new Error(`频率未夹到 5，实际 ${patched.feed.refreshMinutes}`);
+    if (patched.feed.refreshMinutes !== 5)
+      throw new Error(`频率未夹到 5，实际 ${patched.feed.refreshMinutes}`);
     ok('PATCH /api/feeds/:id', `group=${patched.feed.groupName} 频率夹取=5`);
 
     // 改成另一个已存在的地址 → 409
@@ -340,7 +345,10 @@ async function main(): Promise<void> {
   }
 
   // 14b) 真实源抓取（默认用用户给的两个测试源，可用 SMOKE_FEEDS 覆盖，逗号分隔）
-  const realFeeds = (process.env.SMOKE_FEEDS ?? 'https://www.ithome.com/rss/,https://rsshub.9610000.xyz/telegram/channel/bdwpzhpd')
+  const realFeeds = (
+    process.env.SMOKE_FEEDS ??
+    'https://www.ithome.com/rss/,https://rsshub.9610000.xyz/telegram/channel/bdwpzhpd'
+  )
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
@@ -422,16 +430,27 @@ async function main(): Promise<void> {
   try {
     // 用几乎必然命中的关键词，确保走的是「算出命中并回写」这条路径，而不是空跑
     await api.prefs.update({
-      watchRules: [{ id: 'smoke-block', name: 'smoke', keywords: ['的'], act: 'block', notify: false, on: true }],
+      watchRules: [
+        {
+          id: 'smoke-block',
+          name: 'smoke',
+          keywords: ['的'],
+          act: 'block',
+          notify: false,
+          on: true,
+        },
+      ],
     });
     const r1 = await api.entries.applyWatch();
     if (!r1.ok) throw new Error('ok 不为 true');
-    if (r1.blocked + r1.watching <= 0) throw new Error(`重算没命中任何条目（cleared=${r1.cleared}）`);
+    if (r1.blocked + r1.watching <= 0)
+      throw new Error(`重算没命中任何条目（cleared=${r1.cleared}）`);
 
     await api.prefs.update({ watchRules: [] });
     const r2 = await api.entries.applyWatch();
     if (r2.tagged !== 0) throw new Error(`清空规则后仍有 ${r2.tagged} 条被标记`);
-    if (r2.cleared < r1.blocked) throw new Error(`清空不彻底：cleared=${r2.cleared} < 上轮 ${r1.blocked}`);
+    if (r2.cleared < r1.blocked)
+      throw new Error(`清空不彻底：cleared=${r2.cleared} < 上轮 ${r1.blocked}`);
     ok('POST /api/watch/apply 重算与回滚', `标记 ${r1.blocked} 条 → 清空 ${r2.cleared} 条`);
   } catch (e) {
     bad('POST /api/watch/apply', e);
@@ -458,7 +477,10 @@ async function main(): Promise<void> {
   try {
     const cfg = await api.admin.config();
     if (cfg.username !== USER) throw new Error(`回显的 username 不符：${cfg.username}`);
-    const origin = { refreshMinutes: cfg.source.refreshMinutes, keepPerFeed: cfg.source.keepPerFeed };
+    const origin = {
+      refreshMinutes: cfg.source.refreshMinutes,
+      keepPerFeed: cfg.source.keepPerFeed,
+    };
 
     await api.admin.saveConfig({ source: { refreshMinutes: 9999, keepPerFeed: -5 } });
     const clamped = await api.admin.config();
@@ -473,7 +495,8 @@ async function main(): Promise<void> {
     // 还原：下一轮抓取的间隔别被测试改掉
     await api.admin.saveConfig({ source: origin });
     const back = await api.admin.config();
-    if (back.source.refreshMinutes !== origin.refreshMinutes) throw new Error('还原 refreshMinutes 失败');
+    if (back.source.refreshMinutes !== origin.refreshMinutes)
+      throw new Error('还原 refreshMinutes 失败');
     ok('POST /api/config 还原', `refreshMinutes=${back.source.refreshMinutes}`);
   } catch (e) {
     bad('POST /api/config', e);
@@ -503,7 +526,11 @@ async function main(): Promise<void> {
   const tempName = 'smoke_' + String(Date.now()).slice(-6);
   let tempId = '';
   try {
-    const created = await api.admin.users.create({ username: tempName, password: 'smoke-pass-1', role: 'user' });
+    const created = await api.admin.users.create({
+      username: tempName,
+      password: 'smoke-pass-1',
+      role: 'user',
+    });
     tempId = created.user.id;
     if (created.user.role !== 'user') throw new Error('角色不对');
     ok('POST /api/users 创建', `${created.user.username} (${tempId})`);
@@ -564,7 +591,10 @@ async function main(): Promise<void> {
 
   // 22) 账号：当前密码错必须 400（不区分「用户不存在」与「密码错」）
   try {
-    await api.account({ currentPassword: 'definitely-not-the-password', newPassword: 'whatever-1' });
+    await api.account({
+      currentPassword: 'definitely-not-the-password',
+      newPassword: 'whatever-1',
+    });
     throw new Error('错误密码居然通过了');
   } catch (e) {
     if (e instanceof ApiError && e.status === 400) ok('POST /api/account 当前密码错 → 400');
@@ -618,7 +648,11 @@ async function main(): Promise<void> {
 
   // 26) 模型地址指向内网 → 出网校验拦住（这是 SSRF 最容易走的一条路）
   try {
-    const r = await api.ai.testLlm({ baseUrl: 'http://127.0.0.1:3211/api/session', model: 'x', apiKey: 'k' });
+    const r = await api.ai.testLlm({
+      baseUrl: 'http://127.0.0.1:3211/api/session',
+      model: 'x',
+      apiKey: 'k',
+    });
     if (r.ok) throw new Error('内网地址居然测试通过');
     if (!/不可用/.test(r.error ?? '')) throw new Error(`错误信息没说明地址不可用：${r.error}`);
     ok('test-llm 内网地址 → 拒绝', String(r.error ?? '').slice(0, 48));
@@ -634,7 +668,10 @@ async function main(): Promise<void> {
     if (!d.fallback) throw new Error('模型不可用却没降级（fallback=false）');
     if (!d.error) throw new Error('降级但没写原因');
     if (d.stats.collected < 0) throw new Error('统计异常');
-    ok('POST /api/digest/generate 降级', `${d.stats.kept}/${d.stats.collected} 条 · ${d.stats.feeds} 频道 · ${String(d.error).slice(0, 36)}`);
+    ok(
+      'POST /api/digest/generate 降级',
+      `${d.stats.kept}/${d.stats.collected} 条 · ${d.stats.feeds} 频道 · ${String(d.error).slice(0, 36)}`,
+    );
   } catch (e) {
     bad('POST /api/digest/generate 降级', e);
   }

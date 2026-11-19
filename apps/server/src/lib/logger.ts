@@ -31,7 +31,11 @@ const base: Logger = pino({
     ? {
         transport: {
           target: 'pino-pretty',
-          options: { colorize: false, ignore: 'service,hostname,pid', translateTime: 'SYS:HH:MM:ss' },
+          options: {
+            colorize: false,
+            ignore: 'service,hostname,pid',
+            translateTime: 'SYS:HH:MM:ss',
+          },
         },
       }
     : {}),
@@ -45,7 +49,10 @@ function emit(lvl: Level, args: unknown[]): void {
   // 兼容原 console.* 的多参数写法：console.error('failed:', err) 会把 err 拼进消息，
   // 而 pino 只把第二个参数当插值用（没有 %s 时直接丢弃）。先 format 再交给 pino，
   // 保证这次迁移不悄悄丢掉任何一行排障信息。对象打头的调用按 pino 原生语义走。
-  const normalized = typeof args[0] === 'string' && args.length > 1 ? [format(...(args as [string, ...unknown[]]))] : args;
+  const normalized =
+    typeof args[0] === 'string' && args.length > 1
+      ? [format(...(args as [string, ...unknown[]]))]
+      : args;
   (logger[lvl] as (...a: unknown[]) => void)(...normalized);
 }
 

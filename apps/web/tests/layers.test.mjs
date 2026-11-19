@@ -4,8 +4,9 @@
  * 这里用假 document 直接喂选择器 → 元素，不依赖 jsdom，跑得快；
  * 真实组件侧的接线（命令面板 / 卡片详情）由 tests/ui 的 jsdom 回归覆盖。
  */
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { hasLayerAbove, LAYER_SELECTORS } from '../src/ui/layers.js';
 
 /** 造一个「元素」：只实现 contains，够 hasLayerAbove 用 */
@@ -14,7 +15,9 @@ function el(children = []) {
     nodeType: 1,
     contains(target) {
       if (target === node) return true;
-      return children.some((c) => (c && typeof c.contains === 'function' ? c.contains(target) : false));
+      return children.some((c) =>
+        c && typeof c.contains === 'function' ? c.contains(target) : false,
+      );
     },
   };
   return node;
@@ -32,7 +35,9 @@ function mount(byKey) {
   };
 }
 
-test.afterEach(() => { delete globalThis.document; });
+test.afterEach(() => {
+  delete globalThis.document;
+});
 
 test('没有任何弹层时不算有上层', () => {
   mount({});

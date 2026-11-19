@@ -6,8 +6,8 @@
  * 它是归档而不是收件箱。0 天 = 永不自动退出。
  */
 
+import { type Db, users } from '@feedlore/db';
 import { eq, sql } from 'drizzle-orm';
-import { users, type Db } from '@feedlore/db';
 import { userWatchExpireDays } from './prefs';
 
 /** 清理到期关注标记；传 uid 只处理该用户，否则处理全部用户。返回清掉的条数。 */

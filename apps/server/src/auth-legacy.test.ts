@@ -33,7 +33,11 @@ test('legacy 哈希：旧版原密码仍可登录，错密码/畸形标记被拒
     'legacy$' + SALT + '$zz',
     'legacy$' + SALT + '$' + '0'.repeat(64),
   ]) {
-    assert.equal(await verifyPasswordHash({ hash: malformed, password: '原密码-1234' }), false, malformed);
+    assert.equal(
+      await verifyPasswordHash({ hash: malformed, password: '原密码-1234' }),
+      false,
+      malformed,
+    );
   }
 });
 

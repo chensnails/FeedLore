@@ -10,7 +10,7 @@
  *
  * 用法：pnpm --filter @feedlore/web build && node scripts/verify-dist.mjs
  */
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const DIST = 'apps/web/dist';
@@ -27,9 +27,15 @@ if (!existsSync(DIST)) {
 const htmlPath = join(DIST, 'index.html');
 check(existsSync(htmlPath), 'index.html 存在');
 const html = existsSync(htmlPath) ? readFileSync(htmlPath, 'utf8') : '';
-check(/<link[^>]+rel="manifest"[^>]+href="\/manifest\.json"/.test(html), 'index.html 引用了 /manifest.json');
+check(
+  /<link[^>]+rel="manifest"[^>]+href="\/manifest\.json"/.test(html),
+  'index.html 引用了 /manifest.json',
+);
 check(/<meta[^>]+name="theme-color"/.test(html), 'index.html 有 theme-color');
-check(/<meta[^>]+name="color-scheme"[^>]*content="light dark"/.test(html), 'index.html 有 color-scheme 兜底');
+check(
+  /<meta[^>]+name="color-scheme"[^>]*content="light dark"/.test(html),
+  'index.html 有 color-scheme 兜底',
+);
 
 /* 两个独立文档入口（登录 / 首次登录强制改密）：忘了在 vite 的 input 里登记时，
  * 它们不会进 dist，线上直接 404 —— 而 index.html 看起来完全正常，
@@ -42,14 +48,26 @@ for (const page of ['login.html', 'change-password.html']) {
 const assets = html.match(/\/assets\/[A-Za-z0-9._-]+/g) ?? [];
 const unhashed = assets.filter((a) => /\/assets\/(index|main|style)\.(js|css)$/.test(a));
 check(assets.length > 0, `index.html 引用了 ${assets.length} 个带哈希资源`);
-check(unhashed.length === 0, `没有未加哈希的固定资源名${unhashed.length ? `（${unhashed.join(', ')}）` : ''}`);
+check(
+  unhashed.length === 0,
+  `没有未加哈希的固定资源名${unhashed.length ? `（${unhashed.join(', ')}）` : ''}`,
+);
 
 // 首屏分包：设置弹层与 AI 视图必须落在独立 chunk 里，且入口 HTML 不预加载它们。
 // 否则「按需加载」会被一次 import 失误悄悄退回常驻（体积涨回去但测试全绿）。
 const assetFiles = readdirSync(join(DIST, 'assets'));
-check(assetFiles.some((f) => /^SettingsModal-.+\.js$/.test(f)), '设置弹层单独分包（首屏不下载）');
-check(assetFiles.some((f) => /^AiView-.+\.js$/.test(f)), 'AI 视图单独分包（首屏不下载）');
-check(!/<link[^>]+modulepreload[^>]+(SettingsModal|AiView)-/.test(html), 'index.html 没有预加载按需分包');
+check(
+  assetFiles.some((f) => /^SettingsModal-.+\.js$/.test(f)),
+  '设置弹层单独分包（首屏不下载）',
+);
+check(
+  assetFiles.some((f) => /^AiView-.+\.js$/.test(f)),
+  'AI 视图单独分包（首屏不下载）',
+);
+check(
+  !/<link[^>]+modulepreload[^>]+(SettingsModal|AiView)-/.test(html),
+  'index.html 没有预加载按需分包',
+);
 
 /* ---------------- PWA ---------------- */
 const mfPath = join(DIST, 'manifest.json');
@@ -64,14 +82,25 @@ if (existsSync(mfPath)) {
   if (mf) {
     check(Boolean(mf.name), `manifest 有 name（${mf.name ?? '缺失'}）`);
     check(Boolean(mf.start_url), 'manifest 有 start_url');
-    check(Array.isArray(mf.icons) && mf.icons.length >= 3, `manifest 有 ${mf.icons?.length ?? 0} 个图标（≥3）`);
+    check(
+      Array.isArray(mf.icons) && mf.icons.length >= 3,
+      `manifest 有 ${mf.icons?.length ?? 0} 个图标（≥3）`,
+    );
     // 安装壳（WebAPK）的底栏颜色只能由清单给，页面 CSS 和运行时都改不了，且只在安装时定下；
     // 清单恒用深色 --bg，暗色下底部才不会留白条（浅色下是一条刻意的深色底栏）。
-    const darkMeta = (html.match(/<meta name="theme-color" content="(#[0-9a-fA-F]+)" media="\(prefers-color-scheme: dark\)"/) || [])[1];
+    const darkMeta = (html.match(
+      /<meta name="theme-color" content="(#[0-9a-fA-F]+)" media="\(prefers-color-scheme: dark\)"/,
+    ) || [])[1];
     check(Boolean(darkMeta), 'index.html 有深色 theme-color');
     if (darkMeta) {
-      check(String(mf.theme_color).toLowerCase() === darkMeta.toLowerCase(), `manifest theme_color 用深色 --bg（${mf.theme_color} / ${darkMeta}）`);
-      check(String(mf.background_color).toLowerCase() === darkMeta.toLowerCase(), `manifest background_color 用深色 --bg（${mf.background_color} / ${darkMeta}）`);
+      check(
+        String(mf.theme_color).toLowerCase() === darkMeta.toLowerCase(),
+        `manifest theme_color 用深色 --bg（${mf.theme_color} / ${darkMeta}）`,
+      );
+      check(
+        String(mf.background_color).toLowerCase() === darkMeta.toLowerCase(),
+        `manifest background_color 用深色 --bg（${mf.background_color} / ${darkMeta}）`,
+      );
     }
     // 每个图标文件都要真的存在，否则装到桌面是一个白框
     for (const ic of mf.icons ?? []) {
@@ -114,7 +143,9 @@ for (const icon of [
 
 /* ---------------- CSS 关键规则 ---------------- */
 const cssDir = join(DIST, 'assets');
-const cssFile = existsSync(cssDir) ? readdirSync(cssDir).find((f) => f.endsWith('.css')) : undefined;
+const cssFile = existsSync(cssDir)
+  ? readdirSync(cssDir).find((f) => f.endsWith('.css'))
+  : undefined;
 check(Boolean(cssFile), 'CSS 产物存在');
 if (cssFile) {
   const css = readFileSync(join(cssDir, cssFile), 'utf8');
@@ -125,11 +156,20 @@ if (cssFile) {
   check(/--reader-fs/.test(css), 'CSS 含 --reader-fs 令牌');
   check(/--reader-width/.test(css), 'CSS 含 --reader-width 令牌');
   // 抽屉：窄屏导航的唯一实现方式（早期用 body 上的状态类 + 侧栏位移）
-  check(/body\.reader-drawer-open \.reader-side/.test(css), 'CSS 含阅读页抽屉展开态（body.reader-drawer-open .reader-side）');
-  check(/body\.cards-drawer-open \.cards-side/.test(css), 'CSS 含卡片页抽屉展开态（body.cards-drawer-open .cards-side）');
+  check(
+    /body\.reader-drawer-open \.reader-side/.test(css),
+    'CSS 含阅读页抽屉展开态（body.reader-drawer-open .reader-side）',
+  );
+  check(
+    /body\.cards-drawer-open \.cards-side/.test(css),
+    'CSS 含卡片页抽屉展开态（body.cards-drawer-open .cards-side）',
+  );
 
   // 列表 / 阅读层的关键件（这几个没了，对应功能直接不可见或不可点）
-  check(/\.sk-card/.test(css) && /\.sk-row/.test(css) && /@keyframes *sk\b/.test(css), '骨架屏规则与 shimmer 关键帧在产物里');
+  check(
+    /\.sk-card/.test(css) && /\.sk-row/.test(css) && /@keyframes *sk\b/.test(css),
+    '骨架屏规则与 shimmer 关键帧在产物里',
+  );
   check(/@keyframes *cardIn\b/.test(css), '卡片入场错峰 cardIn 关键帧在产物里');
   check(/\.mini-tag/.test(css), '正文标签按钮 .mini-tag 在（阅读层点标签筛列表的唯一入口）');
 

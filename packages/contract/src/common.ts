@@ -106,5 +106,4 @@ export const OkSchema = z.object({ ok: z.boolean() });
 export type OkResult = z.infer<typeof OkSchema>;
 
 /** 整数闭区间夹取（与 legacy `clampInt` 语义一致）。 */
-export const intRange = (min: number, max: number) =>
-  z.number().int().min(min).max(max);
+export const intRange = (min: number, max: number) => z.number().int().min(min).max(max);

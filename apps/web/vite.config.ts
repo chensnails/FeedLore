@@ -1,7 +1,7 @@
-import { defineConfig, type Plugin } from 'vite';
-import react from '@vitejs/plugin-react';
-import path from 'node:path';
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import react from '@vitejs/plugin-react';
+import { defineConfig, type Plugin } from 'vite';
 
 /**
  * 首屏骨架内联：从 style.css 抽取 CRITICAL_SHELL 标记之间的规则（主题变量 +
@@ -21,7 +21,10 @@ function inlineCriticalShell(): Plugin {
       handler(html) {
         try {
           const css = readFileSync(path.resolve(import.meta.dirname, 'src/style.css'), 'utf8');
-          const m = /\/\* ==== CRITICAL_SHELL:START ====[\s\S]*?\*\/([\s\S]*?)\/\* ==== CRITICAL_SHELL:END ==== \*\//.exec(css);
+          const m =
+            /\/\* ==== CRITICAL_SHELL:START ====[\s\S]*?\*\/([\s\S]*?)\/\* ==== CRITICAL_SHELL:END ==== \*\//.exec(
+              css,
+            );
           const shell = m?.[1];
           if (!shell) return html;
           const block = `<style id="criticalShell">\n${shell.trim()}\n</style>`;

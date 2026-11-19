@@ -32,7 +32,9 @@ const api = createApiClient(BASE, { fetch: jar.fetch, credentials: 'omit' });
 await api.login({ username: USER, password: PASS });
 
 const { entries } = await api.entries.list({ limit: String(Math.min(200, LIMIT)) });
-const urls = entries.map((e) => e.image).filter((u): u is string => typeof u === 'string' && u.length > 0);
+const urls = entries
+  .map((e) => e.image)
+  .filter((u): u is string => typeof u === 'string' && u.length > 0);
 
 if (!urls.length) {
   console.log(`共 ${entries.length} 条，没有一条带封面 —— 不是代理的问题，是抓取时没取到图。`);
@@ -62,7 +64,13 @@ async function probe(url: string): Promise<void> {
       type: r.headers.get('content-type') ?? '',
     });
   } catch (e) {
-    results.push({ url, status: (e as Error).message.slice(0, 20), bytes: 0, ms: Date.now() - t0, type: '' });
+    results.push({
+      url,
+      status: (e as Error).message.slice(0, 20),
+      bytes: 0,
+      ms: Date.now() - t0,
+      type: '',
+    });
   }
 }
 
@@ -89,7 +97,9 @@ for (const r of results) {
   );
 }
 
-const good = results.filter((r) => r.status === 200 && r.bytes > 0 && /^image\//.test(r.type)).length;
+const good = results.filter(
+  (r) => r.status === 200 && r.bytes > 0 && /^image\//.test(r.type),
+).length;
 const byStatus = new Map<string, number>();
 for (const r of results) byStatus.set(String(r.status), (byStatus.get(String(r.status)) ?? 0) + 1);
 

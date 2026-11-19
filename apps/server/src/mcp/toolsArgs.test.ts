@@ -7,16 +7,10 @@
  * 客户端 JSON.parse 失败后当成「查到 0 条」，看起来像 list 接口时好时坏。
  * 这些用例守的是「参数一定能进 handler、失败一定是结构化 JSON」这两条铁律。
  */
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
-import {
-  looseNumber,
-  looseBoolean,
-  looseId,
-  looseBool,
-  looseInt,
-  errorResult,
-} from './tools';
+import test from 'node:test';
+import { errorResult, looseBool, looseBoolean, looseId, looseInt, looseNumber } from './tools';
 
 test('looseNumber：数字字符串转成数字，其余原样交回 zod 处理', () => {
   assert.equal(looseNumber('859978'), 859978);

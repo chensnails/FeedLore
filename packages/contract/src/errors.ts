@@ -185,7 +185,10 @@ export const API_ERROR_DEFAULTS = {
   E_CURRENT_PASSWORD_WRONG: { status: 400, message: 'Current password is incorrect' },
   E_NOTHING_TO_UPDATE: { status: 400, message: 'Provide a username or a new password' },
   E_USER_CREATE_FAILED: { status: 400, message: 'Failed to create the user' },
-  E_USER_NOT_PERSISTED: { status: 500, message: 'Failed to create the user: it is not in the database' },
+  E_USER_NOT_PERSISTED: {
+    status: 500,
+    message: 'Failed to create the user: it is not in the database',
+  },
   E_PASSWORD_UPDATE_FAILED: { status: 400, message: 'Failed to change the password' },
   /* 首次登录必须改密：拦截所有业务接口，只放行改密与读取会话状态。
    * 前端收到该码应跳到 /change-password.html，而不是当成普通权限错误弹提示。 */
@@ -222,12 +225,16 @@ export const API_ERROR_DEFAULTS = {
   E_FETCH_NOT_FEED: { status: 422, message: 'Not recognizable RSS / Atom content' },
   E_FETCH_HTTP_STATUS: { status: 502, message: 'The site returned an error status' },
   E_URL_INVALID: { status: 400, message: 'Invalid address' },
-  E_URL_SCHEME_UNSUPPORTED: { status: 400, message: 'Only http:// and https:// addresses are supported' },
+  E_URL_SCHEME_UNSUPPORTED: {
+    status: 400,
+    message: 'Only http:// and https:// addresses are supported',
+  },
   E_URL_MISSING_HOST: { status: 400, message: 'The address has no hostname' },
   E_DNS_FAILED: { status: 400, message: 'DNS lookup failed, check the address spelling' },
   E_PRIVATE_HOST_BLOCKED: {
     status: 400,
-    message: 'Private or loopback addresses are not allowed (set ALLOW_PRIVATE_HOSTS=1 on the server to allow them)',
+    message:
+      'Private or loopback addresses are not allowed (set ALLOW_PRIVATE_HOSTS=1 on the server to allow them)',
   },
   E_TOO_MANY_REDIRECTS: { status: 502, message: 'Too many redirects' },
   E_RSS_URL_INVALID: { status: 400, message: 'Invalid RSS address' },
@@ -275,7 +282,10 @@ export const API_ERROR_DEFAULTS = {
     status: 501,
     message: 'No update channel configured (UPDATE_WEBHOOK_URL / UPDATE_WEBHOOK_TOKEN)',
   },
-  E_UPDATE_CHANNEL_URL_BAD: { status: 400, message: 'The update channel URL has an invalid scheme' },
+  E_UPDATE_CHANNEL_URL_BAD: {
+    status: 400,
+    message: 'The update channel URL has an invalid scheme',
+  },
   E_UPDATE_TRIGGER_FAILED: { status: 502, message: 'Failed to trigger the update' },
   E_UPDATE_NO_RELEASE: { status: 502, message: 'No releases published on GitHub yet' },
 
@@ -291,7 +301,10 @@ export const API_ERROR_DEFAULTS = {
   },
 
   E_MCP_DISABLED: { status: 404, message: 'The MCP endpoint is disabled (MCP_ENABLED=0)' },
-  E_MCP_TOKEN_INVALID: { status: 401, message: 'Missing or invalid MCP token (Authorization: Bearer flm_...)' },
+  E_MCP_TOKEN_INVALID: {
+    status: 401,
+    message: 'Missing or invalid MCP token (Authorization: Bearer flm_...)',
+  },
   E_MCP_SCOPE_DENIED: { status: 403, message: 'The MCP token scope does not allow this operation' },
   E_MCP_RATE_LIMITED: { status: 429, message: 'Too many MCP requests for this token' },
   E_MCP_TOKEN_LIMIT: { status: 400, message: 'Too many MCP tokens for this account' },
@@ -311,4 +324,3 @@ export type KnownErrorCode = ApiErrorCode | AiInternalErrorCode;
 
 /** 词典插值参数：文案里需要数字/名称的错误码通过它结构化下发。 */
 export type ApiErrorParams = Record<string, string | number>;
-

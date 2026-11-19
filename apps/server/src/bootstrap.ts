@@ -16,16 +16,16 @@
  * 「设置 → 数据 → 导出」+ 本站的「设置 → 数据 → 导入」。
  */
 
-import { log as baseLog } from './lib/logger';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { eq, sql } from 'drizzle-orm';
-import { createDb, createPool, sessions, users } from '@feedlore/db';
 import { INITIAL_ADMIN_PASSWORD } from '@feedlore/contract';
-import { STRICT_BOOT, getAdminPass, getAdminUser } from './env';
+import { createDb, createPool, sessions, users } from '@feedlore/db';
+import { eq, sql } from 'drizzle-orm';
 import { getAuth } from './auth';
+import { getAdminPass, getAdminUser, STRICT_BOOT } from './env';
 import { ensureAuthSecret } from './lib/auth-secret';
+import { log as baseLog } from './lib/logger';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -68,7 +68,9 @@ function makePgProbe(adminUrl: string): DbProbe {
     hasAnyRow: async (database, table) => {
       if (!(await exists(database))) return false;
       try {
-        const r = await pool.query(`select 1 from "${ident(database)}".public."${ident(table)}" limit 1`);
+        const r = await pool.query(
+          `select 1 from "${ident(database)}".public."${ident(table)}" limit 1`,
+        );
         return (r.rowCount ?? 0) > 0;
       } catch {
         // 表不存在（库刚建好还没迁移）按「没有」处理，不要把空库当成探测失败。
@@ -92,7 +94,9 @@ function makePgProbe(adminUrl: string): DbProbe {
         return false;
       }
     },
-    close: async () => { await pool.end().catch(() => {}); },
+    close: async () => {
+      await pool.end().catch(() => {});
+    },
   };
 }
 
@@ -143,7 +147,9 @@ export async function resolveLegacyDatabaseUrl(
         ? await probe.allUsersRequireChange(LEGACY_DB_NAME)
         : false;
       if (!seeded) return source;
-      logFn(`Detected 2.5.3 mis-seed: every account in "${LEGACY_DB_NAME}" still has must_change_password=true`);
+      logFn(
+        `Detected 2.5.3 mis-seed: every account in "${LEGACY_DB_NAME}" still has must_change_password=true`,
+      );
     }
   } catch (e) {
     // 探测失败（权限 / 网络 / 外部托管库）一律不切换，保持原行为，绝不冒险。
@@ -153,8 +159,12 @@ export async function resolveLegacyDatabaseUrl(
 
   url.pathname = `/${V2_DB_NAME}`;
   const rewritten = url.toString();
-  logFn(`Detected legacy setup: "${LEGACY_DB_NAME}" holds no real accounts but "${V2_DB_NAME}" does`);
-  logFn(`  Switching DATABASE_URL to "${V2_DB_NAME}" (runtime only; update PG_DB in .env to make it permanent)`);
+  logFn(
+    `Detected legacy setup: "${LEGACY_DB_NAME}" holds no real accounts but "${V2_DB_NAME}" does`,
+  );
+  logFn(
+    `  Switching DATABASE_URL to "${V2_DB_NAME}" (runtime only; update PG_DB in .env to make it permanent)`,
+  );
   return rewritten;
 }
 
@@ -246,14 +256,18 @@ async function ensureDefaultAdmin(): Promise<void> {
     const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(users);
     count = row?.n ?? 0;
   } catch (e) {
-    warn(`Database is not ready yet (the schema migration may not have run), skipping the initial admin: ${(e as Error)?.message ?? e}`);
+    warn(
+      `Database is not ready yet (the schema migration may not have run), skipping the initial admin: ${(e as Error)?.message ?? e}`,
+    );
     return;
   }
   if (count > 0) {
     /* 已有账号：**不动密码、不置强制改密标记**。这是升级路径的核心承诺 ——
      * 老用户升级后照旧登录，不会被要求改密，权限也不变。
      * 只把「忘记密码怎么救」喊清楚，否则升级部署后只看到一堆启动日志会以为配错了。 */
-    log(`数据库已有 ${count} 个账号：沿用原有密码，不重置、不要求改密 / existing accounts found, keeping the current password`);
+    log(
+      `数据库已有 ${count} 个账号：沿用原有密码，不重置、不要求改密 / existing accounts found, keeping the current password`,
+    );
     log('  忘记密码？在容器内执行 / forgot it? run inside the container:');
     log('    docker exec -it feedlore initial-password --reset');
     return;
@@ -294,7 +308,9 @@ async function ensureDefaultAdmin(): Promise<void> {
   }
 
   startupAdmin = { username, customPassword: Boolean(custom) };
-  log(`Empty site: created the initial admin "${username}"; the first sign-in must change the password`);
+  log(
+    `Empty site: created the initial admin "${username}"; the first sign-in must change the password`,
+  );
 }
 
 /* ============================ 主流程 ============================ */
@@ -318,7 +334,9 @@ export async function bootstrap(): Promise<void> {
       await probe.close?.();
     }
   } catch (e) {
-    warn(`Could not check legacy database name, continuing with the configured URL: ${(e as Error)?.message ?? e}`);
+    warn(
+      `Could not check legacy database name, continuing with the configured URL: ${(e as Error)?.message ?? e}`,
+    );
   }
   if (target !== source) process.env.DATABASE_URL = target;
 

@@ -9,10 +9,9 @@
  */
 import { core } from '@core';
 import { useEffect, useRef, useState } from 'react';
-import { Icon } from '../ui/Icon.jsx';
-import { StateBlock } from '../ui/StateBlock.jsx';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
 import { widthVariant } from '../imgSrc.js';
+import { Icon } from '../ui/Icon.jsx';
 
 const S = () => core;
 
@@ -50,21 +49,36 @@ const fmtDate = (d) => {
  */
 const hhmm = (ts) => {
   const d = ts ? new Date(ts) : new Date();
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
 /** 一条引用条目：缩略图 + 来源 + 标题 + 跳文章。
-*@param {*} opts
-*/
+ *@param {*} opts
+ */
 function RefCard({ ref: hit }) {
   const s = S();
   /** @type {any} */
   const [imgFailed, setImgFailed] = useState(false);
-  const thumb = (hit.image && !imgFailed && !isImgFailed(hit.image))
-    ? <img className="ex-ref-thumb" loading="lazy" src={widthVariant(hit.image, 160) || hit.image} alt=""
-      onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
-      onError={() => { markImgFailed(hit.image); setImgFailed(true); }} />
-    : <div className="ex-ref-thumb ex-ref-thumb-fb"><Icon n="file" /></div>;
+  const thumb =
+    hit.image && !imgFailed && !isImgFailed(hit.image) ? (
+      <img
+        className="ex-ref-thumb"
+        loading="lazy"
+        src={widthVariant(hit.image, 160) || hit.image}
+        alt=""
+        onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
+        onError={() => {
+          markImgFailed(hit.image);
+          setImgFailed(true);
+        }}
+      />
+    ) : (
+      <div className="ex-ref-thumb ex-ref-thumb-fb">
+        <Icon n="file" />
+      </div>
+    );
   const openArticle = () => {
     // 引用卡只有条目 id，没有 feedId：先用 id 在已加载的条目里找频道，找不到也能让
     // jumpToFeed 走「全部」范围按 id 定位（focusReaderArt 会翻页找目标）。
@@ -80,14 +94,23 @@ function RefCard({ ref: hit }) {
     <div className="ex-ref">
       {thumb}
       <div className="ex-ref-main">
-        <div className="ex-ref-name" title={hit.name}>{hit.name || '(无标题)'}</div>
+        <div className="ex-ref-name" title={hit.name}>
+          {hit.name || '(无标题)'}
+        </div>
         <div className="ex-ref-meta">
           <span title={`${hit.feedName || '订阅'}${hit.date ? ` · ${fmtDate(hit.date)}` : ''}`}>
-            {hit.feedName || '订阅'}{hit.date ? ` · ${fmtDate(hit.date)}` : ''}
+            {hit.feedName || '订阅'}
+            {hit.date ? ` · ${fmtDate(hit.date)}` : ''}
           </span>
-          <button className="ex-ref-go" type="button" title="在文章页打开并展开这篇"
-            aria-label={`读文章：${hit.name || ''}`} onClick={openArticle}>
-            <Icon n="external" /><span>读文章</span>
+          <button
+            className="ex-ref-go"
+            type="button"
+            title="在文章页打开并展开这篇"
+            aria-label={`读文章：${hit.name || ''}`}
+            onClick={openArticle}
+          >
+            <Icon n="external" />
+            <span>读文章</span>
           </button>
         </div>
       </div>
@@ -96,8 +119,8 @@ function RefCard({ ref: hit }) {
 }
 
 /** 用户消息气泡（右侧）。
-*@param {*} opts
-*/
+ *@param {*} opts
+ */
 function MeBubble({ turn }) {
   return (
     <div className="ex-row ex-row-me">
@@ -110,40 +133,54 @@ function MeBubble({ turn }) {
 }
 
 /** AI 消息气泡（左侧）：排队/生成中显示输入动画，成功显示答案 + 引用卡，失败显示错误 + 重试。
-*@param {*} opts
-*/
+ *@param {*} opts
+ */
 function AiBubble({ turn }) {
   const busy = turn.status === 'queued' || turn.status === 'running';
   return (
     <div className="ex-row ex-row-ai">
-      <div className="ex-avatar" aria-hidden="true">AI</div>
+      <div className="ex-avatar" aria-hidden="true">
+        AI
+      </div>
       <div className="ex-col">
         <div className="ex-bubble ex-bubble-ai">
           {/* 秒数每秒跳一次：只把静态状态交给读屏（role=status 播报一次），
               会变的数字 aria-hidden，避免每秒念一遍「已等待 Ns」。 */}
           {busy ? (
             <div className="ex-typing">
-              <i /><i /><i />
+              <i />
+              <i />
+              <i />
               <span className="ex-typing-text">
                 <span className="sr-only" role="status">
                   {turn.status === 'queued' ? '已提交，排队中' : '正在检索你的订阅'}
                 </span>
                 <span aria-hidden="true">
-                  {turn.status === 'queued' ? '排队中…' : `检索你的订阅 · 已等待 ${turn.elapsed || 0}s`}
+                  {turn.status === 'queued'
+                    ? '排队中…'
+                    : `检索你的订阅 · 已等待 ${turn.elapsed || 0}s`}
                 </span>
               </span>
             </div>
           ) : turn.status === 'error' ? (
             <div className="ex-error" role="alert">
               <span>{turn.errorText || '生成失败'}</span>
-              {turn.retry ? <button className="btn btn-ghost btn-sm" type="button" onClick={turn.retry}>重试</button> : null}
+              {turn.retry ? (
+                <button className="btn btn-ghost btn-sm" type="button" onClick={turn.retry}>
+                  重试
+                </button>
+              ) : null}
             </div>
           ) : (
             <>
               <div className="ex-answer">{turn.answer}</div>
               {turn.refs && turn.refs.length ? (
                 <div className="ex-refs">
-                  {turn.refs.map(/** @param {*} [hit] @param {*} [i] */ (hit, i) => <RefCard ref={hit} key={hit.id || i} />)}
+                  {turn.refs.map(
+                    /** @param {*} [hit] @param {*} [i] */ (hit, i) => (
+                      <RefCard ref={hit} key={hit.id || i} />
+                    ),
+                  )}
                 </div>
               ) : null}
             </>
@@ -152,7 +189,9 @@ function AiBubble({ turn }) {
         <div className="ex-time">
           {turn.status === 'succeeded'
             ? `${hhmm(turn.at)}${turn.model ? ` · ${turn.model}` : ''}${turn.matched ? ` · 检索 ${turn.matched} 条` : ''}`
-            : busy ? '正在生成…' : ''}
+            : busy
+              ? '正在生成…'
+              : ''}
         </div>
       </div>
     </div>
@@ -184,12 +223,15 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
 
   useEffect(() => {
     aliveRef.current = true;
-    return () => { aliveRef.current = false; };
+    return () => {
+      aliveRef.current = false;
+    };
   }, []);
 
   // 有任务在跑时每秒刷新等待秒数（IM 里体现为「正在输入」旁的实时秒数）
   useEffect(() => {
-    if (!turns.some(/** @param {*} [t] */ (t) => t.status === 'queued' || t.status === 'running')) return undefined;
+    if (!turns.some(/** @param {*} [t] */ (t) => t.status === 'queued' || t.status === 'running'))
+      return undefined;
     const iv = setInterval(() => setTick(/** @param {*} [n] */ (n) => n + 1), 1000);
     return () => clearInterval(iv);
   }, [turns]);
@@ -212,36 +254,65 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
      * 免得把错误信息喂给模型；只带 question + answer + refs。 */
     const history = turns
       .filter(/** @param {*} [t] */ (t) => t.status === 'succeeded' && t.answer)
-      .map(/** @param {*} [t] */ (t) => ({
-        question: t.question,
-        answer: t.answer,
-        refs: (t.refs || []).map(/** @param {*} [r] */ (r) => ({ id: String(r.id), name: r.name })),
-      }));
+      .map(
+        /** @param {*} [t] */ (t) => ({
+          question: t.question,
+          answer: t.answer,
+          refs: (t.refs || []).map(
+            /** @param {*} [r] */ (r) => ({ id: String(r.id), name: r.name }),
+          ),
+        }),
+      );
     /**
      * @param {*} [fn]
      */
-    const patch = (fn) => { if (aliveRef.current) setTurns(/** @param {*} [prev] */ (prev) => prev.map(/** @param {*} [t] */ (t) => (t.id === id ? fn(t) : t))); };
-    setTurns(/** @param {*} [prev] */ (prev) => [...prev, { id, question: q, status: 'queued', at: new Date(t0).toISOString(), startedAt: t0 }]);
+    const patch = (fn) => {
+      if (aliveRef.current)
+        setTurns(
+          /** @param {*} [prev] */ (prev) =>
+            prev.map(/** @param {*} [t] */ (t) => (t.id === id ? fn(t) : t)),
+        );
+    };
+    setTurns(
+      /** @param {*} [prev] */ (prev) => [
+        ...prev,
+        { id, question: q, status: 'queued', at: new Date(t0).toISOString(), startedAt: t0 },
+      ],
+    );
     setDraft('');
     try {
       const job = await s.submitAiJob({ kind: 'explore', question: q, history });
       if (!aliveRef.current) return;
       patch(/** @param {*} [t] */ (t) => ({ ...t, status: job.status || 'queued' }));
       const done = await s.pollAiJob(job.id, {
-        onStatus: /** @param {*} [j] */ (j) => patch(/** @param {*} [t] */ (t) => ({ ...t, status: j.status })),
+        onStatus: /** @param {*} [j] */ (j) =>
+          patch(/** @param {*} [t] */ (t) => ({ ...t, status: j.status })),
         isCancelled: () => !aliveRef.current,
       });
       if (!aliveRef.current) return;
       const r = (done && done.result) || {};
       if (!r.answer) throw new Error('任务完成但没有返回答案');
-      patch(/** @param {*} [t] */ (t) => ({
-        ...t, status: 'succeeded', answer: r.answer, refs: Array.isArray(r.refs) ? r.refs : [],
-        model: r.model || '', matched: Number(r.matched) || 0,
-      }));
+      patch(
+        /** @param {*} [t] */ (t) => ({
+          ...t,
+          status: 'succeeded',
+          answer: r.answer,
+          refs: Array.isArray(r.refs) ? r.refs : [],
+          model: r.model || '',
+          matched: Number(r.matched) || 0,
+        }),
+      );
     } catch (err) {
       if (!aliveRef.current) return;
       const msg = s.errText ? s.errText(err, '检索失败') : String((err && err.message) || err);
-      patch(/** @param {*} [t] */ (t) => ({ ...t, status: 'error', errorText: msg, retry: () => ask(q) }));
+      patch(
+        /** @param {*} [t] */ (t) => ({
+          ...t,
+          status: 'error',
+          errorText: msg,
+          retry: () => ask(q),
+        }),
+      );
     }
   }
 
@@ -252,39 +323,77 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
      对话态保持既有实现不动——滚动目标、ID、四态、引用卡全部原样。 */
   if (!hasTurns) {
     return (
-      <section className="ai-pane ex-pane is-landing" data-ai-pane="explore" hidden={!!hidden} {...panelProps}>
+      <section
+        className="ai-pane ex-pane is-landing"
+        data-ai-pane="explore"
+        hidden={!!hidden}
+        {...panelProps}
+      >
         <div className="ex-landing">
           <h1 className="ex-landing-title">想从订阅里找点什么？</h1>
-          <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，可直接追问</p>
+          <p className="ai-sub" id="exploreSub">
+            用大白话问你的订阅，AI 检索条目后回答，可直接追问
+          </p>
           <div className="ex-domains" aria-label="领域快捷提问">
-            {DOMAINS.map(/** @param {*} [d] */ (d) => (
-              <button className="ex-domain" type="button" key={d.label} onClick={() => ask(d.q)}>{d.label}</button>
-            ))}
+            {DOMAINS.map(
+              /** @param {*} [d] */ (d) => (
+                <button className="ex-domain" type="button" key={d.label} onClick={() => ask(d.q)}>
+                  {d.label}
+                </button>
+              ),
+            )}
           </div>
-          <form className="ex-landing-compose" id="exploreCompose"
-            onSubmit={/** @param {*} [e] */ (e) => { e.preventDefault(); ask(draft); }}>
+          <form
+            className="ex-landing-compose"
+            id="exploreCompose"
+            onSubmit={
+              /** @param {*} [e] */ (e) => {
+                e.preventDefault();
+                ask(draft);
+              }
+            }
+          >
             <div className="ex-landing-field">
-              <input id="exploreInput" type="search" value={draft}
+              <input
+                id="exploreInput"
+                type="search"
+                value={draft}
                 placeholder="今天想从订阅里找点什么？直接问就好"
-                aria-label="向探索提问" autoComplete="off" onChange={/** @param {*} [e] */ (e) => setDraft(e.target.value)} />
+                aria-label="向探索提问"
+                autoComplete="off"
+                onChange={/** @param {*} [e] */ (e) => setDraft(e.target.value)}
+              />
             </div>
             <div className="ex-landing-bar">
-              <button className="ex-landing-plus" type="button" aria-label="开始新一轮对话"
-                title="开始新一轮对话" onClick={startNew}>
+              <button
+                className="ex-landing-plus"
+                type="button"
+                aria-label="开始新一轮对话"
+                title="开始新一轮对话"
+                onClick={startNew}
+              >
                 <Icon n="plus" />
               </button>
-              <button className="ex-landing-send" type="submit" disabled={!draft.trim()}
-                aria-label="发送问题" title="发送问题">
+              <button
+                className="ex-landing-send"
+                type="submit"
+                disabled={!draft.trim()}
+                aria-label="发送问题"
+                title="发送问题"
+              >
                 <Icon n="arrow-up" />
               </button>
             </div>
           </form>
           <div className="ex-landing-suggest" aria-label="试试这些问题">
-            {SUGGESTIONS.map(/** @param {*} [q] */ (q) => (
-              <button className="ex-suggest-btn" type="button" key={q} onClick={() => ask(q)}>
-                {q}<Icon n="arrow-up" />
-              </button>
-            ))}
+            {SUGGESTIONS.map(
+              /** @param {*} [q] */ (q) => (
+                <button className="ex-suggest-btn" type="button" key={q} onClick={() => ask(q)}>
+                  {q}
+                  <Icon n="arrow-up" />
+                </button>
+              ),
+            )}
           </div>
         </div>
       </section>
@@ -292,34 +401,71 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
   }
 
   return (
-    <section className="ai-pane ex-pane is-chatting" data-ai-pane="explore" hidden={!!hidden} {...panelProps}>
+    <section
+      className="ai-pane ex-pane is-chatting"
+      data-ai-pane="explore"
+      hidden={!!hidden}
+      {...panelProps}
+    >
       {/* 对话容器：消息区 / 输入栏 / 免责声明同处一个面板，输入栏固定不随消息滚动。
           ID 与类名全部保留，滚动目标仍是 #exploreThread。 */}
       <div className="ex-shell">
         <div className="ex-thread" ref={scrollRef} id="exploreThread" role="log" aria-live="polite">
           <p className="ex-day">本次会话 · 可连续追问</p>
-          {turns.map(/** @param {*} [t] */ (t) => (
-            <div className="ex-pair" key={t.id}>
-              <MeBubble turn={t} />
-              <AiBubble turn={{ ...t, elapsed: t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0 }} />
-            </div>
-          ))}
+          {turns.map(
+            /** @param {*} [t] */ (t) => (
+              <div className="ex-pair" key={t.id}>
+                <MeBubble turn={t} />
+                <AiBubble
+                  turn={{
+                    ...t,
+                    elapsed: t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0,
+                  }}
+                />
+              </div>
+            ),
+          )}
         </div>
         {/* 整卡式输入栏：与空态大输入框同款（浅边圆角卡 + 输入行 + 工具行圆形发送），
             消除裸输入框聚焦时叠出的深色粗描边。ID 与提交逻辑不变。 */}
-        <form className="ex-compose" id="exploreCompose"
-          onSubmit={/** @param {*} [e] */ (e) => { e.preventDefault(); ask(draft); }}>
+        <form
+          className="ex-compose"
+          id="exploreCompose"
+          onSubmit={
+            /** @param {*} [e] */ (e) => {
+              e.preventDefault();
+              ask(draft);
+            }
+          }
+        >
           <div className="ex-compose-field">
-            <input id="exploreInput" type="search" value={draft} placeholder="追问一句话…"
-              aria-label="向探索提问" autoComplete="off" onChange={/** @param {*} [e] */ (e) => setDraft(e.target.value)} />
+            <input
+              id="exploreInput"
+              type="search"
+              value={draft}
+              placeholder="追问一句话…"
+              aria-label="向探索提问"
+              autoComplete="off"
+              onChange={/** @param {*} [e] */ (e) => setDraft(e.target.value)}
+            />
           </div>
           <div className="ex-compose-bar">
-            <button className="ex-compose-plus" type="button" aria-label="开始新一轮对话"
-              title="开始新一轮对话" onClick={startNew}>
+            <button
+              className="ex-compose-plus"
+              type="button"
+              aria-label="开始新一轮对话"
+              title="开始新一轮对话"
+              onClick={startNew}
+            >
               <Icon n="plus" />
             </button>
-            <button className="ex-compose-send" type="submit" disabled={!draft.trim()}
-              aria-label="发送问题" title="发送问题">
+            <button
+              className="ex-compose-send"
+              type="submit"
+              disabled={!draft.trim()}
+              aria-label="发送问题"
+              title="发送问题"
+            >
               <Icon n="arrow-up" />
             </button>
           </div>

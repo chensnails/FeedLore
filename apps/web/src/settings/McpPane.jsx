@@ -14,7 +14,7 @@
  */
 
 import { core } from '@core';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../ui/Icon.jsx';
 import { DetailSheet } from './DetailSheet.jsx';
 import { Result, Section, useResult } from './primitives.jsx';
@@ -41,7 +41,10 @@ function fmtRel(iso) {
  */
 const openOnKey = (fn) => /** @param {*} [ev] */ (ev) => {
   if (ev.target !== ev.currentTarget) return;
-  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); fn(); }
+  if (ev.key === 'Enter' || ev.key === ' ') {
+    ev.preventDefault();
+    fn();
+  }
 };
 
 /* ---------- 令牌详情层：查看 + 吊销 ---------- */
@@ -55,11 +58,17 @@ function TokenSheet({ token, busy, onClose, onRevoke, error }) {
       subtitle={`${token.prefix}…`}
       onClose={onClose}
       foot={
-        <button className="btn btn-danger" id="revokeTokenBtn" type="button"
-          disabled={busy} onClick={() => onRevoke(token)}>
+        <button
+          className="btn btn-danger"
+          id="revokeTokenBtn"
+          type="button"
+          disabled={busy}
+          onClick={() => onRevoke(token)}
+        >
           {busy ? '吊销中…' : '吊销令牌'}
         </button>
-      }>
+      }
+    >
       <div className="ds-stat">
         <div className="ds-stat-line">只读权限 · 可查询频道、文章与日报</div>
         <div className="ds-stat-line">最近使用 {fmtRel(token.lastUsedAt)}</div>
@@ -87,7 +96,7 @@ function NewTokenSheet({ onClose, onCreated }) {
   /** @type {any} */
   const [busy, setBusy] = useState(false);
   /** @type {*} */
-  const [fresh, setFresh] = useState(null);   // {secret, prefix}
+  const [fresh, setFresh] = useState(null); // {secret, prefix}
   /** @type {any} */
   const [copied, setCopied] = useState(false);
   /** @type {any} */
@@ -95,7 +104,10 @@ function NewTokenSheet({ onClose, onCreated }) {
 
   const create = async () => {
     const n = name.trim();
-    if (!n) { setErr('先给令牌起个名字（比如接的客户端）'); return; }
+    if (!n) {
+      setErr('先给令牌起个名字（比如接的客户端）');
+      return;
+    }
     setBusy(true);
     setErr('');
     try {
@@ -120,7 +132,10 @@ function NewTokenSheet({ onClose, onCreated }) {
   const copy = async () => {
     if (!fresh) return;
     const ok = await s.copyText(fresh.secret);
-    if (!ok) { setErr('复制失败，请手动选择文本复制'); return; }
+    if (!ok) {
+      setErr('复制失败，请手动选择文本复制');
+      return;
+    }
     setCopied(true);
     s.toast('已复制令牌');
     setTimeout(() => setCopied(false), 1600);
@@ -131,17 +146,29 @@ function NewTokenSheet({ onClose, onCreated }) {
       title={fresh ? '令牌已创建' : '创建访问令牌'}
       subtitle={fresh ? `${fresh.prefix}…` : '给接进来的 AI 客户端用'}
       onClose={onClose}
-      foot={fresh ? (
-        <button className="btn btn-primary" type="button" onClick={onClose}>我已保存</button>
-      ) : (
-        <>
-          <button className="btn" type="button" onClick={onClose}>取消</button>
-          <button className="btn btn-primary" id="createTokenBtn" type="button"
-            disabled={busy} onClick={create}>
-            {busy ? '创建中…' : '创建令牌'}
+      foot={
+        fresh ? (
+          <button className="btn btn-primary" type="button" onClick={onClose}>
+            我已保存
           </button>
-        </>
-      )}>
+        ) : (
+          <>
+            <button className="btn" type="button" onClick={onClose}>
+              取消
+            </button>
+            <button
+              className="btn btn-primary"
+              id="createTokenBtn"
+              type="button"
+              disabled={busy}
+              onClick={create}
+            >
+              {busy ? '创建中…' : '创建令牌'}
+            </button>
+          </>
+        )
+      }
+    >
       {fresh ? (
         <div className="hint pane-msg" role="status">
           <strong>现在复制保存 —— 关闭后不再显示：</strong>
@@ -156,10 +183,24 @@ function NewTokenSheet({ onClose, onCreated }) {
       ) : (
         <div className="form-row">
           <label htmlFor="newTokenName">令牌名称</label>
-          <input id="newTokenName" type="text" placeholder="令牌名称（如：我的 Claude）"
-            aria-label="新令牌名称" maxLength={40} autoComplete="off"
-            value={name} onChange={/** @param {*} [ev] */ (ev) => setName(ev.target.value)}
-            onKeyDown={/** @param {*} [ev] */ (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); create(); } }} />
+          <input
+            id="newTokenName"
+            type="text"
+            placeholder="令牌名称（如：我的 Claude）"
+            aria-label="新令牌名称"
+            maxLength={40}
+            autoComplete="off"
+            value={name}
+            onChange={/** @param {*} [ev] */ (ev) => setName(ev.target.value)}
+            onKeyDown={
+              /** @param {*} [ev] */ (ev) => {
+                if (ev.key === 'Enter') {
+                  ev.preventDefault();
+                  create();
+                }
+              }
+            }
+          />
           <small className="form-tip">
             名字只用来区分客户端，之后删改都按它找；令牌本身只读，不会改动你的数据。
           </small>
@@ -182,13 +223,16 @@ export function McpPane() {
   /** @type {any} */
   const [revoking, setRevoking] = useState('');
   /** @type {*} */
-  const [sheet, setSheet] = useState(null);   // {type:'new'} | {type:'token', id}
+  const [sheet, setSheet] = useState(null); // {type:'new'} | {type:'token', id}
   /** @type {any} */
   const [sheetError, setSheetError] = useState('');
   /**
    * @param {*} [next]
    */
-  const openSheet = (next) => { setSheetError(''); setSheet(next); };
+  const openSheet = (next) => {
+    setSheetError('');
+    setSheet(next);
+  };
 
   useEffect(() => {
     if (s && s.bindSections && paneRef.current) s.bindSections(paneRef.current);
@@ -207,7 +251,9 @@ export function McpPane() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   /**
    * @param {*} [t]
@@ -223,7 +269,9 @@ export function McpPane() {
     setRevoking(t.id);
     setSheetError('');
     try {
-      const res = await s.apiFetch('/api/mcp-tokens/' + encodeURIComponent(t.id), { method: 'DELETE' });
+      const res = await s.apiFetch('/api/mcp-tokens/' + encodeURIComponent(t.id), {
+        method: 'DELETE',
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
       setSheet(null);
@@ -238,24 +286,37 @@ export function McpPane() {
     }
   }
 
-  const token = sheet && sheet.type === 'token' ? (tokens || []).find(/** @param {*} [t] */ (t) => t.id === sheet.id) : null;
+  const token =
+    sheet && sheet.type === 'token'
+      ? (tokens || []).find(/** @param {*} [t] */ (t) => t.id === sheet.id)
+      : null;
 
   /**
    * @param {*} [t]
    */
   const renderTokenRow = (t) => (
-    <div className="sl-row" key={t.id} data-token-id={t.id}
-      role="button" tabIndex={0} aria-label={`${t.name}：查看令牌详情`}
+    <div
+      className="sl-row"
+      key={t.id}
+      data-token-id={t.id}
+      role="button"
+      tabIndex={0}
+      aria-label={`${t.name}：查看令牌详情`}
       onClick={() => openSheet({ type: 'token', id: t.id })}
-      onKeyDown={openOnKey(() => openSheet({ type: 'token', id: t.id }))}>
+      onKeyDown={openOnKey(() => openSheet({ type: 'token', id: t.id }))}
+    >
       <span className="sl-ava">
         <Icon n="link" />
       </span>
       <div className="sl-main">
         <div className="sl-name">{t.name}</div>
-        <div className="sl-sub">{t.prefix}… · {fmtRel(t.lastUsedAt)}</div>
+        <div className="sl-sub">
+          {t.prefix}… · {fmtRel(t.lastUsedAt)}
+        </div>
       </div>
-      <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+      <svg className="ico feed-caret" aria-hidden="true" focusable="false">
+        <use href="#i-chevron-right" />
+      </svg>
     </div>
   );
 
@@ -269,24 +330,39 @@ export function McpPane() {
           </p>
           <p className="hint" style={{ margin: '0 0 var(--sp-2)', wordBreak: 'break-all' }}>
             地址 <code>{location.origin}/mcp</code>
-            <button type="button" className="u-btn" title="复制接入地址" aria-label="复制接入地址"
-              onClick={async () => { if (await s.copyText(location.origin + '/mcp')) s.toast('已复制接入地址'); }}>
+            <button
+              type="button"
+              className="u-btn"
+              title="复制接入地址"
+              aria-label="复制接入地址"
+              onClick={async () => {
+                if (await s.copyText(location.origin + '/mcp')) s.toast('已复制接入地址');
+              }}
+            >
               <Icon n="link" />
             </button>
             ，请求头加 <code>Authorization: Bearer 你的令牌</code>。
           </p>
           <p className="hint" style={{ margin: 0 }}>
             令牌与登录会话完全独立，吊销不影响网页登录。
-            <br />当前版本只开放只读工具（频道列表、文章检索与全文、日报）；管理类操作不接受 MCP 调用。
+            <br />
+            当前版本只开放只读工具（频道列表、文章检索与全文、日报）；管理类操作不接受 MCP 调用。
           </p>
         </Section>
 
-        <Section secKey="mcp-tokens" title="访问令牌" sub={tokens ? `${tokens.length} 枚` : ''} open>
+        <Section
+          secKey="mcp-tokens"
+          title="访问令牌"
+          sub={tokens ? `${tokens.length} 枚` : ''}
+          open
+        >
           {tokens === null && !listError ? <div className="hint">正在读取令牌…</div> : null}
           {listError ? (
             <div className="hint pane-msg">
               {listError}
-              <button className="btn btn-ghost btn-sm" type="button" onClick={load}>重试</button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={load}>
+                重试
+              </button>
             </div>
           ) : null}
 
@@ -295,13 +371,21 @@ export function McpPane() {
           ) : null}
 
           {Array.isArray(tokens) && tokens.length > 0 ? (
-            <div className="sl-list" id="mcpTokenList">{tokens.map(renderTokenRow)}</div>
+            <div className="sl-list" id="mcpTokenList">
+              {tokens.map(renderTokenRow)}
+            </div>
           ) : null}
 
           <div className="sl-toolbar">
-            <button className="btn btn-ghost btn-sm" id="newMcpTokenBtn" type="button"
-              onClick={() => openSheet({ type: 'new' })}>
-              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
+            <button
+              className="btn btn-ghost btn-sm"
+              id="newMcpTokenBtn"
+              type="button"
+              onClick={() => openSheet({ type: 'new' })}
+            >
+              <svg className="ico" aria-hidden="true" focusable="false">
+                <use href="#i-plus" />
+              </svg>
               创建令牌
             </button>
             <span className="sl-toolbar-note">按客户端分开建，吊销时互不影响</span>
@@ -318,8 +402,14 @@ export function McpPane() {
         <NewTokenSheet onClose={() => setSheet(null)} onCreated={load} />
       ) : null}
       {token ? (
-        <TokenSheet key={'tok-' + token.id} token={token} busy={revoking === token.id}
-          error={sheetError} onClose={() => setSheet(null)} onRevoke={revoke} />
+        <TokenSheet
+          key={'tok-' + token.id}
+          token={token}
+          busy={revoking === token.id}
+          error={sheetError}
+          onClose={() => setSheet(null)}
+          onRevoke={revoke}
+        />
       ) : null}
     </div>
   );

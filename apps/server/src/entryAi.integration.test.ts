@@ -12,12 +12,18 @@
  * feeds/entries/ai_request_log/ai_usage_daily），不碰库里其它数据。
  */
 
-import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { sql } from 'drizzle-orm';
-import { aiJobs, entryAiTags, createDb, feeds as feedsTable, entries as entriesTable } from '@feedlore/db';
+import test from 'node:test';
 import { createAuth } from '@feedlore/auth';
+import {
+  aiJobs,
+  createDb,
+  entries as entriesTable,
+  entryAiTags,
+  feeds as feedsTable,
+} from '@feedlore/db';
+import { sql } from 'drizzle-orm';
 import { createApp } from './app';
 
 const DATABASE_URL = process.env.DATABASE_URL ?? '';
@@ -32,7 +38,18 @@ const SKIP = DATABASE_URL ? false : '未设置 DATABASE_URL —— 接口级测�
 
 /* ------------------------------------------------------------------ 假模型 */
 
-type Mode = 'ok' | 'tags' | 'auth' | 'html502' | 'notjson' | 'nocontent' | 'emptyThenOk' | 'rejectET' | 'drop' | 'slow' | 'explore';
+type Mode =
+  | 'ok'
+  | 'tags'
+  | 'auth'
+  | 'html502'
+  | 'notjson'
+  | 'nocontent'
+  | 'emptyThenOk'
+  | 'rejectET'
+  | 'drop'
+  | 'slow'
+  | 'explore';
 
 interface FakeState {
   mode: Mode;
@@ -53,56 +70,85 @@ const okBody = (content = '这是模型返回的摘要。'): string =>
     usage: { prompt_tokens: 12, completion_tokens: 6, total_tokens: 18 },
   });
 
-const fakeServerFactory = (): Server => createServer((req, res) => {
-  let raw = '';
-  req.on('data', (c) => { raw += c; });
-  req.on('end', () => {
-    fake.hits += 1;
-    fake.lastBody = raw;
-    let messages: Array<{ role?: string; content?: string }> = [];
-    try {
-      messages = (JSON.parse(raw) as { messages?: Array<{ role?: string; content?: string }> }).messages ?? [];
-    } catch { /* 不是 JSON 也照样走分支 */ }
-    fake.prompts.push(String(messages[0]?.content ?? ''));
+const fakeServerFactory = (): Server =>
+  createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => {
+      raw += c;
+    });
+    req.on('end', () => {
+      fake.hits += 1;
+      fake.lastBody = raw;
+      let messages: Array<{ role?: string; content?: string }> = [];
+      try {
+        messages =
+          (JSON.parse(raw) as { messages?: Array<{ role?: string; content?: string }> }).messages ??
+          [];
+      } catch {
+        /* 不是 JSON 也照样走分支 */
+      }
+      fake.prompts.push(String(messages[0]?.content ?? ''));
 
-    const send = (code: number, body: string, type = 'application/json'): void => {
-      res.writeHead(code, { 'Content-Type': type });
-      res.end(body);
-    };
-    // 'rejectET' 模式：像某些网关那样，见到 enable_thinking 就 400（验证摘字段降级）
-    if (fake.mode === 'rejectET') {
-      let hasET = false;
-      try { hasET = (JSON.parse(raw) as { enable_thinking?: unknown }).enable_thinking !== undefined; } catch { hasET = false; }
-      return hasET
-        ? send(400, JSON.stringify({ code: 'UNKNOWN_FIELD', message: '未知请求字段：enable_thinking', data: { field: 'enable_thinking' } }))
-        : send(200, okBody('降级后拿到的摘要。'));
-    }
-    switch (fake.mode) {
-      // 打标要的不是自然语言而是 JSON（见 packages/ai/src/tagging.ts）
-      case 'tags': return send(200, okBody('{"tags":["测试","标签"]}'));
-      // 探索问答：返回带 #1 引用的 JSON；#99 是越界编号，服务端应丢弃
-      case 'explore': return send(200, okBody('{"answer":"推荐看 #1 这篇。","refs":[1,99]}'));
-      case 'auth': return send(401, JSON.stringify({ error: 'invalid api key' }));
-      case 'html502':
-        return send(
-          502,
-          '<!doctype html><html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>',
-          'text/html',
-        );
-      case 'notjson': return send(200, '抱歉，我无法回答');
-      case 'nocontent': return send(200, JSON.stringify({ choices: [{ message: {} }] }));
-      case 'emptyThenOk':
-        emptyCount += 1;
-        // 第一次只给空 message（模拟「答案全在 reasoning_content 里」），第二次正常
-        return emptyCount === 1
-          ? send(200, JSON.stringify({ choices: [{ message: { reasoning_content: '思考中…' } }] }))
-          : send(200, okBody('重试后拿到的摘要。'));
-      case 'drop': return void req.socket.destroy();
-      case 'slow': return void setTimeout(() => send(200, okBody('慢响应的摘要。')), 1500);
-      default: return send(200, okBody());
-    }
+      const send = (code: number, body: string, type = 'application/json'): void => {
+        res.writeHead(code, { 'Content-Type': type });
+        res.end(body);
+      };
+      // 'rejectET' 模式：像某些网关那样，见到 enable_thinking 就 400（验证摘字段降级）
+      if (fake.mode === 'rejectET') {
+        let hasET = false;
+        try {
+          hasET = (JSON.parse(raw) as { enable_thinking?: unknown }).enable_thinking !== undefined;
+        } catch {
+          hasET = false;
+        }
+        return hasET
+          ? send(
+              400,
+              JSON.stringify({
+                code: 'UNKNOWN_FIELD',
+                message: '未知请求字段：enable_thinking',
+                data: { field: 'enable_thinking' },
+              }),
+            )
+          : send(200, okBody('降级后拿到的摘要。'));
+      }
+      switch (fake.mode) {
+        // 打标要的不是自然语言而是 JSON（见 packages/ai/src/tagging.ts）
+        case 'tags':
+          return send(200, okBody('{"tags":["测试","标签"]}'));
+        // 探索问答：返回带 #1 引用的 JSON；#99 是越界编号，服务端应丢弃
+        case 'explore':
+          return send(200, okBody('{"answer":"推荐看 #1 这篇。","refs":[1,99]}'));
+        case 'auth':
+          return send(401, JSON.stringify({ error: 'invalid api key' }));
+        case 'html502':
+          return send(
+            502,
+            '<!doctype html><html><head><title>502 Bad Gateway</title></head><body>nginx</body></html>',
+            'text/html',
+          );
+        case 'notjson':
+          return send(200, '抱歉，我无法回答');
+        case 'nocontent':
+          return send(200, JSON.stringify({ choices: [{ message: {} }] }));
+        case 'emptyThenOk':
+          emptyCount += 1;
+          // 第一次只给空 message（模拟「答案全在 reasoning_content 里」），第二次正常
+          return emptyCount === 1
+            ? send(
+                200,
+                JSON.stringify({ choices: [{ message: { reasoning_content: '思考中…' } }] }),
+              )
+            : send(200, okBody('重试后拿到的摘要。'));
+        case 'drop':
+          return void req.socket.destroy();
+        case 'slow':
+          return void setTimeout(() => send(200, okBody('慢响应的摘要。')), 1500);
+        default:
+          return send(200, okBody());
+      }
+    });
   });
-});
 
 /**
  * 假模型服务**在用例内部**才启动。
@@ -148,7 +194,8 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       body: JSON.stringify({ username: u, password: p }),
     });
     assert.equal(res.status, 200, `${u} 登录应成功：${await res.clone().text()}`);
-    const setCookies = (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
+    const setCookies =
+      (res.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
     return setCookies.map((s) => s.split(';')[0]).join('; ');
   }
 
@@ -236,7 +283,16 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
     /* 模型配置走真实保存链路（顺带覆盖加密与回读） */
     const saveLlm = await call(cOwner, '/api/prefs', {
       method: 'POST',
-      json: { llm: { baseUrl: FAKE_BASE, apiKey: 'sk-itest-fake-key', model: 'fake-model', temperature: 0.2, thinking: false, thinkingDepth: 0 } },
+      json: {
+        llm: {
+          baseUrl: FAKE_BASE,
+          apiKey: 'sk-itest-fake-key',
+          model: 'fake-model',
+          temperature: 0.2,
+          thinking: false,
+          thinkingDepth: 0,
+        },
+      },
     });
     assert.equal(saveLlm.status, 200, `保存模型配置失败：${await saveLlm.clone().text()}`);
 
@@ -247,28 +303,62 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       .returning();
     const [otherFeed] = await db
       .insert(feedsTable)
-      .values({ ownerId: otherId, url: `https://example.com/itest-ai-other-${stamp}.xml`, title: '他人的频道' })
+      .values({
+        ownerId: otherId,
+        url: `https://example.com/itest-ai-other-${stamp}.xml`,
+        title: '他人的频道',
+      })
       .returning();
     assert.ok(feed && otherFeed, '频道插入失败');
 
-    const [short] = await db.insert(entriesTable)
-      .values({ feedId: feed.id, guid: `ai-short-${stamp}`, title: '短正文条目', content: '这是一个用于测试的短正文。' })
+    const [short] = await db
+      .insert(entriesTable)
+      .values({
+        feedId: feed.id,
+        guid: `ai-short-${stamp}`,
+        title: '短正文条目',
+        content: '这是一个用于测试的短正文。',
+      })
       .returning();
-    const [long] = await db.insert(entriesTable)
-      .values({ feedId: feed.id, guid: `ai-long-${stamp}`, title: '超长正文条目', content: 'x'.repeat(30000) })
+    const [long] = await db
+      .insert(entriesTable)
+      .values({
+        feedId: feed.id,
+        guid: `ai-long-${stamp}`,
+        title: '超长正文条目',
+        content: 'x'.repeat(30000),
+      })
       .returning();
-    const [empty] = await db.insert(entriesTable)
-      .values({ feedId: feed.id, guid: `ai-empty-${stamp}`, title: '没有正文的条目', content: null })
+    const [empty] = await db
+      .insert(entriesTable)
+      .values({
+        feedId: feed.id,
+        guid: `ai-empty-${stamp}`,
+        title: '没有正文的条目',
+        content: null,
+      })
       .returning();
-    const [foreign] = await db.insert(entriesTable)
-      .values({ feedId: otherFeed.id, guid: `ai-foreign-${stamp}`, title: '他人的条目', content: '别人的正文' })
+    const [foreign] = await db
+      .insert(entriesTable)
+      .values({
+        feedId: otherFeed.id,
+        guid: `ai-foreign-${stamp}`,
+        title: '他人的条目',
+        content: '别人的正文',
+      })
       .returning();
     assert.ok(short && long && empty && foreign, '条目插入失败');
-    shortId = short.id; longId = long.id; emptyId = empty.id; foreignId = foreign.id;
+    shortId = short.id;
+    longId = long.id;
+    emptyId = empty.id;
+    foreignId = foreign.id;
 
     /* ================================================================ A. 鉴权与参数 */
     await t.test('T01 未登录 → 401，且错误体是码而非中文', async () => {
-      const res = await call('', `/api/entry/${shortId}/ai`, { method: 'POST', json: { action: 'summary' } });
+      const res = await call('', `/api/entry/${shortId}/ai`, {
+        method: 'POST',
+        json: { action: 'summary' },
+      });
       assert.equal(res.status, 401);
       const body = (await res.json()) as { error: string; message: string };
       assert.equal(body.error, 'E_UNAUTHORIZED');
@@ -282,7 +372,10 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
 
     await t.test('T03~T05 非法 / 零 / 不存在的 id → 404 E_ENTRY_NOT_FOUND', async () => {
       for (const bad of ['abc', '0', '-5', '999999999']) {
-        const res = await call(cOwner, `/api/entry/${bad}/ai`, { method: 'POST', json: { action: 'summary' } });
+        const res = await call(cOwner, `/api/entry/${bad}/ai`, {
+          method: 'POST',
+          json: { action: 'summary' },
+        });
         assert.equal(res.status, 404, `id=${bad} 应为 404，实际 ${res.status}`);
         const body = (await res.json()) as { error?: string };
         assert.equal(body.error, 'E_ENTRY_NOT_FOUND');
@@ -290,7 +383,10 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
     });
 
     await t.test('T06 他人的条目 → 404（owner 隔离，不是 403 也不泄露存在性）', async () => {
-      const res = await call(cOwner, `/api/entry/${foreignId}/ai`, { method: 'POST', json: { action: 'summary' } });
+      const res = await call(cOwner, `/api/entry/${foreignId}/ai`, {
+        method: 'POST',
+        json: { action: 'summary' },
+      });
       assert.equal(res.status, 404);
       assert.equal(((await res.json()) as { error?: string }).error, 'E_ENTRY_NOT_FOUND');
     });
@@ -326,7 +422,16 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       }
       assert.equal(fake.prompts.length, 4);
       assert.equal(new Set(fake.prompts).size, 4, '四个动作的系统提示词不应重复');
-      assert.ok(fake.prompts.every((p) => p.includes('简体中文') || p.includes('编辑') || p.includes('译者') || p.includes('讲解')), '提示词看起来不对');
+      assert.ok(
+        fake.prompts.every(
+          (p) =>
+            p.includes('简体中文') ||
+            p.includes('编辑') ||
+            p.includes('译者') ||
+            p.includes('讲解'),
+        ),
+        '提示词看起来不对',
+      );
     });
 
     await t.test('T12 translate 的 targetLang 进提示词（20 字边界内）', async () => {
@@ -344,7 +449,9 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       fake.mode = 'ok';
       const r = await ask(cOwner, longId);
       assert.equal(r.ok, true);
-      const sent = (JSON.parse(fake.lastBody) as { messages: Array<{ content: string }> }).messages[1]?.content ?? '';
+      const sent =
+        (JSON.parse(fake.lastBody) as { messages: Array<{ content: string }> }).messages[1]
+          ?.content ?? '';
       const bodyPart = (sent.split('正文：\n')[1] ?? '').split('\n\n（正文过长已截断')[0] ?? '';
       assert.equal(bodyPart.length, 24000, `发给模型的正文应为 24000 字，实际 ${bodyPart.length}`);
     });
@@ -352,7 +459,9 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
     await t.test('T13b 翻译按 4000 字预算（90 秒内能翻完的量）', async () => {
       fake.mode = 'ok';
       await ask(cOwner, longId, { action: 'translate' });
-      const sent = (JSON.parse(fake.lastBody) as { messages: Array<{ content: string }> }).messages[1]?.content ?? '';
+      const sent =
+        (JSON.parse(fake.lastBody) as { messages: Array<{ content: string }> }).messages[1]
+          ?.content ?? '';
       const bodyPart = (sent.split('正文：\n')[1] ?? '').split('\n\n（正文过长已截断')[0] ?? '';
       assert.ok(bodyPart.length <= 4000, `翻译正文应 ≤4000 字，实际 ${bodyPart.length}`);
       assert.match(sent, /正文过长已截断/, '截断时应明确告知模型');
@@ -360,17 +469,26 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
 
     await t.test('T13c 正文去噪：折叠空行、丢弃重复长行', async () => {
       fake.mode = 'ok';
-      const noisy = '第一段正文。\n\n\n\n\n第二段正文。\n'
-        + '这是一句重复出现的长引导语，用来测试去重是否生效。\n'
-        + '这是一句重复出现的长引导语，用来测试去重是否生效。\n'
-        + '最后一句话。';
-      const [noisyEntry] = await db.insert(entriesTable)
-        .values({ feedId: feed!.id, guid: `ai-noisy-${stamp}`, title: '带噪声的正文', content: noisy })
+      const noisy =
+        '第一段正文。\n\n\n\n\n第二段正文。\n' +
+        '这是一句重复出现的长引导语，用来测试去重是否生效。\n' +
+        '这是一句重复出现的长引导语，用来测试去重是否生效。\n' +
+        '最后一句话。';
+      const [noisyEntry] = await db
+        .insert(entriesTable)
+        .values({
+          feedId: feed!.id,
+          guid: `ai-noisy-${stamp}`,
+          title: '带噪声的正文',
+          content: noisy,
+        })
         .returning();
       assert.ok(noisyEntry);
       const r = await ask(cOwner, noisyEntry.id);
       assert.equal(r.ok, true);
-      const sent = (JSON.parse(fake.lastBody) as { messages: Array<{ content: string }> }).messages[1]?.content ?? '';
+      const sent =
+        (JSON.parse(fake.lastBody) as { messages: Array<{ content: string }> }).messages[1]
+          ?.content ?? '';
       assert.doesNotMatch(sent, /\n\n\n/, '连续空行应被折叠');
       const dupCount = sent.split('这是一句重复出现的长引导语').length - 1;
       assert.equal(dupCount, 1, `重复长行应只保留一行，实际 ${dupCount} 行`);
@@ -381,34 +499,56 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
     await t.test('T29 默认关思考：请求体带 enable_thinking=false（实测 6s→1.3s）', async () => {
       fake.mode = 'ok';
       await ask(cOwner, shortId, { action: 'summary' });
-      const body = JSON.parse(fake.lastBody) as { max_tokens?: number; enable_thinking?: unknown; chat_template_kwargs?: unknown };
+      const body = JSON.parse(fake.lastBody) as {
+        max_tokens?: number;
+        enable_thinking?: unknown;
+        chat_template_kwargs?: unknown;
+      };
       assert.equal(body.enable_thinking, false, '默认应显式关思考（这是主要提速手段）');
       assert.equal(body.max_tokens, undefined, 'max_tokens 会被思考链吃满导致空答案，必须不传');
-      assert.equal(body.chat_template_kwargs, undefined, '默认关思考时不应下发 chat_template_kwargs');
+      assert.equal(
+        body.chat_template_kwargs,
+        undefined,
+        '默认关思考时不应下发 chat_template_kwargs',
+      );
     });
 
     await t.test('T30 默认关闭思考（系统提示带 /no_think）', async () => {
       fake.mode = 'ok';
       fake.prompts.length = 0;
       await ask(cOwner, shortId);
-      assert.match(fake.prompts[0] ?? '', /\/no_think/, `系统提示应带 /no_think：${fake.prompts[0]}`);
+      assert.match(
+        fake.prompts[0] ?? '',
+        /\/no_think/,
+        `系统提示应带 /no_think：${fake.prompts[0]}`,
+      );
     });
 
-    await t.test('T31 账号显式开了思考模式 → /think + enable_thinking:true（全局开关双向生效）', async () => {
-      fake.mode = 'ok';
-      await db.execute(sql`update user_llm set thinking = true where user_id = ${ownerId}`);
-      try {
-        fake.prompts.length = 0;
-        await ask(cOwner, shortId);
-        assert.match(fake.prompts[0] ?? '', /\/think/, `应跟随账号设置带 /think：${fake.prompts[0]}`);
-        const body = JSON.parse(fake.lastBody) as { enable_thinking?: unknown; thinking_budget?: unknown };
-        // 账号级配置 → 请求体字段：不是前端每次临时传参，所以日报/标签/MCP 全都一致
-        assert.equal(body.enable_thinking, true, '开思考时应显式下发 enable_thinking:true');
-        assert.equal(typeof body.thinking_budget, 'number', '开思考时应带预算');
-      } finally {
-        await db.execute(sql`update user_llm set thinking = false where user_id = ${ownerId}`);
-      }
-    });
+    await t.test(
+      'T31 账号显式开了思考模式 → /think + enable_thinking:true（全局开关双向生效）',
+      async () => {
+        fake.mode = 'ok';
+        await db.execute(sql`update user_llm set thinking = true where user_id = ${ownerId}`);
+        try {
+          fake.prompts.length = 0;
+          await ask(cOwner, shortId);
+          assert.match(
+            fake.prompts[0] ?? '',
+            /\/think/,
+            `应跟随账号设置带 /think：${fake.prompts[0]}`,
+          );
+          const body = JSON.parse(fake.lastBody) as {
+            enable_thinking?: unknown;
+            thinking_budget?: unknown;
+          };
+          // 账号级配置 → 请求体字段：不是前端每次临时传参，所以日报/标签/MCP 全都一致
+          assert.equal(body.enable_thinking, true, '开思考时应显式下发 enable_thinking:true');
+          assert.equal(typeof body.thinking_budget, 'number', '开思考时应带预算');
+        } finally {
+          await db.execute(sql`update user_llm set thinking = false where user_id = ${ownerId}`);
+        }
+      },
+    );
 
     await t.test('T14 没有正文的条目也能调（不因 null 抛 500）', async () => {
       fake.mode = 'ok';
@@ -434,7 +574,16 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       // 复原配置，后续用例继续用
       await call(cOwner, '/api/prefs', {
         method: 'POST',
-        json: { llm: { baseUrl: FAKE_BASE, apiKey: 'sk-itest-fake-key', model: 'fake-model', temperature: 0.2, thinking: false, thinkingDepth: 0 } },
+        json: {
+          llm: {
+            baseUrl: FAKE_BASE,
+            apiKey: 'sk-itest-fake-key',
+            model: 'fake-model',
+            temperature: 0.2,
+            thinking: false,
+            thinkingDepth: 0,
+          },
+        },
       });
     });
 
@@ -520,13 +669,22 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       const after = (await db.execute(sql`
         select count(*)::int as n from ai_request_log where user_id = ${ownerId} and kind = 'entry_ai'
       `)) as unknown as { rows: Array<{ n: number }> };
-      assert.equal((after.rows[0]?.n ?? 0), okBefore + 1, '成功一次应多一条明细');
+      assert.equal(after.rows[0]?.n ?? 0, okBefore + 1, '成功一次应多一条明细');
 
       const row = (await db.execute(sql`
         select model, label, ok, prompt_tokens, completion_tokens, duration_ms
         from ai_request_log where user_id = ${ownerId} and kind = 'entry_ai'
         order by id desc limit 1
-      `)) as unknown as { rows: Array<{ model: string; label: string; ok: boolean; prompt_tokens: number; completion_tokens: number; duration_ms: number }> };
+      `)) as unknown as {
+        rows: Array<{
+          model: string;
+          label: string;
+          ok: boolean;
+          prompt_tokens: number;
+          completion_tokens: number;
+          duration_ms: number;
+        }>;
+      };
       const r0 = row.rows[0];
       assert.ok(r0, '应能读到明细行');
       assert.equal(r0.model, 'fake-model', '明细应记录当时用的模型');
@@ -548,7 +706,14 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       const usage = (await db.execute(sql`
         select calls, fails, prompt_tokens, completion_tokens from ai_usage_daily
         where user_id = ${ownerId} and kind = 'entry_ai'
-      `)) as unknown as { rows: Array<{ calls: number; fails: number; prompt_tokens: number; completion_tokens: number }> };
+      `)) as unknown as {
+        rows: Array<{
+          calls: number;
+          fails: number;
+          prompt_tokens: number;
+          completion_tokens: number;
+        }>;
+      };
       const u0 = usage.rows[0];
       assert.ok(u0, '应有按天聚合行');
       assert.ok(u0.calls > 0 && u0.fails > 0, `聚合里成功与失败都要有：${JSON.stringify(u0)}`);
@@ -556,7 +721,7 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
 
     /* ================================================================ E. 并发与性能 */
     await t.test('T25 并发 5 个动作：全部成功且各记一条，互不串结果', async () => {
-      fake.mode = 'slow';   // 故意慢，制造真正的并发重叠
+      fake.mode = 'slow'; // 故意慢，制造真正的并发重叠
       const before = (await db.execute(sql`
         select count(*)::int as n from ai_request_log where user_id = ${ownerId} and kind = 'entry_ai'
       `)) as unknown as { rows: Array<{ n: number }> };
@@ -564,7 +729,10 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
 
       const actions = ['summary', 'keypoints', 'translate', 'explain', 'summary'] as const;
       const results = await Promise.all(actions.map((action) => ask(cOwner, shortId, { action })));
-      assert.ok(results.every((r) => r.ok), `并发全部应成功：${JSON.stringify(results.map((r) => r.result))}`);
+      assert.ok(
+        results.every((r) => r.ok),
+        `并发全部应成功：${JSON.stringify(results.map((r) => r.result))}`,
+      );
 
       const after = (await db.execute(sql`
         select count(*)::int as n from ai_request_log where user_id = ${ownerId} and kind = 'entry_ai'
@@ -576,7 +744,10 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
     await t.test('T26 只读账号 → 403 E_READONLY_CONFIG（不消耗模型额度）', async () => {
       fake.mode = 'ok';
       const hitsBefore = fake.hits;
-      const res = await call(cReader, `/api/entry/${shortId}/ai`, { method: 'POST', json: { action: 'summary' } });
+      const res = await call(cReader, `/api/entry/${shortId}/ai`, {
+        method: 'POST',
+        json: { action: 'summary' },
+      });
       assert.equal(res.status, 403);
       assert.equal(((await res.json()) as { error?: string }).error, 'E_READONLY_CONFIG');
       assert.equal(fake.hits, hitsBefore, '被拒的请求不应真的打到模型');
@@ -617,7 +788,10 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       });
       const submitMs = Date.now() - t0;
       assert.equal(res.status, 200);
-      const body = (await res.json()) as { ok: boolean; job: { id: string; kind: string; status: string } };
+      const body = (await res.json()) as {
+        ok: boolean;
+        job: { id: string; kind: string; status: string };
+      };
       assert.equal(body.ok, true);
       assert.equal(body.job.kind, 'entry_ai');
       assert.ok(['queued', 'running'].includes(body.job.status), `提交时状态：${body.job.status}`);
@@ -658,8 +832,16 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
 
     await t.test('T36 提交阶段就把请求错误判掉（不让它变成一条失败任务）', async () => {
       const cases: Array<{ json: unknown; status: number; error: string }> = [
-        { json: { kind: 'entry_ai', entryId: foreignId, action: 'summary' }, status: 404, error: 'E_ENTRY_NOT_FOUND' },
-        { json: { kind: 'entry_ai', entryId: 99999999, action: 'summary' }, status: 404, error: 'E_ENTRY_NOT_FOUND' },
+        {
+          json: { kind: 'entry_ai', entryId: foreignId, action: 'summary' },
+          status: 404,
+          error: 'E_ENTRY_NOT_FOUND',
+        },
+        {
+          json: { kind: 'entry_ai', entryId: 99999999, action: 'summary' },
+          status: 404,
+          error: 'E_ENTRY_NOT_FOUND',
+        },
         { json: { kind: 'entry_ai', action: 'summary' }, status: 404, error: 'E_ENTRY_NOT_FOUND' },
         { json: { kind: 'digest', date: '2026-02-30' }, status: 400, error: 'E_DATE_INVALID' },
       ];
@@ -706,13 +888,16 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
     });
 
     await t.test('T40 真并发提交 8 个：验证活跃上限在 check-then-act 竞态下仍成立', async () => {
-      fake.mode = 'slow';   // 慢响应，让 queued/running 名额持续被占
+      fake.mode = 'slow'; // 慢响应，让 queued/running 名额持续被占
       // 先清干净本账号的残留任务，从 0 开始
       await db.delete(aiJobs).where(sql`user_id = ${ownerId}`);
       try {
         const responses = await Promise.all(
           Array.from({ length: 8 }, () =>
-            call(cOwner, '/api/ai/jobs', { method: 'POST', json: { kind: 'entry_ai', entryId: shortId, action: 'summary' } }),
+            call(cOwner, '/api/ai/jobs', {
+              method: 'POST',
+              json: { kind: 'entry_ai', entryId: shortId, action: 'summary' },
+            }),
           ),
         );
         const statuses = responses.map((r) => r.status);
@@ -735,18 +920,30 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
     await t.test('T41 标签筛选隔离：aiTag 只命中 AI 标签，不与手动标签串', async () => {
       fake.mode = 'ok';
       // 两条独立条目：A 有手动标签「工具甲」+ AI 标签「工具乙」，B 只有手动「工具乙」
-      const [tagA] = await db.insert(entriesTable)
+      const [tagA] = await db
+        .insert(entriesTable)
         .values({ feedId: feed.id, guid: `ai-tagA-${stamp}`, title: '标签隔离A', content: 'x' })
         .returning();
-      const [tagB] = await db.insert(entriesTable)
+      const [tagB] = await db
+        .insert(entriesTable)
         .values({ feedId: feed.id, guid: `ai-tagB-${stamp}`, title: '标签隔离B', content: 'x' })
         .returning();
       assert.ok(tagA && tagB);
       try {
-        await db.update(entriesTable).set({ tags: ['工具甲'] }).where(sql`id = ${tagA.id}`);
-        await db.update(entriesTable).set({ tags: ['工具乙'] }).where(sql`id = ${tagB.id}`);
+        await db
+          .update(entriesTable)
+          .set({ tags: ['工具甲'] })
+          .where(sql`id = ${tagA.id}`);
+        await db
+          .update(entriesTable)
+          .set({ tags: ['工具乙'] })
+          .where(sql`id = ${tagB.id}`);
         await db.insert(entryAiTags).values({
-          id: `itest-tag-${stamp}`, userId: ownerId, entryId: tagA.id, tags: ['工具乙'], model: 'test',
+          id: `itest-tag-${stamp}`,
+          userId: ownerId,
+          entryId: tagA.id,
+          tags: ['工具乙'],
+          model: 'test',
         });
 
         // 带 feeds=<本频道> 显式指定范围：测试频道没开 cardEnabled，默认 scope=cards 会漏掉
@@ -758,7 +955,8 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
         };
         const byManual = await idsOf('tag=' + encodeURIComponent('工具甲'));
         const byAi = await idsOf('aiTag=' + encodeURIComponent('工具乙'));
-        const a = String(tagA.id), b = String(tagB.id);
+        const a = String(tagA.id),
+          b = String(tagB.id);
         assert.ok(byManual.includes(a), '手动标签「工具甲」应命中 A');
         assert.ok(!byManual.includes(b), '手动标签「工具甲」不应命中 B');
         assert.ok(byAi.includes(a), 'AI 标签「工具乙」应命中 A（它有该 AI 标签）');
@@ -770,19 +968,35 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
 
     await t.test('T42 aiTag 越权：拿别人的 AI 标签筛不到自己库里的条目', async () => {
       fake.mode = 'ok';
-      const [mine] = await db.insert(entriesTable)
-        .values({ feedId: feed.id, guid: `ai-aitag-mine-${stamp}`, title: '本人的AI标签条目', content: 'x' })
+      const [mine] = await db
+        .insert(entriesTable)
+        .values({
+          feedId: feed.id,
+          guid: `ai-aitag-mine-${stamp}`,
+          title: '本人的AI标签条目',
+          content: 'x',
+        })
         .returning();
       assert.ok(mine);
       try {
         await db.insert(entryAiTags).values({
-          id: `itest-aitag-mine-${stamp}`, userId: ownerId, entryId: mine.id, tags: ['专属甲'], model: 'test',
+          id: `itest-aitag-mine-${stamp}`,
+          userId: ownerId,
+          entryId: mine.id,
+          tags: ['专属甲'],
+          model: 'test',
         });
         // 这里用 other 的会话，feeds= 传自己的频道 id（越权也拿不到），关键是验证不串别人的 AI 标签
-        const res = await call(cOther, `/api/entries?limit=200&scope=all&aiTag=${encodeURIComponent('专属甲')}`);
+        const res = await call(
+          cOther,
+          `/api/entries?limit=200&scope=all&aiTag=${encodeURIComponent('专属甲')}`,
+        );
         assert.equal(res.status, 200);
         const body = (await res.json()) as { entries: Array<{ id: number | string }> };
-        assert.ok(!body.entries.some((e) => String(e.id) === String(mine.id)), '别人的 AI 标签不应让他人筛到我的条目');
+        assert.ok(
+          !body.entries.some((e) => String(e.id) === String(mine.id)),
+          '别人的 AI 标签不应让他人筛到我的条目',
+        );
       } finally {
         await db.delete(entriesTable).where(sql`id = ${mine.id}`);
       }
@@ -790,7 +1004,10 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
 
     await t.test('T39 ai_tags 任务：结果落库并可回读', async () => {
       fake.mode = 'tags';
-      const res = await call(cOwner, '/api/ai/jobs', { method: 'POST', json: { kind: 'ai_tags', entryId: shortId } });
+      const res = await call(cOwner, '/api/ai/jobs', {
+        method: 'POST',
+        json: { kind: 'ai_tags', entryId: shortId },
+      });
       const id = ((await res.json()) as { job: { id: string } }).job.id;
       const done = await waitJob(cOwner, id);
       assert.equal(done.status, 'succeeded', done.error);
@@ -805,14 +1022,20 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       fake.mode = 'explore';
       const before = fake.hits;
       const res = await call(cOwner, '/api/ai/jobs', {
-        method: 'POST', json: { kind: 'explore', question: '最近有什么好剧' },
+        method: 'POST',
+        json: { kind: 'explore', question: '最近有什么好剧' },
       });
       assert.equal(res.status, 200, `提交失败：${await res.clone().text()}`);
       const id = ((await res.json()) as { job: { id: string; label: string } }).job.id;
       const done = await waitJob(cOwner, id);
       assert.equal(done.status, 'succeeded', done.error);
       assert.ok(fake.hits > before, '应调用了模型');
-      const r = (done.result || {}) as { answer?: string; refs?: Array<{ id: string; name: string }>; matched?: number; model?: string };
+      const r = (done.result || {}) as {
+        answer?: string;
+        refs?: Array<{ id: string; name: string }>;
+        matched?: number;
+        model?: string;
+      };
       assert.ok(r.answer && r.answer.indexOf('#1') >= 0, `答案不对：${JSON.stringify(r)}`);
       assert.ok(Array.isArray(r.refs), '应返回引用数组');
       assert.equal(r.refs!.length, 1, '越界编号 #99 应被丢弃，只留 #1');
@@ -827,34 +1050,49 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       assert.ok(body.indexOf('他人的条目') < 0, '提示词不应含他人条目（owner 隔离）');
     });
 
-    await t.test('T45 探索多轮：带 history 提交，提示词含历史且 [#n] 按 refs 换成条目名', async () => {
-      fake.mode = 'explore';
-      const res = await call(cOwner, '/api/ai/jobs', {
-        method: 'POST', json: {
-          kind: 'explore', question: '那第二部呢？',
-          history: [{
-            question: '最近有什么好剧？',
-            answer: '先看 [#1]，另可看 [#2]。',
-            refs: [{ id: '1', name: '开年剧单' }, { id: '2', name: '悬疑剧回潮' }],
-          }],
-        },
-      });
-      assert.equal(res.status, 200, `提交失败：${await res.clone().text()}`);
-      const id = ((await res.json()) as { job: { id: string } }).job.id;
-      const done = await waitJob(cOwner, id);
-      assert.equal(done.status, 'succeeded', done.error);
-      const body = fake.lastBody || '';
-      assert.ok(body.indexOf('那第二部呢') >= 0, '应带本次问题');
-      assert.ok(body.indexOf('最近有什么好剧') >= 0, '应带历史问题');
-      assert.ok(body.indexOf('《开年剧单》') >= 0 && body.indexOf('《悬疑剧回潮》') >= 0,
-        `历史 [#n] 应换成《条目名》，实际 ${body.slice(0, 800)}`);
-      assert.ok(body.indexOf('追问') >= 0, '系统提示应说明可能在追问');
-      const r = (done.result || {}) as { refs?: Array<{ id: string }> };
-      assert.equal(r.refs!.length, 1, '本轮引用仍应是 1 条');
-    });
+    await t.test(
+      'T45 探索多轮：带 history 提交，提示词含历史且 [#n] 按 refs 换成条目名',
+      async () => {
+        fake.mode = 'explore';
+        const res = await call(cOwner, '/api/ai/jobs', {
+          method: 'POST',
+          json: {
+            kind: 'explore',
+            question: '那第二部呢？',
+            history: [
+              {
+                question: '最近有什么好剧？',
+                answer: '先看 [#1]，另可看 [#2]。',
+                refs: [
+                  { id: '1', name: '开年剧单' },
+                  { id: '2', name: '悬疑剧回潮' },
+                ],
+              },
+            ],
+          },
+        });
+        assert.equal(res.status, 200, `提交失败：${await res.clone().text()}`);
+        const id = ((await res.json()) as { job: { id: string } }).job.id;
+        const done = await waitJob(cOwner, id);
+        assert.equal(done.status, 'succeeded', done.error);
+        const body = fake.lastBody || '';
+        assert.ok(body.indexOf('那第二部呢') >= 0, '应带本次问题');
+        assert.ok(body.indexOf('最近有什么好剧') >= 0, '应带历史问题');
+        assert.ok(
+          body.indexOf('《开年剧单》') >= 0 && body.indexOf('《悬疑剧回潮》') >= 0,
+          `历史 [#n] 应换成《条目名》，实际 ${body.slice(0, 800)}`,
+        );
+        assert.ok(body.indexOf('追问') >= 0, '系统提示应说明可能在追问');
+        const r = (done.result || {}) as { refs?: Array<{ id: string }> };
+        assert.equal(r.refs!.length, 1, '本轮引用仍应是 1 条');
+      },
+    );
 
     await t.test('T44 探索问答：空问题提交被拒（400 + 稳定码）', async () => {
-      const res = await call(cOwner, '/api/ai/jobs', { method: 'POST', json: { kind: 'explore', question: '   ' } });
+      const res = await call(cOwner, '/api/ai/jobs', {
+        method: 'POST',
+        json: { kind: 'explore', question: '   ' },
+      });
       assert.equal(res.status, 400, `应 400，实际 ${res.status}`);
       const body = (await res.json()) as { error: string };
       assert.equal(body.error, 'E_EXPLORE_EMPTY_QUESTION');
@@ -866,12 +1104,28 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       fake.mode = 'ok';
       const addedVendor = await call(cOwner, '/api/prefs', {
         method: 'POST',
-        json: { llmVendor: { name: '便宜接入', baseUrl: FAKE_BASE, apiKey: 'sk-itest-vendor-key' } },
+        json: {
+          llmVendor: { name: '便宜接入', baseUrl: FAKE_BASE, apiKey: 'sk-itest-vendor-key' },
+        },
       });
       assert.equal(addedVendor.status, 200, `新增厂商失败：${await addedVendor.clone().text()}`);
       let view = (await (await call(cOwner, '/api/prefs')).json()) as {
-        llmVendors: Array<{ id: string; name: string; apiKeySet: boolean; apiKeyHint: string; modelCount: number }>;
-        llmModels: Array<{ id: string; vendorId: string; vendorName: string; name: string; model: string; apiKeySet: boolean; isDefault: boolean }>;
+        llmVendors: Array<{
+          id: string;
+          name: string;
+          apiKeySet: boolean;
+          apiKeyHint: string;
+          modelCount: number;
+        }>;
+        llmModels: Array<{
+          id: string;
+          vendorId: string;
+          vendorName: string;
+          name: string;
+          model: string;
+          apiKeySet: boolean;
+          isDefault: boolean;
+        }>;
         llmRoutes: Record<string, { enabled: boolean; providerId: string }>;
       };
       const v = view.llmVendors.find((x) => x.name === '便宜接入');
@@ -910,37 +1164,56 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       assert.equal(view.llmRoutes.digest?.providerId, m!.id);
 
       // 删除模型后：引用它的路由仍在，但解析时自动回落默认槽（不报错）
-      const delModel = await call(cOwner, '/api/prefs', { method: 'POST', json: { llmModelDelete: m!.id } });
+      const delModel = await call(cOwner, '/api/prefs', {
+        method: 'POST',
+        json: { llmModelDelete: m!.id },
+      });
       assert.equal(delModel.status, 200);
       const r = await ask(cOwner, shortId);
       assert.equal(r.ok, true, '删除被引用的模型后应回落默认槽，不能崩');
 
       // 删厂商：连同其模型一起消失
-      const delVendor = await call(cOwner, '/api/prefs', { method: 'POST', json: { llmVendorDelete: v!.id } });
+      const delVendor = await call(cOwner, '/api/prefs', {
+        method: 'POST',
+        json: { llmVendorDelete: v!.id },
+      });
       assert.equal(delVendor.status, 200);
       view = (await (await call(cOwner, '/api/prefs')).json()) as typeof view;
-      assert.equal(view.llmVendors.some((x) => x.id === v!.id), false);
+      assert.equal(
+        view.llmVendors.some((x) => x.id === v!.id),
+        false,
+      );
 
       // 清理：把 digest 路由改回 default，避免影响后续用例
-      await call(cOwner, '/api/prefs', { method: 'POST', json: { llmRoutes: { digest: { providerId: 'default' } } } });
+      await call(cOwner, '/api/prefs', {
+        method: 'POST',
+        json: { llmRoutes: { digest: { providerId: 'default' } } },
+      });
     });
 
     await t.test('T47 能力关闭：服务端拒绝并返回 E_AI_DISABLED（API 绕不过去）', async () => {
       fake.mode = 'ok';
       const before = fake.hits;
       const off = await call(cOwner, '/api/prefs', {
-        method: 'POST', json: { llmRoutes: { entry_ai: { enabled: false } } },
+        method: 'POST',
+        json: { llmRoutes: { entry_ai: { enabled: false } } },
       });
       assert.equal(off.status, 200);
-      const res = await call(cOwner, `/api/entry/${shortId}/ai`, { method: 'POST', json: { action: 'summary' } });
+      const res = await call(cOwner, `/api/entry/${shortId}/ai`, {
+        method: 'POST',
+        json: { action: 'summary' },
+      });
       const body = (await res.json()) as { error?: string; ok?: boolean; result?: string };
-      assert.ok(body.error === 'E_AI_DISABLED' || body.result?.indexOf('E_AI_DISABLED')! >= 0,
-        `同步入口应带 E_AI_DISABLED，实际 ${JSON.stringify(body)}`);
+      assert.ok(
+        body.error === 'E_AI_DISABLED' || (body.result?.indexOf('E_AI_DISABLED') ?? -1) >= 0,
+        `同步入口应带 E_AI_DISABLED，实际 ${JSON.stringify(body)}`,
+      );
       assert.equal(fake.hits, before, '关闭后不应调用模型');
 
       // 异步任务入口也要被拦
       const job = await call(cOwner, '/api/ai/jobs', {
-        method: 'POST', json: { kind: 'entry_ai', entryId: shortId, action: 'summary' },
+        method: 'POST',
+        json: { kind: 'entry_ai', entryId: shortId, action: 'summary' },
       });
       if (job.status === 200) {
         const id = ((await job.json()) as { job: { id: string } }).job.id;
@@ -949,13 +1222,17 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
         assert.ok(String(done.error).indexOf('E_AI_DISABLED') >= 0, `错误码不对：${done.error}`);
       }
       // 恢复
-      await call(cOwner, '/api/prefs', { method: 'POST', json: { llmRoutes: { entry_ai: { enabled: true } } } });
+      await call(cOwner, '/api/prefs', {
+        method: 'POST',
+        json: { llmRoutes: { entry_ai: { enabled: true } } },
+      });
       assert.equal(fake.hits, before, '恢复过程也不该调模型');
     });
 
     await t.test('T48 路由到不存在的模型：保存被拒（E_LLM_PROVIDER_NOT_FOUND）', async () => {
       const res = await call(cOwner, '/api/prefs', {
-        method: 'POST', json: { llmRoutes: { explore: { providerId: 'not-exist-xyz' } } },
+        method: 'POST',
+        json: { llmRoutes: { explore: { providerId: 'not-exist-xyz' } } },
       });
       assert.notEqual(res.status, 200, '指向不存在的模型应被拒');
       const body = (await res.json()) as { error?: string };
@@ -963,26 +1240,32 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
     });
 
     /* 这条必须放最后：降级会把 host 记进进程内缓存，之后所有调用都不再带该字段。 */
-    await t.test('T32 上游拒绝 enable_thinking（400 UNKNOWN_FIELD）→ 自动摘字段重试成功', async () => {
-      fake.mode = 'rejectET';
-      const before = fake.hits;
-      const r = await ask(cOwner, shortId);
-      assert.equal(r.ok, true, `降级后应成功，实际 ${r.result}`);
-      assert.equal(r.result, '降级后拿到的摘要。');
-      assert.equal(fake.hits - before, 2, '应是「带字段被拒 → 摘掉重发」两次');
+    await t.test(
+      'T32 上游拒绝 enable_thinking（400 UNKNOWN_FIELD）→ 自动摘字段重试成功',
+      async () => {
+        fake.mode = 'rejectET';
+        const before = fake.hits;
+        const r = await ask(cOwner, shortId);
+        assert.equal(r.ok, true, `降级后应成功，实际 ${r.result}`);
+        assert.equal(r.result, '降级后拿到的摘要。');
+        assert.equal(fake.hits - before, 2, '应是「带字段被拒 → 摘掉重发」两次');
 
-      // 记住之后：同一上游不再带这个字段，避免每次多一趟 400
-      const before2 = fake.hits;
-      const r2 = await ask(cOwner, shortId);
-      assert.equal(r2.ok, true);
-      assert.equal(fake.hits - before2, 1, '同一上游第二次应直接成功（缓存生效）');
-    });
+        // 记住之后：同一上游不再带这个字段，避免每次多一趟 400
+        const before2 = fake.hits;
+        const r2 = await ask(cOwner, shortId);
+        assert.equal(r2.ok, true);
+        assert.equal(fake.hits - before2, 1, '同一上游第二次应直接成功（缓存生效）');
+      },
+    );
   } finally {
     fakeServer?.close();
     try {
       await db.execute(sql`delete from users where username like 'itestai\_%'`);
     } catch (e) {
-      console.error('[entryAi-itest] cleanup failed（不影响判定，请手工检查测试库）：', (e as Error).message);
+      console.error(
+        '[entryAi-itest] cleanup failed（不影响判定，请手工检查测试库）：',
+        (e as Error).message,
+      );
     }
   }
 });

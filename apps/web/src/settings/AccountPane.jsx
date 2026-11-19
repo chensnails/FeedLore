@@ -8,38 +8,50 @@
  */
 
 import { core } from '@core';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Dropdown } from '../views/Dropdown.jsx';
 import { DetailSheet } from './DetailSheet.jsx';
 import { EditToggle, PaneFoot, ReadonlyField, Result, Section, useResult } from './primitives.jsx';
-import { Dropdown } from '../views/Dropdown.jsx';
 
-const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
+const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
 /** @type {Record<string, string>} */
 const ROLE_LABEL = { admin: '管理员', user: '普通', readonly: '只读' };
 
 /** UA 只取「浏览器 · 系统」两段，原文太长且没人读得懂；认不出就截断原文兜底。
-*@param {*} [ua]
-*/
+ *@param {*} [ua]
+ */
 function deviceLabel(ua) {
   if (!ua) return '未知设备';
-  const os = /Windows NT/.test(ua) ? 'Windows'
-    : /iPhone|iPad|iPod/.test(ua) ? 'iOS'
-      : /Android/.test(ua) ? 'Android'
-        : /Mac OS X/.test(ua) ? 'macOS'
-          : /Linux/.test(ua) ? 'Linux' : '';
-  const br = /Edg\//.test(ua) ? 'Edge'
-    : /OPR\/|Opera/.test(ua) ? 'Opera'
-      : /Firefox\//.test(ua) ? 'Firefox'
-        : /Chrome\//.test(ua) ? 'Chrome'
-          : /Safari\//.test(ua) ? 'Safari' : '';
+  const os = /Windows NT/.test(ua)
+    ? 'Windows'
+    : /iPhone|iPad|iPod/.test(ua)
+      ? 'iOS'
+      : /Android/.test(ua)
+        ? 'Android'
+        : /Mac OS X/.test(ua)
+          ? 'macOS'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : '';
+  const br = /Edg\//.test(ua)
+    ? 'Edge'
+    : /OPR\/|Opera/.test(ua)
+      ? 'Opera'
+      : /Firefox\//.test(ua)
+        ? 'Firefox'
+        : /Chrome\//.test(ua)
+          ? 'Chrome'
+          : /Safari\//.test(ua)
+            ? 'Safari'
+            : '';
   if (br || os) return [br, os].filter(Boolean).join(' · ');
   return ua.length > 48 ? ua.slice(0, 48) + '…' : ua;
 }
 
 /** 最近活跃时间按相对量显示；超过 30 天回落到日期，绝对时间留在 title 里。
-*@param {*} [iso]
-*/
+ *@param {*} [iso]
+ */
 function fmtRel(iso) {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return '—';
@@ -56,7 +68,10 @@ function fmtRel(iso) {
  */
 const openOnKey = (fn) => /** @param {*} [ev] */ (ev) => {
   if (ev.target !== ev.currentTarget) return;
-  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); fn(); }
+  if (ev.key === 'Enter' || ev.key === ' ') {
+    ev.preventDefault();
+    fn();
+  }
 };
 
 /* ---------- 登录设备详情层 ---------- */
@@ -75,15 +90,25 @@ function DeviceSheet({ device, busy, onClose, onRevoke }) {
       title={deviceLabel(device.userAgent)}
       subtitle={device.ip || '未知地址'}
       onClose={onClose}
-      foot={!device.current ? (
-        <button className="btn btn-danger" id="revokeDeviceBtn" type="button"
-          disabled={busy} onClick={revoke}>
-          {busy ? '退出中…' : '退出该设备'}
-        </button>
-      ) : null}>
+      foot={
+        !device.current ? (
+          <button
+            className="btn btn-danger"
+            id="revokeDeviceBtn"
+            type="button"
+            disabled={busy}
+            onClick={revoke}
+          >
+            {busy ? '退出中…' : '退出该设备'}
+          </button>
+        ) : null
+      }
+    >
       <div className="ds-stat">
         <div className="ds-stat-line">
-          {device.current ? '当前设备 · 就是你现在用的这台浏览器' : '其它设备 · 退出后需要重新输入密码'}
+          {device.current
+            ? '当前设备 · 就是你现在用的这台浏览器'
+            : '其它设备 · 退出后需要重新输入密码'}
         </div>
         <div className="ds-stat-line" title={device.lastSeenAt}>
           最近活跃 {fmtRel(device.lastSeenAt)}
@@ -129,7 +154,10 @@ function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }) {
   };
 
   const submitPass = async () => {
-    if (pass.length < 4) { setErr('密码至少 4 位'); return; }
+    if (pass.length < 4) {
+      setErr('密码至少 4 位');
+      return;
+    }
     setErr('');
     const res = await onPassword(user, pass);
     if (res.ok) setPass('');
@@ -144,14 +172,22 @@ function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }) {
       foot={
         <>
           {!self ? (
-            <button className="btn btn-danger" id="delUserBtn" type="button"
-              disabled={busy} onClick={removeUser}>
+            <button
+              className="btn btn-danger"
+              id="delUserBtn"
+              type="button"
+              disabled={busy}
+              onClick={removeUser}
+            >
               删除用户
             </button>
           ) : null}
-          <button className="btn" type="button" onClick={onClose}>完成</button>
+          <button className="btn" type="button" onClick={onClose}>
+            完成
+          </button>
         </>
-      }>
+      }
+    >
       <div className="ds-stat">
         <div className="ds-stat-line">{Number(user.feedCount) || 0} 个订阅源</div>
       </div>
@@ -164,13 +200,20 @@ function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }) {
         <>
           <div className="form-row">
             <label>角色</label>
-            <Dropdown id="dsUserRole" wrapId="dsUserRoleDD" title="角色" ariaLabel="角色"
-              value={user.role} disabled={busy} onChange={changeRole}
+            <Dropdown
+              id="dsUserRole"
+              wrapId="dsUserRoleDD"
+              title="角色"
+              ariaLabel="角色"
+              value={user.role}
+              disabled={busy}
+              onChange={changeRole}
               options={[
                 { value: 'user', label: '普通' },
                 { value: 'readonly', label: '只读' },
                 { value: 'admin', label: '管理员' },
-              ]} />
+              ]}
+            />
             <small className="form-tip">
               管理员可管理用户与站点设置；普通用户管理自己的订阅源、模型与日报；只读只能阅读。改角色立即生效。
             </small>
@@ -178,21 +221,36 @@ function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }) {
 
           <div className="form-row">
             <label htmlFor="dsUserPass">设置新密码</label>
-            <input id="dsUserPass" type="password" placeholder="至少 4 位"
-              autoComplete="new-password" value={pass}
+            <input
+              id="dsUserPass"
+              type="password"
+              placeholder="至少 4 位"
+              autoComplete="new-password"
+              value={pass}
               onChange={/** @param {*} [ev] */ (ev) => setPass(ev.target.value)}
-              onKeyDown={/** @param {*} [ev] */ (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submitPass(); } }} />
-            <button className="btn btn-ghost btn-sm" id="setUserPassBtn" type="button"
+              onKeyDown={
+                /** @param {*} [ev] */ (ev) => {
+                  if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    submitPass();
+                  }
+                }
+              }
+            />
+            <button
+              className="btn btn-ghost btn-sm"
+              id="setUserPassBtn"
+              type="button"
               style={{ marginTop: 'var(--sp-2)' }}
-              disabled={busy || pass.length < 4} onClick={submitPass}>
+              disabled={busy || pass.length < 4}
+              onClick={submitPass}
+            >
               设置密码
             </button>
             <small className="form-tip">保存后立即生效，对方已登录的设备会被要求重新登录。</small>
           </div>
 
-          <small className="form-tip">
-            删除用户会一并删除其订阅源、条目与日报，且不可恢复。
-          </small>
+          <small className="form-tip">删除用户会一并删除其订阅源、条目与日报，且不可恢复。</small>
         </>
       )}
 
@@ -217,8 +275,14 @@ function AddUserSheet({ busy, onClose, onCreate }) {
 
   const submit = async () => {
     const n = name.trim();
-    if (!n) { setErr('请填写用户名'); return; }
-    if (pass.length < 4) { setErr('密码至少 4 位'); return; }
+    if (!n) {
+      setErr('请填写用户名');
+      return;
+    }
+    if (pass.length < 4) {
+      setErr('密码至少 4 位');
+      return;
+    }
     setErr('');
     const res = await onCreate(n, pass, role);
     if (!res.ok) setErr(res.error || '创建失败');
@@ -231,36 +295,77 @@ function AddUserSheet({ busy, onClose, onCreate }) {
       onClose={onClose}
       foot={
         <>
-          <button className="btn" type="button" onClick={onClose}>取消</button>
-          <button className="btn btn-primary" id="createUserBtn" type="button"
-            disabled={busy} onClick={submit}>
+          <button className="btn" type="button" onClick={onClose}>
+            取消
+          </button>
+          <button
+            className="btn btn-primary"
+            id="createUserBtn"
+            type="button"
+            disabled={busy}
+            onClick={submit}
+          >
             {busy ? '添加中…' : '添加用户'}
           </button>
         </>
-      }>
+      }
+    >
       <div className="form-row">
         <label htmlFor="newUserName">用户名</label>
-        <input id="newUserName" type="text" placeholder="用户名" spellCheck="false"
-          aria-label="新用户的用户名" autoComplete="off" value={name}
+        <input
+          id="newUserName"
+          type="text"
+          placeholder="用户名"
+          spellCheck="false"
+          aria-label="新用户的用户名"
+          autoComplete="off"
+          value={name}
           onChange={/** @param {*} [ev] */ (ev) => setName(ev.target.value)}
-          onKeyDown={/** @param {*} [ev] */ (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }} />
+          onKeyDown={
+            /** @param {*} [ev] */ (ev) => {
+              if (ev.key === 'Enter') {
+                ev.preventDefault();
+                submit();
+              }
+            }
+          }
+        />
       </div>
       <div className="form-row">
         <label htmlFor="newUserPass">密码</label>
-        <input id="newUserPass" type="password" placeholder="至少 4 位"
-          aria-label="新用户的密码" autoComplete="new-password" value={pass}
+        <input
+          id="newUserPass"
+          type="password"
+          placeholder="至少 4 位"
+          aria-label="新用户的密码"
+          autoComplete="new-password"
+          value={pass}
           onChange={/** @param {*} [ev] */ (ev) => setPass(ev.target.value)}
-          onKeyDown={/** @param {*} [ev] */ (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }} />
+          onKeyDown={
+            /** @param {*} [ev] */ (ev) => {
+              if (ev.key === 'Enter') {
+                ev.preventDefault();
+                submit();
+              }
+            }
+          }
+        />
       </div>
       <div className="form-row">
         <label>角色</label>
-        <Dropdown id="newUserRole" wrapId="newUserRoleDD" title="角色" ariaLabel="角色"
-          value={role} onChange={/** @param {*} [v] */ (v) => setRole(v)}
+        <Dropdown
+          id="newUserRole"
+          wrapId="newUserRoleDD"
+          title="角色"
+          ariaLabel="角色"
+          value={role}
+          onChange={/** @param {*} [v] */ (v) => setRole(v)}
           options={[
             { value: 'user', label: '普通用户' },
             { value: 'readonly', label: '只读用户' },
             { value: 'admin', label: '管理员' },
-          ]} />
+          ]}
+        />
         <small className="form-tip">
           每个用户拥有自己独立的订阅源、已读/收藏、日报与模型配置；角色之后还能改。
         </small>
@@ -281,7 +386,7 @@ export function AccountPane({ onDirtyChange }) {
   /** @type {*} */
   const paneRef = useRef(null);
   /** @type {*} */
-  const [sheet, setSheet] = useState(null);   // {type:'device'|'user'|'addUser', id?}
+  const [sheet, setSheet] = useState(null); // {type:'device'|'user'|'addUser', id?}
 
   // 登录信息
   /** @type {any} */
@@ -307,7 +412,7 @@ export function AccountPane({ onDirtyChange }) {
   /** @type {any} */
   const [usersError, setUsersError] = useState('');
   /** @type {any} */
-  const [userBusy, setUserBusy] = useState('');   // '' | add | role | pass | del
+  const [userBusy, setUserBusy] = useState(''); // '' | add | role | pass | del
   const [userResult, showUserResult] = useResult();
 
   // 登录设备（会话）：所有角色都能看自己的设备并逐台退出
@@ -334,7 +439,12 @@ export function AccountPane({ onDirtyChange }) {
   const [backingUp, setBackingUp] = useState(false);
   /** @type {any} */
   const downloadTimers = useRef([]);
-  useEffect(() => () => { downloadTimers.current.forEach(clearTimeout); }, []);
+  useEffect(
+    () => () => {
+      downloadTimers.current.forEach(clearTimeout);
+    },
+    [],
+  );
   /**
    * @param {*} [setBusy]
    */
@@ -343,7 +453,9 @@ export function AccountPane({ onDirtyChange }) {
     downloadTimers.current.push(setTimeout(() => setBusy(false), 5000));
   };
   // 改了导出选项 = 用户要的是另一份包，别让上一次的置忙窗口把它拦住
-  useEffect(() => { setExporting(false); }, [inclLlm]);
+  useEffect(() => {
+    setExporting(false);
+  }, [inclLlm]);
 
   // 数据导入 / 整站还原：结果提示常驻到下一次操作（条数比 toast 更值得细看）
   /** @type {any} */
@@ -413,7 +525,9 @@ export function AccountPane({ onDirtyChange }) {
     if (!ok) return;
     setRevoking(d.id);
     try {
-      const res = await s.apiFetch('/api/sessions/' + encodeURIComponent(d.id), { method: 'DELETE' });
+      const res = await s.apiFetch('/api/sessions/' + encodeURIComponent(d.id), {
+        method: 'DELETE',
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
       setSheet(null);
@@ -467,14 +581,17 @@ export function AccountPane({ onDirtyChange }) {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { showAccResult(false, s.errText(data, '保存失败')); return; }
+      if (!res.ok) {
+        showAccResult(false, s.errText(data, '保存失败'));
+        return;
+      }
       showAccResult(true, '账号已更新');
       setCurrent('');
       setNewPass('');
       setUsername(data.username);
       setSavedName(data.username);
-      setEditLogin(null);   // 保存成功即回到只读摘要，不把输入框留在页面上
-      if (s.state) s.state.username = data.username;   // 同步全局态（顶栏 / 其他面板共用）
+      setEditLogin(null); // 保存成功即回到只读摘要，不把输入框留在页面上
+      if (s.state) s.state.username = data.username; // 同步全局态（顶栏 / 其他面板共用）
     } catch (err) {
       showAccResult(false, '保存失败：' + String((err && err.message) || err));
     } finally {
@@ -501,7 +618,11 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   async function logout() {
-    try { await s.apiFetch('/api/logout', { method: 'POST' }); } catch (_) { /* 忽略 */ }
+    try {
+      await s.apiFetch('/api/logout', { method: 'POST' });
+    } catch (_) {
+      /* 忽略 */
+    }
     location.replace('/login.html');
   }
 
@@ -542,11 +663,12 @@ export function AccountPane({ onDirtyChange }) {
   async function changeUserRole(u, next) {
     const ok = await s.confirm({
       title: `将「${u.username}」设为${ROLE_LABEL[next] || next}？`,
-      desc: next === 'admin'
-        ? '管理员可以管理用户与站点级设置。'
-        : next === 'readonly'
-          ? '只读用户只能阅读，不能修改订阅源、规则、模型或日报。'
-          : '普通用户可以管理自己的订阅源、模型与日报。',
+      desc:
+        next === 'admin'
+          ? '管理员可以管理用户与站点级设置。'
+          : next === 'readonly'
+            ? '只读用户只能阅读，不能修改订阅源、规则、模型或日报。'
+            : '普通用户可以管理自己的订阅源、模型与日报。',
       confirmText: '修改角色',
       danger: next === 'admin',
     });
@@ -554,7 +676,8 @@ export function AccountPane({ onDirtyChange }) {
     setUserBusy('role');
     try {
       const res = await s.apiFetch('/api/users/' + u.id, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: next }),
       });
       const d = await res.json().catch(() => ({}));
@@ -579,7 +702,8 @@ export function AccountPane({ onDirtyChange }) {
     setUserBusy('pass');
     try {
       const res = await s.apiFetch('/api/users/' + u.id, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: np }),
       });
       const d = await res.json().catch(() => ({}));
@@ -606,7 +730,8 @@ export function AccountPane({ onDirtyChange }) {
     setUserBusy('add');
     try {
       const res = await s.apiFetch('/api/users', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: name, password: pass, role }),
       });
       const d = await res.json().catch(() => ({}));
@@ -658,7 +783,7 @@ export function AccountPane({ onDirtyChange }) {
   async function importArchive(ev) {
     const input = ev.target;
     const file = input.files && input.files[0];
-    input.value = '';   // 清掉选择，同一个文件还能再选一次
+    input.value = ''; // 清掉选择，同一个文件还能再选一次
     if (!file) return;
     const ok = await s.confirm({
       title: '导入到当前账号？',
@@ -685,7 +810,9 @@ export function AccountPane({ onDirtyChange }) {
       else if (data.llm === 'already-configured') parts.push('本账号已有模型配置，包内那份未覆盖');
       else if (data.llm === 'url-blocked') parts.push('包里的模型地址指向内网，已跳过');
       setImportMsg({ ok: true, msg: '导入完成：' + parts.join('，') + '。' });
-      await s.loadFeeds().catch(() => { /* 侧栏刷新失败不影响已入库的数据 */ });
+      await s.loadFeeds().catch(() => {
+        /* 侧栏刷新失败不影响已入库的数据 */
+      });
     } catch (err) {
       setImportMsg({ ok: false, msg: '导入失败：' + String((err && err.message) || err) });
     } finally {
@@ -739,20 +866,33 @@ export function AccountPane({ onDirtyChange }) {
     if (onDirtyChange) onDirtyChange(dirty);
   }, [dirty, onDirtyChange]);
 
-  const sheetDevice = sheet && sheet.type === 'device' ? devices.find(/** @param {*} [d] */ (d) => d.id === sheet.id) : null;
-  const sheetUser = sheet && sheet.type === 'user' ? users.find(/** @param {*} [u] */ (u) => u.id === sheet.id) : null;
+  const sheetDevice =
+    sheet && sheet.type === 'device'
+      ? devices.find(/** @param {*} [d] */ (d) => d.id === sheet.id)
+      : null;
+  const sheetUser =
+    sheet && sheet.type === 'user'
+      ? users.find(/** @param {*} [u] */ (u) => u.id === sheet.id)
+      : null;
 
   /**
    * @param {*} [d]
    */
   const renderDeviceRow = (d) => (
-    <div className={'sl-row' + (d.current ? ' is-current' : '')} key={d.id} data-session-id={d.id}
-      role="button" tabIndex={0}
+    <div
+      className={'sl-row' + (d.current ? ' is-current' : '')}
+      key={d.id}
+      data-session-id={d.id}
+      role="button"
+      tabIndex={0}
       aria-label={`${deviceLabel(d.userAgent)}：查看设备详情`}
       onClick={() => setSheet({ type: 'device', id: d.id })}
-      onKeyDown={openOnKey(() => setSheet({ type: 'device', id: d.id }))}>
+      onKeyDown={openOnKey(() => setSheet({ type: 'device', id: d.id }))}
+    >
       <span className="sl-ava">
-        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-activity" /></svg>
+        <svg className="ico" aria-hidden="true" focusable="false">
+          <use href="#i-activity" />
+        </svg>
       </span>
       <div className="sl-main">
         <div className="sl-name">{deviceLabel(d.userAgent)}</div>
@@ -763,7 +903,9 @@ export function AccountPane({ onDirtyChange }) {
       <span className="sl-side">
         {d.current ? <span className="sl-badge muted">本机</span> : null}
       </span>
-      <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+      <svg className="ico feed-caret" aria-hidden="true" focusable="false">
+        <use href="#i-chevron-right" />
+      </svg>
     </div>
   );
 
@@ -771,12 +913,20 @@ export function AccountPane({ onDirtyChange }) {
    * @param {*} [u]
    */
   const renderUserRow = (u) => (
-    <div className="sl-row" key={u.id} data-uid={u.id}
-      role="button" tabIndex={0} aria-label={`${u.username}：查看账号详情`}
+    <div
+      className="sl-row"
+      key={u.id}
+      data-uid={u.id}
+      role="button"
+      tabIndex={0}
+      aria-label={`${u.username}：查看账号详情`}
       onClick={() => setSheet({ type: 'user', id: u.id })}
-      onKeyDown={openOnKey(() => setSheet({ type: 'user', id: u.id }))}>
+      onKeyDown={openOnKey(() => setSheet({ type: 'user', id: u.id }))}
+    >
       <span className="sl-ava">
-        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-user" /></svg>
+        <svg className="ico" aria-hidden="true" focusable="false">
+          <use href="#i-user" />
+        </svg>
       </span>
       <div className="sl-main">
         <div className="sl-name">{u.username}</div>
@@ -789,7 +939,9 @@ export function AccountPane({ onDirtyChange }) {
           {ROLE_LABEL[u.role] || u.role}
         </span>
       </span>
-      <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+      <svg className="ico feed-caret" aria-hidden="true" focusable="false">
+        <use href="#i-chevron-right" />
+      </svg>
     </div>
   );
 
@@ -798,12 +950,18 @@ export function AccountPane({ onDirtyChange }) {
       <div className="pane-scroll">
         <Result id="accResult" result={accResult} />
 
-        <Section secKey="acc-login" title="登录信息" open
-          sub={savedName ? `当前用户 ${savedName}` : ''}>
+        <Section
+          secKey="acc-login"
+          title="登录信息"
+          open
+          sub={savedName ? `当前用户 ${savedName}` : ''}
+        >
           {readonly ? (
             <>
               <ReadonlyField label="用户名" value={username} />
-              <div className="hint">只读账户：只能阅读，不能修改订阅源、规则、模型或日报配置；用户名和密码由管理员维护。</div>
+              <div className="hint">
+                只读账户：只能阅读，不能修改订阅源、规则、模型或日报配置；用户名和密码由管理员维护。
+              </div>
             </>
           ) : !editLogin ? (
             /* 默认只读：把「能改什么」摆出来，但输入框必须点一下才出现，
@@ -812,8 +970,16 @@ export function AccountPane({ onDirtyChange }) {
               <ReadonlyField label="用户名" value={savedName} />
               <ReadonlyField label="密码" value="已设置" hint="修改时需要先验证当前密码" />
               <div className="ro-actions">
-                <EditToggle id="accEditNameBtn" editText="修改用户名" onClick={() => setEditLogin('name')} />
-                <EditToggle id="accEditPassBtn" editText="修改密码" onClick={() => setEditLogin('pass')} />
+                <EditToggle
+                  id="accEditNameBtn"
+                  editText="修改用户名"
+                  onClick={() => setEditLogin('name')}
+                />
+                <EditToggle
+                  id="accEditPassBtn"
+                  editText="修改密码"
+                  onClick={() => setEditLogin('pass')}
+                />
               </div>
             </>
           ) : (
@@ -821,20 +987,37 @@ export function AccountPane({ onDirtyChange }) {
             <>
               <div className="form-row">
                 <label htmlFor="accUsername">用户名</label>
-                <input id="accUsername" type="text" spellCheck="false" value={username}
-                  onChange={/** @param {*} [e] */ (e) => setUsername(e.target.value)} />
+                <input
+                  id="accUsername"
+                  type="text"
+                  spellCheck="false"
+                  value={username}
+                  onChange={/** @param {*} [e] */ (e) => setUsername(e.target.value)}
+                />
               </div>
               <div className="form-row">
-                <label htmlFor="accCurrent">当前密码 <span className="req">*</span></label>
-                <input id="accCurrent" type="password" placeholder="修改密码时需验证当前密码"
-                  autoComplete="current-password" value={current}
-                  onChange={/** @param {*} [e] */ (e) => setCurrent(e.target.value)} />
+                <label htmlFor="accCurrent">
+                  当前密码 <span className="req">*</span>
+                </label>
+                <input
+                  id="accCurrent"
+                  type="password"
+                  placeholder="修改密码时需验证当前密码"
+                  autoComplete="current-password"
+                  value={current}
+                  onChange={/** @param {*} [e] */ (e) => setCurrent(e.target.value)}
+                />
               </div>
               <div className="form-row">
                 <label htmlFor="accNew">新密码</label>
-                <input id="accNew" type="password" placeholder="留空则不修改，至少 4 位"
-                  autoComplete="new-password" value={newPass}
-                  onChange={/** @param {*} [e] */ (e) => setNewPass(e.target.value)} />
+                <input
+                  id="accNew"
+                  type="password"
+                  placeholder="留空则不修改，至少 4 位"
+                  autoComplete="new-password"
+                  value={newPass}
+                  onChange={/** @param {*} [e] */ (e) => setNewPass(e.target.value)}
+                />
               </div>
               <div className="ro-actions">
                 <EditToggle editing closeText="收起" onClick={closeEditLogin} editText="修改密码" />
@@ -845,23 +1028,36 @@ export function AccountPane({ onDirtyChange }) {
         </Section>
 
         {/* 登录设备（会话）：紧凑列表，点行看详情 / 退出 */}
-        <Section secKey="acc-devices" title="登录设备" open
-          sub={!devicesLoaded ? '读取中…' : (devices.length ? `${devices.length} 台` : '仅本机')}>
+        <Section
+          secKey="acc-devices"
+          title="登录设备"
+          open
+          sub={!devicesLoaded ? '读取中…' : devices.length ? `${devices.length} 台` : '仅本机'}
+        >
           <Result id="devResult" result={devResult} />
           {devicesError ? (
             <div className="hint pane-msg">
               {devicesError}
-              <button className="btn btn-ghost btn-sm" type="button" onClick={loadDevices}>重试</button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={loadDevices}>
+                重试
+              </button>
             </div>
           ) : !devicesLoaded ? (
             <div className="hint">正在读取登录设备…</div>
           ) : (
             <>
-              <div className="sl-list" id="deviceList">{devices.map(renderDeviceRow)}</div>
+              <div className="sl-list" id="deviceList">
+                {devices.map(renderDeviceRow)}
+              </div>
               <div className="sl-toolbar">
                 {otherDevices ? (
-                  <button className="btn btn-ghost btn-sm" id="revokeOtherSessionsBtn" type="button"
-                    disabled={revoking === 'others'} onClick={revokeOthers}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    id="revokeOtherSessionsBtn"
+                    type="button"
+                    disabled={revoking === 'others'}
+                    onClick={revokeOthers}
+                  >
                     {revoking === 'others' ? '退出中…' : `退出其它设备（${otherDevices} 台）`}
                   </button>
                 ) : null}
@@ -875,29 +1071,43 @@ export function AccountPane({ onDirtyChange }) {
         <Section secKey="acc-export" advanced title="数据导出" sub="tar.gz">
           <p className="hint">
             <b>包含</b>：本账号的订阅源、全部文章（含已读 / 收藏 / 关注标记）、日报与偏好设置。
-            <br /><b>不含</b>：登录会话、图片缓存与全文抓取缓存。
+            <br />
+            <b>不含</b>：登录会话、图片缓存与全文抓取缓存。
           </p>
           {!readonly && (
             <div className="form-row">
               <label className="form-row-head">
                 <span>连同模型 API Key 一起导出</span>
                 <span className="switch">
-                  <input id="exportLlm" type="checkbox" checked={inclLlm}
-                    onChange={/** @param {*} [e] */ (e) => setInclLlm(e.target.checked)} />
+                  <input
+                    id="exportLlm"
+                    type="checkbox"
+                    checked={inclLlm}
+                    onChange={/** @param {*} [e] */ (e) => setInclLlm(e.target.checked)}
+                  />
                   <span className="switch-slider" />
                 </span>
               </label>
-              <small className="form-tip">勾选后 llm.json 里是解密的明文 Key，文件请只放在受控位置。</small>
+              <small className="form-tip">
+                勾选后 llm.json 里是解密的明文 Key，文件请只放在受控位置。
+              </small>
             </div>
           )}
           <div className="dev-actions">
-            <button className="btn btn-ghost btn-sm" id="exportBtn" type="button"
-              disabled={exporting} aria-busy={exporting} onClick={startExport}>
+            <button
+              className="btn btn-ghost btn-sm"
+              id="exportBtn"
+              type="button"
+              disabled={exporting}
+              aria-busy={exporting}
+              onClick={startExport}
+            >
               {exporting ? '生成中…' : '下载导出包'}
             </button>
           </div>
           <small className="form-tip">
-            包内 manifest.json 写明格式版本与条数，文章按 entries-0001.jsonl 分批；换机或回滚时在下方「数据导入」里原样上传即可。
+            包内 manifest.json 写明格式版本与条数，文章按 entries-0001.jsonl
+            分批；换机或回滚时在下方「数据导入」里原样上传即可。
           </small>
         </Section>
 
@@ -906,23 +1116,40 @@ export function AccountPane({ onDirtyChange }) {
           <Section secKey="acc-import" advanced title="数据导入" sub="tar.gz">
             <p className="hint">
               上传本账号的导出包，把频道、文章标记、日报与偏好合并进来。
-              <br /><b>合并规则</b>：已存在的频道与文章会跳过，现有文章的已读 / 收藏 / 关注状态不会被改动。
-              <br /><b>模型配置</b>：包里若带（导出时勾选），只在这个账号还没配过模型时写入，并用本机主密钥重新加密。
+              <br />
+              <b>合并规则</b>：已存在的频道与文章会跳过，现有文章的已读 / 收藏 /
+              关注状态不会被改动。
+              <br />
+              <b>模型配置</b>
+              ：包里若带（导出时勾选），只在这个账号还没配过模型时写入，并用本机主密钥重新加密。
             </p>
             <div className="dev-actions">
-              <button className="btn btn-ghost btn-sm" id="importBtn" type="button" disabled={importing}
+              <button
+                className="btn btn-ghost btn-sm"
+                id="importBtn"
+                type="button"
+                disabled={importing}
                 aria-busy={importing}
-                onClick={() => document.getElementById('importFile')?.click()}>
+                onClick={() => document.getElementById('importFile')?.click()}
+              >
                 {importing ? '导入中…（文件大时需要一点时间）' : '选择导出包并导入'}
               </button>
-              <input id="importFile" type="file" accept=".gz,application/gzip,application/x-gzip" hidden
-                onChange={importArchive} />
+              <input
+                id="importFile"
+                type="file"
+                accept=".gz,application/gzip,application/x-gzip"
+                hidden
+                onChange={importArchive}
+              />
             </div>
             <Result id="importResult" result={importMsg} />
             <small className="form-tip">
               导入只做增量合并，不会删除现有数据。
-              <br />模型 API Key 只有在导出时勾选才会在包里；写入时用的是本机的加密主密钥，不是包里的那份。
-              <br />这里只收「数据导出」的账号包，整站备份请到下方「整站还原」上传。
+              <br />
+              模型 API Key
+              只有在导出时勾选才会在包里；写入时用的是本机的加密主密钥，不是包里的那份。
+              <br />
+              这里只收「数据导出」的账号包，整站备份请到下方「整站还原」上传。
             </small>
           </Section>
         )}
@@ -931,19 +1158,34 @@ export function AccountPane({ onDirtyChange }) {
         {admin && (
           <Section secKey="acc-users" id="accUsersSec" title="用户管理" open sub={usersSub}>
             <Result id="userResult" result={userResult} />
-            {!usersLoaded ? <div className="hint">正在读取用户…</div>
-              : usersError ? (
-                <div className="hint pane-msg">
-                  {usersError}
-                  <button className="btn btn-ghost btn-sm" type="button" onClick={loadUsers}>重试</button>
-                </div>
-              ) : !users.length ? <div className="sl-empty">还没有用户</div>
-                : <div className="sl-list" id="userList">{users.map(renderUserRow)}</div>}
+            {!usersLoaded ? (
+              <div className="hint">正在读取用户…</div>
+            ) : usersError ? (
+              <div className="hint pane-msg">
+                {usersError}
+                <button className="btn btn-ghost btn-sm" type="button" onClick={loadUsers}>
+                  重试
+                </button>
+              </div>
+            ) : !users.length ? (
+              <div className="sl-empty">还没有用户</div>
+            ) : (
+              <div className="sl-list" id="userList">
+                {users.map(renderUserRow)}
+              </div>
+            )}
 
             <div className="sl-toolbar">
-              <button className="btn btn-ghost btn-sm" id="addUserBtn" type="button"
-                disabled={userBusy === 'add'} onClick={() => setSheet({ type: 'addUser' })}>
-                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
+              <button
+                className="btn btn-ghost btn-sm"
+                id="addUserBtn"
+                type="button"
+                disabled={userBusy === 'add'}
+                onClick={() => setSheet({ type: 'addUser' })}
+              >
+                <svg className="ico" aria-hidden="true" focusable="false">
+                  <use href="#i-plus" />
+                </svg>
                 添加用户
               </button>
               <span className="sl-toolbar-note">每个账号的订阅源、已读与日报相互独立</span>
@@ -951,9 +1193,13 @@ export function AccountPane({ onDirtyChange }) {
 
             <small className="form-tip">
               点行可改角色、重置密码或删除。
-              <br /><b>管理员</b>：额外可管理用户与全局设置。
-              <br /><b>普通用户</b>：管理自己的订阅源、模型与日报。
-              <br /><b>只读用户</b>：只能阅读，不能修改订阅源、规则、模型、日报等配置，也不能自行修改用户名和密码。
+              <br />
+              <b>管理员</b>：额外可管理用户与全局设置。
+              <br />
+              <b>普通用户</b>：管理自己的订阅源、模型与日报。
+              <br />
+              <b>只读用户</b>
+              ：只能阅读，不能修改订阅源、规则、模型、日报等配置，也不能自行修改用户名和密码。
             </small>
           </Section>
         )}
@@ -962,13 +1208,22 @@ export function AccountPane({ onDirtyChange }) {
         {admin && (
           <Section secKey="acc-backup" advanced title="整站备份" sub="仅管理员">
             <p className="hint">
-              <b>包含</b>：所有账号（含密码哈希）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
-              <br /><b>敏感</b>：这是敏感文件，请只保存在受控位置。
-              <br /><b>不含</b>：登录会话；恢复后所有人需要重新登录。
+              <b>包含</b>
+              ：所有账号（含密码哈希）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
+              <br />
+              <b>敏感</b>：这是敏感文件，请只保存在受控位置。
+              <br />
+              <b>不含</b>：登录会话；恢复后所有人需要重新登录。
             </p>
             <div className="dev-actions">
-              <button className="btn btn-danger btn-sm" id="backupBtn" type="button"
-                disabled={backingUp} aria-busy={backingUp} onClick={startBackup}>
+              <button
+                className="btn btn-danger btn-sm"
+                id="backupBtn"
+                type="button"
+                disabled={backingUp}
+                aria-busy={backingUp}
+                onClick={startBackup}
+              >
                 {backingUp ? '生成中…' : '下载整站备份'}
               </button>
             </div>
@@ -982,22 +1237,34 @@ export function AccountPane({ onDirtyChange }) {
         {admin && (
           <Section secKey="acc-restore" advanced title="整站还原" sub="仅管理员">
             <p className="hint">
-              上传整站备份包，用它<b>整体替换</b>当前全站数据：账号（含密码）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
-              <br /><b>影响</b>：还原期间站点短暂不可用，结束后所有登录会话失效。
+              上传整站备份包，用它<b>整体替换</b>
+              当前全站数据：账号（含密码）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
+              <br />
+              <b>影响</b>：还原期间站点短暂不可用，结束后所有登录会话失效。
             </p>
             <div className="dev-actions">
-              <button className="btn btn-danger btn-sm" id="restoreBtn" type="button" disabled={restoring}
+              <button
+                className="btn btn-danger btn-sm"
+                id="restoreBtn"
+                type="button"
+                disabled={restoring}
                 aria-busy={restoring}
-                onClick={() => document.getElementById('restoreFile')?.click()}>
+                onClick={() => document.getElementById('restoreFile')?.click()}
+              >
                 {restoring ? '还原中…（请勿关闭页面）' : '上传备份并还原'}
               </button>
-              <input id="restoreFile" type="file" accept=".gz,application/gzip,application/x-gzip" hidden
-                onChange={restoreSite} />
+              <input
+                id="restoreFile"
+                type="file"
+                accept=".gz,application/gzip,application/x-gzip"
+                hidden
+                onChange={restoreSite}
+              />
             </div>
             <Result id="restoreResult" result={restoreMsg} />
             <small className="form-tip">
-              还原不做合并，先清空再写入，不可撤销；建议先下载当前整站备份留底。只接受本系统导出的 tar.gz。
-              这里只收「整站备份」，账号导出包请到上方「数据导入」上传。
+              还原不做合并，先清空再写入，不可撤销；建议先下载当前整站备份留底。只接受本系统导出的
+              tar.gz。 这里只收「整站备份」，账号导出包请到上方「数据导入」上传。
               还原后建议重启一次服务，让进程加载包内的站点设置（含登录签名密钥）。
             </small>
           </Section>
@@ -1005,36 +1272,63 @@ export function AccountPane({ onDirtyChange }) {
 
         {/* 装到桌面属于「看一次就够」的内容，默认收起 */}
         <Section secKey="acc-install" advanced title="添加到手机" sub="装到桌面，像 App 一样打开">
-            <p className="install-card-tip">
-              用手机浏览器打开 <code id="installHost">{location.host}</code>，在浏览器菜单里选「安装应用 / 添加到主屏幕」即可。<br />
-              Edge / Chrome：右上角「⋯」→ 添加到手机 / 安装应用；iOS Safari：分享 → 添加到主屏幕。
-            </p>
-            <button className="btn btn-ghost btn-sm install-trigger" type="button" onClick={install}>
-              一键安装（浏览器支持时）
-            </button>
+          <p className="install-card-tip">
+            用手机浏览器打开 <code id="installHost">{location.host}</code>
+            ，在浏览器菜单里选「安装应用 / 添加到主屏幕」即可。
+            <br />
+            Edge / Chrome：右上角「⋯」→ 添加到手机 / 安装应用；iOS Safari：分享 → 添加到主屏幕。
+          </p>
+          <button className="btn btn-ghost btn-sm install-trigger" type="button" onClick={install}>
+            一键安装（浏览器支持时）
+          </button>
         </Section>
       </div>
 
       {sheetDevice ? (
-        <DeviceSheet key={'dev-' + sheetDevice.id} device={sheetDevice}
-          busy={revoking === sheetDevice.id} onClose={() => setSheet(null)}
-          onRevoke={revokeDevice} />
+        <DeviceSheet
+          key={'dev-' + sheetDevice.id}
+          device={sheetDevice}
+          busy={revoking === sheetDevice.id}
+          onClose={() => setSheet(null)}
+          onRevoke={revokeDevice}
+        />
       ) : null}
       {sheetUser ? (
-        <UserSheet key={'user-' + sheetUser.id} user={sheetUser} busy={!!userBusy}
+        <UserSheet
+          key={'user-' + sheetUser.id}
+          user={sheetUser}
+          busy={!!userBusy}
           onClose={() => setSheet(null)}
-          onRole={changeUserRole} onPassword={setUserPassword} onDelete={deleteUser} />
+          onRole={changeUserRole}
+          onPassword={setUserPassword}
+          onDelete={deleteUser}
+        />
       ) : null}
       {sheet && sheet.type === 'addUser' ? (
-        <AddUserSheet busy={userBusy === 'add'} onClose={() => setSheet(null)} onCreate={createUser} />
+        <AddUserSheet
+          busy={userBusy === 'add'}
+          onClose={() => setSheet(null)}
+          onCreate={createUser}
+        />
       ) : null}
 
-      <PaneFoot dirty={dirty} lead={
-        <button type="button" className="btn btn-danger btn-sm" id="logoutBtn" onClick={logout}>退出登录</button>
-      }>
+      <PaneFoot
+        dirty={dirty}
+        lead={
+          <button type="button" className="btn btn-danger btn-sm" id="logoutBtn" onClick={logout}>
+            退出登录
+          </button>
+        }
+      >
         {!readonly && (
-          <button type="button" className="btn btn-primary" id="saveAccBtn" aria-busy={saving ? 'true' : undefined}
-            disabled={saving || !dirty} onClick={saveAccount}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            id="saveAccBtn"
+            aria-busy={saving ? 'true' : undefined}
+            disabled={saving || !dirty}
+            onClick={saveAccount}
+          >
             {saving ? '保存中…' : '保存账号'}
           </button>
         )}

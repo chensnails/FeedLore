@@ -5,7 +5,7 @@
  * 不改类名与 data-sec —— 样式与折叠状态持久化仍完全依赖原有的 class / 属性。
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * 表单面板的异步回填守卫。
@@ -24,22 +24,40 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 export function useFormLoadGuard() {
   /** @type {any} */
   const touched = useRef(false);
-  const mark = useCallback(() => { touched.current = true; }, []);
-  const apply = useCallback(/** @param {*} [fn] */ (fn) => {
-    if (touched.current) return false;
-    fn();
-    return true;
+  const mark = useCallback(() => {
+    touched.current = true;
   }, []);
-  const reset = useCallback(() => { touched.current = false; }, []);
+  const apply = useCallback(
+    /** @param {*} [fn] */ (fn) => {
+      if (touched.current) return false;
+      fn();
+      return true;
+    },
+    [],
+  );
+  const reset = useCallback(() => {
+    touched.current = false;
+  }, []);
   return { mark, apply, reset };
 }
 
 /**
  * 一个可折叠分组。`open` 只是首次默认值；用户改过之后以 bindSections 记住的状态为准。
  * `subId` 留给需要被旧逻辑按 id 取用的摘要（频道计数、采集参数摘要）。
-  * @param {*} opts
-*/
-export function Section({ secKey, title, sub, subId, open, id, advanced, cardNo, cardDesc, children }) {
+ * @param {*} opts
+ */
+export function Section({
+  secKey,
+  title,
+  sub,
+  subId,
+  open,
+  id,
+  advanced,
+  cardNo,
+  cardDesc,
+  children,
+}) {
   /* 两层结构：`advanced` 的组默认收起并打「高级」标，常用组照旧默认展开。
    * 不做「外层再套一个高级折叠容器」：那会变成两级折叠（点开外层还要再点内层），
    * 也会让 bindSections 记的折叠状态与用户的直觉错位。
@@ -53,14 +71,26 @@ export function Section({ secKey, title, sub, subId, open, id, advanced, cardNo,
       className={'sec' + (advanced ? ' is-advanced' : '') + (isCard ? ' model-card' : '')}
       data-sec={secKey}
       id={id}
-      open={advanced ? undefined : (open || undefined)}
+      open={advanced ? undefined : open || undefined}
     >
       <summary className="sec-head">
-        <svg className="sec-arrow" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
-        {isCard ? <span className="model-card-no" aria-hidden="true">{cardNo}</span> : null}
+        <svg className="sec-arrow" aria-hidden="true" focusable="false">
+          <use href="#i-chevron-right" />
+        </svg>
+        {isCard ? (
+          <span className="model-card-no" aria-hidden="true">
+            {cardNo}
+          </span>
+        ) : null}
         <span className="sec-title">{title}</span>
-        {advanced ? <span className="sec-adv" aria-label="高级设置">高级</span> : null}
-        <span className="sec-sub" id={subId}>{sub}</span>
+        {advanced ? (
+          <span className="sec-adv" aria-label="高级设置">
+            高级
+          </span>
+        ) : null}
+        <span className="sec-sub" id={subId}>
+          {sub}
+        </span>
         {isCard && cardDesc ? <span className="model-card-desc">{cardDesc}</span> : null}
       </summary>
       <div className="sec-body">{children}</div>
@@ -74,14 +104,18 @@ export function Section({ secKey, title, sub, subId, open, id, advanced, cardNo,
  *  播报交给标题那枚 role=status，避免读屏把同一句「未保存」连念三遍。
  *  动作栏本身在滚动容器之外，恒可见。
  *@param {*} opts
-*/
+ */
 export function PaneFoot({ lead, note, children, dirty }) {
   return (
     <div className={'pane-foot' + (dirty ? ' is-dirty' : '')}>
       {lead != null ? lead : null}
       {children ? (
         <div className="pane-foot-btns">
-          {dirty ? <span className="pane-foot-dirty" aria-hidden="true">有未保存的更改</span> : null}
+          {dirty ? (
+            <span className="pane-foot-dirty" aria-hidden="true">
+              有未保存的更改
+            </span>
+          ) : null}
           {children}
         </div>
       ) : null}
@@ -93,7 +127,7 @@ export function PaneFoot({ lead, note, children, dirty }) {
 /** 只读字段：默认态用文本表达当前值，需要修改时由外层展开输入框。
  *  刻意不用 disabled input —— 它看起来仍像可点，复制文本也不方便。
  *@param {*} opts
-*/
+ */
 export function ReadonlyField({ label, value, hint, mono }) {
   return (
     <div className="ro-field">
@@ -105,12 +139,17 @@ export function ReadonlyField({ label, value, hint, mono }) {
 }
 
 /** 编辑态开关：默认「修改…」，展开后变「收起」。aria-expanded 让读屏知道表单是否已展开。
-*@param {*} opts
-*/
+ *@param {*} opts
+ */
 export function EditToggle({ editing, onClick, editText = '编辑', closeText = '收起', id }) {
   return (
-    <button type="button" id={id} className="btn btn-ghost btn-sm ro-toggle"
-      aria-expanded={editing ? 'true' : 'false'} onClick={onClick}>
+    <button
+      type="button"
+      id={id}
+      className="btn btn-ghost btn-sm ro-toggle"
+      aria-expanded={editing ? 'true' : 'false'}
+      onClick={onClick}
+    >
       {editing ? closeText : editText}
     </button>
   );
@@ -120,27 +159,36 @@ export function EditToggle({ editing, onClick, editText = '编辑', closeText = 
  *  失败用 role=alert（隐含 assertive）：以前一律 polite，导入 / 还原失败会排在
  *  其它状态消息之后播报，读屏用户可能几分钟后才知道操作没成功。
  *@param {*} opts
-*/
+ */
 export function Result({ id, result }) {
   const failed = !!(result && !result.ok);
   return (
-    <div id={id} role={failed ? 'alert' : 'status'} aria-live={failed ? 'assertive' : 'polite'}
+    <div
+      id={id}
+      role={failed ? 'alert' : 'status'}
+      aria-live={failed ? 'assertive' : 'polite'}
       aria-atomic="true"
-      className={'test-result' + (result ? ' show ' + (result.ok ? 'ok' : 'err') : '')}>
+      className={'test-result' + (result ? ' show ' + (result.ok ? 'ok' : 'err') : '')}
+    >
       {result ? result.msg : ''}
     </div>
   );
 }
 
 /** test-result 的配套状态：ok 4 秒后自动清除，err 常驻（与旧 showResult 语义一致）。
-*@param {*} [state]
-*/
+ *@param {*} [state]
+ */
 export function useResult(state) {
   /** @type {any} */
   const [result, setResult] = useState(state || null);
   /** @type {*} */
   const timerRef = useRef(null);
-  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
   /**
    * @param {*} [ok]
    * @param {*} [msg]

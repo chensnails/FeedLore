@@ -16,25 +16,25 @@
  * `sessionSecret` 在 v2 已交给 better-auth（users 表 + AUTH_SECRET），不再进 settings。
  */
 
-import { log } from './logger';
-import { eq } from 'drizzle-orm';
-import { settings as settingsTable, type Db } from '@feedlore/db';
 import type { SourceConfig } from '@feedlore/contract';
-import { setOutboundProxy } from './net';
+import { type Db, settings as settingsTable } from '@feedlore/db';
+import { eq } from 'drizzle-orm';
 import {
   DEFAULT_KEEP_DAYS,
   DEFAULT_REFRESH_MINUTES,
   FEED_FAIL_LIMIT,
-  REFRESH_CONCURRENCY,
-  RSS_TIMEOUT_SECONDS,
-  KEEP_PER_FEED,
-  getProxyUrl,
   getAutoRefreshMinutes,
-  getImgTtlDays,
   getImgKeepDays,
   getImgMaxDim,
+  getImgTtlDays,
   getImgWebpQuality,
+  getProxyUrl,
+  KEEP_PER_FEED,
+  REFRESH_CONCURRENCY,
+  RSS_TIMEOUT_SECONDS,
 } from '../env';
+import { log } from './logger';
+import { setOutboundProxy } from './net';
 
 /** 重新导出，`fetcher` 等模块直接从这里取类型，避免同时依赖 contract 与 env。 */
 export type { SourceConfig };
@@ -78,7 +78,9 @@ export function sourceDefaults(): SourceConfig {
 }
 
 /** 把任意来源（库里的旧值 / 表单提交的增量）夹成合法配置。 */
-export function normalizeSource(input: Partial<Record<keyof SourceConfig, unknown>> | null | undefined): SourceConfig {
+export function normalizeSource(
+  input: Partial<Record<keyof SourceConfig, unknown>> | null | undefined,
+): SourceConfig {
   const def = sourceDefaults();
   const s = input ?? {};
   const cur = <K extends keyof SourceConfig>(k: K): unknown => (s[k] === undefined ? def[k] : s[k]);
@@ -91,7 +93,9 @@ export function normalizeSource(input: Partial<Record<keyof SourceConfig, unknow
     concurrency: clampInt(cur('concurrency'), def.concurrency, 1, 10),
     feedFailLimit: clampInt(cur('feedFailLimit'), def.feedFailLimit, 2, 20),
     autoRefreshMinutes: clampInt(cur('autoRefreshMinutes'), def.autoRefreshMinutes, 0, 1440),
-    proxyUrl: String(cur('proxyUrl') ?? '').trim().slice(0, 500),
+    proxyUrl: String(cur('proxyUrl') ?? '')
+      .trim()
+      .slice(0, 500),
     imgTtlDays: clampInt(cur('imgTtlDays'), def.imgTtlDays, 1, 365),
     imgKeepDays: clampInt(cur('imgKeepDays'), def.imgKeepDays, 1, 3650),
     imgMaxDim: clampInt(cur('imgMaxDim'), def.imgMaxDim, 320, 4096),
@@ -137,7 +141,10 @@ export async function reloadSource(db: Db | null): Promise<SourceConfig | null> 
     return snapshot;
   } catch (e) {
     // 数据库不可用不能让抓取器一起死：用上一次快照（或默认值）继续
-    log.warn('[settings] failed to read source config, keeping the last snapshot: ', (e as Error)?.message ?? e);
+    log.warn(
+      '[settings] failed to read source config, keeping the last snapshot: ',
+      (e as Error)?.message ?? e,
+    );
     return snapshot;
   }
 }
@@ -146,7 +153,10 @@ export async function reloadSource(db: Db | null): Promise<SourceConfig | null> 
  * 合并式保存：只覆盖 `patch` 里出现过的键，其余保持库里现值。
  * 返回保存后的完整配置（已 clamp）。
  */
-export async function saveSource(db: Db, patch: Partial<Record<keyof SourceConfig, unknown>>): Promise<SourceConfig> {
+export async function saveSource(
+  db: Db,
+  patch: Partial<Record<keyof SourceConfig, unknown>>,
+): Promise<SourceConfig> {
   const current = (await reloadSource(db)) ?? sourceDefaults();
   const next = normalizeSource({ ...current, ...patch });
 

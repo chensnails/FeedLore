@@ -61,7 +61,10 @@ async function verifyLegacyPassword(hash: string, password: string): Promise<boo
  * 密码校验入口：legacy 标记走旧版参数，其余交给 better-auth 默认实现。
  * 导出是为了让「迁移后仍能用原密码登录」有独立的回归测试。
  */
-export async function verifyPasswordHash(data: { hash: string; password: string }): Promise<boolean> {
+export async function verifyPasswordHash(data: {
+  hash: string;
+  password: string;
+}): Promise<boolean> {
   if (isLegacyPasswordHash(data.hash)) return verifyLegacyPassword(data.hash, data.password);
   return verifyPassword(data);
 }
@@ -180,7 +183,10 @@ export function createAuth(opts: CreateAuthOptions) {
           const upgraded = await ctx.context.password.hash(body.password);
           await ctx.context.internalAdapter.updatePassword(user.id, upgraded);
         } catch (err) {
-          ctx.context.logger.error('failed to upgrade the legacy password hash (this sign-in still succeeds)', err);
+          ctx.context.logger.error(
+            'failed to upgrade the legacy password hash (this sign-in still succeeds)',
+            err,
+          );
         }
       }),
     },

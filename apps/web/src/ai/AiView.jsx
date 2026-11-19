@@ -11,39 +11,55 @@
  */
 
 import { core } from '@core';
-import { on, EVENT } from '../kernel/events.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { OverflowMenu } from '../ui/OverflowMenu.jsx';
-import { ViewNav } from '../ui/ViewNav.jsx';
-import { useTopbarHeight } from '../shell/useTopbarHeight.js';
-import { widthVariant } from '../imgSrc.js';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
-import { Icon } from '../ui/Icon.jsx';
-import { StateBlock } from '../ui/StateBlock.jsx';
-import { Dropdown } from '../views/Dropdown.jsx';
+import { widthVariant } from '../imgSrc.js';
+import { EVENT, on } from '../kernel/events.js';
+import { useTopbarHeight } from '../shell/useTopbarHeight.js';
 import { CopyIconButton, safeHref } from '../ui/EntryActions.jsx';
+import { Icon } from '../ui/Icon.jsx';
+import { OverflowMenu } from '../ui/OverflowMenu.jsx';
+import { StateBlock } from '../ui/StateBlock.jsx';
+import { ViewNav } from '../ui/ViewNav.jsx';
+import { Dropdown } from '../views/Dropdown.jsx';
 import { ExplorePane } from './ExplorePane.jsx';
 
-const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
+const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
 function shanghaiToday() {
   return new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   }).format(new Date());
 }
 
 /** 日报里的一条条目
-*@param {*} opts
-*/
+ *@param {*} opts
+ */
 function DgItem({ it }) {
   const e = it.item || {};
   /** @type {any} */
   const [imgFailed, setImgFailed] = useState(false);
-  const thumb = (e.image && !imgFailed && !isImgFailed(e.image))
-    ? <img className="dg-item-thumb" loading="lazy" src={widthVariant(e.image, 320) || e.image} alt=""
-      onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
-      onError={() => { markImgFailed(e.image); setImgFailed(true); }} />
-    : <div className="dg-item-thumb-fb"><Icon n="file" /></div>;
+  const thumb =
+    e.image && !imgFailed && !isImgFailed(e.image) ? (
+      <img
+        className="dg-item-thumb"
+        loading="lazy"
+        src={widthVariant(e.image, 320) || e.image}
+        alt=""
+        onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
+        onError={() => {
+          markImgFailed(e.image);
+          setImgFailed(true);
+        }}
+      />
+    ) : (
+      <div className="dg-item-thumb-fb">
+        <Icon n="file" />
+      </div>
+    );
   return (
     <div className="dg-item">
       {thumb}
@@ -55,7 +71,18 @@ function DgItem({ it }) {
         <div className="dg-item-name">{e.name || '(无标题)'}</div>
         <div className="dg-item-foot">
           {e.link ? <CopyIconButton url={e.link} /> : null}
-          {safeHref(e.link) ? <a className="icon-btn" title="打开原文章" aria-label="打开原文章" href={safeHref(e.link)} target="_blank" rel="noopener noreferrer"><Icon n="external" /></a> : null}
+          {safeHref(e.link) ? (
+            <a
+              className="icon-btn"
+              title="打开原文章"
+              aria-label="打开原文章"
+              href={safeHref(e.link)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Icon n="external" />
+            </a>
+          ) : null}
           {e.size ? <span className="dg-item-size">{e.size}</span> : null}
         </div>
       </div>
@@ -64,8 +91,8 @@ function DgItem({ it }) {
 }
 
 /** 日报正文（有数据时）
-*@param {*} opts
-*/
+ *@param {*} opts
+ */
 function DigestView({ digest }) {
   const d = digest;
   const gen = d.generatedAt
@@ -77,18 +104,33 @@ function DigestView({ digest }) {
     <>
       <div className="dg-card">
         <div className="dg-overview">
-          <svg className="ico dg-pin" aria-hidden="true" focusable="false"><use href="#i-pin" /></svg>
+          <svg className="ico dg-pin" aria-hidden="true" focusable="false">
+            <use href="#i-pin" />
+          </svg>
           <span>
             {d.overview || '（无概览）'}
             {d.fallback ? <span className="dg-tag-fallback">规则摘要</span> : null}
           </span>
         </div>
         <div className="dg-meta">
-          <span><b>生成时间</b> {gen}</span>
-          <span><b>模型</b> {d.model || '—'}</span>
-          <span><b>采集</b> {(d.stats && d.stats.collected) || 0} 条 → 精选 {(d.stats && d.stats.kept) || 0} 条</span>
-          <span><b>覆盖频道</b> {(d.stats && d.stats.feeds) || 0} 个</span>
-          {d.usedMapReduce ? <span><b>模式</b> 分批汇总</span> : null}
+          <span>
+            <b>生成时间</b> {gen}
+          </span>
+          <span>
+            <b>模型</b> {d.model || '—'}
+          </span>
+          <span>
+            <b>采集</b> {(d.stats && d.stats.collected) || 0} 条 → 精选{' '}
+            {(d.stats && d.stats.kept) || 0} 条
+          </span>
+          <span>
+            <b>覆盖频道</b> {(d.stats && d.stats.feeds) || 0} 个
+          </span>
+          {d.usedMapReduce ? (
+            <span>
+              <b>模式</b> 分批汇总
+            </span>
+          ) : null}
         </div>
         {d.error ? (
           <div className="dg-meta is-plain">
@@ -99,27 +141,44 @@ function DigestView({ digest }) {
 
       {highlights.length ? (
         <div className="dg-card">
-          <h3 className="dg-section-title">今日亮点<span className="cnt">{highlights.length} 条</span></h3>
+          <h3 className="dg-section-title">
+            今日亮点<span className="cnt">{highlights.length} 条</span>
+          </h3>
           <div className="dg-hl-list">
-            {highlights.map(/** @param {*} [h] @param {*} [i] */ (h, i) => (
-              <div className="dg-hl" key={i}>
-                <div className="dg-hl-idx">{i + 1}</div>
-                <div className="dg-hl-body">
-                  <div className="dg-hl-text">{h.text || ''}</div>
-                  {h.item && h.item.name ? <div className="dg-hl-name">{h.item.name}</div> : null}
+            {highlights.map(
+              /** @param {*} [h] @param {*} [i] */ (h, i) => (
+                <div className="dg-hl" key={i}>
+                  <div className="dg-hl-idx">{i + 1}</div>
+                  <div className="dg-hl-body">
+                    <div className="dg-hl-text">{h.text || ''}</div>
+                    {h.item && h.item.name ? <div className="dg-hl-name">{h.item.name}</div> : null}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ),
+            )}
           </div>
         </div>
       ) : null}
 
-      {sections.length ? sections.map(/** @param {*} [s] @param {*} [i] */ (s, i) => (
-        <div className="dg-card" key={i}>
-          <h3 className="dg-section-title">{s.title || '未分类'}<span className="cnt">{s.items.length} 条</span></h3>
-          <div className="dg-items">{s.items.map(/** @param {*} [it] @param {*} [j] */ (it, j) => <DgItem it={it} key={j} />)}</div>
-        </div>
-      )) : (
+      {sections.length ? (
+        sections.map(
+          /** @param {*} [s] @param {*} [i] */ (s, i) => (
+            <div className="dg-card" key={i}>
+              <h3 className="dg-section-title">
+                {s.title || '未分类'}
+                <span className="cnt">{s.items.length} 条</span>
+              </h3>
+              <div className="dg-items">
+                {s.items.map(
+                  /** @param {*} [it] @param {*} [j] */ (it, j) => (
+                    <DgItem it={it} key={j} />
+                  ),
+                )}
+              </div>
+            </div>
+          ),
+        )
+      ) : (
         <StateBlock className="dg-empty" icon="inbox">
           <p>没有可展示的条目</p>
         </StateBlock>
@@ -149,13 +208,16 @@ export function AiView() {
    * @param {*} [e]
    */
   function onTabKey(e) {
-    const list = Array.from(e.currentTarget.parentElement.querySelectorAll('[role="tab"]')).filter(/** @param {*} [el] */ (el) => !el.hidden);
+    const list = Array.from(e.currentTarget.parentElement.querySelectorAll('[role="tab"]')).filter(
+      /** @param {*} [el] */ (el) => !el.hidden,
+    );
     if (list.length < 2) return;
     const i = list.indexOf(e.currentTarget);
     /** @type {any} */
     let next = null;
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = list[(i + 1) % list.length];
-    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = list[(i - 1 + list.length) % list.length];
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
+      next = list[(i - 1 + list.length) % list.length];
     else if (e.key === 'Home') next = list[0];
     else if (e.key === 'End') next = list[list.length - 1];
     if (!next) return;
@@ -185,7 +247,10 @@ export function AiView() {
   /** @type {any} */
   const [genElapsed, setGenElapsed] = useState(0);
   useEffect(() => {
-    if (!genKey) { setGenElapsed(0); return undefined; }
+    if (!genKey) {
+      setGenElapsed(0);
+      return undefined;
+    }
     const t0 = Date.now();
     const iv = setInterval(() => setGenElapsed(Math.round((Date.now() - t0) / 1000)), 1000);
     return () => clearInterval(iv);
@@ -232,23 +297,38 @@ export function AiView() {
   }, [dates, today]);
 
   const mode = scope.mode || 'enabled';
-  const scopeLabel = mode === 'all' ? '全部频道'
-    : mode === 'custom' ? `自定义的 ${scope.feeds.length} 个频道`
-      : '「采集」开启的频道';
-  const subtitle = `把${scopeLabel}过去 24 小时的新条目整理成一份中文简报`
-    + ` · 共 ${feedsInfo.total} 个频道，采集开启 ${feedsInfo.enabled} 个`;
+  const scopeLabel =
+    mode === 'all'
+      ? '全部频道'
+      : mode === 'custom'
+        ? `自定义的 ${scope.feeds.length} 个频道`
+        : '「采集」开启的频道';
+  const subtitle =
+    `把${scopeLabel}过去 24 小时的新条目整理成一份中文简报` +
+    ` · 共 ${feedsInfo.total} 个频道，采集开启 ${feedsInfo.enabled} 个`;
 
   async function loadDigest() {
     // 日期列表
     let ds = [];
-    try { const r = await s.apiFetch('/api/digests'); const d = await r.json(); ds = d.dates || []; } catch (_) { ds = []; }
+    try {
+      const r = await s.apiFetch('/api/digests');
+      const d = await r.json();
+      ds = d.dates || [];
+    } catch (_) {
+      ds = [];
+    }
     setDates(ds);
     // 频道计数（副标题用）
     try {
       const data = await s.loadFeeds();
       const list = (data && data.feeds) || [];
-      setFeedsInfo({ total: list.length, enabled: list.filter(/** @param {*} [f] */ (f) => f.enabled).length });
-    } catch (_) { /* 用已有缓存 */ }
+      setFeedsInfo({
+        total: list.length,
+        enabled: list.filter(/** @param {*} [f] */ (f) => f.enabled).length,
+      });
+    } catch (_) {
+      /* 用已有缓存 */
+    }
     // 摘要范围：本账号自己的日报配置
     try {
       const d = (await (await s.apiFetch('/api/prefs')).json()).digest || {};
@@ -256,7 +336,9 @@ export function AiView() {
         mode: ['all', 'enabled', 'custom'].indexOf(d.mode) >= 0 ? d.mode : 'enabled',
         feeds: Array.isArray(d.feeds) ? d.feeds.map(Number) : [],
       });
-    } catch (_) { /* 拿不到就按默认范围显示 */ }
+    } catch (_) {
+      /* 拿不到就按默认范围显示 */
+    }
     const opts = ds.includes(today) ? ds : [today, ...ds];
     const cur = opts.includes(selected) ? selected : opts[0];
     await showDigest(cur);
@@ -274,11 +356,11 @@ export function AiView() {
       const data = await res.json().catch(() => ({}));
       // 500 / 网关 HTML 不能当成「今天还没有摘要」，否则引导用户去点生成重试一个坏接口
       if (!res.ok) throw new Error(s.errText(data, '读取失败'));
-      if (gen !== reqGen.current) return;          // 已有更新的请求，丢弃这一包
+      if (gen !== reqGen.current) return; // 已有更新的请求，丢弃这一包
       if (data && data.digest) setView({ kind: 'ready', digest: data.digest });
       else setView({ kind: 'empty', date });
     } catch (err) {
-      if (gen !== reqGen.current) return;          // 旧请求的失败不该盖掉新日期的加载态
+      if (gen !== reqGen.current) return; // 旧请求的失败不该盖掉新日期的加载态
       setView({ kind: 'error', msg: s.errText(err, '读取失败') });
     }
   }
@@ -296,7 +378,7 @@ export function AiView() {
       return;
     }
     genBusy.current = true;
-    const gen = ++reqGen.current;                 // 生成期间切日期：以最后一次操作为准
+    const gen = ++reqGen.current; // 生成期间切日期：以最后一次操作为准
     setGenKey(key || (force ? 'regen' : 'gen'));
     setView({ kind: 'genLoading', phase: 'queued' });
     try {
@@ -306,7 +388,8 @@ export function AiView() {
       const done = await s.pollAiJob(job.id, {
         onStatus: /** @param {*} [j] */ (j) => {
           // 期间切了日期 / 又发起一次生成：旧任务的状态不该盖掉新视图
-          if (gen === reqGen.current) setView({ kind: 'genLoading', phase: j.status, at: j.createdAt });
+          if (gen === reqGen.current)
+            setView({ kind: 'genLoading', phase: j.status, at: j.createdAt });
         },
         isCancelled: () => gen !== reqGen.current,
       });
@@ -314,7 +397,9 @@ export function AiView() {
       const r = (done && done.result) || {};
       const d = r.digest;
       if (!d) throw new Error('生成失败：任务完成但没有返回日报');
-      setDates(/** @param {*} [prev] */ (prev) => (prev.includes(d.date) ? prev : [d.date, ...prev]));
+      setDates(
+        /** @param {*} [prev] */ (prev) => (prev.includes(d.date) ? prev : [d.date, ...prev]),
+      );
       setSelected(d.date);
       setView({ kind: 'ready', digest: d });
       // 服务端偶尔不给 stats：不能在已经生成成功之后抛 TypeError 把 ready 态改写成「生成失败」
@@ -323,7 +408,10 @@ export function AiView() {
       s.toast(r.cached ? '已读取当日缓存摘要' : `摘要生成完成（${kept} 条 / ${feeds} 频道）`);
     } catch (err) {
       if (gen === reqGen.current) {
-        setView({ kind: 'genError', msg: s.errText ? s.errText(err, '生成失败') : String((err && err.message) || err) });
+        setView({
+          kind: 'genError',
+          msg: s.errText ? s.errText(err, '生成失败') : String((err && err.message) || err),
+        });
       }
     } finally {
       genBusy.current = false;
@@ -334,14 +422,19 @@ export function AiView() {
   /** @type {any} */
   let body = null;
   if (view.kind === 'loading') {
-    body = <StateBlock className="dg-loading" spinner>读取中…</StateBlock>;
+    body = (
+      <StateBlock className="dg-loading" spinner>
+        读取中…
+      </StateBlock>
+    );
   } else if (view.kind === 'genLoading') {
     body = (
       <StateBlock className="dg-loading" spinner>
         正在采集过去 24 小时的新条目并生成摘要…
         <div className="hint mt-2">
           {view.phase === 'queued' ? '任务已提交，排队中…' : `任务运行中 · 已等待 ${genElapsed}s`}
-          <br />任务在服务端跑，可以先离开这个页面；回到「日报」时会读到结果
+          <br />
+          任务在服务端跑，可以先离开这个页面；回到「日报」时会读到结果
         </div>
       </StateBlock>
     );
@@ -349,7 +442,9 @@ export function AiView() {
     body = (
       <StateBlock className="dg-error" icon="alert" alert>
         <p>读取失败：{view.msg}</p>
-        <button className="btn btn-ghost" type="button" onClick={() => showDigest(selected)}>重试</button>
+        <button className="btn btn-ghost" type="button" onClick={() => showDigest(selected)}>
+          重试
+        </button>
       </StateBlock>
     );
   } else if (view.kind === 'genError') {
@@ -357,15 +452,27 @@ export function AiView() {
       <StateBlock className="dg-error" icon="alert" alert>
         <p>生成失败：{view.msg}</p>
         <p className="hint">请在「设置 → 模型」检查模型地址与 Key 是否正确</p>
-        {writable ? <button className="btn btn-ghost" type="button" onClick={() => generate(false)}>重新生成</button> : null}
+        {writable ? (
+          <button className="btn btn-ghost" type="button" onClick={() => generate(false)}>
+            重新生成
+          </button>
+        ) : null}
       </StateBlock>
     );
   } else if (view.kind === 'empty') {
     body = (
       <StateBlock className="dg-empty" icon="calendar">
-        <p><strong>{view.date}</strong> 还没有摘要</p>
-        <p className="hint">{writable ? '把所选频道过去 24 小时的新内容整理成简报' : '只读账户不能手动生成摘要'}</p>
-        {writable ? <button className="btn btn-primary" type="button" onClick={() => generate(false)}>生成摘要</button> : null}
+        <p>
+          <strong>{view.date}</strong> 还没有摘要
+        </p>
+        <p className="hint">
+          {writable ? '把所选频道过去 24 小时的新内容整理成简报' : '只读账户不能手动生成摘要'}
+        </p>
+        {writable ? (
+          <button className="btn btn-primary" type="button" onClick={() => generate(false)}>
+            生成摘要
+          </button>
+        ) : null}
       </StateBlock>
     );
   } else if (view.kind === 'ready') {
@@ -378,59 +485,130 @@ export function AiView() {
           中间标题，右侧簇（视图导航 + ⋮）。AI 页无频道抽屉与搜索，不硬塞假功能。 */}
       <div className="ai-head page-head view-toolbar" ref={headRef}>
         {pane === 'ask' ? (
-          <button className="btn btn-ghost btn-sm ai-new-btn vt-channel" id="exploreNewBtn" type="button"
-            aria-label="开始新一轮对话" title="开始新一轮对话（清空当前会话）"
-            onClick={newSession}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
+          <button
+            className="btn btn-ghost btn-sm ai-new-btn vt-channel"
+            id="exploreNewBtn"
+            type="button"
+            aria-label="开始新一轮对话"
+            title="开始新一轮对话（清空当前会话）"
+            onClick={newSession}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-plus" />
+            </svg>
           </button>
         ) : null}
-        <div className="ai-head-text"><h2 className="page-title vt-title">探索</h2></div>
+        <div className="ai-head-text">
+          <h2 className="page-title vt-title">探索</h2>
+        </div>
         <div className="head-right vt-tools">
           <ViewNav />
-          <OverflowMenu view="ai" refreshLabel="刷新订阅"
-            refreshHint="只更新订阅内容；重算日报请用「重新生成」" />
+          <OverflowMenu
+            view="ai"
+            refreshLabel="刷新订阅"
+            refreshHint="只更新订阅内容；重算日报请用「重新生成」"
+          />
         </div>
       </div>
       {/* 内容区限宽居中：二级 tab 与各 pane 同处一条内容列，桌面不再铺满整屏。
           顶栏 .ai-head 不进容器——它是吸顶条，按设计约定保持全宽。 */}
       <div className="ex-wrap">
         <div className="ai-tabs" role="tablist" aria-label="探索页模式">
-          <button type="button" role="tab" id="exploreTabAsk" aria-selected={pane === 'ask' ? 'true' : 'false'}
-            aria-controls="exploreAskPanel" tabIndex={pane === 'ask' ? 0 : -1} onKeyDown={onTabKey}
-            className={'ai-tab' + (pane === 'ask' ? ' is-active' : '')} onClick={() => setPane('ask')}>问答</button>
-          <button type="button" role="tab" id="exploreTabDigest" aria-selected={pane === 'digest' ? 'true' : 'false'}
-            aria-controls="exploreDigestPanel" tabIndex={pane === 'digest' ? 0 : -1} onKeyDown={onTabKey}
+          <button
+            type="button"
+            role="tab"
+            id="exploreTabAsk"
+            aria-selected={pane === 'ask' ? 'true' : 'false'}
+            aria-controls="exploreAskPanel"
+            tabIndex={pane === 'ask' ? 0 : -1}
+            onKeyDown={onTabKey}
+            className={'ai-tab' + (pane === 'ask' ? ' is-active' : '')}
+            onClick={() => setPane('ask')}
+          >
+            问答
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="exploreTabDigest"
+            aria-selected={pane === 'digest' ? 'true' : 'false'}
+            aria-controls="exploreDigestPanel"
+            tabIndex={pane === 'digest' ? 0 : -1}
+            onKeyDown={onTabKey}
             className={'ai-tab' + (pane === 'digest' ? ' is-active' : '')}
             hidden={s.digestIsEnabled && !s.digestIsEnabled()}
-            onClick={() => setPane('digest')}>日报</button>
+            onClick={() => setPane('digest')}
+          >
+            日报
+          </button>
         </div>
-        <ExplorePane key={sessionKey} hidden={pane !== 'ask'} onNewSession={newSession}
-          panelProps={{ id: 'exploreAskPanel', role: 'tabpanel', 'aria-labelledby': 'exploreTabAsk' }} />
-        <section className="ai-pane" data-ai-pane="digest" id="exploreDigestPanel"
-          role="tabpanel" aria-labelledby="exploreTabDigest" hidden={pane !== 'digest'}>
-        {/* 说明行与操作行分层：标题 → 说明 → 日期/动作，窄屏操作行自己换行 */}
-        <div className="digest-head">
-          <p className="ai-sub" id="digestSub">{subtitle}</p>
-        </div>
-        <div className="digest-actions">
-          <Dropdown id="digestDate" wrapId="digestDateDD" title="选择日期" ariaLabel="选择日期"
-            value={selected} onChange={/** @param {*} [v] */ (v) => showDigest(v)}
-            options={dateOptions.map(/** @param {*} [d] */ (d) => ({ value: d, label: (d === today ? '今天 · ' : '') + d }))} />
-          {writable ? (
-            <>
-              <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"
-                disabled={genKey !== null} aria-busy={genKey === 'regen' ? 'true' : undefined}
-                onClick={() => generate(true, 'regen')}>{genKey === 'regen' ? '生成中…' : '重新生成'}</button>
-              <button className="btn btn-primary" id="genDigestBtn" type="button"
-                disabled={genKey !== null} aria-busy={genKey === 'gen' ? 'true' : undefined}
-                onClick={() => generate(false, 'gen')}>{genKey === 'gen' ? '生成中…' : '生成摘要'}</button>
-            </>
-          ) : null}
-        </div>
-        <div id="digestBody">{body}</div>
-        <footer className="foot">
-          摘要由大模型生成，可能存在偏差，请以原始条目为准
-        </footer>
+        <ExplorePane
+          key={sessionKey}
+          hidden={pane !== 'ask'}
+          onNewSession={newSession}
+          panelProps={{
+            id: 'exploreAskPanel',
+            role: 'tabpanel',
+            'aria-labelledby': 'exploreTabAsk',
+          }}
+        />
+        <section
+          className="ai-pane"
+          data-ai-pane="digest"
+          id="exploreDigestPanel"
+          role="tabpanel"
+          aria-labelledby="exploreTabDigest"
+          hidden={pane !== 'digest'}
+        >
+          {/* 说明行与操作行分层：标题 → 说明 → 日期/动作，窄屏操作行自己换行 */}
+          <div className="digest-head">
+            <p className="ai-sub" id="digestSub">
+              {subtitle}
+            </p>
+          </div>
+          <div className="digest-actions">
+            <Dropdown
+              id="digestDate"
+              wrapId="digestDateDD"
+              title="选择日期"
+              ariaLabel="选择日期"
+              value={selected}
+              onChange={/** @param {*} [v] */ (v) => showDigest(v)}
+              options={dateOptions.map(
+                /** @param {*} [d] */ (d) => ({
+                  value: d,
+                  label: (d === today ? '今天 · ' : '') + d,
+                }),
+              )}
+            />
+            {writable ? (
+              <>
+                <button
+                  className="btn btn-ghost"
+                  id="regenDigestBtn"
+                  type="button"
+                  title="忽略缓存，重新生成"
+                  disabled={genKey !== null}
+                  aria-busy={genKey === 'regen' ? 'true' : undefined}
+                  onClick={() => generate(true, 'regen')}
+                >
+                  {genKey === 'regen' ? '生成中…' : '重新生成'}
+                </button>
+                <button
+                  className="btn btn-primary"
+                  id="genDigestBtn"
+                  type="button"
+                  disabled={genKey !== null}
+                  aria-busy={genKey === 'gen' ? 'true' : undefined}
+                  onClick={() => generate(false, 'gen')}
+                >
+                  {genKey === 'gen' ? '生成中…' : '生成摘要'}
+                </button>
+              </>
+            ) : null}
+          </div>
+          <div id="digestBody">{body}</div>
+          <footer className="foot">摘要由大模型生成，可能存在偏差，请以原始条目为准</footer>
         </section>
       </div>
     </>

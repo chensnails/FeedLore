@@ -49,6 +49,11 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
+      # V3.4：lint + format 单一入口。全仓一次性格式化后作为硬门禁；
+      # CSS 被 biome.json 排除（其源码文本守卫按字面匹配，格式化会误伤）。
+      - name: 代码规范检查（Biome）
+        run: pnpm run lint
+
       # 六个包逐个 tsc --noEmit。注意它守不住「契约 path 字面量被拓宽」这类问题
       # （P7 的真坑：服务端全绿、前端 hc 却缺路由），所以真正的守门是下面两步。
       - name: 类型检查
@@ -64,7 +69,7 @@ jobs:
       - name: 单元测试（不连库）
         run: pnpm -r run test
         env:
-          DATABASE_URL: ''
+          DATABASE_URL: ""
 
       # 真库 + 真鉴权 + 契约校验。守的是「只有装起来才暴露」的那类：
       # better-auth 的 usePlural / display_username、纯 HTTP 下的 secure Cookie、

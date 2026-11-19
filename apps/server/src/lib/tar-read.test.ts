@@ -1,11 +1,11 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import test from 'node:test';
 import { gzipSync } from 'node:zlib';
-import { extractTarGz, DEFAULT_EXTRACT_LIMITS } from './tar-read';
 import { createTarGz } from './tar';
+import { DEFAULT_EXTRACT_LIMITS, extractTarGz } from './tar-read';
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), 'feedlore-tarread-'));
@@ -37,7 +37,9 @@ function rawBlock(name: string, data: Buffer, type = '0'): Buffer {
 }
 
 function rawArchive(entries: Array<{ name: string; data: Buffer; type?: string }>): Buffer {
-  return gzipSync(Buffer.concat([...entries.map((e) => rawBlock(e.name, e.data, e.type)), Buffer.alloc(1024)]));
+  return gzipSync(
+    Buffer.concat([...entries.map((e) => rawBlock(e.name, e.data, e.type)), Buffer.alloc(1024)]),
+  );
 }
 
 test('extractTarGz：与导出器往返，UTF-8 / 空文件 / 图片名都保留', async () => {
@@ -65,8 +67,8 @@ test('extractTarGz：与导出器往返，UTF-8 / 空文件 / 图片名都保留
     assert.equal(res.files, 5);
     assert.equal(await readFile(join(out, 'manifest.json'), 'utf8'), '{"kind":"user"}');
     assert.equal(await readFile(join(out, 'entries-0001.jsonl'), 'utf8'), '条目一\n');
-    assert.deepEqual([...await readFile(join(out, 'images', 'abc123'))], [0, 1, 2]);
-    assert.deepEqual([...await readFile(join(out, 'images', 'abc123:w640'))], [3, 4, 5]);
+    assert.deepEqual([...(await readFile(join(out, 'images', 'abc123')))], [0, 1, 2]);
+    assert.deepEqual([...(await readFile(join(out, 'images', 'abc123:w640')))], [3, 4, 5]);
     assert.equal((await readFile(join(out, 'prefs.json'))).length, 0);
   });
 });
@@ -127,7 +129,8 @@ test('extractTarGz：单文件超限回 E_IMPORT_TOO_LARGE，截断包回 E_IMPO
     await writeFile(truncated, full.subarray(0, full.length - 20));
     await assert.rejects(
       () => extractTarGz(truncated, out),
-      (err: { code?: string }) => err.code === 'E_IMPORT_INVALID' || err.code === 'E_IMPORT_TOO_LARGE',
+      (err: { code?: string }) =>
+        err.code === 'E_IMPORT_INVALID' || err.code === 'E_IMPORT_TOO_LARGE',
     );
   });
 });

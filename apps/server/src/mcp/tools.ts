@@ -22,22 +22,22 @@
  *    绝不把异常抛给 SDK 变成纯文本。这样「真的 0 条」和「调用失败」永远可区分。
  */
 
-import { McpServer, type CallToolResult } from '@modelcontextprotocol/server';
-import { and, desc, eq, sql } from 'drizzle-orm';
-import { z } from 'zod';
-import { entries as entriesTable, feeds, type Db } from '@feedlore/db';
 import {
-  chat,
   type ChatMessage,
+  chat,
   listDigestDates,
+  type ResolvedLlm,
   readDigest,
   shanghaiDate,
-  type ResolvedLlm,
 } from '@feedlore/ai';
+import { type Db, entries as entriesTable, feeds } from '@feedlore/db';
+import { type CallToolResult, McpServer } from '@modelcontextprotocol/server';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { APP_VERSION } from '../env';
+import { recordAiUsage } from '../lib/aiUsage';
 import { toCard } from '../lib/dto';
 import { CARD_COLUMNS, entryConditions, parseFeedIds } from '../lib/entriesQuery';
-import { recordAiUsage } from '../lib/aiUsage';
 import { resolveLlmForTask } from '../lib/llm';
 import { assertPublicHost, safeFetch } from '../lib/net';
 import type { McpUser } from '../middleware/mcpAuth';
@@ -53,7 +53,11 @@ function textResult(payload: unknown): CallToolResult {
 }
 
 /** 失败也是 JSON：客户端解析不会炸，也不会把错误误读成空数据。 */
-export function errorResult(error: string, message: string, extra: Record<string, unknown> = {}): CallToolResult {
+export function errorResult(
+  error: string,
+  message: string,
+  extra: Record<string, unknown> = {},
+): CallToolResult {
   return {
     isError: true,
     content: [{ type: 'text', text: JSON.stringify({ error, message, ...extra }) }],
@@ -166,23 +170,24 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
-    async () => guard(async () => {
-      const rows = await db
-        .select({
-          id: feeds.id,
-          url: feeds.url,
-          siteUrl: feeds.siteUrl,
-          title: feeds.title,
-          customTitle: feeds.customTitle,
-          groupName: feeds.groupName,
-          enabled: feeds.enabled,
-          cardEnabled: feeds.cardEnabled,
-        })
-        .from(feeds)
-        .where(eq(feeds.ownerId, uid))
-        .orderBy(feeds.sortOrder, feeds.id);
+    async () =>
+      guard(async () => {
+        const rows = await db
+          .select({
+            id: feeds.id,
+            url: feeds.url,
+            siteUrl: feeds.siteUrl,
+            title: feeds.title,
+            customTitle: feeds.customTitle,
+            groupName: feeds.groupName,
+            enabled: feeds.enabled,
+            cardEnabled: feeds.cardEnabled,
+          })
+          .from(feeds)
+          .where(eq(feeds.ownerId, uid))
+          .orderBy(feeds.sortOrder, feeds.id);
 
-      const perRes = await db.execute(sql`
+        const perRes = await db.execute(sql`
         select e.feed_id,
                count(*)::int as total,
                count(*) filter (where e.is_read = false)::int as unread
@@ -190,50 +195,68 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
         where f.owner_id = ${uid}
         group by e.feed_id
       `);
-      const per = new Map(
-        (perRes.rows as unknown as { feed_id: number; total: number; unread: number }[]).map(
-          (r) => [r.feed_id, r],
-        ),
-      );
-      const groups = [...new Set(rows.map((r) => r.groupName).filter((g): g is string => !!g))];
+        const per = new Map(
+          (perRes.rows as unknown as { feed_id: number; total: number; unread: number }[]).map(
+            (r) => [r.feed_id, r],
+          ),
+        );
+        const groups = [...new Set(rows.map((r) => r.groupName).filter((g): g is string => !!g))];
 
-      const payload = {
-        ...who,
-        feedCount: rows.length,
-        feeds: rows.map((r) => {
-          const p = per.get(r.id);
-          return {
-            id: r.id,
-            title: r.customTitle || r.title || r.url,
-            url: r.url,
-            siteUrl: r.siteUrl ?? null,
-            group: r.groupName ?? null,
-            enabled: r.enabled,
-            cardEnabled: r.cardEnabled,
-            total: p?.total ?? 0,
-            unread: p?.unread ?? 0,
-          };
-        }),
-        groups,
-      };
-      return textResult(payload);
-    }),
+        const payload = {
+          ...who,
+          feedCount: rows.length,
+          feeds: rows.map((r) => {
+            const p = per.get(r.id);
+            return {
+              id: r.id,
+              title: r.customTitle || r.title || r.url,
+              url: r.url,
+              siteUrl: r.siteUrl ?? null,
+              group: r.groupName ?? null,
+              enabled: r.enabled,
+              cardEnabled: r.cardEnabled,
+              total: p?.total ?? 0,
+              unread: p?.unread ?? 0,
+            };
+          }),
+          groups,
+        };
+        return textResult(payload);
+      }),
   );
 
   /* ---------------- feedlore_list_entries ---------------- */
   const listInput = z.object({
-    feeds: z.string().optional().catch(undefined)
-      .describe('频道 id 列表，逗号分隔（如 "3,17"）；来自 feedlore_list_feeds。不传 = 按scope决定'),
-    q: z.string().max(100).optional().catch(undefined).describe('关键词：匹配标题、摘要、正文与标签'),
+    feeds: z
+      .string()
+      .optional()
+      .catch(undefined)
+      .describe(
+        '频道 id 列表，逗号分隔（如 "3,17"）；来自 feedlore_list_feeds。不传 = 按scope决定',
+      ),
+    q: z
+      .string()
+      .max(100)
+      .optional()
+      .catch(undefined)
+      .describe('关键词：匹配标题、摘要、正文与标签'),
     tag: z.string().max(60).optional().catch(undefined).describe('按标签精确过滤'),
     unread: looseBool.optional().describe('只看未读；接受 true/false 或 "true"/"false"/"1"/"0"'),
     fav: looseBool.optional().describe('只看收藏（按收藏时间倒序）'),
     watch: z.enum(['watch', 'block']).optional().catch(undefined),
-    scope: z.enum(['all', 'cards']).optional().catch(undefined)
+    scope: z
+      .enum(['all', 'cards'])
+      .optional()
+      .catch(undefined)
       .describe('all = 全部频道（默认）；cards = 仅开启卡片页的频道'),
-    sort: z.enum(['new', 'old', 'name']).optional().catch(undefined).describe('默认 new（发布时间倒序）'),
+    sort: z
+      .enum(['new', 'old', 'name'])
+      .optional()
+      .catch(undefined)
+      .describe('默认 new（发布时间倒序）'),
     offset: looseInt(0, 100_000, 0).optional(),
-    limit: looseInt(1, 50, 20).optional()
+    limit: looseInt(1, 50, 20)
+      .optional()
       .describe('每页条数，默认 20，硬上限 50（控制上下文体积）；接受数字字符串'),
   });
   server.registerTool(
@@ -247,89 +270,102 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
       inputSchema: listInput,
       annotations: { readOnlyHint: true },
     },
-    async (args) => guard(async () => {
-      const limit = args.limit ?? 20;
-      const offset = args.offset ?? 0;
-      // MCP 默认 all：AI 的诉求是「读全部订阅」，cards 口径（只看卡片页开关）反而会静默漏频道
-      const scope = args.scope ?? 'all';
+    async (args) =>
+      guard(async () => {
+        const limit = args.limit ?? 20;
+        const offset = args.offset ?? 0;
+        // MCP 默认 all：AI 的诉求是「读全部订阅」，cards 口径（只看卡片页开关）反而会静默漏频道
+        const scope = args.scope ?? 'all';
 
-      let feedIds = args.feeds !== undefined ? parseFeedIds(args.feeds) : null;
-      if (feedIds === null && scope === 'cards') {
-        const rows = await db
-          .select({ id: feeds.id })
-          .from(feeds)
-          .where(and(eq(feeds.ownerId, uid), eq(feeds.cardEnabled, true)));
-        feedIds = rows.map((r) => r.id);
-      }
-      if (feedIds !== null && feedIds.length === 0) {
+        let feedIds = args.feeds !== undefined ? parseFeedIds(args.feeds) : null;
+        if (feedIds === null && scope === 'cards') {
+          const rows = await db
+            .select({ id: feeds.id })
+            .from(feeds)
+            .where(and(eq(feeds.ownerId, uid), eq(feeds.cardEnabled, true)));
+          feedIds = rows.map((r) => r.id);
+        }
+        if (feedIds !== null && feedIds.length === 0) {
+          return textResult({
+            ...who,
+            entries: [],
+            hasMore: false,
+            total: 0,
+            offset,
+            limit,
+            diagnostics: {
+              returned: 0,
+              emptyReason: 'feed_ids_empty',
+              hint: 'feeds 参数没解析出有效 id',
+            },
+          });
+        }
+
+        const where = and(
+          ...entryConditions(db, uid, {
+            feedIds,
+            q: args.q,
+            tag: args.tag,
+            watch: args.watch,
+            unread: args.unread === true,
+            fav: args.fav === true,
+          }),
+        );
+
+        const order =
+          args.fav === true
+            ? [sql`${entriesTable.favoritedAt} desc nulls last`, desc(entriesTable.id)]
+            : args.sort === 'old'
+              ? [sql`${entriesTable.publishedAt} asc nulls last`, sql`${entriesTable.id} asc`]
+              : args.sort === 'name'
+                ? [sql`lower(${entriesTable.title}) asc`, sql`${entriesTable.id} asc`]
+                : [sql`${entriesTable.publishedAt} desc nulls last`, desc(entriesTable.id)];
+
+        const [rows, countRows] = await Promise.all([
+          db
+            .select(CARD_COLUMNS)
+            .from(entriesTable)
+            .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+            .where(where)
+            .orderBy(...order)
+            .limit(limit + 1)
+            .offset(offset),
+          db
+            .select({ n: sql<number>`count(*)::int` })
+            .from(entriesTable)
+            .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+            .where(where),
+        ]);
+
+        const hasMore = rows.length > limit;
+        const page = hasMore ? rows.slice(0, limit) : rows;
+        const total = countRows[0]?.n ?? 0;
+
+        // 空结果时多查一次频道数，把「连错账号 / 条件没命中 / offset 越界」分开说清楚
+        let emptyReason: string | null = null;
+        if (page.length === 0) {
+          const [f] = await db
+            .select({ n: sql<number>`count(*)::int` })
+            .from(feeds)
+            .where(eq(feeds.ownerId, uid));
+          emptyReason =
+            (f?.n ?? 0) === 0
+              ? 'account_has_no_feeds'
+              : total === 0
+                ? 'no_match'
+                : 'offset_beyond_total';
+        }
+
         return textResult({
-          ...who, entries: [], hasMore: false, total: 0, offset, limit,
-          diagnostics: { returned: 0, emptyReason: 'feed_ids_empty', hint: 'feeds 参数没解析出有效 id' },
+          ...who,
+          entries: page.map(toCard),
+          hasMore,
+          total,
+          offset,
+          limit,
+          diagnostics: { returned: page.length, total, emptyReason, query: args.q ?? null, scope },
         });
-      }
-
-      const where = and(
-        ...entryConditions(db, uid, {
-          feedIds,
-          q: args.q,
-          tag: args.tag,
-          watch: args.watch,
-          unread: args.unread === true,
-          fav: args.fav === true,
-        }),
-      );
-
-      const order =
-        args.fav === true
-          ? [sql`${entriesTable.favoritedAt} desc nulls last`, desc(entriesTable.id)]
-          : args.sort === 'old'
-            ? [sql`${entriesTable.publishedAt} asc nulls last`, sql`${entriesTable.id} asc`]
-            : args.sort === 'name'
-              ? [sql`lower(${entriesTable.title}) asc`, sql`${entriesTable.id} asc`]
-              : [sql`${entriesTable.publishedAt} desc nulls last`, desc(entriesTable.id)];
-
-      const [rows, countRows] = await Promise.all([
-        db
-          .select(CARD_COLUMNS)
-          .from(entriesTable)
-          .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
-          .where(where)
-          .orderBy(...order)
-          .limit(limit + 1)
-          .offset(offset),
-        db
-          .select({ n: sql<number>`count(*)::int` })
-          .from(entriesTable)
-          .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
-          .where(where),
-      ]);
-
-      const hasMore = rows.length > limit;
-      const page = hasMore ? rows.slice(0, limit) : rows;
-      const total = countRows[0]?.n ?? 0;
-
-      // 空结果时多查一次频道数，把「连错账号 / 条件没命中 / offset 越界」分开说清楚
-      let emptyReason: string | null = null;
-      if (page.length === 0) {
-        const [f] = await db
-          .select({ n: sql<number>`count(*)::int` })
-          .from(feeds)
-          .where(eq(feeds.ownerId, uid));
-        emptyReason = (f?.n ?? 0) === 0
-          ? 'account_has_no_feeds'
-          : total === 0 ? 'no_match' : 'offset_beyond_total';
-      }
-
-      return textResult({
-        ...who,
-        entries: page.map(toCard),
-        hasMore,
-        total,
-        offset,
-        limit,
-        diagnostics: { returned: page.length, total, emptyReason, query: args.q ?? null, scope },
-      });
-    }),
+      }),
   );
 
   /* ---------------- feedlore_get_entry ---------------- */
@@ -345,39 +381,41 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ id }) => guard(async () => {
-      if (!id) {
-        return errorResult('E_MCP_BAD_ARGUMENTS', 'id 必须是正整数（可传数字字符串）');
-      }
-      const rows = await db
-        .select({ ...CARD_COLUMNS, content: entriesTable.content })
-        .from(entriesTable)
-        .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
-        // owner 与 id 同进 WHERE：id 猜对了也读不到别人的条目
-        .where(and(eq(entriesTable.id, id), eq(feeds.ownerId, uid)))
-        .limit(1);
-      const row = rows[0];
-      if (!row) return errorResult('E_ENTRY_NOT_FOUND', `条目 ${id} 不存在或不属于当前账号`, { ...who });
+    async ({ id }) =>
+      guard(async () => {
+        if (!id) {
+          return errorResult('E_MCP_BAD_ARGUMENTS', 'id 必须是正整数（可传数字字符串）');
+        }
+        const rows = await db
+          .select({ ...CARD_COLUMNS, content: entriesTable.content })
+          .from(entriesTable)
+          .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+          // owner 与 id 同进 WHERE：id 猜对了也读不到别人的条目
+          .where(and(eq(entriesTable.id, id), eq(feeds.ownerId, uid)))
+          .limit(1);
+        const row = rows[0];
+        if (!row)
+          return errorResult('E_ENTRY_NOT_FOUND', `条目 ${id} 不存在或不属于当前账号`, { ...who });
 
-      const card = toCard(row);
-      const cut = truncateContent(row.content ?? '');
-      return textResult({
-        ...who,
-        id: card.id,
-        title: card.name,
-        feedName: card.feedName,
-        date: card.date,
-        link: card.link,
-        sourceUrl: card.sourceUrl,
-        tags: card.tags,
-        isRead: card.isRead,
-        isFavorite: card.isFavorite,
-        description: card.desc,
-        content: cut.content,
-        truncated: cut.truncated,
-        totalChars: cut.totalChars,
-      });
-    }),
+        const card = toCard(row);
+        const cut = truncateContent(row.content ?? '');
+        return textResult({
+          ...who,
+          id: card.id,
+          title: card.name,
+          feedName: card.feedName,
+          date: card.date,
+          link: card.link,
+          sourceUrl: card.sourceUrl,
+          tags: card.tags,
+          isRead: card.isRead,
+          isFavorite: card.isFavorite,
+          description: card.desc,
+          content: cut.content,
+          truncated: cut.truncated,
+          totalChars: cut.totalChars,
+        });
+      }),
   );
 
   /* ---------------- feedlore_list_digests ---------------- */
@@ -389,10 +427,11 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true },
     },
-    async () => guard(async () => {
-      const dates = await listDigestDates(db, uid);
-      return textResult({ ...who, dates, count: dates.length });
-    }),
+    async () =>
+      guard(async () => {
+        const dates = await listDigestDates(db, uid);
+        return textResult({ ...who, dates, count: dates.length });
+      }),
   );
 
   /* ---------------- feedlore_get_digest ---------------- */
@@ -404,25 +443,37 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
         '读取某一天的 AI 日报（总览 + 精选 + 分组摘要）。不传 date 默认今天（上海时区）；' +
         '可用 feedlore_list_digests 查有哪些天。',
       inputSchema: z.object({
-        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined).describe('YYYY-MM-DD'),
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .catch(undefined)
+          .describe('YYYY-MM-DD'),
       }),
       annotations: { readOnlyHint: true },
     },
-    async ({ date }) => guard(async () => {
-      const d = date ?? shanghaiDate();
-      const digest = await readDigest(db, uid, d);
-      if (!digest) return textResult({ ...who, date: d, digest: null });
-      const raw = JSON.stringify(digest);
-      if (raw.length <= DIGEST_MAX_CHARS) return textResult({ ...who, date: d, digest });
+    async ({ date }) =>
+      guard(async () => {
+        const d = date ?? shanghaiDate();
+        const digest = await readDigest(db, uid, d);
+        if (!digest) return textResult({ ...who, date: d, digest: null });
+        const raw = JSON.stringify(digest);
+        if (raw.length <= DIGEST_MAX_CHARS) return textResult({ ...who, date: d, digest });
 
-      // 兜底截断：日报本身受生成参数约束，正常远小于此；真超了就把 sections 砍尾
-      const trimmed = { ...digest, sections: digest.sections.slice(0, Math.max(1, Math.floor(digest.sections.length / 2))) };
-      return textResult({ ...who, date: d, digest: trimmed, truncated: true });
-    }),
+        // 兜底截断：日报本身受生成参数约束，正常远小于此；真超了就把 sections 砍尾
+        const trimmed = {
+          ...digest,
+          sections: digest.sections.slice(0, Math.max(1, Math.floor(digest.sections.length / 2))),
+        };
+        return textResult({ ...who, date: d, digest: trimmed, truncated: true });
+      }),
   );
 
   /* ---------------- feedlore_summarize_entry（写工具：需 write scope） ---------------- */
-  const aiActions = z.enum(['summary', 'keypoints', 'translate', 'explain']).optional().catch('summary')
+  const aiActions = z
+    .enum(['summary', 'keypoints', 'translate', 'explain'])
+    .optional()
+    .catch('summary')
     .describe('summary=摘要 / keypoints=要点 / translate=翻译 / explain=通俗解释，默认 summary');
 
   server.registerTool(
@@ -436,68 +487,84 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
       inputSchema: z.object({
         id: looseId.describe('条目 id（feedlore_list_entries 返回的字符串，也接受数字）'),
         action: aiActions,
-        targetLang: z.string().max(20).optional().catch(undefined)
+        targetLang: z
+          .string()
+          .max(20)
+          .optional()
+          .catch(undefined)
           .describe('translate 时的目标语言，默认简体中文'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     },
-    async ({ id, action, targetLang }) => guard(async () => {
-      // 首行门禁：read scope 直接结构化拒绝，绝不走到模型调用（也省一次额度）
-      if (user.scope !== 'write') {
-        return errorResult(
-          'E_MCP_FORBIDDEN',
-          '需要 write 作用域的 MCP token 才能调用 AI 工具（在设置 → MCP 接口创建 token 时选 write）',
-          { ...who },
-        );
-      }
-      if (!id) {
-        return errorResult('E_MCP_BAD_ARGUMENTS', 'id 必须是正整数（可传数字字符串）', { ...who });
-      }
+    async ({ id, action, targetLang }) =>
+      guard(async () => {
+        // 首行门禁：read scope 直接结构化拒绝，绝不走到模型调用（也省一次额度）
+        if (user.scope !== 'write') {
+          return errorResult(
+            'E_MCP_FORBIDDEN',
+            '需要 write 作用域的 MCP token 才能调用 AI 工具（在设置 → MCP 接口创建 token 时选 write）',
+            { ...who },
+          );
+        }
+        if (!id) {
+          return errorResult('E_MCP_BAD_ARGUMENTS', 'id 必须是正整数（可传数字字符串）', {
+            ...who,
+          });
+        }
 
-      // owner 隔离：复用 feedlore_get_entry 的同形查询，id 猜对也读不到别人的正文
-      const [entry] = await db
-        .select({ content: entriesTable.content, title: entriesTable.title })
-        .from(entriesTable)
-        .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
-        .where(and(eq(entriesTable.id, id), eq(feeds.ownerId, uid)))
-        .limit(1);
-      if (!entry) return errorResult('E_ENTRY_NOT_FOUND', `条目 ${id} 不存在或不属于当前账号`, { ...who });
+        // owner 隔离：复用 feedlore_get_entry 的同形查询，id 猜对也读不到别人的正文
+        const [entry] = await db
+          .select({ content: entriesTable.content, title: entriesTable.title })
+          .from(entriesTable)
+          .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+          .where(and(eq(entriesTable.id, id), eq(feeds.ownerId, uid)))
+          .limit(1);
+        if (!entry)
+          return errorResult('E_ENTRY_NOT_FOUND', `条目 ${id} 不存在或不属于当前账号`, { ...who });
 
-      const llm = await resolveMcpLlm(db, uid);
-      const cut = truncateContent(entry.content ?? '');
-      const messages: ChatMessage[] = [
-        { role: 'system', content: mcpAiSystemPrompt(action ?? 'summary', targetLang ?? '简体中文') },
-        { role: 'user', content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}` },
-      ];
+        const llm = await resolveMcpLlm(db, uid);
+        const cut = truncateContent(entry.content ?? '');
+        const messages: ChatMessage[] = [
+          {
+            role: 'system',
+            content: mcpAiSystemPrompt(action ?? 'summary', targetLang ?? '简体中文'),
+          },
+          {
+            role: 'user',
+            content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}`,
+          },
+        ];
 
-      const started = Date.now();
-      const label = (entry.title ?? '').trim() || 'MCP 单篇摘要';
-      try {
-        const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
-        await recordAiUsage(db, user.id, 'mcp', usage, true, 1, {
-          model: llm.model,
-          label,
-          durationMs: Date.now() - started,
-        });
-        return textResult({
-          ...who,
-          id,
-          action: action ?? 'summary',
-          truncated: cut.truncated,
-          totalChars: cut.totalChars,
-          result,
-        });
-      } catch (e) {
-        // 模型失败也是结构化：客户端能区分「AI 报错」与「没查到数据」；明细里同样留痕
-        await recordAiUsage(db, user.id, 'mcp', null, false, 1, {
-          model: llm.model,
-          label,
-          durationMs: Date.now() - started,
-          error: (e as Error)?.message ?? String(e),
-        });
-        return errorResult('E_AI_CALL_FAILED', (e as Error)?.message ?? 'AI 调用失败', { ...who });
-      }
-    }),
+        const started = Date.now();
+        const label = (entry.title ?? '').trim() || 'MCP 单篇摘要';
+        try {
+          const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
+          await recordAiUsage(db, user.id, 'mcp', usage, true, 1, {
+            model: llm.model,
+            label,
+            durationMs: Date.now() - started,
+          });
+          return textResult({
+            ...who,
+            id,
+            action: action ?? 'summary',
+            truncated: cut.truncated,
+            totalChars: cut.totalChars,
+            result,
+          });
+        } catch (e) {
+          // 模型失败也是结构化：客户端能区分「AI 报错」与「没查到数据」；明细里同样留痕
+          await recordAiUsage(db, user.id, 'mcp', null, false, 1, {
+            model: llm.model,
+            label,
+            durationMs: Date.now() - started,
+            error: (e as Error)?.message ?? String(e),
+          });
+          return errorResult('E_AI_CALL_FAILED', (e as Error)?.message ?? 'AI 调用失败', {
+            ...who,
+          });
+        }
+      }),
   );
 
   /* ---------------- feedlore_ask_entry（写工具：需 write scope） ---------------- */
@@ -511,73 +578,82 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
         '这是写工具，需要 scope=write 的 MCP token。',
       inputSchema: z.object({
         id: looseId.describe('条目 id（feedlore_list_entries 返回的字符串，也接受数字）'),
-        question: z.string().min(1).max(500)
+        question: z
+          .string()
+          .min(1)
+          .max(500)
           .describe('针对这篇文章的自然语言问题，例如「这篇文章的核心结论是什么？」'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     },
-    async ({ id, question }) => guard(async () => {
-      if (user.scope !== 'write') {
-        return errorResult(
-          'E_MCP_FORBIDDEN',
-          '需要 write 作用域的 MCP token 才能调用 AI 工具（在设置 → MCP 接口创建 token 时选 write）',
-          { ...who },
-        );
-      }
-      if (!id) {
-        return errorResult('E_MCP_BAD_ARGUMENTS', 'id 必须是正整数（可传数字字符串）', { ...who });
-      }
+    async ({ id, question }) =>
+      guard(async () => {
+        if (user.scope !== 'write') {
+          return errorResult(
+            'E_MCP_FORBIDDEN',
+            '需要 write 作用域的 MCP token 才能调用 AI 工具（在设置 → MCP 接口创建 token 时选 write）',
+            { ...who },
+          );
+        }
+        if (!id) {
+          return errorResult('E_MCP_BAD_ARGUMENTS', 'id 必须是正整数（可传数字字符串）', {
+            ...who,
+          });
+        }
 
-      const [entry] = await db
-        .select({ content: entriesTable.content, title: entriesTable.title })
-        .from(entriesTable)
-        .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
-        .where(and(eq(entriesTable.id, id), eq(feeds.ownerId, uid)))
-        .limit(1);
-      if (!entry) return errorResult('E_ENTRY_NOT_FOUND', `条目 ${id} 不存在或不属于当前账号`, { ...who });
+        const [entry] = await db
+          .select({ content: entriesTable.content, title: entriesTable.title })
+          .from(entriesTable)
+          .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
+          .where(and(eq(entriesTable.id, id), eq(feeds.ownerId, uid)))
+          .limit(1);
+        if (!entry)
+          return errorResult('E_ENTRY_NOT_FOUND', `条目 ${id} 不存在或不属于当前账号`, { ...who });
 
-      const llm = await resolveMcpLlm(db, uid);
-      const cut = truncateContent(entry.content ?? '');
-      const messages: ChatMessage[] = [
-        {
-          role: 'system',
-          content:
-            '你是一个善于答疑的助手。下面是一篇 RSS 订阅文章的原文。请严格基于文章内容回答用户的问题；' +
-            '若文章未提及该信息，请如实说明「文章未涉及该信息」。使用简体中文，回答简洁准确。',
-        },
-        {
-          role: 'user',
-          content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}\n\n用户问题：${question}`,
-        },
-      ];
+        const llm = await resolveMcpLlm(db, uid);
+        const cut = truncateContent(entry.content ?? '');
+        const messages: ChatMessage[] = [
+          {
+            role: 'system',
+            content:
+              '你是一个善于答疑的助手。下面是一篇 RSS 订阅文章的原文。请严格基于文章内容回答用户的问题；' +
+              '若文章未提及该信息，请如实说明「文章未涉及该信息」。使用简体中文，回答简洁准确。',
+          },
+          {
+            role: 'user',
+            content: `文章标题：${entry.title ?? '(无标题)'}\n\n正文：\n${cut.content}\n\n用户问题：${question}`,
+          },
+        ];
 
-      const started = Date.now();
-      const label = (entry.title ?? '').trim() || 'MCP 单篇问答';
-      try {
-        const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
-        await recordAiUsage(db, user.id, 'mcp', usage, true, 1, {
-          model: llm.model,
-          label,
-          durationMs: Date.now() - started,
-        });
-        return textResult({
-          ...who,
-          id,
-          question,
-          truncated: cut.truncated,
-          totalChars: cut.totalChars,
-          result,
-        });
-      } catch (e) {
-        await recordAiUsage(db, user.id, 'mcp', null, false, 1, {
-          model: llm.model,
-          label,
-          durationMs: Date.now() - started,
-          error: (e as Error)?.message ?? String(e),
-        });
-        return errorResult('E_AI_CALL_FAILED', (e as Error)?.message ?? 'AI 调用失败', { ...who });
-      }
-    }),
+        const started = Date.now();
+        const label = (entry.title ?? '').trim() || 'MCP 单篇问答';
+        try {
+          const { content: result, usage } = await chat(messages, llm, { fetchImpl: safeFetch });
+          await recordAiUsage(db, user.id, 'mcp', usage, true, 1, {
+            model: llm.model,
+            label,
+            durationMs: Date.now() - started,
+          });
+          return textResult({
+            ...who,
+            id,
+            question,
+            truncated: cut.truncated,
+            totalChars: cut.totalChars,
+            result,
+          });
+        } catch (e) {
+          await recordAiUsage(db, user.id, 'mcp', null, false, 1, {
+            model: llm.model,
+            label,
+            durationMs: Date.now() - started,
+            error: (e as Error)?.message ?? String(e),
+          });
+          return errorResult('E_AI_CALL_FAILED', (e as Error)?.message ?? 'AI 调用失败', {
+            ...who,
+          });
+        }
+      }),
   );
 
   return server;

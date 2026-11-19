@@ -12,24 +12,24 @@
  *   （Content-Length 可以撒谎，压缩包还可以是 chunked）。
  */
 
-import { log } from '../lib/logger';
-import { Hono, type Context } from 'hono';
 import { createWriteStream } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import type { AuthInstance } from '@feedlore/auth';
-import type { Db } from '@feedlore/db';
 import { resetCryptoSecretCache } from '@feedlore/ai';
+import type { AuthInstance } from '@feedlore/auth';
 import { importApi } from '@feedlore/contract';
-import { apiError, ApiException } from '../lib/apiError';
-import { assertResponse } from '../lib/validate';
-import { extractTarGz } from '../lib/tar-read';
+import type { Db } from '@feedlore/db';
+import { type Context, Hono } from 'hono';
+import { ApiException, apiError } from '../lib/apiError';
 import { importUserArchive, restoreSiteArchive } from '../lib/importData';
+import { log } from '../lib/logger';
 import { reloadSource, resetSourceSnapshot } from '../lib/settings';
-import { requireAuth, type AppEnv } from '../middleware/auth';
+import { extractTarGz } from '../lib/tar-read';
+import { assertResponse } from '../lib/validate';
+import { type AppEnv, requireAuth } from '../middleware/auth';
 
 /** 压缩包上限；解包后的单文件/总量上限在 tar-read 里。 */
 const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
@@ -73,52 +73,56 @@ async function receiveUpload(c: Context<AppEnv>, dir: string): Promise<string> {
 }
 
 export function importRoutes(db: Db | null, auth: AuthInstance | null) {
-  return new Hono<AppEnv>()
-    /* ---------------- POST /api/import：合并到当前账号 ---------------- */
-    .post(importApi.userImport.path, requireAuth(auth, 'write'), async (c) => {
-      if (!db) return apiError(c, 'E_DB_NOT_READY');
-      if (restoreBusy) return apiError(c, 'E_RESTORE_IN_PROGRESS');
+  return (
+    new Hono<AppEnv>()
+      /* ---------------- POST /api/import：合并到当前账号 ---------------- */
+      .post(importApi.userImport.path, requireAuth(auth, 'write'), async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
+        if (restoreBusy) return apiError(c, 'E_RESTORE_IN_PROGRESS');
 
-      activeImports += 1;
-      let tmp = '';
-      try {
-        tmp = await mkdtemp(join(tmpdir(), 'feedlore-import-'));
-        const archive = await receiveUpload(c, tmp);
-        const dir = join(tmp, 'data');
-        await extractTarGz(archive, dir);
-        const result = await importUserArchive(db, c.get('user').id, dir);
-        return c.json(assertResponse(importApi.userImport.response, result, 'POST /api/import'));
-      } finally {
-        activeImports -= 1;
-        if (tmp) await rm(tmp, { recursive: true, force: true });
-      }
-    })
+        activeImports += 1;
+        let tmp = '';
+        try {
+          tmp = await mkdtemp(join(tmpdir(), 'feedlore-import-'));
+          const archive = await receiveUpload(c, tmp);
+          const dir = join(tmp, 'data');
+          await extractTarGz(archive, dir);
+          const result = await importUserArchive(db, c.get('user').id, dir);
+          return c.json(assertResponse(importApi.userImport.response, result, 'POST /api/import'));
+        } finally {
+          activeImports -= 1;
+          if (tmp) await rm(tmp, { recursive: true, force: true });
+        }
+      })
 
-    /* ---------------- POST /api/restore：整站还原（管理员） ---------------- */
-    .post(importApi.siteRestore.path, requireAuth(auth, 'admin'), async (c) => {
-      if (!db) return apiError(c, 'E_DB_NOT_READY');
-      if (restoreBusy || activeImports > 0) return apiError(c, 'E_RESTORE_IN_PROGRESS');
+      /* ---------------- POST /api/restore：整站还原（管理员） ---------------- */
+      .post(importApi.siteRestore.path, requireAuth(auth, 'admin'), async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
+        if (restoreBusy || activeImports > 0) return apiError(c, 'E_RESTORE_IN_PROGRESS');
 
-      restoreBusy = true;
-      let tmp = '';
-      try {
-        tmp = await mkdtemp(join(tmpdir(), 'feedlore-restore-'));
-        const archive = await receiveUpload(c, tmp);
-        const dir = join(tmp, 'data');
-        await extractTarGz(archive, dir);
-        const result = await restoreSiteArchive(db, dir);
+        restoreBusy = true;
+        let tmp = '';
+        try {
+          tmp = await mkdtemp(join(tmpdir(), 'feedlore-restore-'));
+          const archive = await receiveUpload(c, tmp);
+          const dir = join(tmp, 'data');
+          await extractTarGz(archive, dir);
+          const result = await restoreSiteArchive(db, dir);
 
-        /* 包里带了站点设置（含加密主密钥）与采集参数：进程内快照必须立刻失效，
-         * 否则还原后的第一次抓取 / 模型解密仍按旧配置走。 */
-        resetSourceSnapshot();
-        await reloadSource(db);
-        resetCryptoSecretCache();
+          /* 包里带了站点设置（含加密主密钥）与采集参数：进程内快照必须立刻失效，
+           * 否则还原后的第一次抓取 / 模型解密仍按旧配置走。 */
+          resetSourceSnapshot();
+          await reloadSource(db);
+          resetCryptoSecretCache();
 
-        log.info('[restore] site restore finished', JSON.stringify(result.counts));
-        return c.json(assertResponse(importApi.siteRestore.response, result, 'POST /api/restore'));
-      } finally {
-        restoreBusy = false;
-        if (tmp) await rm(tmp, { recursive: true, force: true });
-      }
-    });
+          log.info('[restore] site restore finished', JSON.stringify(result.counts));
+          return c.json(
+            assertResponse(importApi.siteRestore.response, result, 'POST /api/restore'),
+          );
+        } finally {
+          restoreBusy = false;
+          if (tmp) await rm(tmp, { recursive: true, force: true });
+        }
+      })
+  );
 }

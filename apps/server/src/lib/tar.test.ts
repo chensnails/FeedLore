@@ -16,10 +16,16 @@ function parseTar(buf: Buffer): Map<string, Buffer> {
       return out;
     }
     const name = block.subarray(0, 100).toString('utf8').replace(/\0.*$/, '');
-    const size = Number.parseInt(block.subarray(124, 136).toString('ascii').replace(/\0.*$/, ''), 8);
+    const size = Number.parseInt(
+      block.subarray(124, 136).toString('ascii').replace(/\0.*$/, ''),
+      8,
+    );
     assert.ok(Number.isFinite(size), `无法解析 ${name} 的 size`);
     // 校验和：字段替换为空格后求和，应与头里写的一致
-    const declared = Number.parseInt(block.subarray(148, 156).toString('ascii').replace(/\0.*$/, '').trim(), 8);
+    const declared = Number.parseInt(
+      block.subarray(148, 156).toString('ascii').replace(/\0.*$/, '').trim(),
+      8,
+    );
     const copy = Buffer.from(block);
     copy.fill(32, 148, 156);
     let sum = 0;

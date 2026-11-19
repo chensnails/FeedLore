@@ -4,8 +4,9 @@
  * 这三条是 `/mcp` 鉴权的地基：哈希对了 token 才能对上库、前缀对设置页与日志
  * 才有辨认价值、限流桶漏了 AI 客户端一次失控循环就能打穿服务。
  */
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import {
   bearerFromHeader,
   generateMcpToken,

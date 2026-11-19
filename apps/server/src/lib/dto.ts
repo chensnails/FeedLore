@@ -6,8 +6,8 @@
  * 把换算散到各路由里，就会出现「同一个字段两个 DTO 两套写法」——1.7.x 的典型病。
  */
 
-import { imgUrl } from '@feedlore/contract';
 import type { Card, EntryDetail, Feed } from '@feedlore/contract';
+import { imgUrl } from '@feedlore/contract';
 
 /**
  * 外链图片 → 本站 `/api/img` 代理地址。
@@ -156,11 +156,7 @@ export interface FeedCounts {
  * `effectiveRefreshMinutes` 是「本频道频率优先、否则全局」的换算结果，
  * 前端只读这一个值就够，不用自己判 null。
  */
-export function toFeed(
-  row: FeedRow,
-  counts: FeedCounts,
-  globalRefreshMinutes: number,
-): Feed {
+export function toFeed(row: FeedRow, counts: FeedCounts, globalRefreshMinutes: number): Feed {
   return {
     id: String(row.id),
     url: row.url,
@@ -181,9 +177,9 @@ export function toFeed(
     // 下次抓取时间 = 上次抓取 + 本频道频率（从未抓过 → 立刻该抓）。停用采集的返回 null。
     nextRefreshAt: row.enabled
       ? new Date(
-        (row.lastFetchedAt?.getTime() ?? Date.now())
-        + (row.refreshMinutes ?? globalRefreshMinutes) * 60_000,
-      ).toISOString()
+          (row.lastFetchedAt?.getTime() ?? Date.now()) +
+            (row.refreshMinutes ?? globalRefreshMinutes) * 60_000,
+        ).toISOString()
       : null,
     status: row.lastStatus ?? null,
     error: row.lastError ?? null,

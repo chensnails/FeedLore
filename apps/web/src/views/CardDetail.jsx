@@ -22,41 +22,52 @@
 
 import { core } from '@core';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { isMobileMq } from './Dropdown.jsx';
-import { ArtBody, bodyShowsText } from './ReaderView.jsx';
 import { ArtActions } from '../ui/EntryActions.jsx';
 import { Icon } from '../ui/Icon.jsx';
 import { hasLayerAbove } from '../ui/layers.js';
 import { registerLayer } from '../ui/overlayStack.js';
+import { isMobileMq } from './Dropdown.jsx';
+import { ArtBody, bodyShowsText } from './ReaderView.jsx';
 
 const S = () => core;
 
 /** 把 Tab / Shift+Tab 圈在弹窗内：背景卡片仍在 DOM 里，不拦的话键盘会跑到弹层后面
-*@param {*} [panel]
+ *@param {*} [panel]
  * @param {*} [ev]
-*/
+ */
 function trapTab(panel, ev) {
   if (!panel) return;
-  const nodes = Array.from(panel.querySelectorAll(
-    'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
-  )).filter(/** @param {*} [el] */ (el) => el.offsetParent !== null || el === document.activeElement);
+  const nodes = Array.from(
+    panel.querySelectorAll(
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter(
+    /** @param {*} [el] */ (el) => el.offsetParent !== null || el === document.activeElement,
+  );
   if (!nodes.length) return;
   const first = nodes[0];
   const last = nodes[nodes.length - 1];
-  if (ev.shiftKey && document.activeElement === first) { ev.preventDefault(); last.focus(); }
-  else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
+  if (ev.shiftKey && document.activeElement === first) {
+    ev.preventDefault();
+    last.focus();
+  } else if (!ev.shiftKey && document.activeElement === last) {
+    ev.preventDefault();
+    first.focus();
+  }
 }
 
 /** 有没有正文可展示：图文块、正文文本、正文图片三者有其一即可
-*@param {*} [f]
-*/
+ *@param {*} [f]
+ */
 function hasBody(f) {
   if (!f) return false;
   if (f.bodyJson) {
     try {
       const a = JSON.parse(f.bodyJson);
       if (Array.isArray(a) && a.length) return true;
-    } catch (_) { /* 不是块数组就继续看其它字段 */ }
+    } catch (_) {
+      /* 不是块数组就继续看其它字段 */
+    }
   }
   if (String(f.content || '').trim()) return true;
   if (f.image) return true;
@@ -117,22 +128,35 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
     let dead = false;
     setErr(false);
     setFull(null);
-    S().apiFetch('/api/entries/' + encodeURIComponent(e.id))
-      .then(/** @param {*} [res] */ (res) => {
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.json();
-      })
-      .then(/** @param {*} [d] */ (d) => { if (!dead) setFull(d); })
-      .catch(() => { if (!dead) setErr(true); });
-    return () => { dead = true; };
+    S()
+      .apiFetch('/api/entries/' + encodeURIComponent(e.id))
+      .then(
+        /** @param {*} [res] */ (res) => {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        },
+      )
+      .then(
+        /** @param {*} [d] */ (d) => {
+          if (!dead) setFull(d);
+        },
+      )
+      .catch(() => {
+        if (!dead) setErr(true);
+      });
+    return () => {
+      dead = true;
+    };
   }, [e.id, reloadKey]);
 
   const fav = !!e.isFavorite;
   const toggleFav = () => {
     const next = !fav;
-    s.cardsSetFlag(e.id, { isFavorite: next }).then(/** @param {*} [ok] */ (ok) => {
-      if (ok) s.toast(next ? '已收藏' : '已取消收藏');
-    });
+    s.cardsSetFlag(e.id, { isFavorite: next }).then(
+      /** @param {*} [ok] */ (ok) => {
+        if (ok) s.toast(next ? '已收藏' : '已取消收藏');
+      },
+    );
   };
 
   const toReader = () => {
@@ -149,19 +173,36 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
    * 图标沿用顶栏语义（收藏 ★ / 文章页 = inbox），不新造第三套符号。 */
   const extraActions = (
     <>
-      <button type="button" className={'btn-fav' + (fav ? ' is-fav' : '')} onClick={toggleFav}
-        aria-pressed={fav ? 'true' : 'false'} title={fav ? '取消收藏' : '收藏'}
-        aria-label={fav ? '取消收藏' : '收藏'}>
+      <button
+        type="button"
+        className={'btn-fav' + (fav ? ' is-fav' : '')}
+        onClick={toggleFav}
+        aria-pressed={fav ? 'true' : 'false'}
+        title={fav ? '取消收藏' : '收藏'}
+        aria-label={fav ? '取消收藏' : '收藏'}
+      >
         <Icon n={fav ? 'star' : 'star-o'} />
       </button>
-      <button type="button" className="btn-jump" onClick={toReader} title="在文章页查看" aria-label="在文章页查看">
+      <button
+        type="button"
+        className="btn-jump"
+        onClick={toReader}
+        title="在文章页查看"
+        aria-label="在文章页查看"
+      >
         <Icon n="inbox" />
       </button>
     </>
   );
 
   const closeBtn = (
-    <button type="button" className="modal-close cd-close" ref={closeRef} aria-label="关闭详情" onClick={onClose}>
+    <button
+      type="button"
+      className="modal-close cd-close"
+      ref={closeRef}
+      aria-label="关闭详情"
+      onClick={onClose}
+    >
       <Icon n="x" />
     </button>
   );
@@ -182,11 +223,23 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
     inner = (
       <div className="hint">
         正文加载失败
-        <button type="button" className="btn btn-sm" onClick={() => setReloadKey(/** @param {*} [k] */ (k) => k + 1)}>重试</button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => setReloadKey(/** @param {*} [k] */ (k) => k + 1)}
+        >
+          重试
+        </button>
       </div>
     );
-  }
-  else if (!full) inner = <div className="art-loading"><i /><i /><i /></div>;
+  } else if (!full)
+    inner = (
+      <div className="art-loading">
+        <i />
+        <i />
+        <i />
+      </div>
+    );
   else if (showBody) {
     inner = (
       <div className="art-body cd-art">
@@ -194,19 +247,25 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
         <ArtBody e={full} onTag={onTag} onAiTag={onAiTag} extraActions={extraActions} />
       </div>
     );
-  }
-  else inner = (
-    <div className="cd-none">
-      {e.desc ? <p className="cd-desc">{e.desc}</p> : null}
-      <ArtActions e={e} extraActions={extraActions} />
-    </div>
-  );
+  } else
+    inner = (
+      <div className="cd-none">
+        {e.desc ? <p className="cd-desc">{e.desc}</p> : null}
+        <ArtActions e={e} extraActions={extraActions} />
+      </div>
+    );
 
   if (mobile) {
     return (
       <div className="dd-mask" onClick={onClose}>
-        <div ref={sheetRef} className="dd-sheet cd-modal" role="dialog" aria-modal="true"
-          aria-label={dialogLabel} onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
+        <div
+          ref={sheetRef}
+          className="dd-sheet cd-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={dialogLabel}
+          onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}
+        >
           {closeBtn}
           <div className="dd-sheet-body cd-body">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
@@ -219,8 +278,21 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
   }
 
   return (
-    <div className="modal-mask" onClick={/** @param {*} [ev] */ (ev) => { if (ev.target === ev.currentTarget) onClose(); }}>
-      <div className="modal cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel} ref={dialogRef}>
+    <div
+      className="modal-mask"
+      onClick={
+        /** @param {*} [ev] */ (ev) => {
+          if (ev.target === ev.currentTarget) onClose();
+        }
+      }
+    >
+      <div
+        className="modal cd-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={dialogLabel}
+        ref={dialogRef}
+      >
         {closeBtn}
         <div className="modal-body">
           <div className="cd-scroll">

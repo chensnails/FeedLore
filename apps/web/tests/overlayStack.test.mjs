@@ -8,14 +8,15 @@
  *
  * 用假 history / location 直接驱动；每个用例重新加载模块，栈状态互不污染。
  */
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
+import test from 'node:test';
 
 let caseNo = 0;
 
 /** 重新加载模块：哨兵 / expected / 栈都是模块级状态 */
 function fresh() {
-  return import('../src/ui/overlayStack.js?case=' + (++caseNo));
+  return import('../src/ui/overlayStack.js?case=' + ++caseNo);
 }
 
 function mountEnv(hash = '#cards') {
@@ -26,7 +27,10 @@ function mountEnv(hash = '#cards') {
   globalThis.location = loc;
   globalThis.history = {
     state: null,
-    pushState(_state, _title, url) { calls.push('push:' + url); stack.push(loc.hash); },
+    pushState(_state, _title, url) {
+      calls.push('push:' + url);
+      stack.push(loc.hash);
+    },
     replaceState(_state, _title, url) {
       calls.push('replace:' + url);
       const cut = String(url).indexOf('#');
@@ -53,7 +57,9 @@ test('第一个弹层打开压一条哨兵，最后一个关闭再退回去', as
   const { registerLayer, handleOverlayPop } = await fresh();
   const { calls, loc } = mountEnv();
 
-  const off = registerLayer(() => { throw new Error('正常关闭不该再走 dismiss'); });
+  const off = registerLayer(() => {
+    throw new Error('正常关闭不该再走 dismiss');
+  });
   assert.deepEqual(calls, ['push:http://localhost/#cards']);
 
   // 关闭前应用改过 hash：卡片详情跳到文章页就是这条路径
@@ -74,7 +80,7 @@ test('关闭后同一帧又开一层：哨兵复用，不白退一趟历史', as
   const off = registerLayer(() => {});
   calls.length = 0;
   off();
-  registerLayer(() => {});   // StrictMode 重复挂载 / 关一个立刻开另一个
+  registerLayer(() => {}); // StrictMode 重复挂载 / 关一个立刻开另一个
   await tick();
   assert.deepEqual(calls, [], '新的层还在，历史不该动');
 });
@@ -90,8 +96,12 @@ test('用户按返回只关栈顶，下面那层不动', async () => {
   const { calls } = mountEnv();
   let a = 0;
   let b = 0;
-  registerLayer(() => { a++; });
-  const offB = registerLayer(() => { b++; });
+  registerLayer(() => {
+    a++;
+  });
+  const offB = registerLayer(() => {
+    b++;
+  });
 
   calls.length = 0;
   assert.equal(handleOverlayPop(), true);
@@ -122,7 +132,10 @@ test('dismiss 还没返回时连按返回：只补哨兵，不重复关同一层
   const { registerLayer, handleOverlayPop } = await fresh();
   mountEnv();
   let calls = 0;
-  registerLayer(() => { calls++; return new Promise(() => {}); });
+  registerLayer(() => {
+    calls++;
+    return new Promise(() => {});
+  });
 
   handleOverlayPop();
   handleOverlayPop();
@@ -139,7 +152,7 @@ test('用户返回关掉最后一层后不再多退一次历史', async () => {
   calls.length = 0;
   assert.equal(handleOverlayPop(), true);
   await tick();
-  offB();   // 模拟组件随关闭卸载
+  offB(); // 模拟组件随关闭卸载
   assert.deepEqual(calls, ['push:http://localhost/#cards'], '下面还有层：先补一条新哨兵');
 
   // 底下那层还开着：再按一次返回照常关它，且不吃历史

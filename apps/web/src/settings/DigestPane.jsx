@@ -11,8 +11,8 @@
 import { core } from '@core';
 import { useEffect, useRef, useState } from 'react';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
-import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 import { Dropdown } from '../views/Dropdown.jsx';
+import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.jsx';
 
 const S = () => core;
 
@@ -21,8 +21,14 @@ const S = () => core;
 const PROMPT_MAX = 2000;
 
 const EMPTY = {
-  auto: false, time: '08:00', mode: 'enabled', feeds: [],
-  maxPerFeed: '20', maxTotal: '150', keepDays: '30', style: '',
+  auto: false,
+  time: '08:00',
+  mode: 'enabled',
+  feeds: [],
+  maxPerFeed: '20',
+  maxTotal: '150',
+  keepDays: '30',
+  style: '',
 };
 
 /**
@@ -45,7 +51,7 @@ export function DigestPane({ onDirtyChange }) {
   /** @type {any} */
   const [feedsError, setFeedsError] = useState('');
   /** @type {*} */
-  const [result, setResult] = useState(null);   // { ok, msg } | null
+  const [result, setResult] = useState(null); // { ok, msg } | null
   /** @type {any} */
   const [busy, setBusy] = useState(false);
   /** @type {any} */
@@ -55,7 +61,10 @@ export function DigestPane({ onDirtyChange }) {
   const guard = useFormLoadGuard();
 
   // 两份数据互不依赖，并行发：频道清单不必等 /api/prefs 回来才开拉
-  useEffect(() => { load(); loadFeedList(); }, []);
+  useEffect(() => {
+    load();
+    loadFeedList();
+  }, []);
 
   // 折叠分组的开合按账号持久化（与其他设置面板同一机制）
   useEffect(() => {
@@ -109,7 +118,10 @@ export function DigestPane({ onDirtyChange }) {
    * @param {*} [k]
    * @param {*} [v]
    */
-  const setField = (k, v) => { guard.mark(); setForm(/** @param {*} [f] */ (f) => Object.assign({}, f, { [k]: v })); };
+  const setField = (k, v) => {
+    guard.mark();
+    setForm(/** @param {*} [f] */ (f) => Object.assign({}, f, { [k]: v }));
+  };
 
   /**
    * @param {*} [ev]
@@ -129,11 +141,14 @@ export function DigestPane({ onDirtyChange }) {
    */
   const onToggleFeed = (fid, on) => {
     guard.mark();
-    setForm(/** @param {*} [f] */ (f) => {
-      const set = new Set(f.feeds);
-      if (on) set.add(fid); else set.delete(fid);
-      return Object.assign({}, f, { feeds: [...set] });
-    });
+    setForm(
+      /** @param {*} [f] */ (f) => {
+        const set = new Set(f.feeds);
+        if (on) set.add(fid);
+        else set.delete(fid);
+        return Object.assign({}, f, { feeds: [...set] });
+      },
+    );
   };
 
   /**
@@ -145,8 +160,15 @@ export function DigestPane({ onDirtyChange }) {
   const feedQuery = feedQ.trim().toLowerCase();
   /** @type {*} */
   const visibleFeeds = feedQuery
-    ? feedsList.filter(/** @param {*} [f] */ (f) => [feedName(f), f.url, f.groupName]
-      .some(/** @param {*} [t] */ (t) => String(t || '').toLowerCase().includes(feedQuery)))
+    ? feedsList.filter(
+        /** @param {*} [f] */ (f) =>
+          [feedName(f), f.url, f.groupName].some(
+            /** @param {*} [t] */ (t) =>
+              String(t || '')
+                .toLowerCase()
+                .includes(feedQuery),
+          ),
+      )
     : feedsList;
 
   /**
@@ -168,8 +190,9 @@ export function DigestPane({ onDirtyChange }) {
     const ids = new Set(visibleFeeds.map(/** @param {*} [f] */ (f) => Number(f.id)));
     setFeedIds(form.feeds.filter(/** @param {*} [id] */ (id) => !ids.has(Number(id))));
   };
-  const allVisiblePicked = visibleFeeds.length > 0
-    && visibleFeeds.every(/** @param {*} [f] */ (f) => form.feeds.includes(Number(f.id)));
+  const allVisiblePicked =
+    visibleFeeds.length > 0 &&
+    visibleFeeds.every(/** @param {*} [f] */ (f) => form.feeds.includes(Number(f.id)));
 
   const onSave = async () => {
     setBusy(true);
@@ -193,9 +216,12 @@ export function DigestPane({ onDirtyChange }) {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: S().errText(data, '保存失败') }); return; }
+      if (!res.ok) {
+        setResult({ ok: false, msg: S().errText(data, '保存失败') });
+        return;
+      }
       // 用服务端回包重建表单：脏值被 clamp 后界面要显示的是真正落库的值
-      const d = (data.digest) || {};
+      const d = data.digest || {};
       const next = {
         auto: d.auto === true,
         time: d.time || '08:00',
@@ -218,7 +244,10 @@ export function DigestPane({ onDirtyChange }) {
 
   // 「恢复默认」是清掉自定义风格这一项（其余参数各有内置默认，交给服务端夹回）
   const onResetStyle = () => {
-    if (!form.style && !JSON.parse(saved).style) { setResult({ ok: true, msg: '本来就没写自定义风格' }); return; }
+    if (!form.style && !JSON.parse(saved).style) {
+      setResult({ ok: true, msg: '本来就没写自定义风格' });
+      return;
+    }
     guard.mark();
     setForm(/** @param {*} [f] */ (f) => Object.assign({}, f, { style: '' }));
     // 这里只改本地表单：按钮变灰容易让人误以为已落库，明确告诉用户还要点保存
@@ -229,172 +258,298 @@ export function DigestPane({ onDirtyChange }) {
   useEffect(() => {
     if (onDirtyChange) onDirtyChange(dirty);
   }, [dirty, onDirtyChange]);
-  const hintScope = form.mode === 'all' ? '全部频道'
-    : form.mode === 'custom' ? `自定义 ${form.feeds.length} 个频道`
-      : '仅「采集」开启的频道';
+  const hintScope =
+    form.mode === 'all'
+      ? '全部频道'
+      : form.mode === 'custom'
+        ? `自定义 ${form.feeds.length} 个频道`
+        : '仅「采集」开启的频道';
 
   return (
     <div className="tab-pane" data-pane="digest" ref={paneRef}>
       <div className="pane-scroll">
-        <Section secKey="dig-basic" title="开关与时间"
-          sub={!enabled ? '日报已关闭' : form.auto ? `每天 ${form.time} · ${hintScope}` : '仅手动生成'} open>
-        <div className="form-row">
-          <label className="form-row-head">
-            <span>使用日报</span>
-            <span className="switch">
-              <input id="digEnable" type="checkbox" checked={enabled} onChange={onToggle} />
-              <span className="switch-slider" />
-            </span>
-          </label>
-          <small className="form-tip">
-            关掉后顶栏不再有「日报」入口，命令面板里也搜不到；到点的自动生成会跳过你这个账号（不再消耗模型额度）。
-            <br />已生成的历史日报不会删，重新开启就能看到。
-          </small>
-        </div>
+        <Section
+          secKey="dig-basic"
+          title="开关与时间"
+          sub={
+            !enabled ? '日报已关闭' : form.auto ? `每天 ${form.time} · ${hintScope}` : '仅手动生成'
+          }
+          open
+        >
+          <div className="form-row">
+            <label className="form-row-head">
+              <span>使用日报</span>
+              <span className="switch">
+                <input id="digEnable" type="checkbox" checked={enabled} onChange={onToggle} />
+                <span className="switch-slider" />
+              </span>
+            </label>
+            <small className="form-tip">
+              关掉后顶栏不再有「日报」入口，命令面板里也搜不到；到点的自动生成会跳过你这个账号（不再消耗模型额度）。
+              <br />
+              已生成的历史日报不会删，重新开启就能看到。
+            </small>
+          </div>
 
-        <div className="form-row">
-          <label className="form-row-head">
-            <span>每天自动生成</span>
-            <span className="switch">
-              <input id="digAuto" type="checkbox" checked={form.auto}
-                onChange={/** @param {*} [ev] */ (ev) => setField('auto', ev.target.checked)} />
-              <span className="switch-slider" />
-            </span>
-          </label>
-          <small className="form-tip">
-            默认关：开一次就每天烧一份模型额度，所以得你主动拨开。
-            <br />{form.auto ? `已开启，每天 ${form.time}（北京时间）· ${hintScope}` : '关闭时随时可在「日报」页手动生成'}
-          </small>
-        </div>
+          <div className="form-row">
+            <label className="form-row-head">
+              <span>每天自动生成</span>
+              <span className="switch">
+                <input
+                  id="digAuto"
+                  type="checkbox"
+                  checked={form.auto}
+                  onChange={/** @param {*} [ev] */ (ev) => setField('auto', ev.target.checked)}
+                />
+                <span className="switch-slider" />
+              </span>
+            </label>
+            <small className="form-tip">
+              默认关：开一次就每天烧一份模型额度，所以得你主动拨开。
+              <br />
+              {form.auto
+                ? `已开启，每天 ${form.time}（北京时间）· ${hintScope}`
+                : '关闭时随时可在「日报」页手动生成'}
+            </small>
+          </div>
 
-        <div className="form-row" hidden={!form.auto}>
-          <label htmlFor="digTime">生成时间（北京时间）</label>
-          <input id="digTime" type="time" value={form.time}
-            onChange={/** @param {*} [ev] */ (ev) => setField('time', ev.target.value)} />
-          <small className="form-tip">服务进程得在那个点活着才会跑；错过一次不补，第二天照常</small>
-        </div>
+          <div className="form-row" hidden={!form.auto}>
+            <label htmlFor="digTime">生成时间（北京时间）</label>
+            <input
+              id="digTime"
+              type="time"
+              value={form.time}
+              onChange={/** @param {*} [ev] */ (ev) => setField('time', ev.target.value)}
+            />
+            <small className="form-tip">
+              服务进程得在那个点活着才会跑；错过一次不补，第二天照常
+            </small>
+          </div>
 
-        <div className="form-row" hidden={!form.auto}>
-          <label>摘要范围</label>
-          <Dropdown id="digMode" wrapId="digModeDD" title="摘要范围" ariaLabel="摘要范围"
-            value={form.mode} onChange={/** @param {*} [v] */ (v) => setField('mode', v)}
-            options={[
-              { value: 'enabled', label: '仅「采集」开启的频道' },
-              { value: 'all', label: '全部频道' },
-              { value: 'custom', label: '自定义频道' },
-            ]} />
-          <small className="form-tip">「采集」开关在「设置 → 数据源」页，按频道单独控制</small>
-        </div>
+          <div className="form-row" hidden={!form.auto}>
+            <label>摘要范围</label>
+            <Dropdown
+              id="digMode"
+              wrapId="digModeDD"
+              title="摘要范围"
+              ariaLabel="摘要范围"
+              value={form.mode}
+              onChange={/** @param {*} [v] */ (v) => setField('mode', v)}
+              options={[
+                { value: 'enabled', label: '仅「采集」开启的频道' },
+                { value: 'all', label: '全部频道' },
+                { value: 'custom', label: '自定义频道' },
+              ]}
+            />
+            <small className="form-tip">「采集」开关在「设置 → 数据源」页，按频道单独控制</small>
+          </div>
 
-        {form.auto && form.mode === 'custom' && (
-          <div className="form-row form-row-block">
-            <div className="feed-pick-head">
-              <span className="feed-pick-title">纳入日报的频道</span>
-              <span className="feed-pick-count">{form.feeds.length} / {feedsList.length} 已选</span>
-            </div>
-            {feedsList.length ? (
-              <div className="feed-pick-tools">
-                {feedsList.length > 8 ? (
-                  <div className="feed-pick-search">
-                    <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-                    <input type="search" name={feedSearchName} value={feedQ}
-                      placeholder="搜索频道" aria-label="搜索频道"
-                      onChange={/** @param {*} [ev] */ (ev) => setFeedQ(ev.target.value)} {...NO_AUTOFILL_PROPS} />
-                  </div>
-                ) : null}
-                <button className="btn btn-ghost btn-sm" id="digFeedAllBtn" type="button"
-                  disabled={!visibleFeeds.length}
-                  title={allVisiblePicked ? '取消勾选当前筛选结果里的频道' : '只勾选当前筛选结果里的频道'}
-                  onClick={allVisiblePicked ? clearVisibleFeeds : pickVisibleFeeds}>
-                  {allVisiblePicked ? '全不选' : '全选'}
-                </button>
-                <button className="btn btn-ghost btn-sm" id="digFeedNoneBtn" type="button"
-                  disabled={!form.feeds.length} title="只移除当前筛选结果里的频道"
-                  onClick={clearVisibleFeeds}>清空</button>
+          {form.auto && form.mode === 'custom' && (
+            <div className="form-row form-row-block">
+              <div className="feed-pick-head">
+                <span className="feed-pick-title">纳入日报的频道</span>
+                <span className="feed-pick-count">
+                  {form.feeds.length} / {feedsList.length} 已选
+                </span>
               </div>
-            ) : null}
-            {feedQuery && feedsList.length ? (
-              <small className="form-tip">全选 / 清空只作用于当前筛选的 {visibleFeeds.length} 个频道；筛选外的已选不会被改动</small>
-            ) : null}
-            <div className="feed-pick">
-              {/* 已有清单优先渲染：一次重拉失败不该把用户正在看的频道行整片抹掉 */}
-              {feedsList.length ? (visibleFeeds.length ? visibleFeeds.map(/** @param {*} [f] */ (f) => {
-                const fid = Number(f.id);
-                const checked = form.feeds.includes(fid);
-                return (
-                  <label key={f.id} className={'feed-pick-row' + (checked ? ' on' : '')}
-                    title={feedName(f)}>
-                    <input type="checkbox" checked={checked}
-                      onChange={/** @param {*} [ev] */ (ev) => onToggleFeed(fid, ev.target.checked)} />
-                    <span className="feed-pick-name">{feedName(f)}</span>
-                    {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
-                  </label>
-                );
-              }) : <div className="feed-pick-empty">没有匹配的频道</div>)
-                : feedsError ? (
+              {feedsList.length ? (
+                <div className="feed-pick-tools">
+                  {feedsList.length > 8 ? (
+                    <div className="feed-pick-search">
+                      <svg className="ico" aria-hidden="true" focusable="false">
+                        <use href="#i-search" />
+                      </svg>
+                      <input
+                        type="search"
+                        name={feedSearchName}
+                        value={feedQ}
+                        placeholder="搜索频道"
+                        aria-label="搜索频道"
+                        onChange={/** @param {*} [ev] */ (ev) => setFeedQ(ev.target.value)}
+                        {...NO_AUTOFILL_PROPS}
+                      />
+                    </div>
+                  ) : null}
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    id="digFeedAllBtn"
+                    type="button"
+                    disabled={!visibleFeeds.length}
+                    title={
+                      allVisiblePicked
+                        ? '取消勾选当前筛选结果里的频道'
+                        : '只勾选当前筛选结果里的频道'
+                    }
+                    onClick={allVisiblePicked ? clearVisibleFeeds : pickVisibleFeeds}
+                  >
+                    {allVisiblePicked ? '全不选' : '全选'}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    id="digFeedNoneBtn"
+                    type="button"
+                    disabled={!form.feeds.length}
+                    title="只移除当前筛选结果里的频道"
+                    onClick={clearVisibleFeeds}
+                  >
+                    清空
+                  </button>
+                </div>
+              ) : null}
+              {feedQuery && feedsList.length ? (
+                <small className="form-tip">
+                  全选 / 清空只作用于当前筛选的 {visibleFeeds.length} 个频道；筛选外的已选不会被改动
+                </small>
+              ) : null}
+              <div className="feed-pick">
+                {/* 已有清单优先渲染：一次重拉失败不该把用户正在看的频道行整片抹掉 */}
+                {feedsList.length ? (
+                  visibleFeeds.length ? (
+                    visibleFeeds.map(
+                      /** @param {*} [f] */ (f) => {
+                        const fid = Number(f.id);
+                        const checked = form.feeds.includes(fid);
+                        return (
+                          <label
+                            key={f.id}
+                            className={'feed-pick-row' + (checked ? ' on' : '')}
+                            title={feedName(f)}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={
+                                /** @param {*} [ev] */ (ev) => onToggleFeed(fid, ev.target.checked)
+                              }
+                            />
+                            <span className="feed-pick-name">{feedName(f)}</span>
+                            {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
+                          </label>
+                        );
+                      },
+                    )
+                  ) : (
+                    <div className="feed-pick-empty">没有匹配的频道</div>
+                  )
+                ) : feedsError ? (
                   <div className="feed-pick-empty" role="alert">
                     {feedsError}
-                    <button className="btn btn-ghost btn-sm ml-3" type="button" onClick={loadFeedList}>重试</button>
+                    <button
+                      className="btn btn-ghost btn-sm ml-3"
+                      type="button"
+                      onClick={loadFeedList}
+                    >
+                      重试
+                    </button>
                   </div>
-                ) : feedsLoading ? <div className="feed-pick-empty">正在读取频道…</div>
-                  : <div className="feed-pick-empty">还没有订阅源，先到「设置 → 数据源」添加</div>}
+                ) : feedsLoading ? (
+                  <div className="feed-pick-empty">正在读取频道…</div>
+                ) : (
+                  <div className="feed-pick-empty">还没有订阅源，先到「设置 → 数据源」添加</div>
+                )}
+              </div>
+              <small className="form-tip">一个都没勾时，日报会提示「没有可展示的条目」</small>
             </div>
-            <small className="form-tip">一个都没勾时，日报会提示「没有可展示的条目」</small>
-          </div>
-        )}
+          )}
         </Section>
 
-        <Section secKey="dig-limits" title="条数与保留"
-          sub={`每频道 ${form.maxPerFeed} · 总 ${form.maxTotal} · 留 ${form.keepDays} 天`}>
-        <div className="form-grid form-grid-2">
-          <div className="form-row">
-            <label htmlFor="digMaxPerFeed">每频道条数上限</label>
-            <input id="digMaxPerFeed" type="number" min="1" max="100" value={form.maxPerFeed}
-              onChange={/** @param {*} [ev] */ (ev) => setField('maxPerFeed', ev.target.value)} />
+        <Section
+          secKey="dig-limits"
+          title="条数与保留"
+          sub={`每频道 ${form.maxPerFeed} · 总 ${form.maxTotal} · 留 ${form.keepDays} 天`}
+        >
+          <div className="form-grid form-grid-2">
+            <div className="form-row">
+              <label htmlFor="digMaxPerFeed">每频道条数上限</label>
+              <input
+                id="digMaxPerFeed"
+                type="number"
+                min="1"
+                max="100"
+                value={form.maxPerFeed}
+                onChange={/** @param {*} [ev] */ (ev) => setField('maxPerFeed', ev.target.value)}
+              />
+            </div>
+            <div className="form-row">
+              <label htmlFor="digMaxTotal">总条数上限</label>
+              <input
+                id="digMaxTotal"
+                type="number"
+                min="10"
+                max="500"
+                value={form.maxTotal}
+                onChange={/** @param {*} [ev] */ (ev) => setField('maxTotal', ev.target.value)}
+              />
+            </div>
+            <div className="form-row">
+              <label htmlFor="digKeepDays">摘要保留天数</label>
+              <input
+                id="digKeepDays"
+                type="number"
+                min="1"
+                max="365"
+                value={form.keepDays}
+                onChange={/** @param {*} [ev] */ (ev) => setField('keepDays', ev.target.value)}
+              />
+              <small className="form-tip">超期的日报由生成时顺带清理，只影响你自己的历史</small>
+            </div>
           </div>
-          <div className="form-row">
-            <label htmlFor="digMaxTotal">总条数上限</label>
-            <input id="digMaxTotal" type="number" min="10" max="500" value={form.maxTotal}
-              onChange={/** @param {*} [ev] */ (ev) => setField('maxTotal', ev.target.value)} />
-          </div>
-          <div className="form-row">
-            <label htmlFor="digKeepDays">摘要保留天数</label>
-            <input id="digKeepDays" type="number" min="1" max="365" value={form.keepDays}
-              onChange={/** @param {*} [ev] */ (ev) => setField('keepDays', ev.target.value)} />
-            <small className="form-tip">超期的日报由生成时顺带清理，只影响你自己的历史</small>
-          </div>
-        </div>
-
         </Section>
 
-        <Section secKey="dig-style" advanced title="风格要求"
-          sub={form.style ? `已写 ${form.style.length} 字` : '未写'}>
-        <div className="form-row">
-          <label htmlFor="digPrompt">风格要求（可选）</label>
-          <textarea
-            id="digPrompt"
-            rows={6}
-            spellCheck="false"
-            maxLength={PROMPT_MAX}
-            placeholder={'例：侧重新版影视和音乐，技术教程只挑对我有用的；语气随意些，别用「赋能」「抓手」这类词；概览压到两句话。'}
-            value={form.style}
-            onChange={/** @param {*} [ev] */ (ev) => setField('style', ev.target.value)}
-          />
-          <small className="form-tip">
-            {form.style.length} / {PROMPT_MAX} 字 · 这段会作为「额外要求」附在日报提示词后面，只影响选材、语气和篇幅。
-            <br />简报的 JSON 结构、点评长度上限等由系统固定，写了也不会打乱生成。
-          </small>
-        </div>
-
+        <Section
+          secKey="dig-style"
+          advanced
+          title="风格要求"
+          sub={form.style ? `已写 ${form.style.length} 字` : '未写'}
+        >
+          <div className="form-row">
+            <label htmlFor="digPrompt">风格要求（可选）</label>
+            <textarea
+              id="digPrompt"
+              rows={6}
+              spellCheck="false"
+              maxLength={PROMPT_MAX}
+              placeholder={
+                '例：侧重新版影视和音乐，技术教程只挑对我有用的；语气随意些，别用「赋能」「抓手」这类词；概览压到两句话。'
+              }
+              value={form.style}
+              onChange={/** @param {*} [ev] */ (ev) => setField('style', ev.target.value)}
+            />
+            <small className="form-tip">
+              {form.style.length} / {PROMPT_MAX} 字 ·
+              这段会作为「额外要求」附在日报提示词后面，只影响选材、语气和篇幅。
+              <br />
+              简报的 JSON 结构、点评长度上限等由系统固定，写了也不会打乱生成。
+            </small>
+          </div>
         </Section>
 
         {result ? <Result id="digResult" result={result} /> : null}
       </div>
-      <PaneFoot dirty={dirty} lead={<span className="hint">这些设置只对你的账号生效；模型地址与 Key 在「设置 → 模型」里单独配</span>}>
-        <button className="btn btn-ghost" id="digResetBtn" type="button"
-          disabled={busy || !form.style} onClick={onResetStyle}>清空风格</button>
-        <button className="btn btn-primary" id="digSaveBtn" type="button"
-          disabled={busy || !dirty} onClick={onSave}>
+      <PaneFoot
+        dirty={dirty}
+        lead={
+          <span className="hint">
+            这些设置只对你的账号生效；模型地址与 Key 在「设置 → 模型」里单独配
+          </span>
+        }
+      >
+        <button
+          className="btn btn-ghost"
+          id="digResetBtn"
+          type="button"
+          disabled={busy || !form.style}
+          onClick={onResetStyle}
+        >
+          清空风格
+        </button>
+        <button
+          className="btn btn-primary"
+          id="digSaveBtn"
+          type="button"
+          disabled={busy || !dirty}
+          onClick={onSave}
+        >
           {busy ? '保存中…' : '保存日报设置'}
         </button>
       </PaneFoot>

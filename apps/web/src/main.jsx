@@ -17,8 +17,8 @@ import './style.css';
 import './hig.css';
 import { mountAll } from './kernel/mounts.jsx';
 import { installAutofillGuard } from './ui/noAutofill.js';
-import { installTabbarAutoHide } from './ui/tabbarAutoHide.js';
 import { installScrollBusy } from './ui/scrollBusy.js';
+import { installTabbarAutoHide } from './ui/tabbarAutoHide.js';
 
 // 浏览器会把登录页保存的账密启发式填进同源 SPA 的搜索框；全局哨兵只清非登录字段。
 installAutofillGuard();

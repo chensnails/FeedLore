@@ -14,12 +14,12 @@
  * llm-status + llm-usage（运行状态）。 */
 
 import { core } from '@core';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
+import { Dropdown } from '../views/Dropdown.jsx';
+import { modelLabel, TaskAssignments, useAiSettings } from './AiCapabilities.jsx';
 import { DetailSheet } from './DetailSheet.jsx';
 import { PaneFoot, Result, Section, useResult } from './primitives.jsx';
-import { Dropdown } from '../views/Dropdown.jsx';
-import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
-import { modelLabel, TaskAssignments, useAiSettings } from './AiCapabilities.jsx';
 
 const S = () => core;
 
@@ -51,11 +51,15 @@ const fmtTokens = (n) => {
 /**
  * @param {*} [url]
  */
-const hostOf = (url) => String(url || '').replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '').split('/')[0];
+const hostOf = (url) =>
+  String(url || '')
+    .replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '')
+    .split('/')[0];
 /**
  * @param {*} [v]
  */
-const vendorLabel = (v) => String((v && v.name) || hostOf(v && v.baseUrl) || '').trim() || '未命名厂商';
+const vendorLabel = (v) =>
+  String((v && v.name) || hostOf(v && v.baseUrl) || '').trim() || '未命名厂商';
 
 /**
  * @param {*} [n]
@@ -68,7 +72,9 @@ const fmtReqTime = (iso) => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   const hm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-  return d.toDateString() === new Date().toDateString() ? hm : `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hm}`;
+  return d.toDateString() === new Date().toDateString()
+    ? hm
+    : `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hm}`;
 };
 /**
  * @param {*} [iso]
@@ -115,7 +121,7 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
   const editing = !!model;
   /** @type {any} */
   const [vendorId, setVendorId] = useState(
-    model ? (model.vendorId || ai.vendors[0]?.id || '') : (initialVendorId || ai.vendors[0]?.id || ''),
+    model ? model.vendorId || ai.vendors[0]?.id || '' : initialVendorId || ai.vendors[0]?.id || '',
   );
   /** @type {any} */
   const [name, setName] = useState(model ? model.name || '' : '');
@@ -139,11 +145,16 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
   const [busy, setBusy] = useState('');
   const [result, showResult] = useResult();
 
-  const vendorOptions = ai.vendors.map(/** @param {*} [v] */ (v) => ({ value: v.id, label: v.name }));
+  const vendorOptions = ai.vendors.map(
+    /** @param {*} [v] */ (v) => ({ value: v.id, label: v.name }),
+  );
   const lockedDefault = editing && model.isDefault;
 
   async function fetchList() {
-    if (!vendorId) { setListErr('先选择厂商'); return; }
+    if (!vendorId) {
+      setListErr('先选择厂商');
+      return;
+    }
     setListBusy(true);
     setListErr('');
     try {
@@ -159,21 +170,33 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
   }
 
   async function save() {
-    if (!vendorId) { showResult(false, '先在「模型接入」里添加一个厂商'); return; }
-    if (!upstream.trim()) { showResult(false, '模型名不能为空'); return; }
+    if (!vendorId) {
+      showResult(false, '先在「模型接入」里添加一个厂商');
+      return;
+    }
+    if (!upstream.trim()) {
+      showResult(false, '模型名不能为空');
+      return;
+    }
     const t = Number(temperature);
-    if (!Number.isFinite(t) || t < 0 || t > 2) { showResult(false, '温度需在 0 ~ 2 之间'); return; }
+    if (!Number.isFinite(t) || t < 0 || t > 2) {
+      showResult(false, '温度需在 0 ~ 2 之间');
+      return;
+    }
     setBusy('save');
     try {
-      await ai.saveModel({
-        vendorId,
-        name: name.trim(),
-        model: upstream.trim(),
-        temperature: t,
-        thinking,
-        thinkingDepth: depthToNum(depth),
-        isDefault: lockedDefault ? true : isDefault,
-      }, editing ? model.id : undefined);
+      await ai.saveModel(
+        {
+          vendorId,
+          name: name.trim(),
+          model: upstream.trim(),
+          temperature: t,
+          thinking,
+          thinkingDepth: depthToNum(depth),
+          isDefault: lockedDefault ? true : isDefault,
+        },
+        editing ? model.id : undefined,
+      );
       onClose();
     } catch (err) {
       showResult(false, '保存失败：' + String((err && err.message) || err));
@@ -199,23 +222,46 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
     });
     if (!ok) return;
     setBusy('delete');
-    try { await ai.removeModel(model.id); onClose(); }
-    catch (err) { showResult(false, '删除失败：' + String((err && err.message) || err)); setBusy(''); }
+    try {
+      await ai.removeModel(model.id);
+      onClose();
+    } catch (err) {
+      showResult(false, '删除失败：' + String((err && err.message) || err));
+      setBusy('');
+    }
   }
 
   const foot = (
     <>
       {editing ? (
-        <button className="btn btn-danger" type="button" id="modelSheetDelete" disabled={!!busy} onClick={remove}>
+        <button
+          className="btn btn-danger"
+          type="button"
+          id="modelSheetDelete"
+          disabled={!!busy}
+          onClick={remove}
+        >
           {busy === 'delete' ? '删除中…' : '删除模型'}
         </button>
       ) : null}
       {editing ? (
-        <button className="btn" type="button" id="modelSheetTest" disabled={!!busy} onClick={runTest}>
+        <button
+          className="btn"
+          type="button"
+          id="modelSheetTest"
+          disabled={!!busy}
+          onClick={runTest}
+        >
           {busy === 'test' ? '测试中…' : '测试'}
         </button>
       ) : null}
-      <button className="btn btn-primary" type="button" id="modelSheetSave" disabled={!!busy || !ai.vendors.length} onClick={save}>
+      <button
+        className="btn btn-primary"
+        type="button"
+        id="modelSheetSave"
+        disabled={!!busy || !ai.vendors.length}
+        onClick={save}
+      >
         {busy === 'save' ? '保存中…' : editing ? '保存' : '添加模型'}
       </button>
     </>
@@ -224,7 +270,9 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
   return (
     <DetailSheet
       title={editing ? `模型 · ${modelLabel(model)}` : '添加模型'}
-      subtitle={editing ? (model.vendorName || '未绑定厂商') : '模型只决定上游名字与参数，地址与 Key 在厂商里'}
+      subtitle={
+        editing ? model.vendorName || '未绑定厂商' : '模型只决定上游名字与参数，地址与 Key 在厂商里'
+      }
       onClose={onClose}
       foot={foot}
       saveHint="保存后立即生效；测试会真的调一次上游并在「运行状态」里留一条记录。"
@@ -232,49 +280,95 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
       {!ai.vendors.length ? (
         <div className="hint pane-msg" role="status">
           还没有厂商。模型的地址与 Key 都挂在厂商上，先添加一个厂商再回来选模型。
-          <button type="button" className="btn btn-ghost btn-sm ml-3" onClick={onNeedVendor}>添加厂商</button>
+          <button type="button" className="btn btn-ghost btn-sm ml-3" onClick={onNeedVendor}>
+            添加厂商
+          </button>
         </div>
       ) : null}
 
       <div className="form-row">
         <label>厂商</label>
-        <Dropdown id="modelVendor" wrapId="modelVendorDD" title="所属厂商" ariaLabel="所属厂商"
-          disabled={!vendorOptions.length} value={vendorId}
+        <Dropdown
+          id="modelVendor"
+          wrapId="modelVendorDD"
+          title="所属厂商"
+          ariaLabel="所属厂商"
+          disabled={!vendorOptions.length}
+          value={vendorId}
           valueLabel={vendorOptions.length ? '选择厂商' : '还没有厂商'}
-          onChange={setVendorId} options={vendorOptions} />
+          onChange={setVendorId}
+          options={vendorOptions}
+        />
         <small className="form-tip">同一厂商下的模型共用地址与 Key；换厂商不需要重填 Key。</small>
       </div>
 
       <div className="form-row">
         <label htmlFor="modelName">显示名称</label>
-        <input id="modelName" type="text" maxLength={60} placeholder="如：便宜模型 / 日报专用（可留空）"
-          value={name} onChange={/** @param {*} [e] */ (e) => setName(e.target.value)} />
+        <input
+          id="modelName"
+          type="text"
+          maxLength={60}
+          placeholder="如：便宜模型 / 日报专用（可留空）"
+          value={name}
+          onChange={/** @param {*} [e] */ (e) => setName(e.target.value)}
+        />
         <small className="form-tip">只用于本页展示；留空时显示上游模型名。</small>
       </div>
 
       <div className="form-row">
         <label htmlFor="modelUpstream">上游模型名</label>
         <div className="input-with-btn">
-          <input id="modelUpstream" type="text" spellCheck="false" placeholder="Qwen/Qwen3-8B"
-            value={upstream} onChange={/** @param {*} [e] */ (e) => setUpstream(e.target.value)} />
+          <input
+            id="modelUpstream"
+            type="text"
+            spellCheck="false"
+            placeholder="Qwen/Qwen3-8B"
+            value={upstream}
+            onChange={/** @param {*} [e] */ (e) => setUpstream(e.target.value)}
+          />
           {list ? (
-            <Dropdown id="modelUpstreamPick" wrapId="modelUpstreamPickDD" title="从上游列表选择"
-              ariaLabel="从上游列表选择" value={upstream} valueLabel="选模型"
-              onChange={setUpstream} options={list.map(/** @param {*} [m] */ (m) => ({ value: m, label: m }))} />
+            <Dropdown
+              id="modelUpstreamPick"
+              wrapId="modelUpstreamPickDD"
+              title="从上游列表选择"
+              ariaLabel="从上游列表选择"
+              value={upstream}
+              valueLabel="选模型"
+              onChange={setUpstream}
+              options={list.map(/** @param {*} [m] */ (m) => ({ value: m, label: m }))}
+            />
           ) : null}
-          <button type="button" className="btn btn-ghost btn-sm" id="fetchUpstreamBtn"
-            disabled={listBusy || !vendorId} onClick={fetchList}>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            id="fetchUpstreamBtn"
+            disabled={listBusy || !vendorId}
+            onClick={fetchList}
+          >
             {listBusy ? '获取中…' : list ? '重新获取' : '获取列表'}
           </button>
         </div>
-        {listErr ? <small className="form-tip is-warn" role="status">{listErr}</small> : null}
-        <small className="form-tip">会向上游请求 <code>/models</code>；拉不到也可以直接手填。</small>
+        {listErr ? (
+          <small className="form-tip is-warn" role="status">
+            {listErr}
+          </small>
+        ) : null}
+        <small className="form-tip">
+          会向上游请求 <code>/models</code>；拉不到也可以直接手填。
+        </small>
       </div>
 
       <div className="form-row">
         <label htmlFor="modelTemp">温度</label>
-        <input id="modelTemp" type="number" min="0" max="2" step="0.05"
-          value={temperature} onChange={/** @param {*} [e] */ (e) => setTemperature(e.target.value)} />
+        <input
+          id="modelTemp"
+          type="number"
+          min="0"
+          max="2"
+          step="0.05"
+          value={temperature}
+          onChange={/** @param {*} [e] */ (e) => setTemperature(e.target.value)}
+        />
         <small className="form-tip">越低越稳定保守，越高越发散。摘要建议 0.2 ~ 0.5。</small>
       </div>
 
@@ -282,27 +376,36 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
         <label className="form-row-head">
           <span>思考模式</span>
           <span className="switch">
-            <input id="modelThinking" type="checkbox" checked={thinking}
-              onChange={/** @param {*} [e] */ (e) => setThinking(e.target.checked)} />
+            <input
+              id="modelThinking"
+              type="checkbox"
+              checked={thinking}
+              onChange={/** @param {*} [e] */ (e) => setThinking(e.target.checked)}
+            />
             <span className="switch-slider" />
           </span>
         </label>
         <small className="form-tip">
-          只对这个模型生效。打开后先推理再回答，更贴复杂选材但更慢、更耗额度；
-          仅对
+          只对这个模型生效。打开后先推理再回答，更贴复杂选材但更慢、更耗额度； 仅对
           <code>Qwen3</code> / <code>DeepSeek</code> 这类支持思考的上游有效。
         </small>
       </div>
 
       <div className="form-row" hidden={!thinking}>
         <label>思考深度</label>
-        <Dropdown id="modelDepth" wrapId="modelDepthDD" title="思考深度" ariaLabel="思考深度"
-          value={depth} onChange={setDepth}
+        <Dropdown
+          id="modelDepth"
+          wrapId="modelDepthDD"
+          title="思考深度"
+          ariaLabel="思考深度"
+          value={depth}
+          onChange={setDepth}
           options={[
             { value: 'low', label: '轻 · 少量推理，接近不开思考' },
             { value: 'medium', label: '中 · 默认，够它把选材想过一遍' },
             { value: 'high', label: '深 · 充分推理，长清单时更明显' },
-          ]} />
+          ]}
+        />
         <small className="form-tip">日报「中」通常够；条目多、分类总跑偏时才用「深」。</small>
       </div>
 
@@ -310,9 +413,13 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
         <label className="form-row-head">
           <span>设为默认模型</span>
           <span className="switch">
-            <input id="modelIsDefault" type="checkbox" checked={lockedDefault || isDefault}
+            <input
+              id="modelIsDefault"
+              type="checkbox"
+              checked={lockedDefault || isDefault}
               disabled={lockedDefault}
-              onChange={/** @param {*} [e] */ (e) => setIsDefault(e.target.checked)} />
+              onChange={/** @param {*} [e] */ (e) => setIsDefault(e.target.checked)}
+            />
             <span className="switch-slider" />
           </span>
         </label>
@@ -350,7 +457,10 @@ function VendorSheet({ ai, vendor, onClose, onSaved }) {
   const saved = !!(vendor && vendor.apiKeySet);
 
   async function save() {
-    if (!baseUrl.trim()) { showResult(false, '接口地址不能为空'); return; }
+    if (!baseUrl.trim()) {
+      showResult(false, '接口地址不能为空');
+      return;
+    }
     setBusy('save');
     try {
       /** @type {any} */
@@ -379,18 +489,35 @@ function VendorSheet({ ai, vendor, onClose, onSaved }) {
     });
     if (!ok) return;
     setBusy('delete');
-    try { await ai.removeVendor(vendor.id); onClose(); }
-    catch (err) { showResult(false, '删除失败：' + String((err && err.message) || err)); setBusy(''); }
+    try {
+      await ai.removeVendor(vendor.id);
+      onClose();
+    } catch (err) {
+      showResult(false, '删除失败：' + String((err && err.message) || err));
+      setBusy('');
+    }
   }
 
   const foot = (
     <>
       {editing ? (
-        <button className="btn btn-danger" type="button" id="vendorSheetDelete" disabled={!!busy} onClick={remove}>
+        <button
+          className="btn btn-danger"
+          type="button"
+          id="vendorSheetDelete"
+          disabled={!!busy}
+          onClick={remove}
+        >
           {busy === 'delete' ? '删除中…' : '删除厂商'}
         </button>
       ) : null}
-      <button className="btn btn-primary" type="button" id="vendorSheetSave" disabled={!!busy} onClick={save}>
+      <button
+        className="btn btn-primary"
+        type="button"
+        id="vendorSheetSave"
+        disabled={!!busy}
+        onClick={save}
+      >
         {busy === 'save' ? '保存中…' : editing ? '保存' : '添加厂商'}
       </button>
     </>
@@ -399,46 +526,91 @@ function VendorSheet({ ai, vendor, onClose, onSaved }) {
   return (
     <DetailSheet
       title={editing ? `厂商 · ${vendor.name || hostOf(vendor.baseUrl)}` : '添加厂商'}
-      subtitle={editing ? `${vendor.modelCount || 0} 个模型共用这份连接信息` : '地址与 Key 只填一次，模型里直接选'}
+      subtitle={
+        editing
+          ? `${vendor.modelCount || 0} 个模型共用这份连接信息`
+          : '地址与 Key 只填一次，模型里直接选'
+      }
       onClose={onClose}
       foot={foot}
       saveHint="地址是出网口，保存前会做一次可达性与安全校验。"
     >
       <div className="form-row">
         <label htmlFor="vendorName">名称</label>
-        <input id="vendorName" type="text" maxLength={60} placeholder="如：硅基流动 / 火山方舟（可留空，默认用域名）"
-          value={name} onChange={/** @param {*} [e] */ (e) => setName(e.target.value)} />
+        <input
+          id="vendorName"
+          type="text"
+          maxLength={60}
+          placeholder="如：硅基流动 / 火山方舟（可留空，默认用域名）"
+          value={name}
+          onChange={/** @param {*} [e] */ (e) => setName(e.target.value)}
+        />
       </div>
 
       <div className="form-row">
         <label htmlFor="vendorBaseUrl">接口地址（OpenAI 兼容）</label>
-        <input id="vendorBaseUrl" name={urlName} type="url"
-          placeholder="https://api.siliconflow.cn/v1" value={baseUrl}
-          onChange={/** @param {*} [e] */ (e) => setBaseUrl(e.target.value)} {...NO_AUTOFILL_PROPS} />
-        <small className="form-tip">填到 <code>/v1</code> 或完整 <code>/chat/completions</code> 均可。</small>
+        <input
+          id="vendorBaseUrl"
+          name={urlName}
+          type="url"
+          placeholder="https://api.siliconflow.cn/v1"
+          value={baseUrl}
+          onChange={/** @param {*} [e] */ (e) => setBaseUrl(e.target.value)}
+          {...NO_AUTOFILL_PROPS}
+        />
+        <small className="form-tip">
+          填到 <code>/v1</code> 或完整 <code>/chat/completions</code> 均可。
+        </small>
       </div>
 
       <div className="form-row">
         <label htmlFor="vendorKey">API Key</label>
         <div className="input-with-btn">
-          <input id="vendorKey" name={keyName} type={showKey ? 'text' : 'password'}
-            placeholder={saved ? '已保存，留空则不修改' : 'sk-...'} value={apiKey}
-            onChange={/** @param {*} [e] */ (e) => { setApiKey(e.target.value); setClearKey(false); }}
-            {...NO_AUTOFILL_PROPS} />
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowKey(/** @param {*} [v] */ (v) => !v)}>
+          <input
+            id="vendorKey"
+            name={keyName}
+            type={showKey ? 'text' : 'password'}
+            placeholder={saved ? '已保存，留空则不修改' : 'sk-...'}
+            value={apiKey}
+            onChange={
+              /** @param {*} [e] */ (e) => {
+                setApiKey(e.target.value);
+                setClearKey(false);
+              }
+            }
+            {...NO_AUTOFILL_PROPS}
+          />
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowKey(/** @param {*} [v] */ (v) => !v)}
+          >
             {showKey ? '隐藏' : '显示'}
           </button>
           {saved ? (
-            <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy}
-              onClick={() => { setClearKey(true); setApiKey(''); }}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={!!busy}
+              onClick={() => {
+                setClearKey(true);
+                setApiKey('');
+              }}
+            >
               清除
             </button>
           ) : null}
         </div>
         <small className="form-tip">
-          {clearKey ? '保存后清除已存的 Key。'
-            : saved ? <>已保存：<code>{vendor.apiKeyHint || '••••'}</code> · 加密存储，不回显明文。</>
-              : 'Key 加密存储，页面只显示掩码。同一厂商下所有模型共用。'}
+          {clearKey ? (
+            '保存后清除已存的 Key。'
+          ) : saved ? (
+            <>
+              已保存：<code>{vendor.apiKeyHint || '••••'}</code> · 加密存储，不回显明文。
+            </>
+          ) : (
+            'Key 加密存储，页面只显示掩码。同一厂商下所有模型共用。'
+          )}
         </small>
       </div>
 
@@ -488,8 +660,13 @@ export function ModelPane({ onDirtyChange }) {
     const s = S();
     if (s && s.bindSections && paneRef.current) s.bindSections(paneRef.current);
   }, []);
-  useEffect(() => { if (onDirtyChange) onDirtyChange(false); }, [onDirtyChange]);
-  useEffect(() => { loadUsage(); loadRequests(); }, []);
+  useEffect(() => {
+    if (onDirtyChange) onDirtyChange(false);
+  }, [onDirtyChange]);
+  useEffect(() => {
+    loadUsage();
+    loadRequests();
+  }, []);
 
   async function loadUsage() {
     setUsageBusy(true);
@@ -527,7 +704,10 @@ export function ModelPane({ onDirtyChange }) {
     }
   }
 
-  function refreshAll() { loadRequests(); loadUsage(); }
+  function refreshAll() {
+    loadRequests();
+    loadUsage();
+  }
 
   const defaultModel = models.find(/** @param {*} [m] */ (m) => m.isDefault) || models[0] || null;
 
@@ -536,12 +716,20 @@ export function ModelPane({ onDirtyChange }) {
   const recent = Array.isArray(requests) ? requests : [];
   const lastReq = recent[0] || null;
   const status = (() => {
-    if (!defaultModel) return { cls: 'is-off', label: '未配置', detail: '先添加厂商与模型才能调用' };
-    if (!defaultModel.model) return { cls: 'is-off', label: '未配置', detail: '默认模型还没填上游模型名' };
-    if (!defaultModel.apiKeySet) return { cls: 'is-off', label: '缺少 Key', detail: '默认模型所属厂商还没有 API Key' };
+    if (!defaultModel)
+      return { cls: 'is-off', label: '未配置', detail: '先添加厂商与模型才能调用' };
+    if (!defaultModel.model)
+      return { cls: 'is-off', label: '未配置', detail: '默认模型还没填上游模型名' };
+    if (!defaultModel.apiKeySet)
+      return { cls: 'is-off', label: '缺少 Key', detail: '默认模型所属厂商还没有 API Key' };
     if (requests === null && !reqError) return { cls: 'is-idle', label: '读取中…', detail: '' };
     if (reqError && !recent.length) return { cls: 'is-fail', label: '状态未知', detail: reqError };
-    if (!lastReq) return { cls: 'is-idle', label: '未测试', detail: '还没有调用记录，可以点「测试默认模型」先验一次' };
+    if (!lastReq)
+      return {
+        cls: 'is-idle',
+        label: '未测试',
+        detail: '还没有调用记录，可以点「测试默认模型」先验一次',
+      };
     if (lastReq.ok) {
       return {
         cls: 'is-ok',
@@ -549,12 +737,19 @@ export function ModelPane({ onDirtyChange }) {
         detail: `最近一次成功 · ${fmtRel(lastReq.createdAt)} · ${USAGE_KINDS[lastReq.kind] || lastReq.kind}`,
       };
     }
-    return { cls: 'is-fail', label: '最近失败', detail: `${fmtRel(lastReq.createdAt)} · ${S().errText(lastReq.error || '', '调用失败')}` };
+    return {
+      cls: 'is-fail',
+      label: '最近失败',
+      detail: `${fmtRel(lastReq.createdAt)} · ${S().errText(lastReq.error || '', '调用失败')}`,
+    };
   })();
   const avgMs = (() => {
     const ok = recent.filter(/** @param {*} [r] */ (r) => r.ok && Number(r.durationMs) > 0);
     if (!ok.length) return 0;
-    return Math.round(ok.reduce(/** @param {*} [a] @param {*} [r] */ (a, r) => a + Number(r.durationMs), 0) / ok.length);
+    return Math.round(
+      ok.reduce(/** @param {*} [a] @param {*} [r] */ (a, r) => a + Number(r.durationMs), 0) /
+        ok.length,
+    );
   })();
   const todayCalls = usage?.today?.calls || 0;
   const todayFails = usage?.today?.fails || 0;
@@ -577,7 +772,10 @@ export function ModelPane({ onDirtyChange }) {
    */
   const rowKeyDown = (fn) => /** @param {*} [ev] */ (ev) => {
     if (ev.target !== ev.currentTarget) return;
-    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); fn(); }
+    if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      fn();
+    }
   };
 
   /**
@@ -587,10 +785,16 @@ export function ModelPane({ onDirtyChange }) {
   const renderModelRow = (m, loose) => {
     const depth = numToDepth(m.thinkingDepth);
     return (
-      <div className="sl-row is-nested" key={m.id} data-model-id={m.id}
-        role="button" tabIndex={0} aria-label={`编辑模型「${modelLabel(m)}」`}
+      <div
+        className="sl-row is-nested"
+        key={m.id}
+        data-model-id={m.id}
+        role="button"
+        tabIndex={0}
+        aria-label={`编辑模型「${modelLabel(m)}」`}
         onClick={() => openRow('model', m.id)}
-        onKeyDown={rowKeyDown(() => openRow('model', m.id))}>
+        onKeyDown={rowKeyDown(() => openRow('model', m.id))}
+      >
         <div className="sl-main">
           <div className="sl-name">{modelLabel(m)}</div>
           <div className="sl-sub">
@@ -599,30 +803,45 @@ export function ModelPane({ onDirtyChange }) {
           </div>
         </div>
         <span className="sl-side" onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
-          {m.isDefault ? <span className="sl-badge">默认</span>
-            : m.vendorId ? (
-              <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy}
-                onClick={() => ai.makeDefault(m)}>设为默认</button>
-            ) : <span className="sl-badge muted">旧配置</span>}
+          {m.isDefault ? (
+            <span className="sl-badge">默认</span>
+          ) : m.vendorId ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={!!busy}
+              onClick={() => ai.makeDefault(m)}
+            >
+              设为默认
+            </button>
+          ) : (
+            <span className="sl-badge muted">旧配置</span>
+          )}
         </span>
-        <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+        <svg className="ico feed-caret" aria-hidden="true" focusable="false">
+          <use href="#i-chevron-right" />
+        </svg>
       </div>
     );
   };
 
-  const currentModel = sheet && sheet.kind === 'model' && sheet.id
-    ? models.find(/** @param {*} [m] */ (m) => m.id === sheet.id) || null
-    : null;
-  const currentVendor = sheet && sheet.kind === 'vendor' && sheet.id
-    ? vendors.find(/** @param {*} [v] */ (v) => v.id === sheet.id) || null
-    : null;
+  const currentModel =
+    sheet && sheet.kind === 'model' && sheet.id
+      ? models.find(/** @param {*} [m] */ (m) => m.id === sheet.id) || null
+      : null;
+  const currentVendor =
+    sheet && sheet.kind === 'vendor' && sheet.id
+      ? vendors.find(/** @param {*} [v] */ (v) => v.id === sheet.id) || null
+      : null;
 
   /** @type {*} */
   const looseModels = models.filter(/** @param {*} [m] */ (m) => !m.vendorId);
   const autoOpenVendorId = (defaultModel && defaultModel.vendorId) || vendors[0]?.id || '';
-  const accessSub = !loaded ? '读取中…'
+  const accessSub = !loaded
+    ? '读取中…'
     : vendors.length
-      ? `${vendors.length} 个厂商 · ${models.length} 个模型` + (defaultModel ? ` · 默认 ${modelLabel(defaultModel)}` : '')
+      ? `${vendors.length} 个厂商 · ${models.length} 个模型` +
+        (defaultModel ? ` · 默认 ${modelLabel(defaultModel)}` : '')
       : '未配置';
 
   return (
@@ -631,7 +850,9 @@ export function ModelPane({ onDirtyChange }) {
         {loadError ? (
           <div className="hint pane-msg lg" role="alert">
             {loadError}
-            <button type="button" className="btn btn-ghost btn-sm ml-3" onClick={ai.load}>重试</button>
+            <button type="button" className="btn btn-ghost btn-sm ml-3" onClick={ai.load}>
+              重试
+            </button>
           </div>
         ) : null}
         {msg ? <Result id="llmResult" result={{ ok: msg.ok, msg: msg.text }} /> : null}
@@ -639,92 +860,146 @@ export function ModelPane({ onDirtyChange }) {
         {/* ---------- ① 模型接入：厂商折叠组，模型缩进挂在厂商下 ---------- */}
         <Section secKey="llm-access" title="模型接入" sub={accessSub} open>
           <div className="sl-toolbar">
-            <button type="button" className="btn btn-ghost btn-sm" id="addVendorBtn"
-              onClick={() => openRow('vendor', null)}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              id="addVendorBtn"
+              onClick={() => openRow('vendor', null)}
+            >
               + 添加厂商
             </button>
-            <button type="button" className="btn btn-ghost btn-sm" id="addModelBtn"
-              disabled={!vendors.length} onClick={() => openRow('model', null)}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              id="addModelBtn"
+              disabled={!vendors.length}
+              onClick={() => openRow('model', null)}
+            >
               + 添加模型
             </button>
             <span className="sl-toolbar-note">点厂商展开模型；地址与 Key 在厂商详情里维护。</span>
           </div>
 
-          {!loaded ? <div className="sl-empty">正在读取模型配置…</div>
-            : !vendors.length ? (
-              <div className="sl-empty">
-                还没有接入厂商。添加一个 OpenAI 兼容的接口地址与 Key，再在它下面建模型。
-              </div>
-            ) : (
-              <div className="sl-list">
-                {vendors.map(/** @param {*} [v] */ (v) => {
+          {!loaded ? (
+            <div className="sl-empty">正在读取模型配置…</div>
+          ) : !vendors.length ? (
+            <div className="sl-empty">
+              还没有接入厂商。添加一个 OpenAI 兼容的接口地址与 Key，再在它下面建模型。
+            </div>
+          ) : (
+            <div className="sl-list">
+              {vendors.map(
+                /** @param {*} [v] */ (v) => {
                   /** @type {*} */
                   const own = models.filter(/** @param {*} [m] */ (m) => m.vendorId === v.id);
                   const label = vendorLabel(v);
                   const open = v.id in openGroups ? openGroups[v.id] : v.id === autoOpenVendorId;
                   return (
-                    <details className="sl-group" key={v.id} data-vendor-id={v.id}
+                    <details
+                      className="sl-group"
+                      key={v.id}
+                      data-vendor-id={v.id}
                       open={open}
-                      onToggle={/** @param {*} [ev] */ (ev) => {
-                        const isOpen = ev.currentTarget.open;
-                        setOpenGroups(/** @param {*} [prev] */ (prev) => (prev[v.id] === isOpen ? prev : { ...prev, [v.id]: isOpen }));
-                      }}>
+                      onToggle={
+                        /** @param {*} [ev] */ (ev) => {
+                          const isOpen = ev.currentTarget.open;
+                          setOpenGroups(
+                            /** @param {*} [prev] */ (prev) =>
+                              prev[v.id] === isOpen ? prev : { ...prev, [v.id]: isOpen },
+                          );
+                        }
+                      }
+                    >
                       <summary className="sl-row sl-group-head">
-                        <span className="sl-ava" style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
-                          <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-link" /></svg>
+                        <span
+                          className="sl-ava"
+                          style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}
+                        >
+                          <svg className="ico" aria-hidden="true" focusable="false">
+                            <use href="#i-link" />
+                          </svg>
                         </span>
                         <div className="sl-main">
                           <div className="sl-name">{label}</div>
-                          <div className="sl-sub">{hostOf(v.baseUrl) || '未填地址'} · {own.length} 个模型</div>
+                          <div className="sl-sub">
+                            {hostOf(v.baseUrl) || '未填地址'} · {own.length} 个模型
+                          </div>
                         </div>
                         <span className="sl-side">
                           <span className={'sl-badge' + (v.apiKeySet ? '' : ' muted')}>
                             {v.apiKeySet ? 'Key 已设' : '未设 Key'}
                           </span>
-                          <button type="button" className="btn btn-ghost btn-sm sl-group-edit"
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm sl-group-edit"
                             aria-label={`编辑厂商「${label}」`}
-                            onClick={/** @param {*} [ev] */ (ev) => { ev.preventDefault(); ev.stopPropagation(); openRow('vendor', v.id); }}>
+                            onClick={
+                              /** @param {*} [ev] */ (ev) => {
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                openRow('vendor', v.id);
+                              }
+                            }
+                          >
                             编辑
                           </button>
                         </span>
-                        <svg className="ico feed-caret sl-group-caret" aria-hidden="true" focusable="false">
+                        <svg
+                          className="ico feed-caret sl-group-caret"
+                          aria-hidden="true"
+                          focusable="false"
+                        >
                           <use href="#i-chevron-right" />
                         </svg>
                       </summary>
                       <div className="sl-models">
-                        {own.length ? own.map(/** @param {*} [m] */ (m) => renderModelRow(m, false))
-                          : <div className="sl-empty is-inline">这个厂商下还没有模型。</div>}
+                        {own.length ? (
+                          own.map(/** @param {*} [m] */ (m) => renderModelRow(m, false))
+                        ) : (
+                          <div className="sl-empty is-inline">这个厂商下还没有模型。</div>
+                        )}
                         <div className="sl-group-foot">
-                          <button type="button" className="btn btn-ghost btn-sm" data-vendor-add={v.id}
-                            onClick={() => setSheet({ kind: 'model', id: null, vendorId: v.id })}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            data-vendor-add={v.id}
+                            onClick={() => setSheet({ kind: 'model', id: null, vendorId: v.id })}
+                          >
                             + 添加模型
                           </button>
                         </div>
                       </div>
                     </details>
                   );
-                })}
-                {looseModels.length ? (
-                  <details className="sl-group" data-vendor-id="__none" open>
-                    <summary className="sl-row sl-group-head">
-                      <span className="sl-ava warn">
-                        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-link" /></svg>
-                      </span>
-                      <div className="sl-main">
-                        <div className="sl-name">未归入厂商</div>
-                        <div className="sl-sub">{looseModels.length} 个模型 · 点开后可改选厂商</div>
-                      </div>
-                      <svg className="ico feed-caret sl-group-caret" aria-hidden="true" focusable="false">
-                        <use href="#i-chevron-right" />
+                },
+              )}
+              {looseModels.length ? (
+                <details className="sl-group" data-vendor-id="__none" open>
+                  <summary className="sl-row sl-group-head">
+                    <span className="sl-ava warn">
+                      <svg className="ico" aria-hidden="true" focusable="false">
+                        <use href="#i-link" />
                       </svg>
-                    </summary>
-                    <div className="sl-models">
-                      {looseModels.map(/** @param {*} [m] */ (m) => renderModelRow(m, true))}
+                    </span>
+                    <div className="sl-main">
+                      <div className="sl-name">未归入厂商</div>
+                      <div className="sl-sub">{looseModels.length} 个模型 · 点开后可改选厂商</div>
                     </div>
-                  </details>
-                ) : null}
-              </div>
-            )}
+                    <svg
+                      className="ico feed-caret sl-group-caret"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      <use href="#i-chevron-right" />
+                    </svg>
+                  </summary>
+                  <div className="sl-models">
+                    {looseModels.map(/** @param {*} [m] */ (m) => renderModelRow(m, true))}
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          )}
         </Section>
 
         {/* ---------- ② 任务分配 ---------- */}
@@ -733,16 +1008,26 @@ export function ModelPane({ onDirtyChange }) {
         </Section>
 
         {/* ---------- ③ 运行状态（默认折叠） ---------- */}
-        <Section secKey="llm-status" title="运行状态"
-          sub={status.label + (lastReq ? ' · ' + fmtRel(lastReq.createdAt) : '')}>
+        <Section
+          secKey="llm-status"
+          title="运行状态"
+          sub={status.label + (lastReq ? ' · ' + fmtRel(lastReq.createdAt) : '')}
+        >
           <div className="ms-head">
             <span className={'ms-badge ' + status.cls}>{status.label}</span>
-            <span className="ms-model" title={defaultModel ? modelLabel(defaultModel) : '未设置模型'}>
+            <span
+              className="ms-model"
+              title={defaultModel ? modelLabel(defaultModel) : '未设置模型'}
+            >
               {defaultModel ? modelLabel(defaultModel) : '未设置模型'}
             </span>
-            <button type="button" className="btn btn-ghost btn-sm" id="testLlmBtn"
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              id="testLlmBtn"
               disabled={busy === 'test' || !defaultModel}
-              onClick={testDefault}>
+              onClick={testDefault}
+            >
               {busy === 'test' ? '测试中…' : '测试默认模型'}
             </button>
             <span className="ms-head-note">{status.detail}</span>
@@ -757,7 +1042,9 @@ export function ModelPane({ onDirtyChange }) {
             </div>
             <div className="ms-stat">
               <span className="ms-stat-label">今日失败</span>
-              <strong className={'ms-stat-value' + (todayFails ? ' is-fail' : '')}>{fmtNum(todayFails)}</strong>
+              <strong className={'ms-stat-value' + (todayFails ? ' is-fail' : '')}>
+                {fmtNum(todayFails)}
+              </strong>
             </div>
             <div className="ms-stat">
               <span className="ms-stat-label">最近成功平均耗时</span>
@@ -767,15 +1054,36 @@ export function ModelPane({ onDirtyChange }) {
 
           <div className="ms-list-head">
             <span className="ms-list-title">历史请求</span>
-            <span className="ms-list-note">只保留最近 {keepInfo.keep} 条 · {keepInfo.days} 天</span>
-            <Dropdown id="aiRequestsLimit" wrapId="aiRequestsLimitDD" title="显示条数"
-              ariaLabel="显示条数" value={String(reqLimit)}
-              options={[{ value: 20, label: '20 条' }, { value: 50, label: '50 条' }]}
-              onChange={/** @param {*} [v] */ (v) => { const n = Number(v) || 20; setReqLimit(n); loadRequests(n); }} />
-            <button className="btn btn-ghost btn-sm" id="modelRefreshAll" type="button"
-              disabled={reqBusy || usageBusy} aria-busy={(reqBusy || usageBusy) ? 'true' : undefined}
-              onClick={refreshAll}>
-              {(reqBusy || usageBusy) ? '刷新中…' : '刷新'}
+            <span className="ms-list-note">
+              只保留最近 {keepInfo.keep} 条 · {keepInfo.days} 天
+            </span>
+            <Dropdown
+              id="aiRequestsLimit"
+              wrapId="aiRequestsLimitDD"
+              title="显示条数"
+              ariaLabel="显示条数"
+              value={String(reqLimit)}
+              options={[
+                { value: 20, label: '20 条' },
+                { value: 50, label: '50 条' },
+              ]}
+              onChange={
+                /** @param {*} [v] */ (v) => {
+                  const n = Number(v) || 20;
+                  setReqLimit(n);
+                  loadRequests(n);
+                }
+              }
+            />
+            <button
+              className="btn btn-ghost btn-sm"
+              id="modelRefreshAll"
+              type="button"
+              disabled={reqBusy || usageBusy}
+              aria-busy={reqBusy || usageBusy ? 'true' : undefined}
+              onClick={refreshAll}
+            >
+              {reqBusy || usageBusy ? '刷新中…' : '刷新'}
             </button>
           </div>
 
@@ -788,7 +1096,9 @@ export function ModelPane({ onDirtyChange }) {
           ) : reqError && !recent.length ? (
             <div className="ms-empty is-err" id="modelRequestError" role="alert">
               <span>读取请求记录失败：{reqError}</span>
-              <button className="btn btn-ghost btn-sm" type="button" onClick={() => loadRequests()}>重试</button>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={() => loadRequests()}>
+                重试
+              </button>
             </div>
           ) : recent.length === 0 ? (
             <div className="ms-empty" id="modelRequestEmpty">
@@ -797,47 +1107,73 @@ export function ModelPane({ onDirtyChange }) {
             </div>
           ) : (
             <ul className="ms-list" id="modelRequestList">
-              {recent.map(/** @param {*} [r] */ (r) => (
-                <li className={'ms-row' + (r.ok ? '' : ' is-fail')} key={r.id} data-kind={r.kind}>
-                  <span className="ms-time" title={new Date(r.createdAt).toLocaleString('zh-CN')}>{fmtReqTime(r.createdAt)}</span>
-                  <span className="ms-kind">{USAGE_KINDS[r.kind] || r.kind}</span>
-                  <span className="ms-label" title={r.label || ''}>{r.label || '—'}</span>
-                  <span className="ms-dur">{fmtDur(r.durationMs)}</span>
-                  <span className="ms-tok">{r.totalTokens ? fmtTokens(r.totalTokens) : '—'}</span>
-                  <span className={'ms-state' + (r.ok ? '' : ' is-fail')}>{r.ok ? '成功' : '失败'}</span>
-                  {!r.ok && r.error ? <span className="ms-err" title={r.error}>{S().errText(r.error, '调用失败')}</span> : null}
-                </li>
-              ))}
+              {recent.map(
+                /** @param {*} [r] */ (r) => (
+                  <li className={'ms-row' + (r.ok ? '' : ' is-fail')} key={r.id} data-kind={r.kind}>
+                    <span className="ms-time" title={new Date(r.createdAt).toLocaleString('zh-CN')}>
+                      {fmtReqTime(r.createdAt)}
+                    </span>
+                    <span className="ms-kind">{USAGE_KINDS[r.kind] || r.kind}</span>
+                    <span className="ms-label" title={r.label || ''}>
+                      {r.label || '—'}
+                    </span>
+                    <span className="ms-dur">{fmtDur(r.durationMs)}</span>
+                    <span className="ms-tok">{r.totalTokens ? fmtTokens(r.totalTokens) : '—'}</span>
+                    <span className={'ms-state' + (r.ok ? '' : ' is-fail')}>
+                      {r.ok ? '成功' : '失败'}
+                    </span>
+                    {!r.ok && r.error ? (
+                      <span className="ms-err" title={r.error}>
+                        {S().errText(r.error, '调用失败')}
+                      </span>
+                    ) : null}
+                  </li>
+                ),
+              )}
             </ul>
           )}
 
           <div className="model-sub" data-sec="llm-usage">
             <div className="model-sub-head">
               <span className="model-sub-title">AI 用量</span>
-              <span className="sec-sub">{usage && usage.today ? `${fmtNum(usage.today.calls)} 次 · ${fmtTokens(usage.today.totalTokens)} tokens（今日）` : '暂无调用'}</span>
+              <span className="sec-sub">
+                {usage && usage.today
+                  ? `${fmtNum(usage.today.calls)} 次 · ${fmtTokens(usage.today.totalTokens)} tokens（今日）`
+                  : '暂无调用'}
+              </span>
             </div>
             <div className="usage-grid" id="aiUsageGrid" aria-live="polite">
-              {['today', 'days7', 'days30'].map(/** @param {*} [k] */ (k) => (
-                <div className="usage-cell" key={k}>
-                  <span className="usage-cell-label">{USAGE_SPANS[k]}</span>
-                  <span className="usage-cell-value">{fmtNum(usage?.[k]?.calls || 0)} 次</span>
-                  <span className="usage-cell-sub">{fmtTokens(usage?.[k]?.totalTokens || 0)} tokens</span>
-                  {usage?.[k]?.fails ? <span className="usage-cell-fail">失败 {fmtNum(usage[k].fails)} 次</span> : null}
-                </div>
-              ))}
+              {['today', 'days7', 'days30'].map(
+                /** @param {*} [k] */ (k) => (
+                  <div className="usage-cell" key={k}>
+                    <span className="usage-cell-label">{USAGE_SPANS[k]}</span>
+                    <span className="usage-cell-value">{fmtNum(usage?.[k]?.calls || 0)} 次</span>
+                    <span className="usage-cell-sub">
+                      {fmtTokens(usage?.[k]?.totalTokens || 0)} tokens
+                    </span>
+                    {usage?.[k]?.fails ? (
+                      <span className="usage-cell-fail">失败 {fmtNum(usage[k].fails)} 次</span>
+                    ) : null}
+                  </div>
+                ),
+              )}
             </div>
             {usage && usage.byKind && usage.byKind.length ? (
               <ul className="usage-list" id="aiUsageKinds">
-                {usage.byKind.map(/** @param {*} [r] */ (r) => (
-                  <li key={r.kind}>
-                    <span className="usage-kind">{USAGE_KINDS[r.kind] || r.kind}</span>
-                    <span className="usage-num">{fmtNum(r.calls)} 次</span>
-                    <span className="usage-num">{fmtTokens(r.totalTokens)} tokens</span>
-                  </li>
-                ))}
+                {usage.byKind.map(
+                  /** @param {*} [r] */ (r) => (
+                    <li key={r.kind}>
+                      <span className="usage-kind">{USAGE_KINDS[r.kind] || r.kind}</span>
+                      <span className="usage-num">{fmtNum(r.calls)} 次</span>
+                      <span className="usage-num">{fmtTokens(r.totalTokens)} tokens</span>
+                    </li>
+                  ),
+                )}
               </ul>
             ) : (
-              <small className="form-tip">近 30 天还没有调用记录。生成日报、用单篇 AI 或开启 AI 标签后会出现在这里。</small>
+              <small className="form-tip">
+                近 30 天还没有调用记录。生成日报、用单篇 AI 或开启 AI 标签后会出现在这里。
+              </small>
             )}
             <div className="usage-foot">
               <small className="form-tip">
@@ -849,27 +1185,41 @@ export function ModelPane({ onDirtyChange }) {
         </Section>
       </div>
 
-      <PaneFoot lead={
-        <span className="hint">
-          模型配置跟随账号：只对你自己生效，不会用上别人的地址或 Key。所有修改即改即生效。
-        </span>
-      } />
+      <PaneFoot
+        lead={
+          <span className="hint">
+            模型配置跟随账号：只对你自己生效，不会用上别人的地址或 Key。所有修改即改即生效。
+          </span>
+        }
+      />
 
       {sheet && sheet.kind === 'model' ? (
-        <ModelSheet ai={ai} model={sheet.id ? currentModel : null}
+        <ModelSheet
+          ai={ai}
+          model={sheet.id ? currentModel : null}
           initialVendorId={sheet.vendorId || ''}
           onClose={() => setSheet(null)}
-          onNeedVendor={() => { setPendingModel(true); setSheet({ kind: 'vendor', id: null }); }} />
+          onNeedVendor={() => {
+            setPendingModel(true);
+            setSheet({ kind: 'vendor', id: null });
+          }}
+        />
       ) : null}
 
       {sheet && sheet.kind === 'vendor' ? (
-        <VendorSheet ai={ai} vendor={sheet.id ? currentVendor : null}
-          onClose={() => { setPendingModel(false); setSheet(null); }}
+        <VendorSheet
+          ai={ai}
+          vendor={sheet.id ? currentVendor : null}
+          onClose={() => {
+            setPendingModel(false);
+            setSheet(null);
+          }}
           onSaved={() => {
             const wantModel = pendingModel;
             setPendingModel(false);
             setSheet(wantModel ? { kind: 'model', id: null } : null);
-          }} />
+          }}
+        />
       ) : null}
     </div>
   );

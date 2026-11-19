@@ -11,8 +11,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { fillDigestImages } from '@feedlore/ai';
-import type { Db } from '@feedlore/db';
 import type { Digest } from '@feedlore/contract';
+import type { Db } from '@feedlore/db';
 
 const digest = (over: Partial<Digest> = {}): Digest => ({
   date: '2026-11-14',
@@ -30,8 +30,14 @@ const digest = (over: Partial<Digest> = {}): Digest => ({
     {
       title: '分类',
       items: [
-        { comment: '', item: { name: 'A', feedName: 'f', tags: [], size: '', link: 'https://e.com/a' } },
-        { comment: '', item: { name: 'B', feedName: 'f', tags: [], size: '', link: 'https://e.com/b' } },
+        {
+          comment: '',
+          item: { name: 'A', feedName: 'f', tags: [], size: '', link: 'https://e.com/a' },
+        },
+        {
+          comment: '',
+          item: { name: 'B', feedName: 'f', tags: [], size: '', link: 'https://e.com/b' },
+        },
       ],
     },
   ],
@@ -39,7 +45,9 @@ const digest = (over: Partial<Digest> = {}): Digest => ({
 });
 
 /** 只实现 fillDigestImages 用到的那条 select 链；`calls` 用来断言「没缺图就不查库」。 */
-function stubDb(rows: Array<{ link: string | null; image: string | null; sourceUrl: string | null }>) {
+function stubDb(
+  rows: Array<{ link: string | null; image: string | null; sourceUrl: string | null }>,
+) {
   const calls: string[] = [];
   const db = {
     select: () => {
@@ -59,7 +67,7 @@ function stubDb(rows: Array<{ link: string | null; image: string | null; sourceU
 test('老日报按 link 回填缩略图，且改写成本站代理地址', async () => {
   const { db } = stubDb([
     { link: 'https://e.com/a', image: 'https://cdn.example/a.png', sourceUrl: null },
-    { link: 'https://e.com/b', image: null, sourceUrl: null },   // 真的没图 → 保持兜底
+    { link: 'https://e.com/b', image: null, sourceUrl: null }, // 真的没图 → 保持兜底
   ]);
   const out = await fillDigestImages(db, 'u1', digest());
   const [a, b] = out.sections[0]!.items;
@@ -69,12 +77,28 @@ test('老日报按 link 回填缩略图，且改写成本站代理地址', async
 
 test('已有 image 的条目不覆盖，且此时不再查库', async () => {
   const withImg = digest({
-    sections: [{
-      title: '分类',
-      items: [{ comment: '', item: { name: 'A', feedName: 'f', tags: [], size: '', link: 'https://e.com/a', image: '/api/img?u=x' } }],
-    }],
+    sections: [
+      {
+        title: '分类',
+        items: [
+          {
+            comment: '',
+            item: {
+              name: 'A',
+              feedName: 'f',
+              tags: [],
+              size: '',
+              link: 'https://e.com/a',
+              image: '/api/img?u=x',
+            },
+          },
+        ],
+      },
+    ],
   });
-  const { db, calls } = stubDb([{ link: 'https://e.com/a', image: 'https://cdn.example/zzz.png', sourceUrl: null }]);
+  const { db, calls } = stubDb([
+    { link: 'https://e.com/a', image: 'https://cdn.example/zzz.png', sourceUrl: null },
+  ]);
   const out = await fillDigestImages(db, 'u1', withImg);
   assert.equal(out.sections[0]!.items[0]!.item?.image, '/api/img?u=x');
   assert.equal(calls.length, 0, '没有缺图条目时不该查 entries');

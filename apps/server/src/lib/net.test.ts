@@ -65,8 +65,12 @@ test('订阅地址只接受 http(s)，且要求像样的主机名', () => {
   // 归一化：URL 会补尾斜杠
   assert.equal(assertFeedUrl('https://example.com'), 'https://example.com/');
 
-  assert.throws(() => assertFeedUrl('ftp://example.com/feed'), { code: 'E_RSS_URL_SCHEME_UNSUPPORTED' });
-  assert.throws(() => assertFeedUrl('file:///etc/passwd'), { code: 'E_RSS_URL_SCHEME_UNSUPPORTED' });
+  assert.throws(() => assertFeedUrl('ftp://example.com/feed'), {
+    code: 'E_RSS_URL_SCHEME_UNSUPPORTED',
+  });
+  assert.throws(() => assertFeedUrl('file:///etc/passwd'), {
+    code: 'E_RSS_URL_SCHEME_UNSUPPORTED',
+  });
   assert.throws(() => assertFeedUrl('not a url'), { code: 'E_RSS_URL_INVALID' });
   // 没有点的单段主机名（在很多网络里会被搜成内部域名）
   assert.throws(() => assertFeedUrl('http://intranet/feed'), { code: 'E_RSS_URL_HOST_INVALID' });

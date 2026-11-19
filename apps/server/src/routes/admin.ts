@@ -16,12 +16,7 @@
  *    单模块类型过重会让 Hono 的路由 schema 静默推成空。
  */
 
-import { log } from '../lib/logger';
-import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
-import { eq, sql } from 'drizzle-orm';
 import type { AuthInstance } from '@feedlore/auth';
-import { imageCache, users, type Db } from '@feedlore/db';
 import {
   accountBody,
   admin as adminSpec,
@@ -31,16 +26,20 @@ import {
   userPatchBody,
   type VersionCheck,
 } from '@feedlore/contract';
-import { assertResponse, BadRequest } from '../lib/validate';
-import { apiError, apiErrorKey, ApiException } from '../lib/apiError';
-import { normalizeRole } from '../lib/roles';
-import { requireAuth, type AppEnv } from '../middleware/auth';
-import { getSource, saveSource } from '../lib/settings';
-import { GITHUB_REPO, VERSION_TTL_MS, buildStatus, compareVersion } from '../lib/status';
-import { getGithubToken, getUpdateWebhookToken, getUpdateWebhookUrl } from '../env';
-import { resetImageCache } from './img';
+import { type Db, users } from '@feedlore/db';
+import { zValidator } from '@hono/zod-validator';
+import { eq, sql } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { APP_VERSION, getGithubToken, getUpdateWebhookToken, getUpdateWebhookUrl } from '../env';
+import { ApiException, apiError, apiErrorKey } from '../lib/apiError';
+import { log } from '../lib/logger';
 import { safeFetch } from '../lib/net';
-import { APP_VERSION } from '../env';
+import { normalizeRole } from '../lib/roles';
+import { getSource, saveSource } from '../lib/settings';
+import { buildStatus, compareVersion, GITHUB_REPO, VERSION_TTL_MS } from '../lib/status';
+import { assertResponse, BadRequest } from '../lib/validate';
+import { type AppEnv, requireAuth } from '../middleware/auth';
+import { resetImageCache } from './img';
 
 /** 原始 SQL 的行结果（drizzle `execute` 的 rows 是 unknown[]）。 */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,9 +60,16 @@ async function fetchGithubLatest(): Promise<VersionCheck> {
   if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
 
   // 走 safeFetch：这是服务端替自己出网，同样不该被 DNS rebinding 之类的手法带偏
-  const rel = await safeFetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, { headers });
+  const rel = await safeFetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+    headers,
+  });
   if (rel.ok) {
-    const j = (await rel.json().catch(() => null)) as { tag_name?: string; html_url?: string; name?: string; published_at?: string } | null;
+    const j = (await rel.json().catch(() => null)) as {
+      tag_name?: string;
+      html_url?: string;
+      name?: string;
+      published_at?: string;
+    } | null;
     if (j?.tag_name) {
       return {
         ok: true,
@@ -99,421 +105,483 @@ async function fetchGithubLatest(): Promise<VersionCheck> {
  * ==========================================================================*/
 
 export function adminStatusRoutes(db: Db | null, auth: AuthInstance | null) {
-  return new Hono<AppEnv>()
-    /* ---------------- 状态 ---------------- */
-    // 刻意不在开头就 `if (!db) 503`：库挂了正是这个页面要报的事
-    .get(authSpec.status.path, requireAuth(auth, 'admin'), async (c) => c.json(await buildStatus(db)));
+  return (
+    new Hono<AppEnv>()
+      /* ---------------- 状态 ---------------- */
+      // 刻意不在开头就 `if (!db) 503`：库挂了正是这个页面要报的事
+      .get(authSpec.status.path, requireAuth(auth, 'admin'), async (c) =>
+        c.json(await buildStatus(db)),
+      )
+  );
 }
 
 export function adminConfigRoutes(db: Db | null, auth: AuthInstance | null) {
-  return new Hono<AppEnv>()
-    /* ---------------- 采集参数 ---------------- */
-    .get(adminSpec.configGet.path, requireAuth(auth, 'admin'), async (c) => {
-      const me = c.get('user');
-      const source = db ? await getSource(db) : await getSource(null);
-      return c.json(
-        assertResponse(adminSpec.configGet.response, { username: me.username, role: me.role, source }, 'GET /api/config'),
-      );
-    })
-    .post(
-      adminSpec.configPost.path,
-      requireAuth(auth, 'admin'),
-      zValidator('json', configPatchBody, (result) => {
-        if (!result.success) throw new BadRequest('POST /api/config', result.error.issues);
-      }),
-      async (c) => {
-        if (!db) return apiError(c, 'E_DB_NOT_READY');
-        const body = c.req.valid('json');
-        if (!body.source || !Object.keys(body.source).length) {
-          return apiError(c, 'E_NO_FIELDS_TO_SAVE');
-        }
-        // 保存即刷新快照：抓取器下一轮、图片代理下一次请求就用新值（不用重启进程）
-        const next = await saveSource(db, body.source);
-        log.info(
-          `[settings] fetch settings updated: refresh ${next.refreshMinutes} min / concurrency ${next.concurrency} / keep ${next.keepPerFeed} entries per feed`,
+  return (
+    new Hono<AppEnv>()
+      /* ---------------- 采集参数 ---------------- */
+      .get(adminSpec.configGet.path, requireAuth(auth, 'admin'), async (c) => {
+        const me = c.get('user');
+        const source = db ? await getSource(db) : await getSource(null);
+        return c.json(
+          assertResponse(
+            adminSpec.configGet.response,
+            { username: me.username, role: me.role, source },
+            'GET /api/config',
+          ),
         );
-        if (next.proxyUrl) {
-          // 生效是即时的（saveSource → setOutboundProxy），这里只留一行审计线索：
-          // 代理一旦配错，表现是「全站抓取超时」，事后要知道是什么时候改的。
-          log.info(`[settings] outbound proxy enabled: ${next.proxyUrl}`);
-        }
-        return c.json(assertResponse(adminSpec.configPost.response, { ok: true }, 'POST /api/config'));
-      },
-    );
+      })
+      .post(
+        adminSpec.configPost.path,
+        requireAuth(auth, 'admin'),
+        zValidator('json', configPatchBody, (result) => {
+          if (!result.success) throw new BadRequest('POST /api/config', result.error.issues);
+        }),
+        async (c) => {
+          if (!db) return apiError(c, 'E_DB_NOT_READY');
+          const body = c.req.valid('json');
+          if (!body.source || !Object.keys(body.source).length) {
+            return apiError(c, 'E_NO_FIELDS_TO_SAVE');
+          }
+          // 保存即刷新快照：抓取器下一轮、图片代理下一次请求就用新值（不用重启进程）
+          const next = await saveSource(db, body.source);
+          log.info(
+            `[settings] fetch settings updated: refresh ${next.refreshMinutes} min / concurrency ${next.concurrency} / keep ${next.keepPerFeed} entries per feed`,
+          );
+          if (next.proxyUrl) {
+            // 生效是即时的（saveSource → setOutboundProxy），这里只留一行审计线索：
+            // 代理一旦配错，表现是「全站抓取超时」，事后要知道是什么时候改的。
+            log.info(`[settings] outbound proxy enabled: ${next.proxyUrl}`);
+          }
+          return c.json(
+            assertResponse(adminSpec.configPost.response, { ok: true }, 'POST /api/config'),
+          );
+        },
+      )
+  );
 }
 
 export function adminImageCacheRoutes(db: Db | null, auth: AuthInstance | null) {
-  return new Hono<AppEnv>()
-    /* ---------------- 图片缓存 ---------------- */
-    .get(adminSpec.imageCacheGet.path, requireAuth(auth, 'admin'), async (c) => {
-      if (!db) return apiError(c, 'E_DB_NOT_READY');
-      const res = await db.execute(sql`select count(*)::int as n, coalesce(sum(size), 0) as bytes from image_cache`);
-      const r = ((res.rows as unknown as Row[])[0] ?? {}) as Row;
-      return c.json(
-        assertResponse(
-          adminSpec.imageCacheGet.response,
-          { ok: true, count: Number(r.n ?? 0), bytes: Number(r.bytes ?? 0) },
-          'GET /api/image-cache',
-        ),
-      );
-    })
-    .post(adminSpec.imageCacheClear.path, requireAuth(auth, 'admin'), async (c) => {
-      if (!db) return apiError(c, 'E_DB_NOT_READY');
-      const before = await db.execute(sql`select count(*)::int as n from image_cache`);
-      const n = Number((((before.rows as unknown as Row[])[0] ?? {}) as Row).n ?? 0);
-      await db.execute(sql`delete from image_cache`);
-      // ⚠️ L1 必须一起清：只删库的话，刚删掉的图还会从内存里命中，管理员以为没删掉
-      resetImageCache();
-      log.info(`[img] image cache manually cleared: ${n} entries`);
-      return c.json(
-        assertResponse(adminSpec.imageCacheClear.response, { ok: true, removed: n }, 'POST /api/image-cache/clear'),
-      );
-    });
+  return (
+    new Hono<AppEnv>()
+      /* ---------------- 图片缓存 ---------------- */
+      .get(adminSpec.imageCacheGet.path, requireAuth(auth, 'admin'), async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
+        const res = await db.execute(
+          sql`select count(*)::int as n, coalesce(sum(size), 0) as bytes from image_cache`,
+        );
+        const r = ((res.rows as unknown as Row[])[0] ?? {}) as Row;
+        return c.json(
+          assertResponse(
+            adminSpec.imageCacheGet.response,
+            { ok: true, count: Number(r.n ?? 0), bytes: Number(r.bytes ?? 0) },
+            'GET /api/image-cache',
+          ),
+        );
+      })
+      .post(adminSpec.imageCacheClear.path, requireAuth(auth, 'admin'), async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
+        const before = await db.execute(sql`select count(*)::int as n from image_cache`);
+        const n = Number((((before.rows as unknown as Row[])[0] ?? {}) as Row).n ?? 0);
+        await db.execute(sql`delete from image_cache`);
+        // ⚠️ L1 必须一起清：只删库的话，刚删掉的图还会从内存里命中，管理员以为没删掉
+        resetImageCache();
+        log.info(`[img] image cache manually cleared: ${n} entries`);
+        return c.json(
+          assertResponse(
+            adminSpec.imageCacheClear.response,
+            { ok: true, removed: n },
+            'POST /api/image-cache/clear',
+          ),
+        );
+      })
+  );
 }
 
 export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
-  return new Hono<AppEnv>()
-    /* ---------------- 用户管理 ---------------- */
-    .get(adminSpec.usersList.path, requireAuth(auth, 'admin'), async (c) => {
-      if (!db) return apiError(c, 'E_DB_NOT_READY');
-      const me = c.get('user');
-      const rows = await db
-        .select({ id: users.id, username: users.username, name: users.name, role: users.role, createdAt: users.createdAt })
-        .from(users)
-        .orderBy(users.createdAt);
-
-      // 一次 group by 拿到全部频道数（legacy 是每用户查一次 = N+1）
-      const cnt = await db.execute(sql`select owner_id, count(*)::int as n from feeds group by owner_id`);
-      const perOwner = new Map<string, number>(
-        (cnt.rows as unknown as Row[]).map((r) => [String(r.owner_id), Number(r.n)]),
-      );
-
-      const list = rows.map((u) => ({
-        id: String(u.id),
-        username: u.username || u.name || '',
-        role: normalizeRole(u.role),
-        createdAt: u.createdAt ? u.createdAt.toISOString() : null,
-        feedCount: perOwner.get(String(u.id)) ?? 0,
-        isSelf: String(u.id) === me.id,
-      }));
-
-      return c.json(assertResponse(adminSpec.usersList.response, { users: list }, 'GET /api/users'));
-    })
-    .post(
-      adminSpec.userCreate.path,
-      requireAuth(auth, 'admin'),
-      zValidator('json', userCreateBody, (result) => {
-        if (!result.success) throw new BadRequest('POST /api/users', result.error.issues);
-      }),
-      async (c) => {
-        if (!db || !auth) return apiError(c, 'E_SERVICE_NOT_READY');
-        const body = c.req.valid('json');
-        const username = body.username.trim();
-        const role = normalizeRole(body.role);
-
-        const dup = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
-        if (dup.length) return apiError(c, 'E_USERNAME_TAKEN');
-
-        // 走 better-auth 注册（密码哈希由库负责）；username 插件允许 signUpEmail 带 username
-        try {
-          await auth.api.signUpEmail({
-            body: {
-              email: `${username}@feedlore.local`,
-              password: body.password,
-              name: username,
-              username,
-            } as never,
-          });
-        } catch (e) {
-          return apiError(c, 'E_USER_CREATE_FAILED', { detail: (e as Error)?.message ?? e });
-        }
-
-        const created = await db
-          .select({ id: users.id, username: users.username, role: users.role })
+  return (
+    new Hono<AppEnv>()
+      /* ---------------- 用户管理 ---------------- */
+      .get(adminSpec.usersList.path, requireAuth(auth, 'admin'), async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
+        const me = c.get('user');
+        const rows = await db
+          .select({
+            id: users.id,
+            username: users.username,
+            name: users.name,
+            role: users.role,
+            createdAt: users.createdAt,
+          })
           .from(users)
-          .where(eq(users.username, username))
-          .limit(1);
-        const row = created[0];
-        if (!row) return apiError(c, 'E_USER_NOT_PERSISTED');
+          .orderBy(users.createdAt);
 
-        if (role !== 'user') {
-          await db.update(users).set({ role }).where(eq(users.id, row.id));
-        }
+        // 一次 group by 拿到全部频道数（legacy 是每用户查一次 = N+1）
+        const cnt = await db.execute(
+          sql`select owner_id, count(*)::int as n from feeds group by owner_id`,
+        );
+        const perOwner = new Map<string, number>(
+          (cnt.rows as unknown as Row[]).map((r) => [String(r.owner_id), Number(r.n)]),
+        );
+
+        const list = rows.map((u) => ({
+          id: String(u.id),
+          username: u.username || u.name || '',
+          role: normalizeRole(u.role),
+          createdAt: u.createdAt ? u.createdAt.toISOString() : null,
+          feedCount: perOwner.get(String(u.id)) ?? 0,
+          isSelf: String(u.id) === me.id,
+        }));
 
         return c.json(
-          assertResponse(
-            adminSpec.userCreate.response,
-            { ok: true, user: { id: String(row.id), username: row.username ?? username, role } },
-            'POST /api/users',
-          ),
+          assertResponse(adminSpec.usersList.response, { users: list }, 'GET /api/users'),
         );
-      },
-    )
-    .patch(
-      adminSpec.userPatch.path,
-      requireAuth(auth, 'admin'),
-      zValidator('json', userPatchBody, (result) => {
-        if (!result.success) throw new BadRequest('PATCH /api/users/:id', result.error.issues);
-      }),
-      async (c) => {
-        if (!db || !auth) return apiError(c, 'E_SERVICE_NOT_READY');
+      })
+      .post(
+        adminSpec.userCreate.path,
+        requireAuth(auth, 'admin'),
+        zValidator('json', userCreateBody, (result) => {
+          if (!result.success) throw new BadRequest('POST /api/users', result.error.issues);
+        }),
+        async (c) => {
+          if (!db || !auth) return apiError(c, 'E_SERVICE_NOT_READY');
+          const body = c.req.valid('json');
+          const username = body.username.trim();
+          const role = normalizeRole(body.role);
+
+          const dup = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.username, username))
+            .limit(1);
+          if (dup.length) return apiError(c, 'E_USERNAME_TAKEN');
+
+          // 走 better-auth 注册（密码哈希由库负责）；username 插件允许 signUpEmail 带 username
+          try {
+            await auth.api.signUpEmail({
+              body: {
+                email: `${username}@feedlore.local`,
+                password: body.password,
+                name: username,
+                username,
+              } as never,
+            });
+          } catch (e) {
+            return apiError(c, 'E_USER_CREATE_FAILED', { detail: (e as Error)?.message ?? e });
+          }
+
+          const created = await db
+            .select({ id: users.id, username: users.username, role: users.role })
+            .from(users)
+            .where(eq(users.username, username))
+            .limit(1);
+          const row = created[0];
+          if (!row) return apiError(c, 'E_USER_NOT_PERSISTED');
+
+          if (role !== 'user') {
+            await db.update(users).set({ role }).where(eq(users.id, row.id));
+          }
+
+          return c.json(
+            assertResponse(
+              adminSpec.userCreate.response,
+              { ok: true, user: { id: String(row.id), username: row.username ?? username, role } },
+              'POST /api/users',
+            ),
+          );
+        },
+      )
+      .patch(
+        adminSpec.userPatch.path,
+        requireAuth(auth, 'admin'),
+        zValidator('json', userPatchBody, (result) => {
+          if (!result.success) throw new BadRequest('PATCH /api/users/:id', result.error.issues);
+        }),
+        async (c) => {
+          if (!db || !auth) return apiError(c, 'E_SERVICE_NOT_READY');
+          const id = c.req.param('id');
+          const body = c.req.valid('json');
+
+          const target = await db
+            .select({ id: users.id, username: users.username, role: users.role })
+            .from(users)
+            .where(eq(users.id, id))
+            .limit(1);
+          const row = target[0];
+          if (!row) return apiError(c, 'E_USER_NOT_FOUND');
+
+          let roleChanged = false;
+          if (body.role !== undefined) {
+            const nextRole = normalizeRole(body.role);
+            if (row.role === 'admin' && nextRole !== 'admin') {
+              const admins = await db
+                .select({ id: users.id })
+                .from(users)
+                .where(eq(users.role, 'admin'));
+              if (admins.length <= 1) return apiError(c, 'E_LAST_ADMIN');
+            }
+            if (nextRole !== normalizeRole(row.role)) roleChanged = true;
+            await db
+              .update(users)
+              .set({ role: nextRole, updatedAt: new Date() })
+              .where(eq(users.id, id));
+          }
+
+          let passwordChanged = false;
+          if (body.password) {
+            if (body.password.length < 4) return apiError(c, 'E_PASSWORD_TOO_SHORT');
+            try {
+              // 交给 better-auth：它自己取盐、算哈希，并处理「原本没有 credential 账号」的情况
+              await auth.api.setUserPassword({
+                body: { userId: id, newPassword: body.password },
+                headers: c.req.raw.headers,
+              });
+              passwordChanged = true;
+            } catch (e) {
+              return apiError(c, 'E_PASSWORD_UPDATE_FAILED', {
+                detail: (e as Error)?.message ?? e,
+              });
+            }
+          }
+
+          /* 改密或改角色后作废该用户的所有会话：已泄露的会话不能继续用旧凭据/旧权限。
+           * 失败只记日志 —— 密码与角色已经落库，不该因为清理会话失败而回滚。 */
+          if (roleChanged || passwordChanged) {
+            try {
+              await auth.api.revokeUserSessions({
+                body: { userId: id },
+                headers: c.req.raw.headers,
+              });
+            } catch (e) {
+              log.warn('[admin] failed to revoke user sessions:', (e as Error)?.message ?? e);
+            }
+          }
+
+          const fresh = await db
+            .select({ id: users.id, username: users.username, role: users.role })
+            .from(users)
+            .where(eq(users.id, id))
+            .limit(1);
+          const f = fresh[0]!;
+          return c.json(
+            assertResponse(
+              adminSpec.userPatch.response,
+              {
+                ok: true,
+                user: { id: String(f.id), username: f.username ?? '', role: normalizeRole(f.role) },
+              },
+              'PATCH /api/users/:id',
+            ),
+          );
+        },
+      )
+      .delete(adminSpec.userDelete.path, requireAuth(auth, 'admin'), async (c) => {
+        if (!db) return apiError(c, 'E_DB_NOT_READY');
         const id = c.req.param('id');
-        const body = c.req.valid('json');
+        const me = c.get('user');
+        if (id === me.id) return apiError(c, 'E_CANNOT_DELETE_SELF');
 
         const target = await db
-          .select({ id: users.id, username: users.username, role: users.role })
+          .select({ id: users.id, role: users.role })
           .from(users)
           .where(eq(users.id, id))
           .limit(1);
         const row = target[0];
         if (!row) return apiError(c, 'E_USER_NOT_FOUND');
 
-        let roleChanged = false;
-        if (body.role !== undefined) {
-          const nextRole = normalizeRole(body.role);
-          if (row.role === 'admin' && nextRole !== 'admin') {
-            const admins = await db
-              .select({ id: users.id })
-              .from(users)
-              .where(eq(users.role, 'admin'));
-            if (admins.length <= 1) return apiError(c, 'E_LAST_ADMIN');
-          }
-          if (nextRole !== normalizeRole(row.role)) roleChanged = true;
-          await db.update(users).set({ role: nextRole, updatedAt: new Date() }).where(eq(users.id, id));
+        if (row.role === 'admin') {
+          const admins = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.role, 'admin'));
+          if (admins.length <= 1) return apiError(c, 'E_LAST_ADMIN');
         }
 
-        let passwordChanged = false;
-        if (body.password) {
-          if (body.password.length < 4) return apiError(c, 'E_PASSWORD_TOO_SHORT');
-          try {
-            // 交给 better-auth：它自己取盐、算哈希，并处理「原本没有 credential 账号」的情况
-            await auth.api.setUserPassword({
-              body: { userId: id, newPassword: body.password },
-              headers: c.req.raw.headers,
-            });
-            passwordChanged = true;
-          } catch (e) {
-            return apiError(c, 'E_PASSWORD_UPDATE_FAILED', { detail: (e as Error)?.message ?? e });
-          }
-        }
-
-        /* 改密或改角色后作废该用户的所有会话：已泄露的会话不能继续用旧凭据/旧权限。
-         * 失败只记日志 —— 密码与角色已经落库，不该因为清理会话失败而回滚。 */
-        if (roleChanged || passwordChanged) {
-          try {
-            await auth.api.revokeUserSessions({
-              body: { userId: id },
-              headers: c.req.raw.headers,
-            });
-          } catch (e) {
-            log.warn('[admin] failed to revoke user sessions:', (e as Error)?.message ?? e);
-          }
-        }
-
-        const fresh = await db
-          .select({ id: users.id, username: users.username, role: users.role })
-          .from(users)
-          .where(eq(users.id, id))
-          .limit(1);
-        const f = fresh[0]!;
+        // 外键链：feeds/digests/sessions/accounts/user_llm 全部 onDelete cascade，
+        // entries 经 feeds 级联。一次 delete 清干净（legacy 也是靠级联）。
+        await db.delete(users).where(eq(users.id, id));
         return c.json(
-          assertResponse(
-            adminSpec.userPatch.response,
-            {
-              ok: true,
-              user: { id: String(f.id), username: f.username ?? '', role: normalizeRole(f.role) },
-            },
-            'PATCH /api/users/:id',
-          ),
+          assertResponse(adminSpec.userDelete.response, { ok: true }, 'DELETE /api/users/:id'),
         );
-      },
-    )
-    .delete(adminSpec.userDelete.path, requireAuth(auth, 'admin'), async (c) => {
-      if (!db) return apiError(c, 'E_DB_NOT_READY');
-      const id = c.req.param('id');
-      const me = c.get('user');
-      if (id === me.id) return apiError(c, 'E_CANNOT_DELETE_SELF');
-
-      const target = await db
-        .select({ id: users.id, role: users.role })
-        .from(users)
-        .where(eq(users.id, id))
-        .limit(1);
-      const row = target[0];
-      if (!row) return apiError(c, 'E_USER_NOT_FOUND');
-
-      if (row.role === 'admin') {
-        const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, 'admin'));
-        if (admins.length <= 1) return apiError(c, 'E_LAST_ADMIN');
-      }
-
-      // 外键链：feeds/digests/sessions/accounts/user_llm 全部 onDelete cascade，
-      // entries 经 feeds 级联。一次 delete 清干净（legacy 也是靠级联）。
-      await db.delete(users).where(eq(users.id, id));
-      return c.json(assertResponse(adminSpec.userDelete.response, { ok: true }, 'DELETE /api/users/:id'));
-    });
+      })
+  );
 }
 
 export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
-  return new Hono<AppEnv>()
-    /* ---------------- 账号（改自己的） ---------------- */
-    .post(
-      adminSpec.account.path,
-      requireAuth(auth, 'user'),
-      zValidator('json', accountBody, (result) => {
-        if (!result.success) throw new BadRequest('POST /api/account', result.error.issues);
-      }),
-      async (c) => {
-        if (!db || !auth) return apiError(c, 'E_SERVICE_NOT_READY');
-        const me = c.get('user');
-        const body = c.req.valid('json');
-        // 只读账户的登录凭据由管理员掌握：用户名与密码都不允许自助修改
-        if (me.role === 'readonly') {
-          return apiError(c, 'E_READONLY_CREDENTIAL');
-        }
-        const newUser = (body.username ?? '').trim();
+  return (
+    new Hono<AppEnv>()
+      /* ---------------- 账号（改自己的） ---------------- */
+      .post(
+        adminSpec.account.path,
+        requireAuth(auth, 'user'),
+        zValidator('json', accountBody, (result) => {
+          if (!result.success) throw new BadRequest('POST /api/account', result.error.issues);
+        }),
+        async (c) => {
+          if (!db || !auth) return apiError(c, 'E_SERVICE_NOT_READY');
+          const me = c.get('user');
+          const body = c.req.valid('json');
+          // 只读账户的登录凭据由管理员掌握：用户名与密码都不允许自助修改
+          if (me.role === 'readonly') {
+            return apiError(c, 'E_READONLY_CREDENTIAL');
+          }
+          const newUser = (body.username ?? '').trim();
 
-        if (!newUser && !body.newPassword) {
-          return apiError(c, 'E_NOTHING_TO_UPDATE');
-        }
+          if (!newUser && !body.newPassword) {
+            return apiError(c, 'E_NOTHING_TO_UPDATE');
+          }
 
-        // 当前密码校验：用 better-auth 自己的 verifyPassword（不手写哈希比较），
-        // 且它不签发新会话，不会给 sessions 表留垃圾行
-        try {
-          await auth.api.verifyPassword({
-            body: { password: body.currentPassword },
-            headers: c.req.raw.headers,
-          });
-        } catch {
-          return apiError(c, 'E_CURRENT_PASSWORD_WRONG');
-        }
-
-        if (body.newPassword) {
-          if (body.newPassword.length < 4) return apiError(c, 'E_NEW_PASSWORD_TOO_SHORT');
+          // 当前密码校验：用 better-auth 自己的 verifyPassword（不手写哈希比较），
+          // 且它不签发新会话，不会给 sessions 表留垃圾行
           try {
-            await auth.api.changePassword({
-              body: { currentPassword: body.currentPassword, newPassword: body.newPassword, revokeOtherSessions: false },
+            await auth.api.verifyPassword({
+              body: { password: body.currentPassword },
               headers: c.req.raw.headers,
             });
-            /* 不能用 changePassword 的 revokeOtherSessions：它会连当前会话一起删掉、
-             * 再签一枚新 token 放进 Set-Cookie；而我们是通过 auth.api 直调，拿不到
-             * 那个 Set-Cookie，浏览器里的当前会话就会被误踢。这里显式只清其它会话。 */
-            try {
-              await auth.api.revokeOtherSessions({ headers: c.req.raw.headers });
-            } catch (e) {
-              log.warn('[account] failed to revoke other sessions:', (e as Error)?.message ?? e);
-            }
-            /* 首次登录必须改密：改密成功即在库里清掉标记 —— 这是唯一的清除路径
-             * （better-auth 的 additionalFields 已设 input:false，客户端改不了它）。
-             * 二次确认写完再返回，避免「页面放行、下一跳又被 403」的抖动。 */
-            try {
-              await db
-                .update(users)
-                .set({ mustChangePassword: false, updatedAt: new Date() })
-                .where(eq(users.id, me.id));
-            } catch (e) {
-              return apiError(c, 'E_PASSWORD_UPDATE_FAILED', { detail: (e as Error)?.message ?? e });
-            }
-          } catch (e) {
-            return apiError(c, 'E_PASSWORD_UPDATE_FAILED', { detail: (e as Error)?.message ?? e });
+          } catch {
+            return apiError(c, 'E_CURRENT_PASSWORD_WRONG');
           }
-        }
 
-        let username = me.username;
-        if (newUser && newUser !== me.username) {
-          const dup = await db.select({ id: users.id }).from(users).where(eq(users.username, newUser)).limit(1);
-          if (dup.length) return apiError(c, 'E_USERNAME_TAKEN', { status: 400 });
-          // username 插件按 username 列登录；display_username 只影响展示，两个一起改
-          await db
-            .update(users)
-            .set({ username: newUser, displayUsername: newUser, updatedAt: new Date() })
-            .where(eq(users.id, me.id));
-          username = newUser;
-        }
+          if (body.newPassword) {
+            if (body.newPassword.length < 4) return apiError(c, 'E_NEW_PASSWORD_TOO_SHORT');
+            try {
+              await auth.api.changePassword({
+                body: {
+                  currentPassword: body.currentPassword,
+                  newPassword: body.newPassword,
+                  revokeOtherSessions: false,
+                },
+                headers: c.req.raw.headers,
+              });
+              /* 不能用 changePassword 的 revokeOtherSessions：它会连当前会话一起删掉、
+               * 再签一枚新 token 放进 Set-Cookie；而我们是通过 auth.api 直调，拿不到
+               * 那个 Set-Cookie，浏览器里的当前会话就会被误踢。这里显式只清其它会话。 */
+              try {
+                await auth.api.revokeOtherSessions({ headers: c.req.raw.headers });
+              } catch (e) {
+                log.warn('[account] failed to revoke other sessions:', (e as Error)?.message ?? e);
+              }
+              /* 首次登录必须改密：改密成功即在库里清掉标记 —— 这是唯一的清除路径
+               * （better-auth 的 additionalFields 已设 input:false，客户端改不了它）。
+               * 二次确认写完再返回，避免「页面放行、下一跳又被 403」的抖动。 */
+              try {
+                await db
+                  .update(users)
+                  .set({ mustChangePassword: false, updatedAt: new Date() })
+                  .where(eq(users.id, me.id));
+              } catch (e) {
+                return apiError(c, 'E_PASSWORD_UPDATE_FAILED', {
+                  detail: (e as Error)?.message ?? e,
+                });
+              }
+            } catch (e) {
+              return apiError(c, 'E_PASSWORD_UPDATE_FAILED', {
+                detail: (e as Error)?.message ?? e,
+              });
+            }
+          }
 
-        return c.json(
-          assertResponse(
-            adminSpec.account.response,
-            { ok: true, username, role: me.role },
-            'POST /api/account',
-          ),
-        );
-      },
-    );
+          let username = me.username;
+          if (newUser && newUser !== me.username) {
+            const dup = await db
+              .select({ id: users.id })
+              .from(users)
+              .where(eq(users.username, newUser))
+              .limit(1);
+            if (dup.length) return apiError(c, 'E_USERNAME_TAKEN', { status: 400 });
+            // username 插件按 username 列登录；display_username 只影响展示，两个一起改
+            await db
+              .update(users)
+              .set({ username: newUser, displayUsername: newUser, updatedAt: new Date() })
+              .where(eq(users.id, me.id));
+            username = newUser;
+          }
+
+          return c.json(
+            assertResponse(
+              adminSpec.account.response,
+              { ok: true, username, role: me.role },
+              'POST /api/account',
+            ),
+          );
+        },
+      )
+  );
 }
 
-export function adminVersionRoutes(db: Db | null, auth: AuthInstance | null) {
-  return new Hono<AppEnv>()
-    /* ---------------- 版本 ---------------- */
-    .get(authSpec.version.path, requireAuth(auth, 'user'), async (c) =>
-      c.json(
-        assertResponse(
-          authSpec.version.response,
-          {
-            version: APP_VERSION,
-            repo: GITHUB_REPO,
-            updateEnabled: Boolean(getUpdateWebhookUrl() && getUpdateWebhookToken()),
-          },
-          'GET /api/version',
-        ),
-      ),
-    )
-    .post(authSpec.versionCheck.path, requireAuth(auth, 'user'), async (c) => {
-      const now = Date.now();
-      if (versionCache && now - versionCache.at < VERSION_TTL_MS) {
-        return c.json(versionCache.data);
-      }
-      try {
-        const info = await fetchGithubLatest();
-        const data = assertResponse(
-          authSpec.versionCheck.response,
-          {
-            ...info,
-            current: APP_VERSION,
-            hasUpdate: compareVersion(info.latest ?? '0', APP_VERSION) > 0,
-          },
-          'POST /api/version/check',
-        );
-        versionCache = { at: now, data };
-        return c.json(data);
-      } catch (e) {
-        // 契约里这条是「查询结果」，失败也用 200 + ok:false（前端据此显示「检查失败」）
-        return c.json(
+export function adminVersionRoutes(_db: Db | null, auth: AuthInstance | null) {
+  return (
+    new Hono<AppEnv>()
+      /* ---------------- 版本 ---------------- */
+      .get(authSpec.version.path, requireAuth(auth, 'user'), async (c) =>
+        c.json(
           assertResponse(
-            authSpec.versionCheck.response,
-            { ok: false, error: apiErrorKey(e) },
-            'POST /api/version/check',
+            authSpec.version.response,
+            {
+              version: APP_VERSION,
+              repo: GITHUB_REPO,
+              updateEnabled: Boolean(getUpdateWebhookUrl() && getUpdateWebhookToken()),
+            },
+            'GET /api/version',
           ),
-        );
-      }
-    })
-    .post(authSpec.update.path, requireAuth(auth, 'admin'), async (c) => {
-      const hookUrl = getUpdateWebhookUrl();
-      const hookToken = getUpdateWebhookToken();
-      if (!hookUrl || !hookToken) {
-        return apiError(c, 'E_UPDATE_CHANNEL_UNSET');
-      }
+        ),
+      )
+      .post(authSpec.versionCheck.path, requireAuth(auth, 'user'), async (c) => {
+        const now = Date.now();
+        if (versionCache && now - versionCache.at < VERSION_TTL_MS) {
+          return c.json(versionCache.data);
+        }
+        try {
+          const info = await fetchGithubLatest();
+          const data = assertResponse(
+            authSpec.versionCheck.response,
+            {
+              ...info,
+              current: APP_VERSION,
+              hasUpdate: compareVersion(info.latest ?? '0', APP_VERSION) > 0,
+            },
+            'POST /api/version/check',
+          );
+          versionCache = { at: now, data };
+          return c.json(data);
+        } catch (e) {
+          // 契约里这条是「查询结果」，失败也用 200 + ok:false（前端据此显示「检查失败」）
+          return c.json(
+            assertResponse(
+              authSpec.versionCheck.response,
+              { ok: false, error: apiErrorKey(e) },
+              'POST /api/version/check',
+            ),
+          );
+        }
+      })
+      .post(authSpec.update.path, requireAuth(auth, 'admin'), async (c) => {
+        const hookUrl = getUpdateWebhookUrl();
+        const hookToken = getUpdateWebhookToken();
+        if (!hookUrl || !hookToken) {
+          return apiError(c, 'E_UPDATE_CHANNEL_UNSET');
+        }
 
-      // ⚠️ 这里**刻意不用 safeFetch**：watchtower 基本都跑在同一台机器的内网网络里
-      // （如 http://watchtower:8080），过内网判定会被一律 400，一键更新直接失效。
-      // 这个地址来自**部署者写的环境变量**，不是用户输入，不构成 SSRF 面。
-      const u = new URL(hookUrl);
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-        return apiError(c, 'E_UPDATE_CHANNEL_URL_BAD');
-      }
+        // ⚠️ 这里**刻意不用 safeFetch**：watchtower 基本都跑在同一台机器的内网网络里
+        // （如 http://watchtower:8080），过内网判定会被一律 400，一键更新直接失效。
+        // 这个地址来自**部署者写的环境变量**，不是用户输入，不构成 SSRF 面。
+        const u = new URL(hookUrl);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+          return apiError(c, 'E_UPDATE_CHANNEL_URL_BAD');
+        }
 
-      try {
-        const resp = await fetch(hookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hookToken}` },
-          body: '{}',
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (!resp.ok) throw new Error(`watchtower HTTP ${resp.status}`);
-        log.info('[update] watchtower update triggered');
-        return c.json(assertResponse(authSpec.update.response, { ok: true }, 'POST /api/update'));
-      } catch (e) {
-        return apiError(c, 'E_UPDATE_TRIGGER_FAILED', { detail: (e as Error)?.message ?? e });
-      }
-    });
+        try {
+          const resp = await fetch(hookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${hookToken}` },
+            body: '{}',
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (!resp.ok) throw new Error(`watchtower HTTP ${resp.status}`);
+          log.info('[update] watchtower update triggered');
+          return c.json(assertResponse(authSpec.update.response, { ok: true }, 'POST /api/update'));
+        } catch (e) {
+          return apiError(c, 'E_UPDATE_TRIGGER_FAILED', { detail: (e as Error)?.message ?? e });
+        }
+      })
+  );
 }

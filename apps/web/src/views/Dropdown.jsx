@@ -18,25 +18,46 @@ import { registerLayer } from '../ui/overlayStack.js';
 /* 与 style.css 的 720px 断点一致；jsdom 无 matchMedia 或无布局时按桌面处理。
    卡片详情弹窗（CardDetail）也用这条判据选弹层形态，故导出。 */
 export function isMobileMq() {
-  try { return !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches); }
-  catch (_) { return false; }
+  try {
+    return !!(window.matchMedia && window.matchMedia('(max-width: 720px)').matches);
+  } catch (_) {
+    return false;
+  }
 }
 
 /**
  * @param {*} opts
  */
-export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel, options, onChange, collapsible, collapsedGroups, onToggleGroup, activeGroup, onGroupFilter, disabled, extraClass, dataAttrs }) {
+export function Dropdown({
+  id,
+  wrapId,
+  title,
+  ariaLabel,
+  icon,
+  value,
+  valueLabel,
+  options,
+  onChange,
+  collapsible,
+  collapsedGroups,
+  onToggleGroup,
+  activeGroup,
+  onGroupFilter,
+  disabled,
+  extraClass,
+  dataAttrs,
+}) {
   // options: [{ value, label, group }]；group 为分组名（'' / undefined 表示无分组）
   /** @type {any} */
   const [open, setOpen] = useState(false);
   /** @type {any} */
-  const [mobile, setMobile] = useState(false);   // 打开瞬间定格，本次开合内不切换形态
+  const [mobile, setMobile] = useState(false); // 打开瞬间定格，本次开合内不切换形态
   /** @type {any} */
-  const [hi, setHi] = useState(-1);              // 键盘 ↑↓ / 悬停高亮的下标（在「可见选项」里数）
+  const [hi, setHi] = useState(-1); // 键盘 ↑↓ / 悬停高亮的下标（在「可见选项」里数）
   /** @type {*} */
   const rootRef = useRef(null);
   /** @type {*} */
-  const panelRef = useRef(null);                 // 可滚动列表容器（桌面面板 / 移动弹窗体共用）
+  const panelRef = useRef(null); // 可滚动列表容器（桌面面板 / 移动弹窗体共用）
   /** @type {*} */
   const triggerRef = useRef(null);
   /** @type {*} */
@@ -51,7 +72,9 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   /* 折叠集合：只有 collapsible 才生效。收起的组里若藏着当前选中项，那一条要留下 ——
      否则「筛选中」的频道会从列表里凭空消失，触发按钮还写着它的名字。 */
   const foldSet = collapsible
-    ? (collapsedGroups instanceof Set ? collapsedGroups : new Set(Array.isArray(collapsedGroups) ? collapsedGroups : []))
+    ? collapsedGroups instanceof Set
+      ? collapsedGroups
+      : new Set(Array.isArray(collapsedGroups) ? collapsedGroups : [])
     : null;
   /**
    * @param {*} [o]
@@ -60,7 +83,10 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   const visible = foldSet ? options.filter(isVisible) : options;
   /** @type {Record<string, any>} */
   const groupTotal = {};
-  for (const o of options) { const g = o.group || ''; groupTotal[g] = (groupTotal[g] || 0) + 1; }
+  for (const o of options) {
+    const g = o.group || '';
+    groupTotal[g] = (groupTotal[g] || 0) + 1;
+  }
 
   const close = () => {
     setOpen(false);
@@ -87,11 +113,15 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     /**
      * @param {*} [ev]
      */
-    const onDoc = (ev) => { if (rootRef.current && !rootRef.current.contains(ev.target)) setOpen(false); };
+    const onDoc = (ev) => {
+      if (rootRef.current && !rootRef.current.contains(ev.target)) setOpen(false);
+    };
     /**
      * @param {*} [ev]
      */
-    const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+    const onKey = (ev) => {
+      if (ev.key === 'Escape') close();
+    };
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
     return () => {
@@ -105,7 +135,9 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     if (!open || !mobile) return;
     const s = core;
     if (s && s.lockPageScroll) s.lockPageScroll();
-    return () => { if (s && s.unlockPageScroll) s.unlockPageScroll(); };
+    return () => {
+      if (s && s.unlockPageScroll) s.unlockPageScroll();
+    };
   }, [open, mobile]);
 
   // 打开时把选中项滚进视野（容器渲染完成后）
@@ -130,7 +162,12 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
   }, [hi, open]);
 
-  const openPanel = () => { if (disabled) return; setMobile(isMobileMq()); setOpen(true); setHi(-1); };
+  const openPanel = () => {
+    if (disabled) return;
+    setMobile(isMobileMq());
+    setOpen(true);
+    setHi(-1);
+  };
 
   // 系统返回键 / 手势返回：先收起这一层（与 Esc / 关闭键同一个出口）。
   /** @type {any} */
@@ -157,8 +194,9 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     const body = panelRef.current;
     const sheet = body && body.closest ? body.closest('.dd-sheet') : null;
     if (!sheet) return null;
-    const list = Array.from(sheet.querySelectorAll('button:not([disabled])'))
-      .filter(/** @param {*} [el] */ (el) => !el.closest('[hidden]'));
+    const list = Array.from(sheet.querySelectorAll('button:not([disabled])')).filter(
+      /** @param {*} [el] */ (el) => !el.closest('[hidden]'),
+    );
     return list.length ? list : null;
   };
 
@@ -175,21 +213,31 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
         const last = list[list.length - 1];
         const at = document.activeElement;
         if (ev.shiftKey && (at === first || !list.includes(at))) {
-          ev.preventDefault(); last.focus();
+          ev.preventDefault();
+          last.focus();
         } else if (!ev.shiftKey && (at === last || !list.includes(at))) {
-          ev.preventDefault(); first.focus();
+          ev.preventDefault();
+          first.focus();
         }
       }
       return;
     }
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
       ev.preventDefault();
-      const at = visible.findIndex(/** @param {*} [o] */ (o) => o === cur);
-      if (!open) { openPanel(); setHi(at); return; }
-      setHi(/** @param {*} [h] */ (h) => {
-        const base = h < 0 ? at : h;
-        return ev.key === 'ArrowDown' ? Math.min(visible.length - 1, base + 1) : Math.max(0, base - 1);
-      });
+      const at = visible.indexOf(/** @param {*} [o] */ cur);
+      if (!open) {
+        openPanel();
+        setHi(at);
+        return;
+      }
+      setHi(
+        /** @param {*} [h] */ (h) => {
+          const base = h < 0 ? at : h;
+          return ev.key === 'ArrowDown'
+            ? Math.min(visible.length - 1, base + 1)
+            : Math.max(0, base - 1);
+        },
+      );
     } else if (ev.key === 'Enter' && open && hi >= 0) {
       ev.preventDefault();
       pick(visible[hi].value);
@@ -201,7 +249,10 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   const byGroup = new Map();
   for (const o of options) {
     const g = o.group || '';
-    if (!byGroup.has(g)) { byGroup.set(g, []); groupOrder.push(g); }
+    if (!byGroup.has(g)) {
+      byGroup.set(g, []);
+      groupOrder.push(g);
+    }
     byGroup.get(g).push(o);
   }
 
@@ -212,21 +263,30 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   const renderItem = (o, vi) => {
     const active = isActive(o);
     return (
-      <button type="button" role="option" key={String(o.value)}
+      <button
+        type="button"
+        role="option"
+        key={String(o.value)}
         id={'dd-opt-' + vi}
         className={'dd-item' + (active ? ' active' : '') + (hi === vi ? ' hi' : '')}
-        data-value={String(o.value)} aria-selected={active}
+        data-value={String(o.value)}
+        aria-selected={active}
         onMouseEnter={() => setHi(vi)}
-        onClick={() => pick(o.value)}>
+        onClick={() => pick(o.value)}
+      >
         <span className="dd-item-label">{o.label}</span>
-        {active ? <svg className="ico dd-check" aria-hidden="true" focusable="false"><use href="#i-check" /></svg> : null}
+        {active ? (
+          <svg className="ico dd-check" aria-hidden="true" focusable="false">
+            <use href="#i-check" />
+          </svg>
+        ) : null}
       </button>
     );
   };
 
   // 高亮项（hi）对应的 option / 所属分组：用于给 listbox 设 aria-activedescendant
   const activeOpt = hi >= 0 ? visible[hi] : null;
-  const activeOptGroup = activeOpt ? (activeOpt.group || '') : null;
+  const _activeOptGroup = activeOpt ? activeOpt.group || '' : null;
 
   let rows;
   if (collapsible) {
@@ -241,36 +301,64 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
         const filtered = activeGroup != null && activeGroup === g;
         rows.push(
           <div key={'g:' + g} className={'dd-group-row' + (filtered ? ' is-filtered' : '')}>
-            <button type="button" data-group-fold={g}
+            <button
+              type="button"
+              data-group-fold={g}
               className={'dd-group dd-group-fold' + (folded ? ' is-collapsed' : '')}
               aria-expanded={folded ? 'false' : 'true'}
               title={(folded ? '展开' : '收起') + `分组「${g}」`}
-              onClick={() => { setHi(-1); if (onToggleGroup) onToggleGroup(g); }}>
+              onClick={() => {
+                setHi(-1);
+                if (onToggleGroup) onToggleGroup(g);
+              }}
+            >
               <svg className="ico dd-group-caret" aria-hidden="true" focusable="false">
                 <use href={folded ? '#i-chevron-right' : '#i-chevron-down'} />
               </svg>
               <span className="dd-group-name">{g}</span>
-              {folded ? <span className="dd-group-n" title={`该分组 ${groupTotal[g] || 0} 个频道`}>{core.fmtBadge(groupTotal[g] || 0)}</span> : null}
+              {folded ? (
+                <span className="dd-group-n" title={`该分组 ${groupTotal[g] || 0} 个频道`}>
+                  {core.fmtBadge(groupTotal[g] || 0)}
+                </span>
+              ) : null}
             </button>
             {onGroupFilter ? (
-              <button type="button" className={'dd-group-filter' + (filtered ? ' is-active' : '')}
-                data-group-filter={g} aria-pressed={filtered ? 'true' : 'false'}
+              <button
+                type="button"
+                className={'dd-group-filter' + (filtered ? ' is-active' : '')}
+                data-group-filter={g}
+                aria-pressed={filtered ? 'true' : 'false'}
                 title={`只看「${g}」分组`}
-                onClick={() => { close(); onGroupFilter(g); }}>
-                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-filter" /></svg>
+                onClick={() => {
+                  close();
+                  onGroupFilter(g);
+                }}
+              >
+                <svg className="ico" aria-hidden="true" focusable="false">
+                  <use href="#i-filter" />
+                </svg>
               </button>
             ) : null}
-          </div>
+          </div>,
         );
       }
       const groupItems = opts.filter(isVisible);
       rows.push(
-        <div className="dd-group-items" role="listbox" aria-label={g || (ariaLabel || title)}
+        <div
+          className="dd-group-items"
+          role="listbox"
+          aria-label={g || ariaLabel || title}
           hidden={groupItems.length === 0}
           aria-activedescendant={g === activeGroup && activeOpt ? 'dd-opt-' + hi : undefined}
-          key={'gl:' + g}>
-          {groupItems.map(/** @param {*} [o] */ (o) => { vi++; return renderItem(o, vi); })}
-        </div>
+          key={'gl:' + g}
+        >
+          {groupItems.map(
+            /** @param {*} [o] */ (o) => {
+              vi++;
+              return renderItem(o, vi);
+            },
+          )}
+        </div>,
       );
     }
   } else {
@@ -279,55 +367,109 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     /** @type {*} */
     let lastGroup;
     let vi = -1;
-    options.forEach(/** @param {*} [o] */ (o) => {
-      const g = o.group || '';
-      if (g && g !== lastGroup) rows.push(<div className="dd-group" key={'g:' + g}>{g}</div>);
-      lastGroup = g;
-      if (!isVisible(o)) return;
-      vi++;
-      rows.push(renderItem(o, vi));
-    });
+    options.forEach(
+      /** @param {*} [o] */ (o) => {
+        const g = o.group || '';
+        if (g && g !== lastGroup)
+          rows.push(
+            <div className="dd-group" key={'g:' + g}>
+              {g}
+            </div>,
+          );
+        lastGroup = g;
+        if (!isVisible(o)) return;
+        vi++;
+        rows.push(renderItem(o, vi));
+      },
+    );
   }
 
   return (
-    <div className={'dd' + (open ? ' open' : '')} id={wrapId} ref={rootRef} onKeyDown={onKeyDown} onBlur={onBlur}>
-      <button type="button" id={id} ref={triggerRef}
-        className={'select dd-trigger' + (icon ? ' has-icon' : '') + (extraClass ? ' ' + extraClass : '')}
-        title={title} aria-label={ariaLabel || title} aria-haspopup="listbox" aria-expanded={open}
-        value={value == null ? '' : String(value)} disabled={disabled}
+    <div
+      className={'dd' + (open ? ' open' : '')}
+      id={wrapId}
+      ref={rootRef}
+      onKeyDown={onKeyDown}
+      onBlur={onBlur}
+    >
+      <button
+        type="button"
+        id={id}
+        ref={triggerRef}
+        className={
+          'select dd-trigger' + (icon ? ' has-icon' : '') + (extraClass ? ' ' + extraClass : '')
+        }
+        title={title}
+        aria-label={ariaLabel || title}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        value={value == null ? '' : String(value)}
+        disabled={disabled}
         {...dataAttrs}
-        onClick={() => { if (open) close(); else openPanel(); }}>
+        onClick={() => {
+          if (open) close();
+          else openPanel();
+        }}
+      >
         {icon ? (
-          <svg className="ico dd-icon" aria-hidden="true" focusable="false"><use href={'#' + icon} /></svg>
+          <svg className="ico dd-icon" aria-hidden="true" focusable="false">
+            <use href={'#' + icon} />
+          </svg>
         ) : null}
         {/* 分组筛选不是 options 里的一项（组头是折叠开关），由调用方给 valueLabel 顶上文案 */}
-        <span className="dd-label">{cur ? cur.label : (valueLabel || '')}</span>
-        <svg className="ico dd-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-down" /></svg>
+        <span className="dd-label">{cur ? cur.label : valueLabel || ''}</span>
+        <svg className="ico dd-caret" aria-hidden="true" focusable="false">
+          <use href="#i-chevron-down" />
+        </svg>
       </button>
 
       {open && !mobile && (
-        <div className="dd-panel" role={collapsible ? undefined : 'listbox'}
-          aria-label={collapsible ? undefined : (ariaLabel || title)}
-          aria-activedescendant={collapsible ? undefined : (activeOpt ? 'dd-opt-' + hi : undefined)}
-          ref={panelRef}>
+        <div
+          className="dd-panel"
+          role={collapsible ? undefined : 'listbox'}
+          aria-label={collapsible ? undefined : ariaLabel || title}
+          aria-activedescendant={collapsible ? undefined : activeOpt ? 'dd-opt-' + hi : undefined}
+          ref={panelRef}
+        >
           {rows}
         </div>
       )}
 
       {open && mobile && (
         <div className="dd-mask" onClick={close}>
-          <div ref={panelRef} className="dd-sheet" role="dialog" aria-modal="true"
-            aria-label={ariaLabel || title} onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
+          <div
+            ref={panelRef}
+            className="dd-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label={ariaLabel || title}
+            onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}
+          >
             <div className="dd-sheet-head">
               <span className="dd-sheet-title">{title}</span>
-              <button type="button" className="dd-sheet-close" aria-label="关闭" ref={sheetCloseRef} onClick={close}>
-                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+              <button
+                type="button"
+                className="dd-sheet-close"
+                aria-label="关闭"
+                ref={sheetCloseRef}
+                onClick={close}
+              >
+                <svg className="ico" aria-hidden="true" focusable="false">
+                  <use href="#i-x" />
+                </svg>
               </button>
             </div>
-            <div className="dd-sheet-body" role={collapsible ? undefined : 'listbox'}
-              aria-label={collapsible ? undefined : (ariaLabel || title)}
-              aria-activedescendant={collapsible ? undefined : (activeOpt ? 'dd-opt-' + hi : undefined)}
-              ref={panelRef}>{rows}</div>
+            <div
+              className="dd-sheet-body"
+              role={collapsible ? undefined : 'listbox'}
+              aria-label={collapsible ? undefined : ariaLabel || title}
+              aria-activedescendant={
+                collapsible ? undefined : activeOpt ? 'dd-opt-' + hi : undefined
+              }
+              ref={panelRef}
+            >
+              {rows}
+            </div>
           </div>
         </div>
       )}

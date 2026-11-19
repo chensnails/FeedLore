@@ -1,12 +1,16 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { normalizeScope, scopeAllows } from './scope';
 
 test('规则范围：缺省 = 全部，all=true 清空列表', () => {
   assert.deepEqual(normalizeScope(undefined), { all: true, groups: [], feeds: [] });
   assert.deepEqual(normalizeScope(null), { all: true, groups: [], feeds: [] });
   assert.deepEqual(normalizeScope('x'), { all: true, groups: [], feeds: [] });
-  assert.deepEqual(normalizeScope({ all: true, groups: ['科技'], feeds: [3] }), { all: true, groups: [], feeds: [] });
+  assert.deepEqual(normalizeScope({ all: true, groups: ['科技'], feeds: [3] }), {
+    all: true,
+    groups: [],
+    feeds: [],
+  });
 });
 
 test('规则范围：分组名去重截断，未分组（空名）保留，频道 id 只收正整数', () => {

@@ -7,15 +7,15 @@
  * - 需要插值的数字/名称走 `params`，不要让前端去解析文案。
  */
 
-import { HTTPException } from 'hono/http-exception';
-import type { Context, Env } from 'hono';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import {
   API_ERROR_CODES,
   API_ERROR_DEFAULTS,
   type ApiErrorCode,
   type ApiErrorParams,
 } from '@feedlore/contract';
+import type { Context, Env } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
 export interface ApiErrorInit {
   /** 覆盖默认英文说明（例如把上游异常原文带出来）。 */
@@ -41,8 +41,7 @@ export type ApiErrorResponseBody = {
 export function apiErrorBody(code: ApiErrorCode, init: ApiErrorInit = {}): ApiErrorResponseBody {
   const defaults = API_ERROR_DEFAULTS[code];
   const detail = init.detail === undefined ? undefined : String(init.detail);
-  const message =
-    init.message ?? (detail ? `${defaults.message}: ${detail}` : defaults.message);
+  const message = init.message ?? (detail ? `${defaults.message}: ${detail}` : defaults.message);
   const body: ApiErrorResponseBody = {
     error: code as string,
     message,
@@ -55,7 +54,11 @@ export function apiErrorBody(code: ApiErrorCode, init: ApiErrorInit = {}): ApiEr
 }
 
 /** 直接返回响应：`return apiError(c, 'E_FEED_NOT_FOUND')`。 */
-export function apiError<E extends Env>(c: Context<E>, code: ApiErrorCode, init: ApiErrorInit = {}) {
+export function apiError<E extends Env>(
+  c: Context<E>,
+  code: ApiErrorCode,
+  init: ApiErrorInit = {},
+) {
   const body = apiErrorBody(code, init);
   return c.json(body, body.status as ContentfulStatusCode);
 }
@@ -88,4 +91,3 @@ export function apiErrorKey(err: unknown, maxLen = 300): string {
   const detail = raw === undefined || raw === null ? '' : String(raw);
   return `${e.code}${detail ? `:${detail}` : ''}`;
 }
-

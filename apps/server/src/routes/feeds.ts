@@ -13,29 +13,29 @@
  *    前端据此显示「已添加，但源站报错」，而不是让用户以为整个操作没生效。
  */
 
-import { log } from '../lib/logger';
-import { Hono } from 'hono';
-import { zValidator } from '@hono/zod-validator';
-import { and, eq, ne, sql } from 'drizzle-orm';
-import { z } from 'zod';
-import { feeds, entries as entriesTable, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import {
-  feeds as feedsSpec,
-  feedsListResponse,
   feedCreateBody,
   feedPatchBody,
   feedReorderBody,
+  feedsListResponse,
+  feeds as feedsSpec,
   importBody,
 } from '@feedlore/contract';
-import { apiError, ApiException } from '../lib/apiError';
-import { assertResponse, BadRequest } from '../lib/validate';
-import { toFeed, type FeedCounts, type FeedRow } from '../lib/dto';
-import { assertFeedUrl, assertPublicHost } from '../lib/net';
+import { type Db, entries as entriesTable, feeds } from '@feedlore/db';
+import { zValidator } from '@hono/zod-validator';
+import { and, eq, ne, sql } from 'drizzle-orm';
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { ApiException, apiError } from '../lib/apiError';
+import { type FeedCounts, toFeed } from '../lib/dto';
 import { getLastRefreshAt, getRefreshProgress, refreshFeeds, refreshOneFeed } from '../lib/fetcher';
+import { log } from '../lib/logger';
+import { assertFeedUrl, assertPublicHost } from '../lib/net';
 import { buildOpml, parseOpml } from '../lib/opml';
-import { requireAuth, type AppEnv } from '../middleware/auth';
 import { getSource } from '../lib/settings';
+import { assertResponse, BadRequest } from '../lib/validate';
+import { type AppEnv, requireAuth } from '../middleware/auth';
 
 /** 全局抓取间隔（分钟）：来自 settings 快照（管理员可改），用于算 nextRefreshAt / 展示频率。 */
 async function globalMinutes(db: Db): Promise<number> {
@@ -75,7 +75,7 @@ async function readFeed(
   db: Db,
   uid: string,
   id: number,
-  globalRefreshMinutes: number,
+  _globalRefreshMinutes: number,
 ): Promise<{ row: typeof feeds.$inferSelect; counts: FeedCounts } | null> {
   const [row] = await db
     .select()
@@ -126,8 +126,13 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           from entries e join feeds f on f.id = e.feed_id
           where f.owner_id = ${uid}
         `);
-        const agg = (aggRes.rows as unknown as AggRow[])[0] ??
-          { total: 0, unread: 0, favorite: 0, watching: 0, blocked: 0 };
+        const agg = (aggRes.rows as unknown as AggRow[])[0] ?? {
+          total: 0,
+          unread: 0,
+          favorite: 0,
+          watching: 0,
+          blocked: 0,
+        };
 
         const perRes = await db.execute(sql`
           select e.feed_id,
@@ -169,10 +174,11 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
             },
             lastRefreshAt: getLastRefreshAt()?.toISOString() ?? null,
             // 全局口径的「下次抓取」= 各频道里最早到期的那一个（每个频道可单独设频率）
-            nextRefreshAt: feedsMapped
-              .map((f) => f.nextRefreshAt)
-              .filter((v): v is string => Boolean(v))
-              .sort()[0] ?? null,
+            nextRefreshAt:
+              feedsMapped
+                .map((f) => f.nextRefreshAt)
+                .filter((v): v is string => Boolean(v))
+                .sort()[0] ?? null,
             refreshMinutes: src.refreshMinutes,
             keepDays: src.keepDays,
             // 前端自动刷新间隔与「采集频率」是两个独立参数（legacy 同口径），别拿 refreshMinutes 顶
@@ -202,18 +208,22 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           .where(eq(feeds.ownerId, uid))
           .orderBy(feeds.sortOrder, feeds.id);
 
-        const opml = buildOpml(rows.map((r) => ({
-          title: r.customTitle || r.title || r.url,
-          url: r.url,
-          siteUrl: r.siteUrl,
-          groupName: r.groupName ?? '',
-        })));
+        const opml = buildOpml(
+          rows.map((r) => ({
+            title: r.customTitle || r.title || r.url,
+            url: r.url,
+            siteUrl: r.siteUrl,
+            groupName: r.groupName ?? '',
+          })),
+        );
 
-        return c.json(assertResponse(
-          feedsSpec.exportOpml.response,
-          { ok: true, count: rows.length, opml },
-          'GET /api/feeds/export',
-        ));
+        return c.json(
+          assertResponse(
+            feedsSpec.exportOpml.response,
+            { ok: true, count: rows.length, opml },
+            'GET /api/feeds/export',
+          ),
+        );
       })
 
       /* ---------------- POST /api/feeds ---------------- */
@@ -313,9 +323,14 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           const rowsSql = sql.join(
             items.map((it) => {
               const id = Number(it.id);
-              const so = Number.isFinite(Number(it.sortOrder)) ? Math.trunc(Number(it.sortOrder)) : 0;
+              const so = Number.isFinite(Number(it.sortOrder))
+                ? Math.trunc(Number(it.sortOrder))
+                : 0;
               const rawGroup = it.groupName ?? it.group_name;
-              const gn = String(rawGroup ?? '').trim().slice(0, 40) || null;
+              const gn =
+                String(rawGroup ?? '')
+                  .trim()
+                  .slice(0, 40) || null;
               return sql`(${id}::bigint, ${so}::int, ${gn}::text)`;
             }),
             sql`, `,
@@ -363,7 +378,8 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           const set: Partial<typeof feeds.$inferInsert> = {};
           if (body.enabled !== undefined) set.enabled = body.enabled;
           if (body.cardEnabled !== undefined) set.cardEnabled = body.cardEnabled;
-          if (body.groupName !== undefined) set.groupName = body.groupName.trim().slice(0, 40) || null;
+          if (body.groupName !== undefined)
+            set.groupName = body.groupName.trim().slice(0, 40) || null;
           // 自定义频道名写 custom_title：抓取刷新只更新 title 字段，不会覆盖用户起的名字
           if (body.title !== undefined) set.customTitle = body.title.trim().slice(0, 200) || null;
           if (body.sortOrder !== undefined) set.sortOrder = Math.trunc(body.sortOrder);
@@ -432,9 +448,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
                 added: 0,
                 feeds: 1,
               }));
-              probe = r.error
-                ? { ok: false, error: r.error }
-                : { ok: true, added: r.added ?? 0 };
+              probe = r.error ? { ok: false, error: r.error } : { ok: true, added: r.added ?? 0 };
             }
           }
 
@@ -486,7 +500,8 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
         feedsSpec.refreshOne.path,
         requireAuth(auth, 'write'),
         zValidator('param', idParam, (result) => {
-          if (!result.success) throw new BadRequest('POST /api/feeds/:id/refresh', result.error.issues);
+          if (!result.success)
+            throw new BadRequest('POST /api/feeds/:id/refresh', result.error.issues);
         }),
         async (c) => {
           if (!db) return apiError(c, 'E_DB_NOT_READY');
@@ -529,7 +544,13 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
       /* ---------------- GET /api/feeds/refresh-progress ----------------
        * 整轮抓取进度。无库时返回「未在刷新」；不给用户身份之外的信息。 */
       .get(feedsSpec.refreshProgress.path, requireAuth(auth, 'user'), (c) =>
-        c.json(assertResponse(feedsSpec.refreshProgress.response, getRefreshProgress(), 'GET /api/feeds/refresh-progress')),
+        c.json(
+          assertResponse(
+            feedsSpec.refreshProgress.response,
+            getRefreshProgress(),
+            'GET /api/feeds/refresh-progress',
+          ),
+        ),
       )
 
       /* ---------------- POST /api/feeds/refresh ----------------
@@ -644,11 +665,16 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
                 ownerId: uid,
                 url: it.url,
                 // 分组取嵌套路径的**最后一段**（与 legacy 一致）：'技术 / 前端' → '前端'
-                groupName: it.group ? (it.group.split(' / ').pop() ?? '').slice(0, 40) || null : null,
+                groupName: it.group
+                  ? (it.group.split(' / ').pop() ?? '').slice(0, 40) || null
+                  : null,
                 customTitle: it.title ? it.title.slice(0, 200) : null,
                 sortOrder: sql`coalesce((select max(${feeds.sortOrder}) + 1 from feeds where owner_id = ${uid}), 0)`,
               })
-              .onConflictDoUpdate({ target: [feeds.ownerId, feeds.url], set: { updatedAt: sql`now()` } })
+              .onConflictDoUpdate({
+                target: [feeds.ownerId, feeds.url],
+                set: { updatedAt: sql`now()` },
+              })
               .returning({ id: feeds.id });
             if (row) addedIds.push(row.id);
           }
@@ -660,12 +686,20 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
               .from(feeds)
               .where(and(eq(feeds.ownerId, uid), sql`${feeds.id} = any(${addedIds})`))
               .then((rows) => refreshFeeds(db, rows, 'import refresh'))
-              .catch((e: unknown) => log.error('[opml] post-import refresh failed:', (e as Error)?.message ?? e));
+              .catch((e: unknown) =>
+                log.error('[opml] post-import refresh failed:', (e as Error)?.message ?? e),
+              );
           }
 
-          const all = await db.select().from(feeds).where(eq(feeds.ownerId, uid)).orderBy(feeds.sortOrder, feeds.id);
+          const all = await db
+            .select()
+            .from(feeds)
+            .where(eq(feeds.ownerId, uid))
+            .orderBy(feeds.sortOrder, feeds.id);
           const newSet = new Set(addedIds);
-          const groups = [...new Set(all.map((f) => f.groupName).filter((g): g is string => Boolean(g)))];
+          const groups = [
+            ...new Set(all.map((f) => f.groupName).filter((g): g is string => Boolean(g))),
+          ];
           const gMins = await globalMinutes(db);
 
           return c.json(

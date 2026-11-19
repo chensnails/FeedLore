@@ -12,7 +12,7 @@
  * 确认框 / 灯箱 / 范围选择浮层叠在上面时，Esc 让位给它们（捕获阶段先检查）。
  */
 
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { registerLayer } from '../ui/overlayStack.js';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -40,7 +40,8 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
       if (!el) return;
       // .ds-back 在桌面与移动端都不显示，focus() 是空操作；正文没有可聚焦元素时
       // 焦点必须落在恒可见的 .ds-close 上，而不是 tabIndex=-1 的容器（读屏只念「详情」）。
-      const first = el.querySelector('.ds-body ' + FOCUSABLE) || el.querySelector('.ds-close') || el;
+      const first =
+        el.querySelector('.ds-body ' + FOCUSABLE) || el.querySelector('.ds-close') || el;
       if (first && first.focus) first.focus();
     }, 0);
     return () => {
@@ -83,15 +84,29 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
         return;
       }
       if (ev.key !== 'Tab') return;
-      const items = Array.prototype.filter.call(root.querySelectorAll(FOCUSABLE),
-        /** @param {*} [el] */ (el) => !el.disabled && el.offsetParent !== null);
-      if (!items.length) { ev.preventDefault(); return; }
+      const items = Array.prototype.filter.call(
+        root.querySelectorAll(FOCUSABLE),
+        /** @param {*} [el] */ (el) => !el.disabled && el.offsetParent !== null,
+      );
+      if (!items.length) {
+        ev.preventDefault();
+        return;
+      }
       const first = items[0];
       const last = items[items.length - 1];
       const at = document.activeElement;
-      if (!root.contains(at)) { ev.preventDefault(); first.focus(); return; }
-      if (ev.shiftKey && at === first) { ev.preventDefault(); last.focus(); }
-      else if (!ev.shiftKey && at === last) { ev.preventDefault(); first.focus(); }
+      if (!root.contains(at)) {
+        ev.preventDefault();
+        first.focus();
+        return;
+      }
+      if (ev.shiftKey && at === first) {
+        ev.preventDefault();
+        last.focus();
+      } else if (!ev.shiftKey && at === last) {
+        ev.preventDefault();
+        first.focus();
+      }
       ev.stopPropagation();
     };
     document.addEventListener('keydown', onKey, true);
@@ -103,7 +118,14 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
   const sub = typeof subtitle === 'string' ? subtitle : '';
 
   return (
-    <div className="ds-mask" onClick={/** @param {*} [ev] */ (ev) => { if (ev.target === ev.currentTarget) closeRef.current(); }}>
+    <div
+      className="ds-mask"
+      onClick={
+        /** @param {*} [ev] */ (ev) => {
+          if (ev.target === ev.currentTarget) closeRef.current();
+        }
+      }
+    >
       <div
         className="ds-sheet"
         role="dialog"
@@ -113,15 +135,29 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
         tabIndex={-1}
       >
         <div className="ds-head">
-          <button className="ds-back" type="button" aria-label="返回列表" onClick={() => closeRef.current()}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+          <button
+            className="ds-back"
+            type="button"
+            aria-label="返回列表"
+            onClick={() => closeRef.current()}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-chevron-right" />
+            </svg>
           </button>
           <div className="ds-head-txt">
             <h3 className="ds-title">{title}</h3>
             {subtitle ? <p className="ds-sub">{subtitle}</p> : null}
           </div>
-          <button className="ds-close" type="button" aria-label="关闭详情，返回列表" onClick={() => closeRef.current()}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+          <button
+            className="ds-close"
+            type="button"
+            aria-label="关闭详情，返回列表"
+            onClick={() => closeRef.current()}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-x" />
+            </svg>
           </button>
         </div>
         <div className="ds-body">

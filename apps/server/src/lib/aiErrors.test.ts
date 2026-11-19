@@ -6,8 +6,9 @@
  *    漏判的结果就是底层英文原样漏到界面上（用户截图反馈过）。
  * 2) 失败原因必须带 `E_AI_*` 稳定码，中文由前端 core/errorText.js 负责。
  */
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { aiError, isAbortError } from '@feedlore/ai';
 
 test('isAbortError：认 AbortError 的各种马甲', () => {
@@ -18,7 +19,10 @@ test('isAbortError：认 AbortError 的各种马甲', () => {
   assert.equal(isAbortError(new Error('The request timed out')), true);
   assert.equal(isAbortError(Object.assign(new Error('x'), { code: 'ABORT_ERR' })), true);
   // cause 里包一层也要认（fetch failed → cause: AbortError）
-  assert.equal(isAbortError(Object.assign(new Error('fetch failed'), { cause: { name: 'AbortError' } })), true);
+  assert.equal(
+    isAbortError(Object.assign(new Error('fetch failed'), { cause: { name: 'AbortError' } })),
+    true,
+  );
 });
 
 test('isAbortError：普通网络错误不误判', () => {
@@ -30,5 +34,8 @@ test('isAbortError：普通网络错误不误判', () => {
 
 test('aiError：稳定码 + 英文补充', () => {
   assert.equal(aiError('E_AI_TIMEOUT').message, 'E_AI_TIMEOUT');
-  assert.equal(aiError('E_AI_TIMEOUT', 'no response within 180s').message, 'E_AI_TIMEOUT: no response within 180s');
+  assert.equal(
+    aiError('E_AI_TIMEOUT', 'no response within 180s').message,
+    'E_AI_TIMEOUT: no response within 180s',
+  );
 });

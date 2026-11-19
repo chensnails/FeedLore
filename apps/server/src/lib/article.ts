@@ -9,8 +9,8 @@
  * 解析器是纯函数：同样的 HTML + base 永远得到同样的块，便于单元测试与多用户复用。
  */
 
-import { parseDocument } from 'htmlparser2';
 import type { ArticleBlock, ArticleInline } from '@feedlore/contract';
+import { parseDocument } from 'htmlparser2';
 
 /* ----------------------------------------------------------------------------
  * 1. 限制参数
@@ -47,22 +47,77 @@ interface DomNode {
   children?: DomNode[];
 }
 
-const isTag = (n: DomNode): boolean => n.type === 'tag' || n.type === 'script' || n.type === 'style';
+const isTag = (n: DomNode): boolean =>
+  n.type === 'tag' || n.type === 'script' || n.type === 'style';
 const tagName = (n: DomNode): string => (n.name ?? '').toLowerCase();
 /** 这些标签连文字都不要（脚本 / 表单控件 / 嵌入内容） */
 const SKIP_TAGS = new Set([
-  'script', 'style', 'noscript', 'template', 'iframe', 'object', 'embed',
-  'svg', 'canvas', 'video', 'audio', 'source', 'track', 'map', 'area',
-  'form', 'input', 'button', 'select', 'option', 'textarea', 'label',
+  'script',
+  'style',
+  'noscript',
+  'template',
+  'iframe',
+  'object',
+  'embed',
+  'svg',
+  'canvas',
+  'video',
+  'audio',
+  'source',
+  'track',
+  'map',
+  'area',
+  'form',
+  'input',
+  'button',
+  'select',
+  'option',
+  'textarea',
+  'label',
 ]);
 
 /** 会切断行内流的块级标签（遇到就 flush 当前段落） */
 const BLOCK_TAGS = new Set([
-  'p', 'div', 'section', 'article', 'header', 'footer', 'main', 'aside', 'nav',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'dl', 'dt', 'dd',
-  'blockquote', 'pre', 'figure', 'figcaption', 'table', 'thead', 'tbody',
-  'tfoot', 'tr', 'td', 'th', 'address', 'details', 'summary', 'fieldset',
-  'legend', 'center', 'body', 'html',
+  'p',
+  'div',
+  'section',
+  'article',
+  'header',
+  'footer',
+  'main',
+  'aside',
+  'nav',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'ul',
+  'ol',
+  'li',
+  'dl',
+  'dt',
+  'dd',
+  'blockquote',
+  'pre',
+  'figure',
+  'figcaption',
+  'table',
+  'thead',
+  'tbody',
+  'tfoot',
+  'tr',
+  'td',
+  'th',
+  'address',
+  'details',
+  'summary',
+  'fieldset',
+  'legend',
+  'center',
+  'body',
+  'html',
 ]);
 
 /** 只保留语义、可安全渲染的行内标签（判断在 inlineNodes 里按名字分支） */
@@ -187,19 +242,16 @@ class Parser {
   private readonly base: string | null;
   private readonly images: string[] = [];
   private readonly imgSeen = new Set<string>();
-  private readonly opts: ArticleParseOptions;
 
   constructor(opts: ArticleParseOptions) {
-    this.opts = opts;
     this.base = this.validBase(opts.baseUrl) ?? this.validBase(opts.siteUrl);
   }
 
   run(html: string): ParsedArticle {
     const src = String(html || '');
-    const doc = parseDocument(
-      src.length > MAX_HTML ? src.slice(0, MAX_HTML) : src,
-      { decodeEntities: true },
-    ) as unknown as DomNode;
+    const doc = parseDocument(src.length > MAX_HTML ? src.slice(0, MAX_HTML) : src, {
+      decodeEntities: true,
+    }) as unknown as DomNode;
     this.walk(doc.children ?? [], 0);
     const blocks = this.prune(this.blocks);
     return { blocks, images: this.images, bodyJson: serialize(blocks) };
@@ -222,9 +274,7 @@ class Parser {
     if (!s) return null;
     s = s.replace(/^(https?):\1:\/\//i, '$1://');
     try {
-      const x = s.startsWith('//')
-        ? new URL('https:' + s)
-        : new URL(s, this.base ?? undefined);
+      const x = s.startsWith('//') ? new URL('https:' + s) : new URL(s, this.base ?? undefined);
       if (/^https?:$/.test(x.protocol)) return x.toString();
       if (allowMail && x.protocol === 'mailto:') return x.toString();
       return null;
@@ -435,7 +485,8 @@ class Parser {
         continue;
       }
 
-      const kids = (): ArticleInline[] => normalizeInline(this.inlineNodes(node.children ?? [], depth + 1));
+      const kids = (): ArticleInline[] =>
+        normalizeInline(this.inlineNodes(node.children ?? [], depth + 1));
 
       if (name === 'a') {
         const href = this.abs(node.attribs?.href, true);
@@ -487,7 +538,9 @@ class Parser {
   }
 
   private pushPre(node: DomNode): void {
-    let code = textOf(node).replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ');
+    let code = textOf(node)
+      .replace(/\r\n?/g, '\n')
+      .replace(/\u00a0/g, ' ');
     code = code.replace(/^\n+/, '').replace(/\s+$/, '');
     if (!code) return;
     // 语言标记通常在 <pre><code class="language-ts"> 的内层 code 上
@@ -506,10 +559,10 @@ class Parser {
     // 内层的 class 与 data-lang 优先；都没有再看 pre 自己
     const cls = (inner.attribs?.class ?? '') || (node.attribs?.class ?? '');
     const lang = (
-      cls.match(/(?:language|lang)-([\w+#.-]+)/i)?.[1]
-      ?? attrs['data-lang']
-      ?? cls.match(/brush:\s*(\w+)/i)?.[1]
-      ?? ''
+      cls.match(/(?:language|lang)-([\w+#.-]+)/i)?.[1] ??
+      attrs['data-lang'] ??
+      cls.match(/brush:\s*(\w+)/i)?.[1] ??
+      ''
     ).slice(0, 30);
     this.push({ t: 'pre', code: clip(code, MAX_CODE), ...(lang ? { lang } : {}) });
   }
@@ -519,13 +572,19 @@ class Parser {
     if (this.images.length >= MAX_IMAGES) return null;
     const attrs = node.attribs ?? {};
     const raw = attrs.src || null;
-    const lazy = attrs['data-src'] || attrs['data-original'] || attrs['data-lazy-src']
-      || attrs['data-actualsrc'] || attrs['data-original-src'] || null;
+    const lazy =
+      attrs['data-src'] ||
+      attrs['data-original'] ||
+      attrs['data-lazy-src'] ||
+      attrs['data-actualsrc'] ||
+      attrs['data-original-src'] ||
+      null;
     // 懒加载占位图通常是 data: 或 1px，优先用 data-* 的真图
-    const candidate = (lazy && !/^data:/i.test(lazy) ? lazy : null)
-      ?? (raw && !/^data:/i.test(raw) ? raw : null)
-      ?? pickSrcset(attrs.srcset)
-      ?? pickSrcset(attrs['data-srcset']);
+    const candidate =
+      (lazy && !/^data:/i.test(lazy) ? lazy : null) ??
+      (raw && !/^data:/i.test(raw) ? raw : null) ??
+      pickSrcset(attrs.srcset) ??
+      pickSrcset(attrs['data-srcset']);
     const src = this.abs(candidate ?? undefined);
     if (!src || !/^https?:/i.test(src)) return null;
     if (this.imgSeen.has(src)) return null;
@@ -536,7 +595,10 @@ class Parser {
 
     this.imgSeen.add(src);
     this.images.push(src);
-    const alt = String(attrs.alt ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    const alt = String(attrs.alt ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 300);
     return { t: 'img', src, ...(alt ? { alt } : {}), ...(w ? { w } : {}), ...(h ? { h } : {}) };
   }
 
@@ -564,7 +626,13 @@ class Parser {
       const cap = found.caption
         ? normalizeInline(this.inlineNodes(found.caption.children ?? [], depth + 1))
         : [];
-      const captionText = clip(cap.map((n) => (n.t === 'text' ? n.v : '')).join(' ').trim(), MAX_TEXT);
+      const captionText = clip(
+        cap
+          .map((n) => (n.t === 'text' ? n.v : ''))
+          .join(' ')
+          .trim(),
+        MAX_TEXT,
+      );
       this.push({
         t: 'figure',
         img: {
@@ -578,7 +646,10 @@ class Parser {
       return;
     }
     // 没有可用图片：图注以外的内容照常展开
-    this.walk((node.children ?? []).filter((c) => !isTag(c) || tagName(c) !== 'figcaption'), depth + 1);
+    this.walk(
+      (node.children ?? []).filter((c) => !isTag(c) || tagName(c) !== 'figcaption'),
+      depth + 1,
+    );
   }
 
   /** <table>：thead 作表头，tbody/tfoot 作数据行；colspan/rowspan 不展开 */

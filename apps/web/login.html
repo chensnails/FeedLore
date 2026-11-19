@@ -14,7 +14,7 @@
 <script>
 /* 主题与界面字号：与主站共用同一份本机外观偏好 feedlore.appearance.v2。
    首屏前定好 data-theme / data-font-size，避免闪白与字号跳动。四档主题与主站一致。 */
-(function () {
+(() => {
   var KEY = 'feedlore.appearance.v2';
   var MODES = ['auto', 'light', 'dark', 'github'];
   var ap = {};
@@ -62,7 +62,7 @@
 
     <div class="field">
       <label for="username">用户名</label>
-      <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+      <input id="username" name="username" type="text" autocomplete="username" required >
     </div>
     <div class="field">
       <label for="password">密码</label>

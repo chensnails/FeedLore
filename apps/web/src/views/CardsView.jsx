@@ -16,26 +16,25 @@
  */
 
 import { core } from '@core';
-import { on, EVENT } from '../kernel/events.js';
-import { provide, revoke } from '../kernel/bridge.js';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { isImgFailed, markImgFailed } from '../imgFail.js';
+import { widthSrcSet, widthVariant } from '../imgSrc.js';
+import { provide, revoke } from '../kernel/bridge.js';
+import { EVENT, on } from '../kernel/events.js';
+import { useTopbarHeight } from '../shell/useTopbarHeight.js';
+import { BrandLogo } from '../ui/BrandLogo.jsx';
+import { ChannelTabs } from '../ui/ChannelTabs.jsx';
+// 复制 / 打开按钮与文章页共用一份实现（两页曾各写一套，空链接行为还相反）
+import { CopyButton, copyableLinks, OpenButton } from '../ui/EntryActions.jsx';
+import { Icon } from '../ui/Icon.jsx';
+import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
+import { OverflowMenu } from '../ui/OverflowMenu.jsx';
+import { ViewNav } from '../ui/ViewNav.jsx';
 import { CardDetail } from './CardDetail.jsx';
 import { ChannelList } from './ChannelList.jsx';
 import { Dropdown } from './Dropdown.jsx';
-import { OverflowMenu } from '../ui/OverflowMenu.jsx';
-import { ViewNav } from '../ui/ViewNav.jsx';
-import { ChannelTabs } from '../ui/ChannelTabs.jsx';
-import { BrandLogo } from '../ui/BrandLogo.jsx';
-import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
-import { useTopbarHeight } from '../shell/useTopbarHeight.js';
-import { widthSrcSet, widthVariant } from '../imgSrc.js';
-import { isImgFailed, markImgFailed } from '../imgFail.js';
-import { Icon } from '../ui/Icon.jsx';
-// 复制 / 打开按钮与文章页共用一份实现（两页曾各写一套，空链接行为还相反）
-import { CopyButton, OpenButton, copyableLinks } from '../ui/EntryActions.jsx';
 
-const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
-
+const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
 /** 懒加载图片：首次失败带 ?r=1 重试一次，再失败走兜底 */
 /**
@@ -43,18 +42,24 @@ const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块�
  * 弱网下浏览器只有 6 条并发连接，若 30 张缩略图同权重排队，
  * 首屏那几张真正看得见的图反而排在第 20 位 —— 首屏图不加载，卡片墙就是一片灰骨架。
  * eager + fetchpriority=high 让浏览器先抢这几条连接。
-  * @param {*} opts
-*/
+ * @param {*} opts
+ */
 function LazyImg({ src, srcSet, sizes, alt, fallbackClass, fbIcon, priority, onFail }) {
   /** @type {any} */
-  const [state, setState] = useState('ok');   // ok | failed
+  const [state, setState] = useState('ok'); // ok | failed
   /** @type {any} */
   const triedRef = useRef(false);
   // 已知死链直接出占位：重挂载 / 刷新列表时不再白发一轮请求
   if (!src || state === 'failed' || isImgFailed(src)) {
-    return fallbackClass === 'row-thumb-fb'
-      ? <span className="row-thumb-fb"><Icon n={fbIcon} /></span>
-      : <div className={fallbackClass}><Icon n={fbIcon} /></div>;
+    return fallbackClass === 'row-thumb-fb' ? (
+      <span className="row-thumb-fb">
+        <Icon n={fbIcon} />
+      </span>
+    ) : (
+      <div className={fallbackClass}>
+        <Icon n={fbIcon} />
+      </div>
+    );
   }
   return (
     <img
@@ -66,21 +71,23 @@ function LazyImg({ src, srcSet, sizes, alt, fallbackClass, fbIcon, priority, onF
       sizes={srcSet ? sizes : undefined}
       alt={alt}
       onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
-      onError={/** @param {*} [ev] */ (ev) => {
-        const img = ev.currentTarget;
-        if (img.complete && img.naturalWidth > 0) return;
-        if (!triedRef.current) {
-          triedRef.current = true;
-          // 重试走不带变体的 src：srcset 还在的话浏览器会继续挑变体地址，重试等于没换地址
-          img.removeAttribute('srcset');
-          const u = src.split('#')[0] + (src.includes('?') ? '&' : '?') + 'r=1';
-          img.src = u;
-          return;
+      onError={
+        /** @param {*} [ev] */ (ev) => {
+          const img = ev.currentTarget;
+          if (img.complete && img.naturalWidth > 0) return;
+          if (!triedRef.current) {
+            triedRef.current = true;
+            // 重试走不带变体的 src：srcset 还在的话浏览器会继续挑变体地址，重试等于没换地址
+            img.removeAttribute('srcset');
+            const u = src.split('#')[0] + (src.includes('?') ? '&' : '?') + 'r=1';
+            img.src = u;
+            return;
+          }
+          markImgFailed(src);
+          setState('failed');
+          if (onFail) onFail();
         }
-        markImgFailed(src);
-        setState('failed');
-        if (onFail) onFail();
-      }}
+      }
     />
   );
 }
@@ -88,120 +95,175 @@ function LazyImg({ src, srcSet, sizes, alt, fallbackClass, fbIcon, priority, onF
 /* 卡片与列表行都做成 memo：一次 __cardsTick 会把整列重新 map，
  * 而条目对象只在状态真的变化时换新（core/reader.js 的 applyEntryFlag），没变的卡面不必重渲染。
  * 卡片 / 列表项不再展示标签（标签栏与卡面标签整体下线），仅文章正文保留标签。 */
-const Card = memo(/** @param {*} opts */ function Card({ e, onOpen, priority }) {
-  const s = S();
-  const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
-  const hasImg = !!e.image;
-  // 图片彻底拉不到时降级成纯文字卡：卡高本来就固定，少一块空占位比留一张灰图更干净
-  /** @type {any} */
-  const [imgFailed, setImgFailed] = useState(false);
-  // 与 LazyImg 共用同一份失败记忆：首次失败降级为纯文字卡，重挂载后也保持纯文字，
-  // 不再先占一块灰图再塌掉（布局跳动）。
-  const showMedia = hasImg && !imgFailed && !isImgFailed(e.image);
-  const fmtDate = s.fmtDate || (/** @param {*} [d] */ (d) => d || '');
-  const unread = !e.isRead;
-  // 已读时圆点只隐身、卡面不变淡：两页的「未读」是同一个概念，只是标记密度不同
-  const dot = <span className={'card-dot' + (unread ? '' : ' is-read')} aria-hidden="true" />;
+const Card = memo(
+  /** @param {*} opts */ function Card({ e, onOpen, priority }) {
+    const s = S();
+    const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
+    const hasImg = !!e.image;
+    // 图片彻底拉不到时降级成纯文字卡：卡高本来就固定，少一块空占位比留一张灰图更干净
+    /** @type {any} */
+    const [imgFailed, setImgFailed] = useState(false);
+    // 与 LazyImg 共用同一份失败记忆：首次失败降级为纯文字卡，重挂载后也保持纯文字，
+    // 不再先占一块灰图再塌掉（布局跳动）。
+    const showMedia = hasImg && !imgFailed && !isImgFailed(e.image);
+    const fmtDate = /** @type {(d?: any) => any} */ (s.fmtDate || ((d) => d || ''));
+    const unread = !e.isRead;
+    // 已读时圆点只隐身、卡面不变淡：两页的「未读」是同一个概念，只是标记密度不同
+    const dot = <span className={'card-dot' + (unread ? '' : ' is-read')} aria-hidden="true" />;
 
-  const copyBtn = <CopyButton e={e} />;
-  const openBtn = <OpenButton e={e} />;
-  /* 没有可复制的链接也没有原文地址时，整条动作栏都不渲染 ——
+    const copyBtn = <CopyButton e={e} />;
+    const openBtn = <OpenButton e={e} />;
+    /* 没有可复制的链接也没有原文地址时，整条动作栏都不渲染 ——
      否则会留一条空白操作条（统一「没有链接就不渲染」之后的副作用）。 */
-  const hasActions = copyableLinks(e).length > 0 || !!(e.sourceUrl || e.link);
+    const hasActions = copyableLinks(e).length > 0 || !!(e.sourceUrl || e.link);
 
-  const media = showMedia ? (
-    <div className="card-media">
-      <LazyImg src={e.image} srcSet={widthSrcSet(e.image, [320, 640, 960])}
-        sizes="(max-width: 720px) 46vw, 320px"
-        alt={e.name} fallbackClass="media-fallback" fbIcon="image" priority={priority}
-        onFail={() => setImgFailed(true)} />
-      {dot}
-      {srcName ? <span className="badge-source" title={e.feedName}>{srcName}</span> : null}
-      {e.size ? <span className="badge-size">{e.size}</span> : null}
-      {e.date ? <span className="badge-idx">{fmtDate(e.date)}</span> : null}
-      {hasActions ? <div className="card-media-actions">{copyBtn}{openBtn}</div> : null}
-    </div>
-  ) : null;
-
-  const metaRow = showMedia ? null : (
-    <div className="card-meta">
-      {dot}
-      {srcName ? <span className="src-pill" title={e.feedName}>{srcName}</span> : null}
-      {e.size ? <span className="meta-size">{e.size}</span> : null}
-      <span className="meta-date">{fmtDate(e.date)}</span>
-    </div>
-  );
-
-  return (
-    /* 外层不再是 role="button"：卡片里已经有真正的 <button>（标题）与 <a>（打开原文），
-       ARIA 不允许交互控件嵌套 —— 读屏只会暴露外层，里面的按钮读不出来，Tab 顺序也和
-       视觉顺序错位。现在标题按钮是唯一的「打开」入口（键盘可达、有名字），
-       点空白处仍是鼠标增强，但不再谎称自己是个按钮。 */
-    <article className={'card' + (showMedia ? ' card-has-media' : '') + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
-      onClick={/** @param {*} [ev] */ (ev) => openFromClick(ev, e, onOpen)}>
-      {media}
-      <div className="card-body">
-        {metaRow}
-        <h3 className="card-title" title={e.name}>
-          <button type="button" className="title-btn"
-            aria-label={(unread ? '未读，' : '') + (e.name || '卡片')}
-            onClick={() => onOpen(e)}>{e.name}</button>
-        </h3>
-        {e.desc ? <p className="card-desc">{e.desc}</p> : null}
-        {showMedia || !hasActions ? null : <div className="card-foot">{copyBtn}{openBtn}</div>}
-      </div>
-    </article>
-  );
-});
-
-const Row = memo(/** @param {*} opts */ function Row({ e, onOpen }) {
-  const s = S();
-  const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
-  const fmtDate = s.fmtDate || (/** @param {*} [d] */ (d) => d || '');
-  const metaHas = !!srcName;
-  const unread = !e.isRead;
-  return (
-    /* 与卡片同理：外层只做鼠标增强，不声明 role="button"（里面已有标题按钮与打开链接） */
-    <article className={'row-item' + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
-      onClick={/** @param {*} [ev] */ (ev) => openFromClick(ev, e, onOpen)}>
-      <div className="row-thumb">
-        <span className={'card-dot row-dot' + (unread ? '' : ' is-read')} aria-hidden="true" />
-        {e.image
-          ? <LazyImg src={widthVariant(e.image, 320) || e.image} alt={e.name} fallbackClass="row-thumb-fb" fbIcon="image" />
-          : <span className="row-thumb-fb"><Icon n="image" /></span>}
-      </div>
-      <div className="row-main">
-        <div className="row-head">
-          <h3 className="row-title" title={e.name}>
-            <button type="button" className="title-btn"
-              aria-label={(unread ? '未读，' : '') + (e.name || '卡片')}
-              onClick={() => onOpen(e)}>{e.name}</button>
-          </h3>
-          <span className="row-facts">
-            {e.size ? <span className="meta-size">{e.size}</span> : null}
-            <span className="row-date">{fmtDate(e.date)}</span>
+    const media = showMedia ? (
+      <div className="card-media">
+        <LazyImg
+          src={e.image}
+          srcSet={widthSrcSet(e.image, [320, 640, 960])}
+          sizes="(max-width: 720px) 46vw, 320px"
+          alt={e.name}
+          fallbackClass="media-fallback"
+          fbIcon="image"
+          priority={priority}
+          onFail={() => setImgFailed(true)}
+        />
+        {dot}
+        {srcName ? (
+          <span className="badge-source" title={e.feedName}>
+            {srcName}
           </span>
-        </div>
-        {e.desc ? <p className="row-desc">{e.desc}</p> : null}
-        {metaHas ? (
-          <div className="row-tags">
-            <span className="src-pill" title={e.feedName}>{srcName}</span>
+        ) : null}
+        {e.size ? <span className="badge-size">{e.size}</span> : null}
+        {e.date ? <span className="badge-idx">{fmtDate(e.date)}</span> : null}
+        {hasActions ? (
+          <div className="card-media-actions">
+            {copyBtn}
+            {openBtn}
           </div>
         ) : null}
       </div>
-      <div className="row-actions">
-        <CopyButton e={e} />
-        <OpenButton e={e} />
+    ) : null;
+
+    const metaRow = showMedia ? null : (
+      <div className="card-meta">
+        {dot}
+        {srcName ? (
+          <span className="src-pill" title={e.feedName}>
+            {srcName}
+          </span>
+        ) : null}
+        {e.size ? <span className="meta-size">{e.size}</span> : null}
+        <span className="meta-date">{fmtDate(e.date)}</span>
       </div>
-    </article>
-  );
-});
+    );
+
+    return (
+      /* 外层不再是 role="button"：卡片里已经有真正的 <button>（标题）与 <a>（打开原文），
+       ARIA 不允许交互控件嵌套 —— 读屏只会暴露外层，里面的按钮读不出来，Tab 顺序也和
+       视觉顺序错位。现在标题按钮是唯一的「打开」入口（键盘可达、有名字），
+       点空白处仍是鼠标增强，但不再谎称自己是个按钮。 */
+      <article
+        className={'card' + (showMedia ? ' card-has-media' : '') + (e.isFavorite ? ' is-fav' : '')}
+        data-id={e.id}
+        onClick={/** @param {*} [ev] */ (ev) => openFromClick(ev, e, onOpen)}
+      >
+        {media}
+        <div className="card-body">
+          {metaRow}
+          <h3 className="card-title" title={e.name}>
+            <button
+              type="button"
+              className="title-btn"
+              aria-label={(unread ? '未读，' : '') + (e.name || '卡片')}
+              onClick={() => onOpen(e)}
+            >
+              {e.name}
+            </button>
+          </h3>
+          {e.desc ? <p className="card-desc">{e.desc}</p> : null}
+          {showMedia || !hasActions ? null : (
+            <div className="card-foot">
+              {copyBtn}
+              {openBtn}
+            </div>
+          )}
+        </div>
+      </article>
+    );
+  },
+);
+
+const Row = memo(
+  /** @param {*} opts */ function Row({ e, onOpen }) {
+    const s = S();
+    const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
+    const fmtDate = /** @type {(d?: any) => any} */ (s.fmtDate || ((d) => d || ''));
+    const metaHas = !!srcName;
+    const unread = !e.isRead;
+    return (
+      /* 与卡片同理：外层只做鼠标增强，不声明 role="button"（里面已有标题按钮与打开链接） */
+      <article
+        className={'row-item' + (e.isFavorite ? ' is-fav' : '')}
+        data-id={e.id}
+        onClick={/** @param {*} [ev] */ (ev) => openFromClick(ev, e, onOpen)}
+      >
+        <div className="row-thumb">
+          <span className={'card-dot row-dot' + (unread ? '' : ' is-read')} aria-hidden="true" />
+          {e.image ? (
+            <LazyImg
+              src={widthVariant(e.image, 320) || e.image}
+              alt={e.name}
+              fallbackClass="row-thumb-fb"
+              fbIcon="image"
+            />
+          ) : (
+            <span className="row-thumb-fb">
+              <Icon n="image" />
+            </span>
+          )}
+        </div>
+        <div className="row-main">
+          <div className="row-head">
+            <h3 className="row-title" title={e.name}>
+              <button
+                type="button"
+                className="title-btn"
+                aria-label={(unread ? '未读，' : '') + (e.name || '卡片')}
+                onClick={() => onOpen(e)}
+              >
+                {e.name}
+              </button>
+            </h3>
+            <span className="row-facts">
+              {e.size ? <span className="meta-size">{e.size}</span> : null}
+              <span className="row-date">{fmtDate(e.date)}</span>
+            </span>
+          </div>
+          {e.desc ? <p className="row-desc">{e.desc}</p> : null}
+          {metaHas ? (
+            <div className="row-tags">
+              <span className="src-pill" title={e.feedName}>
+                {srcName}
+              </span>
+            </div>
+          ) : null}
+        </div>
+        <div className="row-actions">
+          <CopyButton e={e} />
+          <OpenButton e={e} />
+        </div>
+      </article>
+    );
+  },
+);
 
 /** 点卡片空白处打开详情；卡内的按钮 / 链接 / 标签有自己的动作，不劫持它们
-*@param {*} [ev]
+ *@param {*} [ev]
  * @param {*} [e]
  * @param {*} [onOpen]
-*/
+ */
 function openFromClick(ev, e, onOpen) {
   if (ev.target && ev.target.closest && ev.target.closest('button, a, [data-tag]')) return;
   onOpen(e);
@@ -217,25 +279,29 @@ const Skeletons = ({ view }) => {
   const count = s.firstPageSize ? s.firstPageSize() : 8;
   const n = Array.from({ length: count }, /** @param {*} [_] @param {*} [i] */ (_, i) => i);
   if (view === 'list') {
-    return n.map(/** @param {*} [i] */ (i) => (
-      <div className="sk-row" key={i}>
-        <div className="sk-row-thumb" />
-        <div className="sk-row-lines">
-          <div className="sk-row-line w70" />
-          <div className="sk-row-line w90" />
-          <div className="sk-row-line w40" />
+    return n.map(
+      /** @param {*} [i] */ (i) => (
+        <div className="sk-row" key={i}>
+          <div className="sk-row-thumb" />
+          <div className="sk-row-lines">
+            <div className="sk-row-line w70" />
+            <div className="sk-row-line w90" />
+            <div className="sk-row-line w40" />
+          </div>
         </div>
-      </div>
-    ));
+      ),
+    );
   }
-  return n.map(/** @param {*} [i] */ (i) => (
-    <div className="sk-card" key={i}>
-      <div className="sk-media" />
-      <div className="sk-line w85" />
-      <div className="sk-line" />
-      <div className="sk-line w60" />
-    </div>
-  ));
+  return n.map(
+    /** @param {*} [i] */ (i) => (
+      <div className="sk-card" key={i}>
+        <div className="sk-media" />
+        <div className="sk-line w85" />
+        <div className="sk-line" />
+        <div className="sk-line w60" />
+      </div>
+    ),
+  );
 };
 
 export function CardsView() {
@@ -276,17 +342,25 @@ export function CardsView() {
       setSearchOpen(true);
       requestAnimationFrame(() => {
         const el = searchRef.current;
-        if (el) { el.focus(); if (typeof el.select === 'function') el.select(); }
+        if (el) {
+          el.focus();
+          if (typeof el.select === 'function') el.select();
+        }
       });
     });
-    return () => { revoke('cardsFocusSearch'); };
+    return () => {
+      revoke('cardsFocusSearch');
+    };
   }, []);
 
   // 展开后把焦点送进输入框
   useEffect(() => {
     if (!searchOpen) return;
     const el = searchRef.current;
-    if (el) { el.focus(); if (typeof el.select === 'function') el.select(); }
+    if (el) {
+      el.focus();
+      if (typeof el.select === 'function') el.select();
+    }
   }, [searchOpen]);
 
   /* 外部（命令面板 / 深链）改了搜索词时同步草稿，并把搜索框展开。
@@ -306,7 +380,9 @@ export function CardsView() {
   /** @type {any} */
   const autoLoadArmed = useRef(false);
   useEffect(() => {
-    const arm = () => { autoLoadArmed.current = true; };
+    const arm = () => {
+      autoLoadArmed.current = true;
+    };
     /**
      * @param {*} [ev]
      */
@@ -314,7 +390,8 @@ export function CardsView() {
       // 在输入框 / 文本域 / 可编辑区里敲方向键、空格是在编辑内容，不是在滚列表，别开闸
       const t = ev.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(ev.key)) arm();
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(ev.key))
+        arm();
     };
     document.addEventListener('pointerdown', arm, { capture: true, passive: true });
     document.addEventListener('touchmove', arm, { capture: true, passive: true });
@@ -328,7 +405,9 @@ export function CardsView() {
     };
   }, []);
   // 任何一次列表重置（换频道 / 分组 / 搜索 / 后台重拉）都重新收闸
-  useEffect(() => { autoLoadArmed.current = false; }, [st.listEpoch]);
+  useEffect(() => {
+    autoLoadArmed.current = false;
+  }, [st.listEpoch]);
 
   // 滚动到底部自动加载（与文章页同一套判据）：
   // App Shell 后卡片列表在 main.wrap 里滚动，window 的 scroll 事件收不到 ——
@@ -341,7 +420,8 @@ export function CardsView() {
     const check = () => {
       // 首屏失败 / 列表为空时不自动翻页：否则错误态会被无限重拉顶掉，
       // 用户只看到一直在转的骨架（弱网下尤其明显）。重试交给错误空态的按钮。
-      if (st.loading || !st.hasMore || st.loadMoreErr || st.loadError || !(st.entries || []).length) return;
+      if (st.loading || !st.hasMore || st.loadMoreErr || st.loadError || !(st.entries || []).length)
+        return;
       // 视图隐藏时 measurement 全部归零：哨兵 top 必然 < innerHeight，会被误判成
       // 「已到底部」而把整个列表在后台分页拉完。只有卡片页可见时才自动加载。
       const host = document.getElementById('cardsView');
@@ -358,7 +438,9 @@ export function CardsView() {
     };
     document.addEventListener('scroll', check, { capture: true, passive: true });
     // 从别的页面切回来时补一次判定：effect 依赖不变，光等 scroll 事件会漏掉「重新显示」
-    const onView = () => { setTimeout(check, 0); };
+    const onView = () => {
+      setTimeout(check, 0);
+    };
     const stopView = on(EVENT.VIEW, onView);
     const t = setTimeout(check, 350);
     return () => {
@@ -374,34 +456,52 @@ export function CardsView() {
   /** @type {*} */
   const feeds = st.feedList || [];
   /** @type {*} */
-  const list = (s && s.filterEntries) ? s.filterEntries() : (st.entries || []);
+  const list = s && s.filterEntries ? s.filterEntries() : st.entries || [];
   const view = st.view || 'grid';
   const noEntries = (st.entries || []).length === 0;
 
   const cardFeeds = feeds.filter(/** @param {*} [f] */ (f) => f.cardEnabled);
-  const groups = (s && s.groupFeeds) ? s.groupFeeds(cardFeeds) : [{ name: '', feeds: cardFeeds }];
+  const groups = s && s.groupFeeds ? s.groupFeeds(cardFeeds) : [{ name: '', feeds: cardFeeds }];
   // 只有「分了组」才画组头（和文章页侧栏同一判据）
   const hasGroups = groups.length > 1 || !!(groups[0] && groups[0].name);
-  const collapsedGroups = (s && s.readerCollapsedGroups) ? s.readerCollapsedGroups() : new Set();
+  const collapsedGroups = s && s.readerCollapsedGroups ? s.readerCollapsedGroups() : new Set();
   const groupFilter = st.cardGroup != null;
-  const curGroup = groupFilter ? (groups.find(/** @param {*} [g] */ (g) => g.name === st.cardGroup) || null) : null;
+  const curGroup = groupFilter
+    ? groups.find(/** @param {*} [g] */ (g) => g.name === st.cardGroup) || null
+    : null;
   // 分组筛选不是下拉里的选项（组头是折叠开关），触发器文案走 valueLabel；
   // 括号里是未读数，与侧栏 / 卡面圆点同一口径
   const groupLabel = groupFilter
     ? `分组 · ${st.cardGroup || '未分组'}${curGroup ? `（${curGroup.feeds.reduce(/** @param {*} [n] @param {*} [f] */ (n, f) => n + Number(f.unreadCount || 0), 0)}）` : ''}`
     : '';
-  const feedValue = groupFilter ? 'g:' + st.cardGroup : (st.feedFilter == null ? '' : String(st.feedFilter));
+  const feedValue = groupFilter
+    ? 'g:' + st.cardGroup
+    : st.feedFilter == null
+      ? ''
+      : String(st.feedFilter);
 
   // 「固定频道标题栏」的标题：当前频道 / 分组 + 当前标签，滚到列表中段也知道自己在看哪一档
-  const curCardFeed = st.feedFilter == null ? null : feeds.find(/** @param {*} [f] */ (f) => String(f.id) === String(st.feedFilter));
-  const headTitle = (curCardFeed
-    ? (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(curCardFeed) : curCardFeed.title) : curCardFeed.title)
-    : (groupLabel || '全部频道')) + (st.tag ? ` · #${st.tag}` : '') + (st.aiTag ? ` · AI #${st.aiTag}` : '');
+  const curCardFeed =
+    st.feedFilter == null
+      ? null
+      : feeds.find(/** @param {*} [f] */ (f) => String(f.id) === String(st.feedFilter));
+  const headTitle =
+    (curCardFeed
+      ? s.shortFeedName
+        ? s.shortFeedName(s.feedTitle ? s.feedTitle(curCardFeed) : curCardFeed.title)
+        : curCardFeed.title
+      : groupLabel || '全部频道') +
+    (st.tag ? ` · #${st.tag}` : '') +
+    (st.aiTag ? ` · AI #${st.aiTag}` : '');
 
   const noFeeds = !feeds.length;
   // 挂着标签筛选时是全库检索（不受卡片开关限制），「卡片开关全关」的引导不适用
-  const noCards = !st.tag && !st.aiTag
-    && !st.feedFilter && !groupFilter && !feeds.some(/** @param {*} [f] */ (f) => f.cardEnabled);
+  const noCards =
+    !st.tag &&
+    !st.aiTag &&
+    !st.feedFilter &&
+    !groupFilter &&
+    !feeds.some(/** @param {*} [f] */ (f) => f.cardEnabled);
 
   // 空态不只说「为什么空」，还要给一条出路：每个分支都配一个能立刻点的动作，
   // 否则用户只能自己去猜该去哪个页面、点哪个开关。
@@ -410,11 +510,15 @@ export function CardsView() {
   /** @type {any} */
   let emptyAction = null;
   if (st.loadError) {
-    emptyMsg = st.loadMoreErrMsg ? `数据加载失败：${st.loadMoreErrMsg}` : '数据加载失败，请稍后重试';
+    emptyMsg = st.loadMoreErrMsg
+      ? `数据加载失败：${st.loadMoreErrMsg}`
+      : '数据加载失败，请稍后重试';
     emptyAction = { label: '重试', run: () => s.loadPage(true) };
   } else if (noFeeds) {
     // 窄屏「设置」收在 ⋮ 菜单里，屏幕右上角并没有可见控件，别写方位词
-    emptyMsg = writable ? '还没有订阅源，去「设置 → 数据源」添加 RSS 地址' : '还没有订阅源；只读账户不能自行添加';
+    emptyMsg = writable
+      ? '还没有订阅源，去「设置 → 数据源」添加 RSS 地址'
+      : '还没有订阅源；只读账户不能自行添加';
     emptyAction = writable ? { label: '添加订阅源', run: () => s.readerOpenSource() } : null;
   } else if (noCards) {
     // 文案给几条路，就得给几个出口：只读账户不能改开关，直接给「切到文章页」
@@ -423,21 +527,34 @@ export function CardsView() {
       : '所有频道的「卡片」开关都关掉了，可切到「文章」页阅读';
     emptyAction = writable
       ? { label: '去数据源设置', run: () => s.readerOpenSource() }
-      : { label: '切到文章页', run: () => { if (s.switchView) s.switchView('reader'); } };
+      : {
+          label: '切到文章页',
+          run: () => {
+            if (s.switchView) s.switchView('reader');
+          },
+        };
   } else if (!list.length) {
     if (st.q) {
       emptyMsg = `没有找到匹配「${st.q}」的资源`;
       emptyAction = { label: '清除搜索', run: () => onSearchClear() };
     } else if (st.tag || st.aiTag) {
       emptyMsg = st.aiTag ? '该 AI 标签下暂无内容' : '该标签下暂无内容';
-      emptyAction = { label: '清除标签', run: () => (st.aiTag ? s.cardsAiTag(null) : s.cardsTag(null)) };
+      emptyAction = {
+        label: '清除标签',
+        run: () => (st.aiTag ? s.cardsAiTag(null) : s.cardsTag(null)),
+      };
     } else {
-      emptyMsg = groupFilter ? '该分组暂无内容'
-        : st.feedFilter == null ? '还没有内容' : '这个频道还没有内容';
+      emptyMsg = groupFilter
+        ? '该分组暂无内容'
+        : st.feedFilter == null
+          ? '还没有内容'
+          : '这个频道还没有内容';
       emptyAction = groupFilter
         ? { label: '查看全部频道', run: () => s.cardsFilterFeed('') }
         : st.feedFilter == null
-          ? (writable ? { label: '重新抓取', run: () => s.refresh() } : null)
+          ? writable
+            ? { label: '重新抓取', run: () => s.refresh() }
+            : null
           : { label: '查看全部频道', run: () => s.cardsFilterFeed('') };
     }
   }
@@ -457,7 +574,9 @@ export function CardsView() {
     setQDraft(v);
     clearTimeout(debounceRef.current);
     // 与文章页统一 300ms；回车立即检索
-    debounceRef.current = setTimeout(() => { if (s.cardsSearch) s.cardsSearch(v.trim()); }, 300);
+    debounceRef.current = setTimeout(() => {
+      if (s.cardsSearch) s.cardsSearch(v.trim());
+    }, 300);
   };
   /**
    * @param {*} [ev]
@@ -477,7 +596,10 @@ export function CardsView() {
   };
   // 标题栏放大镜：展开 / 收起；收起时把关键词一起清掉（看不见却生效的过滤最难排查）
   const toggleSearch = () => {
-    if (!searchOpen) { setSearchOpen(true); return; }
+    if (!searchOpen) {
+      setSearchOpen(true);
+      return;
+    }
     if (qDraft || st.q) onSearchClear();
     setSearchOpen(false);
   };
@@ -485,22 +607,31 @@ export function CardsView() {
   // memo 的前提是回调稳定：回调与本次渲染无关，否则每张卡片每次 tick 都会拿到新函数 props 而重渲染。
   const onOpenCard = useCallback(/** @param {*} [e] */ (e) => setDetailId(e.id), []);
   // 仅用于「卡片详情弹窗」里的正文标签（.art-tags）：卡面 / 列表项本身不再展示标签。
-  const onTag = useCallback(/** @param {*} [t] */ (t) => {
-    const c = S();
-    if (c.cardsTag) c.cardsTag(c.state.tag === t ? null : t);
-  }, []);
+  const onTag = useCallback(
+    /** @param {*} [t] */ (t) => {
+      const c = S();
+      if (c.cardsTag) c.cardsTag(c.state.tag === t ? null : t);
+    },
+    [],
+  );
   // 卡片详情里的「AI 标签」组：走独立筛选，不能混进手动标签那条链路
-  const onAiTag = useCallback(/** @param {*} [t] */ (t) => {
-    const c = S();
-    if (c.cardsAiTag) c.cardsAiTag(c.state.aiTag === t ? null : t);
-  }, []);
+  const onAiTag = useCallback(
+    /** @param {*} [t] */ (t) => {
+      const c = S();
+      if (c.cardsAiTag) c.cardsAiTag(c.state.aiTag === t ? null : t);
+    },
+    [],
+  );
 
   // 频道筛选里的组头折叠：与文章页侧栏共用同一份偏好（layout.rdCollapsedGroups），
   // 核心改动后会同时派发 __readerTick 与 __cardsTick，本组件靠上面的监听重绘即可。
-  const toggleGroupFold = useCallback(/** @param {*} [name] */ (name) => {
-    const c = S();
-    if (c.readerToggleGroupCollapse) c.readerToggleGroupCollapse(name);
-  }, []);
+  const toggleGroupFold = useCallback(
+    /** @param {*} [name] */ (name) => {
+      const c = S();
+      if (c.readerToggleGroupCollapse) c.readerToggleGroupCollapse(name);
+    },
+    [],
+  );
 
   // 抽屉里点频道 = 换筛选 + 收起抽屉。抽屉是模态的：选完就该收起，否则盖着刚筛出来的列表。
   /**
@@ -523,7 +654,10 @@ export function CardsView() {
     if (s.readerOpenSource) s.readerOpenSource();
   };
 
-  const detailEntry = detailId == null ? null : (st.entries || []).find(/** @param {*} [x] */ (x) => String(x.id) === String(detailId));
+  const detailEntry =
+    detailId == null
+      ? null
+      : (st.entries || []).find(/** @param {*} [x] */ (x) => String(x.id) === String(detailId));
 
   const closeDetail = () => {
     const id = detailId;
@@ -532,7 +666,11 @@ export function CardsView() {
     // preventScroll：整屏详情关掉后列表刚从 body 锁滚动里恢复，浏览器默认会把
     // 聚焦元素滚到视口中间 —— 用户会看到列表自己跳一下。
     /** @type {any} */
-    const el = document.querySelector('[data-id="' + (window.CSS && window.CSS.escape ? window.CSS.escape(String(id)) : id) + '"] .title-btn');
+    const el = document.querySelector(
+      '[data-id="' +
+        (window.CSS && window.CSS.escape ? window.CSS.escape(String(id)) : id) +
+        '"] .title-btn',
+    );
     if (el && el.focus) el.focus({ preventScroll: true });
   };
 
@@ -546,18 +684,28 @@ export function CardsView() {
   };
   // 频道 / 排序下拉选项（用自定义弹层 Dropdown 渲染，替代原生 select 的系统弹窗）
   // 「全部频道」的括号与侧栏一致：卡片频道里的未读总数
-  const cardUnread = cardFeeds.reduce(/** @param {*} [n] @param {*} [f] */ (n, f) => n + Number(f.unreadCount || 0), 0);
+  const cardUnread = cardFeeds.reduce(
+    /** @param {*} [n] @param {*} [f] */ (n, f) => n + Number(f.unreadCount || 0),
+    0,
+  );
   /** @type {any[]} */
   const feedOpts = [{ value: '', label: `全部频道（${s.fmtBadge(cardUnread)}）` }];
   for (const g of groups) {
-    for (const f of g.feeds) feedOpts.push({ value: String(f.id), label: feedLabel(f), group: g.name || '' });
+    for (const f of g.feeds)
+      feedOpts.push({ value: String(f.id), label: feedLabel(f), group: g.name || '' });
   }
 
   return (
     <>
       {/* 窄屏频道抽屉：与文章页同一套交互（左侧推出 / 遮罩 / 关闭按钮 / 侧滑手势）。
           宽屏由 CSS 隐藏，频道筛选仍走工具栏下拉，桌面结构不变。 */}
-      <div className="cards-mask" id="cardsMask" onClick={() => { if (s.cardsCloseDrawer) s.cardsCloseDrawer(); }} />
+      <div
+        className="cards-mask"
+        id="cardsMask"
+        onClick={() => {
+          if (s.cardsCloseDrawer) s.cardsCloseDrawer();
+        }}
+      />
       <aside className="cards-side" id="cardsSide" aria-label="频道列表">
         {/* 品牌 logo 在频道栏顶部（与文章页侧栏一致；窄屏抽屉里可见） */}
         <div className="side-brand">
@@ -566,16 +714,36 @@ export function CardsView() {
         </div>
         <div className="cards-side-head">
           <span>频道</span>
-          <span className="reader-side-n" id="cardsSideN">{cardFeeds.length ? `${s.fmtBadge(cardFeeds.length)} 个` : ''}</span>
-          <button className="reader-side-close" id="cardsSideClose" type="button" aria-label="收起频道列表"
-            onClick={() => { if (s.cardsCloseDrawer) s.cardsCloseDrawer(); }}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+          <span className="reader-side-n" id="cardsSideN">
+            {cardFeeds.length ? `${s.fmtBadge(cardFeeds.length)} 个` : ''}
+          </span>
+          <button
+            className="reader-side-close"
+            id="cardsSideClose"
+            type="button"
+            aria-label="收起频道列表"
+            onClick={() => {
+              if (s.cardsCloseDrawer) s.cardsCloseDrawer();
+            }}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-x" />
+            </svg>
           </button>
         </div>
         <nav className="cards-channels" id="cardsChannels">
-          <ChannelList variant="cards" groups={groups} hasGroups={hasGroups} collapsed={collapsedGroups}
-            activeFeedId={st.feedFilter} activeGroup={st.cardGroup} onFeed={pickFeed} onGroup={pickGroup}
-            onFold={toggleGroupFold} onAdd={addChannel} />
+          <ChannelList
+            variant="cards"
+            groups={groups}
+            hasGroups={hasGroups}
+            collapsed={collapsedGroups}
+            activeFeedId={st.feedFilter}
+            activeGroup={st.cardGroup}
+            onFeed={pickFeed}
+            onGroup={pickGroup}
+            onFold={toggleGroupFold}
+            onAdd={addChannel}
+          />
         </nav>
       </aside>
 
@@ -586,72 +754,141 @@ export function CardsView() {
           下方 #tagBar（Row2）消费此变量实现吸顶。 */}
       <div className="cards-sticky" ref={headRef}>
         <div className="wrap cards-head page-head view-toolbar">
-          <button className="btn btn-ghost btn-sm cards-menu-btn vt-channel" id="cardsMenuBtn" type="button"
-            aria-label="打开频道列表" aria-controls="cardsSide"
-            onClick={() => { if (s.cardsToggleDrawer) s.cardsToggleDrawer(); }}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-menu" /></svg>
+          <button
+            className="btn btn-ghost btn-sm cards-menu-btn vt-channel"
+            id="cardsMenuBtn"
+            type="button"
+            aria-label="打开频道列表"
+            aria-controls="cardsSide"
+            onClick={() => {
+              if (s.cardsToggleDrawer) s.cardsToggleDrawer();
+            }}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-menu" />
+            </svg>
             <span className="cards-menu-label">频道</span>
           </button>
           {/* 桌面 ≥721px 下拉即标题（见 CSS），标题文字藏起；≤720px 下拉退场、抽屉接管，文字标题回来。 */}
-          <h2 className="cards-title page-title vt-title" title={headTitle}>{headTitle}</h2>
+          <h2 className="cards-title page-title vt-title" title={headTitle}>
+            {headTitle}
+          </h2>
           {/* 中部：频道下拉选择器（同时承担标题职责，显示当前频道+条数）。窄屏退场。 */}
-          <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选"
-            ariaLabel={'频道筛选，当前：' + headTitle} value={feedValue} valueLabel={groupLabel}
-            options={feedOpts} onChange={/** @param {*} [v] */ (v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }}
-            collapsible collapsedGroups={collapsedGroups} onToggleGroup={toggleGroupFold}
-            activeGroup={st.cardGroup} onGroupFilter={pickGroup} />
+          <Dropdown
+            wrapId="feedDD"
+            id="feedSelect"
+            title="频道筛选"
+            ariaLabel={'频道筛选，当前：' + headTitle}
+            value={feedValue}
+            valueLabel={groupLabel}
+            options={feedOpts}
+            onChange={
+              /** @param {*} [v] */ (v) => {
+                if (s.cardsFilterFeed) s.cardsFilterFeed(v);
+              }
+            }
+            collapsible
+            collapsedGroups={collapsedGroups}
+            onToggleGroup={toggleGroupFold}
+            activeGroup={st.cardGroup}
+            onGroupFilter={pickGroup}
+          />
           {/* 右簇：搜索（桌面常驻胶囊 / 窄屏收进放大镜）+ 常驻视图导航 + ⋮ 菜单（排序 / 视图 / 主题 / 设置）。 */}
           <div className="head-right vt-tools">
             <div className={'search-box page-search vt-search' + (searchOpen ? ' is-open' : '')}>
-              <svg className="search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
-              <input id="searchInput" name={searchName} type="search" ref={searchRef}
-                placeholder="搜索资源名称、描述、正文或标签…" enterKeyHint="search" aria-label="搜索"
-                value={qDraft} onChange={onSearchInput}
+              <svg className="search-ico" aria-hidden="true" focusable="false">
+                <use href="#i-search" />
+              </svg>
+              <input
+                id="searchInput"
+                name={searchName}
+                type="search"
+                ref={searchRef}
+                placeholder="搜索资源名称、描述、正文或标签…"
+                enterKeyHint="search"
+                aria-label="搜索"
+                value={qDraft}
+                onChange={onSearchInput}
                 {...NO_AUTOFILL_PROPS}
-                onKeyDown={/** @param {*} [ev] */ (ev) => {
-                  if (ev.key === 'Escape') {
-                    ev.stopPropagation();
-                    toggleSearch();
-                    /** @type {any} */
-                    const toggle = document.querySelector('.cards-search-toggle');
-                    if (toggle && toggle.focus) toggle.focus();
-                    return;
+                onKeyDown={
+                  /** @param {*} [ev] */ (ev) => {
+                    if (ev.key === 'Escape') {
+                      ev.stopPropagation();
+                      toggleSearch();
+                      /** @type {any} */
+                      const toggle = document.querySelector('.cards-search-toggle');
+                      if (toggle && toggle.focus) toggle.focus();
+                      return;
+                    }
+                    onSearchKey(ev);
                   }
-                  onSearchKey(ev);
-                }} />
-              <button className="search-clear" id="searchClear" type="button" hidden={!qDraft}
-                aria-label="清除搜索" onClick={onSearchClear}>
-                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+                }
+              />
+              <button
+                className="search-clear"
+                id="searchClear"
+                type="button"
+                hidden={!qDraft}
+                aria-label="清除搜索"
+                onClick={onSearchClear}
+              >
+                <svg className="ico" aria-hidden="true" focusable="false">
+                  <use href="#i-x" />
+                </svg>
               </button>
             </div>
-            <button className={'btn btn-ghost btn-sm cards-search-toggle' + (searchOpen ? ' is-on' : '')}
-              id="cardsSearchToggle" type="button"
-              aria-expanded={searchOpen ? 'true' : 'false'} aria-controls="searchInput"
+            <button
+              className={'btn btn-ghost btn-sm cards-search-toggle' + (searchOpen ? ' is-on' : '')}
+              id="cardsSearchToggle"
+              type="button"
+              aria-expanded={searchOpen ? 'true' : 'false'}
+              aria-controls="searchInput"
               title={searchOpen ? '收起搜索' : '搜索'}
-              onClick={toggleSearch}>
-              <svg className="ico" aria-hidden="true" focusable="false"><use href={searchOpen ? '#i-x' : '#i-search'} /></svg>
+              onClick={toggleSearch}
+            >
+              <svg className="ico" aria-hidden="true" focusable="false">
+                <use href={searchOpen ? '#i-x' : '#i-search'} />
+              </svg>
             </button>
             <ViewNav />
             <OverflowMenu view="cards" cardControls sortValue={st.sort} viewMode={view} />
           </div>
           {/* 窄屏第二行：与文章页同一个 ChannelTabs（桌面 display:none，抽屉 / 下拉不变） */}
-          <ChannelTabs variant="cards" groups={groups} activeFeedId={st.feedFilter}
-            activeGroup={st.cardGroup} onFeed={pickFeed}
-            onManage={() => { if (s.cardsToggleDrawer) s.cardsToggleDrawer(); }} />
+          <ChannelTabs
+            variant="cards"
+            groups={groups}
+            activeFeedId={st.feedFilter}
+            activeGroup={st.cardGroup}
+            onFeed={pickFeed}
+            onManage={() => {
+              if (s.cardsToggleDrawer) s.cardsToggleDrawer();
+            }}
+          />
         </div>
       </div>
 
       <main className="wrap">
         {(st.q || st.tag || st.aiTag) && !showSkeleton && !showEmpty ? (
           <div className="list-count" role="status">
-            {st.q ? <span>「{st.q}」找到 {st.total} 条结果</span> : null}
+            {st.q ? (
+              <span>
+                「{st.q}」找到 {st.total} 条结果
+              </span>
+            ) : null}
             {st.tag ? (
               <span className="count-chip">
                 标签：{st.tag}
                 {!st.q ? <span className="count-chip-n">{st.total} 条</span> : null}
-                <button type="button" className="count-clear" aria-label="清除标签筛选"
-                  title="清除标签筛选" onClick={() => s.cardsTag(null)}>
-                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+                <button
+                  type="button"
+                  className="count-clear"
+                  aria-label="清除标签筛选"
+                  title="清除标签筛选"
+                  onClick={() => s.cardsTag(null)}
+                >
+                  <svg className="ico" aria-hidden="true" focusable="false">
+                    <use href="#i-x" />
+                  </svg>
                 </button>
               </span>
             ) : null}
@@ -659,37 +896,72 @@ export function CardsView() {
               <span className="count-chip count-chip-ai">
                 AI 标签：{st.aiTag}
                 {!st.q ? <span className="count-chip-n">{st.total} 条</span> : null}
-                <button type="button" className="count-clear" aria-label="清除 AI 标签筛选"
-                  title="清除 AI 标签筛选" onClick={() => s.cardsAiTag(null)}>
-                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
+                <button
+                  type="button"
+                  className="count-clear"
+                  aria-label="清除 AI 标签筛选"
+                  title="清除 AI 标签筛选"
+                  onClick={() => s.cardsAiTag(null)}
+                >
+                  <svg className="ico" aria-hidden="true" focusable="false">
+                    <use href="#i-x" />
+                  </svg>
                 </button>
               </span>
             ) : null}
           </div>
         ) : null}
         {showSkeleton ? (
-          <div id="skeleton" className={'grid' + (view === 'list' ? ' list-mode' : '')}><Skeletons view={view} /></div>
+          <div id="skeleton" className={'grid' + (view === 'list' ? ' list-mode' : '')}>
+            <Skeletons view={view} />
+          </div>
         ) : null}
 
         {showGrid ? (
           <div id="grid" className={'grid' + (view === 'list' ? ' list-mode' : '')}>
             {/* 前 6 张给高优先级：弱网下浏览器并发只有 6 条，
                 同权重排队会让首屏可见的那几张图排在第 20 位，卡片墙只剩灰骨架。 */}
-            {list.map(/** @param {*} [e] @param {*} [i] */ (e, i) => (view === 'list'
-              ? <Row e={e} onOpen={onOpenCard} key={e.id} />
-              : <Card e={e} onOpen={onOpenCard} priority={i < 6} key={e.id} />))}
+            {list.map(
+              /** @param {*} [e] @param {*} [i] */ (e, i) =>
+                view === 'list' ? (
+                  <Row e={e} onOpen={onOpenCard} key={e.id} />
+                ) : (
+                  <Card e={e} onOpen={onOpenCard} priority={i < 6} key={e.id} />
+                ),
+            )}
           </div>
-        ) : <div id="grid" className="grid" hidden />}
+        ) : (
+          <div id="grid" className="grid" hidden />
+        )}
 
         {showEmpty ? (
           <div id="empty" className="empty">
-            <div className="empty-ico"><svg className="ico" aria-hidden="true" focusable="false"><use href="#i-inbox" /></svg></div>
+            <div className="empty-ico">
+              <svg className="ico" aria-hidden="true" focusable="false">
+                <use href="#i-inbox" />
+              </svg>
+            </div>
             <p>{emptyMsg}</p>
             {emptyAction ? (
-              <button type="button" className="btn btn-primary empty-action" onClick={emptyAction.run}>{emptyAction.label}</button>
+              <button
+                type="button"
+                className="btn btn-primary empty-action"
+                onClick={emptyAction.run}
+              >
+                {emptyAction.label}
+              </button>
             ) : null}
           </div>
-        ) : <div id="empty" className="empty" hidden><div className="empty-ico"><svg className="ico" aria-hidden="true" focusable="false"><use href="#i-inbox" /></svg></div><p /></div>}
+        ) : (
+          <div id="empty" className="empty" hidden>
+            <div className="empty-ico">
+              <svg className="ico" aria-hidden="true" focusable="false">
+                <use href="#i-inbox" />
+              </svg>
+            </div>
+            <p />
+          </div>
+        )}
 
         <div className="loadmore-wrap">
           {/* 「加载更多」按钮已移除：滚动到底自动加载是唯一入口，
@@ -697,25 +969,42 @@ export function CardsView() {
           {st.loadMoreErr ? (
             <div className="load-retry" role="alert">
               <span>加载失败{st.loadMoreErrMsg ? `：${st.loadMoreErrMsg}` : ''}</span>
-              <button type="button" className="btn" onClick={() => s.cardsRetryMore()}>重试</button>
+              <button type="button" className="btn" onClick={() => s.cardsRetryMore()}>
+                重试
+              </button>
             </div>
           ) : null}
-          <div className="loading-dots" id="loadingMore" hidden={!showLoadingMore}><i /><i /><i /></div>
+          <div className="loading-dots" id="loadingMore" hidden={!showLoadingMore}>
+            <i />
+            <i />
+            <i />
+          </div>
           <div className="cards-sentinel" id="cardsSentinel" aria-hidden="true" />
         </div>
         {!showSkeleton && !showEmpty && list.length > 0 && !st.hasMore && !showLoadingMore ? (
           <div className="list-end">已经到底了</div>
         ) : null}
 
-        <footer className="foot">
-          笺川 · FeedLore
-        </footer>
+        <footer className="foot">笺川 · FeedLore</footer>
       </main>
 
       {detailEntry ? (
-        <CardDetail e={detailEntry} onClose={closeDetail}
-          onTag={/** @param {*} [t] */ (t) => { closeDetail(); onTag(t); }}
-          onAiTag={/** @param {*} [t] */ (t) => { closeDetail(); onAiTag(t); }} />
+        <CardDetail
+          e={detailEntry}
+          onClose={closeDetail}
+          onTag={
+            /** @param {*} [t] */ (t) => {
+              closeDetail();
+              onTag(t);
+            }
+          }
+          onAiTag={
+            /** @param {*} [t] */ (t) => {
+              closeDetail();
+              onAiTag(t);
+            }
+          }
+        />
       ) : null}
     </>
   );

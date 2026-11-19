@@ -1,6 +1,11 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exploreKeywords, exploreRelevance, exploreSampleByEra, historyToMessages } from './aiTasks';
+import test from 'node:test';
+import {
+  exploreKeywords,
+  exploreRelevance,
+  exploreSampleByEra,
+  historyToMessages,
+} from './aiTasks';
 
 /** 探索问答的关键词抽取：纯函数，守「口语化问题也能召回」与「虚词不进召回」。 */
 
@@ -36,7 +41,11 @@ test('exploreKeywords: 去重且不超过 8 个', () => {
 
 /* ---- 全库召回的相关度排序 ---- */
 
-const row = (title: string, description = '', tags: string[] = []) => ({ title, description, tags });
+const row = (title: string, description = '', tags: string[] = []) => ({
+  title,
+  description,
+  tags,
+});
 
 test('exploreRelevance: 标题权重3 > 描述2 > 标签1，命中多仍排前', () => {
   const terms = ['好剧', '电视剧', '追剧'];
@@ -54,8 +63,8 @@ test('exploreRelevance: 标题权重3 > 描述2 > 标签1，命中多仍排前',
 });
 
 test('exploreRelevance: 字面词权重高于扩展泛词', () => {
-  const literalHit = row('好剧清单');     // 只命中字面「好剧」
-  const expandedHit = row('本周榜单');    // 只命中扩展「榜单」
+  const literalHit = row('好剧清单'); // 只命中字面「好剧」
+  const expandedHit = row('本周榜单'); // 只命中扩展「榜单」
   const lit = exploreRelevance(literalHit, ['好剧'], ['榜单']);
   const exp = exploreRelevance(expandedHit, ['好剧'], ['榜单']);
   assert.ok(lit > exp, `字面命中应比扩展命中分高：${lit} vs ${exp}`);
@@ -64,26 +73,39 @@ test('exploreRelevance: 字面词权重高于扩展泛词', () => {
 });
 
 test('exploreRelevance: 同词同字段最多算 1 次，重复不刷分；大小写不敏感', () => {
-  assert.equal(exploreRelevance(row('好剧好剧好剧', '又是好剧'), ['好剧']), 3 + 2, '标题与描述各算一次');
+  assert.equal(
+    exploreRelevance(row('好剧好剧好剧', '又是好剧'), ['好剧']),
+    3 + 2,
+    '标题与描述各算一次',
+  );
   assert.equal(exploreRelevance(row('AI 工具', '再说 AI'), ['ai']), 3 + 2, '英文大写命中小写词');
 });
 
 /* ---- 分时段取样 ---- */
 
-const eraRow = (id: number, daysAgo: number) => ({ id, publishedAt: new Date(NOW - daysAgo * 86_400_000) });
+const eraRow = (id: number, daysAgo: number) => ({
+  id,
+  publishedAt: new Date(NOW - daysAgo * 86_400_000),
+});
 const NOW = Date.UTC(2026, 10, 17);
 
 test('exploreSampleByEra: 近/中/老三段各留配额，老条目不被近期挤掉', () => {
   // 40 条近的 + 40 条中的 + 40 条老的，都按相关度排好（同段内 id 小=更相关）
   const ranked = [
-    ...Array.from({ length: 40 }, (_, i) => eraRow(i, 10)),       // 近
+    ...Array.from({ length: 40 }, (_, i) => eraRow(i, 10)), // 近
     ...Array.from({ length: 40 }, (_, i) => eraRow(100 + i, 200)), // 中
     ...Array.from({ length: 40 }, (_, i) => eraRow(200 + i, 500)), // 老
   ];
   const sampled = exploreSampleByEra(ranked, 30, NOW);
   assert.equal(sampled.length, 30);
-  assert.ok(sampled.some((r) => r.publishedAt!.getTime() < NOW - 365 * 86_400_000), '应包含老条目');
-  assert.ok(sampled.some((r) => r.publishedAt!.getTime() >= NOW - 90 * 86_400_000), '应包含近期条目');
+  assert.ok(
+    sampled.some((r) => r.publishedAt!.getTime() < NOW - 365 * 86_400_000),
+    '应包含老条目',
+  );
+  assert.ok(
+    sampled.some((r) => r.publishedAt!.getTime() >= NOW - 90 * 86_400_000),
+    '应包含近期条目',
+  );
 });
 
 test('exploreSampleByEra: 命中全挤在近期时，空段配额顺延不浪费', () => {
@@ -99,14 +121,16 @@ test('exploreSampleByEra: 空输入返回空数组', () => {
 /* ---- 多轮历史 ---- */
 
 test('historyToMessages: [#n] 按该轮 refs 替换成《条目名》，避免跨轮编号错位', () => {
-  const msgs = historyToMessages([{
-    question: '最近有什么好剧？',
-    answer: '先看 [#1]，另可看 [#2]。',
-    refs: [
-      { id: '10', name: '开年这三部剧值得追' },
-      { id: '11', name: '本周口碑榜：悬疑剧回潮' },
-    ],
-  }]);
+  const msgs = historyToMessages([
+    {
+      question: '最近有什么好剧？',
+      answer: '先看 [#1]，另可看 [#2]。',
+      refs: [
+        { id: '10', name: '开年这三部剧值得追' },
+        { id: '11', name: '本周口碑榜：悬疑剧回潮' },
+      ],
+    },
+  ]);
   assert.equal(msgs.length, 2);
   assert.equal(msgs[0]!.role, 'user');
   assert.equal(msgs[1]!.role, 'assistant');
@@ -116,10 +140,13 @@ test('historyToMessages: [#n] 按该轮 refs 替换成《条目名》，避免�
 });
 
 test('historyToMessages: 越界编号保留原样，不臆造条目名', () => {
-  const msgs = historyToMessages([{
-    question: '有什么？', answer: '看 [#1] 和 [#9]。',
-    refs: [{ id: '1', name: '甲' }],
-  }]);
+  const msgs = historyToMessages([
+    {
+      question: '有什么？',
+      answer: '看 [#1] 和 [#9]。',
+      refs: [{ id: '1', name: '甲' }],
+    },
+  ]);
   assert.ok(msgs[1]!.content.indexOf('《甲》') >= 0);
   assert.ok(msgs[1]!.content.indexOf('[#9]') >= 0, '没有对应 ref 的编号不该被改写');
 });
@@ -129,13 +156,18 @@ test('historyToMessages: 多轮按顺序展开，空答案不产生 assistant �
     { question: '第一问', answer: '', refs: [] },
     { question: '第二问', answer: '第二答', refs: [] },
   ]);
-  assert.deepEqual(msgs.map((m) => m.role), ['user', 'user', 'assistant']);
+  assert.deepEqual(
+    msgs.map((m) => m.role),
+    ['user', 'user', 'assistant'],
+  );
   assert.equal(msgs[1]!.content, '第二问');
 });
 
 test('historyToMessages: 空历史 → 空数组；逐轮文本截断防 token 失控', () => {
   assert.deepEqual(historyToMessages([]), []);
-  const msgs = historyToMessages([{ question: '问'.repeat(500), answer: '答'.repeat(5000), refs: [] }]);
+  const msgs = historyToMessages([
+    { question: '问'.repeat(500), answer: '答'.repeat(5000), refs: [] },
+  ]);
   assert.equal(msgs[0]!.content.length, 300);
   assert.equal(msgs[1]!.content.length, 4000);
 });

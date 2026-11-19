@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bodyJsonUrl, toCard, type CardRow } from './dto';
+import { bodyJsonUrl, type CardRow, toCard } from './dto';
 
 /**
  * DTO 层最容易出的两个错：

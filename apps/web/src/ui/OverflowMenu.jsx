@@ -4,17 +4,20 @@
  *
  * 焦点管理：打开即入焦首个菜单项、Esc 关闭、↑↓ 漫游、→ 进子菜单、← 出子菜单、点击外部关闭。
  * 面板为实底（同 .link-menu 治理思路：未锁滚动不模糊），不触发滚动锁定。 */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+
 import { core } from '@core';
-import { on, EVENT } from '../kernel/events.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { EVENT, on } from '../kernel/events.js';
 
 const S = () => core;
 
 /* 只有真正的悬停设备才用 hover 开子菜单：触屏 / 粗指针的点击会合成 mouseenter，
    与 onClick 的 toggle 叠在一起会出现「点一下刚开、又立刻关掉」。
    jsdom 没有 matchMedia，会落到只走 click 的分支（键盘路径不受影响）。 */
-const canHover = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-  && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+const canHover = () =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 const SORTS = [
   { v: 'new', label: '最新' },
@@ -23,13 +26,25 @@ const SORTS = [
 ];
 
 function readShell() {
-  try { return core.getShell(); } catch (_) { return {}; }
+  try {
+    return core.getShell();
+  } catch (_) {
+    return {};
+  }
 }
 
 /**
  * @param {*} opts
  */
-export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, readerControls = false, readerState, refreshLabel, refreshHint }) {
+export function OverflowMenu({
+  cardControls = false,
+  sortValue,
+  viewMode,
+  readerControls = false,
+  readerState,
+  refreshLabel,
+  refreshHint,
+}) {
   /** @type {any} */
   const [open, setOpen] = useState(false);
   /** @type {any} */
@@ -59,14 +74,23 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
 
   // 打开时入焦首个菜单项；Esc / 外部点击关闭
   useEffect(() => {
-    if (!open) { setSubOpen(false); return undefined; }
-    const first = menuRef.current && menuRef.current.querySelector('[role="menuitem"],[role="menuitemradio"]');
+    if (!open) {
+      setSubOpen(false);
+      return undefined;
+    }
+    const first =
+      menuRef.current && menuRef.current.querySelector('[role="menuitem"],[role="menuitemradio"]');
     if (first) first.focus();
     /**
      * @param {*} [ev]
      */
     const onDocDown = (ev) => {
-      if (menuRef.current && !menuRef.current.contains(ev.target) && btnRef.current && !btnRef.current.contains(ev.target)) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(ev.target) &&
+        btnRef.current &&
+        !btnRef.current.contains(ev.target)
+      ) {
         setOpen(false);
       }
     };
@@ -74,7 +98,10 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
      * @param {*} [ev]
      */
     const onKey = (ev) => {
-      if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        close();
+      }
     };
     document.addEventListener('mousedown', onDocDown);
     document.addEventListener('keydown', onKey);
@@ -94,16 +121,22 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
 
   const onRefresh = async () => {
     setBusy(true);
-    try { await S().refresh(); } finally { setBusy(false); }
+    try {
+      await S().refresh();
+    } finally {
+      setBusy(false);
+    }
   };
 
   /**
    * @param {*} [dir]
    */
   const focusWithin = (dir) => {
-    const items = Array.from(menuRef.current.querySelectorAll('[role="menuitem"],[role="menuitemradio"]'));
+    const items = Array.from(
+      menuRef.current.querySelectorAll('[role="menuitem"],[role="menuitemradio"]'),
+    );
     const idx = items.indexOf(document.activeElement);
-    const next = items[Math.max(0, Math.min(items.length - 1, (idx < 0 ? 0 : idx) + dir))];
+    const next = items[Math.max(0, Math.min(items.length - 1, Math.max(idx, 0) + dir))];
     if (next) next.focus();
   };
 
@@ -111,10 +144,21 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
    * @param {*} [ev]
    */
   const onMenuKey = (ev) => {
-    if (ev.key === 'ArrowDown') { ev.preventDefault(); focusWithin(1); }
-    else if (ev.key === 'ArrowUp') { ev.preventDefault(); focusWithin(-1); }
-    else if (ev.key === 'Home') { ev.preventDefault(); const f = menuRef.current.querySelector('[role="menuitem"],[role="menuitemradio"]'); f && f.focus(); }
-    else if (ev.key === 'End') { ev.preventDefault(); const a = menuRef.current.querySelectorAll('[role="menuitem"],[role="menuitemradio"]'); a.length && a[a.length - 1].focus(); }
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      focusWithin(1);
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      focusWithin(-1);
+    } else if (ev.key === 'Home') {
+      ev.preventDefault();
+      const f = menuRef.current.querySelector('[role="menuitem"],[role="menuitemradio"]');
+      f && f.focus();
+    } else if (ev.key === 'End') {
+      ev.preventDefault();
+      const a = menuRef.current.querySelectorAll('[role="menuitem"],[role="menuitemradio"]');
+      a.length && a[a.length - 1].focus();
+    }
   };
 
   /**
@@ -133,13 +177,19 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Home' || ev.key === 'End') {
       ev.preventDefault();
       ev.stopPropagation();
-      const items = subRef.current ? Array.from(subRef.current.querySelectorAll('[role="menuitemradio"]')) : [];
+      const items = subRef.current
+        ? Array.from(subRef.current.querySelectorAll('[role="menuitemradio"]'))
+        : [];
       if (!items.length) return;
       const idx = items.indexOf(document.activeElement);
       let next;
       if (ev.key === 'Home') next = 0;
       else if (ev.key === 'End') next = items.length - 1;
-      else next = Math.max(0, Math.min(items.length - 1, (idx < 0 ? 0 : idx) + (ev.key === 'ArrowDown' ? 1 : -1)));
+      else
+        next = Math.max(
+          0,
+          Math.min(items.length - 1, Math.max(idx, 0) + (ev.key === 'ArrowDown' ? 1 : -1)),
+        );
       items[next].focus();
     }
   };
@@ -156,7 +206,9 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
         title="更多功能"
         onClick={() => setOpen(/** @param {*} [v] */ (v) => !v)}
       >
-        <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-more" /></svg>
+        <svg className="ico" aria-hidden="true" focusable="false">
+          <use href="#i-more" />
+        </svg>
       </button>
       {open && (
         <div className="overflow-menu" role="menu" ref={menuRef} onKeyDown={onMenuKey}>
@@ -165,24 +217,51 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
               <div className="overflow-sep" role="separator" />
               {/* 忙碌三件套：禁用 + aria-busy + 文案（与设置面板的保存按钮同一套，
                   否则读屏听不出「正在刷新」，用户还会连点重复发请求） */}
-              <button type="button" role="menuitem" className="overflow-item" onClick={onRefresh}
-                disabled={busy} aria-busy={busy ? 'true' : undefined}
-                title={refreshHint}>
-                <svg className={'ico' + (busy ? ' spin' : '')} aria-hidden="true" focusable="false"><use href="#i-refresh" /></svg>
-                <span>{busy ? '刷新中…' : (refreshLabel || '刷新')}</span>
+              <button
+                type="button"
+                role="menuitem"
+                className="overflow-item"
+                onClick={onRefresh}
+                disabled={busy}
+                aria-busy={busy ? 'true' : undefined}
+                title={refreshHint}
+              >
+                <svg className={'ico' + (busy ? ' spin' : '')} aria-hidden="true" focusable="false">
+                  <use href="#i-refresh" />
+                </svg>
+                <span>{busy ? '刷新中…' : refreshLabel || '刷新'}</span>
               </button>
             </>
           ) : null}
           {/* 这一项是四档循环（跟随系统 → 浅色 → 暖灰 → 暗黑），叫「夜间模式」会骗人：
               在「暖灰」下再点会切到「暗黑」，再点回「跟随系统」，浅色系统下直接变亮。
               文案改成「切换主题」并把当前档位写在括号里，点之前就知道会转到哪。 */}
-          <button type="button" role="menuitem" className="overflow-item" onClick={() => { S().cycleTheme(); }}
-            title={'当前：' + (snap.themeLabel || '跟随系统') + '（点击切到下一档）'}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + (snap.themeIco || 'theme-auto')} /></svg>
+          <button
+            type="button"
+            role="menuitem"
+            className="overflow-item"
+            onClick={() => {
+              S().cycleTheme();
+            }}
+            title={'当前：' + (snap.themeLabel || '跟随系统') + '（点击切到下一档）'}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href={'#i-' + (snap.themeIco || 'theme-auto')} />
+            </svg>
             <span>{'切换主题（' + (snap.themeLabel || '跟随系统') + '）'}</span>
           </button>
-          <button type="button" role="menuitem" className="overflow-item" onClick={() => { S().openSettings(); close(); }}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-settings" /></svg>
+          <button
+            type="button"
+            role="menuitem"
+            className="overflow-item"
+            onClick={() => {
+              S().openSettings();
+              close();
+            }}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-settings" />
+            </svg>
             <span>设置</span>
           </button>
           {readerControls && (
@@ -191,22 +270,49 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
                   顶栏那一行要放频道、标题、搜索、视图切换与 ⋮，再加三枚按钮就换行了。
                   .is-narrow-only：桌面不显示（桌面有常驻按钮），≤720 才露出来。 */}
               <div className="overflow-sep is-narrow-only" role="separator" />
-              <button type="button" role="menuitem" className="overflow-item is-narrow-only"
-                onClick={() => { if (S().readerToggleAccordion) S().readerToggleAccordion(); close(); }}>
-                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-accordion" /></svg>
+              <button
+                type="button"
+                role="menuitem"
+                className="overflow-item is-narrow-only"
+                onClick={() => {
+                  if (S().readerToggleAccordion) S().readerToggleAccordion();
+                  close();
+                }}
+              >
+                <svg className="ico" aria-hidden="true" focusable="false">
+                  <use href="#i-accordion" />
+                </svg>
                 <span>{rs.accordionOn ? '多篇展开' : '单篇展开'}</span>
               </button>
               {rs.hasUnread ? (
-                <button type="button" role="menuitem" className="overflow-item is-narrow-only"
-                  onClick={() => { if (S().readerReadAll) S().readerReadAll(); close(); }}>
-                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-check-circle" /></svg>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="overflow-item is-narrow-only"
+                  onClick={() => {
+                    if (S().readerReadAll) S().readerReadAll();
+                    close();
+                  }}
+                >
+                  <svg className="ico" aria-hidden="true" focusable="false">
+                    <use href="#i-check-circle" />
+                  </svg>
                   <span>全部已读</span>
                 </button>
               ) : null}
               {rs.anyExpanded ? (
-                <button type="button" role="menuitem" className="overflow-item is-narrow-only"
-                  onClick={() => { if (S().readerCollapseAll) S().readerCollapseAll(); close(); }}>
-                  <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevrons-up" /></svg>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="overflow-item is-narrow-only"
+                  onClick={() => {
+                    if (S().readerCollapseAll) S().readerCollapseAll();
+                    close();
+                  }}
+                >
+                  <svg className="ico" aria-hidden="true" focusable="false">
+                    <use href="#i-chevrons-up" />
+                  </svg>
                   <span>全部收起</span>
                 </button>
               ) : null}
@@ -231,36 +337,61 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
                   if (canHover()) setSubOpen(true);
                   else setSubOpen(/** @param {*} [v] */ (v) => !v);
                 }}
-                onKeyDown={/** @param {*} [e] */ (e) => { if (e.key === 'ArrowRight') { e.preventDefault(); setSubOpen(true); } }}
+                onKeyDown={
+                  /** @param {*} [e] */ (e) => {
+                    if (e.key === 'ArrowRight') {
+                      e.preventDefault();
+                      setSubOpen(true);
+                    }
+                  }
+                }
               >
-                <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-sort" /></svg>
+                <svg className="ico" aria-hidden="true" focusable="false">
+                  <use href="#i-sort" />
+                </svg>
                 <span>排序</span>
-                <svg className="ico overflow-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+                <svg className="ico overflow-caret" aria-hidden="true" focusable="false">
+                  <use href="#i-chevron-right" />
+                </svg>
               </button>
               {subOpen && (
                 <div className="overflow-submenu" role="menu" ref={subRef} onKeyDown={onSubKey}>
-                  {SORTS.map(/** @param {*} [o] */ (o) => (
-                    <button
-                      type="button"
-                      key={o.v}
-                      role="menuitemradio"
-                      aria-checked={sortValue === o.v}
-                      className={'overflow-item' + (sortValue === o.v ? ' is-active' : '')}
-                      onClick={() => { S().cardsSort(o.v); close(); }}
-                    >
-                      <span>{o.label}</span>
-                      {sortValue === o.v && <svg className="ico overflow-check" aria-hidden="true" focusable="false"><use href="#i-check" /></svg>}
-                    </button>
-                  ))}
+                  {SORTS.map(
+                    /** @param {*} [o] */ (o) => (
+                      <button
+                        type="button"
+                        key={o.v}
+                        role="menuitemradio"
+                        aria-checked={sortValue === o.v}
+                        className={'overflow-item' + (sortValue === o.v ? ' is-active' : '')}
+                        onClick={() => {
+                          S().cardsSort(o.v);
+                          close();
+                        }}
+                      >
+                        <span>{o.label}</span>
+                        {sortValue === o.v && (
+                          <svg className="ico overflow-check" aria-hidden="true" focusable="false">
+                            <use href="#i-check" />
+                          </svg>
+                        )}
+                      </button>
+                    ),
+                  )}
                 </div>
               )}
               <button
                 type="button"
                 role="menuitem"
                 className="overflow-item"
-                onClick={() => { S().cardsView(viewMode === 'grid' ? 'list' : 'grid'); close(); }}
+                onClick={() => {
+                  S().cardsView(viewMode === 'grid' ? 'list' : 'grid');
+                  close();
+                }}
               >
-                <svg className="ico" aria-hidden="true" focusable="false"><use href={viewMode === 'grid' ? '#i-list' : '#i-grid'} /></svg>
+                <svg className="ico" aria-hidden="true" focusable="false">
+                  <use href={viewMode === 'grid' ? '#i-list' : '#i-grid'} />
+                </svg>
                 <span>{viewMode === 'grid' ? '列表视图' : '网格视图'}</span>
               </button>
             </>

@@ -15,8 +15,8 @@
  */
 
 import crypto from 'node:crypto';
+import { type Db, settings } from '@feedlore/db';
 import { eq } from 'drizzle-orm';
-import { settings, type Db } from '@feedlore/db';
 
 export const ENCRYPTED_PREFIX = 'enc.v1.';
 const ENC_PREFIX = ENCRYPTED_PREFIX;
@@ -40,7 +40,11 @@ export function encryptSecret(plain: string, cryptoSecret: string): string {
     const body = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
     return (
       ENC_PREFIX +
-      [iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), body.toString('base64url')].join('.')
+      [
+        iv.toString('base64url'),
+        cipher.getAuthTag().toString('base64url'),
+        body.toString('base64url'),
+      ].join('.')
     );
   } catch (e) {
     console.error('[crypto] encryption failed: ' + ((e as Error)?.message ?? e));
@@ -66,9 +70,14 @@ export function decryptSecret(enc: string | null | undefined, cryptoSecret: stri
       Buffer.from(parts[0] as string, 'base64url'),
     );
     d.setAuthTag(Buffer.from(parts[1] as string, 'base64url'));
-    return Buffer.concat([d.update(Buffer.from(parts[2] as string, 'base64url')), d.final()]).toString('utf8');
+    return Buffer.concat([
+      d.update(Buffer.from(parts[2] as string, 'base64url')),
+      d.final(),
+    ]).toString('utf8');
   } catch (e) {
-    console.error('[crypto] decryption failed (did cryptoSecret change?): ' + ((e as Error)?.message ?? e));
+    console.error(
+      '[crypto] decryption failed (did cryptoSecret change?): ' + ((e as Error)?.message ?? e),
+    );
     return '';
   }
 }
@@ -99,7 +108,11 @@ let cached: string | null = null;
 export async function getCryptoSecret(db: Db): Promise<string> {
   if (cached) return cached;
 
-  const [row] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, SECRET_KEY)).limit(1);
+  const [row] = await db
+    .select({ value: settings.value })
+    .from(settings)
+    .where(eq(settings.key, SECRET_KEY))
+    .limit(1);
   const stored = row?.value;
   if (typeof stored === 'string' && stored) {
     cached = stored;
@@ -110,7 +123,10 @@ export async function getCryptoSecret(db: Db): Promise<string> {
   await db
     .insert(settings)
     .values({ key: SECRET_KEY, value: fresh as unknown as Record<string, unknown> })
-    .onConflictDoUpdate({ target: settings.key, set: { value: fresh as unknown as Record<string, unknown> } });
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: fresh as unknown as Record<string, unknown> },
+    });
   cached = fresh;
   return fresh;
 }

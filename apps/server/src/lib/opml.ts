@@ -87,11 +87,7 @@ export interface OpmlOut {
  */
 export function buildOpml(items: OpmlOut[]): string {
   const esc = (s: string): string =>
-    s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   const line = (f: OpmlOut): string => {
     const attrs = [

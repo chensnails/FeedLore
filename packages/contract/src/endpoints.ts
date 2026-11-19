@@ -89,7 +89,11 @@ export const auth = {
           external: z.number(),
         }),
         container: z
-          .object({ memoryUsed: z.number().nullable(), memoryLimit: z.number().nullable(), cpuPercent: z.number().nullable() })
+          .object({
+            memoryUsed: z.number().nullable(),
+            memoryLimit: z.number().nullable(),
+            cpuPercent: z.number().nullable(),
+          })
           .nullable(),
         loadavg: z.array(z.number()),
         cpuCount: z.number(),
@@ -98,7 +102,9 @@ export const auth = {
         ready: z.boolean(),
         error: z.string().nullable(),
         latencyMs: z.number().nullable(),
-        pool: z.object({ total: z.number(), idle: z.number(), waiting: z.number(), max: z.number() }).nullable(),
+        pool: z
+          .object({ total: z.number(), idle: z.number(), waiting: z.number(), max: z.number() })
+          .nullable(),
         tables: z.unknown().nullable(),
         sizeBytes: z.number().nullable(),
       }),
@@ -125,7 +131,12 @@ export const auth = {
         }),
         /** 条件请求被忽略而降频的 host（进程内观测，重启重置） */
         condPenalties: z.array(
-          z.object({ host: z.string(), misses: z.number().int(), factor: z.number(), lastAt: C.IsoDateTime }),
+          z.object({
+            host: z.string(),
+            misses: z.number().int(),
+            factor: z.number(),
+            lastAt: C.IsoDateTime,
+          }),
         ),
         lastResult: z
           .object({
@@ -164,7 +175,7 @@ export const auth = {
             groupName: z.string(),
             enabled: z.boolean(),
             failStreak: z.number(),
-          })
+          }),
         ),
       }),
       digest: z.object({
@@ -246,7 +257,9 @@ export const feedPatchBody = z.object({
   title: z.string().max(200).optional(),
   sortOrder: z.number().int().optional(),
   /** 空 / 'global' / null 表示「跟随全局」；否则为 5~1440 的整数（服务端夹取） */
-  refreshMinutes: z.union([z.number().int(), z.literal('global'), z.literal(''), z.null()]).optional(),
+  refreshMinutes: z
+    .union([z.number().int(), z.literal('global'), z.literal(''), z.null()])
+    .optional(),
   /** 摘要型订阅：抓原文页提取全文 */
   fullText: z.boolean().optional(),
   url: z.string().url().max(2000).optional(),
@@ -366,7 +379,9 @@ export const feeds = {
     auth: 'user',
     response: z.object({
       ok: z.boolean(),
-      result: z.object({ error: z.string().nullable(), added: z.number().int().optional() }).passthrough(),
+      result: z
+        .object({ error: z.string().nullable(), added: z.number().int().optional() })
+        .passthrough(),
       feed: M.FeedSchema,
     }),
   },
@@ -378,7 +393,13 @@ export const feeds = {
     response: z.object({
       ok: z.boolean(),
       urlChanged: z.boolean().optional(),
-      probe: z.object({ ok: z.boolean(), error: z.string().optional(), added: z.number().int().optional() }).optional(),
+      probe: z
+        .object({
+          ok: z.boolean(),
+          error: z.string().optional(),
+          added: z.number().int().optional(),
+        })
+        .optional(),
       feed: M.FeedSchema,
     }),
   },
@@ -623,7 +644,10 @@ export type UserPatchBody = z.infer<typeof userPatchBody>;
 
 export const accountBody = z.object({
   currentPassword: z.string(),
-  username: z.string().regex(/^[\w.@-]{1,40}$/).optional(),
+  username: z
+    .string()
+    .regex(/^[\w.@-]{1,40}$/)
+    .optional(),
   newPassword: z.string().min(4).optional(),
 });
 export type AccountBody = z.infer<typeof accountBody>;
@@ -665,14 +689,20 @@ export const admin = {
     path: '/api/users',
     auth: 'admin',
     body: userCreateBody,
-    response: z.object({ ok: z.boolean(), user: z.object({ id: z.string(), username: z.string(), role: C.RoleSchema }) }),
+    response: z.object({
+      ok: z.boolean(),
+      user: z.object({ id: z.string(), username: z.string(), role: C.RoleSchema }),
+    }),
   },
   userPatch: {
     method: 'patch',
     path: '/api/users/:id',
     auth: 'admin',
     body: userPatchBody,
-    response: z.object({ ok: z.boolean(), user: z.object({ id: z.string(), username: z.string(), role: C.RoleSchema }) }),
+    response: z.object({
+      ok: z.boolean(),
+      user: z.object({ id: z.string(), username: z.string(), role: C.RoleSchema }),
+    }),
   },
   userDelete: {
     method: 'delete',
@@ -699,7 +729,10 @@ export const testLlmBody = z.object({
 export type TestLlmBody = z.infer<typeof testLlmBody>;
 
 export const digestGenerateBody = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   feeds: z.array(z.number().int().positive()).optional(),
   force: z.boolean().optional(),
 });
@@ -707,9 +740,9 @@ export type DigestGenerateBody = z.infer<typeof digestGenerateBody>;
 
 /** 单条目 AI 动作。不落库缓存（Phase 1：按需调用，见 ai-feature-plan.md）。 */
 export const entryAiBody = z.object({
-  action: z.enum(['summary', 'keypoints', 'translate', 'explain']).describe(
-    'summary=摘要 / keypoints=关键要点 / translate=翻译 / explain=通俗解释',
-  ),
+  action: z
+    .enum(['summary', 'keypoints', 'translate', 'explain'])
+    .describe('summary=摘要 / keypoints=关键要点 / translate=翻译 / explain=通俗解释'),
   /** translate 时的目标语言，默认简体中文；其余动作忽略。 */
   targetLang: z.string().max(20).optional(),
 });
@@ -728,17 +761,21 @@ export const aiUsageResponse = z.object({
   today: aiUsageTotal,
   days7: aiUsageTotal,
   days30: aiUsageTotal,
-  byKind: z.array(z.object({
-    kind: z.string(),
-    calls: z.number().int(),
-    fails: z.number().int(),
-    totalTokens: z.number().int(),
-  })),
-  series: z.array(z.object({
-    date: z.string(),
-    calls: z.number().int(),
-    totalTokens: z.number().int(),
-  })),
+  byKind: z.array(
+    z.object({
+      kind: z.string(),
+      calls: z.number().int(),
+      fails: z.number().int(),
+      totalTokens: z.number().int(),
+    }),
+  ),
+  series: z.array(
+    z.object({
+      date: z.string(),
+      calls: z.number().int(),
+      totalTokens: z.number().int(),
+    }),
+  ),
 });
 export type AiUsageResponse = z.infer<typeof aiUsageResponse>;
 
@@ -826,7 +863,10 @@ export const aiJobBody = z.object({
   entryId: z.union([z.string(), z.number()]).optional(),
   action: z.enum(['summary', 'keypoints', 'translate', 'explain']).optional(),
   targetLang: z.string().max(20).optional(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   force: z.boolean().optional(),
   /** digest 的自定义频道范围；不传按账号 prefs.digest 的口径 */
   feeds: z.array(z.number().int().positive()).max(500).optional(),
@@ -872,7 +912,11 @@ export const ai = {
     auth: 'user',
     body: testLlmBody,
     // 注意：测试失败仍返回 200，ok:false + error；成功返回 ok:true + reply
-    response: z.object({ ok: z.boolean(), error: z.string().optional(), reply: z.string().optional() }),
+    response: z.object({
+      ok: z.boolean(),
+      error: z.string().optional(),
+      reply: z.string().optional(),
+    }),
   },
   dates: {
     method: 'get',
@@ -884,7 +928,12 @@ export const ai = {
     method: 'get',
     path: '/api/digest',
     auth: 'user',
-    query: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }),
+    query: z.object({
+      date: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional(),
+    }),
     response: z.object({ date: z.string(), digest: M.DigestSchema.nullable() }),
   },
   generate: {
@@ -947,7 +996,11 @@ export const ai = {
     path: '/api/llm/models',
     auth: 'user',
     body: llmModelsBody,
-    response: z.object({ ok: z.boolean(), models: z.array(z.string()), error: z.string().optional() }),
+    response: z.object({
+      ok: z.boolean(),
+      models: z.array(z.string()),
+      error: z.string().optional(),
+    }),
   },
   /** 最近调用明细（只读本人）。limit 默认 50，上限 200（= 表的保留上限）。 */
   requests: {

@@ -1,5 +1,5 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { sanitizeWatchExpireDays, userWatchExpireDays } from './prefs';
 
 test('关注保留天数：缺省 90 天、0 = 永不、越界收敛', () => {

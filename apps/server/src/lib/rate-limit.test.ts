@@ -1,11 +1,6 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  LOGIN_RATE_LIMIT,
-  pickClientIp,
-  takeLoginAttempt,
-  resetLoginAttempts,
-} from './rate-limit';
+import test from 'node:test';
+import { LOGIN_RATE_LIMIT, pickClientIp, resetLoginAttempts, takeLoginAttempt } from './rate-limit';
 
 test('登录限流：同一 IP 超过上限后拒绝，窗口过后恢复', () => {
   resetLoginAttempts();

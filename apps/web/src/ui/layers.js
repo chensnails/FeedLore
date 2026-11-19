@@ -9,11 +9,11 @@
  */
 
 export const LAYER_SELECTORS = {
-  sheet: '.dd-mask:not([hidden])',                            // 移动端整屏抽屉
-  cmdk: '.cmdk-mask',                                         // 命令面板（仅在打开时渲染）
-  confirm: '.confirm-mask',                                   // 统一确认框（同上）
-  lightbox: '.lightbox',                                      // 图片灯箱（同上）
-  modal: '.modal-mask:not([hidden]):not(.confirm-mask)',      // 设置弹层
+  sheet: '.dd-mask:not([hidden])', // 移动端整屏抽屉
+  cmdk: '.cmdk-mask', // 命令面板（仅在打开时渲染）
+  confirm: '.confirm-mask', // 统一确认框（同上）
+  lightbox: '.lightbox', // 图片灯箱（同上）
+  modal: '.modal-mask:not([hidden]):not(.confirm-mask)', // 设置弹层
 };
 
 /** 比「自己」更上面是否还有一层开着。
@@ -24,14 +24,14 @@ export const LAYER_SELECTORS = {
  *    自己的面板节点），凡是包含这个节点的层都算「自己」，不会被误判成上层。
  *  不传：只要有任意一层开着就算更高。
  *@param {*} [own]
-*/
+ */
 export function hasLayerAbove(own = null) {
   if (typeof document === 'undefined') return false;
   const isEl = !!own && typeof own === 'object' && own.nodeType === 1;
   for (const [key, sel] of Object.entries(LAYER_SELECTORS)) {
     if (!isEl && key === own) continue;
     for (const el of document.querySelectorAll(sel)) {
-      if (isEl && (el === own || el.contains(own))) continue;   // 自己那一层
+      if (isEl && (el === own || el.contains(own))) continue; // 自己那一层
       return true;
     }
   }

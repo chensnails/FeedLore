@@ -5,12 +5,12 @@
  * 依赖方向单向：util → state → feeds → reader → autorefresh → ui → bootstrap，无环。
  * ============================================================ */
 
-import { toast, emitShell } from './util.js';
-import { state, applyRoleUI, applyTheme, currentThemeMode, openSettings } from './state.js';
-import { currentViewMode, applyViewMode, currentTab, loadFeeds } from './feeds.js';
 import { scheduleAutoRefresh } from './autorefresh.js';
-import { switchView } from './ui.js';
+import { applyViewMode, currentTab, currentViewMode, loadFeeds } from './feeds.js';
 import { restoreReaderArt } from './reader.js';
+import { applyRoleUI, applyTheme, currentThemeMode, openSettings, state } from './state.js';
+import { switchView } from './ui.js';
+import { emitShell, toast } from './util.js';
 
 // ⚠️ 执行顺序：applyTheme() 内部会读外观偏好（APPR_* 常量定义在更下面），
 // 而这个文件是 defer 脚本、模块顶层就往下跑。直接在这里同步调用会踩 const 的
@@ -63,7 +63,8 @@ async function waitViewFirstPaint(tab) {
     await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
   }
   if (tab === 'reader') {
-    while (state.rdLoading && Date.now() - t0 < 12000) await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
+    while (state.rdLoading && Date.now() - t0 < 12000)
+      await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
     if (state.rdEntries.length && !state.rdReadError) {
       const t = Date.now();
       while (!document.querySelector('#readerList .art-item') && Date.now() - t < 3000) {
@@ -71,7 +72,8 @@ async function waitViewFirstPaint(tab) {
       }
     }
   } else if (tab === 'cards') {
-    while (state.loading && Date.now() - t0 < 12000) await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
+    while (state.loading && Date.now() - t0 < 12000)
+      await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
     if ((state.entries || []).length && !state.loadError) {
       const t = Date.now();
       while (!document.querySelector('#grid .card, #grid .row-item') && Date.now() - t < 3000) {
@@ -127,7 +129,10 @@ async function waitViewFirstPaint(tab) {
 
   // 分享链接 ?feed=<id> 可直接筛到某个频道（卡片页和阅读页都生效）
   const urlFeed = new URLSearchParams(location.search).get('feed');
-  if (urlFeed && (state.feedList || []).some(/** @param {*} [f] */ (f) => String(f.id) === urlFeed && f.enabled)) {
+  if (
+    urlFeed &&
+    (state.feedList || []).some(/** @param {*} [f] */ (f) => String(f.id) === urlFeed && f.enabled)
+  ) {
     state.feedFilter = Number(urlFeed);
     state.rdFeedId = Number(urlFeed);
   }
@@ -152,11 +157,14 @@ async function waitViewFirstPaint(tab) {
     state.rdQ = '';
     state.rdFeedId = null;
     state.rdGroup = null;
-  }
-  else if (location.hash.startsWith('#cards')) tab = 'cards';
-  else if (location.hash.startsWith('#favorite')) { tab = 'reader'; state.rdScope = 'favorite'; }
-  else if (location.hash.startsWith('#unread')) { tab = 'reader'; state.rdScope = 'unread'; }
-  else if (location.hash.startsWith('#reader')) tab = 'reader';
+  } else if (location.hash.startsWith('#cards')) tab = 'cards';
+  else if (location.hash.startsWith('#favorite')) {
+    tab = 'reader';
+    state.rdScope = 'favorite';
+  } else if (location.hash.startsWith('#unread')) {
+    tab = 'reader';
+    state.rdScope = 'unread';
+  } else if (location.hash.startsWith('#reader')) tab = 'reader';
   // #digest 是老深链，那个页面已经升级成「AI」了，仍然认
   else if (location.hash.startsWith('#digest')) tab = 'ai';
   else if (location.hash.startsWith('#ai')) tab = 'ai';
@@ -179,6 +187,8 @@ async function waitViewFirstPaint(tab) {
     await waitViewFirstPaint('reader');
     await restoreReaderArt(deepArtId);
   }
-})().catch(/** @param {*} [err] */ (err) => {
-  bootFail('加载失败：' + (err && err.message ? err.message : '未知错误'));
-});
+})().catch(
+  /** @param {*} [err] */ (err) => {
+    bootFail('加载失败：' + (err && err.message ? err.message : '未知错误'));
+  },
+);

@@ -9,28 +9,30 @@
  * 2) 状态页自身的排障价值高，独立文件便于对照 legacy 的 buildStatus 逐项核对。
  */
 
-import { log } from './logger';
 import fs from 'node:fs';
 import os from 'node:os';
-import { sql } from 'drizzle-orm';
-import { digests, feeds, getPool, users, type Db } from '@feedlore/db';
 import { auth as authSpec } from '@feedlore/contract';
+import { type Db, digests, feeds, getPool, users } from '@feedlore/db';
+import { sql } from 'drizzle-orm';
 import type { z } from 'zod';
-import { assertResponse } from './validate';
-import { getSource } from './settings';
 import { GITHUB_REPO } from '../env';
+import { log } from './logger';
+import { getSource } from './settings';
+import { assertResponse } from './validate';
+
 export { GITHUB_REPO };
+
+import { APP_VERSION } from '../env';
+import { condPenalties } from './feedCond';
 import {
+  type FeedRow,
   feedIntervalMs,
   getLastRefreshAt,
   getLastRun,
   getRefreshProgress,
   inFlightCount,
-  type FeedRow,
 } from './fetcher';
 import { userDigest, userLayout } from './prefs';
-import { condPenalties } from './feedCond';
-import { APP_VERSION } from '../env';
 
 /* ============================================================================
  * 小工具
@@ -84,7 +86,10 @@ function readCgroupMemory(): { used: number; limit: number | null } | null {
   if (v2 !== null) return { used: v2, limit: cgroupBytes(readCgroup('/sys/fs/cgroup/memory.max')) };
   const v1 = cgroupBytes(readCgroup('/sys/fs/cgroup/memory/memory.usage_in_bytes'));
   if (v1 !== null) {
-    return { used: v1, limit: cgroupBytes(readCgroup('/sys/fs/cgroup/memory/memory.limit_in_bytes')) };
+    return {
+      used: v1,
+      limit: cgroupBytes(readCgroup('/sys/fs/cgroup/memory/memory.limit_in_bytes')),
+    };
   }
   return null;
 }
@@ -94,7 +99,8 @@ let lastCpuSample: { usec: number; at: number } | null = null;
 function readCgroupCpu(): number | null {
   let usec: number | null = null;
   const v2 = /^usage_usec\s+(\d+)/m.exec(readCgroup('/sys/fs/cgroup/cpu.stat') ?? '');
-  if (v2) usec = Number(v2[1]) / 1000; // v2: 微秒
+  if (v2)
+    usec = Number(v2[1]) / 1000; // v2: 微秒
   else {
     const v1 = readCgroup('/sys/fs/cgroup/cpuacct/cpuacct.usage');
     if (v1) usec = Number(v1) / 1000; // v1: 纳秒
@@ -114,8 +120,12 @@ function readCgroupCpu(): number | null {
 
 /** 语义化版本比较：返回 1/0/-1。够用即可（只比较 x.y.z 数字段）。 */
 export function compareVersion(a: string, b: string): number {
-  const pa = String(a).split(/[.-]/).map((x) => Number(x) || 0);
-  const pb = String(b).split(/[.-]/).map((x) => Number(x) || 0);
+  const pa = String(a)
+    .split(/[.-]/)
+    .map((x) => Number(x) || 0);
+  const pb = String(b)
+    .split(/[.-]/)
+    .map((x) => Number(x) || 0);
   for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
     const d = (pa[i] ?? 0) - (pb[i] ?? 0);
     if (d !== 0) return d > 0 ? 1 : -1;
@@ -179,12 +189,16 @@ export async function buildStatus(
       // 三项统计互不依赖，任一失败不该拖垮整页（表被删/权限不足时也要能看别的）
       try {
         dbInfo.tables = await tableCounts(db);
-      } catch { /* 留 null */ }
+      } catch {
+        /* 留 null */
+      }
       try {
         const r = await db.execute(sql`select pg_database_size(current_database()) as bytes`);
         const v = ((r.rows as unknown as Row[])[0] ?? {}).bytes;
         dbInfo.sizeBytes = v === undefined ? null : Number(v);
-      } catch { /* 留 null */ }
+      } catch {
+        /* 留 null */
+      }
       const p = getPool();
       if (p) {
         dbInfo.pool = {
@@ -201,7 +215,15 @@ export async function buildStatus(
 
   /* ---------------- 采集 ---------------- */
   const cfg = await getSource(db);
-  const feedStats = { total: 0, enabled: 0, cardEnabled: 0, error: 0, neverFetched: 0, perFeedInterval: 0, autoDisabled: 0 };
+  const feedStats = {
+    total: 0,
+    enabled: 0,
+    cardEnabled: 0,
+    error: 0,
+    neverFetched: 0,
+    perFeedInterval: 0,
+    autoDisabled: 0,
+  };
   let problems: Array<{
     feedId: string;
     title: string;
@@ -213,7 +235,14 @@ export async function buildStatus(
   }> = [];
   let dueCount = 0;
   let nextRefreshAt: string | null = null;
-  const entryInfo = { total: 0, unread: 0, favorite: 0, added24h: 0, oldest: null as string | null, newest: null as string | null };
+  const entryInfo = {
+    total: 0,
+    unread: 0,
+    favorite: 0,
+    added24h: 0,
+    oldest: null as string | null,
+    newest: null as string | null,
+  };
 
   if (db && dbInfo.ready) {
     try {
@@ -226,7 +255,9 @@ export async function buildStatus(
       feedStats.error = list.filter((f) => f.lastStatus === 'error').length;
       feedStats.neverFetched = list.filter((f) => !f.lastFetchedAt).length;
       feedStats.perFeedInterval = list.filter((f) => f.refreshMinutes != null).length;
-      feedStats.autoDisabled = list.filter((f) => !f.enabled && f.failStreak >= cfg.feedFailLimit).length;
+      feedStats.autoDisabled = list.filter(
+        (f) => !f.enabled && f.failStreak >= cfg.feedFailLimit,
+      ).length;
 
       problems = list
         .filter((f) => f.lastStatus === 'error')
@@ -244,7 +275,9 @@ export async function buildStatus(
       let earliest: number | null = null;
       for (const f of list) {
         if (!f.enabled) continue;
-        const at = f.lastFetchedAt ? f.lastFetchedAt.getTime() + feedIntervalMs(f, cfg.refreshMinutes) : now;
+        const at = f.lastFetchedAt
+          ? f.lastFetchedAt.getTime() + feedIntervalMs(f, cfg.refreshMinutes)
+          : now;
         if (at <= now) dueCount += 1;
         if (earliest === null || at < earliest) earliest = at;
       }
@@ -307,7 +340,9 @@ export async function buildStatus(
         if (earliest === null || t < earliest) earliest = t;
       }
       if (earliest !== null) digestInfo.nextRunAt = new Date(earliest).toISOString();
-    } catch { /* 静默：日报不是关键路径 */ }
+    } catch {
+      /* 静默：日报不是关键路径 */
+    }
 
     try {
       const dRes = await db.execute(sql`
@@ -342,7 +377,9 @@ export async function buildStatus(
           stats: (p.stats as unknown) ?? null,
         };
       }
-    } catch { /* 静默 */ }
+    } catch {
+      /* 静默 */
+    }
   }
 
   /* ---------------- 组装 ---------------- */
@@ -371,7 +408,12 @@ export async function buildStatus(
         timezone: 'Asia/Shanghai',
         now: new Date(now).toISOString(),
         today: shanghaiToday(new Date(now)),
-        memory: { rss: mem.rss, heapUsed: mem.heapUsed, heapTotal: mem.heapTotal, external: mem.external },
+        memory: {
+          rss: mem.rss,
+          heapUsed: mem.heapUsed,
+          heapTotal: mem.heapTotal,
+          external: mem.external,
+        },
         container,
         loadavg: os.loadavg().map((n) => Math.round(n * 100) / 100),
         cpuCount: os.cpus().length,

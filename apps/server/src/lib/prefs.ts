@@ -56,7 +56,13 @@ function groupList(raw: unknown): string[] | null {
 export type Layout = typeof LAYOUT_DEFAULTS;
 
 export function sanitizeLayout(raw: unknown): Layout {
-  const out: Layout = { ...LAYOUT_DEFAULTS, collapsedGroups: [], srcGroupsOpen: [], sections: {}, rdCollapsedGroups: [] };
+  const out: Layout = {
+    ...LAYOUT_DEFAULTS,
+    collapsedGroups: [],
+    srcGroupsOpen: [],
+    sections: {},
+    rdCollapsedGroups: [],
+  };
   if (!raw || typeof raw !== 'object') return out;
   const r = raw as Record<string, unknown>;
 
@@ -70,7 +76,7 @@ export function sanitizeLayout(raw: unknown): Layout {
   if (sgo) out.srcGroupsOpen = sgo;
 
   // 只有显式 false 才关：undefined 不该把用户设置清掉
-  out.accordion = r.accordion === false ? false : true;
+  out.accordion = r.accordion !== false;
 
   if (r.sections && typeof r.sections === 'object') {
     const sec: Record<string, boolean> = {};
@@ -81,13 +87,14 @@ export function sanitizeLayout(raw: unknown): Layout {
   }
 
   if (typeof r.sort === 'string' && LAYOUT_VALUES.sort.includes(r.sort)) out.sort = r.sort;
-  if (typeof r.rdScope === 'string' && LAYOUT_VALUES.rdScope.includes(r.rdScope)) out.rdScope = r.rdScope;
+  if (typeof r.rdScope === 'string' && LAYOUT_VALUES.rdScope.includes(r.rdScope))
+    out.rdScope = r.rdScope;
 
   const rcg = groupList(r.rdCollapsedGroups);
   if (rcg) out.rdCollapsedGroups = rcg;
 
   out.readerSideWidth = clampReaderSide(r.readerSideWidth);
-  out.digestEnabled = r.digestEnabled === false ? false : true;
+  out.digestEnabled = r.digestEnabled !== false;
   return out;
 }
 
@@ -142,9 +149,12 @@ const WATCH_EXPIRE_MAX_DAYS = 3650;
 
 /** 关注保留天数：0 = 永不自动退出；缺省 / 非法值回落默认 90 天。 */
 export function sanitizeWatchExpireDays(raw: unknown): number {
-  const n = typeof raw === 'number' ? raw
-    : typeof raw === 'string' && raw.trim() !== '' ? Number(raw)
-      : NaN;
+  const n =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && raw.trim() !== ''
+        ? Number(raw)
+        : NaN;
   if (!Number.isFinite(n)) return WATCH_EXPIRE_DEFAULT_DAYS;
   return Math.min(WATCH_EXPIRE_MAX_DAYS, Math.max(0, Math.round(n)));
 }
@@ -306,7 +316,12 @@ export function sanitizeRules(raw: unknown): Rule[] {
       id,
       name: name || '规则 ' + (out.length + 1),
       on: r.on !== false,
-      when: { scope: normalizeScope(when.scope), keywords, match: when.match === 'all' ? 'all' : 'any', tag },
+      when: {
+        scope: normalizeScope(when.scope),
+        keywords,
+        match: when.match === 'all' ? 'all' : 'any',
+        tag,
+      },
       then: { addTags, favorite, markRead, notify },
     });
   }
@@ -346,12 +361,14 @@ export function sanitizeDigestTime(raw: unknown): string {
 
 export function sanitizeDigestPrompt(raw: unknown): string {
   if (typeof raw !== 'string') return '';
-  return raw
-    .replace(/\r\n?/g, '\n')
-    // 这段会原样拼进 prompt，控制字符进去就是往上游塞垃圾
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
-    .trim()
-    .slice(0, DIGEST_PROMPT_MAX);
+  return (
+    raw
+      .replace(/\r\n?/g, '\n')
+      // 这段会原样拼进 prompt，控制字符进去就是往上游塞垃圾
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+      .trim()
+      .slice(0, DIGEST_PROMPT_MAX)
+  );
 }
 
 export type DigestConfig = typeof DIGEST_DEFAULTS;
@@ -388,12 +405,14 @@ export function sanitizeDigest(raw: unknown): DigestConfig {
 /** `users.prefs` 的宽松视图：库里可能躺着老版本写的脏值，读出来一律先当 unknown。 */
 export type PrefsBag = Record<string, unknown> | null | undefined;
 
-const bag = (prefs: PrefsBag, key: string): unknown => (prefs && typeof prefs === 'object' ? prefs[key] : undefined);
+const bag = (prefs: PrefsBag, key: string): unknown =>
+  prefs && typeof prefs === 'object' ? prefs[key] : undefined;
 
 export const userLayout = (prefs: PrefsBag) => sanitizeLayout(bag(prefs, 'layout'));
 export const userFilters = (prefs: PrefsBag) => sanitizeFilters(bag(prefs, 'filters'));
 export const userWatchRules = (prefs: PrefsBag) => sanitizeWatchRules(bag(prefs, 'watchRules'));
-export const userWatchExpireDays = (prefs: PrefsBag) => sanitizeWatchExpireDays(bag(prefs, 'watchExpireDays'));
+export const userWatchExpireDays = (prefs: PrefsBag) =>
+  sanitizeWatchExpireDays(bag(prefs, 'watchExpireDays'));
 export const userWebhook = (prefs: PrefsBag) => sanitizeWebhook(bag(prefs, 'webhookUrl'));
 export const userDigest = (prefs: PrefsBag) => sanitizeDigest(bag(prefs, 'digest'));
 
@@ -419,5 +438,8 @@ export const userAiTags = (prefs: PrefsBag) => sanitizeAiTags(bag(prefs, 'aiTags
 export function userGroupOrder(prefs: PrefsBag): string[] {
   const raw = bag(prefs, 'groupOrder');
   if (!Array.isArray(raw)) return [];
-  return raw.filter((g): g is string => typeof g === 'string').map((g) => g.trim().slice(0, 40)).filter(Boolean);
+  return raw
+    .filter((g): g is string => typeof g === 'string')
+    .map((g) => g.trim().slice(0, 40))
+    .filter(Boolean);
 }

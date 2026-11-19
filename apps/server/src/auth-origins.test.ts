@@ -11,7 +11,10 @@ import { sameOriginCandidates } from './auth';
 
 test('按请求 Host 生成 http/https 两种同源候选', () => {
   const list = sameOriginCandidates(new Request('http://feed.example:3210/api/login'));
-  assert.deepEqual(new Set(list), new Set(['http://feed.example:3210', 'https://feed.example:3210']));
+  assert.deepEqual(
+    new Set(list),
+    new Set(['http://feed.example:3210', 'https://feed.example:3210']),
+  );
 });
 
 test('反代场景优先用 x-forwarded-host / x-forwarded-proto', () => {

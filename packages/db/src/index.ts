@@ -10,8 +10,8 @@
  * 对齐 legacy（统一按 number 取），与 schema.ts 里 bigserial mode:number 配合。
  */
 
-import pg from 'pg';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
+import pg from 'pg';
 import * as schema from './schema';
 
 // 对齐 legacy db.js：大整数/数值统一解析为 number，避免 Drizzle 返回 bigint 带来的序列化问题
@@ -19,8 +19,8 @@ pg.types.setTypeParser(20, (v) => (v === null ? null : Number(v))); // int8
 pg.types.setTypeParser(23, (v) => (v === null ? null : Number(v))); // int4
 pg.types.setTypeParser(1700, (v) => (v === null ? null : Number(v))); // numeric
 
-export { schema };
 export * from './schema';
+export { schema };
 
 export type Db = NodePgDatabase<typeof schema>;
 
@@ -39,7 +39,10 @@ export function createPool(connectionString: string): pg.Pool {
 
 export function createDb(connectionString?: string): Db {
   const cs = connectionString ?? process.env.DATABASE_URL;
-  if (!cs) throw new Error('DATABASE_URL is not set — provide a connection string or the environment variable');
+  if (!cs)
+    throw new Error(
+      'DATABASE_URL is not set — provide a connection string or the environment variable',
+    );
   // 简单复用：同一进程内同一连接串复用 pool（Hono 服务常驻单例）
   if (!_pool || _pool.options.connectionString !== cs) {
     _pool = createPool(cs);

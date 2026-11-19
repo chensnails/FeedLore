@@ -9,7 +9,13 @@
  */
 
 import { createPool } from '@feedlore/db';
-import { APP_VERSION, SCHEDULER_ENABLED, getAdminUser, getDatabaseUrl, validateConfig } from '../src/env';
+import {
+  APP_VERSION,
+  getAdminUser,
+  getDatabaseUrl,
+  SCHEDULER_ENABLED,
+  validateConfig,
+} from '../src/env';
 import { normalizeSource } from '../src/lib/settings';
 
 type Status = 'PASS' | 'WARN' | 'FAIL';
@@ -58,7 +64,9 @@ async function main(): Promise<void> {
     add(
       '表结构',
       missing.length ? 'FAIL' : 'PASS',
-      missing.length ? `缺少必需表：${missing.join(', ')}（先跑迁移）` : `${required.length} 张必需表齐全`,
+      missing.length
+        ? `缺少必需表：${missing.join(', ')}（先跑迁移）`
+        : `${required.length} 张必需表齐全`,
     );
     for (const [name, note] of [
       ['llm_providers', 'AI 模型配置'],
@@ -69,7 +77,10 @@ async function main(): Promise<void> {
 
     if (!present.has('users')) return report();
 
-    const { rows: admins } = await pool.query<{ username: string | null; must_change_password: boolean }>(
+    const { rows: admins } = await pool.query<{
+      username: string | null;
+      must_change_password: boolean;
+    }>(
       "select username, must_change_password from users where role = 'admin' order by username limit 10",
     );
     if (!admins.length) {
@@ -83,15 +94,23 @@ async function main(): Promise<void> {
       );
       const configured = getAdminUser();
       if (!admins.some((a) => a.username === configured)) {
-        add('ADMIN_USER', 'WARN', `配置的 ADMIN_USER=${configured} 不在 admin 列表里（不影响已有账号登录）`);
+        add(
+          'ADMIN_USER',
+          'WARN',
+          `配置的 ADMIN_USER=${configured} 不在 admin 列表里（不影响已有账号登录）`,
+        );
       }
     }
 
-    const { rows: userCount } = await pool.query<{ n: string }>('select count(*)::text as n from users');
+    const { rows: userCount } = await pool.query<{ n: string }>(
+      'select count(*)::text as n from users',
+    );
     add('账号总数', 'PASS', `${userCount[0]?.n ?? '?'} 个`);
 
     try {
-      const { rows } = await pool.query<{ value: unknown }>("select value from settings where key = 'source' limit 1");
+      const { rows } = await pool.query<{ value: unknown }>(
+        "select value from settings where key = 'source' limit 1",
+      );
       const src = normalizeSource((rows[0]?.value ?? null) as Record<string, unknown> | null);
       add(
         '采集调度',
@@ -103,12 +122,10 @@ async function main(): Promise<void> {
     }
 
     if (present.has('llm_providers')) {
-      const { rows } = await pool.query<{ n: string }>('select count(*)::text as n from llm_providers');
-      add(
-        'AI 模型配置',
-        'PASS',
-        `${rows[0]?.n ?? '?'} 个 provider（0 表示未启用 AI，不影响阅读）`,
+      const { rows } = await pool.query<{ n: string }>(
+        'select count(*)::text as n from llm_providers',
       );
+      add('AI 模型配置', 'PASS', `${rows[0]?.n ?? '?'} 个 provider（0 表示未启用 AI，不影响阅读）`);
     }
   } catch (e) {
     add('数据库', 'FAIL', `连接或查询失败：${(e as Error)?.message ?? e}`);
@@ -121,7 +138,9 @@ async function main(): Promise<void> {
 
 function report(): void {
   if (wantJson) {
-    process.stdout.write(JSON.stringify({ ok: !checks.some((c) => c.status === 'FAIL'), checks }) + '\n');
+    process.stdout.write(
+      JSON.stringify({ ok: !checks.some((c) => c.status === 'FAIL'), checks }) + '\n',
+    );
   } else {
     const line = '─'.repeat(64);
     process.stdout.write(`${line}\nFeedLore doctor / 部署自检\n${line}\n`);

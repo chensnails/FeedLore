@@ -47,7 +47,10 @@ export const RSS_TIMEOUT_SECONDS = num(
   Math.round(FETCH_TIMEOUT_MS / 1000),
 );
 /** 并发抓取的 URL 组数（同 URL 的多个订阅合并成一组，只回源一次）。 */
-export const REFRESH_CONCURRENCY = Math.min(10, Math.max(1, num(process.env.REFRESH_CONCURRENCY, 3)));
+export const REFRESH_CONCURRENCY = Math.min(
+  10,
+  Math.max(1, num(process.env.REFRESH_CONCURRENCY, 3)),
+);
 /** 连续失败多少次自动停用采集（clamp 2~20，与 legacy 一致）。 */
 export const FEED_FAIL_LIMIT = Math.min(20, Math.max(2, num(process.env.FEED_FAIL_LIMIT, 5)));
 /** 每个频道最多保留多少条（按发布时间倒序裁剪）。0 = 不限。 */
@@ -143,7 +146,9 @@ export interface ConfigIssue {
  *
  * @param env 环境变量快照，默认取 process.env。测试可传入自定义对象覆盖边界。
  */
-export function validateConfig(env: Record<string, string | undefined> = process.env): ConfigIssue[] {
+export function validateConfig(
+  env: Record<string, string | undefined> = process.env,
+): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
   const trimmed = (k: string): string => env[k]?.trim() ?? '';
 
@@ -161,7 +166,10 @@ export function validateConfig(env: Record<string, string | undefined> = process
     try {
       const u = new URL(dbUrl);
       if (u.protocol !== 'postgres:' && u.protocol !== 'postgresql:') {
-        issues.push({ key: 'DATABASE_URL', message: `协议必须是 postgres:// 或 postgresql://，收到 "${u.protocol}"` });
+        issues.push({
+          key: 'DATABASE_URL',
+          message: `协议必须是 postgres:// 或 postgresql://，收到 "${u.protocol}"`,
+        });
       }
       if (!u.hostname) {
         issues.push({ key: 'DATABASE_URL', message: '缺少主机名' });
@@ -192,8 +200,13 @@ export function validateConfig(env: Record<string, string | undefined> = process
 
   // 布尔型配置：只认 0/1（或留空），其它值通常是手误。
   const bools = [
-    'STRICT_BOOT', 'MCP_ENABLED', 'ALLOW_SIGNUP', 'ALLOW_PRIVATE_HOSTS',
-    'AUTH_SECURE_COOKIES', 'TRUST_PROXY', 'REFRESH_DISABLED',
+    'STRICT_BOOT',
+    'MCP_ENABLED',
+    'ALLOW_SIGNUP',
+    'ALLOW_PRIVATE_HOSTS',
+    'AUTH_SECURE_COOKIES',
+    'TRUST_PROXY',
+    'REFRESH_DISABLED',
   ];
   for (const key of bools) {
     const raw = trimmed(key);

@@ -17,7 +17,7 @@
  */
 
 const CLASS = 'is-scrolling';
-const IDLE = 160;          // 最后一次滚动后多久算「停下」
+const IDLE = 160; // 最后一次滚动后多久算「停下」
 const SCROLLERS = '.reader-main, #cardsRoot > main.wrap, #aiView, .pane-scroll, .feed-list';
 
 /**
@@ -46,17 +46,24 @@ export function installScrollBusy(doc = document, options = {}) {
     const t = ev.target;
     const el = t && t.nodeType === 9 ? doc.scrollingElement : t;
     if (!el || el.nodeType !== 1) return;
-    if (el !== doc.scrollingElement && typeof el.matches === 'function' && !el.matches(SCROLLERS)) return;
+    if (el !== doc.scrollingElement && typeof el.matches === 'function' && !el.matches(SCROLLERS))
+      return;
     set(true);
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => { timer = 0; set(false); }, idle);
+    timer = setTimeout(() => {
+      timer = 0;
+      set(false);
+    }, idle);
   }
 
   doc.addEventListener('scroll', onScroll, { capture: true, passive: true });
 
   return function dispose() {
     doc.removeEventListener('scroll', onScroll, { capture: true });
-    if (timer) { clearTimeout(timer); timer = 0; }
+    if (timer) {
+      clearTimeout(timer);
+      timer = 0;
+    }
     set(false);
   };
 }

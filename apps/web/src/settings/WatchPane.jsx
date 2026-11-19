@@ -1,11 +1,11 @@
 import { core } from '@core';
-import { useState, useEffect, useRef } from 'react';
-import { DetailSheet } from './DetailSheet.jsx';
-import { Result, Section } from './primitives.jsx';
-import { RuleScopePicker, emptyScope, normalizeScope, scopeSummary } from './RuleScopePicker';
-import { RulesEditor } from './RulesEditor.jsx';
+import { useEffect, useRef, useState } from 'react';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.js';
 import { Dropdown } from '../views/Dropdown.jsx';
+import { DetailSheet } from './DetailSheet.jsx';
+import { Result, Section } from './primitives.jsx';
+import { emptyScope, normalizeScope, RuleScopePicker, scopeSummary } from './RuleScopePicker';
+import { RulesEditor } from './RulesEditor.jsx';
 
 /**
  * 规则面板（A 方案）：关注 / 屏蔽规则 + 入库前过滤，都是「紧凑列表 + 详情层」。
@@ -36,18 +36,33 @@ const jsonPost = (body) => ({
 /**
  * @param {*} [text]
  */
-const parseKeywords = (text) => String(text || '')
-  .split(/\r?\n/).map(/** @param {*} [x] */ (x) => x.trim()).filter(Boolean);
+const parseKeywords = (text) =>
+  String(text || '')
+    .split(/\r?\n/)
+    .map(/** @param {*} [x] */ (x) => x.trim())
+    .filter(Boolean);
 
 const blankRule = () => ({
-  id: newId(), name: '', keywords: '', act: 'watch', notify: false, on: true, scope: emptyScope(),
+  id: newId(),
+  name: '',
+  keywords: '',
+  act: 'watch',
+  notify: false,
+  on: true,
+  scope: emptyScope(),
 });
 
 /**
  * @param {*} [id]
  */
 const blankFilter = (id) => ({
-  id: id || newId(), on: true, act: 'block', field: 'title', kind: 'kw', pattern: '', scope: emptyScope(),
+  id: id || newId(),
+  on: true,
+  act: 'block',
+  field: 'title',
+  kind: 'kw',
+  pattern: '',
+  scope: emptyScope(),
 });
 
 /**
@@ -65,7 +80,12 @@ const filterActText = (act) => (act === 'allow' ? '只收' : '丢弃');
 /**
  * @param {*} [field]
  */
-const FIELD_LABEL = /** @type {Record<string, string>} */ ({ title: '标题', desc: '摘要', content: '正文', all: '全部' });
+const FIELD_LABEL = /** @type {Record<string, string>} */ ({
+  title: '标题',
+  desc: '摘要',
+  content: '正文',
+  all: '全部',
+});
 /** @param {*} field */
 const fieldText = (field) => FIELD_LABEL[field] || '标题';
 /**
@@ -78,32 +98,33 @@ const kindText = (kind) => (kind === 're' ? '正则' : '关键词');
  */
 const ruleSummary = (r) => {
   const n = parseKeywords(r.keywords).length;
-  return [
-    actText(r.act),
-    scopeSummary(r.scope),
-    n ? `${n} 个关键词` : '没有关键词',
-  ].concat(r.act === 'watch' && r.notify ? ['推送 Webhook'] : []).join(' · ');
+  return [actText(r.act), scopeSummary(r.scope), n ? `${n} 个关键词` : '没有关键词']
+    .concat(r.act === 'watch' && r.notify ? ['推送 Webhook'] : [])
+    .join(' · ');
 };
 
 /**
  * @param {*} [f]
  */
-const filterSummary = (f) => [filterActText(f.act), fieldText(f.field), kindText(f.kind), scopeSummary(f.scope)].join(' · ');
+const filterSummary = (f) =>
+  [filterActText(f.act), fieldText(f.field), kindText(f.kind), scopeSummary(f.scope)].join(' · ');
 
 /* 服务端数组 → 表单（keywords 摊成多行文本，便于直接编辑） */
 /**
  * @param {*} [list]
  */
 function fromServer(list) {
-  return (Array.isArray(list) ? list : []).map(/** @param {*} [r] */ (r) => ({
-    id: r.id,
-    name: r.name || '',
-    keywords: (r.keywords || []).join('\n'),
-    act: r.act === 'block' ? 'block' : 'watch',
-    notify: r.notify === true,
-    on: r.on !== false,
-    scope: normalizeScope(r.scope),
-  }));
+  return (Array.isArray(list) ? list : []).map(
+    /** @param {*} [r] */ (r) => ({
+      id: r.id,
+      name: r.name || '',
+      keywords: (r.keywords || []).join('\n'),
+      act: r.act === 'block' ? 'block' : 'watch',
+      notify: r.notify === true,
+      on: r.on !== false,
+      scope: normalizeScope(r.scope),
+    }),
+  );
 }
 
 /* 表单 → 服务端（keywords 还原成数组；空行 / 重复由服务端再清一遍） */
@@ -111,41 +132,60 @@ function fromServer(list) {
  * @param {*} [rules]
  */
 function toServer(rules) {
-  return rules.map(/** @param {*} [r] */ (r) => ({
-    id: r.id,
-    name: r.name.trim(),
-    keywords: parseKeywords(r.keywords),
-    act: r.act,
-    notify: r.notify,
-    on: r.on,
-    scope: r.scope,
-  }));
+  return rules.map(
+    /** @param {*} [r] */ (r) => ({
+      id: r.id,
+      name: r.name.trim(),
+      keywords: parseKeywords(r.keywords),
+      act: r.act,
+      notify: r.notify,
+      on: r.on,
+      scope: r.scope,
+    }),
+  );
 }
 
 /**
  * @param {*} [list]
  */
-const filtersFromServer = (list) => (Array.isArray(list) ? list : [])
-  .map(/** @param {*} [f] */ (f) => Object.assign({}, f, { scope: normalizeScope(f.scope) }));
+const filtersFromServer = (list) =>
+  (Array.isArray(list) ? list : []).map(
+    /** @param {*} [f] */ (f) => Object.assign({}, f, { scope: normalizeScope(f.scope) }),
+  );
 
 /**
  * @param {*} [a]
  * @param {*} [b]
  */
-const sameRule = (a, b) => a.name === b.name && a.keywords === b.keywords && a.act === b.act
-  && a.notify === b.notify && a.on === b.on && JSON.stringify(a.scope) === JSON.stringify(b.scope);
+const sameRule = (a, b) =>
+  a.name === b.name &&
+  a.keywords === b.keywords &&
+  a.act === b.act &&
+  a.notify === b.notify &&
+  a.on === b.on &&
+  JSON.stringify(a.scope) === JSON.stringify(b.scope);
 
 /**
  * @param {*} [a]
  * @param {*} [b]
  */
-const sameFilter = (a, b) => a.on === b.on && a.act === b.act && a.field === b.field
-  && a.kind === b.kind && a.pattern === b.pattern && JSON.stringify(a.scope) === JSON.stringify(b.scope);
+const sameFilter = (a, b) =>
+  a.on === b.on &&
+  a.act === b.act &&
+  a.field === b.field &&
+  a.kind === b.kind &&
+  a.pattern === b.pattern &&
+  JSON.stringify(a.scope) === JSON.stringify(b.scope);
 
 /**
  * @param {*} [ev]
  */
-const blurOnEnter = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.currentTarget.blur(); } };
+const blurOnEnter = (ev) => {
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    ev.currentTarget.blur();
+  }
+};
 
 /* ---------- 规则详情层 ---------- */
 /**
@@ -165,7 +205,10 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
 
   // 关层不丢编辑：已有规则改过且合法就顺手存掉；清空关键词的老规则放弃改动并说明
   const requestClose = () => {
-    if (!isNew && dirty && !invalid) { onSave(draft); return; }
+    if (!isNew && dirty && !invalid) {
+      onSave(draft);
+      return;
+    }
     if (!isNew && dirty && invalid) s.toast('关键词已清空，改动未保存', false);
     onClose();
   };
@@ -179,34 +222,66 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
       foot={
         <>
           {isNew ? null : (
-            <button className="btn btn-danger" type="button" id="delRuleBtn" disabled={busy}
-              onClick={() => onDelete(draft)}>删除规则</button>
+            <button
+              className="btn btn-danger"
+              type="button"
+              id="delRuleBtn"
+              disabled={busy}
+              onClick={() => onDelete(draft)}
+            >
+              删除规则
+            </button>
           )}
-          <button className="btn btn-primary" type="button" id="saveRuleBtn"
-            disabled={busy || invalid} title={invalid ? '至少填写一个关键词' : ''}
-            onClick={() => onSave(draft)}>{busy ? '保存中…' : '保存'}</button>
+          <button
+            className="btn btn-primary"
+            type="button"
+            id="saveRuleBtn"
+            disabled={busy || invalid}
+            title={invalid ? '至少填写一个关键词' : ''}
+            onClick={() => onSave(draft)}
+          >
+            {busy ? '保存中…' : '保存'}
+          </button>
         </>
       }
     >
       <div className="form-row">
         <label htmlFor="ruleName">名称</label>
-        <input id="ruleName" type="text" maxLength={40}
+        <input
+          id="ruleName"
+          type="text"
+          maxLength={40}
           placeholder="可留空，默认用第一个关键词"
-          value={draft.name} onChange={/** @param {*} [ev] */ (ev) => patch({ name: ev.target.value })} {...NO_AUTOFILL_PROPS} />
+          value={draft.name}
+          onChange={/** @param {*} [ev] */ (ev) => patch({ name: ev.target.value })}
+          {...NO_AUTOFILL_PROPS}
+        />
       </div>
 
       <div className="form-row">
         <label>动作</label>
         <div className="seg" role="radiogroup" aria-label="规则动作">
-          <button type="button" className={'seg-btn' + (draft.act === 'watch' ? ' active' : '')}
+          <button
+            type="button"
+            className={'seg-btn' + (draft.act === 'watch' ? ' active' : '')}
             aria-pressed={draft.act === 'watch' ? 'true' : 'false'}
-            onClick={() => patch({ act: 'watch' })}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-eye" /></svg>关注
+            onClick={() => patch({ act: 'watch' })}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-eye" />
+            </svg>
+            关注
           </button>
-          <button type="button" className={'seg-btn is-block' + (draft.act === 'block' ? ' active' : '')}
+          <button
+            type="button"
+            className={'seg-btn is-block' + (draft.act === 'block' ? ' active' : '')}
             aria-pressed={draft.act === 'block' ? 'true' : 'false'}
-            onClick={() => patch({ act: 'block', notify: false })}>
-            <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-block" /></svg>屏蔽
+            onClick={() => patch({ act: 'block', notify: false })}
+          >
+            <svg className="ico" aria-hidden="true" focusable="false">
+              <use href="#i-block" />
+            </svg>
+            屏蔽
           </button>
         </div>
         <small className="form-tip">
@@ -218,19 +293,32 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
 
       <div className="form-row">
         <label htmlFor="ruleKeywords">关键词</label>
-        <textarea id="ruleKeywords" className="watch-rule-kw" rows={5} spellCheck="false"
+        <textarea
+          id="ruleKeywords"
+          className="watch-rule-kw"
+          rows={5}
+          spellCheck="false"
           placeholder={'一行一个，例如：\nOpenAI\nGPT-5'}
-          value={draft.keywords} onChange={/** @param {*} [ev] */ (ev) => patch({ keywords: ev.target.value })} />
+          value={draft.keywords}
+          onChange={/** @param {*} [ev] */ (ev) => patch({ keywords: ev.target.value })}
+        />
         <small className="form-tip">
-          标题、摘要或正文中出现即命中（不区分大小写）{kws.length ? ` · 当前 ${kws.length} 个` : ' · 至少填一个'}
+          标题、摘要或正文中出现即命中（不区分大小写）
+          {kws.length ? ` · 当前 ${kws.length} 个` : ' · 至少填一个'}
         </small>
       </div>
 
       <div className="form-row">
         <label>适用范围</label>
-        <RuleScopePicker value={draft.scope} onChange={/** @param {*} [scope] */ (scope) => patch({ scope })}
-          feeds={feeds} groupOrder={groupOrder} />
-        <small className="form-tip">勾分组会覆盖整组（含以后新加入的频道）；一个都不选时这条规则不生效。</small>
+        <RuleScopePicker
+          value={draft.scope}
+          onChange={/** @param {*} [scope] */ (scope) => patch({ scope })}
+          feeds={feeds}
+          groupOrder={groupOrder}
+        />
+        <small className="form-tip">
+          勾分组会覆盖整组（含以后新加入的频道）；一个都不选时这条规则不生效。
+        </small>
       </div>
 
       {draft.act === 'watch' ? (
@@ -240,8 +328,11 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
             <span className="ds-sw-desc">命中新文章时向已配置的 Webhook 地址推送</span>
           </span>
           <span className="switch">
-            <input type="checkbox" checked={draft.notify}
-              onChange={/** @param {*} [ev] */ (ev) => patch({ notify: ev.target.checked })} />
+            <input
+              type="checkbox"
+              checked={draft.notify}
+              onChange={/** @param {*} [ev] */ (ev) => patch({ notify: ev.target.checked })}
+            />
             <span className="switch-slider" />
           </span>
         </label>
@@ -252,8 +343,11 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
           <span className="ds-sw-desc">关闭后这条规则不参与判定</span>
         </span>
         <span className="switch">
-          <input type="checkbox" checked={draft.on}
-            onChange={/** @param {*} [ev] */ (ev) => patch({ on: ev.target.checked })} />
+          <input
+            type="checkbox"
+            checked={draft.on}
+            onChange={/** @param {*} [ev] */ (ev) => patch({ on: ev.target.checked })}
+          />
           <span className="switch-slider" />
         </span>
       </label>
@@ -277,65 +371,108 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
   const invalid = !String(draft.pattern || '').trim();
 
   const requestClose = () => {
-    if (!isNew && dirty && !invalid) { onSave(draft); return; }
+    if (!isNew && dirty && !invalid) {
+      onSave(draft);
+      return;
+    }
     if (!isNew && dirty && invalid) s.toast('匹配模式已清空，改动未保存', false);
     onClose();
   };
 
   return (
     <DetailSheet
-      title={isNew ? '新建过滤规则' : (filter.pattern || '过滤规则')}
+      title={isNew ? '新建过滤规则' : filter.pattern || '过滤规则'}
       subtitle={isNew ? '保存后对之后新抓取的文章生效' : filterSummary(filter)}
       onClose={requestClose}
       saveHint="关闭本层会保存已有规则的改动；新建请点「保存」"
       foot={
         <>
           {isNew ? null : (
-            <button className="btn btn-danger" type="button" id="delFilterBtn" disabled={busy}
-              onClick={() => onDelete(draft)}>删除规则</button>
+            <button
+              className="btn btn-danger"
+              type="button"
+              id="delFilterBtn"
+              disabled={busy}
+              onClick={() => onDelete(draft)}
+            >
+              删除规则
+            </button>
           )}
-          <button className="btn btn-primary" type="button" id="saveFilterBtn"
-            disabled={busy || invalid} title={invalid ? '请填写匹配模式' : ''}
-            onClick={() => onSave(draft)}>{busy ? '保存中…' : '保存'}</button>
+          <button
+            className="btn btn-primary"
+            type="button"
+            id="saveFilterBtn"
+            disabled={busy || invalid}
+            title={invalid ? '请填写匹配模式' : ''}
+            onClick={() => onSave(draft)}
+          >
+            {busy ? '保存中…' : '保存'}
+          </button>
         </>
       }
     >
       <div className="form-row">
         <label>动作</label>
-        <Dropdown id="filterAct" wrapId="filterActDD" title="动作" ariaLabel="动作"
-          value={draft.act} onChange={/** @param {*} [v] */ (v) => patch({ act: v })}
+        <Dropdown
+          id="filterAct"
+          wrapId="filterActDD"
+          title="动作"
+          ariaLabel="动作"
+          value={draft.act}
+          onChange={/** @param {*} [v] */ (v) => patch({ act: v })}
           options={[
             { value: 'block', label: '丢弃（命中即不入库）' },
             { value: 'allow', label: '只收（只保留命中）' },
-          ]} />
+          ]}
+        />
         <small className="form-tip">两者同时存在时，先丢弃、再只收。</small>
       </div>
 
       <div className="form-row">
         <label>匹配范围</label>
-        <Dropdown id="filterField" wrapId="filterFieldDD" title="匹配范围" ariaLabel="匹配范围"
-          value={draft.field} onChange={/** @param {*} [v] */ (v) => patch({ field: v })}
+        <Dropdown
+          id="filterField"
+          wrapId="filterFieldDD"
+          title="匹配范围"
+          ariaLabel="匹配范围"
+          value={draft.field}
+          onChange={/** @param {*} [v] */ (v) => patch({ field: v })}
           options={[
             { value: 'title', label: '标题' },
             { value: 'desc', label: '摘要' },
             { value: 'content', label: '正文' },
             { value: 'all', label: '全部（标题 + 摘要 + 正文）' },
-          ]} />
+          ]}
+        />
       </div>
 
       <div className="form-row">
         <label>匹配方式</label>
-        <Dropdown id="filterKind" wrapId="filterKindDD" title="匹配方式" ariaLabel="匹配方式"
-          value={draft.kind} onChange={/** @param {*} [v] */ (v) => patch({ kind: v })}
-          options={[{ value: 'kw', label: '关键词' }, { value: 're', label: '正则' }]} />
+        <Dropdown
+          id="filterKind"
+          wrapId="filterKindDD"
+          title="匹配方式"
+          ariaLabel="匹配方式"
+          value={draft.kind}
+          onChange={/** @param {*} [v] */ (v) => patch({ kind: v })}
+          options={[
+            { value: 'kw', label: '关键词' },
+            { value: 're', label: '正则' },
+          ]}
+        />
       </div>
 
       <div className="form-row">
         <label htmlFor="filterPattern">匹配模式</label>
-        <input id="filterPattern" className="filter-pattern" type="text"
-          placeholder={draft.kind === 're' ? '如：v\d+\.\d+' : '关键词，不区分大小写'}
-          value={draft.pattern} onChange={/** @param {*} [ev] */ (ev) => patch({ pattern: ev.target.value })}
-          {...NO_AUTOFILL_PROPS} />
+        <input
+          id="filterPattern"
+          className="filter-pattern"
+          type="text"
+          placeholder={draft.kind === 're' ? '如：vd+.d+' : '关键词，不区分大小写'}
+          value={draft.pattern}
+          onChange={/** @param {*} [ev] */ (ev) => patch({ pattern: ev.target.value })}
+          {...NO_AUTOFILL_PROPS}
+        />
         <small className="form-tip">
           {draft.kind === 're' ? '非法正则在保存时会被忽略。' : '子串匹配，不区分大小写。'}
         </small>
@@ -343,8 +480,12 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
 
       <div className="form-row">
         <label>适用范围</label>
-        <RuleScopePicker value={draft.scope} onChange={/** @param {*} [scope] */ (scope) => patch({ scope })}
-          feeds={feeds} groupOrder={groupOrder} />
+        <RuleScopePicker
+          value={draft.scope}
+          onChange={/** @param {*} [scope] */ (scope) => patch({ scope })}
+          feeds={feeds}
+          groupOrder={groupOrder}
+        />
         <small className="form-tip">一个都不选时这条规则不生效；勾分组会覆盖整组。</small>
       </div>
 
@@ -354,8 +495,11 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
           <span className="ds-sw-desc">关闭后这条规则不参与过滤</span>
         </span>
         <span className="switch">
-          <input type="checkbox" checked={draft.on}
-            onChange={/** @param {*} [ev] */ (ev) => patch({ on: ev.target.checked })} />
+          <input
+            type="checkbox"
+            checked={draft.on}
+            onChange={/** @param {*} [ev] */ (ev) => patch({ on: ev.target.checked })}
+          />
           <span className="switch-slider" />
         </span>
       </label>
@@ -383,13 +527,13 @@ export function WatchPane({ onDirtyChange }) {
   /** @type {any} */
   const [loaded, setLoaded] = useState(false);
   /** @type {any} */
-  const [busy, setBusy] = useState('');               // rules | filters | webhook | expire | apply
+  const [busy, setBusy] = useState(''); // rules | filters | webhook | expire | apply
   /** @type {*} */
-  const [result, setResult] = useState(null);         // { ok, msg } | null —— #watchResult
+  const [result, setResult] = useState(null); // { ok, msg } | null —— #watchResult
   /** @type {any} */
-  const [prefsError, setPrefsError] = useState('');   // /api/prefs 读取失败（面板级，编辑动作要禁用）
+  const [prefsError, setPrefsError] = useState(''); // /api/prefs 读取失败（面板级，编辑动作要禁用）
   /** @type {*} */
-  const [sheet, setSheet] = useState(null);           // { type: 'rule' | 'filter', value, isNew }
+  const [sheet, setSheet] = useState(null); // { type: 'rule' | 'filter', value, isNew }
   /** @type {*} */
   const paneRef = useRef(null);
 
@@ -410,7 +554,9 @@ export function WatchPane({ onDirtyChange }) {
       if (!alive()) return;
       setRules(fromServer(d.watchRules));
       const w = typeof d.webhookUrl === 'string' ? d.webhookUrl : '';
-      const days = Number.isFinite(Number(d.watchExpireDays)) ? String(Number(d.watchExpireDays)) : '90';
+      const days = Number.isFinite(Number(d.watchExpireDays))
+        ? String(Number(d.watchExpireDays))
+        : '90';
       setWebhook(w);
       setSavedWebhook(w);
       setExpireDays(days);
@@ -426,14 +572,18 @@ export function WatchPane({ onDirtyChange }) {
       const data = await s.loadFeeds();
       if (!alive()) return;
       setFeedsList((data && data.feeds) || []);
-      setGroupOrder((data && Array.isArray(data.groupOrder)) ? data.groupOrder : []);
-    } catch (_) { /* 拿不到频道清单时选择器仍可切「全部频道」 */ }
+      setGroupOrder(data && Array.isArray(data.groupOrder) ? data.groupOrder : []);
+    } catch (_) {
+      /* 拿不到频道清单时选择器仍可切「全部频道」 */
+    }
   };
 
   useEffect(() => {
     let alive = true;
     loadPrefs(() => alive);
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -507,15 +657,28 @@ export function WatchPane({ onDirtyChange }) {
     const exists = rules.some(/** @param {*} [r] */ (r) => r.id === draft.id);
     /** @type {*} */
     const prev = rules;
-    const next = exists ? rules.map(/** @param {*} [r] */ (r) => (r.id === draft.id ? draft : r)) : rules.concat([draft]);
+    const next = exists
+      ? rules.map(/** @param {*} [r] */ (r) => (r.id === draft.id ? draft : r))
+      : rules.concat([draft]);
     const out = await commitRules(next);
-    if (!out.ok) { s.toast('保存失败：' + out.error, false); return; }
+    if (!out.ok) {
+      s.toast('保存失败：' + out.error, false);
+      return;
+    }
     setSheet(null);
-    if ((out.dropped || 0) > 0) { s.toast('关键词为空，这条规则没有保存', false); return; }
-    s.toast(exists ? '规则已保存，只对之后新抓取的文章生效' : '规则已添加，只对之后新抓取的文章生效', true, {
-      actionText: '撤销', ms: 6000,
-      action: () => restoreRules(prev, exists ? '已撤销修改' : '已撤销添加'),
-    });
+    if ((out.dropped || 0) > 0) {
+      s.toast('关键词为空，这条规则没有保存', false);
+      return;
+    }
+    s.toast(
+      exists ? '规则已保存，只对之后新抓取的文章生效' : '规则已添加，只对之后新抓取的文章生效',
+      true,
+      {
+        actionText: '撤销',
+        ms: 6000,
+        action: () => restoreRules(prev, exists ? '已撤销修改' : '已撤销添加'),
+      },
+    );
   };
 
   /**
@@ -525,16 +688,21 @@ export function WatchPane({ onDirtyChange }) {
     const okGo = await s.confirm({
       title: `删除规则「${ruleName(r)}」？`,
       desc: '只影响以后新抓取的文章判定；已入库文章上的关注 / 屏蔽标记不变。',
-      confirmText: '删除', danger: true,
+      confirmText: '删除',
+      danger: true,
     });
     if (!okGo) return;
     /** @type {*} */
     const prev = rules;
     const out = await commitRules(rules.filter(/** @param {*} [x] */ (x) => x.id !== r.id));
-    if (!out.ok) { s.toast('删除失败：' + out.error, false); return; }
+    if (!out.ok) {
+      s.toast('删除失败：' + out.error, false);
+      return;
+    }
     setSheet(null);
     s.toast('规则已删除', true, {
-      actionText: '撤销', ms: 6000,
+      actionText: '撤销',
+      ms: 6000,
       action: () => restoreRules(prev, '已恢复规则'),
     });
   };
@@ -546,16 +714,25 @@ export function WatchPane({ onDirtyChange }) {
   const toggleRule = async (r, on) => {
     /** @type {*} */
     const prev = rules;
-    const out = await commitRules(rules.map(/** @param {*} [x] */ (x) => (x.id === r.id ? Object.assign({}, x, { on }) : x)));
-    if (!out.ok) { s.toast('保存失败：' + out.error, false); return; }
+    const out = await commitRules(
+      rules.map(/** @param {*} [x] */ (x) => (x.id === r.id ? Object.assign({}, x, { on }) : x)),
+    );
+    if (!out.ok) {
+      s.toast('保存失败：' + out.error, false);
+      return;
+    }
     s.toast(`${ruleName(r)} 已${on ? '启用' : '停用'}`, true, {
-      actionText: '撤销', ms: 6000,
+      actionText: '撤销',
+      ms: 6000,
       action: () => restoreRules(prev, '已撤销'),
     });
   };
 
   const onApply = async () => {
-    if (sheet) { s.toast('先关闭正在编辑的规则', false); return; }
+    if (sheet) {
+      s.toast('先关闭正在编辑的规则', false);
+      return;
+    }
     const okGo = await s.confirm({
       title: '把规则应用到已有文章？',
       desc: '会按当前规则重新判定全部已有文章：命中关注规则的加入「关注」，命中屏蔽规则的标为「屏蔽」并自动标为已读。',
@@ -566,8 +743,14 @@ export function WatchPane({ onDirtyChange }) {
     try {
       const res = await s.apiFetch('/api/watch/apply', { method: 'POST' });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { setResult({ ok: false, msg: s.errText(d, '应用失败') }); return; }
-      setResult({ ok: true, msg: `已回溯：重新判定 ${d.tagged} 篇，关注命中 ${d.watching} 篇、屏蔽命中 ${d.blocked} 篇（清除旧标记 ${d.cleared} 条）。` });
+      if (!res.ok) {
+        setResult({ ok: false, msg: s.errText(d, '应用失败') });
+        return;
+      }
+      setResult({
+        ok: true,
+        msg: `已回溯：重新判定 ${d.tagged} 篇，关注命中 ${d.watching} 篇、屏蔽命中 ${d.blocked} 篇（清除旧标记 ${d.cleared} 条）。`,
+      });
       // 侧栏的关注 / 屏蔽计数变了，让频道栏重新拉一遍
       if (s.loadFeeds) await s.loadFeeds();
     } catch (err) {
@@ -610,7 +793,8 @@ export function WatchPane({ onDirtyChange }) {
    * @param {*} [f]
    * @param {*} [isNew]
    */
-  const openFilter = (f, isNew) => setSheet({ type: 'filter', value: isNew ? blankFilter() : f, isNew });
+  const openFilter = (f, isNew) =>
+    setSheet({ type: 'filter', value: isNew ? blankFilter() : f, isNew });
 
   /**
    * @param {*} [draft]
@@ -619,13 +803,22 @@ export function WatchPane({ onDirtyChange }) {
     const exists = filters.some(/** @param {*} [f] */ (f) => f.id === draft.id);
     /** @type {*} */
     const prev = filters;
-    const next = exists ? filters.map(/** @param {*} [f] */ (f) => (f.id === draft.id ? draft : f)) : filters.concat([draft]);
+    const next = exists
+      ? filters.map(/** @param {*} [f] */ (f) => (f.id === draft.id ? draft : f))
+      : filters.concat([draft]);
     const out = await commitFilters(next);
-    if (!out.ok) { s.toast('保存失败：' + out.error, false); return; }
+    if (!out.ok) {
+      s.toast('保存失败：' + out.error, false);
+      return;
+    }
     setSheet(null);
-    if ((out.dropped || 0) > 0) { s.toast('匹配模式为空或非法，这条规则没有保存', false); return; }
+    if ((out.dropped || 0) > 0) {
+      s.toast('匹配模式为空或非法，这条规则没有保存', false);
+      return;
+    }
     s.toast(exists ? '过滤规则已保存' : '过滤规则已添加，对之后新抓取的文章生效', true, {
-      actionText: '撤销', ms: 6000,
+      actionText: '撤销',
+      ms: 6000,
       action: () => restoreFilters(prev, exists ? '已撤销修改' : '已撤销添加'),
     });
   };
@@ -637,16 +830,21 @@ export function WatchPane({ onDirtyChange }) {
     const okGo = await s.confirm({
       title: `删除过滤规则「${f.pattern || '未命名'}」？`,
       desc: '只影响以后新抓取的文章，已入库的历史文章不动。',
-      confirmText: '删除', danger: true,
+      confirmText: '删除',
+      danger: true,
     });
     if (!okGo) return;
     /** @type {*} */
     const prev = filters;
     const out = await commitFilters(filters.filter(/** @param {*} [x] */ (x) => x.id !== f.id));
-    if (!out.ok) { s.toast('删除失败：' + out.error, false); return; }
+    if (!out.ok) {
+      s.toast('删除失败：' + out.error, false);
+      return;
+    }
     setSheet(null);
     s.toast('过滤规则已删除', true, {
-      actionText: '撤销', ms: 6000,
+      actionText: '撤销',
+      ms: 6000,
       action: () => restoreFilters(prev, '已恢复规则'),
     });
   };
@@ -658,10 +856,16 @@ export function WatchPane({ onDirtyChange }) {
   const toggleFilter = async (f, on) => {
     /** @type {*} */
     const prev = filters;
-    const out = await commitFilters(filters.map(/** @param {*} [x] */ (x) => (x.id === f.id ? Object.assign({}, x, { on }) : x)));
-    if (!out.ok) { s.toast('保存失败：' + out.error, false); return; }
+    const out = await commitFilters(
+      filters.map(/** @param {*} [x] */ (x) => (x.id === f.id ? Object.assign({}, x, { on }) : x)),
+    );
+    if (!out.ok) {
+      s.toast('保存失败：' + out.error, false);
+      return;
+    }
     s.toast(`${f.pattern || '过滤规则'} 已${on ? '启用' : '停用'}`, true, {
-      actionText: '撤销', ms: 6000,
+      actionText: '撤销',
+      ms: 6000,
       action: () => restoreFilters(prev, '已撤销'),
     });
   };
@@ -670,7 +874,10 @@ export function WatchPane({ onDirtyChange }) {
 
   const commitWebhook = async () => {
     const next = webhook.trim();
-    if (next === savedWebhook) { setWebhook(savedWebhook); return; }
+    if (next === savedWebhook) {
+      setWebhook(savedWebhook);
+      return;
+    }
     setBusy('webhook');
     try {
       const data = await postPrefs({ webhookUrl: next });
@@ -678,18 +885,25 @@ export function WatchPane({ onDirtyChange }) {
       const prev = savedWebhook;
       setWebhook(w);
       setSavedWebhook(w);
-      s.toast(w ? 'Webhook 已保存，关注规则命中的新文章会推送到这个地址' : 'Webhook 已清空，不再推送通知', true, {
-        actionText: '撤销', ms: 6000,
-        action: async () => {
-          try {
-            const back = await postPrefs({ webhookUrl: prev });
-            const pw = typeof back.webhookUrl === 'string' ? back.webhookUrl : '';
-            setWebhook(pw);
-            setSavedWebhook(pw);
-            s.toast('已撤销');
-          } catch (e) { s.toast('撤销失败：' + (e.message || e), false); }
+      s.toast(
+        w ? 'Webhook 已保存，关注规则命中的新文章会推送到这个地址' : 'Webhook 已清空，不再推送通知',
+        true,
+        {
+          actionText: '撤销',
+          ms: 6000,
+          action: async () => {
+            try {
+              const back = await postPrefs({ webhookUrl: prev });
+              const pw = typeof back.webhookUrl === 'string' ? back.webhookUrl : '';
+              setWebhook(pw);
+              setSavedWebhook(pw);
+              s.toast('已撤销');
+            } catch (e) {
+              s.toast('撤销失败：' + (e.message || e), false);
+            }
+          },
         },
-      });
+      );
     } catch (e) {
       setWebhook(savedWebhook);
       setResult({ ok: false, msg: 'Webhook 保存失败：' + (e.message || e) });
@@ -713,20 +927,27 @@ export function WatchPane({ onDirtyChange }) {
     setBusy('expire');
     try {
       const data = await postPrefs({ watchExpireDays: days });
-      const nd = Number.isFinite(Number(data.watchExpireDays)) ? String(Number(data.watchExpireDays)) : String(days);
+      const nd = Number.isFinite(Number(data.watchExpireDays))
+        ? String(Number(data.watchExpireDays))
+        : String(days);
       const prev = Number(savedExpireDays);
       setExpireDays(nd);
       setSavedExpireDays(nd);
       s.toast(`关注保留 ${Number(nd) === 0 ? '永久' : nd + ' 天'}`, true, {
-        actionText: '撤销', ms: 6000,
+        actionText: '撤销',
+        ms: 6000,
         action: async () => {
           try {
             const back = await postPrefs({ watchExpireDays: prev });
-            const bd = Number.isFinite(Number(back.watchExpireDays)) ? String(Number(back.watchExpireDays)) : String(prev);
+            const bd = Number.isFinite(Number(back.watchExpireDays))
+              ? String(Number(back.watchExpireDays))
+              : String(prev);
             setExpireDays(bd);
             setSavedExpireDays(bd);
             s.toast('已撤销');
-          } catch (e) { s.toast('撤销失败：' + (e.message || e), false); }
+          } catch (e) {
+            s.toast('撤销失败：' + (e.message || e), false);
+          }
         },
       });
     } catch (e) {
@@ -746,15 +967,28 @@ export function WatchPane({ onDirtyChange }) {
     const on = r.on !== false;
     const blocked = r.act === 'block';
     return (
-      <div className={'sl-row' + (on ? '' : ' is-off')} key={r.id} data-rule-id={r.id}
-        role="button" tabIndex={0} aria-label={`编辑规则「${ruleName(r)}」`}
+      <div
+        className={'sl-row' + (on ? '' : ' is-off')}
+        key={r.id}
+        data-rule-id={r.id}
+        role="button"
+        tabIndex={0}
+        aria-label={`编辑规则「${ruleName(r)}」`}
         onClick={() => openRule(r, false)}
-        onKeyDown={/** @param {*} [ev] */ (ev) => {
-          if (ev.target !== ev.currentTarget) return;
-          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openRule(r, false); }
-        }}>
+        onKeyDown={
+          /** @param {*} [ev] */ (ev) => {
+            if (ev.target !== ev.currentTarget) return;
+            if (ev.key === 'Enter' || ev.key === ' ') {
+              ev.preventDefault();
+              openRule(r, false);
+            }
+          }
+        }
+      >
         <span className={'sl-ava' + (blocked ? ' danger' : '')}>
-          <svg className="ico" aria-hidden="true" focusable="false"><use href={blocked ? '#i-block' : '#i-eye'} /></svg>
+          <svg className="ico" aria-hidden="true" focusable="false">
+            <use href={blocked ? '#i-block' : '#i-eye'} />
+          </svg>
         </span>
         <div className="sl-main">
           <div className="sl-name">{ruleName(r)}</div>
@@ -763,13 +997,20 @@ export function WatchPane({ onDirtyChange }) {
         <span className="sl-side" onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
           <span className={'sl-badge' + (blocked ? ' block' : '')}>{actText(r.act)}</span>
           <span className="switch">
-            <input type="checkbox" data-rule-on={r.id} aria-label={`启用规则「${ruleName(r)}」`}
-              checked={on} disabled={busy === 'rules'}
-              onChange={/** @param {*} [ev] */ (ev) => toggleRule(r, ev.target.checked)} />
+            <input
+              type="checkbox"
+              data-rule-on={r.id}
+              aria-label={`启用规则「${ruleName(r)}」`}
+              checked={on}
+              disabled={busy === 'rules'}
+              onChange={/** @param {*} [ev] */ (ev) => toggleRule(r, ev.target.checked)}
+            />
             <span className="switch-slider" />
           </span>
         </span>
-        <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+        <svg className="ico feed-caret" aria-hidden="true" focusable="false">
+          <use href="#i-chevron-right" />
+        </svg>
       </div>
     );
   };
@@ -780,30 +1021,52 @@ export function WatchPane({ onDirtyChange }) {
   const renderFilterRow = (f) => {
     const on = f.on !== false;
     return (
-      <div className={'sl-row' + (on ? '' : ' is-off')} key={f.id} data-fid={f.id}
-        role="button" tabIndex={0} aria-label={`编辑过滤规则「${f.pattern || '未命名'}」`}
+      <div
+        className={'sl-row' + (on ? '' : ' is-off')}
+        key={f.id}
+        data-fid={f.id}
+        role="button"
+        tabIndex={0}
+        aria-label={`编辑过滤规则「${f.pattern || '未命名'}」`}
         onClick={() => openFilter(f, false)}
-        onKeyDown={/** @param {*} [ev] */ (ev) => {
-          if (ev.target !== ev.currentTarget) return;
-          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openFilter(f, false); }
-        }}>
+        onKeyDown={
+          /** @param {*} [ev] */ (ev) => {
+            if (ev.target !== ev.currentTarget) return;
+            if (ev.key === 'Enter' || ev.key === ' ') {
+              ev.preventDefault();
+              openFilter(f, false);
+            }
+          }
+        }
+      >
         <span className="sl-ava">
-          <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-filter" /></svg>
+          <svg className="ico" aria-hidden="true" focusable="false">
+            <use href="#i-filter" />
+          </svg>
         </span>
         <div className="sl-main">
           <div className="sl-name">{f.pattern || '未填写模式'}</div>
           <div className="sl-sub">{filterSummary(f)}</div>
         </div>
         <span className="sl-side" onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
-          <span className={'sl-badge' + (f.act === 'allow' ? '' : ' block')}>{filterActText(f.act)}</span>
+          <span className={'sl-badge' + (f.act === 'allow' ? '' : ' block')}>
+            {filterActText(f.act)}
+          </span>
           <span className="switch">
-            <input type="checkbox" data-filter-on={f.id} aria-label={`启用过滤规则「${f.pattern || '未命名'}」`}
-              checked={on} disabled={busy === 'filters'}
-              onChange={/** @param {*} [ev] */ (ev) => toggleFilter(f, ev.target.checked)} />
+            <input
+              type="checkbox"
+              data-filter-on={f.id}
+              aria-label={`启用过滤规则「${f.pattern || '未命名'}」`}
+              checked={on}
+              disabled={busy === 'filters'}
+              onChange={/** @param {*} [ev] */ (ev) => toggleFilter(f, ev.target.checked)}
+            />
             <span className="switch-slider" />
           </span>
         </span>
-        <svg className="ico feed-caret" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
+        <svg className="ico feed-caret" aria-hidden="true" focusable="false">
+          <use href="#i-chevron-right" />
+        </svg>
       </div>
     );
   };
@@ -817,21 +1080,41 @@ export function WatchPane({ onDirtyChange }) {
         {prefsError ? (
           <div className="hint pane-msg lg" role="alert">
             {prefsError}，规则和过滤暂时不能编辑
-            <button type="button" className="btn btn-ghost btn-sm ml-3" onClick={() => loadPrefs()}>重试</button>
+            <button type="button" className="btn btn-ghost btn-sm ml-3" onClick={() => loadPrefs()}>
+              重试
+            </button>
           </div>
         ) : null}
-        <Section secKey="watch-rules" title="关注 / 屏蔽规则" open
-          sub={rules.length ? `${rules.length} 条` : '未配置'}>
+        <Section
+          secKey="watch-rules"
+          title="关注 / 屏蔽规则"
+          open
+          sub={rules.length ? `${rules.length} 条` : '未配置'}
+        >
           <div className="sl-toolbar">
-            <button className="btn btn-ghost btn-sm" id="addWatchRuleBtn" type="button"
-              disabled={busy === 'rules' || rules.length >= 30 || !!prefsError} onClick={() => openRule(null, true)}>
-              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
+            <button
+              className="btn btn-ghost btn-sm"
+              id="addWatchRuleBtn"
+              type="button"
+              disabled={busy === 'rules' || rules.length >= 30 || !!prefsError}
+              onClick={() => openRule(null, true)}
+            >
+              <svg className="ico" aria-hidden="true" focusable="false">
+                <use href="#i-plus" />
+              </svg>
               添加规则
             </button>
-            <button className="btn btn-ghost btn-sm" id="applyWatchBtn" type="button"
+            <button
+              className="btn btn-ghost btn-sm"
+              id="applyWatchBtn"
+              type="button"
               disabled={busy === 'apply' || !rules.length || !!prefsError}
-              title="按当前规则重新判定全部已有文章" onClick={onApply}>
-              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-refresh" /></svg>
+              title="按当前规则重新判定全部已有文章"
+              onClick={onApply}
+            >
+              <svg className="ico" aria-hidden="true" focusable="false">
+                <use href="#i-refresh" />
+              </svg>
               {busy === 'apply' ? '回溯中…' : '应用到已有文章'}
             </button>
             <span className="sl-toolbar-note">只对之后新抓取的文章生效</span>
@@ -842,7 +1125,9 @@ export function WatchPane({ onDirtyChange }) {
           ) : prefsError ? (
             <div className="sl-empty">规则读取失败，点上方「重试」后再编辑</div>
           ) : (
-            <div className="sl-empty">还没有规则。点「添加规则」新建一条，比如把标题含「OpenAI」的文章加入关注。</div>
+            <div className="sl-empty">
+              还没有规则。点「添加规则」新建一条，比如把标题含「OpenAI」的文章加入关注。
+            </div>
           )}
 
           <small className="form-tip">
@@ -855,52 +1140,88 @@ export function WatchPane({ onDirtyChange }) {
         <Section secKey="watch-notify" advanced title="通知与保留" sub={notifySub}>
           <div className="form-row">
             <label htmlFor="watchWebhook">Webhook 通知地址（可选）</label>
-            <input id="watchWebhook" type="url" placeholder="https://…" spellCheck="false" autoComplete="off"
+            <input
+              id="watchWebhook"
+              type="url"
+              placeholder="https://…"
+              spellCheck="false"
+              autoComplete="off"
               value={webhook}
               onChange={/** @param {*} [ev] */ (ev) => setWebhook(ev.target.value)}
               onBlur={commitWebhook}
-              onKeyDown={blurOnEnter} />
+              onKeyDown={blurOnEnter}
+            />
             <small className="form-tip">
               新抓取的文章命中关注规则时，向该地址 POST 一条 JSON；同一轮多条合并成一条。
-              <br />留空则不推送；改完自动保存。
+              <br />
+              留空则不推送；改完自动保存。
             </small>
           </div>
 
           <div className="form-row form-row-inline">
             <label htmlFor="watchExpireDays">关注保留天数</label>
-            <input id="watchExpireDays" type="number" inputMode="numeric" min="0" max="3650" step="1"
+            <input
+              id="watchExpireDays"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              max="3650"
+              step="1"
               style={{ width: '6.5em', flex: '0 0 auto' }}
               value={expireDays}
               onChange={/** @param {*} [ev] */ (ev) => setExpireDays(ev.target.value)}
               onBlur={commitExpire}
-              onKeyDown={blurOnEnter} />
+              onKeyDown={blurOnEnter}
+            />
             <span className="muted">天后自动取消关注（0 表示永久保留，默认 90 天）</span>
             <small className="form-tip">
               只取消「关注」标记：文章仍留在原频道，已读 / 收藏状态不变，屏蔽不受影响。
-              <br />改完自动保存。
+              <br />
+              改完自动保存。
             </small>
           </div>
         </Section>
 
-        <Section secKey="watch-filters" title="入库前过滤" open
-          sub={!loaded ? '读取中…' : (filters.length ? `${filters.length} 条` : '未配置')}>
+        <Section
+          secKey="watch-filters"
+          title="入库前过滤"
+          open
+          sub={!loaded ? '读取中…' : filters.length ? `${filters.length} 条` : '未配置'}
+        >
           <div className="sl-toolbar">
-            <button className="btn btn-ghost btn-sm" id="addFilterBtn" type="button"
-              disabled={busy === 'filters' || filters.length >= 50 || !!prefsError} onClick={() => openFilter(null, true)}>
-              <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-plus" /></svg>
+            <button
+              className="btn btn-ghost btn-sm"
+              id="addFilterBtn"
+              type="button"
+              disabled={busy === 'filters' || filters.length >= 50 || !!prefsError}
+              onClick={() => openFilter(null, true)}
+            >
+              <svg className="ico" aria-hidden="true" focusable="false">
+                <use href="#i-plus" />
+              </svg>
               添加过滤规则
             </button>
             <span className="sl-toolbar-note">写入数据库之前过滤</span>
           </div>
 
-          {!loaded ? <div className="sl-empty">正在读取规则…</div>
-            : prefsError ? <div className="sl-empty">规则读取失败，点上方「重试」后再编辑</div>
-              : !filters.length ? <div className="sl-empty">还没有规则。点「添加过滤规则」试试，比如丢弃标题含「广告」的文章。</div>
-              : <div className="sl-list">{filters.map(renderFilterRow)}</div>}
+          {!loaded ? (
+            <div className="sl-empty">正在读取规则…</div>
+          ) : prefsError ? (
+            <div className="sl-empty">规则读取失败，点上方「重试」后再编辑</div>
+          ) : !filters.length ? (
+            <div className="sl-empty">
+              还没有规则。点「添加过滤规则」试试，比如丢弃标题含「广告」的文章。
+            </div>
+          ) : (
+            <div className="sl-list">{filters.map(renderFilterRow)}</div>
+          )}
 
           <small className="form-tip">
-            只影响之后新抓的文章，已入库的历史文章不动。<br />
-            <b>丢弃</b>：命中即不入库；<b>只收</b>：只保留命中的文章（白名单）。两者同时存在时，先丢弃、再只收。<br />
+            只影响之后新抓的文章，已入库的历史文章不动。
+            <br />
+            <b>丢弃</b>：命中即不入库；<b>只收</b>
+            ：只保留命中的文章（白名单）。两者同时存在时，先丢弃、再只收。
+            <br />
             关键词不区分大小写；范围「全部」= 标题 + 摘要 + 正文；非法正则在保存时会被忽略。
           </small>
         </Section>
@@ -909,14 +1230,30 @@ export function WatchPane({ onDirtyChange }) {
       </div>
 
       {sheet && sheet.type === 'rule' ? (
-        <RuleSheet key={'rule-' + sheet.value.id} rule={sheet.value} isNew={sheet.isNew} busy={sheetBusy}
-          feeds={feedsList} groupOrder={groupOrder}
-          onClose={() => setSheet(null)} onSave={saveRuleDraft} onDelete={deleteRule} />
+        <RuleSheet
+          key={'rule-' + sheet.value.id}
+          rule={sheet.value}
+          isNew={sheet.isNew}
+          busy={sheetBusy}
+          feeds={feedsList}
+          groupOrder={groupOrder}
+          onClose={() => setSheet(null)}
+          onSave={saveRuleDraft}
+          onDelete={deleteRule}
+        />
       ) : null}
       {sheet && sheet.type === 'filter' ? (
-        <FilterSheet key={'filter-' + sheet.value.id} filter={sheet.value} isNew={sheet.isNew} busy={sheetBusy}
-          feeds={feedsList} groupOrder={groupOrder}
-          onClose={() => setSheet(null)} onSave={saveFilterDraft} onDelete={deleteFilter} />
+        <FilterSheet
+          key={'filter-' + sheet.value.id}
+          filter={sheet.value}
+          isNew={sheet.isNew}
+          busy={sheetBusy}
+          feeds={feedsList}
+          groupOrder={groupOrder}
+          onClose={() => setSheet(null)}
+          onSave={saveFilterDraft}
+          onDelete={deleteFilter}
+        />
       ) : null}
     </div>
   );

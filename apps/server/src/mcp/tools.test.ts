@@ -4,8 +4,9 @@
  * 这两处直接决定「AI 上下文不被撑爆」：截断标记丢了模型会以为读到了全文，
  * limit 兜底漏了 200 条 × 全文能把一次工具调用变成几十万 token。
  */
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { MCP_CONTENT_MAX_CHARS, mcpAiSystemPrompt, truncateContent } from './tools';
 
 test('truncateContent：短文原样返回，不标截断', () => {

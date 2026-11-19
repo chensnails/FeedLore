@@ -17,12 +17,12 @@
  * 它做三件事：逐跳（含重定向）重新校验、直连时把连接钉到已校验 IP、可选出网代理。
  */
 
-import { log } from './logger';
 import dns from 'node:dns';
 import { createRequire } from 'node:module';
 import { Agent, ProxyAgent } from 'undici';
-import { ApiException } from './apiError';
 import { isPrivateHostsAllowed } from '../env';
+import { ApiException } from './apiError';
+import { log } from './logger';
 
 /** 读 npm undici 的实际版本（ESM 里 import JSON 还要 import assertion，不如 createRequire 稳）。 */
 const nodeRequire = createRequire(import.meta.url);
@@ -36,7 +36,10 @@ try {
 /** 逃生口：自建 FreshRSS / 本机 Ollama 这类需求，给进程设 ALLOW_PRIVATE_HOSTS=1 整体放行。 */
 export const allowPrivate = (): boolean => isPrivateHostsAllowed();
 
-const stripBrackets = (h: string): string => String(h || '').replace(/^\[/, '').replace(/\]$/, '');
+const stripBrackets = (h: string): string =>
+  String(h || '')
+    .replace(/^\[/, '')
+    .replace(/\]$/, '');
 
 /**
  * IPv6 判定：只拦环回 / 链路本地 / ULA / 组播 / IPv4-mapped 内网。
@@ -90,7 +93,10 @@ export interface AssertPublicHostOptions {
   /** false = 只做字面量判定、不打 DNS（走代理由代理解析时用） */
   resolve?: boolean;
   /** 测试注入，默认 dns.promises.lookup */
-  lookup?: (host: string, opts: { all: true }) => Promise<Array<{ address: string; family: number }>>;
+  lookup?: (
+    host: string,
+    opts: { all: true },
+  ) => Promise<Array<{ address: string; family: number }>>;
 }
 
 /**
@@ -118,8 +124,9 @@ export async function assertPublicHost(
   if (isBlockedIp(host)) throw new ApiException('E_PRIVATE_HOST_BLOCKED');
   if (!resolve) return { url: u.toString(), host, ips: [] };
 
-  const doLookup = lookup
-    ?? ((h: string, o: { all: true }) =>
+  const doLookup =
+    lookup ??
+    ((h: string, o: { all: true }) =>
       dns.promises.lookup(h, o) as Promise<Array<{ address: string; family: number }>>);
 
   let rows: Array<{ address: string; family: number }>;
@@ -272,7 +279,9 @@ const proxyAgents = new Map<string, ProxyAgent>();
 
 /** 规范化代理地址：非法/不支持的协议返回空串（= 不用代理）。 */
 function normalizeProxy(raw: unknown): string {
-  const t = String(raw ?? '').trim().slice(0, 500);
+  const t = String(raw ?? '')
+    .trim()
+    .slice(0, 500);
   if (!t) return '';
   try {
     const u = new URL(t);
@@ -364,7 +373,11 @@ export async function safeFetch(
      * 此时不再钉定 IP —— 见上文「出网代理」第 1 条。 */
     const proxy = outboundProxy;
     const pinning = !proxy && Boolean(firstIp);
-    const dispatcher = proxy ? proxyDispatcher(proxy) : pinning ? pinnedDispatcher(firstIp as string) : undefined;
+    const dispatcher = proxy
+      ? proxyDispatcher(proxy)
+      : pinning
+        ? pinnedDispatcher(firstIp as string)
+        : undefined;
 
     const withDispatcher = {
       ...init,

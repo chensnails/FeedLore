@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ArticleBlockSchema, ArticleInlineSchema, CardSchema, DigestItemSchema, WatchRuleInputSchema } from './models';
+import {
+  ArticleBlockSchema,
+  ArticleInlineSchema,
+  CardSchema,
+  DigestItemSchema,
+  WatchRuleInputSchema,
+} from './models';
 
 /**
  * 正文块契约自检。
@@ -10,8 +16,20 @@ import { ArticleBlockSchema, ArticleInlineSchema, CardSchema, DigestItemSchema, 
  */
 
 const strong = { t: 'strong', v: [{ t: 'text', v: '粗' }] };
-const link = { t: 'a', href: 'https://example.com/a', v: [strong, { t: 'br' }, { t: 'text', v: '链' }] };
-const p = { t: 'p', v: [{ t: 'text', v: '正文' }, link, { t: 'code', v: 'x<y' }, { t: 'del', v: [{ t: 'text', v: '删' }] }] };
+const link = {
+  t: 'a',
+  href: 'https://example.com/a',
+  v: [strong, { t: 'br' }, { t: 'text', v: '链' }],
+};
+const p = {
+  t: 'p',
+  v: [
+    { t: 'text', v: '正文' },
+    link,
+    { t: 'code', v: 'x<y' },
+    { t: 'del', v: [{ t: 'text', v: '删' }] },
+  ],
+};
 
 test('内联节点：语义标签可嵌套，解析后结构不变', () => {
   const parsed = ArticleInlineSchema.array().parse(p.v);
@@ -53,14 +71,12 @@ test('块节点：非法层级 / 空图片地址 / 错误嵌套会被拒绝', ()
   );
   assert.equal(ArticleBlockSchema.safeParse({ t: 'unknown' }).success, false);
   // 表格的 head / rows 漏一层数组，前端 map 时就会拿到 undefined
-  assert.equal(
-    ArticleBlockSchema.safeParse({ t: 'table', head: [p], rows: [] }).success,
-    false,
-  );
+  assert.equal(ArticleBlockSchema.safeParse({ t: 'table', head: [p], rows: [] }).success, false);
   // figure 必须有图片；图注只能是内联节点
   assert.equal(ArticleBlockSchema.safeParse({ t: 'figure', caption: [] }).success, false);
   assert.equal(
-    ArticleBlockSchema.safeParse({ t: 'figure', img: { src: 'https://e.com/a.jpg' }, caption: [p] }).success,
+    ArticleBlockSchema.safeParse({ t: 'figure', img: { src: 'https://e.com/a.jpg' }, caption: [p] })
+      .success,
     false,
   );
 });
@@ -75,8 +91,14 @@ test('bodyVersion 只接受 1 / 2', () => {
 
 test('关注规则写入：keywords 兼容多行文本与数组', () => {
   const base = { id: 'w1', name: 'AI', act: 'watch', notify: false, on: true };
-  assert.equal(WatchRuleInputSchema.safeParse({ ...base, keywords: 'OpenAI\nGPT-5' }).success, true);
-  assert.equal(WatchRuleInputSchema.safeParse({ ...base, keywords: ['OpenAI', 'GPT-5'] }).success, true);
+  assert.equal(
+    WatchRuleInputSchema.safeParse({ ...base, keywords: 'OpenAI\nGPT-5' }).success,
+    true,
+  );
+  assert.equal(
+    WatchRuleInputSchema.safeParse({ ...base, keywords: ['OpenAI', 'GPT-5'] }).success,
+    true,
+  );
   assert.equal(WatchRuleInputSchema.safeParse({ ...base, keywords: 42 }).success, false);
 });
 
@@ -85,7 +107,10 @@ test('日报条目：老数据没有 image 仍可通过，新数据带代理地�
   const old = { name: '条目', feedName: '频道', tags: ['a'], size: '1G', link: 'https://e.com/a' };
   assert.equal(DigestItemSchema.safeParse(old).success, true);
   assert.equal(DigestItemSchema.safeParse({ ...old, image: null }).success, true);
-  const withImg = DigestItemSchema.safeParse({ ...old, image: '/api/img?u=https%3A%2F%2Fe.com%2Fa.png' });
+  const withImg = DigestItemSchema.safeParse({
+    ...old,
+    image: '/api/img?u=https%3A%2F%2Fe.com%2Fa.png',
+  });
   assert.equal(withImg.success, true);
   assert.equal(DigestItemSchema.safeParse({ ...old, image: 42 }).success, false);
 });

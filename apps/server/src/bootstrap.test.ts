@@ -1,6 +1,6 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveLegacyDatabaseUrl, type DbProbe } from './bootstrap';
+import test from 'node:test';
+import { type DbProbe, resolveLegacyDatabaseUrl } from './bootstrap';
 
 const SRC = 'postgres://feedlore:secret@db:5432/feedlore';
 
@@ -26,7 +26,7 @@ function probe(spec: ProbeSpec): DbProbe {
     },
   };
   if (spec.allUsersRequireChange !== undefined) {
-    p.allUsersRequireChange = async (db) => {
+    p.allUsersRequireChange = async (_db) => {
       if (spec.throwOn === 'seed') throw new Error('probe seed failed');
       const v = spec.allUsersRequireChange;
       return typeof v === 'function' ? (v as () => never)() : v === true;
@@ -36,10 +36,7 @@ function probe(spec: ProbeSpec): DbProbe {
 }
 
 test('旧库名 + 旧库无账号 + v2 库有账号 → 改写到 feedlore_v2（保留凭据/主机/端口）', async () => {
-  const out = await resolveLegacyDatabaseUrl(
-    SRC,
-    probe({ rows: { 'feedlore_v2.users': true } }),
-  );
+  const out = await resolveLegacyDatabaseUrl(SRC, probe({ rows: { 'feedlore_v2.users': true } }));
   const u = new URL(out);
   assert.equal(u.pathname, '/feedlore_v2');
   assert.equal(u.username, 'feedlore');
@@ -79,10 +76,7 @@ test('非旧库名 → 原样返回（自定义库名绝不误伤）', async () 
 
 test('已指向 feedlore_v2 → 原样返回（幂等）', async () => {
   const v2 = 'postgres://feedlore:secret@db:5432/feedlore_v2';
-  const out = await resolveLegacyDatabaseUrl(
-    v2,
-    probe({ rows: { 'feedlore_v2.users': true } }),
-  );
+  const out = await resolveLegacyDatabaseUrl(v2, probe({ rows: { 'feedlore_v2.users': true } }));
   assert.equal(out, v2);
 });
 
@@ -106,10 +100,8 @@ test('非标准连接串 → 原样返回，不抛错', async () => {
 
 test('改写会记录日志（运维可追溯）', async () => {
   const logged: string[] = [];
-  await resolveLegacyDatabaseUrl(
-    SRC,
-    probe({ rows: { 'feedlore_v2.users': true } }),
-    (...a) => logged.push(a.map(String).join(' ')),
+  await resolveLegacyDatabaseUrl(SRC, probe({ rows: { 'feedlore_v2.users': true } }), (...a) =>
+    logged.push(a.map(String).join(' ')),
   );
   assert.equal(logged.length, 2);
   assert.match(logged[0] ?? '', /legacy setup/);
@@ -128,7 +120,10 @@ test('2.5.3 误播种：旧库账号全是待改密 → 切回 feedlore_v2（2.5
   );
   assert.equal(new URL(out).pathname, '/feedlore_v2');
   assert.match(logged[0] ?? '', /mis-seed/);
-  assert.ok(logged.some((l) => /Switching DATABASE_URL/.test(l)), '应记录切库日志');
+  assert.ok(
+    logged.some((l) => /Switching DATABASE_URL/.test(l)),
+    '应记录切库日志',
+  );
 });
 
 test('旧库有已改密的真实账号 → 不动（用户确实在用旧库名跑站点）', async () => {

@@ -1,13 +1,13 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import {
+  COND_MAX_FACTOR,
   classifyCond,
   condFactor,
   condHost,
   condPenalties,
   noteCond,
   resetCondForTest,
-  COND_MAX_FACTOR,
 } from './feedCond';
 
 test('condHost: 去端口、小写、协议与非法输入', () => {
@@ -29,7 +29,10 @@ test('classifyCond: 304 一律算命中', () => {
 
 test('classifyCond: 200 且校验头没变 = 源站忽略条件请求（不能误判成正常更新）', () => {
   assert.equal(classifyCond({ etag: '"v1"' }, { status: 200, etag: '"v1"' }), 'ignored');
-  assert.equal(classifyCond({ lastModified: 'Tue' }, { status: 200, lastModified: 'Tue' }), 'ignored');
+  assert.equal(
+    classifyCond({ lastModified: 'Tue' }, { status: 200, lastModified: 'Tue' }),
+    'ignored',
+  );
   // 有头变了就是真更新，清计数
   assert.equal(classifyCond({ etag: '"v1"' }, { status: 200, etag: '"v2"' }), 'fresh');
   assert.equal(classifyCond({ etag: '"v1"' }, { status: 200, lastModified: 'Wed' }), 'fresh');

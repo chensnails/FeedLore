@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyFullText, extractArticleFromHtml, isThinContent, shouldApplyFullText } from './fulltext';
+import {
+  applyFullText,
+  extractArticleFromHtml,
+  isThinContent,
+  shouldApplyFullText,
+} from './fulltext';
 import type { NormalizedItem } from './rss';
 
 /**
@@ -12,8 +17,9 @@ import type { NormalizedItem } from './rss';
  *     绝不能把空内容或导航栏当正文写进条目。
  */
 
-const LONG = '这是一段用来凑足正文长度的测试文字，包含中文标点、数字 123 和英文 words，'
-  + '模拟真实文章段落的长度，确保 Readability 的正文评分能选中它。';
+const LONG =
+  '这是一段用来凑足正文长度的测试文字，包含中文标点、数字 123 和英文 words，' +
+  '模拟真实文章段落的长度，确保 Readability 的正文评分能选中它。';
 
 const PAGE = `<!doctype html>
 <html><head><title>一篇测试文章 - 示例站</title></head>
