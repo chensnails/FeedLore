@@ -31,11 +31,12 @@ const log = (...a: unknown[]): void => console.log(`[${now()}] [bootstrap]`, ...
 const warn = (...a: unknown[]): void => console.warn(`[${now()}] [bootstrap] ⚠️`, ...a);
 
 /**
- * 目标库不存在就建。
+ * 目标库不存在就建（兜底）。
  *
- * Postgres 容器启动时只创建 `POSTGRES_DB`（默认 `feedlore`），而 app 连的是
- * `feedlore_v2`——以前这个库由 upgrade 容器创建，upgrade 下线后全新安装会直接连不上
- * （`database "feedlore_v2" does not exist`，app 反复重启）。
+ * 现行 compose 里 db 的 `POSTGRES_DB` 已与 app 连的库同名（`feedlore_v2`），全新安装
+ * postgres 会直接建好，正常用不到这里。保留它是为了两种旧场景：仍在使用旧版 compose
+ * 文件的站点（`POSTGRES_DB=feedlore` + app 连 `feedlore_v2`，曾导致 upgrade 容器下线后
+ * 全新安装 crash loop），以及外部托管库被手工删库。
  *
  * 连到同实例的 postgres 库判断 + 创建，幂等。外部托管库无建库权限时只告警不阻断，
  * 让运维按提示手工建库，与结构迁移的容错策略保持一致。

@@ -10,6 +10,8 @@
 #
 # 零配置：不需要 .env。数据库密码、更新令牌都有仅在容器网络内使用的默认值；
 # 共享主机/多容器环境建议覆盖 PG_PASSWORD 与 WATCHTOWER_HTTP_API_TOKEN。
+# 库名统一 feedlore_v2：全新安装由 postgres 直接建该库，老站点的既有卷原样沿用
+# （POSTGRES_DB 只在空数据目录初始化时生效，改不动已有库）。
 # 空站点首次启动自动建管理员并生成一次性随机密码：横幅完整显示一次，
 # 24h 内可用 `docker exec -it feedlore pnpm --filter @feedlore/server initial-password` 查回。
 # 升级部署不会动已有账号的密码。
@@ -38,14 +40,17 @@ services:
     restart: unless-stopped
     environment:
       TZ: Asia/Shanghai
-      POSTGRES_DB: ${PG_DB:-feedlore}
+      # 与 app 连的库同名（feedlore_v2）：全新安装时由 postgres 直接建好，
+      # 老站点已有卷不受影响（POSTGRES_DB 只在空数据目录初始化时生效）。
+      POSTGRES_DB: ${PG_DB:-feedlore_v2}
       POSTGRES_USER: ${PG_USER:-feedlore}
       POSTGRES_PASSWORD: ${PG_PASSWORD:-feedlore}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      # 固定探 postgres 库：库名被改过 / 目标库尚未建立时，也不会把 db 判成不健康
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -72,6 +77,7 @@ services:
       # ⚠️ 不要改成 Asia/Shanghai：v2 的 timestamp 列按 UTC 壁钟存值
       TZ: UTC
       PORT: "3000"
+      # 目标库与 db 的 POSTGRES_DB 同名（默认 feedlore_v2）；改库名时两个变量一起改
       DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD:-feedlore}@db:5432/${V2_DB_NAME:-feedlore_v2}
 
       # ---- better-auth（都可留空）----
