@@ -22,9 +22,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
  * apply 返回 false 表示「用户已编辑，本次回填被跳过」，调用方只需保证脏态基线有效。
  */
 export function useFormLoadGuard() {
+  /** @type {any} */
   const touched = useRef(false);
   const mark = useCallback(() => { touched.current = true; }, []);
-  const apply = useCallback((fn) => {
+  const apply = useCallback(/** @param {*} [fn] */ (fn) => {
     if (touched.current) return false;
     fn();
     return true;
@@ -36,7 +37,8 @@ export function useFormLoadGuard() {
 /**
  * 一个可折叠分组。`open` 只是首次默认值；用户改过之后以 bindSections 记住的状态为准。
  * `subId` 留给需要被旧逻辑按 id 取用的摘要（频道计数、采集参数摘要）。
- */
+  * @param {*} opts
+*/
 export function Section({ secKey, title, sub, subId, open, id, advanced, cardNo, cardDesc, children }) {
   /* 两层结构：`advanced` 的组默认收起并打「高级」标，常用组照旧默认展开。
    * 不做「外层再套一个高级折叠容器」：那会变成两级折叠（点开外层还要再点内层），
@@ -70,7 +72,9 @@ export function Section({ secKey, title, sub, subId, open, id, advanced, cardNo,
  *  dirty 时在保存按钮旁补一枚常驻提示：它和弹层标题、页签圆点说的是同一件事，
  *  但就在手边 —— 长面板滚到底时不必抬头找状态。这枚是纯视觉提示（aria-hidden），
  *  播报交给标题那枚 role=status，避免读屏把同一句「未保存」连念三遍。
- *  动作栏本身在滚动容器之外，恒可见。 */
+ *  动作栏本身在滚动容器之外，恒可见。
+ *@param {*} opts
+*/
 export function PaneFoot({ lead, note, children, dirty }) {
   return (
     <div className={'pane-foot' + (dirty ? ' is-dirty' : '')}>
@@ -87,7 +91,9 @@ export function PaneFoot({ lead, note, children, dirty }) {
 }
 
 /** 只读字段：默认态用文本表达当前值，需要修改时由外层展开输入框。
- *  刻意不用 disabled input —— 它看起来仍像可点，复制文本也不方便。 */
+ *  刻意不用 disabled input —— 它看起来仍像可点，复制文本也不方便。
+ *@param {*} opts
+*/
 export function ReadonlyField({ label, value, hint, mono }) {
   return (
     <div className="ro-field">
@@ -98,7 +104,9 @@ export function ReadonlyField({ label, value, hint, mono }) {
   );
 }
 
-/** 编辑态开关：默认「修改…」，展开后变「收起」。aria-expanded 让读屏知道表单是否已展开。 */
+/** 编辑态开关：默认「修改…」，展开后变「收起」。aria-expanded 让读屏知道表单是否已展开。
+*@param {*} opts
+*/
 export function EditToggle({ editing, onClick, editText = '编辑', closeText = '收起', id }) {
   return (
     <button type="button" id={id} className="btn btn-ghost btn-sm ro-toggle"
@@ -110,7 +118,9 @@ export function EditToggle({ editing, onClick, editText = '编辑', closeText = 
 
 /** 内联结果提示。ok 由调用方决定何时清除（多数面板 4 秒，err 常驻）。
  *  失败用 role=alert（隐含 assertive）：以前一律 polite，导入 / 还原失败会排在
- *  其它状态消息之后播报，读屏用户可能几分钟后才知道操作没成功。 */
+ *  其它状态消息之后播报，读屏用户可能几分钟后才知道操作没成功。
+ *@param {*} opts
+*/
 export function Result({ id, result }) {
   const failed = !!(result && !result.ok);
   return (
@@ -122,11 +132,19 @@ export function Result({ id, result }) {
   );
 }
 
-/** test-result 的配套状态：ok 4 秒后自动清除，err 常驻（与旧 showResult 语义一致）。 */
+/** test-result 的配套状态：ok 4 秒后自动清除，err 常驻（与旧 showResult 语义一致）。
+*@param {*} [state]
+*/
 export function useResult(state) {
+  /** @type {any} */
   const [result, setResult] = useState(state || null);
+  /** @type {*} */
   const timerRef = useRef(null);
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  /**
+   * @param {*} [ok]
+   * @param {*} [msg]
+   */
   const show = (ok, msg) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setResult({ ok, msg });

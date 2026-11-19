@@ -36,32 +36,43 @@ const DOMAINS = [
 ];
 
 /** 引用卡日期：服务端给的是 ISO 原值（2026-11-17T04:27:...Z），这里统一成人看的「今天 HH:mm / MM-DD HH:mm」，与文章/卡片页一致。 */
+/**
+ * @param {*} [d]
+ */
 const fmtDate = (d) => {
   const f = S().fmtDate;
   if (typeof f === 'function') return f(d);
   return d ? String(d).slice(0, 16).replace('T', ' ') : '';
 };
 
+/**
+ * @param {*} [ts]
+ */
 const hhmm = (ts) => {
   const d = ts ? new Date(ts) : new Date();
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
-/** 一条引用条目：缩略图 + 来源 + 标题 + 跳文章。 */
+/** 一条引用条目：缩略图 + 来源 + 标题 + 跳文章。
+*@param {*} opts
+*/
 function RefCard({ ref: hit }) {
   const s = S();
+  /** @type {any} */
   const [imgFailed, setImgFailed] = useState(false);
   const thumb = (hit.image && !imgFailed && !isImgFailed(hit.image))
     ? <img className="ex-ref-thumb" loading="lazy" src={widthVariant(hit.image, 160) || hit.image} alt=""
-      onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}
+      onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
       onError={() => { markImgFailed(hit.image); setImgFailed(true); }} />
     : <div className="ex-ref-thumb ex-ref-thumb-fb"><Icon n="file" /></div>;
   const openArticle = () => {
     // 引用卡只有条目 id，没有 feedId：先用 id 在已加载的条目里找频道，找不到也能让
     // jumpToFeed 走「全部」范围按 id 定位（focusReaderArt 会翻页找目标）。
+    /** @type {any} */
     let feedId = null;
+    /** @type {*} */
     const all = (s.state && (s.state.entries || s.state.rdEntries)) || [];
-    const found = all.find((e) => String(e.id) === String(hit.id));
+    const found = all.find(/** @param {*} [e] */ (e) => String(e.id) === String(hit.id));
     if (found && found.feedId != null) feedId = found.feedId;
     if (typeof s.jumpToFeed === 'function') s.jumpToFeed(feedId, hit.id);
   };
@@ -84,7 +95,9 @@ function RefCard({ ref: hit }) {
   );
 }
 
-/** 用户消息气泡（右侧）。 */
+/** 用户消息气泡（右侧）。
+*@param {*} opts
+*/
 function MeBubble({ turn }) {
   return (
     <div className="ex-row ex-row-me">
@@ -96,7 +109,9 @@ function MeBubble({ turn }) {
   );
 }
 
-/** AI 消息气泡（左侧）：排队/生成中显示输入动画，成功显示答案 + 引用卡，失败显示错误 + 重试。 */
+/** AI 消息气泡（左侧）：排队/生成中显示输入动画，成功显示答案 + 引用卡，失败显示错误 + 重试。
+*@param {*} opts
+*/
 function AiBubble({ turn }) {
   const busy = turn.status === 'queued' || turn.status === 'running';
   return (
@@ -128,7 +143,7 @@ function AiBubble({ turn }) {
               <div className="ex-answer">{turn.answer}</div>
               {turn.refs && turn.refs.length ? (
                 <div className="ex-refs">
-                  {turn.refs.map((hit, i) => <RefCard ref={hit} key={hit.id || i} />)}
+                  {turn.refs.map(/** @param {*} [hit] @param {*} [i] */ (hit, i) => <RefCard ref={hit} key={hit.id || i} />)}
                 </div>
               ) : null}
             </>
@@ -144,12 +159,20 @@ function AiBubble({ turn }) {
   );
 }
 
+/**
+ * @param {*} opts
+ */
 export function ExplorePane({ hidden, onNewSession, panelProps }) {
   const s = S();
+  /** @type {any} */
   const [turns, setTurns] = useState([]);
+  /** @type {any} */
   const [draft, setDraft] = useState('');
+  /** @type {any} */
   const aliveRef = useRef(true);
+  /** @type {*} */
   const scrollRef = useRef(null);
+  /** @type {any} */
   const [tick, setTick] = useState(0);
 
   /* 「+」= 开始新一轮对话：与顶栏那枚按钮同一语义（重挂载整个面板、清空内存历史），
@@ -166,8 +189,8 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
 
   // 有任务在跑时每秒刷新等待秒数（IM 里体现为「正在输入」旁的实时秒数）
   useEffect(() => {
-    if (!turns.some((t) => t.status === 'queued' || t.status === 'running')) return undefined;
-    const iv = setInterval(() => setTick((n) => n + 1), 1000);
+    if (!turns.some(/** @param {*} [t] */ (t) => t.status === 'queued' || t.status === 'running')) return undefined;
+    const iv = setInterval(() => setTick(/** @param {*} [n] */ (n) => n + 1), 1000);
     return () => clearInterval(iv);
   }, [turns]);
 
@@ -177,6 +200,9 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [turns, tick]);
 
+  /**
+   * @param {*} [question]
+   */
   async function ask(question) {
     const q = String(question || '').trim();
     if (!q || !s || typeof s.submitAiJob !== 'function') return;
@@ -185,34 +211,37 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
     /* 全部历史：把已经成功/失败但有内容的轮次都打包。失败的轮次不带答案，
      * 免得把错误信息喂给模型；只带 question + answer + refs。 */
     const history = turns
-      .filter((t) => t.status === 'succeeded' && t.answer)
-      .map((t) => ({
+      .filter(/** @param {*} [t] */ (t) => t.status === 'succeeded' && t.answer)
+      .map(/** @param {*} [t] */ (t) => ({
         question: t.question,
         answer: t.answer,
-        refs: (t.refs || []).map((r) => ({ id: String(r.id), name: r.name })),
+        refs: (t.refs || []).map(/** @param {*} [r] */ (r) => ({ id: String(r.id), name: r.name })),
       }));
-    const patch = (fn) => { if (aliveRef.current) setTurns((prev) => prev.map((t) => (t.id === id ? fn(t) : t))); };
-    setTurns((prev) => [...prev, { id, question: q, status: 'queued', at: new Date(t0).toISOString(), startedAt: t0 }]);
+    /**
+     * @param {*} [fn]
+     */
+    const patch = (fn) => { if (aliveRef.current) setTurns(/** @param {*} [prev] */ (prev) => prev.map(/** @param {*} [t] */ (t) => (t.id === id ? fn(t) : t))); };
+    setTurns(/** @param {*} [prev] */ (prev) => [...prev, { id, question: q, status: 'queued', at: new Date(t0).toISOString(), startedAt: t0 }]);
     setDraft('');
     try {
       const job = await s.submitAiJob({ kind: 'explore', question: q, history });
       if (!aliveRef.current) return;
-      patch((t) => ({ ...t, status: job.status || 'queued' }));
+      patch(/** @param {*} [t] */ (t) => ({ ...t, status: job.status || 'queued' }));
       const done = await s.pollAiJob(job.id, {
-        onStatus: (j) => patch((t) => ({ ...t, status: j.status })),
+        onStatus: /** @param {*} [j] */ (j) => patch(/** @param {*} [t] */ (t) => ({ ...t, status: j.status })),
         isCancelled: () => !aliveRef.current,
       });
       if (!aliveRef.current) return;
       const r = (done && done.result) || {};
       if (!r.answer) throw new Error('任务完成但没有返回答案');
-      patch((t) => ({
+      patch(/** @param {*} [t] */ (t) => ({
         ...t, status: 'succeeded', answer: r.answer, refs: Array.isArray(r.refs) ? r.refs : [],
         model: r.model || '', matched: Number(r.matched) || 0,
       }));
     } catch (err) {
       if (!aliveRef.current) return;
       const msg = s.errText ? s.errText(err, '检索失败') : String((err && err.message) || err);
-      patch((t) => ({ ...t, status: 'error', errorText: msg, retry: () => ask(q) }));
+      patch(/** @param {*} [t] */ (t) => ({ ...t, status: 'error', errorText: msg, retry: () => ask(q) }));
     }
   }
 
@@ -228,16 +257,16 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
           <h1 className="ex-landing-title">想从订阅里找点什么？</h1>
           <p className="ai-sub" id="exploreSub">用大白话问你的订阅，AI 检索条目后回答，可直接追问</p>
           <div className="ex-domains" aria-label="领域快捷提问">
-            {DOMAINS.map((d) => (
+            {DOMAINS.map(/** @param {*} [d] */ (d) => (
               <button className="ex-domain" type="button" key={d.label} onClick={() => ask(d.q)}>{d.label}</button>
             ))}
           </div>
           <form className="ex-landing-compose" id="exploreCompose"
-            onSubmit={(e) => { e.preventDefault(); ask(draft); }}>
+            onSubmit={/** @param {*} [e] */ (e) => { e.preventDefault(); ask(draft); }}>
             <div className="ex-landing-field">
               <input id="exploreInput" type="search" value={draft}
                 placeholder="今天想从订阅里找点什么？直接问就好"
-                aria-label="向探索提问" autoComplete="off" onChange={(e) => setDraft(e.target.value)} />
+                aria-label="向探索提问" autoComplete="off" onChange={/** @param {*} [e] */ (e) => setDraft(e.target.value)} />
             </div>
             <div className="ex-landing-bar">
               <button className="ex-landing-plus" type="button" aria-label="开始新一轮对话"
@@ -251,7 +280,7 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
             </div>
           </form>
           <div className="ex-landing-suggest" aria-label="试试这些问题">
-            {SUGGESTIONS.map((q) => (
+            {SUGGESTIONS.map(/** @param {*} [q] */ (q) => (
               <button className="ex-suggest-btn" type="button" key={q} onClick={() => ask(q)}>
                 {q}<Icon n="arrow-up" />
               </button>
@@ -269,7 +298,7 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
       <div className="ex-shell">
         <div className="ex-thread" ref={scrollRef} id="exploreThread" role="log" aria-live="polite">
           <p className="ex-day">本次会话 · 可连续追问</p>
-          {turns.map((t) => (
+          {turns.map(/** @param {*} [t] */ (t) => (
             <div className="ex-pair" key={t.id}>
               <MeBubble turn={t} />
               <AiBubble turn={{ ...t, elapsed: t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0 }} />
@@ -279,10 +308,10 @@ export function ExplorePane({ hidden, onNewSession, panelProps }) {
         {/* 整卡式输入栏：与空态大输入框同款（浅边圆角卡 + 输入行 + 工具行圆形发送），
             消除裸输入框聚焦时叠出的深色粗描边。ID 与提交逻辑不变。 */}
         <form className="ex-compose" id="exploreCompose"
-          onSubmit={(e) => { e.preventDefault(); ask(draft); }}>
+          onSubmit={/** @param {*} [e] */ (e) => { e.preventDefault(); ask(draft); }}>
           <div className="ex-compose-field">
             <input id="exploreInput" type="search" value={draft} placeholder="追问一句话…"
-              aria-label="向探索提问" autoComplete="off" onChange={(e) => setDraft(e.target.value)} />
+              aria-label="向探索提问" autoComplete="off" onChange={/** @param {*} [e] */ (e) => setDraft(e.target.value)} />
           </div>
           <div className="ex-compose-bar">
             <button className="ex-compose-plus" type="button" aria-label="开始新一轮对话"

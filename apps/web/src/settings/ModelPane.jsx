@@ -23,7 +23,9 @@ import { modelLabel, TaskAssignments, useAiSettings } from './AiCapabilities.jsx
 
 const S = () => core;
 
+/** @type {Record<string, string>} */
 const USAGE_SPANS = { today: '今日', days7: '近 7 天', days30: '近 30 天' };
+/** @type {Record<string, string>} */
 const USAGE_KINDS = {
   digest: '日报生成',
   entry_ai: '单篇 AI',
@@ -33,23 +35,44 @@ const USAGE_KINDS = {
 };
 const DEPTH_LABEL = { low: '轻', medium: '中', high: '深' };
 
+/**
+ * @param {*} [n]
+ */
 const fmtNum = (n) => Number(n || 0).toLocaleString('zh-CN');
+/**
+ * @param {*} [n]
+ */
 const fmtTokens = (n) => {
   const v = Number(n || 0);
   if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M';
   if (v >= 1000) return (v / 1000).toFixed(1) + 'k';
   return String(v);
 };
+/**
+ * @param {*} [url]
+ */
 const hostOf = (url) => String(url || '').replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '').split('/')[0];
+/**
+ * @param {*} [v]
+ */
 const vendorLabel = (v) => String((v && v.name) || hostOf(v && v.baseUrl) || '').trim() || '未命名厂商';
 
+/**
+ * @param {*} [n]
+ */
 const pad2 = (n) => String(n).padStart(2, '0');
+/**
+ * @param {*} [iso]
+ */
 const fmtReqTime = (iso) => {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   const hm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   return d.toDateString() === new Date().toDateString() ? hm : `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${hm}`;
 };
+/**
+ * @param {*} [iso]
+ */
 const fmtRel = (iso) => {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return '—';
@@ -59,6 +82,9 @@ const fmtRel = (iso) => {
   if (diff < 86400e3) return Math.floor(diff / 3600e3) + ' 小时前';
   return Math.floor(diff / 86400e3) + ' 天前';
 };
+/**
+ * @param {*} [ms]
+ */
 const fmtDur = (ms) => {
   const v = Number(ms || 0);
   if (!v) return '—';
@@ -67,30 +93,53 @@ const fmtDur = (ms) => {
 };
 
 /* 界面用 low/medium/high 三档，落库是 1/2/3 的整数（0 表示未设置）。 */
+/**
+ * @param {*} [d]
+ */
 const depthToNum = (d) => (d === 'low' ? 1 : d === 'high' ? 3 : 2);
+/**
+ * @param {*} [n]
+ */
 const numToDepth = (n) => (n === 1 ? 'low' : n === 3 ? 'high' : 'medium');
+/**
+ * @param {*} [t]
+ */
 const tempText = (t) => String(Number.isFinite(Number(t)) ? Number(t) : 0.3);
 
 /* ============================ 模型详情层 ============================ */
 
+/**
+ * @param {*} opts
+ */
 function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
   const editing = !!model;
+  /** @type {any} */
   const [vendorId, setVendorId] = useState(
     model ? (model.vendorId || ai.vendors[0]?.id || '') : (initialVendorId || ai.vendors[0]?.id || ''),
   );
+  /** @type {any} */
   const [name, setName] = useState(model ? model.name || '' : '');
+  /** @type {any} */
   const [upstream, setUpstream] = useState(model ? model.model || '' : '');
+  /** @type {any} */
   const [temperature, setTemperature] = useState(tempText(model ? model.temperature : 0.3));
+  /** @type {any} */
   const [thinking, setThinking] = useState(!!(model && model.thinking));
+  /** @type {any} */
   const [depth, setDepth] = useState(numToDepth(model ? model.thinkingDepth : 2));
+  /** @type {any} */
   const [isDefault, setIsDefault] = useState(!!(model && model.isDefault));
+  /** @type {*} */
   const [list, setList] = useState(null);
+  /** @type {any} */
   const [listBusy, setListBusy] = useState(false);
+  /** @type {any} */
   const [listErr, setListErr] = useState('');
+  /** @type {any} */
   const [busy, setBusy] = useState('');
   const [result, showResult] = useResult();
 
-  const vendorOptions = ai.vendors.map((v) => ({ value: v.id, label: v.name }));
+  const vendorOptions = ai.vendors.map(/** @param {*} [v] */ (v) => ({ value: v.id, label: v.name }));
   const lockedDefault = editing && model.isDefault;
 
   async function fetchList() {
@@ -199,7 +248,7 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
       <div className="form-row">
         <label htmlFor="modelName">显示名称</label>
         <input id="modelName" type="text" maxLength={60} placeholder="如：便宜模型 / 日报专用（可留空）"
-          value={name} onChange={(e) => setName(e.target.value)} />
+          value={name} onChange={/** @param {*} [e] */ (e) => setName(e.target.value)} />
         <small className="form-tip">只用于本页展示；留空时显示上游模型名。</small>
       </div>
 
@@ -207,11 +256,11 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
         <label htmlFor="modelUpstream">上游模型名</label>
         <div className="input-with-btn">
           <input id="modelUpstream" type="text" spellCheck="false" placeholder="Qwen/Qwen3-8B"
-            value={upstream} onChange={(e) => setUpstream(e.target.value)} />
+            value={upstream} onChange={/** @param {*} [e] */ (e) => setUpstream(e.target.value)} />
           {list ? (
             <Dropdown id="modelUpstreamPick" wrapId="modelUpstreamPickDD" title="从上游列表选择"
               ariaLabel="从上游列表选择" value={upstream} valueLabel="选模型"
-              onChange={setUpstream} options={list.map((m) => ({ value: m, label: m }))} />
+              onChange={setUpstream} options={list.map(/** @param {*} [m] */ (m) => ({ value: m, label: m }))} />
           ) : null}
           <button type="button" className="btn btn-ghost btn-sm" id="fetchUpstreamBtn"
             disabled={listBusy || !vendorId} onClick={fetchList}>
@@ -225,7 +274,7 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
       <div className="form-row">
         <label htmlFor="modelTemp">温度</label>
         <input id="modelTemp" type="number" min="0" max="2" step="0.05"
-          value={temperature} onChange={(e) => setTemperature(e.target.value)} />
+          value={temperature} onChange={/** @param {*} [e] */ (e) => setTemperature(e.target.value)} />
         <small className="form-tip">越低越稳定保守，越高越发散。摘要建议 0.2 ~ 0.5。</small>
       </div>
 
@@ -234,7 +283,7 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
           <span>思考模式</span>
           <span className="switch">
             <input id="modelThinking" type="checkbox" checked={thinking}
-              onChange={(e) => setThinking(e.target.checked)} />
+              onChange={/** @param {*} [e] */ (e) => setThinking(e.target.checked)} />
             <span className="switch-slider" />
           </span>
         </label>
@@ -263,7 +312,7 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
           <span className="switch">
             <input id="modelIsDefault" type="checkbox" checked={lockedDefault || isDefault}
               disabled={lockedDefault}
-              onChange={(e) => setIsDefault(e.target.checked)} />
+              onChange={/** @param {*} [e] */ (e) => setIsDefault(e.target.checked)} />
             <span className="switch-slider" />
           </span>
         </label>
@@ -277,15 +326,24 @@ function ModelSheet({ ai, model, initialVendorId, onClose, onNeedVendor }) {
 
 /* ============================ 厂商详情层 ============================ */
 
+/**
+ * @param {*} opts
+ */
 function VendorSheet({ ai, vendor, onClose, onSaved }) {
   const editing = !!vendor;
   const keyName = useNoAutofillName('vendor-key');
   const urlName = useNoAutofillName('vendor-url');
+  /** @type {any} */
   const [name, setName] = useState(vendor ? vendor.name || '' : '');
+  /** @type {any} */
   const [baseUrl, setBaseUrl] = useState(vendor ? vendor.baseUrl || '' : '');
+  /** @type {any} */
   const [apiKey, setApiKey] = useState('');
+  /** @type {any} */
   const [showKey, setShowKey] = useState(false);
+  /** @type {any} */
   const [clearKey, setClearKey] = useState(false);
+  /** @type {any} */
   const [busy, setBusy] = useState('');
   const [result, showResult] = useResult();
 
@@ -295,6 +353,7 @@ function VendorSheet({ ai, vendor, onClose, onSaved }) {
     if (!baseUrl.trim()) { showResult(false, '接口地址不能为空'); return; }
     setBusy('save');
     try {
+      /** @type {any} */
       const payload = { name: name.trim(), baseUrl: baseUrl.trim() };
       const typed = apiKey.trim();
       if (clearKey) payload.apiKey = '';
@@ -348,14 +407,14 @@ function VendorSheet({ ai, vendor, onClose, onSaved }) {
       <div className="form-row">
         <label htmlFor="vendorName">名称</label>
         <input id="vendorName" type="text" maxLength={60} placeholder="如：硅基流动 / 火山方舟（可留空，默认用域名）"
-          value={name} onChange={(e) => setName(e.target.value)} />
+          value={name} onChange={/** @param {*} [e] */ (e) => setName(e.target.value)} />
       </div>
 
       <div className="form-row">
         <label htmlFor="vendorBaseUrl">接口地址（OpenAI 兼容）</label>
-        <input id="vendorBaseUrl" name={urlName} type="url" spellCheck="false"
+        <input id="vendorBaseUrl" name={urlName} type="url"
           placeholder="https://api.siliconflow.cn/v1" value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)} {...NO_AUTOFILL_PROPS} />
+          onChange={/** @param {*} [e] */ (e) => setBaseUrl(e.target.value)} {...NO_AUTOFILL_PROPS} />
         <small className="form-tip">填到 <code>/v1</code> 或完整 <code>/chat/completions</code> 均可。</small>
       </div>
 
@@ -364,9 +423,9 @@ function VendorSheet({ ai, vendor, onClose, onSaved }) {
         <div className="input-with-btn">
           <input id="vendorKey" name={keyName} type={showKey ? 'text' : 'password'}
             placeholder={saved ? '已保存，留空则不修改' : 'sk-...'} value={apiKey}
-            onChange={(e) => { setApiKey(e.target.value); setClearKey(false); }}
+            onChange={/** @param {*} [e] */ (e) => { setApiKey(e.target.value); setClearKey(false); }}
             {...NO_AUTOFILL_PROPS} />
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowKey((v) => !v)}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowKey(/** @param {*} [v] */ (v) => !v)}>
             {showKey ? '隐藏' : '显示'}
           </button>
           {saved ? (
@@ -390,24 +449,38 @@ function VendorSheet({ ai, vendor, onClose, onSaved }) {
 
 /* ============================ 主面板 ============================ */
 
+/**
+ * @param {*} opts
+ */
 export function ModelPane({ onDirtyChange }) {
+  /** @type {*} */
   const paneRef = useRef(null);
   const ai = useAiSettings();
   const { vendors, models, loaded, loadError, busy, msg } = ai;
 
   // 详情层：{ kind: 'model'|'vendor', id: string|null }；id 为 null = 新建
+  /** @type {*} */
   const [sheet, setSheet] = useState(null);
   // 在模型层里点「添加厂商」后，厂商保存完要自动回到新建模型
+  /** @type {any} */
   const [pendingModel, setPendingModel] = useState(false);
   // 厂商组的展开状态；没动过的组默认展开默认模型所在厂商
+  /** @type {any} */
   const [openGroups, setOpenGroups] = useState({});
 
+  /** @type {*} */
   const [usage, setUsage] = useState(null);
+  /** @type {any} */
   const [usageBusy, setUsageBusy] = useState(false);
+  /** @type {*} */
   const [requests, setRequests] = useState(null);
+  /** @type {any} */
   const [reqError, setReqError] = useState('');
+  /** @type {any} */
   const [reqBusy, setReqBusy] = useState(false);
+  /** @type {any} */
   const [reqLimit, setReqLimit] = useState(20);
+  /** @type {any} */
   const [keepInfo, setKeepInfo] = useState({ keep: 200, days: 30 });
   const [statusResult, showStatusResult] = useResult();
 
@@ -431,6 +504,9 @@ export function ModelPane({ onDirtyChange }) {
     }
   }
 
+  /**
+   * @param {*} [limit]
+   */
   async function loadRequests(limit = reqLimit) {
     setReqBusy(true);
     setReqError('');
@@ -445,7 +521,7 @@ export function ModelPane({ onDirtyChange }) {
       });
     } catch (err) {
       setReqError(String((err && err.message) || err));
-      setRequests((prev) => (Array.isArray(prev) ? prev : []));
+      setRequests(/** @param {*} [prev] */ (prev) => (Array.isArray(prev) ? prev : []));
     } finally {
       setReqBusy(false);
     }
@@ -453,9 +529,10 @@ export function ModelPane({ onDirtyChange }) {
 
   function refreshAll() { loadRequests(); loadUsage(); }
 
-  const defaultModel = models.find((m) => m.isDefault) || models[0] || null;
+  const defaultModel = models.find(/** @param {*} [m] */ (m) => m.isDefault) || models[0] || null;
 
   /* ---- 运行状态：只用本地记录推断，不额外打一次模型（看状态不烧 token） ---- */
+  /** @type {*} */
   const recent = Array.isArray(requests) ? requests : [];
   const lastReq = recent[0] || null;
   const status = (() => {
@@ -475,9 +552,9 @@ export function ModelPane({ onDirtyChange }) {
     return { cls: 'is-fail', label: '最近失败', detail: `${fmtRel(lastReq.createdAt)} · ${S().errText(lastReq.error || '', '调用失败')}` };
   })();
   const avgMs = (() => {
-    const ok = recent.filter((r) => r.ok && Number(r.durationMs) > 0);
+    const ok = recent.filter(/** @param {*} [r] */ (r) => r.ok && Number(r.durationMs) > 0);
     if (!ok.length) return 0;
-    return Math.round(ok.reduce((a, r) => a + Number(r.durationMs), 0) / ok.length);
+    return Math.round(ok.reduce(/** @param {*} [a] @param {*} [r] */ (a, r) => a + Number(r.durationMs), 0) / ok.length);
   })();
   const todayCalls = usage?.today?.calls || 0;
   const todayFails = usage?.today?.fails || 0;
@@ -489,13 +566,24 @@ export function ModelPane({ onDirtyChange }) {
     loadRequests();
   }
 
+  /**
+   * @param {*} [kind]
+   * @param {*} [id]
+   */
   const openRow = (kind, id) => setSheet({ kind, id });
 
-  const rowKeyDown = (fn) => (ev) => {
+  /**
+   * @param {*} [fn]
+   */
+  const rowKeyDown = (fn) => /** @param {*} [ev] */ (ev) => {
     if (ev.target !== ev.currentTarget) return;
     if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); fn(); }
   };
 
+  /**
+   * @param {*} [m]
+   * @param {*} [loose]
+   */
   const renderModelRow = (m, loose) => {
     const depth = numToDepth(m.thinkingDepth);
     return (
@@ -510,7 +598,7 @@ export function ModelPane({ onDirtyChange }) {
             温度 {tempText(m.temperature)} · {m.thinking ? `思考${DEPTH_LABEL[depth]}` : '不思考'}
           </div>
         </div>
-        <span className="sl-side" onClick={(ev) => ev.stopPropagation()}>
+        <span className="sl-side" onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
           {m.isDefault ? <span className="sl-badge">默认</span>
             : m.vendorId ? (
               <button type="button" className="btn btn-ghost btn-sm" disabled={!!busy}
@@ -523,13 +611,14 @@ export function ModelPane({ onDirtyChange }) {
   };
 
   const currentModel = sheet && sheet.kind === 'model' && sheet.id
-    ? models.find((m) => m.id === sheet.id) || null
+    ? models.find(/** @param {*} [m] */ (m) => m.id === sheet.id) || null
     : null;
   const currentVendor = sheet && sheet.kind === 'vendor' && sheet.id
-    ? vendors.find((v) => v.id === sheet.id) || null
+    ? vendors.find(/** @param {*} [v] */ (v) => v.id === sheet.id) || null
     : null;
 
-  const looseModels = models.filter((m) => !m.vendorId);
+  /** @type {*} */
+  const looseModels = models.filter(/** @param {*} [m] */ (m) => !m.vendorId);
   const autoOpenVendorId = (defaultModel && defaultModel.vendorId) || vendors[0]?.id || '';
   const accessSub = !loaded ? '读取中…'
     : vendors.length
@@ -568,16 +657,17 @@ export function ModelPane({ onDirtyChange }) {
               </div>
             ) : (
               <div className="sl-list">
-                {vendors.map((v) => {
-                  const own = models.filter((m) => m.vendorId === v.id);
+                {vendors.map(/** @param {*} [v] */ (v) => {
+                  /** @type {*} */
+                  const own = models.filter(/** @param {*} [m] */ (m) => m.vendorId === v.id);
                   const label = vendorLabel(v);
                   const open = v.id in openGroups ? openGroups[v.id] : v.id === autoOpenVendorId;
                   return (
                     <details className="sl-group" key={v.id} data-vendor-id={v.id}
                       open={open}
-                      onToggle={(ev) => {
+                      onToggle={/** @param {*} [ev] */ (ev) => {
                         const isOpen = ev.currentTarget.open;
-                        setOpenGroups((prev) => (prev[v.id] === isOpen ? prev : { ...prev, [v.id]: isOpen }));
+                        setOpenGroups(/** @param {*} [prev] */ (prev) => (prev[v.id] === isOpen ? prev : { ...prev, [v.id]: isOpen }));
                       }}>
                       <summary className="sl-row sl-group-head">
                         <span className="sl-ava" style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
@@ -593,7 +683,7 @@ export function ModelPane({ onDirtyChange }) {
                           </span>
                           <button type="button" className="btn btn-ghost btn-sm sl-group-edit"
                             aria-label={`编辑厂商「${label}」`}
-                            onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); openRow('vendor', v.id); }}>
+                            onClick={/** @param {*} [ev] */ (ev) => { ev.preventDefault(); ev.stopPropagation(); openRow('vendor', v.id); }}>
                             编辑
                           </button>
                         </span>
@@ -602,7 +692,7 @@ export function ModelPane({ onDirtyChange }) {
                         </svg>
                       </summary>
                       <div className="sl-models">
-                        {own.length ? own.map((m) => renderModelRow(m, false))
+                        {own.length ? own.map(/** @param {*} [m] */ (m) => renderModelRow(m, false))
                           : <div className="sl-empty is-inline">这个厂商下还没有模型。</div>}
                         <div className="sl-group-foot">
                           <button type="button" className="btn btn-ghost btn-sm" data-vendor-add={v.id}
@@ -629,7 +719,7 @@ export function ModelPane({ onDirtyChange }) {
                       </svg>
                     </summary>
                     <div className="sl-models">
-                      {looseModels.map((m) => renderModelRow(m, true))}
+                      {looseModels.map(/** @param {*} [m] */ (m) => renderModelRow(m, true))}
                     </div>
                   </details>
                 ) : null}
@@ -681,7 +771,7 @@ export function ModelPane({ onDirtyChange }) {
             <Dropdown id="aiRequestsLimit" wrapId="aiRequestsLimitDD" title="显示条数"
               ariaLabel="显示条数" value={String(reqLimit)}
               options={[{ value: 20, label: '20 条' }, { value: 50, label: '50 条' }]}
-              onChange={(v) => { const n = Number(v) || 20; setReqLimit(n); loadRequests(n); }} />
+              onChange={/** @param {*} [v] */ (v) => { const n = Number(v) || 20; setReqLimit(n); loadRequests(n); }} />
             <button className="btn btn-ghost btn-sm" id="modelRefreshAll" type="button"
               disabled={reqBusy || usageBusy} aria-busy={(reqBusy || usageBusy) ? 'true' : undefined}
               onClick={refreshAll}>
@@ -707,7 +797,7 @@ export function ModelPane({ onDirtyChange }) {
             </div>
           ) : (
             <ul className="ms-list" id="modelRequestList">
-              {recent.map((r) => (
+              {recent.map(/** @param {*} [r] */ (r) => (
                 <li className={'ms-row' + (r.ok ? '' : ' is-fail')} key={r.id} data-kind={r.kind}>
                   <span className="ms-time" title={new Date(r.createdAt).toLocaleString('zh-CN')}>{fmtReqTime(r.createdAt)}</span>
                   <span className="ms-kind">{USAGE_KINDS[r.kind] || r.kind}</span>
@@ -727,7 +817,7 @@ export function ModelPane({ onDirtyChange }) {
               <span className="sec-sub">{usage && usage.today ? `${fmtNum(usage.today.calls)} 次 · ${fmtTokens(usage.today.totalTokens)} tokens（今日）` : '暂无调用'}</span>
             </div>
             <div className="usage-grid" id="aiUsageGrid" aria-live="polite">
-              {['today', 'days7', 'days30'].map((k) => (
+              {['today', 'days7', 'days30'].map(/** @param {*} [k] */ (k) => (
                 <div className="usage-cell" key={k}>
                   <span className="usage-cell-label">{USAGE_SPANS[k]}</span>
                   <span className="usage-cell-value">{fmtNum(usage?.[k]?.calls || 0)} 次</span>
@@ -738,7 +828,7 @@ export function ModelPane({ onDirtyChange }) {
             </div>
             {usage && usage.byKind && usage.byKind.length ? (
               <ul className="usage-list" id="aiUsageKinds">
-                {usage.byKind.map((r) => (
+                {usage.byKind.map(/** @param {*} [r] */ (r) => (
                   <li key={r.kind}>
                     <span className="usage-kind">{USAGE_KINDS[r.kind] || r.kind}</span>
                     <span className="usage-num">{fmtNum(r.calls)} 次</span>

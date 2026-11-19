@@ -32,13 +32,16 @@ function shanghaiToday() {
   }).format(new Date());
 }
 
-/** 日报里的一条条目 */
+/** 日报里的一条条目
+*@param {*} opts
+*/
 function DgItem({ it }) {
   const e = it.item || {};
+  /** @type {any} */
   const [imgFailed, setImgFailed] = useState(false);
   const thumb = (e.image && !imgFailed && !isImgFailed(e.image))
     ? <img className="dg-item-thumb" loading="lazy" src={widthVariant(e.image, 320) || e.image} alt=""
-      onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}
+      onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
       onError={() => { markImgFailed(e.image); setImgFailed(true); }} />
     : <div className="dg-item-thumb-fb"><Icon n="file" /></div>;
   return (
@@ -60,7 +63,9 @@ function DgItem({ it }) {
   );
 }
 
-/** 日报正文（有数据时） */
+/** 日报正文（有数据时）
+*@param {*} opts
+*/
 function DigestView({ digest }) {
   const d = digest;
   const gen = d.generatedAt
@@ -96,7 +101,7 @@ function DigestView({ digest }) {
         <div className="dg-card">
           <h3 className="dg-section-title">今日亮点<span className="cnt">{highlights.length} 条</span></h3>
           <div className="dg-hl-list">
-            {highlights.map((h, i) => (
+            {highlights.map(/** @param {*} [h] @param {*} [i] */ (h, i) => (
               <div className="dg-hl" key={i}>
                 <div className="dg-hl-idx">{i + 1}</div>
                 <div className="dg-hl-body">
@@ -109,10 +114,10 @@ function DigestView({ digest }) {
         </div>
       ) : null}
 
-      {sections.length ? sections.map((s, i) => (
+      {sections.length ? sections.map(/** @param {*} [s] @param {*} [i] */ (s, i) => (
         <div className="dg-card" key={i}>
           <h3 className="dg-section-title">{s.title || '未分类'}<span className="cnt">{s.items.length} 条</span></h3>
-          <div className="dg-items">{s.items.map((it, j) => <DgItem it={it} key={j} />)}</div>
+          <div className="dg-items">{s.items.map(/** @param {*} [it] @param {*} [j] */ (it, j) => <DgItem it={it} key={j} />)}</div>
         </div>
       )) : (
         <StateBlock className="dg-empty" icon="inbox">
@@ -126,21 +131,28 @@ function DigestView({ digest }) {
 export function AiView() {
   const s = S();
   const writable = !!(s && s.isWritable ? s.isWritable() : true);
+  /** @type {any} */
   const [active, setActive] = useState(() => !!(s && s.state && s.state.tab === 'ai'));
   /* 探索页两级：问答（默认，新的对话式检索）/ 日报（原能力，DOM 与 ID 原样保留）。
    * 放内存不落布局：刷新回到问答是探索页的默认入口，日报从 tab 一键切回。
    * tab 切换只 hidden 不卸载问答面板：切去看日报再回来，会话与在跑的任务都还在。 */
+  /** @type {any} */
   const [pane, setPane] = useState('ask');
   // 「新对话」：换 key 让 ExplorePane 重挂载，内存历史与轮询一起重置（任务在服务端继续）。
+  /** @type {any} */
   const [sessionKey, setSessionKey] = useState(0);
-  const newSession = () => setSessionKey((k) => k + 1);
+  const newSession = () => setSessionKey(/** @param {*} [k] */ (k) => k + 1);
 
   /* 二级 tab 的键盘语义（自动激活）：←/→ 在可见 tab 间移动并立即切换，
    * Home/End 跳到首尾。鼠标点击照旧；隐藏的「日报」tab 不参与遍历。 */
+  /**
+   * @param {*} [e]
+   */
   function onTabKey(e) {
-    const list = Array.from(e.currentTarget.parentElement.querySelectorAll('[role="tab"]')).filter((el) => !el.hidden);
+    const list = Array.from(e.currentTarget.parentElement.querySelectorAll('[role="tab"]')).filter(/** @param {*} [el] */ (el) => !el.hidden);
     if (list.length < 2) return;
     const i = list.indexOf(e.currentTarget);
+    /** @type {any} */
     let next = null;
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = list[(i + 1) % list.length];
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = list[(i - 1 + list.length) % list.length];
@@ -152,18 +164,25 @@ export function AiView() {
     next.focus();
   }
   // 合并后第一行（标题 + ⋮）即吸顶条，由其写入 --topbar-h
+  /** @type {*} */
   const headRef = useRef(null);
 
   // 日报
+  /** @type {any} */
   const [dates, setDates] = useState([]);
+  /** @type {any} */
   const [selected, setSelected] = useState(shanghaiToday);
+  /** @type {any} */
   const [view, setView] = useState({ kind: 'loading' });
   /* 忙碌态按按钮区分（'regen' / 'gen'）：两个按钮共用一枚 boolean 时，点「重新生成」
      会让「生成摘要」也一起变成「生成中… ⟳」，看起来像同时在跑两个任务。 */
+  /** @type {*} */
   const [genKey, setGenKey] = useState(null);
+  /** @type {any} */
   const genBusy = useRef(false);
   /* 等待秒数：任务改成轮询后，界面需要一个「确实在跑」的证据。
      只显示转圈 + 一句「运行中」，用户很容易在 2 分钟里反复点。 */
+  /** @type {any} */
   const [genElapsed, setGenElapsed] = useState(0);
   useEffect(() => {
     if (!genKey) { setGenElapsed(0); return undefined; }
@@ -173,13 +192,19 @@ export function AiView() {
   }, [genKey]);
   /* 请求代际：日期切换是「点第二个日期时第一个可能还在飞」，慢响应回来会盖掉新内容，
      日期选择器与正文对不上。回包时对不上代际就整包丢弃（与两页列表同一套做法）。 */
+  /** @type {any} */
   const reqGen = useRef(0);
+  /** @type {any} */
   const [feedsInfo, setFeedsInfo] = useState({ total: 0, enabled: 0 });
   // 摘要范围读本账号的 prefs.digest（不设站点级那一份）
+  /** @type {any} */
   const [scope, setScope] = useState({ mode: 'enabled', feeds: [] });
 
   // 视图激活感知（React 常驻挂载，只在切到 AI 页时拉数据）
   useEffect(() => {
+    /**
+     * @param {*} [ev]
+     */
     const onView = (ev) => setActive(ev.detail === 'ai');
     return on(EVENT.VIEW, onView);
   }, []);
@@ -198,7 +223,9 @@ export function AiView() {
   }, [pane]);
 
   const today = shanghaiToday();
+  /** @type {*} */
   const dateOptions = useMemo(() => {
+    /** @type {*} */
     const list = dates.slice();
     if (!list.includes(today)) list.unshift(today);
     return list;
@@ -220,7 +247,7 @@ export function AiView() {
     try {
       const data = await s.loadFeeds();
       const list = (data && data.feeds) || [];
-      setFeedsInfo({ total: list.length, enabled: list.filter((f) => f.enabled).length });
+      setFeedsInfo({ total: list.length, enabled: list.filter(/** @param {*} [f] */ (f) => f.enabled).length });
     } catch (_) { /* 用已有缓存 */ }
     // 摘要范围：本账号自己的日报配置
     try {
@@ -235,6 +262,9 @@ export function AiView() {
     await showDigest(cur);
   }
 
+  /**
+   * @param {*} [date]
+   */
   async function showDigest(date) {
     const gen = ++reqGen.current;
     setSelected(date);
@@ -255,6 +285,10 @@ export function AiView() {
 
   /* 日报生成已改异步：提交任务 → 轮询。请求从「挂 3 分钟」变成毫秒级，
    * 网关的 100 秒读超时不再生效；关掉页面任务也会在服务端跑完。 */
+  /**
+   * @param {*} [force]
+   * @param {*} [key]
+   */
   async function generate(force, key) {
     if (genBusy.current) return;
     if (!s || typeof s.submitAiJob !== 'function') {
@@ -270,7 +304,7 @@ export function AiView() {
       if (gen !== reqGen.current) return;
       setView({ kind: 'genLoading', phase: job.status || 'queued' });
       const done = await s.pollAiJob(job.id, {
-        onStatus: (j) => {
+        onStatus: /** @param {*} [j] */ (j) => {
           // 期间切了日期 / 又发起一次生成：旧任务的状态不该盖掉新视图
           if (gen === reqGen.current) setView({ kind: 'genLoading', phase: j.status, at: j.createdAt });
         },
@@ -280,7 +314,7 @@ export function AiView() {
       const r = (done && done.result) || {};
       const d = r.digest;
       if (!d) throw new Error('生成失败：任务完成但没有返回日报');
-      setDates((prev) => (prev.includes(d.date) ? prev : [d.date, ...prev]));
+      setDates(/** @param {*} [prev] */ (prev) => (prev.includes(d.date) ? prev : [d.date, ...prev]));
       setSelected(d.date);
       setView({ kind: 'ready', digest: d });
       // 服务端偶尔不给 stats：不能在已经生成成功之后抛 TypeError 把 ready 态改写成「生成失败」
@@ -297,6 +331,7 @@ export function AiView() {
     }
   }
 
+  /** @type {any} */
   let body = null;
   if (view.kind === 'loading') {
     body = <StateBlock className="dg-loading" spinner>读取中…</StateBlock>;
@@ -379,8 +414,8 @@ export function AiView() {
         </div>
         <div className="digest-actions">
           <Dropdown id="digestDate" wrapId="digestDateDD" title="选择日期" ariaLabel="选择日期"
-            value={selected} onChange={(v) => showDigest(v)}
-            options={dateOptions.map((d) => ({ value: d, label: (d === today ? '今天 · ' : '') + d }))} />
+            value={selected} onChange={/** @param {*} [v] */ (v) => showDigest(v)}
+            options={dateOptions.map(/** @param {*} [d] */ (d) => ({ value: d, label: (d === today ? '今天 · ' : '') + d }))} />
           {writable ? (
             <>
               <button className="btn btn-ghost" id="regenDigestBtn" type="button" title="忽略缓存，重新生成"

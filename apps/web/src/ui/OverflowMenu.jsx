@@ -26,13 +26,23 @@ function readShell() {
   try { return core.getShell(); } catch (_) { return {}; }
 }
 
+/**
+ * @param {*} opts
+ */
 export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, readerControls = false, readerState, refreshLabel, refreshHint }) {
+  /** @type {any} */
   const [open, setOpen] = useState(false);
+  /** @type {any} */
   const [subOpen, setSubOpen] = useState(false);
+  /** @type {any} */
   const [busy, setBusy] = useState(false);
+  /** @type {any} */
   const [snap, setSnap] = useState(readShell);
+  /** @type {*} */
   const btnRef = useRef(null);
+  /** @type {*} */
   const menuRef = useRef(null);
+  /** @type {*} */
   const subRef = useRef(null);
   const rs = readerState || {};
 
@@ -52,11 +62,17 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
     if (!open) { setSubOpen(false); return undefined; }
     const first = menuRef.current && menuRef.current.querySelector('[role="menuitem"],[role="menuitemradio"]');
     if (first) first.focus();
+    /**
+     * @param {*} [ev]
+     */
     const onDocDown = (ev) => {
       if (menuRef.current && !menuRef.current.contains(ev.target) && btnRef.current && !btnRef.current.contains(ev.target)) {
         setOpen(false);
       }
     };
+    /**
+     * @param {*} [ev]
+     */
     const onKey = (ev) => {
       if (ev.key === 'Escape') { ev.preventDefault(); close(); }
     };
@@ -81,6 +97,9 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
     try { await S().refresh(); } finally { setBusy(false); }
   };
 
+  /**
+   * @param {*} [dir]
+   */
   const focusWithin = (dir) => {
     const items = Array.from(menuRef.current.querySelectorAll('[role="menuitem"],[role="menuitemradio"]'));
     const idx = items.indexOf(document.activeElement);
@@ -88,6 +107,9 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
     if (next) next.focus();
   };
 
+  /**
+   * @param {*} [ev]
+   */
   const onMenuKey = (ev) => {
     if (ev.key === 'ArrowDown') { ev.preventDefault(); focusWithin(1); }
     else if (ev.key === 'ArrowUp') { ev.preventDefault(); focusWithin(-1); }
@@ -95,6 +117,9 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
     else if (ev.key === 'End') { ev.preventDefault(); const a = menuRef.current.querySelectorAll('[role="menuitem"],[role="menuitemradio"]'); a.length && a[a.length - 1].focus(); }
   };
 
+  /**
+   * @param {*} [ev]
+   */
   const onSubKey = (ev) => {
     if (ev.key === 'ArrowLeft' || ev.key === 'Escape') {
       ev.preventDefault();
@@ -129,7 +154,7 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
         aria-expanded={open}
         aria-label="更多功能"
         title="更多功能"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(/** @param {*} [v] */ (v) => !v)}
       >
         <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-more" /></svg>
       </button>
@@ -204,9 +229,9 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
                 onClick={() => {
                   // 桌面已由 hover 打开，再 toggle 一次反而关掉；触屏才需要点击开合
                   if (canHover()) setSubOpen(true);
-                  else setSubOpen((v) => !v);
+                  else setSubOpen(/** @param {*} [v] */ (v) => !v);
                 }}
-                onKeyDown={(e) => { if (e.key === 'ArrowRight') { e.preventDefault(); setSubOpen(true); } }}
+                onKeyDown={/** @param {*} [e] */ (e) => { if (e.key === 'ArrowRight') { e.preventDefault(); setSubOpen(true); } }}
               >
                 <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-sort" /></svg>
                 <span>排序</span>
@@ -214,7 +239,7 @@ export function OverflowMenu({ view, cardControls = false, sortValue, viewMode, 
               </button>
               {subOpen && (
                 <div className="overflow-submenu" role="menu" ref={subRef} onKeyDown={onSubKey}>
-                  {SORTS.map((o) => (
+                  {SORTS.map(/** @param {*} [o] */ (o) => (
                     <button
                       type="button"
                       key={o.v}

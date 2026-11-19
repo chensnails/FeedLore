@@ -22,7 +22,9 @@ export const LAYER_SELECTORS = {
  *  - 字符串：LAYER_SELECTORS 的键，表示「我属于这一层」（命令面板传 'cmdk'）；
  *  - 元素：我所在的那一层（卡片详情这类自己就渲染 .modal-mask / .dd-mask 的组件传
  *    自己的面板节点），凡是包含这个节点的层都算「自己」，不会被误判成上层。
- *  不传：只要有任意一层开着就算更高。 */
+ *  不传：只要有任意一层开着就算更高。
+ *@param {*} [own]
+*/
 export function hasLayerAbove(own = null) {
   if (typeof document === 'undefined') return false;
   const isEl = !!own && typeof own === 'object' && own.nodeType === 1;

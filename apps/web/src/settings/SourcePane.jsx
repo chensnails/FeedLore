@@ -33,8 +33,11 @@ import { isImgFailed, markImgFailed } from '../imgFail.js';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
-/** 频道头像：图标加载失败（拉取 404 / 防盗链）时回退到首字母，避免破图标 */
+/** 频道头像：图标加载失败（拉取 404 / 防盗链）时回退到首字母，避免破图标
+*@param {*} opts
+*/
 function FeedAvatar({ icon, name }) {
+  /** @type {any} */
   const [failed, setFailed] = useState(false);
   if (!icon || failed || isImgFailed(icon)) {
     return <span className="feed-avatar feed-avatar-txt">{(name || '?').slice(0, 1)}</span>;
@@ -78,7 +81,9 @@ const CFG_DEFAULTS = {
   feedFailLimit: '5',
 };
 
-/** 字节数格式化（图片缓存体积展示） */
+/** 字节数格式化（图片缓存体积展示）
+*@param {*} [n]
+*/
 function fmtBytes(n) {
   const b = Number(n) || 0;
   if (b < 1024) return `${b} B`;
@@ -86,15 +91,21 @@ function fmtBytes(n) {
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** 选项表补上「库里当前值」：部署时用 env 设了非标称值（如 IMG_TTL_DAYS=5）也能正确回显 */
+/** 选项表补上「库里当前值」：部署时用 env 设了非标称值（如 IMG_TTL_DAYS=5）也能正确回显
+*@param {*} [list]
+ * @param {*} [cur]
+*/
 function withCurrentOption(list, cur) {
-  if (list.some(([v]) => String(v) === String(cur))) return list;
+  if (list.some(/** @param {*} arr */ ([v]) => String(v) === String(cur))) return list;
   const n = Number(cur);
   if (!Number.isFinite(n)) return list;
-  return [...list, [n, `${n} 天`]].sort((a, b) => a[0] - b[0]);
+  return [...list, [n, `${n} 天`]].sort(/** @param {*} [a] @param {*} [b] */ (a, b) => a[0] - b[0]);
 }
 
 /* ---------- 纯函数（自旧 app.js 移植，行为逐字对齐） ---------- */
+/**
+ * @param {*} [m]
+ */
 function fmtMinutes(m) {
   const n = Number(m);
   if (!Number.isFinite(n) || n <= 0) return '—';
@@ -104,10 +115,15 @@ function fmtMinutes(m) {
   return '1 天';
 }
 
-/** 设置面板里显示「今天 12:36」这类相对时间 */
+/** 设置面板里显示「今天 12:36」这类相对时间
+*@param {*} [ts]
+*/
 function fmtDateTime(ts) {
   if (!ts) return '';
   const d = new Date(ts);
+  /**
+   * @param {*} [n]
+   */
   const p = (n) => String(n).padStart(2, '0');
   const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
   const now = new Date();
@@ -118,7 +134,9 @@ function fmtDateTime(ts) {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
 }
 
-/** 订阅地址只显示「主机名 + 路径」，太长就截断 */
+/** 订阅地址只显示「主机名 + 路径」，太长就截断
+*@param {*} [u]
+*/
 function prettyUrl(u) {
   try {
     const x = new URL(u);
@@ -128,6 +146,9 @@ function prettyUrl(u) {
   } catch (_) { return String(u || ''); }
 }
 
+/**
+ * @param {*} [f]
+ */
 function feedStatusText(f) {
   const parts = [`${f.entryCount} 条`];
   parts.push(f.lastFetchedAt ? fmtDateTime(f.lastFetchedAt) + ' 抓取' : '尚未抓取');
@@ -137,6 +158,9 @@ function feedStatusText(f) {
 }
 
 /* ---------- 小件 ---------- */
+/**
+ * @param {*} opts
+ */
 const Ico = ({ name }) => (
   <svg className="ico" aria-hidden="true" focusable="false"><use href={`#i-${name}`} /></svg>
 );
@@ -149,15 +173,24 @@ const GRIP = (
   </svg>
 );
 
+/**
+ * @param {*} [body]
+ */
 const jsonPost = (body) => ({
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
 });
 // 注意合并顺序：jsonPost 自带 method:'POST'，必须后覆盖回 PATCH
+/**
+ * @param {*} [body]
+ */
 const patchInit = (body) => Object.assign(jsonPost(body), { method: 'PATCH' });
 
 /** 删除撤销用的快照：重建订阅需要 url + 开关 + 分组，其余字段走 PATCH 补 */
+/**
+ * @param {*} [f]
+ */
 const snapshotFeed = (f) => ({
   url: f.url, enabled: f.enabled, cardEnabled: f.cardEnabled,
   groupName: f.groupName || '', fullText: f.fullText,
@@ -167,24 +200,45 @@ const snapshotFeed = (f) => ({
 /* ---------- 频道详情层（A 方案第二层） ----------
  * 输入框用 defaultValue + key 绑服务端值：提交 / 撤销后服务端值变了，
  * key 跟着变 → 自动重挂载回显新值，不需要手动同步草稿。 */
+/**
+ * @param {*} opts
+ */
 function FeedSheet({ feed, order, globalMins, groupNames, busyFeed, pending, onClose, onToggle, onFreq, onOrder, onName, onUrl, onGroup, onRefresh, onDelete }) {
   const s = S();
+  /** @type {*} */
   const nameRef = useRef(null);
+  /** @type {*} */
   const urlRef = useRef(null);
+  /** @type {*} */
   const groupRef = useRef(null);
   const name = s.shortFeedName(s.feedTitle(feed));
 
-  const editKeys = (resetVal) => (ev) => {
+  /**
+   * @param {*} [resetVal]
+   */
+  const editKeys = (resetVal) => /** @param {*} [ev] */ (ev) => {
     if (ev.key === 'Enter') { ev.preventDefault(); ev.currentTarget.blur(); }
     else if (ev.key === 'Escape') { ev.preventDefault(); ev.currentTarget.value = resetVal; ev.currentTarget.blur(); }
   };
 
+  /**
+   * @param {*} [ev]
+   */
   const commitOrder = (ev) => {
     const pos = parseInt(ev.target.value, 10);
     if (!Number.isFinite(pos) || pos < 1) { ev.target.value = String(order); return; }
     if (pos !== order) onOrder(feed.id, pos);
   };
 
+  /**
+   * @param {*} [key]
+   * @param {*} [label]
+   * @param {*} [desc]
+   * @param {*} [checked]
+   * @param {*} [okOn]
+   * @param {*} [okOff]
+   * @param {*} [dataAttr]
+   */
   const swRow = (key, label, desc, checked, okOn, okOff, dataAttr) => (
     <label className="ds-sw-row">
       <span className="ds-sw-txt">
@@ -194,7 +248,7 @@ function FeedSheet({ feed, order, globalMins, groupNames, busyFeed, pending, onC
       <span className="switch">
         <input type="checkbox" {...{ [dataAttr]: feed.id }} aria-label={label}
           checked={checked} disabled={pending}
-          onChange={(ev) => onToggle(feed, key, ev.target.checked, ev.target.checked ? okOn : okOff)} />
+          onChange={/** @param {*} [ev] */ (ev) => onToggle(feed, key, ev.target.checked, ev.target.checked ? okOn : okOff)} />
         <span className="switch-slider" />
       </span>
     </label>
@@ -252,8 +306,8 @@ function FeedSheet({ feed, order, globalMins, groupNames, busyFeed, pending, onC
           {groupNames.length ? (
             <Dropdown id="dsGroupPick" wrapId="dsGroupDD" title="选已有分组"
               ariaLabel="选已有分组" valueLabel="选组"
-              options={groupNames.map((g) => ({ value: g, label: g }))}
-              onChange={(v) => {
+              options={groupNames.map(/** @param {*} [g] */ (g) => ({ value: g, label: g }))}
+              onChange={/** @param {*} [v] */ (v) => {
                 if (groupRef.current) groupRef.current.value = String(v);
                 onGroup(feed, String(v));
               }} />
@@ -269,10 +323,10 @@ function FeedSheet({ feed, order, globalMins, groupNames, busyFeed, pending, onC
           dataAttrs={{ 'data-sheet-freq': feed.id }}
           value={feed.refreshMinutes == null ? '' : String(feed.refreshMinutes)}
           disabled={pending}
-          onChange={(v) => onFreq(feed, v === '' ? null : Number(v))}
+          onChange={/** @param {*} [v] */ (v) => onFreq(feed, v === '' ? null : Number(v))}
           options={[
             { value: '', label: `跟随全局（${fmtMinutes(globalMins)}）` },
-            ...FREQ_OPTIONS.map(([v, t]) => ({ value: v, label: t })),
+            ...FREQ_OPTIONS.map(/** @param {*} arr */ ([v, t]) => ({ value: v, label: t })),
           ]} />
         <small className="form-tip">未设置则跟随全局自动抓取间隔</small>
       </div>
@@ -282,7 +336,7 @@ function FeedSheet({ feed, order, globalMins, groupNames, busyFeed, pending, onC
         <input id="dsOrder" className="feed-order" key={'o-' + order}
           type="number" min="1" data-sheet-order={feed.id} defaultValue={order}
           onBlur={commitOrder}
-          onKeyDown={(ev) => {
+          onKeyDown={/** @param {*} [ev] */ (ev) => {
             if (ev.key === 'Enter') { ev.preventDefault(); ev.currentTarget.blur(); }
             else if (ev.key === 'Escape') { ev.preventDefault(); ev.currentTarget.value = String(order); ev.currentTarget.blur(); }
           }} />
@@ -296,48 +350,82 @@ function FeedSheet({ feed, order, globalMins, groupNames, busyFeed, pending, onC
   );
 }
 
+/**
+ * @param {*} opts
+ */
 export function SourcePane({ admin, onDirtyChange }) {
   /* ---- 状态 ---- */
+  /** @type {any} */
   const [tick, setTick] = useState(0);                 // 原地改动后强制重绘（共享 state 是实时引用）
-  const bump = useCallback(() => setTick((t) => t + 1), []);
+  const bump = useCallback(() => setTick(/** @param {*} [t] */ (t) => t + 1), []);
 
+  /** @type {any} */
   const [cfg, setCfg] = useState(CFG_DEFAULTS);        // 采集参数表单（字符串，与旧 DOM .value 一致）
+  /** @type {any} */
   const [savedCfg, setSavedCfg] = useState('');        // 上次落库的指纹，用来算「改过没」
+  /** @type {any} */
   const [cfgLoaded, setCfgLoaded] = useState(false);   // 复刻旧 srcFormReady
+  /** @type {any} */
   const [loadError, setLoadError] = useState('');      // /api/feeds 拉取失败（列表区兜底）
+  /** @type {any} */
   const [feedsLoading, setFeedsLoading] = useState(true); // 首屏列表未到，不该显示「还没有订阅源」
   const cfgGuard = useFormLoadGuard();                 // 采集参数：异步回填不许盖掉用户已改的字段
+  /** @type {any} */
   const [imgStats, setImgStats] = useState({ count: 0, bytes: 0 });   // 图片缓存统计（v2.4.0）
 
+  /** @type {any} */
   const [url, setUrl] = useState('');
+  /** @type {*} */
   const [result, setResult] = useState(null);          // { ok, msg } | null —— #feedResult
   // A 方案：命名分组默认收起，这里记「显式展开」的组名（按账号持久化 srcGroupsOpen）
+  /** @type {any} */
   const [openGroups, setOpenGroups] = useState(() => new Set((S() && S().state && S().state.srcGroupsOpen) || []));
+  /** @type {*} */
   const [renamingGroup, setRenamingGroup] = useState(null); // 正在重命名的分组名
+  /** @type {any} */
   const [renamingGroupDraft, setRenamingGroupDraft] = useState(''); // 组重命名草稿（提交式）
+  /** @type {any} */
   const [busyFeed, setBusyFeed] = useState('');        // 单频道「立即抓取」中的 id
+  /** @type {any} */
   const [busy, setBusy] = useState('');                // '' | 'add' | 'import' | 'all' | 'save' | 'imgclear' | 'bulk'
+  /** @type {*} */
   const [refreshProgress, setRefreshProgress] = useState(null); // 刷新全部时的 { done, total }
+  /** @type {*} */
   const progressTimer = useRef(null);
   // 某个频道有保存中的请求时禁用该行控件（防重复提交）
+  /** @type {any} */
   const [pendingIds, setPendingIds] = useState(() => new Set());
+  /** @type {*} */
   const [drop, setDrop] = useState(null);              // 拖拽落点指示 { type, id, group, before }
+  /** @type {any} */
   const [dragging, setDragging] = useState(false);
+  /** @type {any} */
   const [feedQuery, setFeedQuery] = useState('');      // 频道搜索（本地过滤，应对大量频道）
+  /** @type {any} */
   const [bulk, setBulk] = useState(false);             // 批量模式
+  /** @type {any} */
   const [selected, setSelected] = useState(() => new Set()); // 批量选中的频道 id（字符串）
+  /** @type {*} */
   const [sheetId, setSheetId] = useState(null);        // 打开详情层的频道 id
 
+  /** @type {*} */
   const paneRef = useRef(null);
+  /** @type {*} */
   const urlRef = useRef(null);
+  /** @type {*} */
   const groupRenameInputRef = useRef(null);
+  /** @type {*} */
   const dragRef = useRef(null);
+  /** @type {*} */
   const moveRef = useRef(null);
+  /** @type {*} */
   const endRef = useRef(null);
+  /** @type {any} */
   const lastDragEnd = useRef(0);                       // 拖拽松手时间戳：250ms 内抑制行点击
 
   /* ---- 实时读取共享 state（单一数据源） ---- */
   const st = (S() && S().state) || {};
+  /** @type {*} */
   const feeds = st.feedList || [];
   const meta = st.feedMeta || {};
   const groups = (S() && S().groupFeeds) ? S().groupFeeds(feeds) : [];
@@ -346,13 +434,13 @@ export function SourcePane({ admin, onDirtyChange }) {
   const fq = feedQuery.trim().toLowerCase();
   const displayGroups = fq
     ? groups
-      .map((g) => ({
+      .map(/** @param {*} [g] */ (g) => ({
         name: g.name,
-        feeds: (g.feeds || []).filter((f) => (
+        feeds: (g.feeds || []).filter(/** @param {*} [f] */ (f) => (
           `${f.title || ''} ${f.customTitle || ''} ${f.url || ''} ${f.groupName || ''}`.toLowerCase().includes(fq)
         )),
       }))
-      .filter((g) => g.feeds.length)
+      .filter(/** @param {*} [g] */ (g) => g.feeds.length)
     : groups;
 
   const total = meta.total || 0;
@@ -360,21 +448,22 @@ export function SourcePane({ admin, onDirtyChange }) {
   const cardCount = meta.cardEnabled == null ? onCount : meta.cardEnabled;
   const groupNames = meta.groups || [];
   const globalMins = meta.refreshMinutes || 30;
-  const ownFreqCount = feeds.filter((f) => f.refreshMinutes != null).length;
+  const ownFreqCount = feeds.filter(/** @param {*} [f] */ (f) => f.refreshMinutes != null).length;
 
-  const selectedFeeds = feeds.filter((f) => selected.has(String(f.id)));
+  const selectedFeeds = feeds.filter(/** @param {*} [f] */ (f) => selected.has(String(f.id)));
   // 批量「全选」只作用在当前筛选可见的频道：搜出 2 个却选中全部 50 个，
   // 紧接着「删除 / 关采集」会误伤看不见的频道。
+  /** @type {*} */
   const visibleIds = displayGroups.reduce(
-    (acc, g) => acc.concat((g.feeds || []).map((f) => String(f.id))), []);
-  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+    /** @param {*} [acc] @param {*} [g] */ (acc, g) => acc.concat((g.feeds || []).map(/** @param {*} [f] */ (f) => String(f.id))), []);
+  const allSelected = visibleIds.length > 0 && visibleIds.every(/** @param {*} [id] */ (id) => selected.has(id));
   const hiddenSelected = fq
-    ? selectedFeeds.filter((f) => visibleIds.indexOf(String(f.id)) < 0).length : 0;
-  const sheetFeed = sheetId == null ? null : feeds.find((f) => String(f.id) === String(sheetId));
+    ? selectedFeeds.filter(/** @param {*} [f] */ (f) => visibleIds.indexOf(String(f.id)) < 0).length : 0;
+  const sheetFeed = sheetId == null ? null : feeds.find(/** @param {*} [f] */ (f) => String(f.id) === String(sheetId));
   let sheetOrder = 1;
   if (sheetFeed) {
-    const g = groups.find((x) => x.feeds.some((f) => String(f.id) === String(sheetId)));
-    if (g) sheetOrder = g.feeds.findIndex((f) => String(f.id) === String(sheetId)) + 1;
+    const g = groups.find(/** @param {*} [x] */ (x) => x.feeds.some(/** @param {*} [f] */ (f) => String(f.id) === String(sheetId)));
+    if (g) sheetOrder = g.feeds.findIndex(/** @param {*} [f] */ (f) => String(f.id) === String(sheetId)) + 1;
   }
 
   /* ---- 未保存改动：采集参数 + 新增地址草稿 + 组重命名编辑态 ----
@@ -417,7 +506,7 @@ export function SourcePane({ admin, onDirtyChange }) {
       });
       // 用户已在回填前改过字段：保留输入，脏态基线按默认指纹算（与 ModelPane 同口径），
       // 这样改动不会被静默吃掉，「有未保存的更改」也会立刻出现。
-      if (!applied) setSavedCfg((v) => v || JSON.stringify(CFG_DEFAULTS));
+      if (!applied) setSavedCfg(/** @param {*} [v] */ (v) => v || JSON.stringify(CFG_DEFAULTS));
       setCfgLoaded(true);
       // 图片缓存统计失败不阻塞参数回填（面板照常可用，只是看不到张数）
       try {
@@ -442,10 +531,10 @@ export function SourcePane({ admin, onDirtyChange }) {
   }, [bump, pushSummary]);
 
   /** 频道 PATCH 统一走这里。返回响应 JSON（改地址要用它带回的 probe 判断新地址能不能抓到）。 */
-  const patchFeed = useCallback(async (id, patch, okMsg) => {
+  const patchFeed = useCallback(/** @param {*} [id] @param {*} [patch] @param {*} [okMsg] */ async (id, patch, okMsg) => {
     const s = S();
     const key = String(id);
-    setPendingIds((p) => { const n = new Set(p); n.add(key); return n; });
+    setPendingIds(/** @param {*} [p] */ (p) => { const n = new Set(p); n.add(key); return n; });
     try {
       const res = await s.apiFetch('/api/feeds/' + id, patchInit(patch));
       const data = await res.json().catch(() => ({}));
@@ -457,13 +546,13 @@ export function SourcePane({ admin, onDirtyChange }) {
       if (s.renderReaderChannels) s.renderReaderChannels();
       return data;
     } finally {
-      setPendingIds((p) => { const n = new Set(p); n.delete(key); return n; });
+      setPendingIds(/** @param {*} [p] */ (p) => { const n = new Set(p); n.delete(key); return n; });
     }
   }, [reloadFeeds]);
 
   /** 即改即生效 + 撤销：先按新值落库，toast 挂 6 秒撤销（按旧值再落一次）。
    *  失败时 bump 让受控控件回滚到服务端值。 */
-  const patchWithUndo = useCallback(async (f, patch, prevPatch, okMsg) => {
+  const patchWithUndo = useCallback(/** @param {*} [f] @param {*} [patch] @param {*} [prevPatch] @param {*} [okMsg] */ async (f, patch, prevPatch, okMsg) => {
     const s = S();
     try {
       await patchFeed(f.id, patch, null);
@@ -481,11 +570,13 @@ export function SourcePane({ admin, onDirtyChange }) {
   }, [patchFeed, bump]);
 
   // 按 groupOrder 把分组铺平为全局数组（组内保持相对顺序），并给每组重算 sort_order
-  const flattenAndRenumber = useCallback((grouped) => {
+  /** @type {*} */
+  const flattenAndRenumber = useCallback(/** @param {*} [grouped] */ (grouped) => {
     const s = S();
+    /** @type {*} */
     const order = s.state.groupOrder || [];
     const seq = [];
-    for (const n of order) { const g = grouped.find((x) => x.name === n); if (g) seq.push(g); }
+    for (const n of order) { const g = grouped.find(/** @param {*} [x] */ (x) => x.name === n); if (g) seq.push(g); }
     for (const g of grouped) if (order.indexOf(g.name) < 0) seq.push(g);
     const flat = [];
     let so = 0;
@@ -495,7 +586,7 @@ export function SourcePane({ admin, onDirtyChange }) {
 
   const persistReorder = useCallback(async () => {
     const s = S();
-    const items = (s.state.feedList || []).map((f) => ({ id: f.id, sortOrder: f.sortOrder, groupName: f.groupName || '' }));
+    const items = (s.state.feedList || []).map(/** @param {*} [f] */ (f) => ({ id: f.id, sortOrder: f.sortOrder, groupName: f.groupName || '' }));
     try {
       await s.apiFetch('/api/feeds/reorder', jsonPost({ feeds: items }));
     } catch (e) {
@@ -511,33 +602,33 @@ export function SourcePane({ admin, onDirtyChange }) {
     } catch (e) { console.error('保存分组顺序失败', e); }
   }, []);
 
-  const groupOfRow = useCallback((row) => {
+  const groupOfRow = useCallback(/** @param {*} [row] */ (row) => {
     const id = row.getAttribute('data-id');
     if (!id) return '';
-    const f = (S().state.feedList || []).find((x) => String(x.id) === String(id));
+    const f = (S().state.feedList || []).find(/** @param {*} [x] */ (x) => String(x.id) === String(id));
     return f ? (f.groupName || '') : '';
   }, []);
 
-  const applyFeedReorder = useCallback((ctx) => {
+  const applyFeedReorder = useCallback(/** @param {*} [ctx] */ (ctx) => {
     const s = S();
     const dragId = ctx.id;
     const grouped = s.groupFeeds(s.state.feedList);
     for (const g of grouped) {
-      const i = g.feeds.findIndex((f) => String(f.id) === String(dragId));
+      const i = g.feeds.findIndex(/** @param {*} [f] */ (f) => String(f.id) === String(dragId));
       if (i >= 0) { g.feeds.splice(i, 1); break; }
     }
     const t = ctx.target;
-    let gi = grouped.findIndex((g) => g.name === t.group);
+    let gi = grouped.findIndex(/** @param {*} [g] */ (g) => g.name === t.group);
     if (gi < 0) { grouped.push({ name: t.group || '', feeds: [] }); gi = grouped.length - 1; }
     let idx;
     if (t.type === 'head') idx = 0;
     else {
       const tid = t.id;
-      idx = grouped[gi].feeds.findIndex((f) => String(f.id) === String(tid));
+      idx = grouped[gi].feeds.findIndex(/** @param {*} [f] */ (f) => String(f.id) === String(tid));
       if (idx < 0) idx = grouped[gi].feeds.length;
       else if (!t.before) idx += 1;
     }
-    const dragFeed = (s.state.feedList || []).find((f) => String(f.id) === String(dragId));
+    const dragFeed = (s.state.feedList || []).find(/** @param {*} [f] */ (f) => String(f.id) === String(dragId));
     if (!dragFeed) return;
     dragFeed.groupName = t.group || '';
     grouped[gi].feeds.splice(idx, 0, dragFeed);
@@ -548,8 +639,10 @@ export function SourcePane({ admin, onDirtyChange }) {
     persistReorder();
   }, [bump, flattenAndRenumber, persistReorder]);
 
-  const applyGroupReorder = useCallback((ctx) => {
+  /** @type {*} */
+  const applyGroupReorder = useCallback(/** @param {*} [ctx] */ (ctx) => {
     const s = S();
+    /** @type {*} */
     const order = (s.state.groupOrder || []).slice();
     const i = order.indexOf(ctx.group);
     if (i >= 0) order.splice(i, 1);
@@ -570,17 +663,18 @@ export function SourcePane({ admin, onDirtyChange }) {
 
   // 手动填序号：把某频道排到所在分组的第 N 位（1 基），与拖拽并存。
   // 只在「本组」内调整顺序；跨组仍用拖拽（拖拽会改 groupName）。
-  const applyNumericOrder = useCallback((id, pos) => {
+  const applyNumericOrder = useCallback(/** @param {*} [id] @param {*} [pos] */ (id, pos) => {
     const s = S();
     if (!Number.isFinite(pos) || pos < 1) { bump(); return; }   // 非法输入：恢复显示
     const grouped = s.groupFeeds(s.state.feedList);
+    /** @type {any} */
     let src = null;
     for (const g of grouped) {
-      const i = g.feeds.findIndex((f) => String(f.id) === String(id));
+      const i = g.feeds.findIndex(/** @param {*} [f] */ (f) => String(f.id) === String(id));
       if (i >= 0) { src = g; break; }
     }
     if (!src) return;
-    const feed = src.feeds.splice(src.feeds.findIndex((f) => String(f.id) === String(id)), 1)[0];
+    const feed = src.feeds.splice(src.feeds.findIndex(/** @param {*} [f] */ (f) => String(f.id) === String(id)), 1)[0];
     const p = Math.min(Math.max(1, Math.floor(pos)), src.feeds.length + 1);
     src.feeds.splice(p - 1, 0, feed);
     flattenAndRenumber(grouped);   // 重算全局 sort_order（组内顺序由它决定）
@@ -591,7 +685,7 @@ export function SourcePane({ admin, onDirtyChange }) {
   }, [bump, flattenAndRenumber, persistReorder]);
 
   /* ---- 拖拽（Pointer 事件，移植自旧实现） ---- */
-  const onDragMove = useCallback((ev) => {
+  const onDragMove = useCallback(/** @param {*} [ev] */ (ev) => {
     const ctx = dragRef.current;
     if (!ctx) return;
     if (!ctx.moved) {
@@ -608,6 +702,7 @@ export function SourcePane({ admin, onDirtyChange }) {
     if (ctx.kind === 'feed') {
       const row = under.closest('.feed-row');
       const head = under.closest('.feed-group-head');
+      /** @type {any} */
       let elm = null, before = true, group = '';
       if (row && ctx.el && !row.contains(ctx.el)) {
         const r = row.getBoundingClientRect();
@@ -621,6 +716,7 @@ export function SourcePane({ admin, onDirtyChange }) {
       setDrop(ctx.target);
     } else {
       const head = under.closest('.feed-group-head');
+      /** @type {any} */
       let elm = null, before = true;
       if (head && ctx.el && !head.contains(ctx.el)) {
         const r = head.getBoundingClientRect();
@@ -628,7 +724,7 @@ export function SourcePane({ admin, onDirtyChange }) {
         elm = head;
       }
       if (!elm) { ctx.target = null; setDrop(null); return; }
-      ctx.target = { type: 'group', id: '', group: head.getAttribute('data-group') || '', before };
+      ctx.target = { type: 'group', id: '', group: /** @type {any} */ (head).getAttribute('data-group') || '', before };
       setDrop(ctx.target);
     }
   }, [groupOfRow]);
@@ -653,6 +749,11 @@ export function SourcePane({ admin, onDirtyChange }) {
   moveRef.current = onDragMove;
   endRef.current = onDragEnd;
 
+  /**
+   * @param {*} [ev]
+   * @param {*} [kind]
+   * @param {*} [payload]
+   */
   const onGripDown = (ev, kind, payload) => {
     if (ev.button != null && ev.button !== 0) return;
     if (kind === 'group' && payload.group === '') return;   // 「未分组」不可拖动（仍可作放置目标）
@@ -763,6 +864,9 @@ export function SourcePane({ admin, onDirtyChange }) {
     }
   };
 
+  /**
+   * @param {*} [ev]
+   */
   const onImport = async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     ev.target.value = '';   // 允许重新选择同一文件
@@ -823,6 +927,9 @@ export function SourcePane({ admin, onDirtyChange }) {
     }
   };
 
+  /**
+   * @param {*} [id]
+   */
   const onRefreshFeed = async (id) => {
     const s = S();
     setBusyFeed(id);
@@ -842,7 +949,7 @@ export function SourcePane({ admin, onDirtyChange }) {
 
   /** 删除撤销：按快照重建订阅（POST 会立即抓一次），再补回个性化字段。
    *  条目是重新抓的，已读 / 收藏状态回不来——确认框文案里已明说。 */
-  const restoreFeed = useCallback(async (snap) => {
+  const restoreFeed = useCallback(/** @param {*} [snap] */ async (snap) => {
     const s = S();
     const res = await s.apiFetch('/api/feeds', jsonPost({
       url: snap.url, enabled: snap.enabled, cardEnabled: snap.cardEnabled, groupName: snap.groupName,
@@ -858,6 +965,9 @@ export function SourcePane({ admin, onDirtyChange }) {
     }
   }, []);
 
+  /**
+   * @param {*} [f]
+   */
   const onDelete = async (f) => {
     const s = S();
     const name = s.shortFeedName(s.feedTitle(f));
@@ -898,6 +1008,9 @@ export function SourcePane({ admin, onDirtyChange }) {
     setBusy('save');
     try {
       // v2 契约全是整数：输入框存的是字符串，提交前统一转数字（空串按 0，由服务端夹取）
+      /**
+       * @param {*} [v]
+       */
       const num = (v) => Number(v) || 0;
       const res = await s.apiFetch('/api/config', jsonPost({
         source: {
@@ -954,11 +1067,17 @@ export function SourcePane({ admin, onDirtyChange }) {
   };
 
   /* ---- 行级 / 详情层动作：即改即生效 + 撤销 ---- */
+  /**
+   * @param {*} [f]
+   * @param {*} [key]
+   * @param {*} [next]
+   * @param {*} [okMsg]
+   */
   const onToggle = async (f, key, next, okMsg) => {
     await patchWithUndo(f, { [key]: next }, { [key]: f[key] }, okMsg);
   };
 
-  const onCommitName = useCallback(async (f, raw) => {
+  const onCommitName = useCallback(/** @param {*} [f] @param {*} [raw] */ async (f, raw) => {
     const s = S();
     const val = String(raw == null ? '' : raw).trim().slice(0, 200);
     if (val === s.feedTitle(f)) return;          // 没变
@@ -969,7 +1088,7 @@ export function SourcePane({ admin, onDirtyChange }) {
 
   /* 改订阅地址：校验与「同用户 URL 唯一」判重都在后端（与新增共用 rss.assertFeedUrl）。
    * 服务端改完会按新地址当场试抓一次，结果走 probe 反馈；地址变更不做撤销（试抓有副作用）。 */
-  const onCommitUrl = useCallback(async (f, raw) => {
+  const onCommitUrl = useCallback(/** @param {*} [f] @param {*} [raw] */ async (f, raw) => {
     const s = S();
     const val = String(raw == null ? '' : raw).trim();
     if (!val || val === f.url) return;
@@ -985,7 +1104,7 @@ export function SourcePane({ admin, onDirtyChange }) {
     }
   }, [patchFeed, bump]);
 
-  const onCommitGroup = useCallback(async (f, raw) => {
+  const onCommitGroup = useCallback(/** @param {*} [f] @param {*} [raw] */ async (f, raw) => {
     const val = String(raw == null ? '' : raw).trim().slice(0, 40);
     if (val === (f.groupName || '')) return;
     await patchWithUndo(f, { groupName: val }, { groupName: f.groupName || '' },
@@ -995,20 +1114,26 @@ export function SourcePane({ admin, onDirtyChange }) {
   /* ---- 分组重命名：一次改组 + 同步分组顺序 ----
    * 语义：把组内所有频道改到新组名；新名与已有组同名时相当于「合并分组」。
    * 逐个 PATCH（每组频道数有限），不新增批量接口。 */
+  /**
+   * @param {*} [g]
+   */
   const startGroupRename = (g) => { setRenamingGroupDraft(g.name); setRenamingGroup(g.name); };
 
-  const commitGroupRename = useCallback(async (g, rawNext) => {
+  /** @type {*} */
+  const commitGroupRename = useCallback(/** @param {*} [g] @param {*} [rawNext] */ async (g, rawNext) => {
     const s = S();
     setRenamingGroup(null);
     const oldName = String(g.name || '');
     const val = String(rawNext == null ? '' : rawNext).trim().slice(0, 40);
     if (!val || val === oldName) return;
-    const members = (s.state.feedList || []).filter((f) => String(f.groupName || '').trim() === oldName);
+    /** @type {*} */
+    const members = (s.state.feedList || []).filter(/** @param {*} [f] */ (f) => String(f.groupName || '').trim() === oldName);
     try {
       for (const f of members) {
         await s.apiFetch('/api/feeds/' + f.id, patchInit({ groupName: val }));
       }
       // 分组顺序里的旧名换新名（旧名不在顺序里就把新名追加到末尾）
+      /** @type {*} */
       const order = (s.state.groupOrder || []).slice();
       const i = order.indexOf(oldName);
       if (i >= 0) order.splice(i, 1, val);
@@ -1033,13 +1158,17 @@ export function SourcePane({ admin, onDirtyChange }) {
     }
   }, [reloadFeeds, openGroups]);
 
-  const onFreqChange = useCallback(async (f, next) => {
+  const onFreqChange = useCallback(/** @param {*} [f] @param {*} [next] */ async (f, next) => {
     const cur = f.refreshMinutes == null ? null : Number(f.refreshMinutes);
     if (cur === next) return;
     await patchWithUndo(f, { refreshMinutes: next }, { refreshMinutes: cur },
       next == null ? '已改为跟随全局频率' : `该频道已设为每 ${fmtMinutes(next)}抓取`);
   }, [patchWithUndo]);
 
+  /**
+   * @param {*} [ev]
+   * @param {*} [g]
+   */
   const onHeadClick = (ev, g) => {
     if (ev.target.closest('.drag-handle')) return;   // 手柄区域是拖拽，不触发折叠
     if (ev.target.closest('.feed-group-rename') || ev.target.closest('.feed-group-edit')) return;
@@ -1052,12 +1181,15 @@ export function SourcePane({ admin, onDirtyChange }) {
   };
 
   /* ---- 批量模式 ---- */
-  const toggleSelect = (id) => setSelected((p) => {
+  /**
+   * @param {*} [id]
+   */
+  const toggleSelect = (id) => setSelected(/** @param {*} [p] */ (p) => {
     const n = new Set(p); const k = String(id);
     if (n.has(k)) n.delete(k); else n.add(k);
     return n;
   });
-  const toggleSelectAll = () => setSelected((p) => {
+  const toggleSelectAll = () => setSelected(/** @param {*} [p] */ (p) => {
     const n = new Set(p);
     for (const id of visibleIds) { if (allSelected) n.delete(id); else n.add(id); }
     return n;
@@ -1066,9 +1198,14 @@ export function SourcePane({ admin, onDirtyChange }) {
   const exitBulk = () => { setBulk(false); setSelected(new Set()); };
 
   /** 批量开关：只改与目标值不同的频道；撤销按原值（布尔取反）逐个还原 */
+  /**
+   * @param {*} [key]
+   * @param {*} [next]
+   * @param {*} [label]
+   */
   const bulkPatch = async (key, next, label) => {
     const s = S();
-    const targets = selectedFeeds.filter((f) => !!f[key] !== next);
+    const targets = selectedFeeds.filter(/** @param {*} [f] */ (f) => !!f[key] !== next);
     if (!targets.length) return;
     setBusy('bulk');
     try {
@@ -1106,7 +1243,7 @@ export function SourcePane({ admin, onDirtyChange }) {
     });
     if (val == null) return;
     const group = String(val).trim().slice(0, 40);
-    const targets = selectedFeeds.filter((f) => (f.groupName || '') !== group);
+    const targets = selectedFeeds.filter(/** @param {*} [f] */ (f) => (f.groupName || '') !== group);
     if (!targets.length) return;
     setBusy('bulk');
     try {
@@ -1141,7 +1278,7 @@ export function SourcePane({ admin, onDirtyChange }) {
     });
     if (!ok) return;
     const snaps = selectedFeeds.map(snapshotFeed);
-    const ids = selectedFeeds.map((f) => f.id);
+    const ids = selectedFeeds.map(/** @param {*} [f] */ (f) => f.id);
     setBusy('bulk');
     try {
       for (const id of ids) {
@@ -1175,7 +1312,7 @@ export function SourcePane({ admin, onDirtyChange }) {
   const paramsSub = (() => {
     const keepDays = Number(cfg.keepDays || 0);
     const keepDaysText = keepDays > 0
-      ? (KEEP_DAYS_OPTIONS.find(([v]) => v === keepDays) || [null, `${keepDays} 天`])[1]
+      ? (KEEP_DAYS_OPTIONS.find(/** @param {*} arr */ ([v]) => v === keepDays) || [null, `${keepDays} 天`])[1]
       : '不限时长';
     const auto = Number(cfg.autoRefreshMinutes || 0);
     const keepN = Number(cfg.keepPerFeed || 0);
@@ -1189,11 +1326,17 @@ export function SourcePane({ admin, onDirtyChange }) {
   })();
 
   /* ---- 渲染 ---- */
+  /**
+   * @param {*} [f]
+   */
   const rowDropCls = (f) => (
     drop && drop.type === 'row' && String(drop.id) === String(f.id)
       ? (drop.before ? ' drag-over-before' : ' drag-over-after')
       : ''
   );
+  /**
+   * @param {*} [g]
+   */
   const headDropCls = (g) => (
     drop && (drop.type === 'head' || drop.type === 'group') && drop.group === g.name
       ? (drop.before ? ' drag-over-before' : ' drag-over-after')
@@ -1202,6 +1345,9 @@ export function SourcePane({ admin, onDirtyChange }) {
 
   /* 紧凑行：整行命中开详情（批量模式下改为勾选）。
    * 桌面保留「采集 / 卡片」快捷开关；拖拽手柄 hover 显现。 */
+  /**
+   * @param {*} [f]
+   */
   const renderRow = (f) => {
     const s = S();
     const pend = pendingIds.has(String(f.id));
@@ -1219,7 +1365,7 @@ export function SourcePane({ admin, onDirtyChange }) {
         data-id={f.id}
         {...(bulk ? {} : { role: 'button', tabIndex: 0, 'aria-label': `查看「${name}」详情` })}
         onClick={activate}
-        onKeyDown={(ev) => {
+        onKeyDown={/** @param {*} [ev] */ (ev) => {
           if (ev.target !== ev.currentTarget) return;
           if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); activate(); }
         }}
@@ -1227,15 +1373,15 @@ export function SourcePane({ admin, onDirtyChange }) {
         {bulk ? (
           <input className="feed-check" type="checkbox" checked={sel}
             aria-label={`选择「${name}」`}
-            onClick={(ev) => ev.stopPropagation()}
+            onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}
             onChange={() => toggleSelect(f.id)} />
         ) : (
           <span
             className="drag-handle"
             title="拖动排序：组内重排，或拖到其它分组"
             aria-label="拖动排序"
-            onPointerDown={(ev) => onGripDown(ev, 'feed', { id: f.id })}
-            onClick={(ev) => ev.stopPropagation()}
+            onPointerDown={/** @param {*} [ev] */ (ev) => onGripDown(ev, 'feed', { id: f.id })}
+            onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}
           >
             {GRIP}
           </span>
@@ -1251,7 +1397,7 @@ export function SourcePane({ admin, onDirtyChange }) {
           </div>
         </div>
         {!bulk && (
-          <div className="feed-quick" onClick={(ev) => ev.stopPropagation()}>
+          <div className="feed-quick" onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
             <label className="feed-sw" title="采集：开启后定时抓取这个频道的新条目">
               <span className="feed-sw-label">采集</span>
               <span className="switch">
@@ -1261,7 +1407,7 @@ export function SourcePane({ admin, onDirtyChange }) {
                   aria-label="采集"
                   checked={f.enabled}
                   disabled={pend}
-                  onChange={(ev) => onToggle(f, 'enabled', ev.target.checked, ev.target.checked ? '已开启采集' : '已停止采集')}
+                  onChange={/** @param {*} [ev] */ (ev) => onToggle(f, 'enabled', ev.target.checked, ev.target.checked ? '已开启采集' : '已停止采集')}
                 />
                 <span className="switch-slider"></span>
               </span>
@@ -1275,7 +1421,7 @@ export function SourcePane({ admin, onDirtyChange }) {
                   aria-label="卡片"
                   checked={f.cardEnabled}
                   disabled={pend}
-                  onChange={(ev) => onToggle(f, 'cardEnabled', ev.target.checked, ev.target.checked ? '已在卡片页展示' : '已从卡片页隐藏')}
+                  onChange={/** @param {*} [ev] */ (ev) => onToggle(f, 'cardEnabled', ev.target.checked, ev.target.checked ? '已在卡片页展示' : '已从卡片页隐藏')}
                 />
                 <span className="switch-slider"></span>
               </span>
@@ -1287,9 +1433,15 @@ export function SourcePane({ admin, onDirtyChange }) {
     );
   };
 
-  const setCfgField = (k) => (ev) => { cfgGuard.mark(); setCfg((c) => Object.assign({}, c, { [k]: ev.target.value })); };
+  /**
+   * @param {*} [k]
+   */
+  const setCfgField = (k) => /** @param {*} [ev] */ (ev) => { cfgGuard.mark(); setCfg(/** @param {*} [c] */ (c) => Object.assign({}, c, { [k]: ev.target.value })); };
   // 自绘 Dropdown 的 onChange 直接给值（不是 event），与 input 的 setCfgField 分开。
-  const setCfgVal = (k) => (v) => { cfgGuard.mark(); setCfg((c) => Object.assign({}, c, { [k]: String(v) })); };
+  /**
+   * @param {*} [k]
+   */
+  const setCfgVal = (k) => /** @param {*} [v] */ (v) => { cfgGuard.mark(); setCfg(/** @param {*} [c] */ (c) => Object.assign({}, c, { [k]: String(v) })); };
 
   const bulkDisabled = !selectedFeeds.length || busy === 'bulk';
 
@@ -1307,8 +1459,8 @@ export function SourcePane({ admin, onDirtyChange }) {
               spellCheck={false}
               autoComplete="off"
               value={url}
-              onChange={(ev) => setUrl(ev.target.value)}
-              onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); onAdd(); } }}
+              onChange={/** @param {*} [ev] */ (ev) => setUrl(ev.target.value)}
+              onKeyDown={/** @param {*} [ev] */ (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); onAdd(); } }}
               ref={urlRef}
             />
             <button
@@ -1325,7 +1477,7 @@ export function SourcePane({ admin, onDirtyChange }) {
             <small className="form-tip">
               支持 RSS 2.0 / Atom，例如 <code>https://rsshub.app/telegram/channel/example</code>
             </small>
-            <button className="btn" id="importOpmlBtn" type="button" disabled={busy === 'import'} onClick={() => document.getElementById('opmlFile').click()}>
+            <button className="btn" id="importOpmlBtn" type="button" disabled={busy === 'import'} onClick={() => document.getElementById('opmlFile')?.click()}>
               {busy === 'import' ? '导入中…' : '导入 OPML'}
             </button>
             <button className="btn" id="exportOpmlBtn" type="button" onClick={() => { const s = S(); if (s && s.exportOpml) s.exportOpml(); }}>
@@ -1349,7 +1501,7 @@ export function SourcePane({ admin, onDirtyChange }) {
                 <label>自动抓取{' '}
                   <Dropdown id="srcRefresh" wrapId="srcRefreshDD" title="自动抓取" ariaLabel="自动抓取"
                     value={cfg.refreshMinutes} onChange={setCfgVal('refreshMinutes')}
-                    options={REFRESH_OPTIONS.map(([v, t]) => ({ value: v, label: t }))} />
+                    options={REFRESH_OPTIONS.map(/** @param {*} arr */ ([v, t]) => ({ value: v, label: t }))} />
                 </label>
                 <label htmlFor="srcKeep">每频道保留{' '}
                   <input
@@ -1367,7 +1519,7 @@ export function SourcePane({ admin, onDirtyChange }) {
                 <label>最长保留{' '}
                   <Dropdown id="srcKeepDays" wrapId="srcKeepDaysDD" title="最长保留" ariaLabel="最长保留"
                     value={cfg.keepDays} onChange={setCfgVal('keepDays')}
-                    options={KEEP_DAYS_OPTIONS.map(([v, t]) => ({ value: v, label: t }))} />
+                    options={KEEP_DAYS_OPTIONS.map(/** @param {*} arr */ ([v, t]) => ({ value: v, label: t }))} />
                 </label>
                 <label htmlFor="srcTimeout">抓取超时{' '}
                   <input
@@ -1420,17 +1572,17 @@ export function SourcePane({ admin, onDirtyChange }) {
                 <label>页面自动刷新{' '}
                   <Dropdown id="srcAutoRefresh" wrapId="srcAutoRefreshDD" title="页面自动刷新" ariaLabel="页面自动刷新"
                     value={cfg.autoRefreshMinutes} onChange={setCfgVal('autoRefreshMinutes')}
-                    options={AUTO_REFRESH_OPTIONS.map(([v, t]) => ({ value: v, label: t }))} />
+                    options={AUTO_REFRESH_OPTIONS.map(/** @param {*} arr */ ([v, t]) => ({ value: v, label: t }))} />
                 </label>
                 <label>图片回源窗口{' '}
                   <Dropdown id="srcImgTtl" wrapId="srcImgTtlDD" title="图片回源窗口" ariaLabel="图片回源窗口"
                     value={cfg.imgTtlDays} onChange={setCfgVal('imgTtlDays')}
-                    options={withCurrentOption(IMG_TTL_OPTIONS, cfg.imgTtlDays).map(([v, t]) => ({ value: v, label: t }))} />
+                    options={withCurrentOption(IMG_TTL_OPTIONS, cfg.imgTtlDays).map(/** @param {*} arr */ ([v, t]) => ({ value: v, label: t }))} />
                 </label>
                 <label>图片保留{' '}
                   <Dropdown id="srcImgKeep" wrapId="srcImgKeepDD" title="图片保留" ariaLabel="图片保留"
                     value={cfg.imgKeepDays} onChange={setCfgVal('imgKeepDays')}
-                    options={withCurrentOption(IMG_KEEP_OPTIONS, cfg.imgKeepDays).map(([v, t]) => ({ value: v, label: t }))} />
+                    options={withCurrentOption(IMG_KEEP_OPTIONS, cfg.imgKeepDays).map(/** @param {*} arr */ ([v, t]) => ({ value: v, label: t }))} />
                 </label>
                 <label htmlFor="srcImgMaxDim">图片最长边{' '}
                   <input
@@ -1501,7 +1653,7 @@ export function SourcePane({ admin, onDirtyChange }) {
             <svg className="feed-filter-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
             <input className="feed-filter-input" type="search" value={feedQuery}
               placeholder="搜索频道（名称 / 地址 / 分组）" aria-label="搜索频道"
-              onChange={(ev) => setFeedQuery(ev.target.value)} {...NO_AUTOFILL_PROPS} />
+              onChange={/** @param {*} [ev] */ (ev) => setFeedQuery(ev.target.value)} {...NO_AUTOFILL_PROPS} />
           </div>
           <button className={'btn' + (bulk ? ' active' : '')} id="bulkToggleBtn" type="button"
             aria-pressed={bulk} onClick={bulk ? exitBulk : enterBulk}>
@@ -1526,12 +1678,12 @@ export function SourcePane({ admin, onDirtyChange }) {
           ) : (!feeds.length ? (
             <div className="hint pane-msg empty-tip">还没有订阅源，在上方粘贴一个 RSS 地址试试</div>
           ) : (
-            displayGroups.map((g) => {
+            displayGroups.map(/** @param {*} [g] */ (g) => {
               // 命名分组默认收起；搜索命中 / 批量模式强制展开；未分组常开
               const isOpen = bulk || !g.name || openGroups.has(g.name) || !!fq;
               const isCollapsed = !isOpen;
               // 「未分组」标题只在确实存在命名分组时才渲染（否则一行标题挺突兀）
-              const showHead = !!g.name || feeds.some((f) => String(f.groupName || '').trim());
+              const showHead = !!g.name || feeds.some(/** @param {*} [f] */ (f) => String(f.groupName || '').trim());
               return (
                 <React.Fragment key={g.name || '__ungrouped'}>
                   {showHead && (
@@ -1547,8 +1699,8 @@ export function SourcePane({ admin, onDirtyChange }) {
                         'aria-expanded': isCollapsed ? 'false' : 'true',
                         'aria-label': (g.name || '未分组') + '，' + g.feeds.length + ' 个频道，' + (isCollapsed ? '已收起' : '已展开'),
                       })}
-                      onClick={(ev) => onHeadClick(ev, g)}
-                      onKeyDown={(ev) => {
+                      onClick={/** @param {*} [ev] */ (ev) => onHeadClick(ev, g)}
+                      onKeyDown={/** @param {*} [ev] */ (ev) => {
                         if (ev.target !== ev.currentTarget) return;   // 手柄 / 重命名按钮 / 输入框各自处理
                         if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onHeadClick(ev, g); }
                       }}
@@ -1563,13 +1715,13 @@ export function SourcePane({ admin, onDirtyChange }) {
                           spellCheck={false}
                           autoComplete="off"
                           aria-label="重命名分组"
-                          onChange={(ev) => setRenamingGroupDraft(ev.target.value)}
-                          onKeyDown={(ev) => {
+                          onChange={/** @param {*} [ev] */ (ev) => setRenamingGroupDraft(ev.target.value)}
+                          onKeyDown={/** @param {*} [ev] */ (ev) => {
                             if (ev.key === 'Enter') { ev.preventDefault(); ev.currentTarget.blur(); }
                             else if (ev.key === 'Escape') { ev.preventDefault(); setRenamingGroup(null); }
                           }}
-                          onBlur={(ev) => commitGroupRename(g, ev.target.value)}
-                          onClick={(ev) => ev.stopPropagation()}
+                          onBlur={/** @param {*} [ev] */ (ev) => commitGroupRename(g, ev.target.value)}
+                          onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}
                         />
                       ) : (
                         <>
@@ -1578,7 +1730,7 @@ export function SourcePane({ admin, onDirtyChange }) {
                               className="drag-handle"
                               title="拖动排序分组"
                               aria-label="拖动排序分组"
-                              onPointerDown={(ev) => onGripDown(ev, 'group', { group: g.name })}
+                              onPointerDown={/** @param {*} [ev] */ (ev) => onGripDown(ev, 'group', { group: g.name })}
                             >
                               {GRIP}
                             </span>
@@ -1592,7 +1744,7 @@ export function SourcePane({ admin, onDirtyChange }) {
                               data-group-rename={g.name}
                               title="重命名分组（组内频道一并改名）"
                               type="button"
-                              onClick={(ev) => { ev.stopPropagation(); startGroupRename(g); }}
+                              onClick={/** @param {*} [ev] */ (ev) => { ev.stopPropagation(); startGroupRename(g); }}
                             >
                               <Ico name="edit" />
                             </button>
@@ -1601,7 +1753,7 @@ export function SourcePane({ admin, onDirtyChange }) {
                       )}
                     </div>
                   )}
-                  {isOpen && g.feeds.map((f) => renderRow(f))}
+                  {isOpen && g.feeds.map(/** @param {*} [f] */ (f) => renderRow(f))}
                 </React.Fragment>
               );
             })

@@ -2,6 +2,7 @@
  * 仅覆盖常用字，未知汉字静默跳过（直接输入汉字仍可匹配），不影响其它搜索。
  * 从旧 public/app.js 原样移植，行为保持一致。 */
 
+/** @type {Record<string, string>} */
 export const PINYIN = {
   切:'qie',换:'huan',到:'dao',文:'wen',章:'zhang',页:'ye',卡:'ka',片:'pian',主:'zhu',题:'ti',
   外:'wai',观:'guan',数:'shu',据:'ju',源:'yuan',模:'mo',型:'xing',账:'zhang',号:'hao',状:'zhuang',
@@ -12,7 +13,7 @@ export const PINYIN = {
   博:'bo',客:'ke',公:'gong',众:'zhong',微:'wei',信:'xin',科:'ke',技:'ji',财:'cai',经:'jing',
   股:'gu',票:'piao',基:'ji',金:'jin',影:'ying',视:'shi',音:'yin',乐:'yue',游:'you',戏:'xi',
   体:'ti',育:'yu',报:'bao',社:'she',区:'qu',团:'tuan',队:'dui',软:'ruan',计:'ji',美:'mei',
-  食:'shi',旅:'lv',健:'jian',康:'kang',医:'yi',教:'jiao',育:'yu',书:'shu',店:'dian',购:'gou',
+  食:'shi',旅:'lv',健:'jian',康:'kang',医:'yi',教:'jiao',书:'shu',店:'dian',购:'gou',
   物:'wu',房:'fang',车:'che',法:'fa',律:'lv',政:'zheng',治:'zhi',军:'jun',事:'shi',闻:'wen',
   中:'zhong',华:'hua',周:'zhou',刊:'kan',杂:'za',志:'zhi',界:'jie',首:'shou',次:'ci',最:'zui',
   精:'jing',选:'xuan',推:'tui',荐:'jian',创:'chuang',业:'ye',投:'tou',产:'chan',保:'bao',险:'xian',
@@ -24,11 +25,14 @@ export const PINYIN = {
   快:'kuai',帮:'bang',助:'zhu',关:'guan',用:'yong',登:'deng',录:'lu',退:'tui'
 };
 
+/**
+ * @param {*} [text]
+ */
 export function cjkPinyin(text) {
   const s = String(text || '');
   let full = '', initial = '';
   for (const ch of s) {
-    const code = ch.codePointAt(0);
+    const code = ch.codePointAt(0) || 0;
     if (code < 0x4e00 || code > 0x9fff) continue; // 跳过非汉字（英文/数字已在 keywords 中）
     const py = PINYIN[ch];
     if (!py) continue; // 未知汉字静默跳过，降级为「直接输汉字」仍可匹配

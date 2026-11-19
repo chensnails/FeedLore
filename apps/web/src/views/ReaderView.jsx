@@ -37,12 +37,18 @@ const URL_RE = /(?:https?:\/\/|www\.)\S+/gi;
 const BREAK_RE = /(?<=[。！？；!])/g;
 const TITLE_LINE_RE = /^\s*(?:名\s*称|标\s*题|主\s*题|题\s*目)\s*[：:]\s*(.*)$/;
 
-/** 源站点没分段时按句读切；不在 URL 内部断 */
+/** 源站点没分段时按句读切；不在 URL 内部断
+*@param {*} [line]
+*/
 function splitLongLine(line) {
   if (line.length < LONG_LINE) return [line];
+  /** @type {*} */
   const spans = [];
   for (const m of line.matchAll(URL_RE)) spans.push([m.index, m.index + m[0].length]);
-  const inUrl = (i) => spans.some(([a, b]) => i >= a && i < b);
+  /**
+   * @param {*} [i]
+   */
+  const inUrl = (i) => spans.some(/** @param {*} arr */ ([a, b]) => i >= a && i < b);
   const sentences = [];
   let last = 0;
   for (const m of line.matchAll(BREAK_RE)) {
@@ -62,6 +68,9 @@ function splitLongLine(line) {
   return out.length ? out : [line];
 }
 
+/**
+ * @param {*} [text]
+ */
 function bodyParagraphs(text) {
   const paras = [];
   for (const raw of text.split('\n')) {
@@ -76,6 +85,9 @@ function bodyParagraphs(text) {
   return paras;
 }
 
+/**
+ * @param {*} [json]
+ */
 function parseBlocks(json) {
   if (!json) return null;
   try {
@@ -85,6 +97,9 @@ function parseBlocks(json) {
 }
 
 /* ---------- 结构化正文（bodyVersion 2）的纯函数 ---------- */
+/**
+ * @param {*} [nodes]
+ */
 function inlineText(nodes) {
   if (!Array.isArray(nodes)) return '';
   let s = '';
@@ -97,35 +112,50 @@ function inlineText(nodes) {
   return s;
 }
 
+/**
+ * @param {*} [b]
+ */
 function blockText(b) {
   if (!b) return '';
   if (b.t === 'p' || b.t === 'h') return inlineText(b.v);
   if (b.t === 'pre') return String(b.code || '');
-  if (b.t === 'list') return (b.items || []).map((it) => it.map(blockText).join('\n')).join('\n');
+  if (b.t === 'list') return (b.items || []).map(/** @param {*} [it] */ (it) => it.map(blockText).join('\n')).join('\n');
   if (b.t === 'quote') return (b.blocks || []).map(blockText).join('\n');
   if (b.t === 'table') return [...(b.head || []), ...(b.rows || []).flat()].map(inlineText).join('\n');
   if (b.t === 'figure') return inlineText(b.caption || []);
   return '';
 }
 
+/**
+ * @param {*} [b]
+ */
 function blockHasText(b) {
   return blockText(b).trim().length > 0;
 }
 
 /** 正文块是不是 v2（结构化）格式。服务端总会带 bodyVersion；
- *  形状再兜一层，避免老缓存 / 手写 mock 少了字段时把 v2 块当 v1 渲染。 */
+ *  形状再兜一层，避免老缓存 / 手写 mock 少了字段时把 v2 块当 v1 渲染。
+ *@param {*} [e]
+ * @param {*} [blocks]
+*/
 function isRichBody(e, blocks) {
   if (Number(e && e.bodyVersion) === 2) return true;
-  return !!blocks && blocks.some((b) => b && (b.t === 'h' || b.t === 'list' || b.t === 'quote'
+  return !!blocks && blocks.some(/** @param {*} [b] */ (b) => b && (b.t === 'h' || b.t === 'list' || b.t === 'quote'
     || b.t === 'pre' || b.t === 'table' || b.t === 'figure' || b.t === 'hr' || Array.isArray(b.v)));
 }
 
+/**
+ * @param {*} [txt]
+ * @param {*} [name]
+ */
 function isDuplicateTitleLine(txt, name) {
   const m = String(txt).match(TITLE_LINE_RE);
-  return !!(m && m[1].trim() === String(name || '').trim());
+  return !!(m && (m[1] || '').trim() === String(name || '').trim());
 }
 
-/** 正文第一行常是「名称：xxx」（与标题重复），去掉它 */
+/** 正文第一行常是「名称：xxx」（与标题重复），去掉它
+*@param {*} [e]
+*/
 function readerBodyText(e) {
   let t = e.content || e.desc || '';
   if (!t) return '';
@@ -137,18 +167,23 @@ function readerBodyText(e) {
 
 /** ArtBody 会不会自己渲染出文字 —— 卡片详情弹窗用它决定要不要另列一行摘要。
  *  判定口径必须和 ArtBody 的分支一致：有块数组就只看非图片块（首行与标题重复的那行会被丢掉），
- *  没有块数组则回退到 readerBodyText（它本身就会拿 desc 当正文）。 */
+ *  没有块数组则回退到 readerBodyText（它本身就会拿 desc 当正文）。
+ *@param {*} [e]
+*/
 export function bodyShowsText(e) {
   if (!e) return false;
   const blocks = parseBlocks(e.bodyJson);
   if (blocks) {
     if (isRichBody(e, blocks)) return blocks.some(blockHasText);
-    return blocks.some((b, i) => b && b.t !== 'img' && String(b.text || '').trim()
+    return blocks.some(/** @param {*} [b] @param {*} [i] */ (b, i) => b && b.t !== 'img' && String(b.text || '').trim()
       && !(i === 0 && isDuplicateTitleLine(b.text, e.name)));
   }
   return !!readerBodyText(e);
 }
 
+/**
+ * @param {*} [u]
+ */
 const proxied = (u) => {
   const s = String(u || '');
   if (/^https?:\/\//i.test(s)) return '/api/img?u=' + encodeURIComponent(s);
@@ -160,8 +195,11 @@ const proxied = (u) => {
 /** 正文链接的安全兜底统一用 ui/EntryActions 的 safeHref（见上方 import），此处不再各写一份 */
 
 /** 正文图片：加载失败直接移除（旧行为）；点开走全局灯箱（app.js 的 document 委托）。
- *  v2 块会带 alt 与原始宽高，宽高只用于预留比例，最终尺寸仍由 CSS 决定。 */
+ *  v2 块会带 alt 与原始宽高，宽高只用于预留比例，最终尺寸仍由 CSS 决定。
+ *@param {*} opts
+*/
 function ArtImg({ src, alt, w, h }) {
+  /** @type {any} */
   const [failed, setFailed] = useState(false);
   const url = proxied(src);
   if (failed || !url || isImgFailed(url)) return null;
@@ -170,14 +208,16 @@ function ArtImg({ src, alt, w, h }) {
       sizes="(max-width: 720px) 92vw, 720px" alt={alt || ''}
       width={w || undefined} height={h || undefined}
       loading="lazy" decoding="async" title="点击查看大图"
-      onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}
+      onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
       onError={() => { markImgFailed(url); setFailed(true); }} />
   );
 }
 
-/** 内联节点：只输出文本与语义标签，不接收 HTML 字符串。 */
+/** 内联节点：只输出文本与语义标签，不接收 HTML 字符串。
+*@param {*} opts
+*/
 function Inline({ nodes }) {
-  return (nodes || []).map((n, i) => {
+  return (nodes || []).map(/** @param {*} [n] @param {*} [i] */ (n, i) => {
     if (!n) return null;
     switch (n.t) {
       case 'text': return n.v;
@@ -197,7 +237,9 @@ function Inline({ nodes }) {
   });
 }
 
-/** 块级节点。列表 / 引用内部递归复用；连续图片合并成图集。 */
+/** 块级节点。列表 / 引用内部递归复用；连续图片合并成图集。
+*@param {*} opts
+*/
 function RichBlocks({ blocks }) {
   const out = [];
   for (let i = 0; i < blocks.length; i++) {
@@ -208,7 +250,7 @@ function RichBlocks({ blocks }) {
       i--;
       out.push(grp.length === 1
         ? <ArtImg src={grp[0].src} alt={grp[0].alt} w={grp[0].w} h={grp[0].h} key={'r' + i} />
-        : <div className="art-imgs" key={'r' + i}>{grp.map((im, k) => (
+        : <div className="art-imgs" key={'r' + i}>{grp.map(/** @param {*} [im] @param {*} [k] */ (im, k) => (
           <ArtImg src={im.src} alt={im.alt} w={im.w} h={im.h} key={k} />
         ))}</div>);
       continue;
@@ -227,7 +269,7 @@ function RichBlocks({ blocks }) {
         const Tag = b.ordered ? 'ol' : 'ul';
         out.push(
           <Tag className="art-list" key={'r' + i}>
-            {(b.items || []).map((item, k) => <li key={k}><RichBlocks blocks={item} /></li>)}
+            {(b.items || []).map(/** @param {*} [item] @param {*} [k] */ (item, k) => <li key={k}><RichBlocks blocks={item} /></li>)}
           </Tag>
         );
         break;
@@ -249,11 +291,11 @@ function RichBlocks({ blocks }) {
           <div className="art-table-wrap" key={'r' + i}>
             <table className="art-table">
               {head.length ? (
-                <thead><tr>{head.map((cell, k) => <th key={k}><Inline nodes={cell} /></th>)}</tr></thead>
+                <thead><tr>{head.map(/** @param {*} [cell] @param {*} [k] */ (cell, k) => <th key={k}><Inline nodes={cell} /></th>)}</tr></thead>
               ) : null}
               <tbody>
-                {rows.map((row, ri) => (
-                  <tr key={ri}>{row.map((cell, ci) => <td key={ci}><Inline nodes={cell} /></td>)}</tr>
+                {rows.map(/** @param {*} [row] @param {*} [ri] */ (row, ri) => (
+                  <tr key={ri}>{row.map(/** @param {*} [cell] @param {*} [ci] */ (cell, ci) => <td key={ci}><Inline nodes={cell} /></td>)}</tr>
                 ))}
               </tbody>
             </table>
@@ -283,10 +325,12 @@ function RichBlocks({ blocks }) {
 
 /** 正文（对应旧 artBodyHtml）：图文按原顺序内联；老数据回退为图集 + 段落。
  *  导出给卡片详情弹窗（src/views/CardDetail.jsx）复用，两处正文渲染保持一套。
- *  extraActions：弹窗会把「收藏 / 在文章页查看」也塞进这条动作行，保证一个弹窗只有一排按钮。 */
+ *  extraActions：弹窗会把「收藏 / 在文章页查看」也塞进这条动作行，保证一个弹窗只有一排按钮。
+ *@param {*} opts
+*/
 export function ArtBody({ e, onTag, onAiTag, extraActions }) {
   const s = S();
-  const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
+  const fmtFull = s.fmtFull || (/** @param {*} [d] */ (d) => (d ? String(d) : ''));
   const parts = [];
   /* 单条目 AI 动作条放在正文之前 —— 也就是标题行的正下方。
    * 文章页与卡片详情共用这个 ArtBody，一处生效两处；早先挂在正文末尾，
@@ -306,12 +350,12 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }) {
           while (i < blocks.length && blocks[i].t === 'img') { grp.push(blocks[i].src); i++; }
           parts.push(grp.length === 1
             ? <ArtImg src={grp[0]} key={'b' + i} />
-            : <div className="art-imgs" key={'b' + i}>{grp.map((src, k) => <ArtImg src={src} key={k} />)}</div>);
+            : <div className="art-imgs" key={'b' + i}>{grp.map(/** @param {*} [src] @param {*} [k] */ (src, k) => <ArtImg src={src} key={k} />)}</div>);
         } else {
           if (i === 0 && isDuplicateTitleLine(b.text, e.name)) { i++; continue; }
           parts.push(
             <div className="art-text" key={'b' + i}>
-              {bodyParagraphs(b.text).map((p, k) => <p className={p.cls || undefined} key={k}>{p.text}</p>)}
+              {bodyParagraphs(b.text).map(/** @param {*} [p] @param {*} [k] */ (p, k) => <p className={p.cls || undefined} key={k}>{p.text}</p>)}
             </div>
           );
           i++;
@@ -324,11 +368,11 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }) {
     if (imgs.length) {
       parts.push(imgs.length === 1
         ? <ArtImg src={imgs[0]} key="img" />
-        : <div className="art-imgs" key="img">{imgs.map((src, k) => <ArtImg src={src} key={k} />)}</div>);
+        : <div className="art-imgs" key="img">{imgs.map(/** @param {*} [src] @param {*} [k] */ (src, k) => <ArtImg src={src} key={k} />)}</div>);
     }
     const text = readerBodyText(e);
     parts.push(text
-      ? <div className="art-text" key="text">{bodyParagraphs(text).map((p, k) => <p className={p.cls || undefined} key={k}>{p.text}</p>)}</div>
+      ? <div className="art-text" key="text">{bodyParagraphs(text).map(/** @param {*} [p] @param {*} [k] */ (p, k) => <p className={p.cls || undefined} key={k}>{p.text}</p>)}</div>
       : <div className="art-text art-text-empty" key="text">这条没有正文，点「打开」看原文</div>);
   }
 
@@ -347,7 +391,7 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }) {
   if (e.tags && e.tags.length) {
     parts.push(
       <div className="art-tags" key="tags">
-        {e.tags.map((t) => <button className="mini-tag" type="button" data-tag={t} key={t} onClick={() => onTag(t)}>#{t}</button>)}
+        {e.tags.map(/** @param {*} [t] */ (t) => <button className="mini-tag" type="button" data-tag={t} key={t} onClick={() => onTag(t)}>#{t}</button>)}
       </div>
     );
   }
@@ -356,7 +400,7 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }) {
     parts.push(
       <div className="art-tags art-tags-ai" key="aiTags">
         <span className="art-tags-label">AI 标签</span>
-        {e.aiTags.map((t) => <button className="mini-tag mini-tag-ai" type="button" data-tag={t} key={t} onClick={() => (onAiTag || onTag)(t)}>#{t}</button>)}
+        {e.aiTags.map(/** @param {*} [t] */ (t) => <button className="mini-tag mini-tag-ai" type="button" data-tag={t} key={t} onClick={() => (onAiTag || onTag)(t)}>#{t}</button>)}
       </div>
     );
   }
@@ -372,6 +416,7 @@ function useArticleListPrefs() {
     const a = (S().getAppearance && S().getAppearance()) || {};
     return a.listDensity !== 'compact';
   };
+  /** @type {any} */
   const [comfortable, setComfortable] = useState(read);
   useEffect(() => {
     const sync = () => setComfortable(read());
@@ -384,11 +429,11 @@ function useArticleListPrefs() {
  *  做成 memo：每次 __readerTick 都会把整列 entries 重新 map 一遍，而条目对象只在
  *  状态真的变化时才换新（core/reader.js 的 applyEntryFlag / ui.js 的 cardSetFlag 同口径），
  *  所以没变的那几百条不必跟着重新渲染。 */
-const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfortable, onToggle, onFav, onTag, onAiTag, onUnread, onRetryBody }) {
+const ArtItem = memo(/** @param {*} opts */ function ArtItem({ e, expanded, full, bodyErr, flash, comfortable, onToggle, onFav, onTag, onAiTag, onUnread, onRetryBody }) {
   const s = S();
   const src = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
-  const fmtFull = s.fmtFull || ((d) => (d ? String(d) : ''));
-  const fmtDate = s.fmtDate || ((d) => (d ? String(d) : ''));
+  const fmtFull = s.fmtFull || (/** @param {*} [d] */ (d) => (d ? String(d) : ''));
+  const fmtDate = s.fmtDate || (/** @param {*} [d] */ (d) => (d ? String(d) : ''));
   const fav = !!e.isFavorite;
   /* 未读态此前只有一个 aria-hidden 的 6px 圆点 + 字重差，读屏完全听不出来。
      把标题 / 来源 / 时间 / 未读 / 收藏拼进按钮的可访问名，视觉冗余保持不变；
@@ -399,6 +444,7 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
      展开后让位给正文（正文自己会出图），加载失败退成纯文字行 —— 不留一个灰框。
      失败态记在组件本地：条目对象换新时（已读 / 收藏）不该把失败的图又试一遍。
      「紧凑」密度直接不渲染 <img>：不只是藏起来，连首图请求都不发。 */
+  /** @type {any} */
   const [imgFailed, setImgFailed] = useState(false);
   const thumb = !expanded && comfortable && e.image && !imgFailed && !isImgFailed(e.image) ? e.image : null;
   /* 摘要来自抓取时压平的 description（纯文本），展开后正文已经在读，不再重复一遍 */
@@ -416,6 +462,7 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
     onToggle(e.id);
   };
 
+  /** @type {any} */
   let inner = null;
   if (expanded) {
     if (full) inner = <ArtBody e={full} onTag={onTag} onAiTag={onAiTag} />;
@@ -463,19 +510,19 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
           {expanded ? (
             <button className="art-star art-collapse" type="button"
               aria-label="收起这篇" title="收起这篇"
-              onClick={(ev) => { ev.stopPropagation(); toggle(); }}>
+              onClick={/** @param {*} [ev] */ (ev) => { ev.stopPropagation(); toggle(); }}>
               <Icon n="chevrons-up" />
             </button>
           ) : null}
           <button className="art-star" type="button" data-fav={e.id} aria-pressed={fav ? 'true' : 'false'}
             aria-label={fav ? '取消收藏' : '收藏'} title={fav ? '取消收藏' : '收藏这篇'}
-            onClick={(ev) => { ev.stopPropagation(); onFav(e.id); }}>
+            onClick={/** @param {*} [ev] */ (ev) => { ev.stopPropagation(); onFav(e.id); }}>
             <Icon n={fav ? 'star' : 'star-o'} />
           </button>
           {e.isRead ? (
             <button className="art-star art-unread" type="button" data-unread={e.id}
               aria-label="标为未读" title="标为未读"
-              onClick={(ev) => { ev.stopPropagation(); onUnread(e.id); }}>
+              onClick={/** @param {*} [ev] */ (ev) => { ev.stopPropagation(); onUnread(e.id); }}>
               <Icon n="circle" />
             </button>
           ) : null}
@@ -492,11 +539,16 @@ const ArtItem = memo(function ArtItem({ e, expanded, full, bodyErr, flash, comfo
  * 拖拽期间只写 :root 上的 --reader-side-w（一次拖拽几十帧，走 state 会把整棵阅读页重渲染），
  * 松手才落一次账号偏好；双击复位默认宽度；方向键微调（键盘也要能调，不能只有鼠标）。 */
 function ReaderSideResize() {
+  /** @type {*} */
   const dragRef = useRef(null);
   // 当前宽度只用于 aria-valuenow：拖动时直接写 CSS 变量（不走 React），
   // 所以这里同步维护一份，键盘调整后读屏能立刻读到新值。
+  /** @type {any} */
   const [width, setWidth] = useState(() => S().getReaderSideWidth());
 
+  /**
+   * @param {*} [ev]
+   */
   const onPointerDown = (ev) => {
     // 移动端抽屉宽度由 CSS 的 min(272px,84vw) 决定，拖了也没意义
     if (window.innerWidth <= 720) return;
@@ -508,6 +560,9 @@ function ReaderSideResize() {
     // 量不到（宽度为 0，如无布局的测试环境）时以偏好值起算
     const startW = measured > 0 ? measured : s.getReaderSideWidth();
     dragRef.current = startW;
+    /**
+     * @param {*} [e]
+     */
     const move = (e) => {
       const w = Math.min(s.readerSideCap(), Math.max(s.READER_SIDE_MIN, startW + (e.clientX - startX)));
       dragRef.current = w;
@@ -533,6 +588,9 @@ function ReaderSideResize() {
     s.toast('频道栏宽度已恢复默认');
   };
 
+  /**
+   * @param {*} [ev]
+   */
   const onKeyDown = (ev) => {
     const s = S();
     const step = 16;
@@ -564,19 +622,24 @@ function ReaderSideResize() {
 export function ReaderView() {
   const searchName = useNoAutofillName('reader-q');
   const s = S();
+  /** @type {any} */
   const [, bump] = useState(0);
+  /** @type {*} */
   const searchRef = useRef(null);
+  /** @type {*} */
   const debounceRef = useRef(null);
   // 合并后第一行（≡频道 / 标题 / 文章动作 / 搜索 / ⋮）即吸顶条，由其写入 --topbar-h
+  /** @type {*} */
   const headRef = useRef(null);
   // 窄屏（≤720px）搜索框默认收起，标题栏里只留一个放大镜按钮 —— 一整条搜索框占掉
   // 手机上最金贵的一行，而它大部分时间是空的。桌面不受影响（CSS 里按钮隐藏、搜索框常驻）。
+  /** @type {any} */
   const [searchOpen, setSearchOpen] = useState(false);
   // 列表密度（外观偏好，只存本机）：改变的是 DOM 结构，订阅事件后重绘整列
   const listComfortable = useArticleListPrefs();
 
   useEffect(() => {
-    const onTick = () => bump((x) => x + 1);
+    const onTick = () => bump(/** @param {*} [x] */ (x) => x + 1);
     return on(EVENT.READER, onTick);
   }, []);
 
@@ -605,7 +668,9 @@ export function ReaderView() {
 
   const st = (s && s.state) || {};
   const writable = !!(s && s.isWritable ? s.isWritable() : true);
+  /** @type {*} */
   const feeds = st.feedList || [];
+  /** @type {*} */
   const entries = st.rdEntries || [];
   const rawFlags = st.rdFlags || { total: 0, unread: 0, favorite: 0 };
   const flagsKey = `${rawFlags.total}|${rawFlags.unread}|${rawFlags.favorite}|${rawFlags.watching ?? ''}|${rawFlags.blocked ?? ''}`;
@@ -622,11 +687,11 @@ export function ReaderView() {
   const grouped = useMemo(() => (s.groupFeeds ? s.groupFeeds(feeds) : [{ name: '', feeds }]), [st.feedList]);
   const collapseKey = JSON.stringify(st.rdCollapsedGroups || []);
   const collapsed = useMemo(() => (s.readerCollapsedGroups ? s.readerCollapsedGroups() : new Set()), [collapseKey]);
-  const hasGroups = grouped.some((g) => g.name);
-  const allCollapsed = hasGroups && grouped.every((g) => collapsed.has(g.name || ''));
+  const hasGroups = grouped.some(/** @param {*} [g] */ (g) => g.name);
+  const allCollapsed = hasGroups && grouped.every(/** @param {*} [g] */ (g) => collapsed.has(g.name || ''));
 
   // 标题
-  const cur = st.rdFeedId == null ? null : feeds.find((f) => String(f.id) === String(st.rdFeedId));
+  const cur = st.rdFeedId == null ? null : feeds.find(/** @param {*} [f] */ (f) => String(f.id) === String(st.rdFeedId));
   let title = '全部文章';
   if (cur) title = (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(cur) : cur.title) : cur.title);
   else if (st.rdWatch === 'watch') title = '关注';
@@ -637,11 +702,12 @@ export function ReaderView() {
   if (st.rdTag) title += ` · ${st.rdTag}`;
   else if (st.rdAiTag) title += ` · AI ${st.rdAiTag}`;
 
-  const hasUnread = entries.some((e) => !e.isRead);
+  const hasUnread = entries.some(/** @param {*} [e] */ (e) => !e.isRead);
   const anyExpanded = expanded.size > 0;
   const q = st.rdQ || '';
   // 搜索框本身是非受控的（打字不被抢光标）；草稿只用于「清除」按钮的即时显隐，
   // 否则要等 280ms 防抖请求回来、q 变了、按钮才出现。
+  /** @type {any} */
   const [qDraft, setQDraft] = useState(q);
 
   // 别处带来的搜索词（命令面板 / 卡片页跳转）要让框是展开的，否则关键词在生效、框却收着
@@ -667,6 +733,7 @@ export function ReaderView() {
   const firstLoad = !!st.rdLoading && !entries.length;
 
   let emptyMsg = '';
+  /** @type {any} */
   let emptyAction = null;
   if (!entries.length && !firstLoad) {
     if (st.rdReadError) {
@@ -702,6 +769,9 @@ export function ReaderView() {
     }
   }
 
+  /**
+   * @param {*} [ev]
+   */
   const onSearchInput = (ev) => {
     const v = ev.target.value;
     const box = searchRef.current;
@@ -719,8 +789,11 @@ export function ReaderView() {
     }
     setQDraft('');
     if (s.readerSearch) s.readerSearch('');
-    bump((x) => x + 1);
+    bump(/** @param {*} [x] */ (x) => x + 1);
   };
+  /**
+   * @param {*} [ev]
+   */
   const onSearchKey = (ev) => {
     if (ev.key === 'Enter') { clearTimeout(debounceRef.current); if (s.readerSearch) s.readerSearch(String(ev.target.value).trim()); }
     // Esc 收起搜索（与 iOS 搜索框一致）；有词时先清词再收，避免「看不见却生效」的过滤
@@ -729,6 +802,7 @@ export function ReaderView() {
       if (qDraft) onSearchClear();
       setSearchOpen(false);
       // 收起后输入框在窄屏是 display:none，焦点会掉到 body；还给放大镜按钮
+      /** @type {any} */
       const toggle = document.querySelector('.reader-search-toggle');
       if (toggle && toggle.focus) toggle.focus();
     }
@@ -743,19 +817,19 @@ export function ReaderView() {
 
   // memo 的前提是回调稳定：写成行内箭头函数的话，每次 tick 每个条目都会拿到新函数 props，
   // 几百条一起重渲染，等于把 memo 白加。core 是单例，回调里现取即可。
-  const onToggleArt = useCallback((id) => { const c = S(); if (c.readerToggleArt) c.readerToggleArt(id); }, []);
-  const onFavArt = useCallback((id) => { const c = S(); if (c.readerToggleFav) c.readerToggleFav(id); }, []);
-  const onUnreadArt = useCallback((id) => { const c = S(); if (c.readerMarkUnread) c.readerMarkUnread(id); }, []);
-  const onRetryBodyArt = useCallback((id) => { const c = S(); if (c.readerRetryBody) c.readerRetryBody(id); }, []);
-  const onTagArt = useCallback((t) => { const c = S(); if (c.readerSetTag) c.readerSetTag(t, false); }, []);
+  const onToggleArt = useCallback(/** @param {*} id */ (id) => { const c = S(); if (c.readerToggleArt) c.readerToggleArt(id); }, []);
+  const onFavArt = useCallback(/** @param {*} id */ (id) => { const c = S(); if (c.readerToggleFav) c.readerToggleFav(id); }, []);
+  const onUnreadArt = useCallback(/** @param {*} id */ (id) => { const c = S(); if (c.readerMarkUnread) c.readerMarkUnread(id); }, []);
+  const onRetryBodyArt = useCallback(/** @param {*} id */ (id) => { const c = S(); if (c.readerRetryBody) c.readerRetryBody(id); }, []);
+  const onTagArt = useCallback(/** @param {*} t */ (t) => { const c = S(); if (c.readerSetTag) c.readerSetTag(t, false); }, []);
   // AI 标签走独立筛选参数，不能和手动标签混一条链路（后端两张表物理隔离）
-  const onAiTagArt = useCallback((t) => { const c = S(); if (c.readerSetTag) c.readerSetTag(t, true); }, []);
+  const onAiTagArt = useCallback(/** @param {*} t */ (t) => { const c = S(); if (c.readerSetTag) c.readerSetTag(t, true); }, []);
   // D：侧栏回调稳定化（memo 的前提是 props 引用稳定），否则每次 tick 都拿到新函数、memo 失效
-  const cbScope = useCallback((k) => S().readerSetScope(k), []);
-  const cbFeed = useCallback((id) => S().readerSetFeed(id), []);
-  const cbGroup = useCallback((g) => S().readerSetGroup(g), []);
-  const cbFold = useCallback((g) => S().readerToggleGroupCollapse(g), []);
-  const cbWatch = useCallback((k) => S().readerSetWatch(k), []);
+  const cbScope = useCallback(/** @param {*} [k] */ (k) => S().readerSetScope(k), []);
+  const cbFeed = useCallback(/** @param {*} [id] */ (id) => S().readerSetFeed(id), []);
+  const cbGroup = useCallback(/** @param {*} [g] */ (g) => S().readerSetGroup(g), []);
+  const cbFold = useCallback(/** @param {*} [g] */ (g) => S().readerToggleGroupCollapse(g), []);
+  const cbWatch = useCallback(/** @param {*} [k] */ (k) => S().readerSetWatch(k), []);
   const cbAdd = useCallback(() => S().readerOpenSource(), []);
 
   return (
@@ -877,7 +951,7 @@ export function ReaderView() {
           </div>
         ) : null}
         <div className="reader-list" id="readerList">
-          {entries.map((e) => (
+          {entries.map(/** @param {*} [e] */ (e) => (
             <ArtItem key={e.id} e={e} expanded={expanded.has(e.id)}
               full={bodyMap.get(e.id)} bodyErr={bodyErrSet.has(e.id)}
               flash={flashId != null && flashId === String(e.id)}

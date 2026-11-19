@@ -29,28 +29,44 @@ const isAdminNow = () => !!(S() && S().isAdmin && S().isAdmin());
 const isReadonlyNow = () => !!(S() && S().isReadonly && S().isReadonly());
 
 export function SettingsModal() {
+  /** @type {any} */
   const [open, setOpen] = useState(false);
+  /** @type {any} */
   const [tab, setTab] = useState('source');
+  /** @type {any} */
   const [summary, setSummary] = useState('');
+  /** @type {any} */
   const [query, setQuery] = useState('');
   // 当前面板是否有未保存的改动：面板通过 onDirtyChange 上报，切换 / 关闭前据此拦截
+  /** @type {any} */
   const [dirty, setDirty] = useState(false);
+  /** @type {any} */
   const [admin, setAdmin] = useState(isAdminNow);
+  /** @type {any} */
   const [role, setRole] = useState(() => (S().state && S().state.role) || '');
   // 移动端（≤820）用「首页列表 → 分区内容」的两级下钻；桌面端忽略这两个状态
+  /** @type {any} */
   const [isMobile, setIsMobile] = useState(false);
+  /** @type {any} */
   const [mobilePane, setMobilePane] = useState(false);
+  /** @type {*} */
   const modalRef = useRef(null);
+  /** @type {*} */
   const openerRef = useRef(null);
   // 搜索框绝不能带登录语义：Chrome Android 会把保存的账号启发式填进来。
   const searchName = useNoAutofillName('settings-q');
   // 宿主回调是 [] 依赖的闭包，读 state 会读到首次渲染的旧值；Esc / 返回要判断
   // 「现在是不是窄屏、是不是停在分区内容里」，所以镜像一份最新值到 ref。
+  /** @type {any} */
   const isMobileRef = useRef(false);
+  /** @type {any} */
   const paneOpenRef = useRef(false);
+  /** @type {any} */
   const tabRef = useRef(tab);
+  /** @type {any} */
   const dirtyRef = useRef(false);
   // 确认框开着时忽略第二次切换/关闭，避免叠出两个「放弃更改」
+  /** @type {any} */
   const guardingRef = useRef(false);
 
   useEffect(() => { isMobileRef.current = isMobile; }, [isMobile]);
@@ -59,7 +75,7 @@ export function SettingsModal() {
 
   // 面板上报脏状态时同步写 ref：仅靠 effect 镜像会晚一个被动副作用周期，
   // 用户在刚改完就立刻切分区时可能漏拦。
-  const reportDirty = useCallback((v) => {
+  const reportDirty = useCallback(/** @param {*} [v] */ (v) => {
     dirtyRef.current = !!v;
     setDirty(!!v);
   }, []);
@@ -88,6 +104,9 @@ export function SettingsModal() {
   }
 
   // 切分区：移动端同时进入「分区内容」这一层（桌面端忽略 mobilePane）
+  /**
+   * @param {*} [name]
+   */
   async function selectTab(name) {
     // 移动端在首页点当前分区只是进入内容层，草稿还在，不该弹「放弃更改」
     if (name === tabRef.current) {
@@ -139,6 +158,9 @@ export function SettingsModal() {
   // 宿主注册：旧 app 的 openSettings/closeSettings 委托到这里
   useEffect(() => {
     const host = {
+      /**
+       * @param {*} [t]
+       */
       open(t) {
         const adm = isAdminNow();
         const ro = isReadonlyNow();
@@ -167,7 +189,13 @@ export function SettingsModal() {
         return false;
       },
       setSummary,
+      /**
+       * @param {*} [a]
+       */
       setAdminFlag(a) { setAdmin(!!a); },
+      /**
+       * @param {*} [r]
+       */
       setRoleFlag(r) { setRole(r || ''); },
     };
     provide('settingsHost', host);
@@ -215,6 +243,9 @@ export function SettingsModal() {
   // 焦点陷阱：Tab / Shift+Tab 在弹层内循环，不会跑到背后的页面上
   useEffect(() => {
     if (!open) return undefined;
+    /**
+     * @param {*} [ev]
+     */
     const onKey = (ev) => {
       if (ev.key !== 'Tab') return;
       const root = modalRef.current;
@@ -223,7 +254,7 @@ export function SettingsModal() {
       // roving tabIndex 的非激活页签不该进 Tab 序：它们是 button，会被上面的选择器命中，
       // 但按一次 Tab 要穿过 8 个「不可激活」的页签才到内容区。
       const list = Array.prototype.filter.call(nodes,
-        (el) => !el.disabled && el.offsetParent !== null && el.getAttribute('tabindex') !== '-1');
+        /** @param {*} [el] */ (el) => !el.disabled && el.offsetParent !== null && el.getAttribute('tabindex') !== '-1');
       if (!list.length) return;
       const first = list[0];
       const last = list[list.length - 1];
@@ -242,6 +273,9 @@ export function SettingsModal() {
     setOpen(false);
     return true;
   };
+  /**
+   * @param {*} [ev]
+   */
   const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) requestClose(); };
 
   // 系统返回键 / 手势返回与「返回」按钮、Esc 走同一套递减：移动端停在分区内容里时
@@ -257,7 +291,7 @@ export function SettingsModal() {
   }, [open]);
 
   // 手机上是贴底整屏弹层，出口只有 × / Esc / 系统返回键（下滑关闭 v2.5.3 下线：真机会闪屏）。
-  const attachModal = useCallback((el) => { modalRef.current = el; }, []);
+  const attachModal = useCallback(/** @param {*} [el] */ (el) => { modalRef.current = el; }, []);
 
   // 浏览器可能在弹层打开之后又填一次：state 说空、DOM 却有值，直接纠偏。
   // 全局哨兵（main.jsx → installAutofillGuard）负责填充发生当刻，这里兜「打开时已填好」。
@@ -270,14 +304,14 @@ export function SettingsModal() {
   const readonly = role === 'readonly';
   const tabs = visibleTabs(admin, readonly);
   const matched = matchTabs(tabs, query);
-  const matchedNames = matched.map((t) => t.name);
+  const matchedNames = matched.map(/** @param {*} [t] */ (t) => t.name);
   const activeTab = TAB_BY_NAME[tab];
   const activeVisible = matchedNames.indexOf(tab) >= 0;
   // 搜索把当前分区过滤掉时，把 tablist 的 roving tabIndex 落到第一个可见项
   const focusTab = activeVisible ? tab : matchedNames[0];
   const navGroups = TAB_GROUPS
-    .map((group) => ({ group, items: matched.filter((t) => t.group === group) }))
-    .filter((g) => g.items.length);
+    .map(/** @param {*} [group] */ (group) => ({ group, items: matched.filter(/** @param {*} [t] */ (t) => t.group === group) }))
+    .filter(/** @param {*} [g] */ (g) => g.items.length);
 
   // 角色在弹层打开期间被改成只读（或反过来）时，把停在不允许分区上的用户带回可见页
   useEffect(() => {
@@ -289,6 +323,9 @@ export function SettingsModal() {
 
   // tablist 的键盘约定：↑↓（竖排）或 ←→ 移动并选中，Home/End 跳首尾；
   // 焦点跟着走，避免「按了方向键但焦点还在原处」。
+  /**
+   * @param {*} [ev]
+   */
   const onTabsKey = (ev) => {
     const k = ev.key;
     if (k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'ArrowLeft' && k !== 'ArrowRight' && k !== 'Home' && k !== 'End') return;
@@ -344,7 +381,7 @@ export function SettingsModal() {
               value={query}
               placeholder="搜索设置"
               aria-label="搜索设置分区"
-              onChange={(ev) => setQuery(ev.target.value)}
+              onChange={/** @param {*} [ev] */ (ev) => setQuery(ev.target.value)}
               {...NO_AUTOFILL_PROPS}
             />
             {query ? (
@@ -359,10 +396,10 @@ export function SettingsModal() {
             </p>
           ) : null}
           <div className="tabs" id="tabs" role="tablist" aria-label="设置分区" aria-orientation="vertical" onKeyDown={onTabsKey}>
-            {navGroups.map(({ group, items }) => (
+            {navGroups.map(/** @param {*} opts */ ({ group, items }) => (
               <div className="tab-group" key={group} role="presentation">
                 <div className="tab-group-label" aria-hidden="true">{group}</div>
-                {items.map((t) => (
+                {items.map(/** @param {*} [t] */ (t) => (
                   <button
                     key={t.name}
                     type="button"

@@ -19,14 +19,23 @@ const S = () => core;
 /* 覆盖层渲染 toast / 新内容浮标 / 图片灯箱 / 确认框。
  * 快捷键说明迁至 设置 → 帮助 面板，不再在此渲染浮层。 */
 
+/**
+ * @param {*} opts
+ */
 function ConfirmDialog({ c }) {
+  /** @type {*} */
   const valueRef = useRef(null);
+  /** @type {*} */
   const okRef = useRef(null);
+  /** @type {*} */
   const formRef = useRef(null);
+  /** @type {any} */
   const [value, setValue] = useState('');
   // 必填校验的内联错误：常驻 role=alert 容器，空态只收掉视觉占位
+  /** @type {any} */
   const [err, setErr] = useState('');
   // 打开它的那个元素：关闭后把焦点还回去（否则掉到 body，键盘用户要从头 Tab）
+  /** @type {*} */
   const openerRef = useRef(null);
 
   // 每次打开重置输入值，并把焦点放到该去的地方（有输入框 → 输入框，否则 → 主按钮）
@@ -61,6 +70,9 @@ function ConfirmDialog({ c }) {
 
   useEffect(() => {
     if (!c.open) return undefined;
+    /**
+     * @param {*} [ev]
+     */
     const onKey = (ev) => {
       if (ev.key === 'Escape') {
         ev.preventDefault();
@@ -72,7 +84,7 @@ function ConfirmDialog({ c }) {
       const root = formRef.current;
       if (!root) return;
       const items = Array.from(root.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])'))
-        .filter((el) => !el.disabled);
+        .filter(/** @param {*} [el] */ (el) => !el.disabled);
       if (!items.length) { ev.preventDefault(); return; }
       const first = items[0];
       const last = items[items.length - 1];
@@ -87,6 +99,9 @@ function ConfirmDialog({ c }) {
 
   if (!c.open) return null;
 
+  /**
+   * @param {*} [ev]
+   */
   const submit = (ev) => {
     ev.preventDefault();
     const raw = c.input ? (c.input.type === 'password' ? value : value.trim()) : true;
@@ -104,7 +119,7 @@ function ConfirmDialog({ c }) {
     <div
       className="modal-mask confirm-mask"
       role="presentation"
-      onMouseDown={(ev) => { if (ev.target === ev.currentTarget) S().cancelConfirm(); }}
+      onMouseDown={/** @param {*} [ev] */ (ev) => { if (ev.target === ev.currentTarget) S().cancelConfirm(); }}
     >
       <form
         ref={formRef}
@@ -138,7 +153,7 @@ function ConfirmDialog({ c }) {
               value={value}
               aria-invalid={err ? 'true' : undefined}
               aria-describedby={err ? 'confirmErr' : undefined}
-              onChange={(ev) => { setValue(ev.target.value); if (err) setErr(''); }}
+              onChange={/** @param {*} [ev] */ (ev) => { setValue(ev.target.value); if (err) setErr(''); }}
             />
             {/* 常驻 DOM：从 display:none 切出来时部分读屏不播报，空态只收高度 */}
             <p className="confirm-err" id="confirmErr" role="alert">{err}</p>
@@ -160,10 +175,16 @@ function ConfirmDialog({ c }) {
 
 /* 图片灯箱：点文章里的图片看大图。作为模态对话框（aria-modal）须满足键盘可达：
  * 打开即把焦点放进对话框、Esc 关闭、Tab 循环不跑出对话框、打开期间锁背景滚动。 */
+/**
+ * @param {*} opts
+ */
 function Lightbox({ box, close }) {
+  /** @type {*} */
   const rootRef = useRef(null);
+  /** @type {*} */
   const closeRef = useRef(null);
   // close 每次渲染都是新函数；栈里存的必须是「当前这一次」，用 ref 转一手
+  /** @type {any} */
   const dismissRef = useRef(close);
   dismissRef.current = close;
 
@@ -189,6 +210,9 @@ function Lightbox({ box, close }) {
 
   // Esc 关闭 + Tab 焦点陷阱（确认框打开时让位于确认框的 Esc 处理）
   useEffect(() => {
+    /**
+     * @param {*} [ev]
+     */
     const onKey = (ev) => {
       if (ev.key === 'Escape') {
         if (isOn('confirmOpen')) return;
@@ -211,6 +235,9 @@ function Lightbox({ box, close }) {
 
   const list = Array.isArray(box.list) ? box.list : [];
   const multi = list.length > 1;
+  /**
+   * @param {*} [d]
+   */
   const step = (d) => { const s = S(); if (s && s.stepLightbox) s.stepLightbox(d); };
 
   return (
@@ -230,7 +257,7 @@ function Lightbox({ box, close }) {
             className="lightbox-nav is-prev"
             type="button"
             aria-label="上一张"
-            onClick={(ev) => { ev.stopPropagation(); step(-1); }}
+            onClick={/** @param {*} [ev] */ (ev) => { ev.stopPropagation(); step(-1); }}
           >
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
           </button>
@@ -238,7 +265,7 @@ function Lightbox({ box, close }) {
             className="lightbox-nav is-next"
             type="button"
             aria-label="下一张"
-            onClick={(ev) => { ev.stopPropagation(); step(1); }}
+            onClick={/** @param {*} [ev] */ (ev) => { ev.stopPropagation(); step(1); }}
           >
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-chevron-right" /></svg>
           </button>
@@ -252,7 +279,7 @@ function Lightbox({ box, close }) {
         className="lightbox-close"
         type="button"
         aria-label="关闭预览"
-        onClick={(ev) => { ev.stopPropagation(); close(); }}
+        onClick={/** @param {*} [ev] */ (ev) => { ev.stopPropagation(); close(); }}
       >
         <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
       </button>
@@ -262,9 +289,10 @@ function Lightbox({ box, close }) {
 }
 
 export function Overlays() {
+  /** @type {any} */
   const [, bump] = useState(0);
   useEffect(() => {
-    const onTick = () => bump((n) => n + 1);
+    const onTick = () => bump(/** @param {*} [n] */ (n) => n + 1);
     return on(EVENT.OVERLAYS, onTick);
   }, []);
 

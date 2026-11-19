@@ -7,6 +7,10 @@
 
 const PROXY = '/api/img?';
 
+/**
+ * @param {*} [src]
+ * @param {*} [w]
+ */
 export function widthVariant(src, w) {
   const s = String(src || '');
   if (!s || /^data:/i.test(s)) return '';
@@ -15,7 +19,10 @@ export function widthVariant(src, w) {
   return '';
 }
 
-/** 拼 srcset；拿不到任何代理变体时返回 undefined，<img> 就只发 src 一张。 */
+/** 拼 srcset；拿不到任何代理变体时返回 undefined，<img> 就只发 src 一张。
+*@param {*} [src]
+ * @param {*} [widths]
+*/
 export function widthSrcSet(src, widths) {
   const list = [];
   for (const w of widths) {

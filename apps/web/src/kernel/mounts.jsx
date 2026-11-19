@@ -34,15 +34,19 @@ const LOADERS = {
 };
 
 /** 完整装配描述（数据 + 组件引用），供诊断与测试使用。 */
-export const MOUNTS = Object.freeze(MOUNT_POINTS.map((p) => Object.freeze({
+export const MOUNTS = Object.freeze(MOUNT_POINTS.map(/** @param {*} [p] */ (p) => Object.freeze({
   ...p,
-  component: COMPONENTS[p.component],
-  load: p.lazy ? LOADERS[p.exportName] : undefined,
+  component: /** @type {any} */ (COMPONENTS)[p.component],
+  load: p.lazy ? /** @type {any} */ (LOADERS)[p.exportName] : undefined,
 })));
 
 const roots = new Map();
 const loading = new Map();
 
+/**
+ * @param {*} [id]
+ * @param {*} [Component]
+ */
 function render(id, Component) {
   const host = document.getElementById(id);
   if (!host || roots.has(id) || !Component) return;
@@ -51,14 +55,17 @@ function render(id, Component) {
   root.render(<React.StrictMode><Component /></React.StrictMode>);
 }
 
+/**
+ * @param {*} [id]
+ */
 function loadMount(id) {
   if (roots.has(id) || !document.getElementById(id)) return Promise.resolve();
   if (!loading.has(id)) {
-    const m = MOUNTS.find((x) => x.id === id);
+    const m = MOUNTS.find(/** @param {*} [x] */ (x) => x.id === id);
     if (!m || !m.load) return Promise.resolve();
     const p = m.load()
-      .then((mod) => { render(id, mod[m.exportName]); })
-      .catch((err) => {
+      .then(/** @param {*} [mod] */ (mod) => { render(id, mod[m.exportName]); })
+      .catch(/** @param {*} [err] */ (err) => {
         loading.delete(id);              // 允许下次重试，别把失败永久缓存
         console.error(`[kernel] 按需加载 ${id} 失败`, err);
         throw err;
@@ -68,6 +75,9 @@ function loadMount(id) {
   return loading.get(id);
 }
 
+/**
+ * @param {*} [tab]
+ */
 function openSettings(tab) {
   const host = get('settingsHost');
   if (host && host.open) { host.open(tab); return Promise.resolve(); }

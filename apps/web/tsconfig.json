@@ -6,7 +6,8 @@
     "types": ["vite/client"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "allowJs": true,
-    "checkJs": false,
+    "checkJs": true,
+    "useUnknownInCatchVariables": false,
     "baseUrl": ".",
     "paths": {
       "@core": ["./src/core/index.js"]

@@ -17,9 +17,15 @@ import { registerLayer } from '../ui/overlayStack.js';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
+/**
+ * @param {*} opts
+ */
 export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint }) {
+  /** @type {*} */
   const panelRef = useRef(null);
+  /** @type {*} */
   const openerRef = useRef(null);
+  /** @type {any} */
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
@@ -49,6 +55,9 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
   // Esc / Tab 收在详情层内。捕获阶段注册：先于设置外壳的冒泡监听，
   // 但确认框 / 灯箱 / 范围浮层叠在上面时让位（它们自己消化这一击）。
   useEffect(() => {
+    /**
+     * @param {*} [ev]
+     */
     const onKey = (ev) => {
       const root = panelRef.current;
       if (!root) return;
@@ -75,7 +84,7 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
       }
       if (ev.key !== 'Tab') return;
       const items = Array.prototype.filter.call(root.querySelectorAll(FOCUSABLE),
-        (el) => !el.disabled && el.offsetParent !== null);
+        /** @param {*} [el] */ (el) => !el.disabled && el.offsetParent !== null);
       if (!items.length) { ev.preventDefault(); return; }
       const first = items[0];
       const last = items[items.length - 1];
@@ -94,7 +103,7 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
   const sub = typeof subtitle === 'string' ? subtitle : '';
 
   return (
-    <div className="ds-mask" onClick={(ev) => { if (ev.target === ev.currentTarget) closeRef.current(); }}>
+    <div className="ds-mask" onClick={/** @param {*} [ev] */ (ev) => { if (ev.target === ev.currentTarget) closeRef.current(); }}>
       <div
         className="ds-sheet"
         role="dialog"

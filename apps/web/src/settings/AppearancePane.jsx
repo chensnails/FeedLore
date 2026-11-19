@@ -82,13 +82,18 @@ const ACCENT_HINT_FIXED = '「暗黑」是整套配色包，主色固定为蓝�
 const NARROW_QUERY = '(max-width: 720px)';
 
 function useNarrowViewport() {
+  /** @type {any} */
   const [narrow, setNarrow] = useState(() => {
     try { return !!(window.matchMedia && window.matchMedia(NARROW_QUERY).matches); } catch (_) { return false; }
   });
   useEffect(() => {
+    /** @type {any} */
     let mq = null;
     try { mq = window.matchMedia ? window.matchMedia(NARROW_QUERY) : null; } catch (_) { mq = null; }
     if (!mq) return undefined;
+    /**
+     * @param {*} [e]
+     */
     const onChange = (e) => setNarrow(e.matches);
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else if (mq.addListener) mq.addListener(onChange);
@@ -101,6 +106,7 @@ function useNarrowViewport() {
 }
 
 export function AppearancePane() {
+  /** @type {any} */
   const [pref, setPref] = useState(() => {
     const s = S();
     return (s && s.getAppearance && s.getAppearance()) || null;
@@ -123,6 +129,10 @@ export function AppearancePane() {
   // GitHub 主题自带主色（旧 THEME_FIXED_ACCENT 唯一键）：整套调板禁用，选中态退还真实主色
   const fixedAccent = pref.theme === 'github';
 
+  /**
+   * @param {*} [key]
+   * @param {*} [value]
+   */
   const onSeg = (key, value) => {
     const s = S();
     if (key === 'theme') {
@@ -133,6 +143,9 @@ export function AppearancePane() {
     }
   };
 
+  /**
+   * @param {*} [value]
+   */
   const onAccent = (value) => {
     if (fixedAccent) return;   // GitHub 主题下连点也不改（与旧逻辑一致）
     const s = S();
@@ -144,6 +157,9 @@ export function AppearancePane() {
     if (s && s.resetAppearance) s.resetAppearance();
   };
 
+  /**
+   * @param {*} [row]
+   */
   const renderRow = (row) => {
     const widthLocked = row.key === 'readerWidth' && narrow;
     const hint = widthLocked ? '窄屏下自动铺满整行，桌面端可调' : row.small;
@@ -155,7 +171,7 @@ export function AppearancePane() {
         </div>
         <div className="appr-ctl">
           <div className="seg" id={row.key === 'theme' ? 'apprTheme' : undefined}>
-            {row.options.map(([value, text]) => {
+            {row.options.map(/** @param {*} arr */ ([value, text]) => {
               const on = pref[row.key] === value;
               return (
                 <button
@@ -186,7 +202,7 @@ export function AppearancePane() {
       </div>
       <div className="appr-ctl">
         <div className={'swatches' + (fixedAccent ? ' disabled' : '')} id="apprAccent">
-          {ACCENTS.map(([value, title]) => {
+          {ACCENTS.map(/** @param {*} arr */ ([value, title]) => {
             const on = !fixedAccent && pref.accent === value;
             return (
               <button
@@ -211,7 +227,7 @@ export function AppearancePane() {
     <div className="tab-pane" data-pane="appearance">
       <div className="pane-scroll">
         <div className="appr">
-          {GROUPS.map((group) => (
+          {GROUPS.map(/** @param {*} [group] */ (group) => (
             <section className="appr-group" key={group.title}>
               <h3 className="appr-group-h">{group.title}</h3>
               {group.rows.map(renderRow)}

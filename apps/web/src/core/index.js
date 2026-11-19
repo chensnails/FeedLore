@@ -25,7 +25,9 @@ import './bootstrap.js';
  * 不再因为 0 命中就自动跳到文章页 —— 空态会就地说明并给「清除标签」的出口。
  *
  * 再点同一个标签 = 取消筛选，回到卡片页原来的全部频道列表。
- */
+  * @param {*} [t]
+ * @param {*} [ai]
+*/
 function cardsTagFilter(t, ai) {
   const next = t || null;
   const field = ai ? 'aiTag' : 'tag';
@@ -42,6 +44,7 @@ function cardsTagFilter(t, ai) {
   return p;
 }
 
+/** @type {Record<string, any>} */
 export const core = {
   state: S.state,
   switchView: UI.switchView, applyTheme: S.applyTheme, openSettings: S.openSettings,
@@ -59,8 +62,8 @@ export const core = {
   // 否则会被 30s 写超时误杀（服务端一次调用允许 180s）
   AI_TIMEOUT_MS: U.NET_AI_TIMEOUT_MS,
   // AI 异步任务：提交即返回 jobId，前端按 1.5s 间隔轮询（见 core/aiJob.js）
-  submitAiJob: (body) => J.submitAiJob(core, body),
-  pollAiJob: (jobId, opts) => J.pollAiJob(core, jobId, opts),
+  submitAiJob: /** @param {*} [body] */ (body) => J.submitAiJob(core, body),
+  pollAiJob: /** @param {*} [jobId] @param {*} [opts] */ (jobId, opts) => J.pollAiJob(core, jobId, opts),
   AI_JOB_POLL_MS: J.AI_JOB_POLL_MS,
   AI_JOB_FAST_POLL_MS: J.AI_JOB_FAST_POLL_MS,
   isAdmin: S.isAdmin, isReadonly: S.isReadonly, isWritable: S.isWritable,
@@ -92,7 +95,7 @@ export const core = {
      切换频道后列表自己一直往下滚。 */
   filterEntries: () => F.applyFilters(),
   firstPageSize: F.firstPageSize,
-  cardsSearch: (v) => {
+  cardsSearch: /** @param {*} [v] */ (v) => {
     // 同值不重拉：去抖到期 / 回车时词没变，重拉只会白闪骨架并把页面拽回顶部。
     // 但挂着标签时清标签本身就是变化，仍要重置。
     if (v === S.state.q && S.state.tag == null && S.state.aiTag == null) return;
@@ -103,7 +106,7 @@ export const core = {
     S.scrollActiveTop('auto');
     return p;
   },
-  cardsFilterFeed: (v) => {
+  cardsFilterFeed: /** @param {*} [v] */ (v) => {
     const next = v ? v : null;
     // 再点同一频道不重拉：ChannelTabs / 侧栏的 retap 会平滑回顶，重拉只会白闪骨架。
     // 频道 id 有 number / string 两种来源（标签条传 id、下拉传 String(id)），按串比。
@@ -122,7 +125,7 @@ export const core = {
   },
   /* 卡片页「只看这组」：与文章页 readerSetGroup 同一套交互 ——
    * 再点同一个组取消筛选；选中分组时清掉频道筛选、展开该组（否则点了却看不见）。 */
-  cardsFilterGroup: (g) => {
+  cardsFilterGroup: /** @param {*} [g] */ (g) => {
     const next = g === S.state.cardGroup ? null : g;
     S.state.cardGroup = next;
     if (next != null) {
@@ -138,25 +141,25 @@ export const core = {
   /* 排序 / 标签都已是服务端筛选（loadPage 带 sort / tag）：改它们 = 换列表，
      必须重置重载并瞬时回顶，与换频道 / 搜索同一套。只 render() 不重拉的话，
      用户看到的还是旧顺序 / 旧标签的那一页。同值直接返回，不白闪骨架。 */
-  cardsSort: (v) => {
+  cardsSort: /** @param {*} [v] */ (v) => {
     if (S.state.sort === v) return;
     S.setLayout('sort', v);   // LAYOUT_MIRROR 会把值回填到 state.sort
     const p = F.loadPage(true);
     S.scrollActiveTop('auto');
     return p;
   },
-  cardsView: (m) => F.setViewMode(m),
-  cardsTag: (t) => cardsTagFilter(t, false),
+  cardsView: /** @param {*} [m] */ (m) => F.setViewMode(m),
+  cardsTag: /** @param {*} [t] */ (t) => cardsTagFilter(t, false),
   /* AI 标签与手动标签物理隔离，筛选也必须分开：点「AI 标签」组走 aiTag 参数，
    * 不能塞进 tag（那只查 entries.tags，会把人带到 0 条或错误结果）。
    * 两类标签都是全库检索，结果仍留在卡片页（见 cardsTagFilter）。 */
-  cardsAiTag: (t) => cardsTagFilter(t, true),
+  cardsAiTag: /** @param {*} [t] */ (t) => cardsTagFilter(t, true),
   cardsLoadMore: () => F.loadPage(false),
   cardsRetryMore: () => { S.state.loadMoreErr = false; return F.loadPage(false); },
   // 窄屏频道抽屉（与文章页同一套交互）
   cardsToggleDrawer: F.cardsToggleDrawer, cardsCloseDrawer: F.cardsCloseDrawer,
-  cardsSetFlag: (id, patch) => UI.cardSetFlag(id, patch),
-  cardsDetailRead: (id) => UI.cardDetailRead(id),
+  cardsSetFlag: /** @param {*} [id] @param {*} [patch] */ (id, patch) => UI.cardSetFlag(id, patch),
+  cardsDetailRead: /** @param {*} [id] */ (id) => UI.cardDetailRead(id),
   copyText: U.copyText, openLinkMenu: U.openLinkMenu, fmtDate: U.fmtDate,
   // —— 视图导航 / ⋮ 菜单快照 ——
   getShell: UI.shellSnapshot,

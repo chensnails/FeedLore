@@ -15,9 +15,12 @@ import { Dropdown } from '../views/Dropdown.jsx';
 
 const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
+/** @type {Record<string, string>} */
 const ROLE_LABEL = { admin: '管理员', user: '普通', readonly: '只读' };
 
-/** UA 只取「浏览器 · 系统」两段，原文太长且没人读得懂；认不出就截断原文兜底。 */
+/** UA 只取「浏览器 · 系统」两段，原文太长且没人读得懂；认不出就截断原文兜底。
+*@param {*} [ua]
+*/
 function deviceLabel(ua) {
   if (!ua) return '未知设备';
   const os = /Windows NT/.test(ua) ? 'Windows'
@@ -34,7 +37,9 @@ function deviceLabel(ua) {
   return ua.length > 48 ? ua.slice(0, 48) + '…' : ua;
 }
 
-/** 最近活跃时间按相对量显示；超过 30 天回落到日期，绝对时间留在 title 里。 */
+/** 最近活跃时间按相对量显示；超过 30 天回落到日期，绝对时间留在 title 里。
+*@param {*} [iso]
+*/
 function fmtRel(iso) {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return '—';
@@ -46,13 +51,20 @@ function fmtRel(iso) {
   return iso.slice(0, 10);
 }
 
-const openOnKey = (fn) => (ev) => {
+/**
+ * @param {*} [fn]
+ */
+const openOnKey = (fn) => /** @param {*} [ev] */ (ev) => {
   if (ev.target !== ev.currentTarget) return;
   if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); fn(); }
 };
 
 /* ---------- 登录设备详情层 ---------- */
+/**
+ * @param {*} opts
+ */
 function DeviceSheet({ device, busy, onClose, onRevoke }) {
+  /** @type {any} */
   const [err, setErr] = useState('');
   const revoke = async () => {
     const res = await onRevoke(device);
@@ -88,13 +100,21 @@ function DeviceSheet({ device, busy, onClose, onRevoke }) {
 }
 
 /* ---------- 用户详情层（改角色 / 改密码 / 删除） ---------- */
+/**
+ * @param {*} opts
+ */
 function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }) {
+  /** @type {any} */
   const [pass, setPass] = useState('');
+  /** @type {any} */
   const [err, setErr] = useState('');
   const self = !!user.isSelf;
 
   // Dropdown 是受控组件：value={user.role}，失败时 user.role 没变，显示自然回滚，
   // 不再需要原生 select 那种 roleRef.current.value 手动回滚。
+  /**
+   * @param {*} [next]
+   */
   const changeRole = async (next) => {
     if (next === user.role) return;
     setErr('');
@@ -160,8 +180,8 @@ function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }) {
             <label htmlFor="dsUserPass">设置新密码</label>
             <input id="dsUserPass" type="password" placeholder="至少 4 位"
               autoComplete="new-password" value={pass}
-              onChange={(ev) => setPass(ev.target.value)}
-              onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submitPass(); } }} />
+              onChange={/** @param {*} [ev] */ (ev) => setPass(ev.target.value)}
+              onKeyDown={/** @param {*} [ev] */ (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submitPass(); } }} />
             <button className="btn btn-ghost btn-sm" id="setUserPassBtn" type="button"
               style={{ marginTop: 'var(--sp-2)' }}
               disabled={busy || pass.length < 4} onClick={submitPass}>
@@ -182,10 +202,17 @@ function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }) {
 }
 
 /* ---------- 新增用户详情层 ---------- */
+/**
+ * @param {*} opts
+ */
 function AddUserSheet({ busy, onClose, onCreate }) {
+  /** @type {any} */
   const [name, setName] = useState('');
+  /** @type {any} */
   const [pass, setPass] = useState('');
+  /** @type {any} */
   const [role, setRole] = useState('user');
+  /** @type {any} */
   const [err, setErr] = useState('');
 
   const submit = async () => {
@@ -215,20 +242,20 @@ function AddUserSheet({ busy, onClose, onCreate }) {
         <label htmlFor="newUserName">用户名</label>
         <input id="newUserName" type="text" placeholder="用户名" spellCheck="false"
           aria-label="新用户的用户名" autoComplete="off" value={name}
-          onChange={(ev) => setName(ev.target.value)}
-          onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }} />
+          onChange={/** @param {*} [ev] */ (ev) => setName(ev.target.value)}
+          onKeyDown={/** @param {*} [ev] */ (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }} />
       </div>
       <div className="form-row">
         <label htmlFor="newUserPass">密码</label>
         <input id="newUserPass" type="password" placeholder="至少 4 位"
           aria-label="新用户的密码" autoComplete="new-password" value={pass}
-          onChange={(ev) => setPass(ev.target.value)}
-          onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }} />
+          onChange={/** @param {*} [ev] */ (ev) => setPass(ev.target.value)}
+          onKeyDown={/** @param {*} [ev] */ (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); submit(); } }} />
       </div>
       <div className="form-row">
         <label>角色</label>
         <Dropdown id="newUserRole" wrapId="newUserRoleDD" title="角色" ariaLabel="角色"
-          value={role} onChange={(v) => setRole(v)}
+          value={role} onChange={/** @param {*} [v] */ (v) => setRole(v)}
           options={[
             { value: 'user', label: '普通用户' },
             { value: 'readonly', label: '只读用户' },
@@ -243,48 +270,74 @@ function AddUserSheet({ busy, onClose, onCreate }) {
   );
 }
 
+/**
+ * @param {*} opts
+ */
 export function AccountPane({ onDirtyChange }) {
   const s = S();
   const admin = !!(s && s.isAdmin && s.isAdmin());
   // 只读账户：只能阅读；配置项全部由服务端拒绝，账号凭据由管理员掌握
   const readonly = !!(s && s.state && s.state.role === 'readonly');
+  /** @type {*} */
   const paneRef = useRef(null);
+  /** @type {*} */
   const [sheet, setSheet] = useState(null);   // {type:'device'|'user'|'addUser', id?}
 
   // 登录信息
+  /** @type {any} */
   const [username, setUsername] = useState('');
+  /** @type {any} */
   const [savedName, setSavedName] = useState('');
+  /** @type {any} */
   const [current, setCurrent] = useState('');
+  /** @type {any} */
   const [newPass, setNewPass] = useState('');
   // null = 只读摘要；'name' = 展开用户名；'pass' = 展开当前/新密码
+  /** @type {*} */
   const [editLogin, setEditLogin] = useState(null);
+  /** @type {any} */
   const [saving, setSaving] = useState(false);
   const [accResult, showAccResult, clearAccResult] = useResult();
 
   // 用户管理
+  /** @type {any} */
   const [users, setUsers] = useState([]);
+  /** @type {any} */
   const [usersLoaded, setUsersLoaded] = useState(false);
+  /** @type {any} */
   const [usersError, setUsersError] = useState('');
+  /** @type {any} */
   const [userBusy, setUserBusy] = useState('');   // '' | add | role | pass | del
   const [userResult, showUserResult] = useResult();
 
   // 登录设备（会话）：所有角色都能看自己的设备并逐台退出
+  /** @type {any} */
   const [devices, setDevices] = useState([]);
+  /** @type {any} */
   const [devicesLoaded, setDevicesLoaded] = useState(false);
+  /** @type {any} */
   const [devicesError, setDevicesError] = useState('');
+  /** @type {any} */
   const [revoking, setRevoking] = useState('');
   const [devResult, showDevResult] = useResult();
 
   // 数据导出：模型 Key 默认不打包，勾选才附带（导出的是明文，提示放在勾选项下）
+  /** @type {any} */
   const [inclLlm, setInclLlm] = useState(false);
 
   /* 下载走 <a> 由浏览器接管，前端拿不到「生成完成」事件（流式 tar.gz 不落内存）。
      这里只在生成窗口内把按钮置忙、防重复点击：服务端本来就会用
      E_BACKUP_IN_PROGRESS 拒绝第二份，与其让用户点完收到一条报错，不如先拦住。 */
+  /** @type {any} */
   const [exporting, setExporting] = useState(false);
+  /** @type {any} */
   const [backingUp, setBackingUp] = useState(false);
+  /** @type {any} */
   const downloadTimers = useRef([]);
   useEffect(() => () => { downloadTimers.current.forEach(clearTimeout); }, []);
+  /**
+   * @param {*} [setBusy]
+   */
   const busyDownload = (setBusy) => {
     setBusy(true);
     downloadTimers.current.push(setTimeout(() => setBusy(false), 5000));
@@ -293,9 +346,13 @@ export function AccountPane({ onDirtyChange }) {
   useEffect(() => { setExporting(false); }, [inclLlm]);
 
   // 数据导入 / 整站还原：结果提示常驻到下一次操作（条数比 toast 更值得细看）
+  /** @type {any} */
   const [importing, setImporting] = useState(false);
+  /** @type {*} */
   const [importMsg, setImportMsg] = useState(null);
+  /** @type {any} */
   const [restoring, setRestoring] = useState(false);
+  /** @type {*} */
   const [restoreMsg, setRestoreMsg] = useState(null);
 
   // 进入面板：回填登录信息（旧 loadAccountForm），管理员再拉一次用户列表
@@ -343,6 +400,9 @@ export function AccountPane({ onDirtyChange }) {
     }
   }
 
+  /**
+   * @param {*} [d]
+   */
   async function revokeDevice(d) {
     const ok = await s.confirm({
       title: '退出这台设备？',
@@ -368,7 +428,7 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   async function revokeOthers() {
-    const others = devices.filter((d) => !d.current).length;
+    const others = devices.filter(/** @param {*} [d] */ (d) => !d.current).length;
     if (!others) return;
     const ok = await s.confirm({
       title: `退出其它 ${others} 台设备？`,
@@ -397,6 +457,7 @@ export function AccountPane({ onDirtyChange }) {
     try {
       /* 只提交本次真的要改的字段：契约里 newPassword 带 min(4)、username 有格式要求，
          把空串原样发过去会在 zod 处 400（「只改用户名」/「只改密码」两种正常用法都走不通）。 */
+      /** @type {any} */
       const body = { currentPassword: current };
       if (username) body.username = username;
       if (newPass) body.newPassword = newPass;
@@ -445,6 +506,9 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   /* 删除用户：不可恢复，走危险确认 */
+  /**
+   * @param {*} [u]
+   */
   async function deleteUser(u) {
     const ok = await s.confirm({
       title: `删除用户「${u.username}」？`,
@@ -471,6 +535,10 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   /* 改角色：服务端立即生效，确认框里说明该角色能做什么；取消返回 false 让下拉回退 */
+  /**
+   * @param {*} [u]
+   * @param {*} [next]
+   */
   async function changeUserRole(u, next) {
     const ok = await s.confirm({
       title: `将「${u.username}」设为${ROLE_LABEL[next] || next}？`,
@@ -502,6 +570,10 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   /* 管理员重置他人密码：不再用浏览器 prompt，输入框就在详情层里 */
+  /**
+   * @param {*} [u]
+   * @param {*} [np]
+   */
   async function setUserPassword(u, np) {
     if (np.length < 4) return { ok: false, error: '密码至少 4 位' };
     setUserBusy('pass');
@@ -525,6 +597,11 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   /* 新增用户：成功即关层并重拉列表（服务端会分配 id） */
+  /**
+   * @param {*} [name]
+   * @param {*} [pass]
+   * @param {*} [role]
+   */
   async function createUser(name, pass, role) {
     setUserBusy('add');
     try {
@@ -575,6 +652,9 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   /* 账号导入：只做增量合并，已存在的频道与文章跳过（保留现状） */
+  /**
+   * @param {*} [ev]
+   */
   async function importArchive(ev) {
     const input = ev.target;
     const file = input.files && input.files[0];
@@ -614,6 +694,9 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   /* 整站还原：两次确认，成功后会话已被清空，直接回登录页 */
+  /**
+   * @param {*} [ev]
+   */
   async function restoreSite(ev) {
     const input = ev.target;
     const file = input.files && input.files[0];
@@ -649,16 +732,19 @@ export function AccountPane({ onDirtyChange }) {
   }
 
   const usersSub = users.length ? `共 ${users.length} 个` : '';
-  const otherDevices = devices.filter((d) => !d.current).length;
+  const otherDevices = devices.filter(/** @param {*} [d] */ (d) => !d.current).length;
   // 登录信息草稿；用户 / 设备的改动都在各自详情层里即时生效，不计入面板脏态
   const dirty = !readonly && (username !== savedName || current !== '' || newPass !== '');
   useEffect(() => {
     if (onDirtyChange) onDirtyChange(dirty);
   }, [dirty, onDirtyChange]);
 
-  const sheetDevice = sheet && sheet.type === 'device' ? devices.find((d) => d.id === sheet.id) : null;
-  const sheetUser = sheet && sheet.type === 'user' ? users.find((u) => u.id === sheet.id) : null;
+  const sheetDevice = sheet && sheet.type === 'device' ? devices.find(/** @param {*} [d] */ (d) => d.id === sheet.id) : null;
+  const sheetUser = sheet && sheet.type === 'user' ? users.find(/** @param {*} [u] */ (u) => u.id === sheet.id) : null;
 
+  /**
+   * @param {*} [d]
+   */
   const renderDeviceRow = (d) => (
     <div className={'sl-row' + (d.current ? ' is-current' : '')} key={d.id} data-session-id={d.id}
       role="button" tabIndex={0}
@@ -681,6 +767,9 @@ export function AccountPane({ onDirtyChange }) {
     </div>
   );
 
+  /**
+   * @param {*} [u]
+   */
   const renderUserRow = (u) => (
     <div className="sl-row" key={u.id} data-uid={u.id}
       role="button" tabIndex={0} aria-label={`${u.username}：查看账号详情`}
@@ -733,19 +822,19 @@ export function AccountPane({ onDirtyChange }) {
               <div className="form-row">
                 <label htmlFor="accUsername">用户名</label>
                 <input id="accUsername" type="text" spellCheck="false" value={username}
-                  onChange={(e) => setUsername(e.target.value)} />
+                  onChange={/** @param {*} [e] */ (e) => setUsername(e.target.value)} />
               </div>
               <div className="form-row">
                 <label htmlFor="accCurrent">当前密码 <span className="req">*</span></label>
                 <input id="accCurrent" type="password" placeholder="修改密码时需验证当前密码"
                   autoComplete="current-password" value={current}
-                  onChange={(e) => setCurrent(e.target.value)} />
+                  onChange={/** @param {*} [e] */ (e) => setCurrent(e.target.value)} />
               </div>
               <div className="form-row">
                 <label htmlFor="accNew">新密码</label>
                 <input id="accNew" type="password" placeholder="留空则不修改，至少 4 位"
                   autoComplete="new-password" value={newPass}
-                  onChange={(e) => setNewPass(e.target.value)} />
+                  onChange={/** @param {*} [e] */ (e) => setNewPass(e.target.value)} />
               </div>
               <div className="ro-actions">
                 <EditToggle editing closeText="收起" onClick={closeEditLogin} editText="修改密码" />
@@ -794,7 +883,7 @@ export function AccountPane({ onDirtyChange }) {
                 <span>连同模型 API Key 一起导出</span>
                 <span className="switch">
                   <input id="exportLlm" type="checkbox" checked={inclLlm}
-                    onChange={(e) => setInclLlm(e.target.checked)} />
+                    onChange={/** @param {*} [e] */ (e) => setInclLlm(e.target.checked)} />
                   <span className="switch-slider" />
                 </span>
               </label>
@@ -823,7 +912,7 @@ export function AccountPane({ onDirtyChange }) {
             <div className="dev-actions">
               <button className="btn btn-ghost btn-sm" id="importBtn" type="button" disabled={importing}
                 aria-busy={importing}
-                onClick={() => document.getElementById('importFile').click()}>
+                onClick={() => document.getElementById('importFile')?.click()}>
                 {importing ? '导入中…（文件大时需要一点时间）' : '选择导出包并导入'}
               </button>
               <input id="importFile" type="file" accept=".gz,application/gzip,application/x-gzip" hidden
@@ -899,7 +988,7 @@ export function AccountPane({ onDirtyChange }) {
             <div className="dev-actions">
               <button className="btn btn-danger btn-sm" id="restoreBtn" type="button" disabled={restoring}
                 aria-busy={restoring}
-                onClick={() => document.getElementById('restoreFile').click()}>
+                onClick={() => document.getElementById('restoreFile')?.click()}>
                 {restoring ? '还原中…（请勿关闭页面）' : '上传备份并还原'}
               </button>
               <input id="restoreFile" type="file" accept=".gz,application/gzip,application/x-gzip" hidden

@@ -32,13 +32,16 @@ setTimeout(bootThemeAndView, 300);
 /* 启动层收口：ready 只在首个视图真正渲染后调用；fail 让启动层原地给出错误与「重新加载」，
    而不是留一片白屏 + 一条很快消失的 toast。 */
 function bootReady() {
-  if (!window.__boot) return;
   /* 帧信号 + 定时兜底双通道：不可见页面不排帧（后台标签页里 rAF 永不触发），
      只等帧的话 12s 看门狗会把「用户还在别的标签页」误报成「加载超时」。
-     index.html 的 dismiss 自带 done 幂等，谁先到算谁。 */
+     index.html 的 dismiss 自带 done 幂等，谁先到算谁。
+     __boot 由 index.html 首屏同步注入（见 global.d.ts），此处无需再判空。 */
   requestAnimationFrame(() => window.__boot.ready());
   setTimeout(() => window.__boot.ready(), 300);
 }
+/**
+ * @param {*} [message]
+ */
 function bootFail(message) {
   if (window.__boot) window.__boot.fail(message);
 }
@@ -46,28 +49,33 @@ function bootFail(message) {
    文章列表又是在 apply 里才发起请求；启动层如果立刻退，会先看到空头部，再等列表补进来。
    这里等到「目标视图已显示 + 首屏数据请求结束 + 列表 DOM 出现」再淡出，
    失败态也放行，让用户在应用内看到错误提示而不是一直卡在启动层。 */
+/**
+ * @param {*} [tab]
+ */
 async function waitViewFirstPaint(tab) {
-  const viewId = { reader: 'readerView', cards: 'cardsView', ai: 'aiView' }[tab] || 'readerView';
+  /** @type {Record<string, string>} */
+  const VIEW_IDS = { reader: 'readerView', cards: 'cardsView', ai: 'aiView' };
+  const viewId = VIEW_IDS[tab || ''] || 'readerView';
   const t0 = Date.now();
   while (Date.now() - t0 < 12000) {
     const el = document.getElementById(viewId);
     if (el && !el.hidden) break;
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
   }
   if (tab === 'reader') {
-    while (state.rdLoading && Date.now() - t0 < 12000) await new Promise((r) => setTimeout(r, 50));
+    while (state.rdLoading && Date.now() - t0 < 12000) await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
     if (state.rdEntries.length && !state.rdReadError) {
       const t = Date.now();
       while (!document.querySelector('#readerList .art-item') && Date.now() - t < 3000) {
-        await new Promise((r) => setTimeout(r, 40));
+        await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 40));
       }
     }
   } else if (tab === 'cards') {
-    while (state.loading && Date.now() - t0 < 12000) await new Promise((r) => setTimeout(r, 50));
+    while (state.loading && Date.now() - t0 < 12000) await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
     if ((state.entries || []).length && !state.loadError) {
       const t = Date.now();
       while (!document.querySelector('#grid .card, #grid .row-item') && Date.now() - t < 3000) {
-        await new Promise((r) => setTimeout(r, 40));
+        await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 40));
       }
     }
   }
@@ -75,8 +83,8 @@ async function waitViewFirstPaint(tab) {
   // 后台标签页不排帧，只等帧会让整条启动链卡在这里（启动层于是被看门狗判成超时），
   // 所以给帧一个定时兜底：拿不到帧也放行。
   await Promise.race([
-    new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
-    new Promise((r) => setTimeout(r, 300)),
+    new Promise(/** @param {*} [r] */ (r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 300)),
   ]);
 }
 
@@ -84,7 +92,7 @@ async function waitViewFirstPaint(tab) {
   // 会话与频道列表互不依赖：并行发出，弱网下省掉一次串行往返。
   // allSettled 一次等齐两个请求，也避免先失败的一方留下未处理的 rejection。
   const [sessionRes, feedsRes] = await Promise.allSettled([
-    fetch('/api/session').then((res) => res.json()),
+    fetch('/api/session').then(/** @param {*} [res] */ (res) => res.json()),
     loadFeeds(),
   ]);
 
@@ -119,7 +127,7 @@ async function waitViewFirstPaint(tab) {
 
   // 分享链接 ?feed=<id> 可直接筛到某个频道（卡片页和阅读页都生效）
   const urlFeed = new URLSearchParams(location.search).get('feed');
-  if (urlFeed && (state.feedList || []).some((f) => String(f.id) === urlFeed && f.enabled)) {
+  if (urlFeed && (state.feedList || []).some(/** @param {*} [f] */ (f) => String(f.id) === urlFeed && f.enabled)) {
     state.feedFilter = Number(urlFeed);
     state.rdFeedId = Number(urlFeed);
   }
@@ -131,6 +139,7 @@ async function waitViewFirstPaint(tab) {
   // ⚠️ 先定目标视图再拉列表（v2.2.0）：以前无条件加载卡片列表，从文章页启动时
   //    白拉一整页用户看不到的卡片和图片请求。
   let tab = currentTab();
+  /** @type {any} */
   let deepArtId = null;
   if (location.hash.startsWith('#reader/art/')) {
     tab = 'reader';
@@ -170,6 +179,6 @@ async function waitViewFirstPaint(tab) {
     await waitViewFirstPaint('reader');
     await restoreReaderArt(deepArtId);
   }
-})().catch((err) => {
+})().catch(/** @param {*} [err] */ (err) => {
   bootFail('加载失败：' + (err && err.message ? err.message : '未知错误'));
 });

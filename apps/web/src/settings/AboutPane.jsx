@@ -12,12 +12,17 @@ const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块�
 const GH_REPO = 'https://github.com/chensnails/feedlore';
 
 export function AboutPane() {
+  /** @type {any} */
   const [version, setVersion] = useState('读取中…');
   // result: { kind: 'upd', latest, current, releaseUrl } | { kind: 'ok', current } | { kind: 'err', msg }
+  /** @type {*} */
   const [result, setResult] = useState(null);
   const isAdmin = S().isAdmin ? S().isAdmin() : false;
+  /** @type {any} */
   const [checking, setChecking] = useState(false);
+  /** @type {any} */
   const [updating, setUpdating] = useState(false);   // 一键更新：已触发，等 watchtower 拉镜像重启
+  /** @type {*} */
   const [updateEnabled, setUpdateEnabled] = useState(null); // 是否接入一键更新通道（镜像+watchtower）；null=未知
 
   // 进入「关于」页拉一次版本号（旧 loadAboutPage 的迁移）；

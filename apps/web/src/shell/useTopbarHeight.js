@@ -5,6 +5,9 @@
  * 避免把 --topbar-h 误写成 0 拖累其它可见视图。 */
 import { useEffect } from 'react';
 
+/**
+ * @param {*} [ref]
+ */
 export function useTopbarHeight(ref) {
   useEffect(() => {
     const el = ref.current;
@@ -22,6 +25,7 @@ export function useTopbarHeight(ref) {
     const onResize = () => apply();
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
+    /** @type {any} */
     let ro = null;
     if (window.ResizeObserver) { ro = new ResizeObserver(apply); ro.observe(el); }
     return () => {

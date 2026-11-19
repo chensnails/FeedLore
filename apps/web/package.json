@@ -12,6 +12,7 @@
     "test:ui": "node tests/ui/build.mjs && node tests/ui/ui-regression.cjs"
   },
   "dependencies": {
+    "@feedlore/contract": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

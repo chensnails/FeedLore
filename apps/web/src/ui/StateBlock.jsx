@@ -14,6 +14,7 @@ import { Icon } from './Icon.jsx';
  * @param {string} [p.icon]      sprite 图标名；传 spinner=true 时忽略
  * @param {boolean} [p.spinner]  渲染转圈而不是图标
  * @param {boolean} [p.alert]    失败态：补 role=alert 让读屏立刻播报
+ * @param {any} [p.children]     块内内容
  */
 export function StateBlock({ className = '', icon, spinner = false, alert = false, children }) {
   return (

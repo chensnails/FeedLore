@@ -57,24 +57,31 @@ export const ADMIN_TABS = ['status'];
 // 只读账户只保留「阅读体验 / 账号信息 / 关于」
 export const READONLY_TABS = ['account', 'appearance', 'about'];
 
-export const TAB_BY_NAME = SETTINGS_TABS.reduce((m, t) => {
+export const TAB_BY_NAME = SETTINGS_TABS.reduce(/** @param {*} [m] @param {*} [t] */ (m, t) => {
   m[t.name] = t;
   return m;
 }, {});
 
+/**
+ * @param {*} [admin]
+ * @param {*} [readonly]
+ */
 export function visibleTabs(admin, readonly) {
-  return SETTINGS_TABS.filter((t) => {
+  return SETTINGS_TABS.filter(/** @param {*} [t] */ (t) => {
     if (ADMIN_TABS.indexOf(t.name) >= 0 && !admin) return false;
     if (readonly && READONLY_TABS.indexOf(t.name) < 0) return false;
     return true;
   });
 }
 
-/** 搜索匹配 label / desc / keywords / 分组名；空查询返回全部。 */
+/** 搜索匹配 label / desc / keywords / 分组名；空查询返回全部。
+*@param {*} [tabs]
+ * @param {*} [query]
+*/
 export function matchTabs(tabs, query) {
   const q = String(query || '').trim().toLowerCase();
   if (!q) return tabs;
-  return tabs.filter((t) => (
+  return tabs.filter(/** @param {*} [t] */ (t) => (
     (t.label + ' ' + t.desc + ' ' + t.keywords + ' ' + t.group).toLowerCase().indexOf(q) >= 0
   ));
 }

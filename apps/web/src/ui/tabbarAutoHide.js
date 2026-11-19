@@ -29,16 +29,24 @@ const CLASS = 'tabbar-tucked';
 // 只认这三个滚动容器：抽屉 / 弹层 / 卡片详情里的滚动不该让底栏"消失"
 const SCROLLERS = '.reader-main, #cardsRoot > main.wrap, #aiView';
 
+/**
+ * @param {*} [doc]
+ * @param {*} [options]
+ */
 export function installTabbarAutoHide(doc = document, options = {}) {
   const win = doc.defaultView || window;
   const cooldown = typeof options.cooldown === 'number' ? options.cooldown : COOLDOWN;
 
+  /** @type {*} */
   let nav = null;        // 当前跟踪的滚动容器
   let lastTop = 0;
   let acc = 0;           // 带符号累计位移：正 = 向下，负 = 向上
   let tucked = false;
   let lastFlip = 0;
 
+  /**
+   * @param {*} [next]
+   */
   function apply(next) {
     if (next === tucked) return;
     tucked = next;
@@ -55,6 +63,9 @@ export function installTabbarAutoHide(doc = document, options = {}) {
     apply(false);
   }
 
+  /**
+   * @param {*} [ev]
+   */
   function onScroll(ev) {
     const target = ev.target;
     const el = target && target.nodeType === 9 ? doc.scrollingElement : target;

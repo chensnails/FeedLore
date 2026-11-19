@@ -9,7 +9,9 @@ import { apiFetch, httpError, toast, errText, emitShell, NET_TIMEOUT_MS } from '
 import { state, layoutPref, setLayout, lockPageScroll, unlockPageScroll, forgetViewScroll } from './state.js';
 import { emit, EVENT } from '../kernel/events.js';
 
-/** 按分组名把频道归类：未分组的排最前，其余按名称排序；组内保持原顺序 */
+/** 按分组名把频道归类：未分组的排最前，其余按名称排序；组内保持原顺序
+*@param {*} [feeds]
+*/
 export function groupFeeds(feeds) {
   const map = new Map();
   for (const f of feeds) {
@@ -19,13 +21,14 @@ export function groupFeeds(feeds) {
   }
   // 分组顺序：优先用显式保存的 groupOrder；不在其中的命名分组按出现顺序补到后面；
   // 「未分组」（空串）永远放最后，不参与拖拽排序。
+  /** @type {*} */
   const order = state.groupOrder || [];
   const seen = new Set();
   const names = [];
   for (const g of order) if (g && map.has(g) && !seen.has(g)) { names.push(g); seen.add(g); }
   for (const g of map.keys()) if (g && !seen.has(g)) { names.push(g); seen.add(g); }
   if (map.has('')) names.push('');
-  return names.map((name) => ({ name, feeds: map.get(name) }));
+  return names.map(/** @param {*} [name] */ (name) => ({ name, feeds: map.get(name) }));
 }
 
 /* ---------------- 视图模式（卡片 / 列表） ----------------
@@ -43,14 +46,16 @@ export function currentViewMode() {
  *  服务端会返回空列表（别退化成「不过滤」，那会看到别的分组的内容）。 */
 export function cardGroupFeedIds() {
   return (state.feedList || [])
-    .filter((f) => f.cardEnabled && String(f.groupName || '').trim() === state.cardGroup)
-    .map((f) => f.id);
+    .filter(/** @param {*} [f] */ (f) => f.cardEnabled && String(f.groupName || '').trim() === state.cardGroup)
+    .map(/** @param {*} [f] */ (f) => f.id);
 }
 
 /** 卡片页的检索范围写进查询参数。
  *  挂着标签筛选（手动 tag / AI aiTag）时是全库检索 —— 与文章页同一口径，
  *  只把「怎么展示」限定在卡片页，不再被频道 / 分组 / 卡片开关收窄；
- *  没挂标签时才是卡片页一贯的范围：分组 → 频道 → 卡片开关打开的频道。 */
+ *  没挂标签时才是卡片页一贯的范围：分组 → 频道 → 卡片开关打开的频道。
+ *@param {*} [params]
+*/
 export function applyCardScope(params) {
   if (state.tag || state.aiTag) { params.set('scope', 'all'); return; }
   if (state.cardGroup != null) params.set('feeds', cardGroupFeedIds().join(','));
@@ -60,18 +65,24 @@ export function applyCardScope(params) {
 
 /* 分组折叠状态：按账号持久化（users.prefs.layout.collapsedGroups），不再落浏览器 */
 export function loadCollapsedGroups() {
+  /** @type {*} */
   const arr = Array.isArray(layoutPref.collapsedGroups) ? layoutPref.collapsedGroups : [];
-  return new Set(arr.filter((g) => typeof g === 'string'));
+  return new Set(arr.filter(/** @param {*} [g] */ (g) => typeof g === 'string'));
 }
 
-/** 把模式写到 state / DOM / 按钮态；persist=true 时才写账号（手动切换才记） */
+/** 把模式写到 state / DOM / 按钮态；persist=true 时才写账号（手动切换才记）
+*@param {*} [mode]
+ * @param {*} [persist]
+*/
 export function applyViewMode(mode, persist) {
   state.view = VIEW_MODES.indexOf(mode) >= 0 ? mode : 'grid';
   if (persist) setLayout('view', state.view);
   render();   // 通知 CardsView 重绘（含 viewMode 按钮态）
 }
 
-/** 用户点击切换：切完立刻按新模式重绘 */
+/** 用户点击切换：切完立刻按新模式重绘
+*@param {*} [mode]
+*/
 export function setViewMode(mode) {
   if (mode === state.view) return;
   applyViewMode(mode, true);   // 内部已 render()
@@ -104,12 +115,12 @@ export async function loadFeeds() {
   if (data.flags) state.rdFlags = data.flags;
   // 之前筛选的频道被关掉卡片开关 / 删掉了，回落到全部（旧 renderFeedSelect 的兜底职责）
   if (state.feedFilter != null
-    && !(state.feedList || []).some((f) => String(f.id) === String(state.feedFilter) && f.cardEnabled)) {
+    && !(state.feedList || []).some(/** @param {*} [f] */ (f) => String(f.id) === String(state.feedFilter) && f.cardEnabled)) {
     state.feedFilter = null;
   }
   // 分组本身没了（改名 / 删频道 / 卡片开关全关）→ 回落到全部，别把一个空分组锁在标题上
   if (state.cardGroup != null
-    && !(state.feedList || []).some((f) => f.cardEnabled && String(f.groupName || '').trim() === state.cardGroup)) {
+    && !(state.feedList || []).some(/** @param {*} [f] */ (f) => f.cardEnabled && String(f.groupName || '').trim() === state.cardGroup)) {
     state.cardGroup = null;
   }
   render();
@@ -126,6 +137,7 @@ let pagePendingReset = false;
 /* 同一时刻只认最后一次列表请求：切换筛选、搜索连打、点「重试」都会发起新请求，
  * 旧的慢响应不能回来覆盖当前列表（弱网下旧响应常常比新响应晚到）。
  * controller 让「重试」能真正打断仍挂在半路的请求，而不是被 loading 闸门吞掉。 */
+/** @type {*} */
 let pageController = null;
 let pageGeneration = 0;
 
@@ -142,6 +154,9 @@ export function firstPageSize() {
   return narrow ? Math.min(state.pageSize, 20) : state.pageSize;
 }
 
+/**
+ * @param {*} [reset]
+ */
 export async function loadPage(reset = false) {
   // 错误空态里的「重试」：上一次可能还挂在半路，先让它失效、释放闸门再发新的。
   // 旧实现只往 pagePendingReset 排队，请求永不返回时就永远不会补跑 —— 按钮点了没反应。
@@ -211,7 +226,7 @@ export async function loadPage(reset = false) {
     if (reset) state.tags = data.tags || [];
 
     const list = data.entries || [];
-    const seen = new Set(state.entries.map((e) => e.id));
+    const seen = new Set(state.entries.map(/** @param {*} [e] */ (e) => e.id));
     for (const e of list) if (!seen.has(e.id)) state.entries.push(e);
 
     state.offset += list.length;
@@ -277,6 +292,9 @@ export function render() {
  */
 export let cardsDrawerLocked = false;   // 抽屉当前是否拿着页面滚动锁
 
+/**
+ * @param {*} [open]
+ */
 export function setCardsDrawer(open) {
   const on = !!open;
   if (on === document.body.classList.contains('cards-drawer-open')) return;

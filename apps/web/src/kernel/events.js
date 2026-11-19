@@ -26,13 +26,20 @@ export const EVENT = Object.freeze({
 
 const KNOWN = new Set(Object.values(EVENT));
 
+/**
+ * @param {*} [kind]
+ * @param {*} [name]
+ */
 function assertKnown(kind, name) {
   if (KNOWN.has(name)) return;
   // 不阻断：迁移期允许尚未登记的调用点先跑起来，但让拼写错误立刻可见。
   console.warn(`[kernel] ${kind} 使用了未登记的事件名 "${name}"，请在 kernel/events.js 的 EVENT 里声明`);
 }
 
-/** 派发事件。detail 为空时用 Event，有值时用 CustomEvent（读 ev.detail）。 */
+/** 派发事件。detail 为空时用 Event，有值时用 CustomEvent（读 ev.detail）。
+*@param {*} [name]
+ * @param {*} [detail]
+*/
 export function emit(name, detail) {
   assertKnown('emit', name);
   // 显式取 window 上的构造器：jsdom / iframe 等跨 realm 场景里，裸 Event 属于
@@ -44,15 +51,21 @@ export function emit(name, detail) {
   return ev;
 }
 
-/** 订阅事件，返回 unsubscribe。组件里 `useEffect(() => on(EVENT.X, fn), [])` 即可。 */
+/** 订阅事件，返回 unsubscribe。组件里 `useEffect(() => on(EVENT.X, fn), [])` 即可。
+*@param {*} [name]
+ * @param {*} [handler]
+*/
 export function on(name, handler) {
   assertKnown('on', name);
   window.addEventListener(name, handler);
   return () => window.removeEventListener(name, handler);
 }
 
-/** 一次订阅多个事件（ViewNav 同时关心视图切换与顶栏快照）。 */
+/** 一次订阅多个事件（ViewNav 同时关心视图切换与顶栏快照）。
+*@param {*} [names]
+ * @param {*} [handler]
+*/
 export function onAny(names, handler) {
-  const stops = names.map((n) => on(n, handler));
+  const stops = names.map(/** @param {*} [n] */ (n) => on(n, handler));
   return () => { for (const stop of stops) stop(); };
 }

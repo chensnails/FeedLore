@@ -5790,8 +5790,9 @@ const withEFP = (el, fn) => {
     if (/UI\.switchView|R\.loadReader|rdTag/.test(fb)) {
       throw new Error('卡片页标签筛选不该再回落到文章页');
     }
-    if (!/cardsTag: \(t\) => cardsTagFilter\(t, false\)/.test(idx)) throw new Error('cardsTag 未走统一筛选');
-    if (!/cardsAiTag: \(t\) => cardsTagFilter\(t, true\)/.test(idx)) throw new Error('cardsAiTag 未走统一筛选');
+    // V3.1 checkJs：回调参数前置了 @param JSDoc，允许注解夹在冒号与 (t) 之间
+    if (!/cardsTag: (?:\/\*[\s\S]*?\*\/\s*)?\(t\) => cardsTagFilter\(t, false\)/.test(idx)) throw new Error('cardsTag 未走统一筛选');
+    if (!/cardsAiTag: (?:\/\*[\s\S]*?\*\/\s*)?\(t\) => cardsTagFilter\(t, true\)/.test(idx)) throw new Error('cardsAiTag 未走统一筛选');
     const fd = fs.readFileSync(path.join(root, 'src', 'core', 'feeds.js'), 'utf8').replace(/\r\n/g, '\n');
     if (!/if \(state\.aiTag\) qs\.set\('aiTag', state\.aiTag\)/.test(fd)) throw new Error('loadPage 丢了 aiTag 参数');
     // 范围统一走 applyCardScope：挂标签 → scope=all（不受频道/分组/卡片开关收窄）
@@ -6639,7 +6640,8 @@ const withEFP = (el, fn) => {
     const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.jsx'), 'utf8');
     if (rv.indexOf('const ArtItem = memo(') < 0) throw new Error('ArtItem 未 memo');
     if (/onToggle=\{\(id\)/.test(rv) || /onFav=\{\(id\)/.test(rv)) throw new Error('条目回调仍是行内函数，memo 会失效');
-    if (rv.indexOf('useCallback((id)') < 0) throw new Error('回调未 useCallback 化');
+    // V3.1 checkJs：回调参数前置了 @param JSDoc，允许注解夹在 useCallback( 与 (id) 之间
+    if (!/useCallback\(\s*(?:\/\*[^]*?\*\/\s*)?\(id\)/.test(rv)) throw new Error('回调未 useCallback 化');
     const cv = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.jsx'), 'utf8');
     if (cv.indexOf('const Card = memo(') < 0 || cv.indexOf('const Row = memo(') < 0) throw new Error('卡片 / 行未 memo');
     if (/onOpen=\{\(x\)/.test(cv)) throw new Error('卡片回调仍是行内函数');

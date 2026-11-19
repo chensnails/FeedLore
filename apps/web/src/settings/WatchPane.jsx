@@ -24,29 +24,58 @@ const S = () => core;
 let uidSeq = 0;
 const newId = () => 'w' + Date.now().toString(36) + (++uidSeq).toString(36);
 
+/**
+ * @param {*} [body]
+ */
 const jsonPost = (body) => ({
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
 });
 
+/**
+ * @param {*} [text]
+ */
 const parseKeywords = (text) => String(text || '')
-  .split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  .split(/\r?\n/).map(/** @param {*} [x] */ (x) => x.trim()).filter(Boolean);
 
 const blankRule = () => ({
   id: newId(), name: '', keywords: '', act: 'watch', notify: false, on: true, scope: emptyScope(),
 });
 
+/**
+ * @param {*} [id]
+ */
 const blankFilter = (id) => ({
   id: id || newId(), on: true, act: 'block', field: 'title', kind: 'kw', pattern: '', scope: emptyScope(),
 });
 
+/**
+ * @param {*} [r]
+ */
 const ruleName = (r) => r.name || parseKeywords(r.keywords)[0] || '未命名规则';
+/**
+ * @param {*} [act]
+ */
 const actText = (act) => (act === 'block' ? '屏蔽' : '关注');
+/**
+ * @param {*} [act]
+ */
 const filterActText = (act) => (act === 'allow' ? '只收' : '丢弃');
-const fieldText = (field) => ({ title: '标题', desc: '摘要', content: '正文', all: '全部' }[field] || '标题');
+/**
+ * @param {*} [field]
+ */
+const FIELD_LABEL = /** @type {Record<string, string>} */ ({ title: '标题', desc: '摘要', content: '正文', all: '全部' });
+/** @param {*} field */
+const fieldText = (field) => FIELD_LABEL[field] || '标题';
+/**
+ * @param {*} [kind]
+ */
 const kindText = (kind) => (kind === 're' ? '正则' : '关键词');
 
+/**
+ * @param {*} [r]
+ */
 const ruleSummary = (r) => {
   const n = parseKeywords(r.keywords).length;
   return [
@@ -56,11 +85,17 @@ const ruleSummary = (r) => {
   ].concat(r.act === 'watch' && r.notify ? ['推送 Webhook'] : []).join(' · ');
 };
 
+/**
+ * @param {*} [f]
+ */
 const filterSummary = (f) => [filterActText(f.act), fieldText(f.field), kindText(f.kind), scopeSummary(f.scope)].join(' · ');
 
 /* 服务端数组 → 表单（keywords 摊成多行文本，便于直接编辑） */
+/**
+ * @param {*} [list]
+ */
 function fromServer(list) {
-  return (Array.isArray(list) ? list : []).map((r) => ({
+  return (Array.isArray(list) ? list : []).map(/** @param {*} [r] */ (r) => ({
     id: r.id,
     name: r.name || '',
     keywords: (r.keywords || []).join('\n'),
@@ -72,8 +107,11 @@ function fromServer(list) {
 }
 
 /* 表单 → 服务端（keywords 还原成数组；空行 / 重复由服务端再清一遍） */
+/**
+ * @param {*} [rules]
+ */
 function toServer(rules) {
-  return rules.map((r) => ({
+  return rules.map(/** @param {*} [r] */ (r) => ({
     id: r.id,
     name: r.name.trim(),
     keywords: parseKeywords(r.keywords),
@@ -84,22 +122,43 @@ function toServer(rules) {
   }));
 }
 
+/**
+ * @param {*} [list]
+ */
 const filtersFromServer = (list) => (Array.isArray(list) ? list : [])
-  .map((f) => Object.assign({}, f, { scope: normalizeScope(f.scope) }));
+  .map(/** @param {*} [f] */ (f) => Object.assign({}, f, { scope: normalizeScope(f.scope) }));
 
+/**
+ * @param {*} [a]
+ * @param {*} [b]
+ */
 const sameRule = (a, b) => a.name === b.name && a.keywords === b.keywords && a.act === b.act
   && a.notify === b.notify && a.on === b.on && JSON.stringify(a.scope) === JSON.stringify(b.scope);
 
+/**
+ * @param {*} [a]
+ * @param {*} [b]
+ */
 const sameFilter = (a, b) => a.on === b.on && a.act === b.act && a.field === b.field
   && a.kind === b.kind && a.pattern === b.pattern && JSON.stringify(a.scope) === JSON.stringify(b.scope);
 
+/**
+ * @param {*} [ev]
+ */
 const blurOnEnter = (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.currentTarget.blur(); } };
 
 /* ---------- 规则详情层 ---------- */
+/**
+ * @param {*} opts
+ */
 function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDelete }) {
   const s = S();
+  /** @type {any} */
   const [draft, setDraft] = useState(rule);
-  const patch = (p) => setDraft((d) => Object.assign({}, d, p));
+  /**
+   * @param {*} [p]
+   */
+  const patch = (p) => setDraft(/** @param {*} [d] */ (d) => Object.assign({}, d, p));
   const kws = parseKeywords(draft.keywords);
   const dirty = !sameRule(draft, rule);
   const invalid = kws.length === 0;
@@ -131,9 +190,9 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
     >
       <div className="form-row">
         <label htmlFor="ruleName">名称</label>
-        <input id="ruleName" type="text" maxLength="40" spellCheck="false" autoComplete="off"
+        <input id="ruleName" type="text" maxLength={40}
           placeholder="可留空，默认用第一个关键词"
-          value={draft.name} onChange={(ev) => patch({ name: ev.target.value })} {...NO_AUTOFILL_PROPS} />
+          value={draft.name} onChange={/** @param {*} [ev] */ (ev) => patch({ name: ev.target.value })} {...NO_AUTOFILL_PROPS} />
       </div>
 
       <div className="form-row">
@@ -159,9 +218,9 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
 
       <div className="form-row">
         <label htmlFor="ruleKeywords">关键词</label>
-        <textarea id="ruleKeywords" className="watch-rule-kw" rows="5" spellCheck="false"
+        <textarea id="ruleKeywords" className="watch-rule-kw" rows={5} spellCheck="false"
           placeholder={'一行一个，例如：\nOpenAI\nGPT-5'}
-          value={draft.keywords} onChange={(ev) => patch({ keywords: ev.target.value })} />
+          value={draft.keywords} onChange={/** @param {*} [ev] */ (ev) => patch({ keywords: ev.target.value })} />
         <small className="form-tip">
           标题、摘要或正文中出现即命中（不区分大小写）{kws.length ? ` · 当前 ${kws.length} 个` : ' · 至少填一个'}
         </small>
@@ -169,7 +228,7 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
 
       <div className="form-row">
         <label>适用范围</label>
-        <RuleScopePicker value={draft.scope} onChange={(scope) => patch({ scope })}
+        <RuleScopePicker value={draft.scope} onChange={/** @param {*} [scope] */ (scope) => patch({ scope })}
           feeds={feeds} groupOrder={groupOrder} />
         <small className="form-tip">勾分组会覆盖整组（含以后新加入的频道）；一个都不选时这条规则不生效。</small>
       </div>
@@ -182,7 +241,7 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
           </span>
           <span className="switch">
             <input type="checkbox" checked={draft.notify}
-              onChange={(ev) => patch({ notify: ev.target.checked })} />
+              onChange={/** @param {*} [ev] */ (ev) => patch({ notify: ev.target.checked })} />
             <span className="switch-slider" />
           </span>
         </label>
@@ -194,7 +253,7 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
         </span>
         <span className="switch">
           <input type="checkbox" checked={draft.on}
-            onChange={(ev) => patch({ on: ev.target.checked })} />
+            onChange={/** @param {*} [ev] */ (ev) => patch({ on: ev.target.checked })} />
           <span className="switch-slider" />
         </span>
       </label>
@@ -203,10 +262,17 @@ function RuleSheet({ rule, isNew, busy, feeds, groupOrder, onClose, onSave, onDe
 }
 
 /* ---------- 过滤规则详情层 ---------- */
+/**
+ * @param {*} opts
+ */
 function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, onDelete }) {
   const s = S();
+  /** @type {any} */
   const [draft, setDraft] = useState(filter);
-  const patch = (p) => setDraft((d) => Object.assign({}, d, p));
+  /**
+   * @param {*} [p]
+   */
+  const patch = (p) => setDraft(/** @param {*} [d] */ (d) => Object.assign({}, d, p));
   const dirty = !sameFilter(draft, filter);
   const invalid = !String(draft.pattern || '').trim();
 
@@ -237,7 +303,7 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
       <div className="form-row">
         <label>动作</label>
         <Dropdown id="filterAct" wrapId="filterActDD" title="动作" ariaLabel="动作"
-          value={draft.act} onChange={(v) => patch({ act: v })}
+          value={draft.act} onChange={/** @param {*} [v] */ (v) => patch({ act: v })}
           options={[
             { value: 'block', label: '丢弃（命中即不入库）' },
             { value: 'allow', label: '只收（只保留命中）' },
@@ -248,7 +314,7 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
       <div className="form-row">
         <label>匹配范围</label>
         <Dropdown id="filterField" wrapId="filterFieldDD" title="匹配范围" ariaLabel="匹配范围"
-          value={draft.field} onChange={(v) => patch({ field: v })}
+          value={draft.field} onChange={/** @param {*} [v] */ (v) => patch({ field: v })}
           options={[
             { value: 'title', label: '标题' },
             { value: 'desc', label: '摘要' },
@@ -260,7 +326,7 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
       <div className="form-row">
         <label>匹配方式</label>
         <Dropdown id="filterKind" wrapId="filterKindDD" title="匹配方式" ariaLabel="匹配方式"
-          value={draft.kind} onChange={(v) => patch({ kind: v })}
+          value={draft.kind} onChange={/** @param {*} [v] */ (v) => patch({ kind: v })}
           options={[{ value: 'kw', label: '关键词' }, { value: 're', label: '正则' }]} />
       </div>
 
@@ -268,7 +334,7 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
         <label htmlFor="filterPattern">匹配模式</label>
         <input id="filterPattern" className="filter-pattern" type="text"
           placeholder={draft.kind === 're' ? '如：v\d+\.\d+' : '关键词，不区分大小写'}
-          value={draft.pattern} onChange={(ev) => patch({ pattern: ev.target.value })}
+          value={draft.pattern} onChange={/** @param {*} [ev] */ (ev) => patch({ pattern: ev.target.value })}
           {...NO_AUTOFILL_PROPS} />
         <small className="form-tip">
           {draft.kind === 're' ? '非法正则在保存时会被忽略。' : '子串匹配，不区分大小写。'}
@@ -277,7 +343,7 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
 
       <div className="form-row">
         <label>适用范围</label>
-        <RuleScopePicker value={draft.scope} onChange={(scope) => patch({ scope })}
+        <RuleScopePicker value={draft.scope} onChange={/** @param {*} [scope] */ (scope) => patch({ scope })}
           feeds={feeds} groupOrder={groupOrder} />
         <small className="form-tip">一个都不选时这条规则不生效；勾分组会覆盖整组。</small>
       </div>
@@ -289,7 +355,7 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
         </span>
         <span className="switch">
           <input type="checkbox" checked={draft.on}
-            onChange={(ev) => patch({ on: ev.target.checked })} />
+            onChange={/** @param {*} [ev] */ (ev) => patch({ on: ev.target.checked })} />
           <span className="switch-slider" />
         </span>
       </label>
@@ -297,23 +363,40 @@ function FilterSheet({ filter, isNew, busy, feeds, groupOrder, onClose, onSave, 
   );
 }
 
+/**
+ * @param {*} opts
+ */
 export function WatchPane({ onDirtyChange }) {
   const s = S();
+  /** @type {any} */
   const [rules, setRules] = useState([]);
+  /** @type {any} */
   const [filters, setFilters] = useState([]);
+  /** @type {any} */
   const [webhook, setWebhook] = useState('');
+  /** @type {any} */
   const [savedWebhook, setSavedWebhook] = useState('');
+  /** @type {any} */
   const [expireDays, setExpireDays] = useState('90'); // 关注保留天数，0 = 永不
+  /** @type {any} */
   const [savedExpireDays, setSavedExpireDays] = useState('90');
+  /** @type {any} */
   const [loaded, setLoaded] = useState(false);
+  /** @type {any} */
   const [busy, setBusy] = useState('');               // rules | filters | webhook | expire | apply
+  /** @type {*} */
   const [result, setResult] = useState(null);         // { ok, msg } | null —— #watchResult
+  /** @type {any} */
   const [prefsError, setPrefsError] = useState('');   // /api/prefs 读取失败（面板级，编辑动作要禁用）
+  /** @type {*} */
   const [sheet, setSheet] = useState(null);           // { type: 'rule' | 'filter', value, isNew }
+  /** @type {*} */
   const paneRef = useRef(null);
 
   // 适用范围选择器要用的频道 / 分组清单
+  /** @type {any} */
   const [feedsList, setFeedsList] = useState([]);
+  /** @type {any} */
   const [groupOrder, setGroupOrder] = useState([]);
 
   /** 进入面板与「重试」共用一份回填。读取失败时不能把空数组显示成「还没有规则」：
@@ -372,6 +455,9 @@ export function WatchPane({ onDirtyChange }) {
     if (onDirtyChange) onDirtyChange(false);
   }, [onDirtyChange]);
 
+  /**
+   * @param {*} [body]
+   */
   const postPrefs = async (body) => {
     const res = await s.apiFetch('/api/prefs', jsonPost(body));
     const data = await res.json().catch(() => ({}));
@@ -381,6 +467,9 @@ export function WatchPane({ onDirtyChange }) {
 
   /* ---------- 关注 / 屏蔽规则 ---------- */
 
+  /**
+   * @param {*} [next]
+   */
   const commitRules = async (next) => {
     setBusy('rules');
     try {
@@ -395,28 +484,43 @@ export function WatchPane({ onDirtyChange }) {
     }
   };
 
+  /**
+   * @param {*} [prev]
+   * @param {*} [msg]
+   */
   const restoreRules = async (prev, msg) => {
     const out = await commitRules(prev);
     if (out.ok) s.toast(msg);
     else s.toast('撤销失败：' + out.error, false);
   };
 
+  /**
+   * @param {*} [r]
+   * @param {*} [isNew]
+   */
   const openRule = (r, isNew) => setSheet({ type: 'rule', value: isNew ? blankRule() : r, isNew });
 
+  /**
+   * @param {*} [draft]
+   */
   const saveRuleDraft = async (draft) => {
-    const exists = rules.some((r) => r.id === draft.id);
+    const exists = rules.some(/** @param {*} [r] */ (r) => r.id === draft.id);
+    /** @type {*} */
     const prev = rules;
-    const next = exists ? rules.map((r) => (r.id === draft.id ? draft : r)) : rules.concat([draft]);
+    const next = exists ? rules.map(/** @param {*} [r] */ (r) => (r.id === draft.id ? draft : r)) : rules.concat([draft]);
     const out = await commitRules(next);
     if (!out.ok) { s.toast('保存失败：' + out.error, false); return; }
     setSheet(null);
-    if (out.dropped > 0) { s.toast('关键词为空，这条规则没有保存', false); return; }
+    if ((out.dropped || 0) > 0) { s.toast('关键词为空，这条规则没有保存', false); return; }
     s.toast(exists ? '规则已保存，只对之后新抓取的文章生效' : '规则已添加，只对之后新抓取的文章生效', true, {
       actionText: '撤销', ms: 6000,
       action: () => restoreRules(prev, exists ? '已撤销修改' : '已撤销添加'),
     });
   };
 
+  /**
+   * @param {*} [r]
+   */
   const deleteRule = async (r) => {
     const okGo = await s.confirm({
       title: `删除规则「${ruleName(r)}」？`,
@@ -424,8 +528,9 @@ export function WatchPane({ onDirtyChange }) {
       confirmText: '删除', danger: true,
     });
     if (!okGo) return;
+    /** @type {*} */
     const prev = rules;
-    const out = await commitRules(rules.filter((x) => x.id !== r.id));
+    const out = await commitRules(rules.filter(/** @param {*} [x] */ (x) => x.id !== r.id));
     if (!out.ok) { s.toast('删除失败：' + out.error, false); return; }
     setSheet(null);
     s.toast('规则已删除', true, {
@@ -434,9 +539,14 @@ export function WatchPane({ onDirtyChange }) {
     });
   };
 
+  /**
+   * @param {*} [r]
+   * @param {*} [on]
+   */
   const toggleRule = async (r, on) => {
+    /** @type {*} */
     const prev = rules;
-    const out = await commitRules(rules.map((x) => (x.id === r.id ? Object.assign({}, x, { on }) : x)));
+    const out = await commitRules(rules.map(/** @param {*} [x] */ (x) => (x.id === r.id ? Object.assign({}, x, { on }) : x)));
     if (!out.ok) { s.toast('保存失败：' + out.error, false); return; }
     s.toast(`${ruleName(r)} 已${on ? '启用' : '停用'}`, true, {
       actionText: '撤销', ms: 6000,
@@ -469,6 +579,9 @@ export function WatchPane({ onDirtyChange }) {
 
   /* ---------- 入库前过滤 ---------- */
 
+  /**
+   * @param {*} [next]
+   */
   const commitFilters = async (next) => {
     setBusy('filters');
     try {
@@ -483,28 +596,43 @@ export function WatchPane({ onDirtyChange }) {
     }
   };
 
+  /**
+   * @param {*} [prev]
+   * @param {*} [msg]
+   */
   const restoreFilters = async (prev, msg) => {
     const out = await commitFilters(prev);
     if (out.ok) s.toast(msg);
     else s.toast('撤销失败：' + out.error, false);
   };
 
+  /**
+   * @param {*} [f]
+   * @param {*} [isNew]
+   */
   const openFilter = (f, isNew) => setSheet({ type: 'filter', value: isNew ? blankFilter() : f, isNew });
 
+  /**
+   * @param {*} [draft]
+   */
   const saveFilterDraft = async (draft) => {
-    const exists = filters.some((f) => f.id === draft.id);
+    const exists = filters.some(/** @param {*} [f] */ (f) => f.id === draft.id);
+    /** @type {*} */
     const prev = filters;
-    const next = exists ? filters.map((f) => (f.id === draft.id ? draft : f)) : filters.concat([draft]);
+    const next = exists ? filters.map(/** @param {*} [f] */ (f) => (f.id === draft.id ? draft : f)) : filters.concat([draft]);
     const out = await commitFilters(next);
     if (!out.ok) { s.toast('保存失败：' + out.error, false); return; }
     setSheet(null);
-    if (out.dropped > 0) { s.toast('匹配模式为空或非法，这条规则没有保存', false); return; }
+    if ((out.dropped || 0) > 0) { s.toast('匹配模式为空或非法，这条规则没有保存', false); return; }
     s.toast(exists ? '过滤规则已保存' : '过滤规则已添加，对之后新抓取的文章生效', true, {
       actionText: '撤销', ms: 6000,
       action: () => restoreFilters(prev, exists ? '已撤销修改' : '已撤销添加'),
     });
   };
 
+  /**
+   * @param {*} [f]
+   */
   const deleteFilter = async (f) => {
     const okGo = await s.confirm({
       title: `删除过滤规则「${f.pattern || '未命名'}」？`,
@@ -512,8 +640,9 @@ export function WatchPane({ onDirtyChange }) {
       confirmText: '删除', danger: true,
     });
     if (!okGo) return;
+    /** @type {*} */
     const prev = filters;
-    const out = await commitFilters(filters.filter((x) => x.id !== f.id));
+    const out = await commitFilters(filters.filter(/** @param {*} [x] */ (x) => x.id !== f.id));
     if (!out.ok) { s.toast('删除失败：' + out.error, false); return; }
     setSheet(null);
     s.toast('过滤规则已删除', true, {
@@ -522,9 +651,14 @@ export function WatchPane({ onDirtyChange }) {
     });
   };
 
+  /**
+   * @param {*} [f]
+   * @param {*} [on]
+   */
   const toggleFilter = async (f, on) => {
+    /** @type {*} */
     const prev = filters;
-    const out = await commitFilters(filters.map((x) => (x.id === f.id ? Object.assign({}, x, { on }) : x)));
+    const out = await commitFilters(filters.map(/** @param {*} [x] */ (x) => (x.id === f.id ? Object.assign({}, x, { on }) : x)));
     if (!out.ok) { s.toast('保存失败：' + out.error, false); return; }
     s.toast(`${f.pattern || '过滤规则'} 已${on ? '启用' : '停用'}`, true, {
       actionText: '撤销', ms: 6000,
@@ -564,6 +698,9 @@ export function WatchPane({ onDirtyChange }) {
     }
   };
 
+  /**
+   * @param {*} [raw]
+   */
   const normalizeDays = (raw) => {
     const n = String(raw).trim() === '' ? 90 : Number(raw);
     return Number.isFinite(n) ? Math.max(0, Math.min(3650, Math.round(n))) : 90;
@@ -602,6 +739,9 @@ export function WatchPane({ onDirtyChange }) {
 
   /* ---------- 渲染 ---------- */
 
+  /**
+   * @param {*} [r]
+   */
   const renderRuleRow = (r) => {
     const on = r.on !== false;
     const blocked = r.act === 'block';
@@ -609,7 +749,7 @@ export function WatchPane({ onDirtyChange }) {
       <div className={'sl-row' + (on ? '' : ' is-off')} key={r.id} data-rule-id={r.id}
         role="button" tabIndex={0} aria-label={`编辑规则「${ruleName(r)}」`}
         onClick={() => openRule(r, false)}
-        onKeyDown={(ev) => {
+        onKeyDown={/** @param {*} [ev] */ (ev) => {
           if (ev.target !== ev.currentTarget) return;
           if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openRule(r, false); }
         }}>
@@ -620,12 +760,12 @@ export function WatchPane({ onDirtyChange }) {
           <div className="sl-name">{ruleName(r)}</div>
           <div className="sl-sub">{ruleSummary(r)}</div>
         </div>
-        <span className="sl-side" onClick={(ev) => ev.stopPropagation()}>
+        <span className="sl-side" onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
           <span className={'sl-badge' + (blocked ? ' block' : '')}>{actText(r.act)}</span>
           <span className="switch">
             <input type="checkbox" data-rule-on={r.id} aria-label={`启用规则「${ruleName(r)}」`}
               checked={on} disabled={busy === 'rules'}
-              onChange={(ev) => toggleRule(r, ev.target.checked)} />
+              onChange={/** @param {*} [ev] */ (ev) => toggleRule(r, ev.target.checked)} />
             <span className="switch-slider" />
           </span>
         </span>
@@ -634,13 +774,16 @@ export function WatchPane({ onDirtyChange }) {
     );
   };
 
+  /**
+   * @param {*} [f]
+   */
   const renderFilterRow = (f) => {
     const on = f.on !== false;
     return (
       <div className={'sl-row' + (on ? '' : ' is-off')} key={f.id} data-fid={f.id}
         role="button" tabIndex={0} aria-label={`编辑过滤规则「${f.pattern || '未命名'}」`}
         onClick={() => openFilter(f, false)}
-        onKeyDown={(ev) => {
+        onKeyDown={/** @param {*} [ev] */ (ev) => {
           if (ev.target !== ev.currentTarget) return;
           if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openFilter(f, false); }
         }}>
@@ -651,12 +794,12 @@ export function WatchPane({ onDirtyChange }) {
           <div className="sl-name">{f.pattern || '未填写模式'}</div>
           <div className="sl-sub">{filterSummary(f)}</div>
         </div>
-        <span className="sl-side" onClick={(ev) => ev.stopPropagation()}>
+        <span className="sl-side" onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
           <span className={'sl-badge' + (f.act === 'allow' ? '' : ' block')}>{filterActText(f.act)}</span>
           <span className="switch">
             <input type="checkbox" data-filter-on={f.id} aria-label={`启用过滤规则「${f.pattern || '未命名'}」`}
               checked={on} disabled={busy === 'filters'}
-              onChange={(ev) => toggleFilter(f, ev.target.checked)} />
+              onChange={/** @param {*} [ev] */ (ev) => toggleFilter(f, ev.target.checked)} />
             <span className="switch-slider" />
           </span>
         </span>
@@ -714,7 +857,7 @@ export function WatchPane({ onDirtyChange }) {
             <label htmlFor="watchWebhook">Webhook 通知地址（可选）</label>
             <input id="watchWebhook" type="url" placeholder="https://…" spellCheck="false" autoComplete="off"
               value={webhook}
-              onChange={(ev) => setWebhook(ev.target.value)}
+              onChange={/** @param {*} [ev] */ (ev) => setWebhook(ev.target.value)}
               onBlur={commitWebhook}
               onKeyDown={blurOnEnter} />
             <small className="form-tip">
@@ -728,7 +871,7 @@ export function WatchPane({ onDirtyChange }) {
             <input id="watchExpireDays" type="number" inputMode="numeric" min="0" max="3650" step="1"
               style={{ width: '6.5em', flex: '0 0 auto' }}
               value={expireDays}
-              onChange={(ev) => setExpireDays(ev.target.value)}
+              onChange={/** @param {*} [ev] */ (ev) => setExpireDays(ev.target.value)}
               onBlur={commitExpire}
               onKeyDown={blurOnEnter} />
             <span className="muted">天后自动取消关注（0 表示永久保留，默认 90 天）</span>

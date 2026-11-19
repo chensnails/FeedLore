@@ -269,6 +269,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@feedlore/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
       react:
         specifier: ^19.0.0
         version: 19.3.1

@@ -20,17 +20,28 @@ const CLASS = 'is-scrolling';
 const IDLE = 160;          // 最后一次滚动后多久算「停下」
 const SCROLLERS = '.reader-main, #cardsRoot > main.wrap, #aiView, .pane-scroll, .feed-list';
 
+/**
+ * @param {*} [doc]
+ * @param {*} [options]
+ */
 export function installScrollBusy(doc = document, options = {}) {
   const idle = typeof options.idle === 'number' ? options.idle : IDLE;
+  /** @type {any} */
   let timer = 0;
   let on = false;
 
+  /**
+   * @param {*} [next]
+   */
   function set(next) {
     if (next === on) return;
     on = next;
     if (doc.body) doc.body.classList.toggle(CLASS, next);
   }
 
+  /**
+   * @param {*} [ev]
+   */
   function onScroll(ev) {
     const t = ev.target;
     const el = t && t.nodeType === 9 ? doc.scrollingElement : t;

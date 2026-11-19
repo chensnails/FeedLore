@@ -10,9 +10,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { isImgFailed, markImgFailed } from '../imgFail.js';
 
+/**
+ * @param {*} opts
+ */
 export function ChannelAvatar({ icon, name }) {
+  /** @type {any} */
   const [failed, setFailed] = useState(false);
+  /** @type {any} */
   const [visible, setVisible] = useState(false);
+  /** @type {*} */
   const ref = useRef(null);
 
   // 元素进入视口（或已在视口内）才置为可见 → 才开始请求图片
@@ -21,7 +27,7 @@ export function ChannelAvatar({ icon, name }) {
     const el = ref.current;
     if (!el) return undefined;
     if (typeof IntersectionObserver === 'undefined') { setVisible(true); return undefined; }
-    const io = new IntersectionObserver((entries) => {
+    const io = new IntersectionObserver(/** @param {*} [entries] */ (entries) => {
       for (const e of entries) {
         if (e.isIntersecting) { setVisible(true); io.disconnect(); }
       }

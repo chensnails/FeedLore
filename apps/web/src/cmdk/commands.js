@@ -8,12 +8,15 @@ import { visibleTabs } from '../settings/tabs.js';
  * switchView / applyTheme / openSettings / selectScope / jumpToFeed /
  * focusSearchBox / exportOpml / refresh / scrollTop / state / digestIsEnabled /
  * shortFeedName / feedTitle / THEME_MODES / THEME_META */
+/**
+ * @param {*} [S]
+ */
 export function buildCommands(S) {
   if (!S || typeof S.switchView !== 'function') return [];
   const readonly = !!(S.isReadonly && S.isReadonly());
   const admin = !!(S.isAdmin && S.isAdmin());
   const cmds = [];
-  [['reader', '文章'], ['cards', '卡片'], ['ai', '探索']].forEach((v) => {
+  [['reader', '文章'], ['cards', '卡片'], ['ai', '探索']].forEach(/** @param {*} [v] */ (v) => {
     // 探索是常驻页（问答不依赖日报开关），命令面板始终保留；日报开关只管日报那块。
     cmds.push({
       group: '视图', icon: v[0] === 'reader' ? 'inbox' : (v[0] === 'cards' ? 'grid' : 'sparkle'),
@@ -21,21 +24,21 @@ export function buildCommands(S) {
       run: () => S.switchView(v[0]),
     });
   });
-  S.THEME_MODES.forEach((m) => {
+  S.THEME_MODES.forEach(/** @param {*} [m] */ (m) => {
     const meta = (S.THEME_META && S.THEME_META[m]) ? S.THEME_META[m] : { label: m };
     cmds.push({
       group: '主题', icon: 'theme-auto', label: '主题：' + meta.label, hint: meta.label,
       keywords: 'theme dark light 主题 暖灰 暗黑 暗色 浅色 外观', run: () => S.applyTheme(m, true),
     });
   });
-  visibleTabs(admin, readonly).forEach((t) => {
+  visibleTabs(admin, readonly).forEach(/** @param {*} [t] */ (t) => {
     cmds.push({
       group: '设置', icon: t.icon, label: '打开设置 · ' + t.label, hint: t.label,
       keywords: 'settings ' + t.label + ' ' + t.desc + ' ' + t.keywords,
       run: () => S.openSettings(t.name),
     });
   });
-  [['all', '全部文章'], ['unread', '未读'], ['favorite', '收藏']].forEach((s) => {
+  [['all', '全部文章'], ['unread', '未读'], ['favorite', '收藏']].forEach(/** @param {*} [s] */ (s) => {
     cmds.push({
       group: '阅读范围', icon: s[0] === 'favorite' ? 'star' : (s[0] === 'unread' ? 'dot' : 'circle'),
       label: '阅读范围：' + s[1], hint: s[1], keywords: 'scope ' + s[1] + ' 未读 收藏',
@@ -48,22 +51,26 @@ export function buildCommands(S) {
   cmds.push({ group: '操作', icon: 'search', label: '聚焦搜索', hint: '/', keywords: 'search 搜索 查找', run: () => S.focusSearchBox() });
   cmds.push({ group: '操作', icon: 'arrow-up', label: '回到顶部', hint: 'Top', keywords: 'top 顶部', run: () => S.scrollTop() });
   cmds.push({ group: '操作', icon: 'download', label: '导出 OPML', hint: '备份', keywords: 'opml export 导出 备份 订阅源 频道', run: () => S.exportOpml() });
-  ((S.state && S.state.feedList) || []).forEach((f) => {
+  ((S.state && S.state.feedList) || []).forEach(/** @param {*} [f] */ (f) => {
     cmds.push({
       group: '跳转到频道', icon: 'circle', label: S.shortFeedName(S.feedTitle(f)), hint: '频道',
       keywords: 'feed channel ' + (f.title || '') + ' ' + (f.groupName || ''), run: () => S.jumpToFeed(f.id),
     });
   });
   // 预计算每个命令的拼音（全拼 + 首字母），供命令面板按拼音过滤
-  cmds.forEach((c) => { c.py = cjkPinyin((c.label || '') + ' ' + (c.keywords || '') + ' ' + (c.hint || '')); });
+  cmds.forEach(/** @param {*} [c] */ (c) => { c.py = cjkPinyin((c.label || '') + ' ' + (c.keywords || '') + ' ' + (c.hint || '')); });
   return cmds;
 }
 
 /* 过滤：子序列匹配 + 拼音（全拼 / 首字母）。与旧实现一致。 */
+/**
+ * @param {*} [commands]
+ * @param {*} [q]
+ */
 export function cmdkFilter(commands, q) {
   q = (q || '').trim().toLowerCase();
   if (!q) return commands;
-  return commands.filter((c) => {
+  return commands.filter(/** @param {*} [c] */ (c) => {
     const hay = (c.label + ' ' + (c.keywords || '') + ' ' + (c.hint || '') + ' ' + (c.py || '')).toLowerCase();
     if (hay.indexOf(q) >= 0) return true;
     let i = 0;

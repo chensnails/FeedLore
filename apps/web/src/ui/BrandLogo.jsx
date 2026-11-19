@@ -1,5 +1,8 @@
 /* 品牌 logo（笺川）：放在底部频道栏顶部。
  * 颜色走 --accent / --logo-fg 令牌，三主题自适应；尺寸由 .brand-logo / .side-brand 控制。 */
+/**
+ * @param {*} opts
+ */
 export function BrandLogo({ className = '' }) {
   return (
     <svg className={'brand-logo' + (className ? ' ' + className : '')} viewBox="0 0 64 64" role="img" aria-label="笺川">

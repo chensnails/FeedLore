@@ -31,12 +31,15 @@ import { registerLayer } from '../ui/overlayStack.js';
 
 const S = () => core;
 
-/** 把 Tab / Shift+Tab 圈在弹窗内：背景卡片仍在 DOM 里，不拦的话键盘会跑到弹层后面 */
+/** 把 Tab / Shift+Tab 圈在弹窗内：背景卡片仍在 DOM 里，不拦的话键盘会跑到弹层后面
+*@param {*} [panel]
+ * @param {*} [ev]
+*/
 function trapTab(panel, ev) {
   if (!panel) return;
   const nodes = Array.from(panel.querySelectorAll(
     'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
-  )).filter((el) => el.offsetParent !== null || el === document.activeElement);
+  )).filter(/** @param {*} [el] */ (el) => el.offsetParent !== null || el === document.activeElement);
   if (!nodes.length) return;
   const first = nodes[0];
   const last = nodes[nodes.length - 1];
@@ -44,7 +47,9 @@ function trapTab(panel, ev) {
   else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
 }
 
-/** 有没有正文可展示：图文块、正文文本、正文图片三者有其一即可 */
+/** 有没有正文可展示：图文块、正文文本、正文图片三者有其一即可
+*@param {*} [f]
+*/
 function hasBody(f) {
   if (!f) return false;
   if (f.bodyJson) {
@@ -58,17 +63,27 @@ function hasBody(f) {
   return Array.isArray(f.images) && f.images.length > 0;
 }
 
+/**
+ * @param {*} opts
+ */
 export function CardDetail({ e, onClose, onTag, onAiTag }) {
   const s = S();
+  /** @type {*} */
   const [full, setFull] = useState(null);
+  /** @type {any} */
   const [err, setErr] = useState(false);
   // 正文重试计数：+1 就重跑拉取 effect，其余（锁滚动 / 记已读 / 焦点）不重复执行
+  /** @type {any} */
   const [reloadKey, setReloadKey] = useState(0);
   // 打开瞬间定格形态（与 Dropdown 同一约定），避免开合途中换布局
+  /** @type {any} */
   const [mobile] = useState(isMobileMq());
+  /** @type {*} */
   const closeRef = useRef(null);
+  /** @type {*} */
   const dialogRef = useRef(null);
   // CardsView 每次重绘都会传新的 onClose；存进 ref，避免它进入 effect 依赖导致重复拉正文 / 重复锁滚动
+  /** @type {any} */
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -76,6 +91,9 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
     const c = S();
     if (c.cardsDetailRead) c.cardsDetailRead(e.id);
     if (c.lockPageScroll) c.lockPageScroll();
+    /**
+     * @param {*} [ev]
+     */
     const onKey = (ev) => {
       if (ev.key === 'Escape') {
         /* 分层：详情上面还压着设置弹层 / 确认框 / 命令面板 / 灯箱时，这一击归它们。
@@ -100,11 +118,11 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
     setErr(false);
     setFull(null);
     S().apiFetch('/api/entries/' + encodeURIComponent(e.id))
-      .then((res) => {
+      .then(/** @param {*} [res] */ (res) => {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json();
       })
-      .then((d) => { if (!dead) setFull(d); })
+      .then(/** @param {*} [d] */ (d) => { if (!dead) setFull(d); })
       .catch(() => { if (!dead) setErr(true); });
     return () => { dead = true; };
   }, [e.id, reloadKey]);
@@ -112,7 +130,7 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
   const fav = !!e.isFavorite;
   const toggleFav = () => {
     const next = !fav;
-    s.cardsSetFlag(e.id, { isFavorite: next }).then((ok) => {
+    s.cardsSetFlag(e.id, { isFavorite: next }).then(/** @param {*} [ok] */ (ok) => {
       if (ok) s.toast(next ? '已收藏' : '已取消收藏');
     });
   };
@@ -150,6 +168,7 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
 
   // 下滑关闭已下线（v2.5.3）：真机收起时会整屏闪白，退出只留 × / Esc / 系统返回键。
   const dismiss = useCallback(() => onCloseRef.current(), []);
+  /** @type {*} */
   const sheetRef = useRef(null);
 
   // 系统返回键 / 手势返回也走同一个出口：打开即入栈，关闭（任意路径）时由清理函数销账。
@@ -157,12 +176,13 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
 
   const dialogLabel = e.name || '条目详情';
 
+  /** @type {any} */
   let inner = null;
   if (err) {
     inner = (
       <div className="hint">
         正文加载失败
-        <button type="button" className="btn btn-sm" onClick={() => setReloadKey((k) => k + 1)}>重试</button>
+        <button type="button" className="btn btn-sm" onClick={() => setReloadKey(/** @param {*} [k] */ (k) => k + 1)}>重试</button>
       </div>
     );
   }
@@ -186,7 +206,7 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
     return (
       <div className="dd-mask" onClick={onClose}>
         <div ref={sheetRef} className="dd-sheet cd-modal" role="dialog" aria-modal="true"
-          aria-label={dialogLabel} onClick={(ev) => ev.stopPropagation()}>
+          aria-label={dialogLabel} onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
           {closeBtn}
           <div className="dd-sheet-body cd-body">
             {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
@@ -199,7 +219,7 @@ export function CardDetail({ e, onClose, onTag, onAiTag }) {
   }
 
   return (
-    <div className="modal-mask" onClick={(ev) => { if (ev.target === ev.currentTarget) onClose(); }}>
+    <div className="modal-mask" onClick={/** @param {*} [ev] */ (ev) => { if (ev.target === ev.currentTarget) onClose(); }}>
       <div className="modal cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel} ref={dialogRef}>
         {closeBtn}
         <div className="modal-body">

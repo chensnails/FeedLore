@@ -23,6 +23,7 @@ export function ViewNav() {
      在设置里关掉日报后，导航仍留着「日报」入口，点它被 switchView 的守卫改回
      文章页，表现成「按钮点了没反应」。readShell() 每次都返回新对象，setSnap
      因此必然触发一次渲染（与 OverflowMenu 的写法一致）。 */
+  /** @type {any} */
   const [snap, setSnap] = useState(readShell);
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export function ViewNav() {
 
   return (
     <nav className="viewnav" role="navigation" aria-label="视图切换">
-      {views.map((v) => {
+      {views.map(/** @param {*} [v] */ (v) => {
         const active = view === v.id;
         return (
           <button

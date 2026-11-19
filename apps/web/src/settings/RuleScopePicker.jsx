@@ -18,23 +18,32 @@ import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 export const emptyScope = () => ({ all: false, groups: [], feeds: [] });
 export const allScope = () => ({ all: true, groups: [], feeds: [] });
 
+/**
+ * @param {*} [raw]
+ */
 export function normalizeScope(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return allScope();
   if (raw.all === true) return allScope();
   return {
     all: false,
-    groups: Array.isArray(raw.groups) ? raw.groups.filter((g) => typeof g === 'string') : [],
+    groups: Array.isArray(raw.groups) ? raw.groups.filter(/** @param {*} [g] */ (g) => typeof g === 'string') : [],
     feeds: Array.isArray(raw.feeds)
-      ? raw.feeds.map(Number).filter((n) => Number.isInteger(n) && n > 0)
+      ? raw.feeds.map(Number).filter(/** @param {*} [n] */ (n) => Number.isInteger(n) && n > 0)
       : [],
   };
 }
 
+/**
+ * @param {*} [scope]
+ */
 export function scopeIsEmpty(scope) {
   const s = normalizeScope(scope);
   return !s.all && !s.groups.length && !s.feeds.length;
 }
 
+/**
+ * @param {*} [scope]
+ */
 export function scopeSummary(scope) {
   const s = normalizeScope(scope);
   if (s.all) return '全部频道';
@@ -44,20 +53,35 @@ export function scopeSummary(scope) {
   return parts.length ? parts.join(' · ') : '未选择（不生效）';
 }
 
+/**
+ * @param {*} [f]
+ */
 const feedName = (f) => f.customTitle || f.title || f.url || '未命名频道';
 
+/**
+ * @param {*} opts
+ */
 export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], compact = false }) {
   const scope = normalizeScope(value);
   const searchName = useNoAutofillName('scope-q');
+  /** @type {any} */
   const [open, setOpen] = useState(false);
+  /** @type {any} */
   const [q, setQ] = useState('');
+  /** @type {any} */
   const [expanded, setExpanded] = useState(() => new Set());
+  /** @type {any} */
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  /** @type {*} */
   const wrapRef = useRef(null);
+  /** @type {*} */
   const popRef = useRef(null);
+  /** @type {*} */
   const triggerRef = useRef(null);
+  /** @type {*} */
   const inputRef = useRef(null);
 
+  /** @type {*} */
   const groups = useMemo(() => {
     const map = new Map();
     for (const f of feeds) {
@@ -66,6 +90,7 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
       if (list) list.push(f);
       else map.set(name, [f]);
     }
+    /** @type {*} */
     const names = [];
     for (const n of groupOrder) {
       if (map.has(n) && !names.includes(n)) names.push(n);
@@ -73,16 +98,16 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
     for (const n of map.keys()) {
       if (!names.includes(n)) names.push(n);
     }
-    return names.map((name) => ({ name, feeds: map.get(name) }));
+    return names.map(/** @param {*} [name] */ (name) => ({ name, feeds: map.get(name) }));
   }, [feeds, groupOrder]);
 
   const query = q.trim().toLowerCase();
-  const visibleGroups = groups.map((g) => {
+  const visibleGroups = groups.map(/** @param {*} [g] */ (g) => {
     const label = g.name || '未分组';
     if (!query) return { ...g, feeds: g.feeds, nameHit: false };
     const nameHit = label.toLowerCase().includes(query);
-    const hitFeeds = g.feeds.filter((f) => [feedName(f), f.url, label]
-      .some((t) => String(t || '').toLowerCase().includes(query)));
+    const hitFeeds = g.feeds.filter(/** @param {*} [f] */ (f) => [feedName(f), f.url, label]
+      .some(/** @param {*} [t] */ (t) => String(t || '').toLowerCase().includes(query)));
     if (!nameHit && !hitFeeds.length) return null;
     return { ...g, feeds: nameHit ? g.feeds : hitFeeds, nameHit };
   }).filter(Boolean);
@@ -92,7 +117,7 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
     if (!open) { setQ(''); return; }
     const next = new Set();
     for (const g of groups) {
-      if (scope.feeds.some((id) => g.feeds.some((f) => Number(f.id) === Number(id)))) next.add(g.name);
+      if (scope.feeds.some(/** @param {*} [id] */ (id) => g.feeds.some(/** @param {*} [f] */ (f) => Number(f.id) === Number(id)))) next.add(g.name);
     }
     setExpanded(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -135,6 +160,9 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
 
   useEffect(() => {
     if (!open) return undefined;
+    /**
+     * @param {*} [ev]
+     */
     const onDown = (ev) => {
       if (wrapRef.current && wrapRef.current.contains(ev.target)) return;
       if (popRef.current && popRef.current.contains(ev.target)) return;
@@ -150,29 +178,45 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
     return () => clearTimeout(t);
   }, [open]);
 
+  /**
+   * @param {*} [groupsNext]
+   * @param {*} [feedsNext]
+   */
   const commit = (groupsNext, feedsNext) => onChange({ all: false, groups: groupsNext, feeds: feedsNext });
 
+  /**
+   * @param {*} [on]
+   */
   const toggleAll = (on) => {
     onChange(on ? allScope() : emptyScope());
     if (!on) setExpanded(new Set());
   };
 
+  /**
+   * @param {*} [name]
+   */
   const toggleGroup = (name) => {
     const groupsNext = scope.groups.includes(name)
-      ? scope.groups.filter((g) => g !== name)
+      ? scope.groups.filter(/** @param {*} [g] */ (g) => g !== name)
       : scope.groups.concat([name]);
     commit(groupsNext, scope.feeds);
   };
 
+  /**
+   * @param {*} [id]
+   */
   const toggleFeed = (id) => {
     const feedsNext = scope.feeds.includes(id)
-      ? scope.feeds.filter((n) => n !== id)
+      ? scope.feeds.filter(/** @param {*} [n] */ (n) => n !== id)
       : scope.feeds.concat([id]);
     commit(scope.groups, feedsNext);
   };
 
+  /**
+   * @param {*} [name]
+   */
   const toggleExpand = (name) => {
-    setExpanded((old) => {
+    setExpanded(/** @param {*} [old] */ (old) => {
       const next = new Set(old);
       if (next.has(name)) next.delete(name);
       else next.add(name);
@@ -191,7 +235,7 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
       aria-haspopup="dialog"
       aria-expanded={open ? 'true' : 'false'}
       title={empty ? '未选择适用范围，这条规则不会生效' : `适用范围：${summary}`}
-      onClick={() => setOpen((v) => !v)}
+      onClick={() => setOpen(/** @param {*} [v] */ (v) => !v)}
     >
       <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-filter" /></svg>
       {compact ? null : <span className="rule-scope-btn-label">适用范围</span>}
@@ -206,8 +250,8 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
       className={'rule-scope-pop' + (compact ? ' compact' : '')}
       role="dialog"
       aria-label="选择适用范围"
-      style={{ '--scope-x': pos.x + 'px', '--scope-y': pos.y + 'px' }}
-      onKeyDown={(ev) => {
+      style={/** @type {any} */ ({ '--scope-x': pos.x + 'px', '--scope-y': pos.y + 'px' })}
+      onKeyDown={/** @param {*} [ev] */ (ev) => {
         if (ev.key !== 'Escape') return;
         ev.stopPropagation();
         setOpen(false);
@@ -222,19 +266,19 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
           value={q}
           placeholder="搜索分组 / 频道"
           aria-label="搜索分组或频道"
-          onChange={(ev) => setQ(ev.target.value)}
+          onChange={/** @param {*} [ev] */ (ev) => setQ(ev.target.value)}
           {...NO_AUTOFILL_PROPS}
         />
       </div>
 
       <div className="rule-scope-list">
         <label className="rule-scope-all">
-          <input type="checkbox" checked={scope.all} onChange={(ev) => toggleAll(ev.target.checked)} />
+          <input type="checkbox" checked={scope.all} onChange={/** @param {*} [ev] */ (ev) => toggleAll(ev.target.checked)} />
           <span className="rule-scope-name">全部频道</span>
           <span className="rule-scope-hint">含以后新增的频道</span>
         </label>
 
-        {!scope.all && visibleGroups.map((g) => {
+        {!scope.all && visibleGroups.map(/** @param {*} [g] */ (g) => {
           const groupOn = scope.groups.includes(g.name);
           const isOpen = !!query || expanded.has(g.name);
           return (
@@ -259,7 +303,7 @@ export function RuleScopePicker({ value, onChange, feeds = [], groupOrder = [], 
               </div>
               {isOpen ? (
                 <div className="rule-scope-feeds">
-                  {g.feeds.map((f) => {
+                  {g.feeds.map(/** @param {*} [f] */ (f) => {
                     const id = Number(f.id);
                     const on = groupOn || scope.feeds.includes(id);
                     return (

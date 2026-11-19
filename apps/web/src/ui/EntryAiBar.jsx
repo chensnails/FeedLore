@@ -24,6 +24,9 @@ const AI_ACTIONS = [
   { k: 'explain', label: '解释' },
 ];
 
+/**
+ * @param {*} opts
+ */
 export function EntryAiBar({ entryId }) {
   const s = S();
   // 只读账户不提供 AI 写能力（后端也会拦 write 权限）；没有 id 无从定位条目
@@ -32,8 +35,13 @@ export function EntryAiBar({ entryId }) {
   /* 忙碌态按动作区分：只有一个正在跑，其余按钮只置灰、不变「…」也不转圈。
    * 共用一枚 boolean 时点「摘要」会让四个兄弟按钮同时变「… ⟳」，看起来像四个任务都在跑
    * （用户明确反馈过这一点）。并发仍要挡：AI_ACTIONS 共用一块结果区，两个请求同时回来会互相覆盖。 */
+  /** @type {*} */
   const [busyKey, setBusyKey] = useState(null);
+  /** @type {*} */
   const busyRef = useRef(null);
+  /**
+   * @param {*} [k]
+   */
   const begin = (k) => {
     if (busyRef.current) return false;
     busyRef.current = k;
@@ -45,6 +53,7 @@ export function EntryAiBar({ entryId }) {
 
   /* 已等待秒数：单篇生成实测可能跑 1~2 分钟（长文 + 慢上游），只显示一个「…」
    * 用户会以为卡死并重复点击。超过 3 秒才亮出来，避免快请求闪一下。 */
+  /** @type {any} */
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (!anyBusy) {
@@ -59,31 +68,44 @@ export function EntryAiBar({ entryId }) {
   /* 任务阶段：'' | 'queued'（已提交、排队中）| 'running'（模型在跑）。
    * 长任务改成「提交 → 轮询」后，请求本身是毫秒级的，界面上的等待感来自任务状态，
    * 而不是一个挂 90 秒的 POST。 */
+  /** @type {any} */
   const [phase, setPhase] = useState('');
 
+  /** @type {*} */
   const [result, setResult] = useState(null);
+  /** @type {*} */
   const [error, setError] = useState(null);
+  /** @type {any} */
   const [open, setOpen] = useState(false);
+  /** @type {*} */
   const [tagResult, setTagResult] = useState(null);
+  /** @type {*} */
   const [tagError, setTagError] = useState(null);
 
   /* 组件卸载（收起文章 / 切走）后不再轮询：任务在服务端照常跑完，
    * 结果仍会写进「模型状态」列表，只是这个组件不再更新。 */
+  /** @type {any} */
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
 
   if (!writable || id == null) return null;
 
-  /** 提交并轮询一个任务；成功返回 job，失败抛出已翻译的错误。 */
+  /** 提交并轮询一个任务；成功返回 job，失败抛出已翻译的错误。
+  *@param {*} [body]
+ * @param {*} [onPhase]
+*/
   async function runJob(body, onPhase) {
     const job = await s.submitAiJob(body);
     if (aliveRef.current) onPhase(job.status || 'queued');
     return s.pollAiJob(job.id, {
-      onStatus: (j) => { if (aliveRef.current) onPhase(j.status); },
+      onStatus: /** @param {*} [j] */ (j) => { if (aliveRef.current) onPhase(j.status); },
       isCancelled: () => !aliveRef.current,
     });
   }
 
+  /**
+   * @param {*} [k]
+   */
   async function run(k) {
     if (busyRef.current) return;
     if (!s || typeof s.submitAiJob !== 'function') {
@@ -141,7 +163,7 @@ export function EntryAiBar({ entryId }) {
     <div className="entry-ai">
       <div className="entry-ai-actions">
         <span className="entry-ai-label" aria-hidden="true">AI</span>
-        {AI_ACTIONS.map((a) => (
+        {AI_ACTIONS.map(/** @param {*} [a] */ (a) => (
           <button key={a.k} type="button" className="btn btn-ghost btn-sm"
             disabled={anyBusy} aria-busy={busyKey === a.k ? 'true' : undefined}
             aria-label={'AI' + a.label}
@@ -184,7 +206,7 @@ export function EntryAiBar({ entryId }) {
         <div className="entry-ai-tags" role="region" aria-live="polite">
           <span className="entry-ai-tags-label">AI 标签</span>
           {tagResult.length ? (
-            tagResult.map((t) => (
+            tagResult.map(/** @param {*} [t] */ (t) => (
               <span key={t} className="mini-tag mini-tag-ai">#{t}</span>
             ))
           ) : (

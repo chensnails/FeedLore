@@ -18,12 +18,14 @@ export const IMG_FAIL_MAX = 500;
 const PROXY_PREFIX = '/api/img?';
 const failed = new Map();   // key -> 过期时间戳（Map 插入序用于淘汰最旧的一条）
 
-/** 归一化图片地址：去掉 srcset 宽度、重试标记与 hash；空值返回 ''。 */
+/** 归一化图片地址：去掉 srcset 宽度、重试标记与 hash；空值返回 ''。
+*@param {*} [src]
+*/
 export function imgFailKey(src) {
   const raw = String(src || '');
   // data URI 本身就是完整图片（可能是几十 KB 的 base64），不该塞进内存表
   if (!raw || /^data:/i.test(raw)) return '';
-  const cut = raw.split('#')[0];
+  const cut = raw.split('#')[0] || '';
   if (!cut.startsWith(PROXY_PREFIX)) return cut;
   const params = new URLSearchParams(cut.slice(PROXY_PREFIX.length));
   params.delete('w');
@@ -31,7 +33,10 @@ export function imgFailKey(src) {
   return PROXY_PREFIX + params.toString();
 }
 
-/** 该地址是否在负缓存有效期内。 */
+/** 该地址是否在负缓存有效期内。
+*@param {*} [src]
+ * @param {*} [now]
+*/
 export function isImgFailed(src, now = Date.now()) {
   const key = imgFailKey(src);
   if (!key) return false;
@@ -44,7 +49,10 @@ export function isImgFailed(src, now = Date.now()) {
   return true;
 }
 
-/** 记录一次失败。离线时不记 —— 那是网络问题，恢复后应当重新尝试。 */
+/** 记录一次失败。离线时不记 —— 那是网络问题，恢复后应当重新尝试。
+*@param {*} [src]
+ * @param {*} [now]
+*/
 export function markImgFailed(src, now = Date.now()) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   const key = imgFailKey(src);

@@ -43,9 +43,12 @@ const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块�
  * 弱网下浏览器只有 6 条并发连接，若 30 张缩略图同权重排队，
  * 首屏那几张真正看得见的图反而排在第 20 位 —— 首屏图不加载，卡片墙就是一片灰骨架。
  * eager + fetchpriority=high 让浏览器先抢这几条连接。
- */
+  * @param {*} opts
+*/
 function LazyImg({ src, srcSet, sizes, alt, fallbackClass, fbIcon, priority, onFail }) {
+  /** @type {any} */
   const [state, setState] = useState('ok');   // ok | failed
+  /** @type {any} */
   const triedRef = useRef(false);
   // 已知死链直接出占位：重挂载 / 刷新列表时不再白发一轮请求
   if (!src || state === 'failed' || isImgFailed(src)) {
@@ -62,8 +65,8 @@ function LazyImg({ src, srcSet, sizes, alt, fallbackClass, fbIcon, priority, onF
       srcSet={srcSet}
       sizes={srcSet ? sizes : undefined}
       alt={alt}
-      onLoad={(ev) => ev.currentTarget.classList.add('img-ready')}
-      onError={(ev) => {
+      onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
+      onError={/** @param {*} [ev] */ (ev) => {
         const img = ev.currentTarget;
         if (img.complete && img.naturalWidth > 0) return;
         if (!triedRef.current) {
@@ -85,16 +88,17 @@ function LazyImg({ src, srcSet, sizes, alt, fallbackClass, fbIcon, priority, onF
 /* 卡片与列表行都做成 memo：一次 __cardsTick 会把整列重新 map，
  * 而条目对象只在状态真的变化时换新（core/reader.js 的 applyEntryFlag），没变的卡面不必重渲染。
  * 卡片 / 列表项不再展示标签（标签栏与卡面标签整体下线），仅文章正文保留标签。 */
-const Card = memo(function Card({ e, onOpen, priority }) {
+const Card = memo(/** @param {*} opts */ function Card({ e, onOpen, priority }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const hasImg = !!e.image;
   // 图片彻底拉不到时降级成纯文字卡：卡高本来就固定，少一块空占位比留一张灰图更干净
+  /** @type {any} */
   const [imgFailed, setImgFailed] = useState(false);
   // 与 LazyImg 共用同一份失败记忆：首次失败降级为纯文字卡，重挂载后也保持纯文字，
   // 不再先占一块灰图再塌掉（布局跳动）。
   const showMedia = hasImg && !imgFailed && !isImgFailed(e.image);
-  const fmtDate = s.fmtDate || ((d) => d || '');
+  const fmtDate = s.fmtDate || (/** @param {*} [d] */ (d) => d || '');
   const unread = !e.isRead;
   // 已读时圆点只隐身、卡面不变淡：两页的「未读」是同一个概念，只是标记密度不同
   const dot = <span className={'card-dot' + (unread ? '' : ' is-read')} aria-hidden="true" />;
@@ -134,7 +138,7 @@ const Card = memo(function Card({ e, onOpen, priority }) {
        视觉顺序错位。现在标题按钮是唯一的「打开」入口（键盘可达、有名字），
        点空白处仍是鼠标增强，但不再谎称自己是个按钮。 */
     <article className={'card' + (showMedia ? ' card-has-media' : '') + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
-      onClick={(ev) => openFromClick(ev, e, onOpen)}>
+      onClick={/** @param {*} [ev] */ (ev) => openFromClick(ev, e, onOpen)}>
       {media}
       <div className="card-body">
         {metaRow}
@@ -150,16 +154,16 @@ const Card = memo(function Card({ e, onOpen, priority }) {
   );
 });
 
-const Row = memo(function Row({ e, onOpen }) {
+const Row = memo(/** @param {*} opts */ function Row({ e, onOpen }) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
-  const fmtDate = s.fmtDate || ((d) => d || '');
+  const fmtDate = s.fmtDate || (/** @param {*} [d] */ (d) => d || '');
   const metaHas = !!srcName;
   const unread = !e.isRead;
   return (
     /* 与卡片同理：外层只做鼠标增强，不声明 role="button"（里面已有标题按钮与打开链接） */
     <article className={'row-item' + (e.isFavorite ? ' is-fav' : '')} data-id={e.id}
-      onClick={(ev) => openFromClick(ev, e, onOpen)}>
+      onClick={/** @param {*} [ev] */ (ev) => openFromClick(ev, e, onOpen)}>
       <div className="row-thumb">
         <span className={'card-dot row-dot' + (unread ? '' : ' is-read')} aria-hidden="true" />
         {e.image
@@ -193,20 +197,27 @@ const Row = memo(function Row({ e, onOpen }) {
   );
 });
 
-/** 点卡片空白处打开详情；卡内的按钮 / 链接 / 标签有自己的动作，不劫持它们 */
+/** 点卡片空白处打开详情；卡内的按钮 / 链接 / 标签有自己的动作，不劫持它们
+*@param {*} [ev]
+ * @param {*} [e]
+ * @param {*} [onOpen]
+*/
 function openFromClick(ev, e, onOpen) {
   if (ev.target && ev.target.closest && ev.target.closest('button, a, [data-tag]')) return;
   onOpen(e);
 }
 
+/**
+ * @param {*} opts
+ */
 const Skeletons = ({ view }) => {
   // 骨架数量与真实首屏批量一致（firstPageSize：窄屏 20 / 桌面 50），不再固定画 8 张 ——
   // 否则首屏落地时卡片数从 8 猛跳到 50，布局一下子撑开，看着像闪了一下。
   const s = S();
   const count = s.firstPageSize ? s.firstPageSize() : 8;
-  const n = Array.from({ length: count }, (_, i) => i);
+  const n = Array.from({ length: count }, /** @param {*} [_] @param {*} [i] */ (_, i) => i);
   if (view === 'list') {
-    return n.map((i) => (
+    return n.map(/** @param {*} [i] */ (i) => (
       <div className="sk-row" key={i}>
         <div className="sk-row-thumb" />
         <div className="sk-row-lines">
@@ -217,7 +228,7 @@ const Skeletons = ({ view }) => {
       </div>
     ));
   }
-  return n.map((i) => (
+  return n.map(/** @param {*} [i] */ (i) => (
     <div className="sk-card" key={i}>
       <div className="sk-media" />
       <div className="sk-line w85" />
@@ -230,22 +241,29 @@ const Skeletons = ({ view }) => {
 export function CardsView() {
   const searchName = useNoAutofillName('cards-q');
   const s = S();
+  /** @type {any} */
   const [, bump] = useState(0);
+  /** @type {*} */
   const searchRef = useRef(null);
+  /** @type {*} */
   const debounceRef = useRef(null);
   const st = (s && s.state) || {};
   const writable = !!(s && s.isWritable ? s.isWritable() : true);
 
+  /** @type {any} */
   const [qDraft, setQDraft] = useState(st.q || '');
+  /** @type {*} */
   const [detailId, setDetailId] = useState(null);
   // 窄屏搜索框默认收起（标题栏只留放大镜），桌面不受影响 —— 与文章页同一套行为
+  /** @type {any} */
   const [searchOpen, setSearchOpen] = useState(false);
   // 合并后第一行（≡频道 / 频道下拉 / 搜索 / ⋮）即为实际吸顶条，由其写入 --topbar-h
+  /** @type {*} */
   const headRef = useRef(null);
 
   // 卡片 UI 重绘信号（app.js 在状态变化时派发）
   useEffect(() => {
-    const onTick = () => bump((x) => x + 1);
+    const onTick = () => bump(/** @param {*} [x] */ (x) => x + 1);
     return on(EVENT.CARDS, onTick);
   }, []);
 
@@ -285,9 +303,13 @@ export function CardsView() {
      续拉的卡片「垫」回视口 —— 哨兵一直可见，自动翻页会连环把页面滚到底。
      真实输入（触摸 / 滚轮 / 键盘 / 按下指针）才重新开闸；首屏不满一屏仍走
      下面的 350ms 兜底，不需要用户先滚一下。 */
+  /** @type {any} */
   const autoLoadArmed = useRef(false);
   useEffect(() => {
     const arm = () => { autoLoadArmed.current = true; };
+    /**
+     * @param {*} [ev]
+     */
     const onKey = (ev) => {
       // 在输入框 / 文本域 / 可编辑区里敲方向键、空格是在编辑内容，不是在滚列表，别开闸
       const t = ev.target;
@@ -349,27 +371,29 @@ export function CardsView() {
   // 合并头部：本视图第一行即吸顶条，实测高度写入 --topbar-h（隐藏视图测得 0 高不写，避免覆盖）
   useTopbarHeight(headRef);
 
+  /** @type {*} */
   const feeds = st.feedList || [];
+  /** @type {*} */
   const list = (s && s.filterEntries) ? s.filterEntries() : (st.entries || []);
   const view = st.view || 'grid';
   const noEntries = (st.entries || []).length === 0;
 
-  const cardFeeds = feeds.filter((f) => f.cardEnabled);
+  const cardFeeds = feeds.filter(/** @param {*} [f] */ (f) => f.cardEnabled);
   const groups = (s && s.groupFeeds) ? s.groupFeeds(cardFeeds) : [{ name: '', feeds: cardFeeds }];
   // 只有「分了组」才画组头（和文章页侧栏同一判据）
   const hasGroups = groups.length > 1 || !!(groups[0] && groups[0].name);
   const collapsedGroups = (s && s.readerCollapsedGroups) ? s.readerCollapsedGroups() : new Set();
   const groupFilter = st.cardGroup != null;
-  const curGroup = groupFilter ? (groups.find((g) => g.name === st.cardGroup) || null) : null;
+  const curGroup = groupFilter ? (groups.find(/** @param {*} [g] */ (g) => g.name === st.cardGroup) || null) : null;
   // 分组筛选不是下拉里的选项（组头是折叠开关），触发器文案走 valueLabel；
   // 括号里是未读数，与侧栏 / 卡面圆点同一口径
   const groupLabel = groupFilter
-    ? `分组 · ${st.cardGroup || '未分组'}${curGroup ? `（${curGroup.feeds.reduce((n, f) => n + Number(f.unreadCount || 0), 0)}）` : ''}`
+    ? `分组 · ${st.cardGroup || '未分组'}${curGroup ? `（${curGroup.feeds.reduce(/** @param {*} [n] @param {*} [f] */ (n, f) => n + Number(f.unreadCount || 0), 0)}）` : ''}`
     : '';
   const feedValue = groupFilter ? 'g:' + st.cardGroup : (st.feedFilter == null ? '' : String(st.feedFilter));
 
   // 「固定频道标题栏」的标题：当前频道 / 分组 + 当前标签，滚到列表中段也知道自己在看哪一档
-  const curCardFeed = st.feedFilter == null ? null : feeds.find((f) => String(f.id) === String(st.feedFilter));
+  const curCardFeed = st.feedFilter == null ? null : feeds.find(/** @param {*} [f] */ (f) => String(f.id) === String(st.feedFilter));
   const headTitle = (curCardFeed
     ? (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(curCardFeed) : curCardFeed.title) : curCardFeed.title)
     : (groupLabel || '全部频道')) + (st.tag ? ` · #${st.tag}` : '') + (st.aiTag ? ` · AI #${st.aiTag}` : '');
@@ -377,11 +401,13 @@ export function CardsView() {
   const noFeeds = !feeds.length;
   // 挂着标签筛选时是全库检索（不受卡片开关限制），「卡片开关全关」的引导不适用
   const noCards = !st.tag && !st.aiTag
-    && !st.feedFilter && !groupFilter && !feeds.some((f) => f.cardEnabled);
+    && !st.feedFilter && !groupFilter && !feeds.some(/** @param {*} [f] */ (f) => f.cardEnabled);
 
   // 空态不只说「为什么空」，还要给一条出路：每个分支都配一个能立刻点的动作，
   // 否则用户只能自己去猜该去哪个页面、点哪个开关。
+  /** @type {any} */
   let emptyMsg = null;
+  /** @type {any} */
   let emptyAction = null;
   if (st.loadError) {
     emptyMsg = st.loadMoreErrMsg ? `数据加载失败：${st.loadMoreErrMsg}` : '数据加载失败，请稍后重试';
@@ -423,6 +449,9 @@ export function CardsView() {
   const showGrid = !showSkeleton && !showEmpty;
   const showLoadingMore = !!st.loading && !firstLoad;
 
+  /**
+   * @param {*} [ev]
+   */
   const onSearchInput = (ev) => {
     const v = ev.target.value;
     setQDraft(v);
@@ -430,6 +459,9 @@ export function CardsView() {
     // 与文章页统一 300ms；回车立即检索
     debounceRef.current = setTimeout(() => { if (s.cardsSearch) s.cardsSearch(v.trim()); }, 300);
   };
+  /**
+   * @param {*} [ev]
+   */
   const onSearchKey = (ev) => {
     if (ev.key !== 'Enter') return;
     clearTimeout(debounceRef.current);
@@ -451,31 +483,37 @@ export function CardsView() {
   };
 
   // memo 的前提是回调稳定：回调与本次渲染无关，否则每张卡片每次 tick 都会拿到新函数 props 而重渲染。
-  const onOpenCard = useCallback((e) => setDetailId(e.id), []);
+  const onOpenCard = useCallback(/** @param {*} [e] */ (e) => setDetailId(e.id), []);
   // 仅用于「卡片详情弹窗」里的正文标签（.art-tags）：卡面 / 列表项本身不再展示标签。
-  const onTag = useCallback((t) => {
+  const onTag = useCallback(/** @param {*} [t] */ (t) => {
     const c = S();
     if (c.cardsTag) c.cardsTag(c.state.tag === t ? null : t);
   }, []);
   // 卡片详情里的「AI 标签」组：走独立筛选，不能混进手动标签那条链路
-  const onAiTag = useCallback((t) => {
+  const onAiTag = useCallback(/** @param {*} [t] */ (t) => {
     const c = S();
     if (c.cardsAiTag) c.cardsAiTag(c.state.aiTag === t ? null : t);
   }, []);
 
   // 频道筛选里的组头折叠：与文章页侧栏共用同一份偏好（layout.rdCollapsedGroups），
   // 核心改动后会同时派发 __readerTick 与 __cardsTick，本组件靠上面的监听重绘即可。
-  const toggleGroupFold = useCallback((name) => {
+  const toggleGroupFold = useCallback(/** @param {*} [name] */ (name) => {
     const c = S();
     if (c.readerToggleGroupCollapse) c.readerToggleGroupCollapse(name);
   }, []);
 
   // 抽屉里点频道 = 换筛选 + 收起抽屉。抽屉是模态的：选完就该收起，否则盖着刚筛出来的列表。
+  /**
+   * @param {*} [id]
+   */
   const pickFeed = (id) => {
     if (s.cardsFilterFeed) s.cardsFilterFeed(id == null ? '' : id);
     if (s.cardsCloseDrawer) s.cardsCloseDrawer();
   };
   // 「只看这组」：与文章页同一套交互（再点同一个组 = 取消）。抽屉里点完同样收起。
+  /**
+   * @param {*} [g]
+   */
   const pickGroup = (g) => {
     if (s.cardsFilterGroup) s.cardsFilterGroup(g);
     if (s.cardsCloseDrawer) s.cardsCloseDrawer();
@@ -485,7 +523,7 @@ export function CardsView() {
     if (s.readerOpenSource) s.readerOpenSource();
   };
 
-  const detailEntry = detailId == null ? null : (st.entries || []).find((x) => String(x.id) === String(detailId));
+  const detailEntry = detailId == null ? null : (st.entries || []).find(/** @param {*} [x] */ (x) => String(x.id) === String(detailId));
 
   const closeDetail = () => {
     const id = detailId;
@@ -493,10 +531,14 @@ export function CardsView() {
     // 焦点回到来源卡片的标题按钮（弹窗里的控件都已随组件卸载）。
     // preventScroll：整屏详情关掉后列表刚从 body 锁滚动里恢复，浏览器默认会把
     // 聚焦元素滚到视口中间 —— 用户会看到列表自己跳一下。
+    /** @type {any} */
     const el = document.querySelector('[data-id="' + (window.CSS && window.CSS.escape ? window.CSS.escape(String(id)) : id) + '"] .title-btn');
     if (el && el.focus) el.focus({ preventScroll: true });
   };
 
+  /**
+   * @param {*} [f]
+   */
   const feedLabel = (f) => {
     const title = s.feedTitle ? s.feedTitle(f) : f.title;
     const name = s.shortFeedName ? s.shortFeedName(title) : title;
@@ -504,7 +546,8 @@ export function CardsView() {
   };
   // 频道 / 排序下拉选项（用自定义弹层 Dropdown 渲染，替代原生 select 的系统弹窗）
   // 「全部频道」的括号与侧栏一致：卡片频道里的未读总数
-  const cardUnread = cardFeeds.reduce((n, f) => n + Number(f.unreadCount || 0), 0);
+  const cardUnread = cardFeeds.reduce(/** @param {*} [n] @param {*} [f] */ (n, f) => n + Number(f.unreadCount || 0), 0);
+  /** @type {any[]} */
   const feedOpts = [{ value: '', label: `全部频道（${s.fmtBadge(cardUnread)}）` }];
   for (const g of groups) {
     for (const f of g.feeds) feedOpts.push({ value: String(f.id), label: feedLabel(f), group: g.name || '' });
@@ -554,7 +597,7 @@ export function CardsView() {
           {/* 中部：频道下拉选择器（同时承担标题职责，显示当前频道+条数）。窄屏退场。 */}
           <Dropdown wrapId="feedDD" id="feedSelect" title="频道筛选"
             ariaLabel={'频道筛选，当前：' + headTitle} value={feedValue} valueLabel={groupLabel}
-            options={feedOpts} onChange={(v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }}
+            options={feedOpts} onChange={/** @param {*} [v] */ (v) => { if (s.cardsFilterFeed) s.cardsFilterFeed(v); }}
             collapsible collapsedGroups={collapsedGroups} onToggleGroup={toggleGroupFold}
             activeGroup={st.cardGroup} onGroupFilter={pickGroup} />
           {/* 右簇：搜索（桌面常驻胶囊 / 窄屏收进放大镜）+ 常驻视图导航 + ⋮ 菜单（排序 / 视图 / 主题 / 设置）。 */}
@@ -565,10 +608,11 @@ export function CardsView() {
                 placeholder="搜索资源名称、描述、正文或标签…" enterKeyHint="search" aria-label="搜索"
                 value={qDraft} onChange={onSearchInput}
                 {...NO_AUTOFILL_PROPS}
-                onKeyDown={(ev) => {
+                onKeyDown={/** @param {*} [ev] */ (ev) => {
                   if (ev.key === 'Escape') {
                     ev.stopPropagation();
                     toggleSearch();
+                    /** @type {any} */
                     const toggle = document.querySelector('.cards-search-toggle');
                     if (toggle && toggle.focus) toggle.focus();
                     return;
@@ -631,7 +675,7 @@ export function CardsView() {
           <div id="grid" className={'grid' + (view === 'list' ? ' list-mode' : '')}>
             {/* 前 6 张给高优先级：弱网下浏览器并发只有 6 条，
                 同权重排队会让首屏可见的那几张图排在第 20 位，卡片墙只剩灰骨架。 */}
-            {list.map((e, i) => (view === 'list'
+            {list.map(/** @param {*} [e] @param {*} [i] */ (e, i) => (view === 'list'
               ? <Row e={e} onOpen={onOpenCard} key={e.id} />
               : <Card e={e} onOpen={onOpenCard} priority={i < 6} key={e.id} />))}
           </div>
@@ -670,8 +714,8 @@ export function CardsView() {
 
       {detailEntry ? (
         <CardDetail e={detailEntry} onClose={closeDetail}
-          onTag={(t) => { closeDetail(); onTag(t); }}
-          onAiTag={(t) => { closeDetail(); onAiTag(t); }} />
+          onTag={/** @param {*} [t] */ (t) => { closeDetail(); onTag(t); }}
+          onAiTag={/** @param {*} [t] */ (t) => { closeDetail(); onAiTag(t); }} />
       ) : null}
     </>
   );

@@ -28,6 +28,7 @@ import { emit, EVENT, on } from '../kernel/events.js';
  *  早先它一直生效到收起为止：用户展开一篇、往下滚到列表深处，一次自动翻页
  *  （loadReader 后按它重校）就把视口拽回那篇的标题，看起来是页面自己在快速滚动。
  *  现在：时间窗（PIN_WINDOW_MS）+ 用户滚动意图立即作废 + 切走视图清空。 */
+/** @type {*} */
 let readerPinnedId = null;
 let readerPinnedAt = 0;
 
@@ -54,6 +55,9 @@ function pinAlive() {
  * 拖滚动条（它既不发 wheel 也不发 touchmove）。这些事件只由用户输入产生，
  * 置顶循环自己写 scrollTop 不会触发，所以不会误伤正在进行的对齐。 */
 const PIN_SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar']);
+/**
+ * @param {*} [ev]
+ */
 function onPinUserIntent(ev) {
   if (readerPinnedId == null || state.tab !== 'reader') return;
   if (ev.type === 'keydown' && !PIN_SCROLL_KEYS.has(ev.key)) return;
@@ -62,7 +66,7 @@ function onPinUserIntent(ev) {
 document.addEventListener('wheel', onPinUserIntent, { capture: true, passive: true });
 document.addEventListener('touchmove', onPinUserIntent, { capture: true, passive: true });
 document.addEventListener('keydown', onPinUserIntent, true);
-document.addEventListener('pointerdown', (ev) => {
+document.addEventListener('pointerdown', /** @param {*} [ev] */ (ev) => {
   if (readerPinnedId == null) return;
   const main = readerScroller();
   if (main && (ev.target === main || main.contains(ev.target))) clearReaderPin();
@@ -83,13 +87,15 @@ export function renderReaderChannels() { renderReader(); }
  */
 export function readerFilterParams() {
   const params = new URLSearchParams();
+  /** @type {*} */
   const feeds = state.feedList || [];
+  /** @type {any} */
   let ids = null;
   if (state.rdFeedId != null) {
     ids = [Number(state.rdFeedId)];
   } else if (state.rdGroup != null) {
     // 分组筛选：把该分组的频道 id 摊平了传给 feeds=（未分组用 '' 表示）
-    ids = feeds.filter((f) => (f.groupName || '').trim() === state.rdGroup).map((f) => f.id);
+    ids = feeds.filter(/** @param {*} [f] */ (f) => (f.groupName || '').trim() === state.rdGroup).map(/** @param {*} [f] */ (f) => f.id);
   }
   if (ids) params.set('feeds', ids.join(','));
   // 阅读页的「全部」看的是全部内容，不受「卡片」开关影响
@@ -113,6 +119,7 @@ export function readerFilterParams() {
  */
 let readerPendingReset = false;
 /* 与卡片页对称：只认最后一次列表请求，且「重试」能打断仍挂在半路的请求。 */
+/** @type {*} */
 let readerController = null;
 let readerGeneration = 0;
 
@@ -121,6 +128,9 @@ export function cancelReaderLoad() {
   if (readerController) { readerController.abort(); readerController = null; }
 }
 
+/**
+ * @param {*} opts
+ */
 export async function loadReader({ reset = false } = {}) {
   // 错误空态里的「重试」不能被上一次悬挂的请求挡住
   const force = reset && state.rdReadError;
@@ -216,15 +226,20 @@ export function readerToggleAccordion() {
   toast(accordionOn ? '已开启单篇展开' : '已改为可同时展开多篇');
 }
 
-/** 找列表里某篇的 DOM：按 data-id 比对，避开 id 里特殊字符对 CSS 选择器的影响 */
+/** 找列表里某篇的 DOM：按 data-id 比对，避开 id 里特殊字符对 CSS 选择器的影响
+*@param {*} [id]
+*/
 function findArtItemEl(id) {
   const want = String(id);
+  /** @type {any} */
   const items = document.querySelectorAll('#readerList .art-item');
   for (const el of items) if (el.dataset.id === want) return el;
   return null;
 }
 
-/** 内容区的滚动容器（App Shell 后文章列表在它里面滚，window 不动） */
+/** 内容区的滚动容器（App Shell 后文章列表在它里面滚，window 不动）
+ * @returns {any}
+ */
 function readerScroller() {
   return document.querySelector('#readerView .reader-main');
 }
@@ -235,8 +250,13 @@ function readerScroller() {
  *  用 ResizeObserver 盯着头部：尺寸一变就重写两个变量（写的是 position:sticky 的
  *  top 与 scroll-margin，不影响头部自身尺寸，不会自激）。
  *  后台标签页不跑渲染步，回调会推迟到重新可见 —— 恢复时补量正好。 */
+/** @type {*} */
 let headRO = null;
+/** @type {*} */
 let headROEl = null;
+/**
+ * @param {*} [main]
+ */
 function trackReaderHeadChange(main) {
   if (typeof ResizeObserver !== 'function') return;
   const head = main.querySelector('.reader-head');
@@ -300,13 +320,16 @@ function readerHeadOffset() {
  *    · 提交后量 → 一次到位。
  *  向上翻（点上方一篇）与向下翻（点下方一篇）走的是同一条路径，行为完全一致。
  *  这里不用 scrollIntoView 而是直接设 scrollTop：scrollIntoView 会连带滚动
- *  所有祖先容器（含 window），而我们只想动 .reader-main 一个。 */
+ *  所有祖先容器（含 window），而我们只想动 .reader-main 一个。
+ *@param {*} [id]
+*/
 function scrollReaderToArt(id) {
   const main = readerScroller();
   if (!main) return;
   const want = String(id);
   // 记下这次修正属于哪一次置顶：循环途中用户接管（置顶被清）就停手，
   // 别在用户已经开始滚动后继续每帧写 scrollTop。
+  /** @type {*} */
   const token = readerPinnedId;
   const takenOver = () => token != null && readerPinnedId !== token;
 
@@ -356,6 +379,7 @@ function scrollReaderToArt(id) {
 const READ_POS_KEY = 'feedlore.readPos.v1';
 const READ_POS_MAX = 60;   // 最多记 60 篇，够覆盖一次连续阅读，又不让本地存储无限长
 const READ_POS_MIN = 24;   // 还在标题附近不值得恢复（否则等于把「置顶」又挪了一下）
+/** @type {*} */
 let readPosCache = null;
 
 function readPosMap() {
@@ -374,11 +398,18 @@ function persistReadPos() {
   try { sessionStorage.setItem(READ_POS_KEY, JSON.stringify(readPosMap())); } catch (_) { /* 隐私模式 / 配额满：忽略 */ }
 }
 
+/**
+ * @param {*} [id]
+ */
 function readSavedOffset(id) {
   const v = readPosMap()[String(id)];
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
+/**
+ * @param {*} [id]
+ * @param {*} [offset]
+ */
 function saveReadPos(id, offset) {
   const map = readPosMap();
   map[String(id)] = Math.round(offset);
@@ -389,6 +420,9 @@ function saveReadPos(id, offset) {
   persistReadPos();
 }
 
+/**
+ * @param {*} [id]
+ */
 function dropReadPos(id) {
   const map = readPosMap();
   if (!(String(id) in map)) return;
@@ -405,6 +439,7 @@ function rememberReadingPos() {
   if (!main) return;
   const mainTop = main.getBoundingClientRect().top;
   const items = document.querySelectorAll('#readerList .art-item');
+  /** @type {any} */
   let pick = null;
   for (const el of items) {
     const r = el.getBoundingClientRect();
@@ -420,8 +455,9 @@ function rememberReadingPos() {
   else dropReadPos(id);   // 回到标题附近 = 从头读，别在下次刷新时把人拽回中间
 }
 
+/** @type {*} */
 let readPosTimer = null;
-document.addEventListener('scroll', (ev) => {
+document.addEventListener('scroll', /** @param {*} [ev] */ (ev) => {
   const main = readerScroller();
   if (!main || ev.target !== main || readPosTimer) return;
   readPosTimer = setTimeout(() => { readPosTimer = null; rememberReadingPos(); }, 250);
@@ -429,12 +465,16 @@ document.addEventListener('scroll', (ev) => {
 
 /** 恢复篇内位置：只动 .reader-main，按实际布局逐次逼近。
  *  正文/图片是异步到达的，单次测量可能偏 —— 初始两帧对齐，之后每次图片
- *  加载完再对齐一次（3 秒内）；用户一动手就彻底停手。 */
+ *  加载完再对齐一次（3 秒内）；用户一动手就彻底停手。
+ *@param {*} [id]
+ * @param {*} [offset]
+*/
 function restoreReaderOffset(id, offset) {
   const main = readerScroller();
   if (!main) return;
   const want = String(id);
   let cancelled = false;
+  /** @type {*} */
   const timers = [];
 
   const cleanup = () => {
@@ -446,6 +486,9 @@ function restoreReaderOffset(id, offset) {
     document.removeEventListener('keydown', onUser, true);
     document.removeEventListener('pointerdown', onUser, true);
   };
+  /**
+   * @param {*} [ev]
+   */
   const onUser = (ev) => {
     if (ev.type === 'keydown' && !PIN_SCROLL_KEYS.has(ev.key)) return;
     cleanup();
@@ -492,6 +535,7 @@ const HEAD_SHOW_AFTER = 6;
 const HEAD_EDGE = 24;
 
 function installReaderHeadTuck() {
+  /** @type {*} */
   let main = null;
   let lastTop = 0;
   let acc = 0;
@@ -513,7 +557,7 @@ function installReaderHeadTuck() {
     main.classList.add(HEAD_TUCK_CLASS);
   };
 
-  document.addEventListener('scroll', (ev) => {
+  document.addEventListener('scroll', /** @param {*} [ev] */ (ev) => {
     if (state.tab !== 'reader') return;
     const el = ev.target;
     if (!el || el.nodeType !== 1 || typeof el.matches !== 'function' || !el.matches('.reader-main')) return;
@@ -548,6 +592,9 @@ function installReaderHeadTuck() {
 }
 installReaderHeadTuck();
 
+/**
+ * @param {*} [id]
+ */
 export async function expandReaderArt(id) {
   /* 手风琴（默认开启）：展开这一条之前会把其它展开的收掉。
    * 滚动策略（修正「切换文章后新文章不从顶部开始」的老问题）：
@@ -582,6 +629,9 @@ export async function expandReaderArt(id) {
   scrollReaderToArt(id);
 }
 
+/**
+ * @param {*} [id]
+ */
 async function fetchReaderBody(id) {
   try {
     const res = await apiFetch('/api/entries/' + encodeURIComponent(id));
@@ -593,7 +643,9 @@ async function fetchReaderBody(id) {
   }
 }
 
-/** 正文加载失败的「重试」：清掉错误标记再拉一次；成功后会解除展开体里的错误提示 */
+/** 正文加载失败的「重试」：清掉错误标记再拉一次；成功后会解除展开体里的错误提示
+*@param {*} [id]
+*/
 export async function readerRetryBody(id) {
   if (!state.rdBodyErr.has(id)) return;
   state.rdBodyErr.delete(id);
@@ -614,6 +666,9 @@ export function readerReload() {
   return loadReader({ reset: true });
 }
 
+/**
+ * @param {*} [id]
+ */
 export function collapseReaderArt(id) {
   state.rdExpanded.delete(id);
   // 收起后不再有「置顶目标」：否则列表变动时的重校会一直把这一条往回顶
@@ -630,6 +685,9 @@ export function collapseReaderArt(id) {
   scrollReaderToArt(id);
 }
 
+/**
+ * @param {*} [id]
+ */
 export function readerToggleArt(id) {
   if (state.rdExpanded.has(id)) collapseReaderArt(id);
   else expandReaderArt(id);
@@ -649,14 +707,16 @@ const FOCUS_MAX_PAGES = 8;  // 为目标文章最多往后翻几页：再远就�
 /** 把某篇文章「指给用户看」：滚到它并让文章框闪一下（卡片页 → 文章页的落点指示）。
  *  列表是分页的，目标可能不在首屏 —— 往后翻若干页找，翻不到就明说，不静默。
  *  高亮走 state.rdFlashId 而不是直接给 DOM 加类：阅读页整棵列表由 React 渲染，
- *  任何一次重绘都会按自己算出的 className 覆盖掉手写上去的类。 */
+ *  任何一次重绘都会按自己算出的 className 覆盖掉手写上去的类。
+ *@param {*} [id]
+*/
 export async function focusReaderArt(id) {
   const want = String(id);
   // 目标文章可能正赶上一次在途加载（switchView 的自动加载 / jumpToFeed 排队的重置）。
   // 此刻列表还是旧的甚至空的，直接找会误判「找不到」。加载是串行的（rdLoading 一次性封锁），
   // 轮询到它落地再找即可；最多等约 5s，避免极端情况下死等。
   for (let guard = 0; state.rdLoading && guard < 200; guard++) {
-    await new Promise((r) => setTimeout(r, 25));
+    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 25));
   }
   let el = findArtItemEl(want);
   for (let i = 0; !el && i < FOCUS_MAX_PAGES && state.rdHasMore; i++) {
@@ -679,9 +739,9 @@ export async function focusReaderArt(id) {
      目标还在列表里就补展开；换成别的频道（目标已不在）则说明是用户的新意图，不抢。
      这道确认是给入口竞态兜底，不替代 jumpToFeed 里「只发一次首屏请求」的修正。 */
   for (let guard = 0; guard < 200 && (state.rdLoading || readerPendingReset); guard++) {
-    await new Promise((r) => setTimeout(r, 25));
+    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 25));
   }
-  if (!state.rdExpanded.has(want) && state.rdEntries.some((e) => String(e.id) === want)) {
+  if (!state.rdExpanded.has(want) && state.rdEntries.some(/** @param {*} [e] */ (e) => String(e.id) === want)) {
     await expandReaderArt(want);
   }
   setTimeout(() => {
@@ -696,11 +756,13 @@ export async function focusReaderArt(id) {
 
 /** 从地址栏 hash 恢复某一篇（刷新 / 从别处回来的深链）：
  *  等列表落地、必要时往后翻页找到它，然后展开并**置顶**——
- *  与「点下一篇进入一篇文章」的滚动策略一致：谁进来都从文章开头看起。 */
+ *  与「点下一篇进入一篇文章」的滚动策略一致：谁进来都从文章开头看起。
+ *@param {*} [id]
+*/
 export async function restoreReaderArt(id) {
   const want = String(id);
   for (let guard = 0; state.rdLoading && guard < 200; guard++) {
-    await new Promise((r) => setTimeout(r, 25));
+    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 25));
   }
   let el = findArtItemEl(want);
   for (let i = 0; !el && i < FOCUS_MAX_PAGES && state.rdHasMore; i++) {
@@ -720,7 +782,11 @@ export async function restoreReaderArt(id) {
   return true;
 }
 /** 就地换掉一条条目（不改原对象）：列表项是 React.memo 的，
- *  引用不变就不会重绘，所以状态变化必须产出新对象。返回替换后的那条。 */
+ *  引用不变就不会重绘，所以状态变化必须产出新对象。返回替换后的那条。
+ *@param {*} [list]
+ * @param {*} [idx]
+ * @param {*} [patch]
+*/
 function replaceEntry(list, idx, patch) {
   const next = Object.assign({}, list[idx], patch);
   const arr = list.slice();
@@ -730,13 +796,16 @@ function replaceEntry(list, idx, patch) {
 
 /** 改某条目已读态后，同步所属频道在 feedList 里的未读计数（侧栏频道 / 分组据此渲染）。
  *  不在此处 reloadFeeds（避免一次标已读就打一次 /api/feeds），而是就地算准；
- *  下次切换频道 / 拉取订阅源 / 自动刷新时再从服务端校正。 */
+ *  下次切换频道 / 拉取订阅源 / 自动刷新时再从服务端校正。
+ *@param {*} [feedId]
+ * @param {*} [delta]
+*/
 function bumpFeedUnread(feedId, delta) {
   if (feedId == null) return;
   const list = state.feedList;
   if (!Array.isArray(list)) return;
   const id = String(feedId);
-  const idx = list.findIndex((f) => String(f.id) === id);
+  const idx = list.findIndex(/** @param {*} [f] */ (f) => String(f.id) === id);
   if (idx < 0) return;
   const f = list[idx];
   const next = Math.max(0, (Number(f.unreadCount) || 0) + delta);
@@ -748,19 +817,24 @@ function bumpFeedUnread(feedId, delta) {
 }
 
 /** 文章页与卡片页各持一份条目列表（state.rdEntries / state.entries），同一行在两边
- *  是两个不同对象。状态变化要两边一起换新对象，任一视图切回来时读到的才是同一状态。 */
+ *  是两个不同对象。状态变化要两边一起换新对象，任一视图切回来时读到的才是同一状态。
+ *@param {*} [id]
+*/
 function findEntry(id) {
   const key = String(id);
-  return (state.rdEntries || []).find((x) => String(x.id) === key)
-    || (state.entries || []).find((x) => String(x.id) === key)
+  return (state.rdEntries || []).find(/** @param {*} [x] */ (x) => String(x.id) === key)
+    || (state.entries || []).find(/** @param {*} [x] */ (x) => String(x.id) === key)
     || null;
 }
 
-/** 就地改一条的状态：内存（两页列表）+ 侧栏计数 + 重绘（原 paintEntryFlag 的就地 DOM 改类名移除） */
+/** 就地改一条的状态：内存（两页列表）+ 侧栏计数 + 重绘（原 paintEntryFlag 的就地 DOM 改类名移除）
+*@param {*} [id]
+ * @param {*} [patch]
+*/
 export function applyEntryFlag(id, patch) {
   const key = String(id);
-  const rdIdx = (state.rdEntries || []).findIndex((x) => String(x.id) === key);
-  const cardIdx = (state.entries || []).findIndex((x) => String(x.id) === key);
+  const rdIdx = (state.rdEntries || []).findIndex(/** @param {*} [x] */ (x) => String(x.id) === key);
+  const cardIdx = (state.entries || []).findIndex(/** @param {*} [x] */ (x) => String(x.id) === key);
   if (rdIdx < 0 && cardIdx < 0) return;
   const e = rdIdx >= 0 ? state.rdEntries[rdIdx] : state.entries[cardIdx];
   const wasRead = !!e.isRead;
@@ -790,13 +864,16 @@ export function applyEntryFlag(id, patch) {
 
   // 在「收藏」范围里取消收藏 = 明确的「移出这里」，立刻从列表拿掉。
   if (inReader && state.rdScope === 'favorite' && !now.isFavorite) {
-    state.rdEntries = state.rdEntries.filter((x) => String(x.id) !== String(id));
+    state.rdEntries = state.rdEntries.filter(/** @param {*} [x] */ (x) => String(x.id) !== String(id));
     state.rdOffset = Math.max(0, state.rdOffset - 1);
     renderReader();
   }
 }
 
-/** 打标记：先乐观更新界面，再发请求；失败回滚并提示 */
+/** 打标记：先乐观更新界面，再发请求；失败回滚并提示
+*@param {*} [id]
+ * @param {*} [patch]
+*/
 export async function setEntryFlag(id, patch) {
   const e = findEntry(id);
   const before = e ? { isRead: !!e.isRead, isFavorite: !!e.isFavorite } : null;
@@ -819,27 +896,33 @@ export async function setEntryFlag(id, patch) {
 }
 
 /** 点开正文 / 打开卡片详情即视为已读（只在还没读过时发请求）。
- *  两页共用：不论条目此刻在哪个列表里，状态都同步到两边。 */
+ *  两页共用：不论条目此刻在哪个列表里，状态都同步到两边。
+ *@param {*} [id]
+*/
 export function markEntryRead(id) {
   const e = findEntry(id);
   if (!e || e.isRead) return;
   setEntryFlag(id, { isRead: true });
 }
 
-/** 收藏 / 取消收藏（原 toggleFavorite(el) → 改按 id） */
+/** 收藏 / 取消收藏（原 toggleFavorite(el) → 改按 id）
+*@param {*} [id]
+*/
 export function readerToggleFav(id) {
-  const e = state.rdEntries.find((x) => String(x.id) === String(id));
+  const e = state.rdEntries.find(/** @param {*} [x] */ (x) => String(x.id) === String(id));
   const next = !(e && e.isFavorite);
-  setEntryFlag(id, { isFavorite: next }).then((ok) => {
+  setEntryFlag(id, { isFavorite: next }).then(/** @param {*} [ok] */ (ok) => {
     if (ok) toast(next ? '已收藏' : '已取消收藏');
   });
 }
 
-/** 已读回退成未读：展开即已读之后，误点 / 想稍后再读的常见补救 */
+/** 已读回退成未读：展开即已读之后，误点 / 想稍后再读的常见补救
+*@param {*} [id]
+*/
 export function readerMarkUnread(id) {
-  const e = state.rdEntries.find((x) => String(x.id) === String(id));
+  const e = state.rdEntries.find(/** @param {*} [x] */ (x) => String(x.id) === String(id));
   if (!e || !e.isRead) return;
-  setEntryFlag(id, { isRead: false }).then((ok) => {
+  setEntryFlag(id, { isRead: false }).then(/** @param {*} [ok] */ (ok) => {
     if (ok) toast('已标为未读');
   });
 }
@@ -848,8 +931,9 @@ export function readerMarkUnread(id) {
  * 与设置面板的 collapsedGroups 各存一份（layout.rdCollapsedGroups）：数据源面板收起的是
  * 管理清单，频道栏收起的是阅读时的干扰项，两件事不该互相牵连。 */
 export function rdCollapsedGroups() {
+  /** @type {*} */
   const arr = Array.isArray(layoutPref.rdCollapsedGroups) ? layoutPref.rdCollapsedGroups : [];
-  return new Set(arr.filter((g) => typeof g === 'string'));
+  return new Set(arr.filter(/** @param {*} [g] */ (g) => typeof g === 'string'));
 }
 
 /* 收起的是同一份偏好，看它的却有两处 UI（文章页侧栏 + 卡片页频道筛选下拉），
@@ -859,6 +943,9 @@ function renderGroupFold() {
   emit(EVENT.CARDS);
 }
 
+/**
+ * @param {*} [name]
+ */
 export function readerToggleGroupCollapse(name) {
   const g = String(name || '');
   const set = rdCollapsedGroups();
@@ -869,17 +956,19 @@ export function readerToggleGroupCollapse(name) {
 
 /** 一键收起 / 展开全部分组：全都收着就展开，否则一次收齐 */
 export function readerToggleAllGroups() {
-  const names = groupFeeds(state.feedList || []).map((g) => g.name || '');
+  const names = groupFeeds(state.feedList || []).map(/** @param {*} [g] */ (g) => g.name || '');
   if (!names.length) return;
   const set = rdCollapsedGroups();
-  const allCollapsed = names.every((n) => set.has(n));
+  const allCollapsed = names.every(/** @param {*} [n] */ (n) => set.has(n));
   setLayout('rdCollapsedGroups', allCollapsed ? [] : names);
   renderGroupFold();
   toast(allCollapsed ? '已展开全部分组' : '已收起全部分组');
 }
 
 /** 展开某个分组（选中组内频道 / 组名时调用，避免「点了却看不见」）。
- *  卡片页的分组筛选也复用这一份，保证两页的折叠偏好不会一边展开一边收着。 */
+ *  卡片页的分组筛选也复用这一份，保证两页的折叠偏好不会一边展开一边收着。
+ *@param {*} [name]
+*/
 export function rdExpandGroup(name) {
   const g = String(name || '');
   const set = rdCollapsedGroups();
@@ -891,8 +980,12 @@ export function rdExpandGroup(name) {
 }
 
 /* ---------- 频道 / 范围 / 分组切换（ReaderView 经桥调用） ---------- */
+/** @type {*} */
 let watchPrevScope = null;   // 进入关注/屏蔽视图前的范围，退出时还原
 
+/**
+ * @param {*} [scope]
+ */
 export function readerSetScope(scope) {
   // rdWatch 也算「已经偏离了默认范围」：在关注/屏蔽视图里整篇文章仍属于 rdScope='all'，
   // 少这一项会让点「全部文章」直接短路，看起来像按钮坏了。
@@ -912,6 +1005,9 @@ export function readerSetScope(scope) {
   if (window.innerWidth <= 720) setReaderDrawer(false);
   scrollReaderTop();
 }
+/**
+ * @param {*} [g]
+ */
 export function readerSetGroup(g) {
   state.rdScope = 'all';   // 看某个分组 = 回到「全部」范围
   state.rdWatch = null;
@@ -926,6 +1022,9 @@ export function readerSetGroup(g) {
   if (window.innerWidth <= 720) setReaderDrawer(false);
   scrollReaderTop();
 }
+/**
+ * @param {*} [id]
+ */
 export function readerSetFeed(id) {
   const next = id != null ? Number(id) : null;
   // 再次点击同一个频道 = 回到该频道最新信息（与卡片页一致）。
@@ -939,7 +1038,7 @@ export function readerSetFeed(id) {
     reloadReaderFeed();
     return;
   }
-  const f = next == null ? null : (state.feedList || []).find((x) => String(x.id) === String(next));
+  const f = next == null ? null : (state.feedList || []).find(/** @param {*} [x] */ (x) => String(x.id) === String(next));
   state.rdFeedId = next;
   state.rdGroup = null;
   state.rdTag = null;      // 换频道 = 换列表，不沿用标签筛选
@@ -958,7 +1057,8 @@ export function readerSetFeed(id) {
  * 进入时强制忽略未读 / 收藏范围：这两个范围是持久化的，用户上次停在「收藏」
  * 再点关注就会看到空列表（关注里的文章未必已收藏），像是功能坏了。
  * 原范围记在 watchPrevScope，退出时还原；不写回 layout，刷新仍按用户原选择。
- */
+  * @param {*} [w]
+*/
 export function readerSetWatch(w) {
   let v = w === 'watch' || w === 'block' ? w : null;
   if (v && v === state.rdWatch) v = null;   // 再点一次退出
@@ -1008,7 +1108,9 @@ export function readerOpenSource() { openSettings('source'); setReaderDrawer(fal
 /* ---------- 移动端：左侧频道抽屉 ---------- */
 export let readerDrawerLocked = false;   // 抽屉当前是否拿着页面滚动锁
 
-/** 打开/收起左侧频道抽屉。宽屏上没有视觉效果，切走阅读页或窗口变宽时自动收起 */
+/** 打开/收起左侧频道抽屉。宽屏上没有视觉效果，切走阅读页或窗口变宽时自动收起
+*@param {*} [open]
+*/
 export function setReaderDrawer(open) {
   const on = !!open;
   if (on === document.body.classList.contains('reader-drawer-open')) return;
@@ -1044,6 +1146,7 @@ export function scrollReaderTop() {
 // 抽屉开合按钮（菜单 / 关闭 / 遮罩）已随阅读页 React 化，改由 ReaderView 经桥触发
 export function readerToggleDrawer() { setReaderDrawer(!document.body.classList.contains('reader-drawer-open')); }
 export function readerCloseDrawer() { setReaderDrawer(false); }
+/** @type {*} */
 let resizeDrawerTimer = null;
 window.addEventListener('resize', () => {
   if (resizeDrawerTimer) clearTimeout(resizeDrawerTimer);
@@ -1100,7 +1203,10 @@ function readAllScopeBody() {
   };
 }
 
-/** 撤销一次批量已读：服务端按批次时间戳回滚，前端把列表重新取一遍对齐。 */
+/** 撤销一次批量已读：服务端按批次时间戳回滚，前端把列表重新取一遍对齐。
+*@param {*} [scope]
+ * @param {*} [at]
+*/
 async function undoReadAll(scope, at) {
   try {
     const res = await apiFetch('/api/entries/read-all/undo', {
@@ -1139,7 +1245,7 @@ export async function readerReadAll() {
   } else {
     const fp = readerFilterParams().get('feeds');
     const ids = fp ? fp.split(',').map(Number) : null;
-    affected = (state.feedList || []).reduce((s, f) => {
+    affected = (state.feedList || []).reduce(/** @param {*} [s] @param {*} [f] */ (s, f) => {
       const id = Number(f.id);
       if (ids && ids.length && ids.indexOf(id) < 0) return s;
       return s + (Number(f.unreadCount) || 0);
@@ -1181,6 +1287,9 @@ export async function readerReadAll() {
   }
 }
 
+/**
+ * @param {*} [q]
+ */
 export function readerSearch(q) {
   q = String(q || '').trim();
   if (q === state.rdQ && state.rdTag == null && state.rdAiTag == null) return;
@@ -1199,7 +1308,9 @@ export function readerSearch(q) {
  * 因此点标签（两类都一样）等于「在全库找这个标签」：频道 / 分组 / 关注视图 /
  * 未读·收藏范围全部让位，列表标题也回到「#标签」本身。再点同一个标签 = 取消筛选，
  * 与频道/分组「再点回顶」同一手感；取消时不再动范围，用户接着看原来的视图。
- */
+  * @param {*} [tag]
+ * @param {*} [ai]
+*/
 export function readerSetTag(tag, ai = false) {
   const t = tag || null;
   const field = ai ? 'rdAiTag' : 'rdTag';

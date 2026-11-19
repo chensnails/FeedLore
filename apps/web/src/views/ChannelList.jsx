@@ -21,7 +21,7 @@ import { Icon } from '../ui/Icon.jsx';
 
 const S = () => core;
 
-export const ChannelList = memo(function ChannelList({
+export const ChannelList = memo(/** @param {*} opts */ function ChannelList({
   variant = 'reader',
   groups = [],
   hasGroups = false,
@@ -46,6 +46,7 @@ export const ChannelList = memo(function ChannelList({
   const atAll = activeFeedId == null && activeGroup == null;
 
   // 频道内搜索（本地态，两页抽屉共用）：按频道名过滤，命中即展开分组
+  /** @type {any} */
   const [q, setQ] = useState('');
   // C：频道内搜索防抖（React 19 useDeferredValue）—— 输入框即时响应，过滤重算延迟到绘制后，
   // 避免每敲一字就同步重算整条侧栏（频道 × 分组）造成卡顿
@@ -56,19 +57,32 @@ export const ChannelList = memo(function ChannelList({
   // 这两个取名函数必须在 groupsView 之前声明：过滤要按频道名匹配，写成 const 箭头函数
   // 就是暂时性死区 —— 一旦搜索词非空，groupsView 求值时抛 ReferenceError，
   // 无错误边界时整个 ReaderView 根被卸载（白屏）。
+  /**
+   * @param {*} [f]
+   */
   const nameOf = (f) => (s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(f) : f.title) : f.title);
+  /**
+   * @param {*} [f]
+   */
   const titleOf = (f) => (s.feedTitle ? s.feedTitle(f) : f.title);
 
   const groupsView = ql
-    ? groups.map((g) => ({ ...g, feeds: g.feeds.filter((f) => (titleOf(f) || '').toLowerCase().includes(ql)) }))
-      .filter((g) => g.feeds.length > 0)
+    ? groups.map(/** @param {*} [g] */ (g) => ({ ...g, feeds: g.feeds.filter(/** @param {*} [f] */ (f) => (titleOf(f) || '').toLowerCase().includes(ql)) }))
+      .filter(/** @param {*} [g] */ (g) => g.feeds.length > 0)
     : groups;
 
   // 卡片页「全部频道」：徽标是未读总数，总量留到悬停提示（与单频道徽标同口径）
-  const cardUnread = groups.reduce((n, g) => n + g.feeds.reduce((m, f) => m + Number(f.unreadCount || 0), 0), 0);
-  const cardTotal = groups.reduce((n, g) => n + g.feeds.reduce((m, f) => m + Number(f.entryCount || 0), 0), 0);
+  const cardUnread = groups.reduce(/** @param {*} [n] @param {*} [g] */ (n, g) => n + g.feeds.reduce(/** @param {*} [m] @param {*} [f] */ (m, f) => m + Number(f.unreadCount || 0), 0), 0);
+  const cardTotal = groups.reduce(/** @param {*} [n] @param {*} [g] */ (n, g) => n + g.feeds.reduce(/** @param {*} [m] @param {*} [f] */ (m, f) => m + Number(f.entryCount || 0), 0), 0);
 
   // 关注/屏蔽视图下 rdScope 仍是 'all'，范围行不能跟着高亮（两行同时 active 会误导）
+  /**
+   * @param {*} [key]
+   * @param {*} [ico]
+   * @param {*} [name]
+   * @param {*} [n]
+   * @param {*} [cls]
+   */
   const scopeBtn = (key, ico, name, n, cls) => (
     <button className={'rd-ch' + (atAll && activeWatch == null && activeScope === key ? ' active' : '')}
       type="button" data-scope={key} aria-pressed={activeScope === key && atAll && activeWatch == null ? 'true' : 'false'}
@@ -81,6 +95,13 @@ export const ChannelList = memo(function ChannelList({
 
   // 关注 / 屏蔽虚拟视图（v21）：与范围行同款视觉，但语义是「规则命中的聚合视图」，
   // 激活条件看 activeWatch 而不是 activeScope —— 两套状态，互不覆盖。
+  /**
+   * @param {*} [key]
+   * @param {*} [ico]
+   * @param {*} [name]
+   * @param {*} [n]
+   * @param {*} [cls]
+   */
   const watchBtn = (key, ico, name, n, cls) => (
     <button className={'rd-ch' + (atAll && activeGroup == null && activeWatch === key ? ' active' : '')}
       type="button" data-watch={key} aria-pressed={activeWatch === key && atAll ? 'true' : 'false'}
@@ -98,7 +119,7 @@ export const ChannelList = memo(function ChannelList({
         <svg className="rd-ch-search-ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
         <input type="search" className="rd-ch-search-input" name={searchName}
           placeholder="搜索频道…" aria-label="搜索频道"
-          value={q} onChange={(e) => setQ(e.target.value)} {...NO_AUTOFILL_PROPS} />
+          value={q} onChange={/** @param {*} [e] */ (e) => setQ(e.target.value)} {...NO_AUTOFILL_PROPS} />
         {q ? (
           <button type="button" className="rd-ch-search-clear" aria-label="清除搜索" onClick={() => setQ('')}>
             <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-x" /></svg>
@@ -124,14 +145,14 @@ export const ChannelList = memo(function ChannelList({
       )}
       <div className="rd-ch-sep" aria-hidden="true" />
 
-      {groupsView.map((g) => {
+      {groupsView.map(/** @param {*} [g] */ (g) => {
         const gname = g.name || '';
         const isCollapsed = collapsedView.has(gname);
-        const gUnread = g.feeds.reduce((sum, x) => sum + Number(x.unreadCount || 0), 0);
+        const gUnread = g.feeds.reduce(/** @param {*} [sum] @param {*} [x] */ (sum, x) => sum + Number(x.unreadCount || 0), 0);
         // 收起的分组里若正看着其中一条，只留那一条 —— 别让「收起」把当前频道变没，
         // 也不该把整组都放出来（那就等于没收起）
         const shown = isCollapsed
-          ? (activeFeedId == null ? [] : g.feeds.filter((f) => String(f.id) === String(activeFeedId)))
+          ? (activeFeedId == null ? [] : g.feeds.filter(/** @param {*} [f] */ (f) => String(f.id) === String(activeFeedId)))
           : g.feeds;
         return (
           <div key={'g:' + gname}>
@@ -167,7 +188,7 @@ export const ChannelList = memo(function ChannelList({
                 ) : null}
               </div>
             ) : null}
-            {shown.map((f) => {
+            {shown.map(/** @param {*} [f] */ (f) => {
               const title = titleOf(f);
               const name = nameOf(f);
               const tip = f.enabled ? title : `${title}（已停止采集）`;

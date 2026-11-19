@@ -13,6 +13,9 @@ import { core } from '@core';
 
 const S = () => core;
 
+/**
+ * @param {*} opts
+ */
 export function ChannelTabs({
   variant = 'reader',
   groups = [],
@@ -27,8 +30,11 @@ export function ChannelTabs({
 }) {
   const s = S();
   const isReader = variant === 'reader';
+  /** @type {*} */
   const activeRef = useRef(null);
+  /** @type {*} */
   const navRef = useRef(null);
+  /** @type {any} */
   const [atEnd, setAtEnd] = useState(false);
 
   // 分组里的频道摊平：标签条是一维的，分组层级留在抽屉里
@@ -38,7 +44,13 @@ export function ChannelTabs({
   // 卡片页的「全部」是空字符串（cardsFilterFeed 的约定），两种空值按同一个语义算
   const feedId = activeFeedId == null || activeFeedId === '' ? null : activeFeedId;
   const baseAll = feedId == null;
+  /**
+   * @param {*} [key]
+   */
   const scopeOn = (key) => baseAll && activeWatch == null && activeScope === key;
+  /**
+   * @param {*} [key]
+   */
   const watchOn = (key) => baseAll && activeGroup == null && activeWatch === key;
 
   // 分组筛选在抽屉里选，标签条上没有对应项：仍把「全部」标上，
@@ -84,6 +96,9 @@ export function ChannelTabs({
   /* 标签条用 roving tabindex：Tab 一次进入，方向键在频道间移动并直接切换，
      不再让键盘用户逐个穿过几十个频道才能到达末尾的「完整频道列表」。 */
   const rovingKey = activeKey || 'scope:all';
+  /**
+   * @param {*} [ev]
+   */
   const onKeyDown = (ev) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) return;
     const tabs = Array.from(ev.currentTarget.querySelectorAll('.chan-tab'));
@@ -100,6 +115,10 @@ export function ChannelTabs({
 
   // 再点当前项：筛选条件没变，重设状态不会重绘列表 —— 顺手把视线带回顶部，
   // 与底部视图导航的 retap 同一套手感。换项时仍走原来的 setter（会自己回顶）。
+  /**
+   * @param {*} [active]
+   * @param {*} [run]
+   */
   const activate = (active, run) => () => {
     if (active) {
       const api = S();
@@ -108,6 +127,13 @@ export function ChannelTabs({
     if (run) run();
   };
 
+  /**
+   * @param {*} [key]
+   * @param {*} [label]
+   * @param {*} [active]
+   * @param {*} [onClick]
+   * @param {*} [title]
+   */
   const tab = (key, label, active, onClick, title) => (
     <button
       key={key}
@@ -123,6 +149,9 @@ export function ChannelTabs({
     </button>
   );
 
+  /**
+   * @param {*} [f]
+   */
   const feedName = (f) => {
     const full = s.feedTitle ? s.feedTitle(f) : f.title;
     return s.shortFeedName ? s.shortFeedName(full) : full;
@@ -141,7 +170,7 @@ export function ChannelTabs({
           {tab('watch:watch', '关注', watchOn('watch'), () => onWatch && onWatch('watch'))}
         </>
       ) : null}
-      {feeds.map((f) => tab(
+      {feeds.map(/** @param {*} [f] */ (f) => tab(
         'feed:' + f.id,
         feedName(f),
         feedId != null && String(feedId) === String(f.id),

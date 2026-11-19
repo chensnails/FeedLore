@@ -120,6 +120,29 @@ export const API_ERROR_CODES = [
   'E_INTERNAL',
 ] as const;
 
+/**
+ * AI 调用内部错误码（packages/ai/src/llm.ts 抛出）。
+ *
+ * 与 API_ERROR_CODES 分开登记的原因：这些码由 AI 层作为 Error.message 的前缀抛出
+ * （`E_AI_TIMEOUT: ...`），不经过 apiError() 包装、没有固定的 HTTP 状态，
+ * 但最终仍会出现在界面上（单篇 AI 区 / 日报 / 模型状态 / MCP 错误体）。
+ * 单独成表既能让前端词典用类型约束「不漏码」，又不污染 ApiErrorCodeSchema
+ * ——后者只用于 API 响应体的 `{ error }` 字段校验，语义不同。
+ *
+ * 新增/修改 AI 内部码时：这里 + packages/ai/src/llm.ts + 前端 errorText.js 三处同步。
+ */
+export const AI_INTERNAL_ERROR_CODES = [
+  'E_AI_NOT_CONFIGURED',
+  'E_AI_TIMEOUT',
+  'E_AI_ABORTED',
+  'E_AI_NETWORK',
+  'E_AI_AUTH',
+  'E_AI_HTTP',
+  'E_AI_BAD_RESPONSE',
+  'E_AI_NO_CONTENT',
+  'E_AI_NO_MODELS',
+] as const;
+
 export const ApiErrorCodeSchema = z.enum(API_ERROR_CODES);
 
 /** 错误码 → 英文默认文案；也是服务端调用 `apiError()` 时的参数表。 */
@@ -282,6 +305,9 @@ export const API_ERROR_DEFAULTS = {
 } as const satisfies Record<ApiErrorCode, { status: number; message: string }>;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
+export type AiInternalErrorCode = (typeof AI_INTERNAL_ERROR_CODES)[number];
+/** 界面上可能出现的全部错误码：API 响应码 + AI 内部码。前端词典按它约束，漏码即编译报错。 */
+export type KnownErrorCode = ApiErrorCode | AiInternalErrorCode;
 
 /** 词典插值参数：文案里需要数字/名称的错误码通过它结构化下发。 */
 export type ApiErrorParams = Record<string, string | number>;

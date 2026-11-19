@@ -37,16 +37,28 @@ function target() {
 }
 
 const SIDE_W = () => Math.min(272, window.innerWidth * 0.84);
+/**
+ * @param {*} [t]
+ */
 const sideOf = (t) => (t ? document.getElementById(t.sideId) : null);
+/**
+ * @param {*} [t]
+ */
 const maskOf = (t) => (t ? document.getElementById(t.maskId) : null);
 
-let x0 = 0, y0 = 0, dragging = false, decided = false, dir = 0, active = null;
+/** @type {*} */
+let x0 = 0, y0 = 0, dragging = false, decided = false, dir = 0;
+/** @type {any} */
+let active = null;
 
-/** px = 抽屉已滑出的像素（0=关，抽屉宽=开）→ 换算成 translateX 百分比 */
+/** px = 抽屉已滑出的像素（0=关，抽屉宽=开）→ 换算成 translateX 百分比
+*@param {*} [px]
+*/
 function place(px) {
   const w = SIDE_W();
   px = Math.max(0, Math.min(w, px));
   const pct = px / w;
+  /** @type {*} */
   const side = sideOf(active);
   if (side) {
     // 收起态由 CSS 设了 visibility:hidden（不能占 Tab 序）；拖出来的过程还没加 open 类，
@@ -54,6 +66,7 @@ function place(px) {
     side.style.visibility = 'visible';
     side.style.transform = `translateX(${(-104 + pct * 104).toFixed(2)}%)`;
   }
+  /** @type {*} */
   const mask = maskOf(active);
   if (mask) {
     mask.style.visibility = 'visible';
@@ -61,7 +74,9 @@ function place(px) {
   }
 }
 
-/** 触摸点是否落在可横向滚动的容器内（如 <pre> 代码块）：是则把横滑让给容器，不抢抽屉手势 */
+/** 触摸点是否落在可横向滚动的容器内（如 <pre> 代码块）：是则把横滑让给容器，不抢抽屉手势
+*@param {*} [el]
+*/
 function inHorizontalScroller(el) {
   let n = el;
   while (n && n.nodeType === 1 && n !== document.body) {
@@ -74,7 +89,7 @@ function inHorizontalScroller(el) {
   return false;
 }
 
-document.addEventListener('touchstart', (ev) => {
+document.addEventListener('touchstart', /** @param {*} [ev] */ (ev) => {
   const t = ev.touches && ev.touches[0];
   if (!t) return;
   // 宽屏并排布局 / 当前页面没有抽屉，不拦截（避免误锁页面滚动）
@@ -89,7 +104,7 @@ document.addEventListener('touchstart', (ev) => {
   x0 = t.clientX; y0 = t.clientY; dragging = true; decided = false; dir = 0; active = cur;
 }, { passive: true });
 
-document.addEventListener('touchmove', (ev) => {
+document.addEventListener('touchmove', /** @param {*} [ev] */ (ev) => {
   if (!dragging || !active) return;
   const t = ev.touches && ev.touches[0];
   if (!t) return;
@@ -108,7 +123,7 @@ document.addEventListener('touchmove', (ev) => {
   if (ev.cancelable) ev.preventDefault();                     // 拦掉默认横滑 / 回弹
 }, { passive: false });
 
-document.addEventListener('touchend', (ev) => {
+document.addEventListener('touchend', /** @param {*} [ev] */ (ev) => {
   if (!dragging || !active) return;
   dragging = false;
   if (!decided) return;                                       // 只是轻点，没拖动

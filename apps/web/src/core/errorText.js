@@ -8,6 +8,7 @@
  * 加新码时这里也要补一条，否则界面会掉到英文。
  */
 
+/** @type {Record<import('@feedlore/contract').KnownErrorCode, string | ((p: any) => string)>} */
 const CN = {
   E_DB_NOT_READY: '数据库未就绪',
   E_SERVICE_NOT_READY: '服务未就绪',
@@ -23,6 +24,9 @@ const CN = {
   E_CSRF_UNTRUSTED_ORIGIN: '来源不受信任，已拒绝跨站写入',
   E_SIGNUP_DISABLED: '未开放注册',
   E_LOGIN_VIA_API: '请通过 /api/login 登录',
+  /**
+   * @param {*} [p]
+   */
   E_RATE_LIMITED: (p) =>
     p.retryAfter ? `登录尝试过于频繁，请 ${p.retryAfter} 秒后再试` : '登录尝试过于频繁，请稍后再试',
   E_BAD_CREDENTIALS: '用户名或密码错误',
@@ -46,6 +50,9 @@ const CN = {
 
   E_FEED_NOT_FOUND: '频道不存在',
   E_FEED_CREATE_FAILED: '频道创建失败',
+  /**
+   * @param {*} [p]
+   */
   E_FEED_URL_DUPLICATE: (p) => (p.name ? `这个地址已经是你的另一个频道：${p.name}` : '这个地址已经是你的另一个频道'),
   E_ENTRY_NOT_FOUND: '条目不存在',
   E_NO_FLAGS_TO_UPDATE: '没有要修改的标记',
@@ -125,11 +132,12 @@ const CN = {
 const CODE_RE = /^(E_[A-Z0-9_]+)(?::(.+))?$/;
 
 /**
- * @param input  响应体对象（`{ error, message, params }`）、或裸字符串（如库里存的 lastError `E_CODE:403`）
- * @param fallbackText 调用方的中文兜底
+ * @param {any} input  响应体对象（`{ error, message, params }`）、或裸字符串（如库里存的 lastError `E_CODE:403`）
+ * @param {string} [fallbackText] 调用方的中文兜底
  */
 export function errorText(input, fallbackText = '') {
   let code = '';
+  /** @type {Record<string, any>} */
   let params = {};
   let english = '';
 
@@ -147,8 +155,11 @@ export function errorText(input, fallbackText = '') {
 
   const m = CODE_RE.exec(code);
   if (m) {
-    code = m[1];
-    const entry = CN[code];
+    // CODE_RE 第一个捕获组是 E_ 开头的码；词典按 KnownErrorCode 建索引。
+    /** @type {import('@feedlore/contract').KnownErrorCode} */
+    const key = /** @type {any} */ (m[1]);
+    code = key;
+    const entry = CN[key];
     if (entry) {
       const base = typeof entry === 'function' ? entry(params) : entry;
       // 补充信息：持久化错误码的冒号后缀（HTTP 状态），或服务端透传的上游原文

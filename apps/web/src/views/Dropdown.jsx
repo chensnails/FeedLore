@@ -22,17 +22,30 @@ export function isMobileMq() {
   catch (_) { return false; }
 }
 
+/**
+ * @param {*} opts
+ */
 export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel, options, onChange, collapsible, collapsedGroups, onToggleGroup, activeGroup, onGroupFilter, disabled, extraClass, dataAttrs }) {
   // options: [{ value, label, group }]；group 为分组名（'' / undefined 表示无分组）
+  /** @type {any} */
   const [open, setOpen] = useState(false);
+  /** @type {any} */
   const [mobile, setMobile] = useState(false);   // 打开瞬间定格，本次开合内不切换形态
+  /** @type {any} */
   const [hi, setHi] = useState(-1);              // 键盘 ↑↓ / 悬停高亮的下标（在「可见选项」里数）
+  /** @type {*} */
   const rootRef = useRef(null);
+  /** @type {*} */
   const panelRef = useRef(null);                 // 可滚动列表容器（桌面面板 / 移动弹窗体共用）
+  /** @type {*} */
   const triggerRef = useRef(null);
+  /** @type {*} */
   const sheetCloseRef = useRef(null);
 
-  const cur = options.find((o) => String(o.value) === String(value));
+  const cur = options.find(/** @param {*} [o] */ (o) => String(o.value) === String(value));
+  /**
+   * @param {*} [o]
+   */
   const isActive = (o) => !!cur && String(o.value) === String(cur.value);
 
   /* 折叠集合：只有 collapsible 才生效。收起的组里若藏着当前选中项，那一条要留下 ——
@@ -40,8 +53,12 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   const foldSet = collapsible
     ? (collapsedGroups instanceof Set ? collapsedGroups : new Set(Array.isArray(collapsedGroups) ? collapsedGroups : []))
     : null;
+  /**
+   * @param {*} [o]
+   */
   const isVisible = (o) => !foldSet || !o.group || !foldSet.has(o.group) || isActive(o);
   const visible = foldSet ? options.filter(isVisible) : options;
+  /** @type {Record<string, any>} */
   const groupTotal = {};
   for (const o of options) { const g = o.group || ''; groupTotal[g] = (groupTotal[g] || 0) + 1; }
 
@@ -53,6 +70,9 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
 
   // 焦点被 Tab 移出整个下拉时收起。这里不能走 close()——它会把焦点抢回触发键，
   // 等于把刚 Tab 出去的用户又弹回原地。焦点掉到页面外（relatedTarget 为空）时不动。
+  /**
+   * @param {*} [ev]
+   */
   const onBlur = (ev) => {
     if (!open) return;
     const next = ev.relatedTarget;
@@ -64,7 +84,13 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   // 打开期间：点外面 / Esc 关闭（移动端另有遮罩点击 + 关闭按钮）
   useEffect(() => {
     if (!open) return;
+    /**
+     * @param {*} [ev]
+     */
     const onDoc = (ev) => { if (rootRef.current && !rootRef.current.contains(ev.target)) setOpen(false); };
+    /**
+     * @param {*} [ev]
+     */
     const onKey = (ev) => { if (ev.key === 'Escape') close(); };
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
@@ -107,6 +133,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
   const openPanel = () => { if (disabled) return; setMobile(isMobileMq()); setOpen(true); setHi(-1); };
 
   // 系统返回键 / 手势返回：先收起这一层（与 Esc / 关闭键同一个出口）。
+  /** @type {any} */
   const closeRef = useRef(close);
   closeRef.current = close;
   useEffect(() => {
@@ -114,6 +141,9 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     return registerLayer(() => closeRef.current());
   }, [open]);
 
+  /**
+   * @param {*} [v]
+   */
   const pick = (v) => {
     setOpen(false);
     setHi(-1);
@@ -128,10 +158,13 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     const sheet = body && body.closest ? body.closest('.dd-sheet') : null;
     if (!sheet) return null;
     const list = Array.from(sheet.querySelectorAll('button:not([disabled])'))
-      .filter((el) => !el.closest('[hidden]'));
+      .filter(/** @param {*} [el] */ (el) => !el.closest('[hidden]'));
     return list.length ? list : null;
   };
 
+  /**
+   * @param {*} [ev]
+   */
   const onKeyDown = (ev) => {
     if (disabled) return;
     // 模态弹层里 Tab 不能跑出去（背后页面还开着，跑出去等于把焦点丢进遮罩后面）
@@ -151,9 +184,9 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     }
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
       ev.preventDefault();
-      const at = visible.findIndex((o) => o === cur);
+      const at = visible.findIndex(/** @param {*} [o] */ (o) => o === cur);
       if (!open) { openPanel(); setHi(at); return; }
-      setHi((h) => {
+      setHi(/** @param {*} [h] */ (h) => {
         const base = h < 0 ? at : h;
         return ev.key === 'ArrowDown' ? Math.min(visible.length - 1, base + 1) : Math.max(0, base - 1);
       });
@@ -172,6 +205,10 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     byGroup.get(g).push(o);
   }
 
+  /**
+   * @param {*} [o]
+   * @param {*} [vi]
+   */
   const renderItem = (o, vi) => {
     const active = isActive(o);
     return (
@@ -199,7 +236,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
     let vi = -1;
     for (const g of groupOrder) {
       const opts = byGroup.get(g);
-      const folded = foldSet.has(g);
+      const folded = foldSet ? foldSet.has(g) : false;
       if (g) {
         const filtered = activeGroup != null && activeGroup === g;
         rows.push(
@@ -232,16 +269,17 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
           hidden={groupItems.length === 0}
           aria-activedescendant={g === activeGroup && activeOpt ? 'dd-opt-' + hi : undefined}
           key={'gl:' + g}>
-          {groupItems.map((o) => { vi++; return renderItem(o, vi); })}
+          {groupItems.map(/** @param {*} [o] */ (o) => { vi++; return renderItem(o, vi); })}
         </div>
       );
     }
   } else {
     // 非折叠：保持原结构（纯文本分组标题 + 平铺选项），测试要求保留 <div className="dd-group">
     rows = [];
+    /** @type {*} */
     let lastGroup;
     let vi = -1;
-    options.forEach((o) => {
+    options.forEach(/** @param {*} [o] */ (o) => {
       const g = o.group || '';
       if (g && g !== lastGroup) rows.push(<div className="dd-group" key={'g:' + g}>{g}</div>);
       lastGroup = g;
@@ -279,7 +317,7 @@ export function Dropdown({ id, wrapId, title, ariaLabel, icon, value, valueLabel
       {open && mobile && (
         <div className="dd-mask" onClick={close}>
           <div ref={panelRef} className="dd-sheet" role="dialog" aria-modal="true"
-            aria-label={ariaLabel || title} onClick={(ev) => ev.stopPropagation()}>
+            aria-label={ariaLabel || title} onClick={/** @param {*} [ev] */ (ev) => ev.stopPropagation()}>
             <div className="dd-sheet-head">
               <span className="dd-sheet-title">{title}</span>
               <button type="button" className="dd-sheet-close" aria-label="关闭" ref={sheetCloseRef} onClick={close}>

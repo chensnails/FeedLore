@@ -7,6 +7,9 @@
  * 需要独立语义时给它套一个带 aria-label 的元素，别在这里加 role。
  */
 
+/**
+ * @param {*} opts
+ */
 export const Icon = ({ n }) => (
   <svg className="ico" aria-hidden="true" focusable="false"><use href={'#i-' + n} /></svg>
 );

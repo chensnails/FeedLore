@@ -25,17 +25,30 @@ const EMPTY = {
   maxPerFeed: '20', maxTotal: '150', keepDays: '30', style: '',
 };
 
+/**
+ * @param {*} opts
+ */
 export function DigestPane({ onDirtyChange }) {
+  /** @type {*} */
   const paneRef = useRef(null);
+  /** @type {any} */
   const [enabled, setEnabled] = useState(true);
+  /** @type {any} */
   const [form, setForm] = useState(EMPTY);
   // saved：服务端当前值（字符串化后比较，用来判断「有没有没保存的改动」）
+  /** @type {any} */
   const [saved, setSaved] = useState(JSON.stringify(EMPTY));
+  /** @type {any} */
   const [feedsList, setFeedsList] = useState([]);
+  /** @type {any} */
   const [feedsLoading, setFeedsLoading] = useState(true);
+  /** @type {any} */
   const [feedsError, setFeedsError] = useState('');
+  /** @type {*} */
   const [result, setResult] = useState(null);   // { ok, msg } | null
+  /** @type {any} */
   const [busy, setBusy] = useState(false);
+  /** @type {any} */
   const [feedQ, setFeedQ] = useState('');
   const feedSearchName = useNoAutofillName('dig-feed-q');
   // 异步回填守卫：/api/prefs 还没回来时用户已改动，就不能拿服务端旧值盖掉本地编辑
@@ -92,8 +105,15 @@ export function DigestPane({ onDirtyChange }) {
     }
   }
 
-  const setField = (k, v) => { guard.mark(); setForm((f) => Object.assign({}, f, { [k]: v })); };
+  /**
+   * @param {*} [k]
+   * @param {*} [v]
+   */
+  const setField = (k, v) => { guard.mark(); setForm(/** @param {*} [f] */ (f) => Object.assign({}, f, { [k]: v })); };
 
+  /**
+   * @param {*} [ev]
+   */
   const onToggle = (ev) => {
     const on = ev.target.checked;
     guard.mark();
@@ -103,27 +123,38 @@ export function DigestPane({ onDirtyChange }) {
     S().toast(on ? '已开启日报，顶栏恢复入口' : '已关闭日报，顶栏不再显示入口');
   };
 
+  /**
+   * @param {*} [fid]
+   * @param {*} [on]
+   */
   const onToggleFeed = (fid, on) => {
     guard.mark();
-    setForm((f) => {
+    setForm(/** @param {*} [f] */ (f) => {
       const set = new Set(f.feeds);
       if (on) set.add(fid); else set.delete(fid);
       return Object.assign({}, f, { feeds: [...set] });
     });
   };
 
+  /**
+   * @param {*} [f]
+   */
   const feedName = (f) => f.customTitle || f.title || f.url;
 
   // 频道多了以后一屏放不下，按名称 / 地址 / 分组过滤；已勾选但被过滤掉的仍保留
   const feedQuery = feedQ.trim().toLowerCase();
+  /** @type {*} */
   const visibleFeeds = feedQuery
-    ? feedsList.filter((f) => [feedName(f), f.url, f.groupName]
-      .some((t) => String(t || '').toLowerCase().includes(feedQuery)))
+    ? feedsList.filter(/** @param {*} [f] */ (f) => [feedName(f), f.url, f.groupName]
+      .some(/** @param {*} [t] */ (t) => String(t || '').toLowerCase().includes(feedQuery)))
     : feedsList;
 
+  /**
+   * @param {*} [ids]
+   */
   const setFeedIds = (ids) => {
     guard.mark();
-    setForm((f) => Object.assign({}, f, { feeds: ids }));
+    setForm(/** @param {*} [f] */ (f) => Object.assign({}, f, { feeds: ids }));
   };
 
   // 全选 / 清空都只作用在当前可见结果上：搜出 3 个再点「清空」，
@@ -134,11 +165,11 @@ export function DigestPane({ onDirtyChange }) {
     setFeedIds([...ids]);
   };
   const clearVisibleFeeds = () => {
-    const ids = new Set(visibleFeeds.map((f) => Number(f.id)));
-    setFeedIds(form.feeds.filter((id) => !ids.has(Number(id))));
+    const ids = new Set(visibleFeeds.map(/** @param {*} [f] */ (f) => Number(f.id)));
+    setFeedIds(form.feeds.filter(/** @param {*} [id] */ (id) => !ids.has(Number(id))));
   };
   const allVisiblePicked = visibleFeeds.length > 0
-    && visibleFeeds.every((f) => form.feeds.includes(Number(f.id)));
+    && visibleFeeds.every(/** @param {*} [f] */ (f) => form.feeds.includes(Number(f.id)));
 
   const onSave = async () => {
     setBusy(true);
@@ -189,7 +220,7 @@ export function DigestPane({ onDirtyChange }) {
   const onResetStyle = () => {
     if (!form.style && !JSON.parse(saved).style) { setResult({ ok: true, msg: '本来就没写自定义风格' }); return; }
     guard.mark();
-    setForm((f) => Object.assign({}, f, { style: '' }));
+    setForm(/** @param {*} [f] */ (f) => Object.assign({}, f, { style: '' }));
     // 这里只改本地表单：按钮变灰容易让人误以为已落库，明确告诉用户还要点保存
     setResult({ ok: true, msg: '已清空风格，点「保存日报设置」后生效' });
   };
@@ -226,7 +257,7 @@ export function DigestPane({ onDirtyChange }) {
             <span>每天自动生成</span>
             <span className="switch">
               <input id="digAuto" type="checkbox" checked={form.auto}
-                onChange={(ev) => setField('auto', ev.target.checked)} />
+                onChange={/** @param {*} [ev] */ (ev) => setField('auto', ev.target.checked)} />
               <span className="switch-slider" />
             </span>
           </label>
@@ -239,14 +270,14 @@ export function DigestPane({ onDirtyChange }) {
         <div className="form-row" hidden={!form.auto}>
           <label htmlFor="digTime">生成时间（北京时间）</label>
           <input id="digTime" type="time" value={form.time}
-            onChange={(ev) => setField('time', ev.target.value)} />
+            onChange={/** @param {*} [ev] */ (ev) => setField('time', ev.target.value)} />
           <small className="form-tip">服务进程得在那个点活着才会跑；错过一次不补，第二天照常</small>
         </div>
 
         <div className="form-row" hidden={!form.auto}>
           <label>摘要范围</label>
           <Dropdown id="digMode" wrapId="digModeDD" title="摘要范围" ariaLabel="摘要范围"
-            value={form.mode} onChange={(v) => setField('mode', v)}
+            value={form.mode} onChange={/** @param {*} [v] */ (v) => setField('mode', v)}
             options={[
               { value: 'enabled', label: '仅「采集」开启的频道' },
               { value: 'all', label: '全部频道' },
@@ -268,7 +299,7 @@ export function DigestPane({ onDirtyChange }) {
                     <svg className="ico" aria-hidden="true" focusable="false"><use href="#i-search" /></svg>
                     <input type="search" name={feedSearchName} value={feedQ}
                       placeholder="搜索频道" aria-label="搜索频道"
-                      onChange={(ev) => setFeedQ(ev.target.value)} {...NO_AUTOFILL_PROPS} />
+                      onChange={/** @param {*} [ev] */ (ev) => setFeedQ(ev.target.value)} {...NO_AUTOFILL_PROPS} />
                   </div>
                 ) : null}
                 <button className="btn btn-ghost btn-sm" id="digFeedAllBtn" type="button"
@@ -287,14 +318,14 @@ export function DigestPane({ onDirtyChange }) {
             ) : null}
             <div className="feed-pick">
               {/* 已有清单优先渲染：一次重拉失败不该把用户正在看的频道行整片抹掉 */}
-              {feedsList.length ? (visibleFeeds.length ? visibleFeeds.map((f) => {
+              {feedsList.length ? (visibleFeeds.length ? visibleFeeds.map(/** @param {*} [f] */ (f) => {
                 const fid = Number(f.id);
                 const checked = form.feeds.includes(fid);
                 return (
                   <label key={f.id} className={'feed-pick-row' + (checked ? ' on' : '')}
                     title={feedName(f)}>
                     <input type="checkbox" checked={checked}
-                      onChange={(ev) => onToggleFeed(fid, ev.target.checked)} />
+                      onChange={/** @param {*} [ev] */ (ev) => onToggleFeed(fid, ev.target.checked)} />
                     <span className="feed-pick-name">{feedName(f)}</span>
                     {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
                   </label>
@@ -319,17 +350,17 @@ export function DigestPane({ onDirtyChange }) {
           <div className="form-row">
             <label htmlFor="digMaxPerFeed">每频道条数上限</label>
             <input id="digMaxPerFeed" type="number" min="1" max="100" value={form.maxPerFeed}
-              onChange={(ev) => setField('maxPerFeed', ev.target.value)} />
+              onChange={/** @param {*} [ev] */ (ev) => setField('maxPerFeed', ev.target.value)} />
           </div>
           <div className="form-row">
             <label htmlFor="digMaxTotal">总条数上限</label>
             <input id="digMaxTotal" type="number" min="10" max="500" value={form.maxTotal}
-              onChange={(ev) => setField('maxTotal', ev.target.value)} />
+              onChange={/** @param {*} [ev] */ (ev) => setField('maxTotal', ev.target.value)} />
           </div>
           <div className="form-row">
             <label htmlFor="digKeepDays">摘要保留天数</label>
             <input id="digKeepDays" type="number" min="1" max="365" value={form.keepDays}
-              onChange={(ev) => setField('keepDays', ev.target.value)} />
+              onChange={/** @param {*} [ev] */ (ev) => setField('keepDays', ev.target.value)} />
             <small className="form-tip">超期的日报由生成时顺带清理，只影响你自己的历史</small>
           </div>
         </div>
@@ -347,7 +378,7 @@ export function DigestPane({ onDirtyChange }) {
             maxLength={PROMPT_MAX}
             placeholder={'例：侧重新版影视和音乐，技术教程只挑对我有用的；语气随意些，别用「赋能」「抓手」这类词；概览压到两句话。'}
             value={form.style}
-            onChange={(ev) => setField('style', ev.target.value)}
+            onChange={/** @param {*} [ev] */ (ev) => setField('style', ev.target.value)}
           />
           <small className="form-tip">
             {form.style.length} / {PROMPT_MAX} 字 · 这段会作为「额外要求」附在日报提示词后面，只影响选材、语气和篇幅。

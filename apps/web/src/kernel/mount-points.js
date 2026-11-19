@@ -20,4 +20,4 @@ export const MOUNT_POINTS = Object.freeze([
   { id: 'aiRoot', lazy: true, exportName: 'AiView' },
 ]);
 
-export const MOUNT_IDS = Object.freeze(MOUNT_POINTS.map((m) => m.id));
+export const MOUNT_IDS = Object.freeze(MOUNT_POINTS.map(/** @param {*} [m] */ (m) => m.id));

@@ -18,13 +18,19 @@ import { isOn } from '../kernel/bridge.js';
  *   - 用户停在顶部、也没有展开中的文章 → 直接套用
  *   - 已经滚下去了 → 挂个浮标，点了才套用，避免列表在眼皮底下跳
  * ============================================================ */
+/** @type {any} */
 export let autoRefreshTimer = null;
 export let autoRefreshLastAt = 0;    // 上一次检查的时刻（回到前台时判断要不要补一次）
+/** @type {any} */
 export let pendingFresh = null;      // { view, data, n } 已拉到但还没套用的新内容
 
 /** 「N 条新内容」浮标的可视图状态，由 src/ui/Overlays.jsx 渲染（v2.1.0 起不再直接改 DOM） */
 export let newPillState = { show: false, text: '' };
 
+/**
+ * @param {*} [show]
+ * @param {*} [text]
+ */
 function setNewPill(show, text) {
   newPillState = { show, text: text || '' };
   emitOverlays();
@@ -48,7 +54,9 @@ export function scheduleAutoRefresh() {
   }, mins * 60000);
 }
 
-/** 按当前页面的筛选条件拉一页首屏（卡片页的 tag / sort 也已服务端化，须一并带上） */
+/** 按当前页面的筛选条件拉一页首屏（卡片页的 tag / sort 也已服务端化，须一并带上）
+*@param {*} [view]
+*/
 export async function fetchHead(view) {
   const params = new URLSearchParams();
   const loaded = view === 'reader' ? state.rdEntries.length : state.entries.length;
@@ -73,9 +81,12 @@ export async function fetchHead(view) {
   return res.json();
 }
 
-/** 只数「排在当前最头条目之前」的那些，避免把翻页拿到的旧条目也算成新的 */
+/** 只数「排在当前最头条目之前」的那些，避免把翻页拿到的旧条目也算成新的
+*@param {*} [fresh]
+ * @param {*} [current]
+*/
 export function countNewHead(fresh, current) {
-  const known = new Set(current.map((e) => String(e.id)));
+  const known = new Set(current.map(/** @param {*} [e] */ (e) => String(e.id)));
   let n = 0;
   for (const e of fresh) {
     if (known.has(String(e.id))) break;
@@ -89,7 +100,9 @@ export function hideNewPill() {
   setNewPill(false);
 }
 
-/** 把拉到的新首屏套进当前列表 */
+/** 把拉到的新首屏套进当前列表
+*@param {*} opts
+*/
 export function applyFresh({ view, data }) {
   const list = data.entries || [];
   if (view === 'reader') {
@@ -134,6 +147,7 @@ export async function checkForNew() {
     if (state.tab === 'reader' && state.rdScope === 'favorite') return 0;
     if (state.loading || state.rdLoading) return 0;
     const view = state.tab === 'cards' ? 'cards' : 'reader';
+    /** @type {*} */
     const current = view === 'reader' ? state.rdEntries : state.entries;
 
     const data = await fetchHead(view);

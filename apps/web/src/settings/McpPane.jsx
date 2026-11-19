@@ -21,6 +21,9 @@ import { Result, Section, useResult } from './primitives.jsx';
 
 const S = () => core;
 
+/**
+ * @param {*} [iso]
+ */
 function fmtRel(iso) {
   if (!iso) return '从未使用';
   const t = new Date(iso).getTime();
@@ -33,12 +36,18 @@ function fmtRel(iso) {
   return iso.slice(0, 10);
 }
 
-const openOnKey = (fn) => (ev) => {
+/**
+ * @param {*} [fn]
+ */
+const openOnKey = (fn) => /** @param {*} [ev] */ (ev) => {
   if (ev.target !== ev.currentTarget) return;
   if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); fn(); }
 };
 
 /* ---------- 令牌详情层：查看 + 吊销 ---------- */
+/**
+ * @param {*} opts
+ */
 function TokenSheet({ token, busy, onClose, onRevoke, error }) {
   return (
     <DetailSheet
@@ -68,12 +77,20 @@ function TokenSheet({ token, busy, onClose, onRevoke, error }) {
 }
 
 /* ---------- 新建令牌详情层：创建后在同一层展示明文 ---------- */
+/**
+ * @param {*} opts
+ */
 function NewTokenSheet({ onClose, onCreated }) {
   const s = S();
+  /** @type {any} */
   const [name, setName] = useState('');
+  /** @type {any} */
   const [busy, setBusy] = useState(false);
+  /** @type {*} */
   const [fresh, setFresh] = useState(null);   // {secret, prefix}
+  /** @type {any} */
   const [copied, setCopied] = useState(false);
+  /** @type {any} */
   const [err, setErr] = useState('');
 
   const create = async () => {
@@ -141,8 +158,8 @@ function NewTokenSheet({ onClose, onCreated }) {
           <label htmlFor="newTokenName">令牌名称</label>
           <input id="newTokenName" type="text" placeholder="令牌名称（如：我的 Claude）"
             aria-label="新令牌名称" maxLength={40} autoComplete="off"
-            value={name} onChange={(ev) => setName(ev.target.value)}
-            onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); create(); } }} />
+            value={name} onChange={/** @param {*} [ev] */ (ev) => setName(ev.target.value)}
+            onKeyDown={/** @param {*} [ev] */ (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); create(); } }} />
           <small className="form-tip">
             名字只用来区分客户端，之后删改都按它找；令牌本身只读，不会改动你的数据。
           </small>
@@ -155,13 +172,22 @@ function NewTokenSheet({ onClose, onCreated }) {
 
 export function McpPane() {
   const s = S();
+  /** @type {*} */
   const paneRef = useRef(null);
   const [result, show] = useResult();
+  /** @type {*} */
   const [tokens, setTokens] = useState(null); // null = 读取中
+  /** @type {any} */
   const [listError, setListError] = useState('');
+  /** @type {any} */
   const [revoking, setRevoking] = useState('');
+  /** @type {*} */
   const [sheet, setSheet] = useState(null);   // {type:'new'} | {type:'token', id}
+  /** @type {any} */
   const [sheetError, setSheetError] = useState('');
+  /**
+   * @param {*} [next]
+   */
   const openSheet = (next) => { setSheetError(''); setSheet(next); };
 
   useEffect(() => {
@@ -183,6 +209,9 @@ export function McpPane() {
 
   useEffect(() => { load(); }, []);
 
+  /**
+   * @param {*} [t]
+   */
   async function revoke(t) {
     const ok = await s.confirm({
       title: '吊销这个令牌？',
@@ -209,8 +238,11 @@ export function McpPane() {
     }
   }
 
-  const token = sheet && sheet.type === 'token' ? (tokens || []).find((t) => t.id === sheet.id) : null;
+  const token = sheet && sheet.type === 'token' ? (tokens || []).find(/** @param {*} [t] */ (t) => t.id === sheet.id) : null;
 
+  /**
+   * @param {*} [t]
+   */
   const renderTokenRow = (t) => (
     <div className="sl-row" key={t.id} data-token-id={t.id}
       role="button" tabIndex={0} aria-label={`${t.name}：查看令牌详情`}

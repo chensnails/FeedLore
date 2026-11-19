@@ -19,7 +19,9 @@ const S = () => core;   // 核心逻辑单例（@core，v2.0.0 起改为模块�
 
 /* ---------- 纯格式化（自旧 app.js 迁移，纯函数、不依赖 DOM） ---------- */
 
-/** 秒 → 粗粒度时长：3 天 4 小时 / 2 小时 5 分 / 42 秒 */
+/** 秒 → 粗粒度时长：3 天 4 小时 / 2 小时 5 分 / 42 秒
+*@param {*} [sec]
+*/
 function fmtDuration(sec) {
   const s = Math.max(0, Math.round(Number(sec) || 0));
   const d = Math.floor(s / 86400);
@@ -31,7 +33,9 @@ function fmtDuration(sec) {
   return `${s} 秒`;
 }
 
-/** 字节 → MB / GB */
+/** 字节 → MB / GB
+*@param {*} [n]
+*/
 function fmtBytes(n) {
   const b = Number(n);
   if (!Number.isFinite(b) || b <= 0) return '—';
@@ -40,7 +44,10 @@ function fmtBytes(n) {
   return mb.toFixed(mb >= 100 ? 0 : 1) + ' MB';
 }
 
-/** 相对时间。dir='past' → 「12 分钟前」；dir='future' → 「约 12 分钟后」 */
+/** 相对时间。dir='past' → 「12 分钟前」；dir='future' → 「约 12 分钟后」
+*@param {*} [ts]
+ * @param {*} [dir]
+*/
 function fmtRel(ts, dir) {
   if (!ts) return '';
   const diff = dir === 'future'
@@ -55,19 +62,30 @@ function fmtRel(ts, dir) {
   return dir === 'future' ? `约 ${txt}后` : `${txt}前`;
 }
 
-/** 完整时间戳 YYYY-MM-DD HH:mm */
+/** 完整时间戳 YYYY-MM-DD HH:mm
+*@param {*} [ts]
+*/
 function fmtFull(ts) {
   if (!ts) return '';
   const d = new Date(ts);
+  /**
+   * @param {*} [n]
+   */
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 const numFmt = new Intl.NumberFormat('zh-CN');
+/**
+ * @param {*} [n]
+ */
 const fmtNum = (n) => numFmt.format(Number(n) || 0);
 
 /* ---------- 小组件 ---------- */
 
+/**
+ * @param {*} opts
+ */
 const StatCard = ({ label, value, sub }) => (
   <div className="stat-card">
     <p className="stat-label">{label}</p>
@@ -76,6 +94,9 @@ const StatCard = ({ label, value, sub }) => (
   </div>
 );
 
+/**
+ * @param {*} opts
+ */
 const StatRow = ({ k, v }) => (
   <div className="stat-row"><span className="stat-k">{k}</span><span className="stat-v">{v}</span></div>
 );
@@ -84,6 +105,9 @@ const StatRow = ({ k, v }) => (
 const StatSection = Section;
 
 /* ---------- 诊断文本（拼好后贴到 issue / 聊天里） ---------- */
+/**
+ * @param {*} [d]
+ */
 function buildDiagnostics(d) {
   const app = d.app || {}; const db = d.db || {}; const rss = d.rss || {}; const dg = d.digest || {};
   const f = rss.feeds || {}; const e = rss.entries || {}; const mem = app.memory || {};
@@ -127,7 +151,7 @@ function buildDiagnostics(d) {
     + ' | 异常 ' + f.error + ' | 未抓过 ' + f.neverFetched);
   L.push('条目: 共 ' + e.total + ' | 未读 ' + e.unread + ' | 收藏 ' + e.favorite + ' | 近 24h 新增 ' + e.added24h);
   L.push('页面自动刷新: ' + (rss.autoRefreshMinutes ? '每 ' + rss.autoRefreshMinutes + ' 分钟' : '关闭'));
-  (rss.problems || []).forEach((p) => L.push('  ! ' + p.title + (p.enabled === false ? '（已自动停用）' : '') + ' → ' + p.error));
+  (rss.problems || []).forEach(/** @param {*} [p] */ (p) => L.push('  ! ' + p.title + (p.enabled === false ? '（已自动停用）' : '') + ' → ' + p.error));
   L.push('');
   L.push('[日报]');
   L.push('自动生成: ' + (dg.autoUsers || 0) + ' / ' + (dg.totalUsers || 0) + ' 个账号（配置跟随账号） | 存档 ' + dg.count + ' 份');
@@ -137,17 +161,29 @@ function buildDiagnostics(d) {
 
 export function StatusPane() {
   const s = S();
+  /** @type {*} */
   const paneRef = useRef(null);
+  /** @type {*} */
   const [data, setData] = useState(null);
+  /** @type {any} */
   const [hint, setHint] = useState('正在读取运行状态…');
+  /** @type {any} */
   const [retrying, setRetrying] = useState({});
   // 手动刷新的忙碌态（30 秒轮询不置忙，否则按钮每半分钟闪一次）
+  /** @type {any} */
   const [busy, setBusy] = useState(false);
+  /** @type {any} */
   const [, tick] = useState(0);          // 每秒重绘，驱动「已运行」本地递增
+  /** @type {*} */
   const baseRef = useRef(null);          // { sec, at } 用于推算当前 uptime
+  /** @type {*} */
   const dataRef = useRef(null);          // 供复制诊断读取最新快照
+  /** @type {any} */
   const aliveRef = useRef(true);
 
+  /**
+   * @param {*} [manual]
+   */
   async function load(manual) {
     if (manual) setBusy(true);
     try {
@@ -173,7 +209,7 @@ export function StatusPane() {
     aliveRef.current = true;
     load();                                             // 进入即拉一次
     const poll = setInterval(() => { if (isOn('settingsOpen')) load(); }, 30000);
-    const t = setInterval(() => tick((x) => x + 1), 1000);
+    const t = setInterval(() => tick(/** @param {*} [x] */ (x) => x + 1), 1000);
     return () => {
       aliveRef.current = false;
       clearInterval(poll);
@@ -214,8 +250,11 @@ export function StatusPane() {
     }
   }
 
+  /**
+   * @param {*} [id]
+   */
   async function retry(id) {
-    setRetrying((r) => ({ ...r, [id]: true }));
+    setRetrying(/** @param {*} [r] */ (r) => ({ ...r, [id]: true }));
     try {
       const res = await s.apiFetch('/api/feeds/' + id + '/refresh', { method: 'POST' });
       const d = await res.json().catch(() => ({}));
@@ -227,7 +266,7 @@ export function StatusPane() {
     } catch (e) {
       s.toast('重试失败：' + ((e && e.message) || e), false);
     } finally {
-      setRetrying((r) => { const n = { ...r }; delete n[id]; return n; });
+      setRetrying(/** @param {*} [r] */ (r) => { const n = { ...r }; delete n[id]; return n; });
     }
   }
 
@@ -373,7 +412,7 @@ export function StatusPane() {
         {problems.length > 0 && (
           <StatSection secKey="st-problems" title="异常频道" sub={`${problems.length} 个频道抓取失败`} open>
             <div className="stat-problems">
-              {problems.map((p) => (
+              {problems.map(/** @param {*} [p] */ (p) => (
                 <div className="stat-problem" key={p.feedId}>
                   <i className="stat-dot bad" />
                   <span className="stat-problem-name" title={p.title}>{p.title}</span>

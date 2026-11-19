@@ -24,8 +24,11 @@ export const AUTOFILL_ANIMATION = 'flAutofillGuard';
 
 let seq = 0;
 
-/** 稳定但非语义化的 name：同一组件多次挂载互不相同，浏览器无法匹配已保存的账号字段。 */
+/** 稳定但非语义化的 name：同一组件多次挂载互不相同，浏览器无法匹配已保存的账号字段。
+*@param {*} [scope]
+*/
 export function useNoAutofillName(scope = 'fl-field') {
+  /** @type {*} */
   const ref = useRef(null);
   if (!ref.current) {
     seq += 1;
@@ -47,7 +50,9 @@ export const NO_AUTOFILL_PROPS = Object.freeze({
   'data-fl-no-autofill': 'true',
 });
 
-/** 清掉被自动填充的值，并让 React 受控组件同步到空状态。 */
+/** 清掉被自动填充的值，并让 React 受控组件同步到空状态。
+*@param {*} [input]
+*/
 export function clearAutofilledInput(input) {
   if (!input || !input.value) return false;
   const win = input.ownerDocument && input.ownerDocument.defaultView;
@@ -69,10 +74,14 @@ export function clearAutofilledInput(input) {
 /**
  * 全局守卫：装在 document 上，覆盖所有带 data-fl-no-autofill 的输入框。
  * 返回卸载函数（便于测试与热更新）；可在任意入口调用一次。
- */
+  * @param {*} [doc]
+*/
 export function installAutofillGuard(doc) {
   const target = doc || (typeof document !== 'undefined' ? document : null);
   if (!target || !target.addEventListener) return () => {};
+  /**
+   * @param {*} [ev]
+   */
   const onAnim = (ev) => {
     if (ev.animationName !== AUTOFILL_ANIMATION) return;
     const el = ev.target;

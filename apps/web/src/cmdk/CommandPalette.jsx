@@ -14,11 +14,17 @@ import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.js';
 const BRIDGE = () => core;   // 核心逻辑单例（@core）
 
 export function CommandPalette() {
+  /** @type {any} */
   const [open, setOpen] = useState(false);
+  /** @type {any} */
   const [q, setQ] = useState('');
+  /** @type {any} */
   const [active, setActive] = useState(0);
+  /** @type {*} */
   const inputRef = useRef(null);
+  /** @type {*} */
   const listRef = useRef(null);
+  /** @type {*} */
   const panelRef = useRef(null);
   // 命令面板是全局搜索框，不是登录框：名字要唯一且被密码管理器忽略（DESIGN 第 10 条）。
   // 之前漏了这层防护，Chrome/Edge Android 会把保存的用户名填进来当成搜索词。
@@ -29,10 +35,13 @@ export function CommandPalette() {
   // 之前能在确认框 / 设置之上再叠一层模态，两层 Tab 陷阱互相抢焦点、Esc 关错层。
   // 已经开着时永远允许关（这是「我就要退出」的意图）。
   useEffect(() => {
+    /**
+     * @param {*} [ev]
+     */
     const onKey = (ev) => {
       if ((ev.metaKey || ev.ctrlKey) && (ev.key === 'k' || ev.key === 'K')) {
         ev.preventDefault();
-        setOpen((o) => {
+        setOpen(/** @param {*} [o] */ (o) => {
           if (o) return false;
           return hasLayerAbove('cmdk') ? false : true;
         });
@@ -50,6 +59,7 @@ export function CommandPalette() {
 
   // 打开时清空输入并聚焦；关闭时把焦点还给打开它的那个按钮（与设置弹层 / 灯箱一致）。
   // 不还的话焦点掉到 body，键盘用户得从头 Tab 回原来那块地方。
+  /** @type {*} */
   const openerRef = useRef(null);
   useEffect(() => {
     if (open) {
@@ -93,22 +103,31 @@ export function CommandPalette() {
   } : null;
   const items = searchCmd ? matched.concat([searchCmd]) : matched;
 
-  const runCmdk = useCallback((idx) => {
+  const runCmdk = useCallback(/** @param {*} [idx] */ (idx) => {
     const c = items[idx];
     if (!c) return;
     close();
     try { c.run(); } catch (err) { console.error(err); }
   }, [items, close]);
 
+  /**
+   * @param {*} [ev]
+   */
   const onInputKeyDown = (ev) => {
-    if (ev.key === 'ArrowDown') { ev.preventDefault(); setActive((i) => (items.length ? (i + 1) % items.length : 0)); }
-    else if (ev.key === 'ArrowUp') { ev.preventDefault(); setActive((i) => (items.length ? (i - 1 + items.length) % items.length : 0)); }
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); setActive(/** @param {*} [i] */ (i) => (items.length ? (i + 1) % items.length : 0)); }
+    else if (ev.key === 'ArrowUp') { ev.preventDefault(); setActive(/** @param {*} [i] */ (i) => (items.length ? (i - 1 + items.length) % items.length : 0)); }
     else if (ev.key === 'Enter') { ev.preventDefault(); runCmdk(active); }
   };
 
+  /**
+   * @param {*} [ev]
+   */
   const onMaskClick = (ev) => { if (ev.target === ev.currentTarget) close(); };
 
   // Tab 不跑出面板：否则模态对话框会把焦点送到背后的页面上
+  /**
+   * @param {*} [ev]
+   */
   const onPanelKeyDown = (ev) => {
     // Esc 挂在面板而不是输入框：Tab 到某条命令按钮后按 Esc 也要能关，
     // 否则只能用 ⌘K 或点遮罩（确认框叠在上面时仍让位给它）。
@@ -117,7 +136,7 @@ export function CommandPalette() {
     const root = panelRef.current;
     if (!root) return;
     const items = Array.from(root.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])'))
-      .filter((el) => !el.disabled);
+      .filter(/** @param {*} [el] */ (el) => !el.disabled);
     if (!items.length) return;
     const first = items[0];
     const last = items[items.length - 1];
@@ -132,12 +151,15 @@ export function CommandPalette() {
 
   if (!open) return null;
 
+  /** @type {any} */
   let rows = null;
+  /** @type {*} */
   let lastGroup = null;
   if (!items.length) {
     rows = <div className="cmdk-empty">没有匹配的命令</div>;
   } else {
-    rows = items.map((c, idx) => {
+    rows = items.map(/** @param {*} [c] @param {*} [idx] */ (c, idx) => {
+      /** @type {*} */
       const head = c.group !== lastGroup ? (
         <div className="cmdk-group-label" key={'g-' + idx}>{c.group}</div>
       ) : null;
@@ -177,8 +199,6 @@ export function CommandPalette() {
             type="text"
             name={noAutofillName}
             placeholder="输入命令或搜索…"
-            autoComplete="off"
-            spellCheck="false"
             {...NO_AUTOFILL_PROPS}
             role="combobox"
             aria-label="搜索命令"
@@ -187,7 +207,7 @@ export function CommandPalette() {
             aria-controls="cmdkList"
             aria-activedescendant={items.length ? 'cmdkOpt' + active : undefined}
             value={q}
-            onChange={(ev) => { setQ(ev.target.value); setActive(0); }}
+            onChange={/** @param {*} [ev] */ (ev) => { setQ(ev.target.value); setActive(0); }}
             onKeyDown={onInputKeyDown}
           />
           <kbd className="cmdk-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>

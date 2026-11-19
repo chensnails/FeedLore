@@ -63,10 +63,17 @@ export async function refreshFeeds() {
 
 /* OPML 导出：把当前账号的订阅源整理成标准 OPML（分组作为文件夹），浏览器下载 */
 export function exportOpml() {
+  /** @type {*} */
   const feeds = state.feedList || [];
   if (!feeds.length) { toast('没有可导出的订阅源', false); return; }
+  /**
+   * @param {*} [s]
+   */
   const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  /**
+   * @param {*} [f]
+   */
   const feedOutline = (f) => {
     const title = feedTitle(f) || f.url || '未命名订阅源';
     const xml = f.url || '';
@@ -75,6 +82,7 @@ export function exportOpml() {
       + '" xmlUrl="' + esc(xml) + '" htmlUrl="' + esc(html) + '"/>';
   };
   // 按分组归类；未分组的放在顶层
+  /** @type {Record<string, any>} */
   const groups = {};
   const ungrouped = [];
   for (const f of feeds) {
@@ -83,7 +91,7 @@ export function exportOpml() {
     else ungrouped.push(f);
   }
   let body = '';
-  for (const g of Object.keys(groups).sort((a, b) => a.localeCompare(b, 'zh'))) {
+  for (const g of Object.keys(groups).sort(/** @param {*} [a] @param {*} [b] */ (a, b) => a.localeCompare(b, 'zh'))) {
     body += '  <outline text="' + esc(g) + '" title="' + esc(g) + '">\n'
       + groups[g].map(feedOutline).join('\n') + '\n'
       + '  </outline>\n';
@@ -106,7 +114,8 @@ export function exportOpml() {
 /**
  * 触发一次同源 GET 下载。服务端用 Content-Disposition 给文件名，所以不给 download
  * 属性（给了浏览器会覆盖掉服务端命名）。临时锚点即点即弃，不打断当前页面。
- */
+  * @param {*} [url]
+*/
 export function downloadUrl(url) {
   const a = document.createElement('a');
   a.href = url;
@@ -119,7 +128,7 @@ export function downloadUrl(url) {
 
 /* Esc = 关闭「最上面那一层」。这里只负责设置弹层，但要先看有没有更上层的覆盖物：
    整屏下拉弹层 / 命令面板 / 灯箱 / 确认框开着时，这一击归它们，不能顺手把设置也关掉。 */
-document.addEventListener('keydown', (ev) => {
+document.addEventListener('keydown', /** @param {*} [ev] */ (ev) => {
   if (ev.key !== 'Escape' || !isOn('settingsOpen')) return;
   if (document.querySelector('.dd-mask')) return;                    // 移动端整屏下拉
   // 设置里的详情层（列表 → 详情）自己处理 Esc：输入框里第一击只失焦、第二击才关层。
@@ -140,6 +149,10 @@ document.addEventListener('keydown', (ev) => {
 /* ============================================================
  * 页面切换（文章 / 卡片 / AI）
  * ============================================================ */
+/**
+ * @param {*} [name]
+ * @param {*} [opts]
+ */
 export function switchView(name, opts) {
   if (TABS.indexOf(name) < 0) name = 'reader';
   const o = opts || {};
@@ -245,7 +258,10 @@ window.addEventListener('popstate', () => {
  *  ai=true 表示来自文章页的「AI 标签」组（独立表），必须走 aiTag 而非 tag，
  *  否则后端只查手动标签列，结果为空或牛头不对马嘴。 */
 /** 旧入口兼容：文章页点标签改为就地筛选，不再跳卡片页（卡片页受 cardEnabled 限制会漏文章）。
- *  统一走 reader.js#readerSetTag，两排标签同一套逻辑。 */
+ *  统一走 reader.js#readerSetTag，两排标签同一套逻辑。
+ *@param {*} [tag]
+ * @param {*} [ai]
+*/
 export function readerTagToCards(tag, ai = false) {
   readerSetTag(tag, ai);
 }
@@ -258,8 +274,13 @@ export function readerTagToCards(tag, ai = false) {
  */
 export let lightboxState = { src: '', show: false, list: [], index: 0 };
 /** 触发灯箱的元素（不放进 state：它是 DOM 引用，进 state 会跟着快照到处传） */
+/** @type {*} */
 let lightboxOpener = null;
 
+/**
+ * @param {*} [src]
+ * @param {*} [opts]
+ */
 export function openLightbox(src, opts) {
   if (!src) return;
   const o = opts || {};
@@ -278,6 +299,7 @@ export function closeLightbox() {
   unlockPageScroll();
   // 焦点归还触发图：不还的话关掉后焦点掉到 body，键盘用户得从头 Tab。
   // 正文图是 <img>、默认不可聚焦，临时补 tabindex="-1"（不进 Tab 序列，但可程序聚焦）。
+  /** @type {*} */
   const op = lightboxOpener;
   lightboxOpener = null;
   if (op && document.contains(op) && typeof op.focus === 'function') {
@@ -288,29 +310,31 @@ export function closeLightbox() {
   }
 }
 
-/** 组内翻页（±1）。只有一张图时是空操作。 */
+/** 组内翻页（±1）。只有一张图时是空操作。
+*@param {*} [d]
+*/
 export function stepLightbox(d) {
   const st = lightboxState;
   if (!st.show || !st.list || st.list.length < 2) return;
   const n = st.list.length;
   const i = ((st.index + d) % n + n) % n;
-  lightboxState = { ...st, src: st.list[i], index: i };
+  lightboxState = { ...st, src: st.list[i] || '', index: i };
   emitOverlays();
 }
 
-document.addEventListener('click', (ev) => {
+document.addEventListener('click', /** @param {*} [ev] */ (ev) => {
   if (lightboxState.show) { closeLightbox(); return; }   // 开着的时候点哪儿都关
   const img = ev.target.closest ? ev.target.closest('.art-img') : null;
   if (!img) return;
   // 同一篇正文内的图算一组：卡片详情 / 文章页正文 / 列表展开体
   const scope = img.closest('.art-body, .cd-body, .cd-modal, .art-item') || document;
   const list = Array.prototype.map
-    .call(scope.querySelectorAll('.art-img'), (el) => el.getAttribute('src'))
+    .call(scope.querySelectorAll('.art-img'), /** @param {*} [el] */ (el) => el.getAttribute('src'))
     .filter(Boolean);
   openLightbox(img.getAttribute('src'), { list, opener: img });
 });
 
-document.addEventListener('keydown', (ev) => {
+document.addEventListener('keydown', /** @param {*} [ev] */ (ev) => {
   if (!lightboxState.show) return;
   if (ev.key === 'Escape') closeLightbox();
   else if (ev.key === 'ArrowRight') { ev.preventDefault(); stepLightbox(1); }
@@ -328,9 +352,10 @@ if ('serviceWorker' in navigator) {
 }
 
 // 安装到手机：Chromium 系（Edge / Chrome）满足条件时会触发 beforeinstallprompt
+/** @type {any} */
 export let deferredInstall = null;   // 捕获到的 beforeinstallprompt 事件（账号面板「一键安装」经桥 promptInstall 触发）
 
-window.addEventListener('beforeinstallprompt', (ev) => {
+window.addEventListener('beforeinstallprompt', /** @param {*} [ev] */ (ev) => {
   ev.preventDefault();
   deferredInstall = ev;
   emitShell();   // 顶栏「添加到手机」按钮由 React 按 installReady 显隐
@@ -372,7 +397,7 @@ export function syncThemeColor() {
     meta.setAttribute('content', color);
     return;
   }
-  metas.forEach((meta) => meta.setAttribute('content', color));
+  metas.forEach(/** @param {*} [meta] */ (meta) => meta.setAttribute('content', color));
 }
 syncThemeColor();
 new MutationObserver(syncThemeColor).observe(document.documentElement, {
@@ -389,6 +414,10 @@ export function savedSections() {
   return (layoutPref.sections && typeof layoutPref.sections === 'object') ? layoutPref.sections : {};
 }
 
+/**
+ * @param {*} [key]
+ * @param {*} [open]
+ */
 export function saveSectionState(key, open) {
   const next = Object.assign({}, layoutPref.sections || {}, { [key]: !!open });
   setLayout('sections', next);
@@ -398,10 +427,11 @@ export function saveSectionState(key, open) {
  * 给 root 里所有 details.sec 套上记住的开合状态，并挂上变化监听。
  * 静态区域在启动时调一次就够；**动态重绘的区域每次渲染后都要再调一次**
  * —— 状态页每 30s 重绘一遍，不重新绑定的话展开态会被冲掉。
- */
+  * @param {*} [root]
+*/
 export function bindSections(root) {
   const saved = savedSections();
-  (root || document).querySelectorAll('details.sec[data-sec]').forEach((d) => {
+  (root || document).querySelectorAll('details.sec[data-sec]').forEach(/** @param {*} [d] */ (d) => {
     if (d.dataset.secBound === '1') return;   // 已经绑过，别重复挂监听
     d.dataset.secBound = '1';
     const k = d.getAttribute('data-sec');
@@ -425,6 +455,9 @@ bindSections(document);
    下面的 selectScope / jumpToFeed / focusSearchBox 是普通页面函数，
    通过文件末尾导出的 `core` 单例供 React 组件调用（v2.0.0 起改为模块引用）。 */
 
+/**
+ * @param {*} [scope]
+ */
 export function selectScope(scope) {
   if (state.tab !== 'reader') switchView('reader');
   state.rdScope = scope;
@@ -438,7 +471,10 @@ export function selectScope(scope) {
   scrollReaderTop();
 }
 /** 跳到阅读页并锁定某个频道；传了 focusId 就把那篇文章指给用户看（滚过去 + 闪一下高亮）。
- *  focusId 只在这一次跳转里用，不写进任何持久化偏好。 */
+ *  focusId 只在这一次跳转里用，不写进任何持久化偏好。
+ *@param {*} [id]
+ * @param {*} [focusId]
+*/
 export function jumpToFeed(id, focusId) {
   // 先落筛选条件再切页：switchView 在列表为空时会自动加载，用目标频道的筛选才不白拉一次
   state.rdScope = 'all';
@@ -469,7 +505,7 @@ export function focusSearchBox() {
 
 // 「/」聚焦搜索：命令面板里一直写着这个提示，之前却没有对应的按键处理。
 // 正在输入框里打字时不抢（用户可能真的要打斜杠），任何弹层开着时也不抢。
-document.addEventListener('keydown', (ev) => {
+document.addEventListener('keydown', /** @param {*} [ev] */ (ev) => {
   if (ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
   const t = ev.target;
   if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
@@ -483,12 +519,19 @@ document.addEventListener('keydown', (ev) => {
 
 /* 卡片页条目收藏/已读：与阅读页走同一套标记逻辑（reader.js 的 setEntryFlag）——
  * 两页列表各持一份条目对象，统一入口才能保证改一处、两边同时换新对象并同步计数。 */
+/**
+ * @param {*} [id]
+ * @param {*} [patch]
+ */
 export function cardSetFlag(id, patch) {
   return setEntryFlag(id, patch);
 }
 
 /* 卡片详情弹窗打开即算读过：与文章页展开同样走 markEntryRead（状态同步到两页列表）。
  * 同一条只发一次 PATCH —— 已读过就直接跳过，避免每次点开都打一次请求。 */
+/**
+ * @param {*} [id]
+ */
 export function cardDetailRead(id) {
   markEntryRead(id);
 }
@@ -497,7 +540,9 @@ export function cardDetailRead(id) {
 export const digestIsEnabled = () => layoutPref.digestEnabled !== false;
 
 /** 开 / 关日报（设置面板的开关经桥调用）。
- *  探索页常驻：关掉日报只隐藏页内「日报」tab，不再把人带离探索页。 */
+ *  探索页常驻：关掉日报只隐藏页内「日报」tab，不再把人带离探索页。
+ *@param {*} [on]
+*/
 export function setDigestEnabled(on) {
   const next = on !== false;
   if (digestIsEnabled() === next) return;
