@@ -22,10 +22,21 @@ if [[ $# -gt 0 && "$1" != -* && ("$1" == *.yml || "$1" == *.yaml) ]]; then
 fi
 EXTRA_ARGS=("$@")
 
+# 缺 compose 就自己下 —— 「一键脚本」不该要求用户先手动准备第二个文件。
+# COMPOSE_URL 可覆盖（国内网络换成 gh-proxy 前缀即可）。
 if [[ ! -f "$COMPOSE_FILE" ]]; then
-  echo "错误：找不到 compose 文件 $COMPOSE_FILE" >&2
-  echo "用法：$0 [compose 文件] [up 的额外参数]" >&2
-  exit 1
+  COMPOSE_URL="${COMPOSE_URL:-https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml}"
+  echo "未找到 $COMPOSE_FILE，正在下载…"
+  if curl -fsSL --connect-timeout 8 --max-time 60 -o "$COMPOSE_FILE" "$COMPOSE_URL" \
+     && grep -q '^services:' "$COMPOSE_FILE"; then
+    echo "  已下载 $COMPOSE_FILE"
+  else
+    rm -f "$COMPOSE_FILE"
+    echo "错误：compose 文件下载失败（网络不通或被代理拦截）。" >&2
+    echo "  手动下载：curl -fsSLO $COMPOSE_URL" >&2
+    echo "  国内网络：curl -fsSLO https://gh-proxy.org/$COMPOSE_URL" >&2
+    exit 1
+  fi
 fi
 
 if docker compose version >/dev/null 2>&1; then
