@@ -1003,6 +1003,12 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
     });
 
     await t.test('T39 ai_tags 任务：结果落库并可回读', async () => {
+      // 0016 起 ai_tags 默认关闭，测试必须显式开启能力，否则任务按设计 E_AI_DISABLED。
+      const enabled = await call(cOwner, '/api/prefs', {
+        method: 'POST',
+        json: { llmRoutes: { ai_tags: { enabled: true } } },
+      });
+      assert.equal(enabled.status, 200, `开启 ai_tags 失败：${await enabled.clone().text()}`);
       fake.mode = 'tags';
       const res = await call(cOwner, '/api/ai/jobs', {
         method: 'POST',
@@ -1147,7 +1153,11 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       assert.equal(m!.vendorId, v!.id);
       assert.equal(m!.vendorName, '便宜接入');
       assert.equal(m!.apiKeySet, true, '模型继承厂商的 Key 状态');
-      assert.equal(view.llmVendors.find((x) => x.id === v!.id)?.modelCount, 1);
+      assert.equal(
+        view.llmVendors.find((x) => x.id === v!.id)?.modelCount,
+        1,
+        `厂商模型数应为 1：${JSON.stringify({ vendorId: v!.id, vendors: view.llmVendors, models: view.llmModels })}`,
+      );
 
       // 模型设默认 + 路由指向该模型
       const routed = await call(cOwner, '/api/prefs', {
