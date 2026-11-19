@@ -9,6 +9,7 @@
  * - 模型失败写入 status='failed'（避免每 tick 空转重试），用户改好 Key 后可按需 POST 重算。
  */
 
+import { log } from './logger';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { entries, entryAiTags, feeds, userLlm, users, type Db } from '@feedlore/db';
 import {
@@ -164,7 +165,7 @@ async function runAiTagTickOnce(db: Db, _now: Date): Promise<number> {
         if (r.status === 'failed') {
           failCount += 1;
           firstError = firstError || (r.error || '打标失败');
-          console.warn(`[ai-tags] user ${u.id} entry ${e.id} tagging failed: ${r.error}`);
+          log.warn(`[ai-tags] user ${u.id} entry ${e.id} tagging failed: ${r.error}`);
         } else {
           okCount += 1;
         }
@@ -184,9 +185,9 @@ async function runAiTagTickOnce(db: Db, _now: Date): Promise<number> {
           aggregate: false,
         },
       );
-      console.log(`[ai-tags] user ${u.id} tagged ${batch.length} entries`);
+      log.info(`[ai-tags] user ${u.id} tagged ${batch.length} entries`);
     } catch (e) {
-      console.error(`[ai-tags] tick failed for user ${u.id}: ` + ((e as Error)?.message ?? e));
+      log.error(`[ai-tags] tick failed for user ${u.id}: ` + ((e as Error)?.message ?? e));
     }
   }
 
@@ -214,11 +215,11 @@ export function startAiTagScheduler(db: Db): void {
   if (timer) clearInterval(timer);
   timer = setInterval(() => {
     void runAiTagTick(db).catch((e: unknown) =>
-      console.error('[ai-tags] scheduler tick failed: ', (e as Error)?.message ?? e),
+      log.error('[ai-tags] scheduler tick failed: ', (e as Error)?.message ?? e),
     );
   }, TICK_MS);
   timer.unref?.();
-  console.log('[ai-tags] scheduled per account: untagged entries tagged every minute (enabled accounts only)');
+  log.info('[ai-tags] scheduled per account: untagged entries tagged every minute (enabled accounts only)');
 }
 
 export function stopAiTagScheduler(): void {

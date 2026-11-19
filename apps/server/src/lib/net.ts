@@ -17,6 +17,7 @@
  * 它做三件事：逐跳（含重定向）重新校验、直连时把连接钉到已校验 IP、可选出网代理。
  */
 
+import { log } from './logger';
 import dns from 'node:dns';
 import { createRequire } from 'node:module';
 import { Agent, ProxyAgent } from 'undici';
@@ -276,12 +277,12 @@ function normalizeProxy(raw: unknown): string {
   try {
     const u = new URL(t);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') {
-      console.warn(`[net] unsupported egress proxy scheme (${u.protocol}), ignored: ${t.slice(0, 80)}`);
+      log.warn(`[net] unsupported egress proxy scheme (${u.protocol}), ignored: ${t.slice(0, 80)}`);
       return '';
     }
     return u.toString();
   } catch {
-    console.warn(`[net] cannot parse egress proxy address, ignored: ${t.slice(0, 80)}`);
+    log.warn(`[net] cannot parse egress proxy address, ignored: ${t.slice(0, 80)}`);
     return '';
   }
 }
@@ -379,7 +380,7 @@ export async function safeFetch(
       if (!pinning || !isPinningFailure(e)) throw e;
       if (!warnedPinFallback) {
         warnedPinFallback = true;
-        console.warn(
+        log.warn(
           `[net] IP pinning unavailable (bundled undici ${process.versions.undici ?? '?'} / dependency ${
             (undiciPkg as { version?: string }).version ?? '?'
           }), falling back to plain egress: ${String((e as Error).message ?? e)}`,

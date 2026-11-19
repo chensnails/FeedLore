@@ -9,6 +9,7 @@
  *   这样测试可以直接 import 而不监听端口。
  */
 
+import { randomUUID } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { compress } from 'hono/compress';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -24,6 +25,7 @@ import { WEB_ROOT, getAuthTrustedOrigins, isSignupAllowed } from './env';
 import { sameOriginCandidates } from './auth';
 import { applyCspNonce, securityHeaders } from './lib/security-headers';
 import { apiError, apiErrorBody, isApiErrorCode } from './lib/apiError';
+import { log, logContext } from './lib/logger';
 import { userLayout } from './lib/prefs';
 import { normalizeRole } from './lib/roles';
 import { healthRoutes } from './routes/health';
@@ -185,6 +187,26 @@ export async function injectBootLayout(html: string, c: Context<AppEnv>, deps: A
 export function createApp({ db, auth }: AppDeps) {
   const app = new Hono<AppEnv>();
 
+  /* 请求关联 ID（V3.3）：贯穿本次请求的所有日志，并回给调用方便于对照。
+   * 必须挂在最外层，压缩、安全头、鉴权里的日志都要能拿到 requestId。 */
+  app.use('*', async (c, next) => {
+    const incoming = c.req.header('x-request-id');
+    const requestId = incoming && /^[A-Za-z0-9_-]{1,64}$/.test(incoming) ? incoming : randomUUID();
+    c.set('requestId', requestId);
+    c.header('X-Request-Id', requestId);
+    const t0 = Date.now();
+    await logContext.run({ requestId }, async () => {
+      await next();
+      const ms = Date.now() - t0;
+      if (c.res.status >= 500 || ms > 2000) {
+        log.warn(
+          { method: c.req.method, path: c.req.path, status: c.res.status, durationMs: ms },
+          '[http] 慢请求或服务端失败',
+        );
+      }
+    });
+  });
+
   /* 文本响应 gzip。
    * CSS / JS / HTML 在弱网下是最大的一笔首屏成本：不压缩等于把 100KB+ 原样发出去。
    * compress 只对文本型 content-type 生效，图片（/api/img）本身已压缩会被跳过。 */
@@ -301,7 +323,7 @@ export function createApp({ db, auth }: AppDeps) {
       const raw = err as unknown as { status?: unknown; code?: unknown; apiParams?: unknown };
       const declared = typeof raw.status === 'number' ? raw.status : 500;
       const s = declared >= 400 && declared <= 599 ? declared : 500;
-      if (s >= 500) console.error('[error]', err);
+      if (s >= 500) log.error('[error]', err);
 
       /* ⚠️ 这里曾经是 `if (s===400) ... if (s===401) ...` 的穷举链，结果 HTTPException(409)
        * 无处可去、被静默降级成 500（频道地址撞车的提示还在，但状态码错了，前端判不出冲突）。

@@ -12,6 +12,7 @@
  *   （Content-Length 可以撒谎，压缩包还可以是 chunked）。
  */
 
+import { log } from '../lib/logger';
 import { Hono, type Context } from 'hono';
 import { createWriteStream } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -113,7 +114,7 @@ export function importRoutes(db: Db | null, auth: AuthInstance | null) {
         await reloadSource(db);
         resetCryptoSecretCache();
 
-        console.log('[restore] site restore finished', JSON.stringify(result.counts));
+        log.info('[restore] site restore finished', JSON.stringify(result.counts));
         return c.json(assertResponse(importApi.siteRestore.response, result, 'POST /api/restore'));
       } finally {
         restoreBusy = false;

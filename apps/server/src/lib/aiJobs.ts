@@ -13,6 +13,7 @@
  * 的 100 秒代理读超时。提交请求从此是毫秒级短连接，网关超时不再生效。
  */
 
+import { log } from './logger';
 import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { aiJobs, type AiJobRow, type Db } from '@feedlore/db';
 import type { AiJob, AiJobBody, ExploreHistory } from '@feedlore/contract';
@@ -169,7 +170,7 @@ export async function createJob(db: Db, uid: string, body: AiJobBody): Promise<A
    * 慢一点的模型会让「立即返回」变成「等几百毫秒」。 */
   setImmediate(() => {
     void runJob(db, id).catch((e) => {
-      console.warn(`[ai-job] ${id} crashed outside handler:`, (e as Error)?.message ?? e);
+      log.warn(`[ai-job] ${id} crashed outside handler:`, (e as Error)?.message ?? e);
     });
   });
 
@@ -245,7 +246,7 @@ export async function runJob(db: Db, id: string): Promise<void> {
         .set({ status: 'failed', error: message, finishedAt: sql`now()`, updatedAt: sql`now()` })
         .where(eq(aiJobs.id, id));
     } catch (inner) {
-      console.warn(`[ai-job] ${id} failed to record error:`, (inner as Error)?.message ?? inner);
+      log.warn(`[ai-job] ${id} failed to record error:`, (inner as Error)?.message ?? inner);
     }
   }
 }
@@ -268,11 +269,11 @@ export async function markInterruptedJobs(db: Db): Promise<number> {
       })
       .where(inArray(aiJobs.status, ['queued', 'running']))
       .returning({ id: aiJobs.id });
-    if (rows.length) console.log(`[ai-job] marked ${rows.length} interrupted task(s) as failed`);
+    if (rows.length) log.info(`[ai-job] marked ${rows.length} interrupted task(s) as failed`);
     return rows.length;
   } catch (e) {
     // 表还没建（迁移未跑）时不要阻断启动
-    console.warn('[ai-job] startup sweep skipped:', (e as Error)?.message ?? e);
+    log.warn('[ai-job] startup sweep skipped:', (e as Error)?.message ?? e);
     return 0;
   }
 }

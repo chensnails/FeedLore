@@ -11,6 +11,7 @@
  *   /api/login、/api/logout、/api/session。
  */
 
+import { log } from './lib/logger';
 import { serve } from '@hono/node-server';
 import { createDb, createPool, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
@@ -52,31 +53,43 @@ function printFirstRunBanner(a: { username: string; customPassword: boolean }, p
     ? '（PUBLIC_URL 指定的对外地址）'
     : '（容器网络内地址；对外访问请在 .env 设 PUBLIC_URL=http://你的域名或IP:端口）';
   const rule = '='.repeat(72);
-  const line = (s: string): void => console.log(`  ${s}`);
-  console.log('');
-  console.log(rule);
-  line('FEEDLORE FIRST RUN / 首次登录凭据');
-  console.log(rule);
-  line(`访问地址   ${url} ${note}`);
-  line(`初始用户名 ${a.username}`);
-  line(a.customPassword
-    ? '初始密码   你在 ADMIN_PASS 里配置的那个密码（此处不回显）'
-    : `初始密码   ${INITIAL_ADMIN_PASSWORD}`);
-  line('');
-  line('⚠️ 首次登录后必须先设置新密码，改完才能使用其他功能。');
-  line('   （初始密码是公开的固定值，不改等于站点没上锁。）');
-  line('忘记密码   docker exec -it feedlore initial-password --reset');
-  line('');
-  line(`下一步：打开 ${url} → 用上面的用户名/密码登录 → 按提示设置新密码。`);
-  console.log(rule);
-  console.log('');
+  const banner = [
+    '',
+    rule,
+    'FEEDLORE FIRST RUN / 首次登录凭据',
+    rule,
+    `访问地址   ${url} ${note}`,
+    `初始用户名 ${a.username}`,
+    a.customPassword
+      ? '初始密码   你在 ADMIN_PASS 里配置的那个密码（此处不回显）'
+      : `初始密码   ${INITIAL_ADMIN_PASSWORD}`,
+    '',
+    '⚠️ 首次登录后必须先设置新密码，改完才能使用其他功能。',
+    '   （初始密码是公开的固定值，不改等于站点没上锁。）',
+    '忘记密码   docker exec -it feedlore initial-password --reset',
+    '',
+    `下一步：打开 ${url} → 用上面的用户名/密码登录 → 按提示设置新密码。`,
+    rule,
+    '',
+  ].join('\n');
+  /* 结构化字段给机器读；message 保留整块文案，docker logs 里 grep
+   * "FEEDLORE FIRST RUN" / "初始密码" 仍能查到，与迁移前一致。 */
+  log.info(
+    {
+      event: 'first_run',
+      url,
+      username: a.username,
+      ...(a.customPassword ? {} : { password: INITIAL_ADMIN_PASSWORD }),
+    },
+    banner,
+  );
 }
 
 function scheduleImagePrune(database: Db): void {
   const run = (): void => {
     void pruneImageCache(database)
       .then((n) => {
-        if (n > 0) console.log(`[img] pruned ${n} expired image cache rows`);
+        if (n > 0) log.info(`[img] pruned ${n} expired image cache rows`);
       })
       .catch(() => { /* pruneImageCache 内部已记录 */ });
   };
@@ -95,10 +108,10 @@ function scheduleImagePrune(database: Db): void {
 function assertConfigOrExit(): void {
   const issues = validateConfig();
   if (issues.length === 0) return;
-  console.error('[boot] 配置校验失败，拒绝启动 / invalid configuration, refusing to start:');
-  for (const it of issues) console.error(`  - ${it.key}: ${it.message}`);
+  log.error('[boot] 配置校验失败，拒绝启动 / invalid configuration, refusing to start:');
+  for (const it of issues) log.error(`  - ${it.key}: ${it.message}`);
   if (!getDatabaseUrl()) {
-    console.error('  (DATABASE_URL 未设置：本地跑单测请用 pnpm test，服务进程必须配置数据库)');
+    log.error('  (DATABASE_URL 未设置：本地跑单测请用 pnpm test，服务进程必须配置数据库)');
   }
   process.exit(1);
 }
@@ -116,7 +129,7 @@ async function probeDatabaseOrExit(url: string): Promise<void> {
   try {
     await pool.query('select 1');
   } catch (e) {
-    console.error(`[boot] 数据库不可达，拒绝启动 / database unreachable, refusing to start: ${(e as Error)?.message ?? e}`);
+    log.error(`[boot] 数据库不可达，拒绝启动 / database unreachable, refusing to start: ${(e as Error)?.message ?? e}`);
     await pool.end().catch(() => {});
     process.exit(1);
   }
@@ -137,22 +150,22 @@ async function main(): Promise<void> {
   if (databaseUrl) {
     try {
       db = createDb(databaseUrl);
-      console.log('[db] connection pool initialized');
+      log.info('[db] connection pool initialized');
     } catch (e) {
-      console.error('[db] initialization failed:', (e as Error)?.message ?? e);
+      log.error('[db] initialization failed:', (e as Error)?.message ?? e);
     }
   } else {
-    console.warn('[boot] DATABASE_URL is not set — data endpoints will return 503');
+    log.warn('[boot] DATABASE_URL is not set — data endpoints will return 503');
   }
 
   if (db) {
     try {
       auth = getAuth(db);
     } catch (e) {
-      console.error('[auth] better-auth initialization failed:', (e as Error)?.message ?? e);
+      log.error('[auth] better-auth initialization failed:', (e as Error)?.message ?? e);
     }
   } else {
-    console.warn('[boot] database not ready — better-auth is not running, auth endpoints return 503');
+    log.warn('[boot] database not ready — better-auth is not running, auth endpoints return 503');
   }
 
   const app = createApp({ db, auth });
@@ -161,7 +174,7 @@ async function main(): Promise<void> {
    * 否则进程刚起的几分钟里会静默用 env 默认值（管理员改过的配置看起来没生效）。 */
   if (db) {
     void reloadSource(db).then((s) => {
-      if (s) console.log(`[settings] fetch parameters: refresh ${s.refreshMinutes} min / concurrency ${s.concurrency} / keep ${s.keepPerFeed} entries per feed`);
+      if (s) log.info(`[settings] fetch parameters: refresh ${s.refreshMinutes} min / concurrency ${s.concurrency} / keep ${s.keepPerFeed} entries per feed`);
     });
   }
 
@@ -193,18 +206,18 @@ async function main(): Promise<void> {
    * 这里只喊一声，真正的兜底在 lib/net.safeFetch —— 钉定失效时降级重试并告警。 */
   if (undiciVersionMismatch()) {
     const v = undiciVersions();
-    console.warn(
+    log.warn(
       `[net] ⚠️ undici version mismatch (built-in ${v.builtin} / dependency ${v.installed}): `
       + 'IP pinning will break, pin undici in apps/server to the same major version as the Node built-in',
     );
   } else {
     const v = undiciVersions();
-    console.log(`[net] undici aligned: built-in ${v.builtin} / dependency ${v.installed}`);
+    log.info(`[net] undici aligned: built-in ${v.builtin} / dependency ${v.installed}`);
   }
 
   serve({ fetch: app.fetch, hostname: HOST, port: PORT }, (info) => {
-    console.log(`[v2] FeedLore ${APP_VERSION} started → http://${HOST}:${info.port}`);
-    console.log(
+    log.info(`[v2] FeedLore ${APP_VERSION} started → http://${HOST}:${info.port}`);
+    log.info(
       `[v2] endpoints: GET /api/health, GET /api/session, POST /api/login, POST /api/logout, GET /api/feeds(user)`,
     );
     /* 只打一次：bootstrap 在空站点播种管理员时留下用户名，consume 后清空，
@@ -215,6 +228,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  console.error('[v2] startup failed:', (e as Error)?.stack ?? e);
+  log.error('[v2] startup failed:', (e as Error)?.stack ?? e);
   process.exit(1);
 });

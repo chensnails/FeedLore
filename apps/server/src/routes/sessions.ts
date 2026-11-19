@@ -10,6 +10,7 @@
  *    走「退出登录」，那条路径会正确清 Cookie。
  */
 
+import { log } from '../lib/logger';
 import { Hono } from 'hono';
 import { and, desc, eq, gt, ne } from 'drizzle-orm';
 import { sessions, type Db } from '@feedlore/db';
@@ -71,7 +72,7 @@ export function sessionRoutes(db: Db | null, auth: AuthInstance | null) {
         )
         .returning({ id: sessions.id });
 
-      console.log(`[sessions] revoked ${removed.length} other session(s) for ${me.username}`);
+      log.info(`[sessions] revoked ${removed.length} other session(s) for ${me.username}`);
       return c.json(
         assertResponse(
           authSpec.sessionsRevokeOthers.response,

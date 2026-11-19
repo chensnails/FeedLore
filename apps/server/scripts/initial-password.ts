@@ -18,6 +18,7 @@
  * 退出码：0 = 成功；1 = 连库失败 / 用户不存在等运行错误。便于脚本化判读。
  */
 
+import { log } from '../src/lib/logger';
 import { eq } from 'drizzle-orm';
 import { createDb, getPool, sessions, users } from '@feedlore/db';
 import { INITIAL_ADMIN_PASSWORD } from '@feedlore/contract';
@@ -33,21 +34,22 @@ function targetUsername(): string {
 
 function printCredential(name: string, reset: boolean): void {
   if (wantJson) {
-    console.log(JSON.stringify({ ok: true, username: name, password: INITIAL_ADMIN_PASSWORD, reset }));
+    // --json 是给脚本消费的协议输出，不是日志：必须原样一行 JSON，不套 pino 外壳。
+    process.stdout.write(JSON.stringify({ ok: true, username: name, password: INITIAL_ADMIN_PASSWORD, reset }) + '\n');
     return;
   }
-  console.log(reset
+  log.info(reset
     ? 'FeedLore 管理员密码已重置 / admin password reset'
     : 'FeedLore 初始管理员密码 / initial admin password');
-  console.log(`  用户名 / username : ${name}`);
-  console.log(`  初始密码 / password: ${INITIAL_ADMIN_PASSWORD}`);
-  console.log('');
+  log.info(`  用户名 / username : ${name}`);
+  log.info(`  初始密码 / password: ${INITIAL_ADMIN_PASSWORD}`);
+  log.info('');
   if (reset) {
-    console.log('  旧会话已全部失效，请用上面的密码重新登录 —— 登录后必须先设置新密码。');
-    console.log('  All old sessions were revoked. Sign in with it, then set a new password.');
+    log.info('  旧会话已全部失效，请用上面的密码重新登录 —— 登录后必须先设置新密码。');
+    log.info('  All old sessions were revoked. Sign in with it, then set a new password.');
   } else {
-    console.log('  这枚密码只在「首次部署、还没改过密码」时有效。改过之后请用 --reset 重置。');
-    console.log('  It only works before the first password change; use --reset to restore it.');
+    log.info('  这枚密码只在「首次部署、还没改过密码」时有效。改过之后请用 --reset 重置。');
+    log.info('  It only works before the first password change; use --reset to restore it.');
   }
 }
 
@@ -67,7 +69,7 @@ async function resetPassword(url: string): Promise<number> {
     .where(eq(users.username, name))
     .limit(1);
   if (!row) {
-    console.error(`[initial-password] User "${name}" does not exist. Set ADMIN_USER to the account you want to reset.`);
+    log.error(`[initial-password] User "${name}" does not exist. Set ADMIN_USER to the account you want to reset.`);
     return 1;
   }
 
@@ -82,7 +84,7 @@ async function resetPassword(url: string): Promise<number> {
       const hash = await ctx.password.hash(INITIAL_ADMIN_PASSWORD);
       await ctx.internalAdapter.updatePassword(row.id, hash);
     } catch (e2) {
-      console.error(`[initial-password] failed to update the password: ${(e2 as Error)?.message ?? e2}`);
+      log.error(`[initial-password] failed to update the password: ${(e2 as Error)?.message ?? e2}`);
       return 1;
     }
   }
@@ -102,7 +104,7 @@ async function resetPassword(url: string): Promise<number> {
 async function main(): Promise<number> {
   const url = process.env.DATABASE_URL?.trim();
   if (!url) {
-    console.error('[initial-password] DATABASE_URL is not set (run this inside the app container).');
+    log.error('[initial-password] DATABASE_URL is not set (run this inside the app container).');
     return 1;
   }
 
@@ -110,7 +112,7 @@ async function main(): Promise<number> {
     try {
       return await resetPassword(url);
     } catch (e) {
-      console.error(`[initial-password] database error: ${(e as Error)?.message ?? e}`);
+      log.error(`[initial-password] database error: ${(e as Error)?.message ?? e}`);
       return 1;
     }
   }
@@ -125,7 +127,7 @@ try {
   await getPool()?.end().catch(() => {});
   process.exitCode = code;
 } catch (e) {
-  console.error('[initial-password] unexpected error:', (e as Error)?.stack ?? e);
+  log.error('[initial-password] unexpected error:', (e as Error)?.stack ?? e);
   await getPool()?.end().catch(() => {});
   process.exitCode = 1;
 }

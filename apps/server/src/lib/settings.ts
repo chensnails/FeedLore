@@ -16,6 +16,7 @@
  * `sessionSecret` 在 v2 已交给 better-auth（users 表 + AUTH_SECRET），不再进 settings。
  */
 
+import { log } from './logger';
 import { eq } from 'drizzle-orm';
 import { settings as settingsTable, type Db } from '@feedlore/db';
 import type { SourceConfig } from '@feedlore/contract';
@@ -136,7 +137,7 @@ export async function reloadSource(db: Db | null): Promise<SourceConfig | null> 
     return snapshot;
   } catch (e) {
     // 数据库不可用不能让抓取器一起死：用上一次快照（或默认值）继续
-    console.warn('[settings] failed to read source config, keeping the last snapshot: ', (e as Error)?.message ?? e);
+    log.warn('[settings] failed to read source config, keeping the last snapshot: ', (e as Error)?.message ?? e);
     return snapshot;
   }
 }

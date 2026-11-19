@@ -16,6 +16,7 @@
  * - 入库用「先查已存在 guid + 一次多行 upsert」，比 legacy 的逐条 INSERT 少 N 次往返。
  */
 
+import { log } from './logger';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { entries, feeds, users, type Db } from '@feedlore/db';
 import { safeFetch } from './net';
@@ -494,9 +495,9 @@ async function flushWatchNotify(db: Db, prefs: Map<string, Record<string, unknow
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(10000),
       });
-      if (!res.ok) console.error('[watch] webhook returned', res.status);
+      if (!res.ok) log.error('[watch] webhook returned', res.status);
     } catch (e) {
-      console.error('[watch] webhook delivery failed:', (e as Error)?.message ?? e);
+      log.error('[watch] webhook delivery failed:', (e as Error)?.message ?? e);
     }
   }
 }
@@ -558,7 +559,7 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
           siteUrl: r.siteUrl,
           timeoutMs: Math.min(cfg.timeoutSeconds * 1000, 12_000),
         }).catch((e: unknown) => {
-          console.error('[rss] full-text fetch failed:', (e as Error)?.message ?? e);
+          log.error('[rss] full-text fetch failed:', (e as Error)?.message ?? e);
           return items;
         })
         : items;
@@ -572,7 +573,7 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
         const verdicts = classify(wRules, up.fresh);
         if (verdicts.length) {
           await markWatch(db, m.id, verdicts).catch((e: unknown) =>
-            console.error('[watch] failed to tag entries:', (e as Error)?.message ?? e),
+            log.error('[watch] failed to tag entries:', (e as Error)?.message ?? e),
           );
           const names = notifyRuleNames(wRules);
           for (const v of verdicts) {
@@ -607,7 +608,7 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
             });
           }
         } catch (e) {
-          console.error('[rules] apply failed:', (e as Error)?.message ?? e);
+          log.error('[rules] apply failed:', (e as Error)?.message ?? e);
         }
       }
 
@@ -636,7 +637,7 @@ async function doRefreshGroup(db: Db, key: string, members: FeedRow[], cfg: Sour
     }
     for (const f of autoOff) {
       await db.update(feeds).set({ enabled: false, updatedAt: new Date() }).where(eq(feeds.id, f.id)).catch(() => {});
-      console.log(`[rss] feed failed ${cfg.feedFailLimit} times in a row, collection auto-disabled: ${f.title}`);
+      log.info(`[rss] feed failed ${cfg.feedFailLimit} times in a row, collection auto-disabled: ${f.title}`);
     }
 
     return { url: key, error: msg, added: 0, feeds: members.length, autoDisabled: autoOff.length };
@@ -739,7 +740,7 @@ export async function refreshFeeds(db: Db, rows: FeedRow[], label = 'manual'): P
     durationMs: Date.now() - startedAt,
   };
 
-  console.log(
+  log.info(
     `[rss] refresh (${label}) done: ${groups.size} URL groups / ${rows.length} feeds, ${added} new entries`
     + (skipped ? `, ${skipped} skipped` : '')
     + (failed.length ? `, ${failed.length} failed` : '')
@@ -852,17 +853,17 @@ export async function tickRefresh(db: Db): Promise<RefreshSummary | null> {
 
 export function startScheduler(db: Db): void {
   if (!SCHEDULER_ENABLED) {
-    console.log('[rss] scheduled refresh disabled (REFRESH_DISABLED=1), manual refresh only');
+    log.info('[rss] scheduled refresh disabled (REFRESH_DISABLED=1), manual refresh only');
     return;
   }
   if (timer) clearInterval(timer);
   // 预热快照：首个 tick 不该因为「还没读过库」而用 env 默认值算间隔
   void getSource(db)
-    .then((cfg) => console.log(`[rss] scheduler ready: global interval ${cfg.refreshMinutes} min, due feeds checked every minute`))
-    .catch((e: unknown) => console.error('[rss] failed to read collection settings:', (e as Error)?.message ?? e));
+    .then((cfg) => log.info(`[rss] scheduler ready: global interval ${cfg.refreshMinutes} min, due feeds checked every minute`))
+    .catch((e: unknown) => log.error('[rss] failed to read collection settings:', (e as Error)?.message ?? e));
   timer = setInterval(() => {
     void tickRefresh(db).catch((e: unknown) =>
-      console.error('[rss] scheduled refresh failed:', (e as Error)?.message ?? e),
+      log.error('[rss] scheduled refresh failed:', (e as Error)?.message ?? e),
     );
   }, TICK_MS);
 }

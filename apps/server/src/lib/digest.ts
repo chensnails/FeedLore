@@ -9,6 +9,7 @@
  * 判断是否跑过，容器半夜重启也不会漏掉谁的那一次。
  */
 
+import { log } from './logger';
 import { eq, sql } from 'drizzle-orm';
 import { feeds, users, type Db } from '@feedlore/db';
 import {
@@ -115,7 +116,7 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
       const llm = await resolveLlmForTask(db, u.id, 'digest');
 
       if (!llmComplete(llm)) {
-        console.log(`[digest] user ${u.id}: scheduled time reached but LLM config is incomplete, skipping (no retry today)`);
+        log.info(`[digest] user ${u.id}: scheduled time reached but LLM config is incomplete, skipping (no retry today)`);
         continue;
       }
 
@@ -140,13 +141,13 @@ export async function runDigestTick(db: Db, now: Date = new Date()): Promise<num
         });
       }
       done += 1;
-      console.log(
+      log.info(
         `[digest] user ${u.id} generated digest for ${r.digest.date}: ` +
           `${r.digest.stats.kept}/${r.digest.stats.collected} items, ${r.digest.stats.feeds} feeds` +
           (r.digest.fallback ? ' (rule fallback)' : ` (${r.digest.model})`),
       );
     } catch (e) {
-      console.error(`[digest] auto-generation failed for user ${u.id}: ` + ((e as Error)?.message ?? e));
+      log.error(`[digest] auto-generation failed for user ${u.id}: ` + ((e as Error)?.message ?? e));
     }
   }
 
@@ -159,12 +160,12 @@ export function startDigestScheduler(db: Db): void {
   if (timer) clearInterval(timer);
   timer = setInterval(() => {
     void runDigestTick(db).catch((e: unknown) =>
-      console.error('[digest] scheduler tick failed: ', (e as Error)?.message ?? e),
+      log.error('[digest] scheduler tick failed: ', (e as Error)?.message ?? e),
     );
   }, TICK_MS);
   // 不阻止进程退出（测试 / 优雅停机时不用特意 clear）
   timer.unref?.();
-  console.log('[digest] auto-generation scheduled per account: each account toggle and time checked every minute');
+  log.info('[digest] auto-generation scheduled per account: each account toggle and time checked every minute');
 }
 
 export function stopDigestScheduler(): void {

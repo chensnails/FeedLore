@@ -7,6 +7,7 @@
  *   只在服务端日志里留痕。这正是 1.7.2 那类「读不存在字段」事故的编译期+运行期双重护栏。
  */
 
+import { log } from './logger';
 import type { z } from 'zod';
 import { ApiException } from './apiError';
 
@@ -43,7 +44,7 @@ export function assertResponse<S extends z.ZodType>(
   const r = schema.safeParse(data);
   if (!r.success) {
     const issues = issuesOf(r.error);
-    console.error('[contract] response validation failed', what, JSON.stringify(issues));
+    log.error('[contract] response validation failed', what, JSON.stringify(issues));
     throw new ContractViolation(what, issues);
   }
   return r.data as z.infer<S>;

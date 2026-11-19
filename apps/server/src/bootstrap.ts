@@ -16,6 +16,7 @@
  * 「设置 → 数据 → 导出」+ 本站的「设置 → 数据 → 导入」。
  */
 
+import { log as baseLog } from './lib/logger';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,9 +29,8 @@ import { ensureAuthSecret } from './lib/auth-secret';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
-const now = (): string => new Date().toISOString().slice(11, 19);
-const log = (...a: unknown[]): void => console.log(`[${now()}] [bootstrap]`, ...a);
-const warn = (...a: unknown[]): void => console.warn(`[${now()}] [bootstrap] ⚠️`, ...a);
+const log = (...a: unknown[]): void => baseLog.info({ scope: 'bootstrap' }, ...a);
+const warn = (...a: unknown[]): void => baseLog.warn({ scope: 'bootstrap' }, ...a);
 
 /** 旧版升级链路遗留的库名：数据写在 feedlore_v2，但很多站点的 .env 仍写 feedlore。 */
 const LEGACY_DB_NAME = 'feedlore';

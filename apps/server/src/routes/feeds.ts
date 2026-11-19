@@ -13,6 +13,7 @@
  *    前端据此显示「已添加，但源站报错」，而不是让用户以为整个操作没生效。
  */
 
+import { log } from '../lib/logger';
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { and, eq, ne, sql } from 'drizzle-orm';
@@ -270,7 +271,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
           let added = 0;
           if (!dup) {
             const probe = await refreshOneFeed(db, got.row).catch((e: unknown) => {
-              console.error('[feeds] first fetch of new feed failed:', (e as Error)?.message ?? e);
+              log.error('[feeds] first fetch of new feed failed:', (e as Error)?.message ?? e);
               return null;
             });
             added = probe?.added ?? 0;
@@ -659,7 +660,7 @@ export function feedsRoutes(db: Db | null, auth: AuthInstance | null) {
               .from(feeds)
               .where(and(eq(feeds.ownerId, uid), sql`${feeds.id} = any(${addedIds})`))
               .then((rows) => refreshFeeds(db, rows, 'import refresh'))
-              .catch((e: unknown) => console.error('[opml] post-import refresh failed:', (e as Error)?.message ?? e));
+              .catch((e: unknown) => log.error('[opml] post-import refresh failed:', (e as Error)?.message ?? e));
           }
 
           const all = await db.select().from(feeds).where(eq(feeds.ownerId, uid)).orderBy(feeds.sortOrder, feeds.id);

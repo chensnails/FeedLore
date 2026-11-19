@@ -13,6 +13,7 @@
  * - username 插件启用后 signUpEmail 的 body 可带 username，之后即可用用户名登录。
  */
 
+import { log } from './lib/logger';
 import { eq } from 'drizzle-orm';
 import { createDb, schema } from '@feedlore/db';
 import { getAuth } from './auth';
@@ -21,7 +22,7 @@ async function main(): Promise<void> {
   const username = process.env.ADMIN_USER ?? 'admin';
   const password = process.env.ADMIN_PASS;
   if (!password) {
-    console.error('[seed] missing ADMIN_PASS environment variable');
+    log.error('[seed] missing ADMIN_PASS environment variable');
     process.exit(1);
   }
 
@@ -52,24 +53,24 @@ async function main(): Promise<void> {
     if (created[0]) {
       await db.delete(schema.sessions).where(eq(schema.sessions.userId, created[0].id));
     }
-    console.log(`[seed] created user ${username}`);
+    log.info(`[seed] created user ${username}`);
   } else {
-    console.log(`[seed] user ${username} already exists, skipping creation`);
+    log.info(`[seed] user ${username} already exists, skipping creation`);
   }
 
   await db.update(schema.users).set({ role: 'admin' }).where(eq(schema.users.username, username));
-  console.log(`[seed] promoted ${username} to admin`);
+  log.info(`[seed] promoted ${username} to admin`);
 
   const row = await db
     .select({ id: schema.users.id, role: schema.users.role })
     .from(schema.users)
     .where(eq(schema.users.username, username))
     .limit(1);
-  console.log('[seed] verification:', JSON.stringify(row[0]));
+  log.info('[seed] verification:', JSON.stringify(row[0]));
   process.exit(0);
 }
 
 main().catch((e) => {
-  console.error('[seed] failed:', (e as Error)?.message ?? e);
+  log.error('[seed] failed:', (e as Error)?.message ?? e);
   process.exit(1);
 });

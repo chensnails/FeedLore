@@ -15,7 +15,8 @@
     "test:unit": "node scripts/run-tests.mjs unit",
     "test:integration": "node scripts/run-tests.mjs integration",
     "test:all": "node scripts/run-tests.mjs all",
-    "initial-password": "tsx scripts/initial-password.ts"
+    "initial-password": "tsx scripts/initial-password.ts",
+    "doctor": "tsx scripts/doctor.ts"
   },
   "dependencies": {
     "@feedlore/ai": "workspace:*",
@@ -31,6 +32,8 @@
     "hono": "catalog:",
     "htmlparser2": "^10.1.0",
     "linkedom": "^0.18.14",
+    "pino": "^10.4.0",
+    "pino-pretty": "^13.2.0",
     "safe-regex2": "^5.1.2",
     "sharp": "^0.35.5",
     "tsx": "catalog:",

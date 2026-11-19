@@ -27,6 +27,7 @@
  *    那会变成同源 XSS）。
  */
 
+import { log } from '../lib/logger';
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { eq, sql } from 'drizzle-orm';
@@ -217,7 +218,7 @@ async function fetchAndCache(db: Db | null, key: string, url: string, width: num
           });
       } catch (e) {
         // 落库失败不致命：图已经拿到，L1 还能用，用户这次不该看到错误
-        console.warn('[img] image cache table write failed:', (e as Error)?.message ?? e);
+        log.warn('[img] image cache table write failed:', (e as Error)?.message ?? e);
       }
     }
 
@@ -310,7 +311,7 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
           }
         } catch (e) {
           // 库抖一下不该让图片全挂：当作未命中，直接回源
-          console.warn('[img] image cache table read failed:', (e as Error)?.message ?? e);
+          log.warn('[img] image cache table read failed:', (e as Error)?.message ?? e);
         }
       }
 
@@ -377,7 +378,7 @@ export async function pruneImageCache(db: Db | null): Promise<number> {
     `);
     return Number((res as unknown as { rowCount?: number | null }).rowCount ?? 0);
   } catch (e) {
-    console.warn('[img] image cache prune failed:', (e as Error)?.message ?? e);
+    log.warn('[img] image cache prune failed:', (e as Error)?.message ?? e);
     return 0;
   }
 }

@@ -7,6 +7,7 @@
  * 是本项目 v2 里最容易踩一次的坑。
  */
 
+import { log } from '../lib/logger';
 import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import type { Db } from '@feedlore/db';
@@ -27,7 +28,7 @@ export function healthRoutes(db: Db | null) {
         latencyMs = Date.now() - t0;
       } catch (e) {
         // 健康检查本身不抛给客户端，只落日志；db.ready=false 已足够表达
-        console.error('[health] database probe failed:', (e as Error)?.message ?? e);
+        log.error('[health] database probe failed:', (e as Error)?.message ?? e);
       }
     }
 

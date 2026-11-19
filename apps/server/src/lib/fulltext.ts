@@ -11,6 +11,7 @@
  * 只在频道开了 `feeds.full_text` 时调用（见 fetcher.ts）。
  */
 
+import { log } from './logger';
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
 import { inArray, sql } from 'drizzle-orm';
@@ -288,7 +289,7 @@ export async function enhanceWithFullText(
     const rows = await db.select().from(articleCache).where(inArray(articleCache.url, urls));
     for (const row of rows) cached.set(row.url, row);
   } catch (e) {
-    console.error('[fulltext] failed to read article cache: ', (e as Error)?.message ?? e);
+    log.error('[fulltext] failed to read article cache: ', (e as Error)?.message ?? e);
   }
 
   const missing: Array<{ item: NormalizedItem; index: number; url: string }> = [];
@@ -336,7 +337,7 @@ export async function enhanceWithFullText(
           },
         })
         .catch((e: unknown) => {
-          console.error('[fulltext] failed to write article cache: ', (e as Error)?.message ?? e);
+          log.error('[fulltext] failed to write article cache: ', (e as Error)?.message ?? e);
         });
 
       if (got.bodyJson && shouldApplyFullText(c.item.content, got.text)) {

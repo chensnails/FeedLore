@@ -16,6 +16,7 @@
  *    单模块类型过重会让 Hono 的路由 schema 静默推成空。
  */
 
+import { log } from '../lib/logger';
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { eq, sql } from 'drizzle-orm';
@@ -128,13 +129,13 @@ export function adminConfigRoutes(db: Db | null, auth: AuthInstance | null) {
         }
         // 保存即刷新快照：抓取器下一轮、图片代理下一次请求就用新值（不用重启进程）
         const next = await saveSource(db, body.source);
-        console.log(
+        log.info(
           `[settings] fetch settings updated: refresh ${next.refreshMinutes} min / concurrency ${next.concurrency} / keep ${next.keepPerFeed} entries per feed`,
         );
         if (next.proxyUrl) {
           // 生效是即时的（saveSource → setOutboundProxy），这里只留一行审计线索：
           // 代理一旦配错，表现是「全站抓取超时」，事后要知道是什么时候改的。
-          console.log(`[settings] outbound proxy enabled: ${next.proxyUrl}`);
+          log.info(`[settings] outbound proxy enabled: ${next.proxyUrl}`);
         }
         return c.json(assertResponse(adminSpec.configPost.response, { ok: true }, 'POST /api/config'));
       },
@@ -163,7 +164,7 @@ export function adminImageCacheRoutes(db: Db | null, auth: AuthInstance | null) 
       await db.execute(sql`delete from image_cache`);
       // ⚠️ L1 必须一起清：只删库的话，刚删掉的图还会从内存里命中，管理员以为没删掉
       resetImageCache();
-      console.log(`[img] image cache manually cleared: ${n} entries`);
+      log.info(`[img] image cache manually cleared: ${n} entries`);
       return c.json(
         assertResponse(adminSpec.imageCacheClear.response, { ok: true, removed: n }, 'POST /api/image-cache/clear'),
       );
@@ -305,7 +306,7 @@ export function adminUserRoutes(db: Db | null, auth: AuthInstance | null) {
               headers: c.req.raw.headers,
             });
           } catch (e) {
-            console.warn('[admin] failed to revoke user sessions:', (e as Error)?.message ?? e);
+            log.warn('[admin] failed to revoke user sessions:', (e as Error)?.message ?? e);
           }
         }
 
@@ -400,7 +401,7 @@ export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
             try {
               await auth.api.revokeOtherSessions({ headers: c.req.raw.headers });
             } catch (e) {
-              console.warn('[account] failed to revoke other sessions:', (e as Error)?.message ?? e);
+              log.warn('[account] failed to revoke other sessions:', (e as Error)?.message ?? e);
             }
             /* 首次登录必须改密：改密成功即在库里清掉标记 —— 这是唯一的清除路径
              * （better-auth 的 additionalFields 已设 input:false，客户端改不了它）。
@@ -509,7 +510,7 @@ export function adminVersionRoutes(db: Db | null, auth: AuthInstance | null) {
           signal: AbortSignal.timeout(15_000),
         });
         if (!resp.ok) throw new Error(`watchtower HTTP ${resp.status}`);
-        console.log('[update] watchtower update triggered');
+        log.info('[update] watchtower update triggered');
         return c.json(assertResponse(authSpec.update.response, { ok: true }, 'POST /api/update'));
       } catch (e) {
         return apiError(c, 'E_UPDATE_TRIGGER_FAILED', { detail: (e as Error)?.message ?? e });

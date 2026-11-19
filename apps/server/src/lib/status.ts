@@ -9,6 +9,7 @@
  * 2) 状态页自身的排障价值高，独立文件便于对照 legacy 的 buildStatus 逐项核对。
  */
 
+import { log } from './logger';
 import fs from 'node:fs';
 import os from 'node:os';
 import { sql } from 'drizzle-orm';
@@ -266,7 +267,7 @@ export async function buildStatus(
       entryInfo.oldest = e.oldest ? new Date(e.oldest as string).toISOString() : null;
       entryInfo.newest = e.newest ? new Date(e.newest as string).toISOString() : null;
     } catch (e) {
-      console.warn('[status] failed to collect refresh stats:', (e as Error)?.message ?? e);
+      log.warn('[status] failed to collect refresh stats:', (e as Error)?.message ?? e);
     }
   }
 

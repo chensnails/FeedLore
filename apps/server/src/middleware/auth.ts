@@ -5,6 +5,7 @@
  * 并把 better-auth 的用户映射成契约里的 SessionUser 注入 context。
  */
 
+import { log } from '../lib/logger';
 import type { MiddlewareHandler } from 'hono';
 import type { AuthInstance } from '@feedlore/auth';
 import type { Role } from '@feedlore/contract';
@@ -24,6 +25,8 @@ export type AppEnv = {
     user: SessionUser;
     /** 每次请求生成的 CSP nonce，HTML 内的内联脚本必须带同一个值。 */
     cspNonce: string;
+    /** 请求关联 ID（V3.3）：贯穿日志与 X-Request-Id 响应头。 */
+    requestId: string;
   };
 };
 
@@ -55,7 +58,7 @@ export function requireAuth(
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
     if (!auth) {
-      console.error('[auth] better-auth not initialized (missing AUTH_SECRET or database not ready)');
+      log.error('[auth] better-auth not initialized (missing AUTH_SECRET or database not ready)');
       return apiError(c, 'E_AUTH_NOT_READY');
     }
 

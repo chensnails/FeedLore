@@ -9,6 +9,7 @@
  * - 整站备份同一时间只允许一份：它要扫全库和图片缓存，并发会拖垮数据库。
  */
 
+import { log } from '../lib/logger';
 import { Hono } from 'hono';
 import { Readable } from 'node:stream';
 import type { AuthInstance } from '@feedlore/auth';
@@ -40,7 +41,7 @@ export function exportRoutes(db: Db | null, auth: AuthInstance | null) {
 
       const ar = createTarGz();
       ar.readable.on('error', (err) => {
-        console.error('[export] user archive stream failed:', (err as Error)?.message ?? err);
+        log.error('[export] user archive stream failed:', (err as Error)?.message ?? err);
       });
       c.req.raw.signal.addEventListener('abort', () => ar.abort(new Error('client aborted')));
 
@@ -54,7 +55,7 @@ export function exportRoutes(db: Db | null, auth: AuthInstance | null) {
           });
           await ar.close();
         } catch (err) {
-          console.error(`[export] user ${me.username} failed:`, (err as Error)?.message ?? err);
+          log.error(`[export] user ${me.username} failed:`, (err as Error)?.message ?? err);
           ar.abort(err as Error);
         }
       })();
@@ -78,7 +79,7 @@ export function exportRoutes(db: Db | null, auth: AuthInstance | null) {
       const ar = createTarGz();
       const release = () => { siteBackupBusy = false; };
       ar.readable.on('error', (err) => {
-        console.error('[backup] site archive stream failed:', (err as Error)?.message ?? err);
+        log.error('[backup] site archive stream failed:', (err as Error)?.message ?? err);
         release();
       });
       c.req.raw.signal.addEventListener('abort', () => ar.abort(new Error('client aborted')));
@@ -87,9 +88,9 @@ export function exportRoutes(db: Db | null, auth: AuthInstance | null) {
         try {
           await writeSiteExport(ar, db);
           await ar.close();
-          console.log('[backup] site archive finished');
+          log.info('[backup] site archive finished');
         } catch (err) {
-          console.error('[backup] site archive failed:', (err as Error)?.message ?? err);
+          log.error('[backup] site archive failed:', (err as Error)?.message ?? err);
           ar.abort(err as Error);
         } finally {
           release();

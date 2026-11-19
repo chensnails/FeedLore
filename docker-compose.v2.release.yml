@@ -110,6 +110,10 @@ services:
       # 要求「启动即结构一致」的自托管部署。
       STRICT_BOOT: "${STRICT_BOOT:-}"
 
+      # ---- 日志（V3.3）----
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      LOG_PRETTY: "${LOG_PRETTY:-}"
+
       # ---- 设置页「一键更新」：转发给同项目的 watchtower ----
       UPDATE_WEBHOOK_URL: http://watchtower:8080/v1/update
       UPDATE_WEBHOOK_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-feedlore-update}

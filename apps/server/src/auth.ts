@@ -5,6 +5,7 @@
  * 业务侧另按 packages/contract 的形状提供 /api/login、/api/logout、/api/session。
  */
 
+import { log } from './lib/logger';
 import { createAuth, type AuthInstance, type TrustedOrigins } from '@feedlore/auth';
 import type { Db } from '@feedlore/db';
 import {
@@ -75,7 +76,7 @@ export function getAuth(db: Db): AuthInstance {
     trustProxy: isTrustProxy(),
   });
 
-  console.log(
+  log.info(
     `[auth] better-auth ready | baseURL=${getAuthBaseUrl() || '(from request Host)'}`
       + ` | origins=${configuredOrigins.length || 'same-origin (dynamic)'} | secureCookies=${secureCookies}`
       + ` | trustProxy=${isTrustProxy()}`,
