@@ -14,6 +14,11 @@
 
 set -euo pipefail
 
+# 脚本版本标记：deploy-cn.sh 用它判断本地副本是否需要重新下载。
+SCRIPT_VER='fl-deploy-4'
+# 任何未预期的失败都打出行号，绝不静默退出（曾因 set -e + `[[ ]] &&` 静默中断）。
+trap 'code=$?; echo "错误：脚本在第 $LINENO 行失败（退出码 $code）" >&2' ERR
+
 COMPOSE_FILE="docker-compose.v2.release.yml"
 EXTRA_ARGS=()
 if [[ $# -gt 0 && "$1" != -* && ("$1" == *.yml || "$1" == *.yaml) ]]; then
@@ -61,17 +66,44 @@ say ''
 say '[1/3] 启动容器…'
 "${DC[@]}" up -d "${EXTRA_ARGS[@]}"
 
-say '[2/3] 等待应用健康（最多 180 秒）…'
+say '[2/3] 等待应用健康（最多 300 秒；首次启动要跑结构迁移，慢是正常的）…'
+# 边等边报状态：静默等待会被当成卡死。容器退出/反复重启时立刻停下并给日志，
+# 不要干等超时。有 healthcheck 看 Health.Status，没有则退回 State.Status。
 ready=0
-for _ in $(seq 1 60); do
-  if [[ "$(docker inspect -f '{{.State.Health.Status}}' feedlore 2>/dev/null || echo missing)" == "healthy" ]]; then
-    ready=1
-    break
+status='unknown'
+for i in $(seq 1 100); do
+  status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' feedlore 2>/dev/null || echo missing)"
+  case "$status" in
+    healthy|running)
+      ready=1
+      break
+      ;;
+    exited|dead|missing)
+      say "  容器未运行（状态：$status），下面是启动日志尾部："
+      docker logs --tail 40 feedlore 2>&1 | sed 's/^/    /' || true
+      echo "错误：app 容器未启动成功，请先修掉上面的报错（常见：端口占用、DATABASE_URL、compose 过旧）。" >&2
+      exit 1
+      ;;
+  esac
+  # 反复重启（迁移失败/配置错误）同样立刻中断，别耗满 300 秒。
+  if (( i % 4 == 0 )); then
+    restarts="$(docker inspect -f '{{.RestartCount}}' feedlore 2>/dev/null || echo 0)"
+    if [[ "$restarts" =~ ^[0-9]+$ ]] && (( restarts >= 3 )); then
+      say "  容器已重启 $restarts 次（状态：$status），下面是启动日志尾部："
+      docker logs --tail 40 feedlore 2>&1 | sed 's/^/    /' || true
+      echo "错误：app 反复重启，请按上面的日志修复后重跑本脚本。" >&2
+      exit 1
+    fi
+  fi
+  if (( i % 5 == 0 )); then
+    say "  已等待 $((i * 3)) 秒，当前状态：$status"
   fi
   sleep 3
 done
 if [[ $ready -ne 1 ]]; then
-  echo "错误：app 容器 180 秒内未 healthy，请检查：${DC[*]} logs app" >&2
+  say "  已等待 300 秒仍未就绪（最后状态：$status），下面是启动日志尾部："
+  docker logs --tail 40 feedlore 2>&1 | sed 's/^/    /' || true
+  echo "错误：app 容器 300 秒内未 healthy，请检查：${DC[*]} logs app" >&2
   exit 1
 fi
 say '  app healthy ✓'

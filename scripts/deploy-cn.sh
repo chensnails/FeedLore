@@ -22,6 +22,13 @@
 
 set -euo pipefail
 
+# 本脚本与它下载的 deploy.sh 共用的版本标记：本地副本不匹配就强制重下，
+# 避免 CDN / 旧文件让用户跑到上一版的逻辑（曾出现「下载成功但内容是旧版」）。
+SCRIPT_VER='fl-deploy-4'
+EXPECT_VER="$SCRIPT_VER"
+# 任何未预期的失败都打行号，绝不静默退出。
+trap 'code=$?; echo "错误：脚本在第 $LINENO 行失败（退出码 $code）" >&2' ERR
+
 REPO_RAW='https://raw.githubusercontent.com/chensnails/FeedLore/main'
 COMPOSE_FILE='docker-compose.v2.release.yml'
 DEPLOY_SCRIPT='deploy.sh'
@@ -55,36 +62,52 @@ fetch_one() {
   curl -fsSL --connect-timeout 8 --max-time 60 -o "$out" "$url" 2>/dev/null
 }
 
+# 内容是否当前版本（不只是「像那么回事」）：代理错误页、旧版 compose（含 upgrade）、
+# 旧版脚本（版本标记不符）一律判不合格，继续试下一个源。
+content_ok() {
+  local path="$1" out="$2"
+  [[ -s "$out" ]] || return 1
+  if [[ "$path" == *.yml ]]; then
+    grep -q '^services:' "$out" && ! grep -q '^  upgrade:' "$out"
+  else
+    grep -q "SCRIPT_VER='$EXPECT_VER'" "$out"
+  fi
+}
+
 download_file() {
   local path="$1" out="$2" name="$3" mirror prefix url ok=1
-  if [[ -f "$out" ]]; then
-    line "$name 已存在，跳过下载"
+  if [[ -f "$out" ]] && content_ok "$path" "$out"; then
+    line "$name 已存在（当前版本），跳过下载"
     return 0
   fi
+  if [[ -f "$out" ]]; then
+    line "$name 是旧版，重新下载…"
+    rm -f "$out"
+  fi
   say "  下载 $name …"
+  # 带时间戳查询参数：绕过 raw/jsDelivr 的 branch 缓存（缓存 key 含 query）。
+  local bust="?t=$(date +%s)"
   for prefix in "${RAW_MIRRORS[@]}"; do
     if [[ -z "$prefix" ]]; then
-      url="${REPO_RAW}/${path}"
+      url="${REPO_RAW}/${path}${bust}"
       line "试直连 raw.githubusercontent.com"
     else
-      url="${prefix}${REPO_RAW}/${path}"
+      url="${prefix}${REPO_RAW}/${path}${bust}"
       line "试代理 ${prefix%/}"
     fi
     if fetch_one "$url" "$out"; then
-      # 校验下载到的是脚本/compose 而不是代理错误页
-      if [[ "$path" == *.yml ]] && grep -q '^services:' "$out"; then
-        ok=0
-      elif [[ "$path" == *.sh ]] && grep -q 'FEEDLORE DEPLOY' "$out"; then
-        ok=0
-      fi
-      if [[ $ok -eq 0 ]]; then
+      if content_ok "$path" "$out"; then
         line "  成功 ✓"
         return 0
       fi
+      # 下到了代理错误页或旧缓存：删掉继续试下一个源。
+      line "  内容不是当前版本（可能是缓存），换下一个源"
       rm -f "$out"
     fi
   done
-  die "$name 所有下载源均失败；可设 RAW_MIRROR='https://你的代理/' 重试，或手动下载放到本目录"
+  die "$name 所有下载源均失败或仍是旧版。可设 RAW_MIRROR='https://你的代理/' 重试；
+     或直接按 commit 固定下载（必定最新）：
+       curl -fsSL -o $name https://raw.githubusercontent.com/chensnails/FeedLore/main/$path"
 }
 
 say "$RULE"
@@ -92,11 +115,7 @@ line 'FEEDLORE CN DEPLOY / 中国网络部署'
 say "$RULE"
 
 say '[1/4] 准备 compose 与部署脚本…'
-# 已存在的文件要验内容：旧版 compose（含 upgrade 服务）必须覆盖，否则新镜像下 app 起不来。
-if [[ -f "$COMPOSE_FILE" ]] && grep -q '^  upgrade:' "$COMPOSE_FILE"; then
-  line "检测到旧版 compose（含 upgrade 服务），重新下载新版…"
-  rm -f "$COMPOSE_FILE"
-fi
+# 两个文件都按内容+版本校验：旧 compose（含 upgrade 服务）和旧脚本一律重下。
 download_file "$COMPOSE_FILE" "$COMPOSE_FILE" "$COMPOSE_FILE"
 download_file "scripts/$DEPLOY_SCRIPT" "$DEPLOY_SCRIPT" "$DEPLOY_SCRIPT"
 chmod +x "$DEPLOY_SCRIPT"
