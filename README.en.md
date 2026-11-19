@@ -42,7 +42,7 @@ mkdir -p feedlore && cd feedlore
 curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
 docker pull ghcr.io/chensnails/feedlore:2.5.2
 docker compose -f docker-compose.v2.release.yml up -d
-docker logs feedlore --tail 40        # first-run credentials are in this log
+docker compose -f docker-compose.v2.release.yml logs -f app   # live; Ctrl+C once you see the password
 ```
 
 **China network** — mirrored endpoints are hard-coded below, just copy:
@@ -53,7 +53,7 @@ curl -fsSL -o docker-compose.v2.release.yml   'https://gh-proxy.org/https://raw.
 docker pull ghcr.nju.edu.cn/chensnails/feedlore:2.5.2
 docker tag  ghcr.nju.edu.cn/chensnails/feedlore:2.5.2 ghcr.io/chensnails/feedlore:2.5.2
 docker compose -f docker-compose.v2.release.yml up -d
-docker logs feedlore --tail 40        # first-run credentials are in this log
+docker compose -f docker-compose.v2.release.yml logs -f app   # live; Ctrl+C once you see the password
 ```
 
 > The `docker tag` step matters: the compose file references `ghcr.io/...`, so re-tag the mirrored
@@ -80,19 +80,26 @@ Replace `2.5.3` with your target version. If `.env` already pins `V2_IMAGE`, edi
 
 ### Finding the password
 
-`docker logs feedlore --tail 40` shows, depending on the situation:
+`logs -f app` streams in real time, so the first-run password scrolls straight into your terminal:
 
-| Situation | What you see |
+| Situation | Output |
 | --- | --- |
-| **Fresh site** (empty DB) | `admin` is created with a random one-time password (2.5.3+ prints a `FEEDLORE FIRST RUN` banner) |
-| **Existing site** | **Generation is skipped, the current password is kept**, with an "N accounts found" notice |
+| **Fresh site** (empty DB) | `Empty site: created initial admin admin, one-time password: XXXX` (2.5.3+ prints a `FEEDLORE FIRST RUN` banner) |
+| **Existing site** | **Nothing** — generation is skipped and the password is unchanged. This is exactly why grepping the log finds nothing |
 
-If you lost it (2.5.3+ images, inside the container, no network endpoint):
+Press `Ctrl+C` when done: it only stops the log stream, the container keeps running.
+
+> Shortcut: `docker compose ... logs -f app | grep -m1 -A8 'one-time password'` exits by itself once matched.
+
+### Forgot the password (existing site)
+
+2.5.3+ ships a built-in command:
 
 ```bash
-docker exec -it feedlore pnpm --filter @feedlore/server initial-password          # look up within 24h
-docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset  # reset and print a new one
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset
 ```
+
+2.5.2 and earlier have no such command — use the one-shot rescue script documented in the help page (Reset admin password), run once and deleted afterwards.
 
 ### Troubleshooting startup
 

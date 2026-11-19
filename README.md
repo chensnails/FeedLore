@@ -42,7 +42,7 @@ mkdir -p feedlore && cd feedlore
 curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
 docker pull ghcr.io/chensnails/feedlore:2.5.2
 docker compose -f docker-compose.v2.release.yml up -d
-docker logs feedlore --tail 40        # 首启凭据就在这段日志里
+docker compose -f docker-compose.v2.release.yml logs -f app   # 实时看，出现密码后 Ctrl+C
 ```
 
 **国内网络** —— 代理站已写死在命令里，直接复制（脚本文件不用下）：
@@ -53,7 +53,7 @@ curl -fsSL -o docker-compose.v2.release.yml   'https://gh-proxy.org/https://raw.
 docker pull ghcr.nju.edu.cn/chensnails/feedlore:2.5.2
 docker tag  ghcr.nju.edu.cn/chensnails/feedlore:2.5.2 ghcr.io/chensnails/feedlore:2.5.2
 docker compose -f docker-compose.v2.release.yml up -d
-docker logs feedlore --tail 40        # 首启凭据就在这段日志里
+docker compose -f docker-compose.v2.release.yml logs -f app   # 实时看，出现密码后 Ctrl+C
 ```
 
 > `docker tag` 那一步不能省：compose 里的镜像名是官方 `ghcr.io/...`，拉反代后要把名字改回来，
@@ -76,21 +76,29 @@ docker logs feedlore --tail 20
 把 `2.5.3` 换成目标版本即可。若 `.env` 里已写死 `V2_IMAGE`，改那一行、去掉命令里的
 `V2_IMAGE=` 前缀即可（两处保持一致）。
 
-### 看到密码 / 忘记密码
+### 看到密码
 
-`docker logs feedlore --tail 40` 里按场景显示：
+`logs -f app` 会实时跟着输出，**首启密码直接滚在终端上**：
 
-| 场景 | 日志里会看到 |
+| 场景 | 输出 |
 | --- | --- |
-| **新用户**（空库） | 自动建 `admin` + 随机一次性密码（2.5.3+ 是 `FEEDLORE FIRST RUN` 横幅） |
-| **老用户**（已有账号） | **跳过生成、原密码不变**，提示「数据库已有 N 个账号」 |
+| **新用户**（空库） | `Empty site: created initial admin admin, one-time password: XXXX`（2.5.3+ 为 `FEEDLORE FIRST RUN` 横幅） |
+| **老用户**（已有账号） | **什么都不打印**——跳过生成，原密码不变。这也正是「grep 不到密码」的原因 |
 
-遗忘时（2.5.3+ 镜像、容器内执行，不开网络接口）：
+看完按 `Ctrl+C`：只停止日志跟随，**容器继续运行**，站点不会中断。
+
+> 想更省事：`docker compose ... logs -f app | grep -m1 -A8 'one-time password'`，
+> 命中即自动退出，连 Ctrl+C 都不用按。
+
+### 忘记密码（已有账号）
+
+2.5.3+ 镜像内置命令：
 
 ```bash
-docker exec -it feedlore pnpm --filter @feedlore/server initial-password          # 24h 内查回
-docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset  # 重置并打印新密码
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset
 ```
+
+2.5.2 及更早没有这个命令，用帮助文档「重置管理员密码」里的临时脚本（一次执行，用完即删）。
 
 ### 起不来怎么查
 
