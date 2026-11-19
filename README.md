@@ -55,7 +55,18 @@ docker compose -f docker-compose.v2.release.yml up -d
 docker compose -f docker-compose.v2.release.yml logs -f app
 ```
 
-日志出现 `one-time password: xxxx` 即初始密码，`Ctrl+C` 后用 `admin` 登录。
+日志里出现 `FEEDLORE FIRST RUN` 横幅，其中 `初始密码` 一行就是口令；`Ctrl+C` 后用 `admin` 登录。
+只想看横幅而不想翻整屏日志：
+
+```bash
+docker compose -f docker-compose.v2.release.yml logs app | grep -A6 'FEEDLORE FIRST RUN'
+```
+
+错过横幅（`up -d` 已经跑完）也随时能查回，24 小时内有效：
+
+```bash
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password
+```
 
 ### 已有站点升级
 
