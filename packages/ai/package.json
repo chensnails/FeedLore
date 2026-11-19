@@ -12,9 +12,9 @@
   "dependencies": {
     "@feedlore/contract": "workspace:*",
     "@feedlore/db": "workspace:*",
-    "drizzle-orm": "^0.45.4"
+    "drizzle-orm": "catalog:"
   },
   "devDependencies": {
-    "typescript": "^5.9.0"
+    "typescript": "catalog:"
   }
 }

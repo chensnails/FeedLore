@@ -17,9 +17,10 @@ import type { Db } from '@feedlore/db';
 import { apiError } from '../lib/apiError';
 import { mcpAuth, type McpEnv } from '../middleware/mcpAuth';
 import { buildMcpServer } from '../mcp/tools';
+import { MCP_ENABLED } from '../env';
 
 export function isMcpEnabled(): boolean {
-  return process.env.MCP_ENABLED !== '0';
+  return MCP_ENABLED;
 }
 
 /** 不改响应体，只补 no-store：鉴权过的 JSON 也不该被任何一层缓存。 */

@@ -16,6 +16,6 @@
   },
   "devDependencies": {
     "turbo": "^2.3.0",
-    "typescript": "^5.9.0"
+    "typescript": "catalog:"
   }
 }

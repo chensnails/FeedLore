@@ -10,6 +10,7 @@
 import { isIP } from 'node:net';
 import type { Context } from 'hono';
 import type { AppEnv } from '../middleware/auth';
+import { isTrustProxy } from '../env';
 
 const WINDOW_MS = 60_000;
 const MAX_ATTEMPTS = 10;
@@ -63,7 +64,7 @@ export function pickClientIp(input: {
 export function clientIpOf(c: Context<AppEnv>): string {
   const incoming = (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming;
   return pickClientIp({
-    trustProxy: process.env.TRUST_PROXY === '1',
+    trustProxy: isTrustProxy(),
     forwardedFor: c.req.header('x-forwarded-for'),
     realIp: c.req.header('x-real-ip'),
     remoteAddress: incoming?.socket?.remoteAddress,

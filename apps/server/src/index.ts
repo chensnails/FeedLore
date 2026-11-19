@@ -12,10 +12,10 @@
  */
 
 import { serve } from '@hono/node-server';
-import { createDb, type Db } from '@feedlore/db';
+import { createDb, createPool, type Db } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import { INITIAL_ADMIN_PASSWORD } from '@feedlore/contract';
-import { APP_VERSION, HOST, PORT } from './env';
+import { APP_VERSION, HOST, PORT, getDatabaseUrl, getPublicUrl, validateConfig } from './env';
 import { getAuth } from './auth';
 import { createApp } from './app';
 import { bootstrap, consumeStartupAdmin } from './bootstrap';
@@ -44,7 +44,7 @@ let auth: AuthInstance | null = null;
  * 不打印明文（那是用户自己 .env 里的值，且会长期留在 docker logs 里）。
  */
 function printFirstRunBanner(a: { username: string; customPassword: boolean }, port: number): void {
-  const configured = process.env.PUBLIC_URL?.trim();
+  const configured = getPublicUrl();
   const url = configured || (HOST === '0.0.0.0' || HOST === '::'
     ? `http://localhost:${port}`
     : `http://${HOST}:${port}`);
@@ -85,11 +85,54 @@ function scheduleImagePrune(database: Db): void {
   setInterval(run, 6 * 3600_000).unref();
 }
 
+/**
+ * 启动前置校验（V3.0 / fail-fast 主体）：配置格式有问题就不再往下起。
+ *
+ * 只校验「配错会导致运行期诡异行为」的格式/区间（纯函数、不连库）。DB 是否可达在
+ * bootstrap 之后单独探测（那一步会改写 DATABASE_URL、建库、迁移，探测必须针对最终库）。
+ * 校验失败一律退出，与 STRICT_BOOT 无关 —— 配置写错在任何部署模式下都应立刻暴露。
+ */
+function assertConfigOrExit(): void {
+  const issues = validateConfig();
+  if (issues.length === 0) return;
+  console.error('[boot] 配置校验失败，拒绝启动 / invalid configuration, refusing to start:');
+  for (const it of issues) console.error(`  - ${it.key}: ${it.message}`);
+  if (!getDatabaseUrl()) {
+    console.error('  (DATABASE_URL 未设置：本地跑单测请用 pnpm test，服务进程必须配置数据库)');
+  }
+  process.exit(1);
+}
+
+/**
+ * DB 可达探测（V3.0 / fail-fast 主体）：bootstrap 完成后、装配服务前连一次真库。
+ *
+ * 故意放在 bootstrap 之后：那一步可能改写 DATABASE_URL（旧库名兜底）并建库，探测的是
+ * 最终连接串。连不上直接退出 —— 一个连不上库的站点没有任何可用功能，带病启动只会让
+ * 健康检查反复 503、排障信息被淹没。这与「DATABASE_URL 完全没配」是两回事：后者是
+ * 本地/单测场景，main() 作为服务进程不该在没库的情况下被拉起。
+ */
+async function probeDatabaseOrExit(url: string): Promise<void> {
+  const pool = createPool(url);
+  try {
+    await pool.query('select 1');
+  } catch (e) {
+    console.error(`[boot] 数据库不可达，拒绝启动 / database unreachable, refusing to start: ${(e as Error)?.message ?? e}`);
+    await pool.end().catch(() => {});
+    process.exit(1);
+  }
+  await pool.end().catch(() => {});
+}
+
 async function main(): Promise<void> {
+  assertConfigOrExit();
+
   /* 自举可能耗时数分钟（结构迁移）。失败就退出，让容器重启重试 ——
    * 迁移是幂等的，重启不会写出半套数据。 */
   await bootstrap();
-  const databaseUrl = process.env.DATABASE_URL?.trim() ?? '';
+  const databaseUrl = getDatabaseUrl();
+
+  /* DB 可达性 fail-fast：所有部署模式都执行。连不上就明确退出，不再带病启动。 */
+  if (databaseUrl) await probeDatabaseOrExit(databaseUrl);
 
   if (databaseUrl) {
     try {

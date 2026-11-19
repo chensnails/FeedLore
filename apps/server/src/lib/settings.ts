@@ -27,6 +27,12 @@ import {
   REFRESH_CONCURRENCY,
   RSS_TIMEOUT_SECONDS,
   KEEP_PER_FEED,
+  getProxyUrl,
+  getAutoRefreshMinutes,
+  getImgTtlDays,
+  getImgKeepDays,
+  getImgMaxDim,
+  getImgWebpQuality,
 } from '../env';
 
 /** 重新导出，`fetcher` 等模块直接从这里取类型，避免同时依赖 contract 与 env。 */
@@ -59,14 +65,14 @@ export function sourceDefaults(): SourceConfig {
     concurrency: clampInt(REFRESH_CONCURRENCY, 3, 1, 10),
     feedFailLimit: clampInt(FEED_FAIL_LIMIT, 5, 2, 20),
     // 前端自动刷新列表的间隔：0 = 关闭（纯前端行为，服务端只负责存）
-    autoRefreshMinutes: clampInt(process.env.AUTO_REFRESH_MINUTES, 0, 0, 1440),
+    autoRefreshMinutes: clampInt(getAutoRefreshMinutes(), 0, 0, 1440),
     // 出网代理：真正接上了（`lib/net.ts` 的 setOutboundProxy / ProxyAgent）。
     // 走代理时这一跳没有 IP 钉定（DNS 由代理解析），内网地址仍然被拒 —— 取舍写在 net.ts 顶部。
-    proxyUrl: String(process.env.PROXY_URL ?? '').trim().slice(0, 500),
-    imgTtlDays: clampInt(process.env.IMG_TTL_DAYS, 7, 1, 365),
-    imgKeepDays: clampInt(process.env.IMG_KEEP_DAYS, 90, 1, 3650),
-    imgMaxDim: clampInt(process.env.IMG_MAX_DIM, 1280, 320, 4096),
-    imgQuality: clampInt(process.env.IMG_WEBP_QUALITY, 78, 30, 100),
+    proxyUrl: getProxyUrl().slice(0, 500),
+    imgTtlDays: clampInt(getImgTtlDays(), 7, 1, 365),
+    imgKeepDays: clampInt(getImgKeepDays(), 90, 1, 3650),
+    imgMaxDim: clampInt(getImgMaxDim(), 1280, 320, 4096),
+    imgQuality: clampInt(getImgWebpQuality(), 78, 30, 100),
   };
 }
 

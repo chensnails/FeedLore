@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { eq, sql } from 'drizzle-orm';
 import { createDb, createPool, sessions, users } from '@feedlore/db';
 import { INITIAL_ADMIN_PASSWORD } from '@feedlore/contract';
+import { STRICT_BOOT, getAdminPass, getAdminUser } from './env';
 import { getAuth } from './auth';
 import { ensureAuthSecret } from './lib/auth-secret';
 
@@ -196,7 +197,14 @@ async function ensureTargetDatabase(targetUrl: string): Promise<void> {
   }
 }
 
-/** 启动时的幂等结构迁移。失败只告警不阻断（外部托管库可能没有 DDL 权限）。 */
+/**
+ * 启动时的幂等结构迁移。
+ *
+ * 失败策略由 STRICT_BOOT 决定（V3.0）：
+ *  - 默认（STRICT_BOOT≠1）：只告警不阻断。外部托管库常无 DDL 权限，直接崩会把本来
+ *    能跑的站点弄成起不来 —— 这是 2.x 一直保留的宽容，不因工程化改造而改变。
+ *  - STRICT_BOOT=1：迁移失败即退出，用于自托管有 DDL 权限、要求「启动即结构一致」的部署。
+ */
 function migrateV2(url: string): void {
   log('Database schema migration (drizzle, idempotent)');
   const r = spawnSync('pnpm', ['--filter', '@feedlore/db', 'migrate'], {
@@ -204,12 +212,15 @@ function migrateV2(url: string): void {
     stdio: 'inherit',
     env: { ...process.env, TZ: 'UTC', DATABASE_URL: url },
   });
-  if (r.error) {
-    warn(`Schema migration could not start (${r.error.message}): run pnpm --filter @feedlore/db migrate manually, then restart`);
-    return;
-  }
-  if (r.status !== 0) {
-    warn(`Schema migration failed (exit code ${r.status}): endpoints will break on missing columns, run pnpm --filter @feedlore/db migrate manually, then restart`);
+  if (r.error || r.status !== 0) {
+    const detail = r.error
+      ? `could not start (${r.error.message})`
+      : `failed (exit code ${r.status})`;
+    const hint = 'run pnpm --filter @feedlore/db migrate manually, then restart';
+    if (STRICT_BOOT) {
+      throw new Error(`Schema migration ${detail} with STRICT_BOOT=1, refusing to start; ${hint}`);
+    }
+    warn(`Schema migration ${detail}: endpoints will break on missing columns, ${hint}`);
     return;
   }
   log('Database schema is up to date');
@@ -248,10 +259,10 @@ async function ensureDefaultAdmin(): Promise<void> {
     return;
   }
 
-  const username = process.env.ADMIN_USER?.trim() || 'admin';
+  const username = getAdminUser();
   /* 固定初始密码（contract 常量，文档里公开）。没设 ADMIN_PASS 时用它；
    * 该账号带 must_change_password 标记，首次登录必须改密，改完这枚公开口令即失效。 */
-  const custom = process.env.ADMIN_PASS?.trim();
+  const custom = getAdminPass();
   const password = custom || INITIAL_ADMIN_PASSWORD;
   try {
     const auth = getAuth(db);

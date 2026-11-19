@@ -7,6 +7,13 @@
 
 import { createAuth, type AuthInstance, type TrustedOrigins } from '@feedlore/auth';
 import type { Db } from '@feedlore/db';
+import {
+  PORT,
+  getAuthBaseUrl,
+  getAuthTrustedOrigins,
+  isAuthSecureCookies,
+  isTrustProxy,
+} from './env';
 
 function required(name: string): string {
   const v = process.env[name];
@@ -50,13 +57,13 @@ let _auth: AuthInstance | null = null;
 export function getAuth(db: Db): AuthInstance {
   if (_auth) return _auth;
 
-  const secureCookies = process.env.AUTH_SECURE_COOKIES === '1';
-  const configuredOrigins = (process.env.AUTH_TRUSTED_ORIGINS ?? '')
+  const secureCookies = isAuthSecureCookies();
+  const configuredOrigins = getAuthTrustedOrigins()
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
   const trustedOrigins: TrustedOrigins = configuredOrigins.length ? configuredOrigins : sameOriginCandidates;
-  const baseURL = trimmed(process.env.AUTH_BASE_URL) || `http://127.0.0.1:${process.env.PORT ?? 3000}`;
+  const baseURL = getAuthBaseUrl() || `http://127.0.0.1:${PORT}`;
 
   _auth = createAuth({
     db,
@@ -65,13 +72,13 @@ export function getAuth(db: Db): AuthInstance {
     trustedOrigins,
     secureCookies,
     // 只有真的挂在反代后面才开；直接暴露端口时开它等于让限流按 IP 分桶形同虚设
-    trustProxy: process.env.TRUST_PROXY === '1',
+    trustProxy: isTrustProxy(),
   });
 
   console.log(
-    `[auth] better-auth ready | baseURL=${trimmed(process.env.AUTH_BASE_URL) || '(from request Host)'}`
+    `[auth] better-auth ready | baseURL=${getAuthBaseUrl() || '(from request Host)'}`
       + ` | origins=${configuredOrigins.length || 'same-origin (dynamic)'} | secureCookies=${secureCookies}`
-      + ` | trustProxy=${process.env.TRUST_PROXY === '1'}`,
+      + ` | trustProxy=${isTrustProxy()}`,
   );
   return _auth;
 }

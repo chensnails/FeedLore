@@ -3,6 +3,20 @@ packages:
   - "apps/server"
   - "apps/web"
 
+# 共享依赖版本单一真源（V3.0）：同一依赖在多个包出现时只在这里声明一次，
+# 各包用 "catalog:" 引用，避免 zod / @types/node / tsx / pg 等版本漂移。
+# 只收「被 2 个及以上包引用」或「跨包必须同版本」的依赖；单包专用依赖仍留在各自 package.json。
+catalog:
+  zod: ^4.6.7
+  typescript: ^5.9.0
+  "@types/node": ^22.10.0
+  tsx: ^4.19.2
+  pg: ^8.13.1
+  "@types/pg": ^8.11.10
+  drizzle-orm: ^0.45.4
+  better-auth: ^1.7.15
+  hono: ^4.6.14
+
 # ⚠️ pnpm 12 会因「Ignored build scripts」让 install 返回退出码 1，直接打断 Docker 构建。
 # 被拦截的全是 esbuild（tsx / drizzle-kit 的传递依赖），其 postinstall 仅安装平台二进制，
 # 不放行则 tsx 无法运行。依赖集很小且可信，故统一放行；如将来引入可疑依赖需改回白名单模式。

@@ -10,13 +10,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "better-auth": "^1.7.15",
-    "drizzle-orm": "^0.45.4",
-    "pg": "^8.13.0"
+    "better-auth": "catalog:",
+    "drizzle-orm": "catalog:",
+    "pg": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "@types/pg": "^8.11.0",
-    "typescript": "^5.9.0"
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "typescript": "catalog:"
   }
 }

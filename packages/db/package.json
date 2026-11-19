@@ -16,12 +16,12 @@
   "dependencies": {
     "@feedlore/contract": "workspace:*",
     "drizzle-kit": "0.31.1",
-    "drizzle-orm": "^0.45.4",
-    "pg": "^8.13.1"
+    "drizzle-orm": "catalog:",
+    "pg": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "@types/pg": "^8.11.10",
-    "typescript": "^5.9.0"
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "typescript": "catalog:"
   }
 }

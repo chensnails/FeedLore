@@ -104,6 +104,12 @@ services:
       ALLOW_PRIVATE_HOSTS: "${ALLOW_PRIVATE_HOSTS:-}"
       TRUST_PROXY: "${TRUST_PROXY:-}"
 
+      # ---- 启动严格模式（V3.0）----
+      # 默认（空/0）：配置格式错误、DB 不可达即拒绝启动；结构迁移失败只告警继续
+      # （兼容无 DDL 权限的外部托管库）。=1 时迁移失败也拒绝启动，适合有 DDL 权限、
+      # 要求「启动即结构一致」的自托管部署。
+      STRICT_BOOT: "${STRICT_BOOT:-}"
+
       # ---- 设置页「一键更新」：转发给同项目的 watchtower ----
       UPDATE_WEBHOOK_URL: http://watchtower:8080/v1/update
       UPDATE_WEBHOOK_TOKEN: ${WATCHTOWER_HTTP_API_TOKEN:-feedlore-update}

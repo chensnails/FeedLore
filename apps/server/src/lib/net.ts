@@ -21,6 +21,7 @@ import dns from 'node:dns';
 import { createRequire } from 'node:module';
 import { Agent, ProxyAgent } from 'undici';
 import { ApiException } from './apiError';
+import { isPrivateHostsAllowed } from '../env';
 
 /** 读 npm undici 的实际版本（ESM 里 import JSON 还要 import assertion，不如 createRequire 稳）。 */
 const nodeRequire = createRequire(import.meta.url);
@@ -32,7 +33,7 @@ try {
 }
 
 /** 逃生口：自建 FreshRSS / 本机 Ollama 这类需求，给进程设 ALLOW_PRIVATE_HOSTS=1 整体放行。 */
-export const allowPrivate = (): boolean => process.env.ALLOW_PRIVATE_HOSTS === '1';
+export const allowPrivate = (): boolean => isPrivateHostsAllowed();
 
 const stripBrackets = (h: string): string => String(h || '').replace(/^\[/, '').replace(/\]$/, '');
 

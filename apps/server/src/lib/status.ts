@@ -17,6 +17,8 @@ import { auth as authSpec } from '@feedlore/contract';
 import type { z } from 'zod';
 import { assertResponse } from './validate';
 import { getSource } from './settings';
+import { GITHUB_REPO } from '../env';
+export { GITHUB_REPO };
 import {
   feedIntervalMs,
   getLastRefreshAt,
@@ -50,7 +52,6 @@ function nextRunAt(hhmm: string, now: Date): number {
   return target > now.getTime() ? target : target + 86_400_000;
 }
 
-export const GITHUB_REPO = process.env.GITHUB_REPO ?? 'chensnails/FeedLore';
 export const VERSION_TTL_MS = 10 * 60_000;
 
 /** 上海时区的 YYYY-MM-DD（日报/状态页的「今天」口径与 legacy 一致）。 */

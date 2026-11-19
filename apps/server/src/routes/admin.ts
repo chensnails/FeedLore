@@ -36,6 +36,7 @@ import { normalizeRole } from '../lib/roles';
 import { requireAuth, type AppEnv } from '../middleware/auth';
 import { getSource, saveSource } from '../lib/settings';
 import { GITHUB_REPO, VERSION_TTL_MS, buildStatus, compareVersion } from '../lib/status';
+import { getGithubToken, getUpdateWebhookToken, getUpdateWebhookUrl } from '../env';
 import { resetImageCache } from './img';
 import { safeFetch } from '../lib/net';
 import { APP_VERSION } from '../env';
@@ -55,7 +56,8 @@ async function fetchGithubLatest(): Promise<VersionCheck> {
     'User-Agent': 'feedlore-version-check',
     Accept: 'application/vnd.github+json',
   };
-  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const ghToken = getGithubToken();
+  if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
 
   // 走 safeFetch：这是服务端替自己出网，同样不该被 DNS rebinding 之类的手法带偏
   const rel = await safeFetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, { headers });
@@ -449,7 +451,7 @@ export function adminVersionRoutes(db: Db | null, auth: AuthInstance | null) {
           {
             version: APP_VERSION,
             repo: GITHUB_REPO,
-            updateEnabled: Boolean(process.env.UPDATE_WEBHOOK_URL && process.env.UPDATE_WEBHOOK_TOKEN),
+            updateEnabled: Boolean(getUpdateWebhookUrl() && getUpdateWebhookToken()),
           },
           'GET /api/version',
         ),
@@ -485,8 +487,8 @@ export function adminVersionRoutes(db: Db | null, auth: AuthInstance | null) {
       }
     })
     .post(authSpec.update.path, requireAuth(auth, 'admin'), async (c) => {
-      const hookUrl = process.env.UPDATE_WEBHOOK_URL ?? '';
-      const hookToken = process.env.UPDATE_WEBHOOK_TOKEN ?? '';
+      const hookUrl = getUpdateWebhookUrl();
+      const hookToken = getUpdateWebhookToken();
       if (!hookUrl || !hookToken) {
         return apiError(c, 'E_UPDATE_CHANNEL_UNSET');
       }

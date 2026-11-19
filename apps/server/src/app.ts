@@ -20,7 +20,7 @@ import type { Db } from '@feedlore/db';
 import { users } from '@feedlore/db';
 import type { AuthInstance } from '@feedlore/auth';
 import type { AppEnv } from './middleware/auth';
-import { WEB_ROOT } from './env';
+import { WEB_ROOT, getAuthTrustedOrigins, isSignupAllowed } from './env';
 import { sameOriginCandidates } from './auth';
 import { applyCspNonce, securityHeaders } from './lib/security-headers';
 import { apiError, apiErrorBody, isApiErrorCode } from './lib/apiError';
@@ -211,7 +211,7 @@ export function createApp({ db, auth }: AppDeps) {
    * 可信来源与 better-auth 保持同一套规则：配了 AUTH_TRUSTED_ORIGINS 就用它，
    * 否则按请求 Host 推导同源候选（见 auth.ts 的 sameOriginCandidates）。
    * ========================================================================== */
-  const configuredOrigins = (process.env.AUTH_TRUSTED_ORIGINS ?? '')
+  const configuredOrigins = getAuthTrustedOrigins()
     .split(',')
     .map((s) => toOrigin(s.trim()))
     .filter((s): s is string => !!s);
@@ -274,7 +274,7 @@ export function createApp({ db, auth }: AppDeps) {
      * 首个管理员与后续加人走 `pnpm seed` / `POST /api/users`（都在进程内调
      * `auth.api.signUpEmail`），不需要 HTTP 注册口。确实要开放时置 `ALLOW_SIGNUP=1`。
      */
-    if (path.startsWith('/api/auth/sign-up') && process.env.ALLOW_SIGNUP !== '1') {
+    if (path.startsWith('/api/auth/sign-up') && !isSignupAllowed()) {
       return apiError(c, 'E_SIGNUP_DISABLED');
     }
 

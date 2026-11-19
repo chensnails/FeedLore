@@ -21,6 +21,7 @@ import { apiError } from '../lib/apiError';
 import { normalizeRole } from '../lib/roles';
 import { clientIpOf, takeLoginAttempt } from '../lib/rate-limit';
 import { requireAuth, type AppEnv } from '../middleware/auth';
+import { PORT, getAuthBaseUrl } from '../env';
 
 /** Node 22 的 Headers 支持 getSetCookie；这里做一次安全取用，兼容类型差异。 */
 function setCookiesOf(res: Response): string[] {
@@ -39,12 +40,12 @@ function forwardCookies(c: Context<AppEnv>, res: Response): void {
  * 与用户实际访问地址无关的白名单条目。
  */
 function baseURLOf(c: { req: { url: string } }): string {
-  const configured = process.env.AUTH_BASE_URL?.trim();
+  const configured = getAuthBaseUrl();
   if (configured) return configured;
   try {
     return new URL(c.req.url).origin;
   } catch {
-    return `http://127.0.0.1:${process.env.PORT ?? 3000}`;
+    return `http://127.0.0.1:${PORT}`;
   }
 }
 
