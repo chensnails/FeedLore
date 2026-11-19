@@ -11,7 +11,10 @@
     "start": "tsx src/index.ts",
     "seed": "tsx src/seed.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test": "node scripts/run-tests.mjs unit",
+    "test:unit": "node scripts/run-tests.mjs unit",
+    "test:integration": "node scripts/run-tests.mjs integration",
+    "test:all": "node scripts/run-tests.mjs all",
     "initial-password": "tsx scripts/initial-password.ts"
   },
   "dependencies": {

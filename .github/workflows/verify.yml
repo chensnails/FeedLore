@@ -74,8 +74,11 @@ jobs:
         env:
           DATABASE_URL: postgres://feedlore_v2:ci-not-a-secret@127.0.0.1:5432/feedlore_itest
 
-      - name: 接口级集成测试（真库）
-        run: pnpm --filter @feedlore/server exec node --import tsx --test src/api.integration.test.ts
+      # V3.2：跑**整个集成层**，不再只点名 api.integration.test.ts。
+      # 之前 entryAi.integration.test.ts 在单测阶段因 DATABASE_URL='' 被跳过、
+      # 真库阶段又没被点名 —— 这套 AI 长任务的回归实际上从未进过 CI。
+      - name: 接口级集成测试（真库，全部）
+        run: pnpm --filter @feedlore/server run test:integration
         env:
           DATABASE_URL: postgres://feedlore_v2:ci-not-a-secret@127.0.0.1:5432/feedlore_itest
 
