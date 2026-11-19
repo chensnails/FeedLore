@@ -6,7 +6,7 @@ name: Release
 # 镜像通道：2.x **占用 ghcr.io/chensnails/feedlore**（1.x 用的同一个仓库）。
 # 这是「1.x 用户无感升级」的关键：1.x 容器的 watchtower 盯的是 feedlore:latest，
 # 正式版把 latest 移过来，watchtower 拉到的就是 v2 镜像；v2 进程启动时自举
-# （建 feedlore_v2、迁移数据、改成 UTC），用户不用改任何配置（见 UPGRADE-v2.md）。
+# （建 feedlore_v2、结构迁移、改成 UTC），用户不用改任何配置。
 # 因此 **feedlore-v2 这个通道已退役**，不要再往里推东西。
 #
 # main 是唯一主线（2.x monorepo），1.x 已冻结在 v1.7.4（只存在于 tag，不再从本仓库发布）。
@@ -272,7 +272,7 @@ jobs:
 
           ## 手动 / 全新部署
 
-          见 [UPGRADE-v2.md](https://github.com/chensnails/FeedLore/blob/${{ github.ref_name }}/UPGRADE-v2.md)。
+          见仓库根目录 `README.md` 的「快速开始」。
           `AUTH_SECRET`、`AUTH_BASE_URL` 都可以不填（自动生成并持久化 / 按访问域名同源校验）。
 
           ## 之后怎么更新

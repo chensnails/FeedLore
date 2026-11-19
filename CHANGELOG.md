@@ -3,7 +3,7 @@
 本文件记录 2.x 的用户可见变化与部署相关变更。
 
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
-- 从 1.x 升级的步骤见 [UPGRADE-v2.md](UPGRADE-v2.md)。
+- 从 1.x 迁移：在 1.7.4 里「设置 → 数据 → 导出」，装好 2.x 后导入。
 
 ## 2.5.3 — 待发布
 
