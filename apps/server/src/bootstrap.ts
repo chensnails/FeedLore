@@ -31,6 +31,88 @@ const now = (): string => new Date().toISOString().slice(11, 19);
 const log = (...a: unknown[]): void => console.log(`[${now()}] [bootstrap]`, ...a);
 const warn = (...a: unknown[]): void => console.warn(`[${now()}] [bootstrap] ⚠️`, ...a);
 
+/** 旧版升级链路遗留的库名：数据写在 feedlore_v2，但很多站点的 .env 仍写 feedlore。 */
+const LEGACY_DB_NAME = 'feedlore';
+const V2_DB_NAME = 'feedlore_v2';
+
+/** 库探测用的最小查询接口，便于在无真库的单测里注入桩。 */
+export interface DbProbe {
+  /** 指定库里是否有任意一行（用于判断「库里有账号吗」）。查询失败视为 false。 */
+  hasAnyRow(database: string, table: string): Promise<boolean>;
+  /** 指定库是否存在。 */
+  databaseExists(database: string): Promise<boolean>;
+  /** 用完释放连接（真实 PG 实现需要；测试桩可不实现）。 */
+  close?(): Promise<void>;
+}
+
+/** 用同实例的 admin 连接串实现 DbProbe（连 /postgres 库做跨库探测）。 */
+function makePgProbe(adminUrl: string): DbProbe {
+  const pool = createPool(adminUrl);
+  const exists = async (database: string): Promise<boolean> => {
+    const r = await pool.query('select 1 from pg_database where datname = $1', [database]);
+    return (r.rowCount ?? 0) > 0;
+  };
+  return {
+    databaseExists: exists,
+    hasAnyRow: async (database, table) => {
+      if (!(await exists(database))) return false;
+      // 库名 / 表名都是内部常量（feedlore_v2 / users），不是外部输入；仍做引号防护。
+      const ident = (s: string): string => s.replace(/"/g, '""');
+      const r = await pool.query(`select 1 from "${ident(database)}".public."${ident(table)}" limit 1`);
+      return (r.rowCount ?? 0) > 0;
+    },
+    close: async () => { await pool.end().catch(() => {}); },
+  };
+}
+
+/**
+ * 旧库名自动兼容（2.5.4）。
+ *
+ * 2.5.3 删除了旧版 1.x→v2 升级链路：那条链路曾把 `DATABASE_URL` 从 `feedlore`
+ * 改写到 `feedlore_v2`（只在进程内改，从不写回 .env）。老站点的 .env 因此普遍
+ * 还是 `PG_DB=feedlore`，但数据实打实躺在 `feedlore_v2`。升级到 2.5.3 并在
+ * Watchtower / `up -d` 下重建后，不再有运行时改写 → app 连到空库 `feedlore` →
+ * 空站点播种新 admin → 原账号原密码全部失效。这是一次系统性回归。
+ *
+ * 只在**全部**满足时切换，避免误伤自定义库名与真正的空站点：
+ *   1. 连接串里的库名恰好是旧默认 `feedlore`；
+ *   2. 同实例存在 `feedlore_v2` 且其 users 表有账号；
+ *   3. 当前 `feedlore` 库里没有账号（库不存在也算没有）。
+ * 若两边都有账号，说明用户在用旧库名跑真实站点 → 一律不动，交给用户自己决定。
+ *
+ * 返回改写后的连接串；不写 .env、不迁移、不删数据。函数本身无副作用（除了 probe 查询），
+ * 真正的改写由调用方写回 process.env.DATABASE_URL，使后续 migrate / auth / 服务都用新库。
+ */
+export async function resolveLegacyDatabaseUrl(
+  source: string,
+  probe: DbProbe,
+  logFn: (...a: unknown[]) => void = () => {},
+): Promise<string> {
+  let url: URL;
+  try {
+    url = new URL(source);
+  } catch {
+    return source;
+  }
+  if (decodeURIComponent(url.pathname.replace(/^\//, '')) !== LEGACY_DB_NAME) return source;
+
+  try {
+    if (!(await probe.databaseExists(V2_DB_NAME))) return source;
+    if (!(await probe.hasAnyRow(V2_DB_NAME, 'users'))) return source;
+    if (await probe.hasAnyRow(LEGACY_DB_NAME, 'users')) return source;
+  } catch (e) {
+    // 探测失败（权限 / 网络 / 外部托管库）一律不切换，保持原行为，绝不冒险。
+    warn(`Legacy database check failed, keeping DATABASE_URL as-is: ${(e as Error)?.message ?? e}`);
+    return source;
+  }
+
+  url.pathname = `/${V2_DB_NAME}`;
+  const rewritten = url.toString();
+  logFn(`Detected legacy setup: "${LEGACY_DB_NAME}" has no accounts but "${V2_DB_NAME}" does`);
+  logFn(`  Switching DATABASE_URL to "${V2_DB_NAME}" (runtime only; update PG_DB in .env to make it permanent)`);
+  return rewritten;
+}
+
 /**
  * 目标库不存在就建（兜底）。
  *
@@ -168,8 +250,25 @@ export async function bootstrap(): Promise<void> {
   const source = process.env.DATABASE_URL?.trim();
   if (!source) return;
 
-  await ensureTargetDatabase(source);
-  migrateV2(source);
-  await ensureAuthSecret(source);
+  /* 旧库名兼容：必须在任何 createDb()/迁移之前，让连接串指向真正有数据的库。
+   * 探测失败 / 非旧库名 / 两边都有账号时原样返回，行为与 2.5.3 完全一致。 */
+  let target = source;
+  try {
+    const admin = new URL(source);
+    admin.pathname = '/postgres';
+    const probe = makePgProbe(admin.toString());
+    try {
+      target = await resolveLegacyDatabaseUrl(source, probe, log);
+    } finally {
+      await probe.close?.();
+    }
+  } catch (e) {
+    warn(`Could not check legacy database name, continuing with the configured URL: ${(e as Error)?.message ?? e}`);
+  }
+  if (target !== source) process.env.DATABASE_URL = target;
+
+  await ensureTargetDatabase(target);
+  migrateV2(target);
+  await ensureAuthSecret(target);
   await ensureDefaultAdmin();
 }
