@@ -62,9 +62,20 @@ function contentLines(file) {
   return readFileSync(file, 'utf8').replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n');
 }
 
-/** 聚合输出统一 CRLF（与原仓库文件一致），末尾保留一个换行。 */
+/**
+ * 聚合输出统一 LF，末尾保留一个换行。
+ *
+ * 仓库里 style.css / hig.css 的 blob 是 LF（git 以 LF 存）；本地 Windows 因
+ * core.autocrlf=true 在 checkout 时转成 CRLF，CI 的 Linux runner 则是 LF 原样。
+ * 因此比较必须行尾无关（见 normalize），输出用 LF 与 blob 对齐，避免跨平台漂移。
+ */
 function serialize(lines) {
-  return `${lines.join('\r\n')}\r\n`;
+  return `${lines.join('\n')}\n`;
+}
+
+/** 行尾无关比较：把 CRLF 归一成 LF。 */
+function normalize(s) {
+  return s.replace(/\r\n/g, '\n');
 }
 
 function bootstrap() {
@@ -98,8 +109,8 @@ function check() {
   let ok = true;
   const results = aggregate(false);
   for (const [target, expected] of Object.entries(results)) {
-    const actual = readFileSync(path.join(SRC, target), 'utf8');
-    if (actual === expected) {
+    const actual = normalize(readFileSync(path.join(SRC, target), 'utf8'));
+    if (actual === normalize(expected)) {
       process.stdout.write(
         `OK ${target} 与分片聚合结果一致（${Buffer.byteLength(actual)} bytes）\n`,
       );
