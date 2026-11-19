@@ -4,7 +4,7 @@
 > 多用户 · 无广告 · 无遥测 · 数据全在你自己的 PostgreSQL。
 
 **在线体验**：https://feedlore.669600.xyz  （`demo` / `demo`）
-当前版本 **2.5.2**（2.5.3 待发布） · [更新日志](CHANGELOG.md) · [快速开始](#快速开始)
+当前版本 **2.5.3-rc.1**（预发布；`latest` 仍为 2.5.2） · [更新日志](CHANGELOG.md) · [快速开始](#快速开始)
 
 ## 亮点
 
@@ -39,7 +39,7 @@ Docker 24+ 与 Compose v2，默认端口 `3210`。compose 文件存成默认名 
 ```bash
 mkdir -p feedlore && cd feedlore
 curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
-V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose up -d
+V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3-rc.1 docker compose up -d
 ```
 
 **国内**（compose 走 gh-proxy，镜像走南京大学镜像站，不用再手动 pull + tag）
@@ -47,26 +47,26 @@ V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose up -d
 ```bash
 mkdir -p feedlore && cd feedlore
 curl -fsSL -o docker-compose.yml 'https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml'
-V2_IMAGE=ghcr.nju.edu.cn/chensnails/feedlore:2.5.3 docker compose up -d
+V2_IMAGE=ghcr.nju.edu.cn/chensnails/feedlore:2.5.3-rc.1 docker compose up -d
 ```
 
 打开 `http://<主机>:3210`：用户名 `admin`，初始密码 `Admin2026`。
 **首次登录必须先设置新密码**，改完才能使用其他功能 —— 服务端强制，未改密时除改密接口外
 一律返回 403。初始密码是公开值，改掉之前站点等于没上锁。
 
-> 命令按 2.5.3 写；该版本还没上架时，把 `2.5.3` 换成 `2.5.2`（2.5.2 的初始密码是随机口令，
-> 在启动日志 `FEEDLORE FIRST RUN` 里）。
+> 这是**预发布版**：只推 `2.5.3-rc.1` 这个镜像标签，`latest` 仍指向 2.5.2，存量站点不会被自动升级。
+> 想用 2.5.2 就把命令里的 `2.5.3-rc.1` 换成 `2.5.2`（2.5.2 的初始密码是随机口令，见启动日志）。
 
 ### 升级
 
 ```bash
 cd feedlore
 curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
-V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose up -d
+V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3-rc.1 docker compose up -d
 ```
 
-国内把镜像名换成 `ghcr.nju.edu.cn/chensnails/feedlore:2.5.3`、curl 换成 gh-proxy 那一条。
-把 `2.5.3` 换成目标版本；新的版本号本地没有镜像，`up -d` 会自动拉取，不必先 `pull`。
+国内把镜像名换成 `ghcr.nju.edu.cn/chensnails/feedlore:2.5.3-rc.1`、curl 换成 gh-proxy 那一条。
+把 `2.5.3-rc.1` 换成目标版本；新的版本号本地没有镜像，`up -d` 会自动拉取，不必先 `pull`。
 compose 文件没变化时可以跳过 curl。数据、密码、账号都不变，**老账号不会被要求改密**
 （强制改密只挂在全新部署创建的那个 `admin` 上）。
 

@@ -5,7 +5,10 @@
 - 1.x 的完整历史见 tag [v1.7.4](https://github.com/chensnails/FeedLore/tree/v1.7.4) 及对应的 GitHub Releases。
 - 从 1.x 迁移：在 1.7.4 里「设置 → 数据 → 导出」，装好 2.x 后导入。
 
-## 2.5.3 — 待发布
+## 2.5.3-rc.1 — 预发布（2026-11-19）
+
+> 预发布只推 `ghcr.io/chensnails/feedlore:2.5.3-rc.1`，**不推 `latest`、不建 GitHub Release**，
+> 存量站点与 Watchtower 不受影响；正式版 2.5.3 发布时再把 `latest` 移过去。
 
 > **⚠️ 升级前必读（手动 `docker compose up -d` 的用户）**：本版移除了 `upgrade` 一次性容器
 > 和 `upgrade:v1` 命令。如果你手里的 `docker-compose.v2.release.yml` 是旧版（还含 `upgrade` 服务），
