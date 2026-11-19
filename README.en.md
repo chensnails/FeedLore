@@ -31,24 +31,54 @@ Captured from the [live demo](https://feedlore.669600.xyz) (`demo` / `demo`).
 
 ## Quick start
 
-Docker 24+ with Compose v2 and one free port (default `3210`). No clone, no `.env` needed:
+Docker 24+ with Compose v2, plus one free port (default `3210`). No clone, no `.env` required.
+
+**Option A: one-command script (recommended)** — starts, waits for health, and **prints the login URL and password right in your terminal**:
+
+```bash
+mkdir feedlore && cd feedlore
+curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/scripts/deploy.sh
+chmod +x deploy.sh && ./deploy.sh
+```
+
+On a China network, use `deploy-cn.sh` (multi-source download + registry mirrors):
+
+```bash
+curl -fsSL -O https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/scripts/deploy-cn.sh
+chmod +x deploy-cn.sh && ./deploy-cn.sh
+```
+
+**Option B: manual**
 
 ```bash
 mkdir feedlore && cd feedlore
 curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
 docker compose -f docker-compose.v2.release.yml up -d
+docker compose -f docker-compose.v2.release.yml logs app   # look for the first-run banner
 ```
 
-Recommended: use the deploy script — it runs `up -d`, waits for healthy, and **prints the login URL and initial credentials right in the terminal**:
+Both options adapt to the situation and never overwrite existing data:
+
+| Situation | What happens |
+| --- | --- |
+| **New site** (fresh install) | Creates `admin` with a random password: the script prints it; manual installs show a `FEEDLORE FIRST RUN` banner |
+| **Existing site** (data present) | **Skips generation, keeps the current password**; the log says "existing accounts found" and shows the reset command |
+
+**Forgot the password / missed the banner** (inside the container, no network endpoint):
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/scripts/deploy.sh && chmod +x deploy.sh && ./deploy.sh
+# Recover the initial password within 24h
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password
+# Reset and print a new password (invalidates all sessions for that account)
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset
 ```
 
-For China networks use `scripts/deploy-cn.sh` instead. Manual deploys print a `FEEDLORE FIRST RUN` banner on a fresh site (password shown once);
-recover it within 24h with `docker exec -it feedlore pnpm --filter @feedlore/server initial-password`. Upgrades never change an existing password.
+> **Manual upgrade on an existing site**: refresh the compose file before `up -d`, otherwise the old
+> `upgrade` service blocks startup:
+> `curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml`
+> Watchtower / one-click update rebuild only the app container and need no compose change.
 
-Open `http://<host>:3210`, sign in and change the password immediately, then add RSS / Atom feeds or import OPML under Settings → Sources.
+Open `http://<host>:3210`, sign in, change the password immediately, then add RSS / Atom feeds or import OPML under Settings → Sources.
 
 ## Configuration & upgrades
 

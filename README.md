@@ -31,25 +31,51 @@ English: [README.en.md](README.en.md)
 
 ## 快速开始
 
-Docker 24+ 与 Compose v2，一个空闲端口（默认 `3210`）。无需克隆源码或准备 `.env`：
+需要 Docker 24+ 与 Compose v2，一个空闲端口（默认 `3210`）。不用克隆源码，也不用准备 `.env`。
+
+**方式 A：一键脚本（推荐）** —— 启动、等健康、**直接把登录链接和密码回显在终端**：
+
+```bash
+mkdir feedlore && cd feedlore
+curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/scripts/deploy.sh
+chmod +x deploy.sh && ./deploy.sh
+```
+
+国内网络下载慢或 `ghcr.io` 拉不动时，改用 `deploy-cn.sh`（多源下载 + 镜像反代）：
+
+```bash
+curl -fsSL -O https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/scripts/deploy-cn.sh
+chmod +x deploy-cn.sh && ./deploy-cn.sh
+```
+
+**方式 B：手动**
 
 ```bash
 mkdir feedlore && cd feedlore
 curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
 docker compose -f docker-compose.v2.release.yml up -d
+docker compose -f docker-compose.v2.release.yml logs app   # 看首启横幅
 ```
 
-推荐用部署脚本一步完成：`curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/scripts/deploy.sh && chmod +x deploy.sh && ./deploy.sh`，
-它会在 `up -d` 后等 app healthy，并**在终端直接回显登录链接与初始账密**。国内网络用 `scripts/deploy-cn.sh`。
+两种方式都会按场景自动处理，不会覆盖已有数据：
 
-手动部署时，空站点首次启动会打印 `FEEDLORE FIRST RUN` 横幅（含一次性密码，只这一次）：
+| 场景 | 会发生什么 |
+| --- | --- |
+| **新用户**（全新安装） | 自动创建 `admin` 并生成随机密码：脚本直接回显；手动方式看 `FEEDLORE FIRST RUN` 横幅 |
+| **老用户**（已有数据） | **跳过生成、原密码不变**，日志提示「数据库已有 N 个账号」；想改密码才用 `--reset` |
+
+**忘记密码 / 错过横幅**（容器内执行，不开网络接口）：
 
 ```bash
-docker compose -f docker-compose.v2.release.yml logs app
-# 错过横幅可 24h 内查回：docker exec -it feedlore pnpm --filter @feedlore/server initial-password
+# 24 小时内查回初始密码
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password
+# 忘记密码：重置并打印新密码（旧会话全部失效）
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset
 ```
 
-升级部署不会动原密码，只回显登录链接。
+> **老用户手动升级**：先换新版 compose 再 `up -d`，否则旧版里的 upgrade 服务会挡住启动：
+> `curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml`
+> Watchtower / 「设置 → 一键更新」路径不用换。
 
 访问 `http://<主机>:3210` 登录并立即改密，然后在「设置 → 数据源」添加 RSS / Atom 或导入 OPML 即可阅读。
 
