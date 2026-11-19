@@ -3,7 +3,7 @@
 # 用法（存成默认名 docker-compose.yml，之后不用再写 -f）：
 #   mkdir -p feedlore && cd feedlore
 #   curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
-#   V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.4 docker compose up -d
+#   V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.5 docker compose up -d
 #   docker compose ps                      # 三个容器都 up / healthy 即部署完成
 #
 # 国内：compose 走 https://gh-proxy.org/https://raw.githubusercontent.com/...
@@ -17,7 +17,7 @@
 # 才能使用其他功能（服务端强制）；升级部署不会动已有账号的密码，也不要求改密。
 # 忘记密码：docker exec -it feedlore initial-password --reset
 #
-# 升级到新版：默认镜像钉版本号（ghcr.io/chensnails/feedlore:2.5.4），不自己漂移；
+# 升级到新版：默认镜像钉版本号（ghcr.io/chensnails/feedlore:2.5.5），不自己漂移；
 # 改 V2_IMAGE 后 up -d。想跟 latest 滚动就设为 ghcr.io/chensnails/feedlore:latest，
 # app 带 watchtower 标签，Watchtower / 设置页「一键更新」会自动重建。
 # 结构迁移由 app 启动自举完成（幂等），失败只告警不阻断；无 DDL 权限的外部库
@@ -68,7 +68,7 @@ services:
   # 应用：db 健康即启动；结构迁移由 app 启动自举完成（幂等）
   # ---------------------------------------------------------------
   app:
-    image: ${V2_IMAGE:-ghcr.io/chensnails/feedlore:2.5.4}
+    image: ${V2_IMAGE:-ghcr.io/chensnails/feedlore:2.5.5}
     container_name: feedlore
     restart: unless-stopped
     depends_on:

@@ -7,13 +7,15 @@ const SRC = 'postgres://feedlore:secret@db:5432/feedlore';
 interface ProbeSpec {
   databases?: string[];
   rows?: Record<string, boolean>;
+  /** 旧库「全部待改密」判定；undefined 表示桩不实现该方法。 */
+  allUsersRequireChange?: boolean | (() => never);
   throwOn?: string;
 }
 
 function probe(spec: ProbeSpec): DbProbe {
   const databases = spec.databases ?? ['feedlore', 'feedlore_v2'];
   const rows = spec.rows ?? {};
-  return {
+  const p: DbProbe = {
     databaseExists: async (name) => {
       if (spec.throwOn === 'exists') throw new Error('probe exists failed');
       return databases.includes(name);
@@ -23,6 +25,14 @@ function probe(spec: ProbeSpec): DbProbe {
       return rows[`${db}.${table}`] === true;
     },
   };
+  if (spec.allUsersRequireChange !== undefined) {
+    p.allUsersRequireChange = async (db) => {
+      if (spec.throwOn === 'seed') throw new Error('probe seed failed');
+      const v = spec.allUsersRequireChange;
+      return typeof v === 'function' ? (v as () => never)() : v === true;
+    };
+  }
+  return p;
 }
 
 test('旧库名 + 旧库无账号 + v2 库有账号 → 改写到 feedlore_v2（保留凭据/主机/端口）', async () => {
@@ -104,4 +114,50 @@ test('改写会记录日志（运维可追溯）', async () => {
   assert.equal(logged.length, 2);
   assert.match(logged[0] ?? '', /legacy setup/);
   assert.match(logged[1] ?? '', /Switching DATABASE_URL/);
+});
+
+test('2.5.3 误播种：旧库账号全是待改密 → 切回 feedlore_v2（2.5.5 自愈）', async () => {
+  const logged: string[] = [];
+  const out = await resolveLegacyDatabaseUrl(
+    SRC,
+    probe({
+      rows: { 'feedlore.users': true, 'feedlore_v2.users': true },
+      allUsersRequireChange: true,
+    }),
+    (...a) => logged.push(a.map(String).join(' ')),
+  );
+  assert.equal(new URL(out).pathname, '/feedlore_v2');
+  assert.match(logged[0] ?? '', /mis-seed/);
+  assert.ok(logged.some((l) => /Switching DATABASE_URL/.test(l)), '应记录切库日志');
+});
+
+test('旧库有已改密的真实账号 → 不动（用户确实在用旧库名跑站点）', async () => {
+  const out = await resolveLegacyDatabaseUrl(
+    SRC,
+    probe({
+      rows: { 'feedlore.users': true, 'feedlore_v2.users': true },
+      allUsersRequireChange: false,
+    }),
+  );
+  assert.equal(out, SRC);
+});
+
+test('探测实现不支持误播种判定 → 不动（保守，不靠猜）', async () => {
+  const out = await resolveLegacyDatabaseUrl(
+    SRC,
+    probe({ rows: { 'feedlore.users': true, 'feedlore_v2.users': true } }),
+  );
+  assert.equal(out, SRC);
+});
+
+test('误播种判定抛错 → 不动（探测失败不冒险）', async () => {
+  const out = await resolveLegacyDatabaseUrl(
+    SRC,
+    probe({
+      rows: { 'feedlore.users': true, 'feedlore_v2.users': true },
+      allUsersRequireChange: true,
+      throwOn: 'seed',
+    }),
+  );
+  assert.equal(out, SRC);
 });

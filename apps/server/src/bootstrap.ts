@@ -37,10 +37,18 @@ const V2_DB_NAME = 'feedlore_v2';
 
 /** 库探测用的最小查询接口，便于在无真库的单测里注入桩。 */
 export interface DbProbe {
-  /** 指定库里是否有任意一行（用于判断「库里有账号吗」）。查询失败视为 false。 */
+  /** 指定库里是否有任意一行（用于判断「库里有账号吗」）。表不存在或查询失败视为 false。 */
   hasAnyRow(database: string, table: string): Promise<boolean>;
   /** 指定库是否存在。 */
   databaseExists(database: string): Promise<boolean>;
+  /**
+   * 指定库的 users 表是否「有账号且全部待改密」。
+   *
+   * 这是 2.5.3 误播种的指纹：它把空库当全新站点，播种了一个带
+   * `must_change_password=true` 的 admin；真实业务账号升级后该标记一律是 false。
+   * 表/列不存在、查询失败一律 false。测试桩可不实现（视为 false）。
+   */
+  allUsersRequireChange?(database: string): Promise<boolean>;
   /** 用完释放连接（真实 PG 实现需要；测试桩可不实现）。 */
   close?(): Promise<void>;
 }
@@ -52,14 +60,36 @@ function makePgProbe(adminUrl: string): DbProbe {
     const r = await pool.query('select 1 from pg_database where datname = $1', [database]);
     return (r.rowCount ?? 0) > 0;
   };
+  // 库名 / 表名都是内部常量（feedlore_v2 / users），不是外部输入；仍做引号防护。
+  const ident = (s: string): string => s.replace(/"/g, '""');
   return {
     databaseExists: exists,
     hasAnyRow: async (database, table) => {
       if (!(await exists(database))) return false;
-      // 库名 / 表名都是内部常量（feedlore_v2 / users），不是外部输入；仍做引号防护。
-      const ident = (s: string): string => s.replace(/"/g, '""');
-      const r = await pool.query(`select 1 from "${ident(database)}".public."${ident(table)}" limit 1`);
-      return (r.rowCount ?? 0) > 0;
+      try {
+        const r = await pool.query(`select 1 from "${ident(database)}".public."${ident(table)}" limit 1`);
+        return (r.rowCount ?? 0) > 0;
+      } catch {
+        // 表不存在（库刚建好还没迁移）按「没有」处理，不要把空库当成探测失败。
+        return false;
+      }
+    },
+    allUsersRequireChange: async (database) => {
+      if (!(await exists(database))) return false;
+      try {
+        const r = await pool.query(
+          `select count(*)::int as total,
+                  count(*) filter (where "must_change_password")::int as pending
+             from "${ident(database)}".public."${ident('users')}"`,
+        );
+        const row = r.rows[0] as { total?: number; pending?: number } | undefined;
+        const total = row?.total ?? 0;
+        const pending = row?.pending ?? 0;
+        return total > 0 && pending === total;
+      } catch {
+        // 表或列不存在（2.5.3 之前的库没有该列）→ 不满足误播种特征。
+        return false;
+      }
     },
     close: async () => { await pool.end().catch(() => {}); },
   };
@@ -77,8 +107,15 @@ function makePgProbe(adminUrl: string): DbProbe {
  * 只在**全部**满足时切换，避免误伤自定义库名与真正的空站点：
  *   1. 连接串里的库名恰好是旧默认 `feedlore`；
  *   2. 同实例存在 `feedlore_v2` 且其 users 表有账号；
- *   3. 当前 `feedlore` 库里没有账号（库不存在也算没有）。
- * 若两边都有账号，说明用户在用旧库名跑真实站点 → 一律不动，交给用户自己决定。
+ *   3. 当前 `feedlore` 库满足下面任一条：
+ *      a) 没有账号（库不存在也算没有）；
+ *      b) 有账号，但**全部**带 `must_change_password=true` —— 这是 2.5.3 误播种的
+ *         指纹（它把空库当全新站点，播了一个待改密的 admin）。真实业务账号升级后该
+ *         标记一律 false，所以「全是待改密账号」在业务库里几乎不可能自然出现。
+ * 若两边都有账号且旧库里存在已改密的账号，说明用户确实在用旧库名跑站点 → 一律不动。
+ *
+ * b 这一条是 2.5.5 补的：2.5.4 只认「旧库没有账号」，导致被 2.5.3 误播种过的站点
+ * （旧库里多了个待改密 admin）不会自愈。
  *
  * 返回改写后的连接串；不写 .env、不迁移、不删数据。函数本身无副作用（除了 probe 查询），
  * 真正的改写由调用方写回 process.env.DATABASE_URL，使后续 migrate / auth / 服务都用新库。
@@ -99,7 +136,14 @@ export async function resolveLegacyDatabaseUrl(
   try {
     if (!(await probe.databaseExists(V2_DB_NAME))) return source;
     if (!(await probe.hasAnyRow(V2_DB_NAME, 'users'))) return source;
-    if (await probe.hasAnyRow(LEGACY_DB_NAME, 'users')) return source;
+    if (await probe.hasAnyRow(LEGACY_DB_NAME, 'users')) {
+      // 旧库里有账号：只有「全是待改密账号」才判定为 2.5.3 误播种，否则尊重现状不动。
+      const seeded = probe.allUsersRequireChange
+        ? await probe.allUsersRequireChange(LEGACY_DB_NAME)
+        : false;
+      if (!seeded) return source;
+      logFn(`Detected 2.5.3 mis-seed: every account in "${LEGACY_DB_NAME}" still has must_change_password=true`);
+    }
   } catch (e) {
     // 探测失败（权限 / 网络 / 外部托管库）一律不切换，保持原行为，绝不冒险。
     warn(`Legacy database check failed, keeping DATABASE_URL as-is: ${(e as Error)?.message ?? e}`);
@@ -108,7 +152,7 @@ export async function resolveLegacyDatabaseUrl(
 
   url.pathname = `/${V2_DB_NAME}`;
   const rewritten = url.toString();
-  logFn(`Detected legacy setup: "${LEGACY_DB_NAME}" has no accounts but "${V2_DB_NAME}" does`);
+  logFn(`Detected legacy setup: "${LEGACY_DB_NAME}" holds no real accounts but "${V2_DB_NAME}" does`);
   logFn(`  Switching DATABASE_URL to "${V2_DB_NAME}" (runtime only; update PG_DB in .env to make it permanent)`);
   return rewritten;
 }
