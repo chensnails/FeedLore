@@ -3,10 +3,14 @@
 # 1.x → 2.x 的一次性数据迁移已下线（2026-11-19）：老站点请先在 v1.7.4 用
 # 「设置 → 数据 → 导出」备份，再全新安装本 compose 后导入。
 #
-# 用法：
-#   curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
-#   docker compose -f docker-compose.v2.release.yml up -d
-#   docker compose -f docker-compose.v2.release.yml logs app   # 首次部署看首启横幅
+# 用法（存成默认名 docker-compose.yml，之后不用再写 -f）：
+#   mkdir -p feedlore && cd feedlore
+#   curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
+#   V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.2 docker compose up -d
+#   docker compose ps                      # 三个容器都 up / healthy 即部署完成
+#
+# 国内：compose 走 https://gh-proxy.org/https://raw.githubusercontent.com/...
+#      镜像换成 ghcr.nju.edu.cn/chensnails/feedlore:<版本>，同样不需要手动 pull + tag。
 #
 # 零配置：不需要 .env。数据库密码、更新令牌都有仅在容器网络内使用的默认值；
 # 共享主机/多容器环境建议覆盖 PG_PASSWORD 与 WATCHTOWER_HTTP_API_TOKEN。

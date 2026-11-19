@@ -21,10 +21,10 @@
   老账号升级后**不受影响**：不会被打上该标记，不会被要求改密，登录态与权限完全不变。
 - **密码可重置回初始值**：`docker exec -it feedlore initial-password --reset`，
   重置为 `Admin2026`、作废该账号全部会话，登录后同样要求先改密。
-- **纯命令行部署**：README / 帮助文档给出可整段复制的命令，海外直连与国内代理站
-  （`gh-proxy.org` 下载 compose、`ghcr.nju.edu.cn` 拉镜像后 tag 回官方名）各一套，
-  按「全新安装 / 已有数据升级」两条路径组织；部署末尾用 `compose logs -f app`
-  实时跟日志，首启密码直接滚在终端（Ctrl+C 只停日志、不停容器）。
+- **部署简化为三条命令**：下载 compose 时直接存成默认名 `docker-compose.yml`，之后所有命令
+  都不再需要 `-f`；镜像用 `V2_IMAGE=... docker compose up -d` 指定，新版本号会自动拉取，
+  国内把镜像名换成 `ghcr.nju.edu.cn/...` 即可，**不再需要 `docker pull` + `docker tag` 两步**。
+  密码是固定的，部署完直接打开网址登录，不用守着日志等随机口令。
 
 ### 变更
 

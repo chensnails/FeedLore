@@ -29,68 +29,49 @@
 
 ## 快速开始
 
-Docker 24+ 与 Compose v2，默认端口 `3210`。
+Docker 24+ 与 Compose v2，默认端口 `3210`。compose 文件存成默认名 `docker-compose.yml`，
+之后的命令就不用再写 `-f`。
 
 ### 全新安装
 
-**国内**
-
-```bash
-mkdir -p feedlore && cd feedlore
-curl -fsSL -o docker-compose.v2.release.yml \
-  'https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml'
-docker pull ghcr.nju.edu.cn/chensnails/feedlore:2.5.2
-docker tag  ghcr.nju.edu.cn/chensnails/feedlore:2.5.2 ghcr.io/chensnails/feedlore:2.5.2
-docker compose -f docker-compose.v2.release.yml up -d
-docker compose -f docker-compose.v2.release.yml logs -f app
-```
-
 **海外**
 
 ```bash
 mkdir -p feedlore && cd feedlore
-curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
-docker pull ghcr.io/chensnails/feedlore:2.5.2
-docker compose -f docker-compose.v2.release.yml up -d
-docker compose -f docker-compose.v2.release.yml logs -f app
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
+V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose up -d
 ```
 
-部署完打开 `http://<主机>:3210`，用初始用户名 `admin` / 初始密码 `Admin2026` 登录。
-**首次登录必须先设置新密码**，改完才能使用其他功能 —— 这条由服务端强制，不是提示：
-未改密时除改密接口外的请求一律返回 403。初始密码是公开值，改掉之前站点等于没上锁。
-
-日志里出现 `FEEDLORE FIRST RUN` 横幅即表示初始化完成（密码是固定的，横幅只是确认部署成功）：
+**国内**（compose 走 gh-proxy，镜像走南京大学镜像站，不用再手动 pull + tag）
 
 ```bash
-docker compose -f docker-compose.v2.release.yml logs app | grep -A6 'FEEDLORE FIRST RUN'
+mkdir -p feedlore && cd feedlore
+curl -fsSL -o docker-compose.yml 'https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml'
+V2_IMAGE=ghcr.nju.edu.cn/chensnails/feedlore:2.5.3 docker compose up -d
 ```
 
-忘记初始密码、或已经改过又忘了：见下方「忘记密码」。
+打开 `http://<主机>:3210`：用户名 `admin`，初始密码 `Admin2026`。
+**首次登录必须先设置新密码**，改完才能使用其他功能 —— 服务端强制，未改密时除改密接口外
+一律返回 403。初始密码是公开值，改掉之前站点等于没上锁。
 
-### 已有站点升级
+> 命令按 2.5.3 写；该版本还没上架时，把 `2.5.3` 换成 `2.5.2`（2.5.2 的初始密码是随机口令，
+> 在启动日志 `FEEDLORE FIRST RUN` 里）。
 
-**国内**
-
-```bash
-cd feedlore
-curl -fsSL -o docker-compose.v2.release.yml \
-  'https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml'
-docker pull ghcr.nju.edu.cn/chensnails/feedlore:2.5.3
-docker tag  ghcr.nju.edu.cn/chensnails/feedlore:2.5.3 ghcr.io/chensnails/feedlore:2.5.3
-V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose -f docker-compose.v2.release.yml up -d
-```
-
-**海外**
+### 升级
 
 ```bash
 cd feedlore
-curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
-docker pull ghcr.io/chensnails/feedlore:2.5.3
-V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose -f docker-compose.v2.release.yml up -d
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
+V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose up -d
 ```
 
-把 `2.5.3` 换成目标版本。密码与数据不变；**已有账号不会被要求改密**，登录态和权限也不受影响
-（强制改密只挂在全新部署创建的那个 `admin` 上，升级时不会给任何老账号打标记）。
+国内把镜像名换成 `ghcr.nju.edu.cn/chensnails/feedlore:2.5.3`、curl 换成 gh-proxy 那一条。
+把 `2.5.3` 换成目标版本；新的版本号本地没有镜像，`up -d` 会自动拉取，不必先 `pull`。
+compose 文件没变化时可以跳过 curl。数据、密码、账号都不变，**老账号不会被要求改密**
+（强制改密只挂在全新部署创建的那个 `admin` 上）。
+
+> 想把这个版本固定下来，就把 `V2_IMAGE=...` 写进 `.env`；否则以后再执行不带该变量的
+> `docker compose up -d`，会回到 compose 文件里的默认版本。
 
 ### 忘记密码
 
@@ -99,14 +80,21 @@ docker exec -it feedlore initial-password --reset
 ```
 
 重置为 `Admin2026`，该账号所有旧会话立即作废；用它登录后同样必须先设置新密码。
-旧镜像没有 `initial-password` 这条短命令时，换成 `pnpm --filter @feedlore/server initial-password --reset`。
 
-## 配置与升级
+### 查看状态
 
-改端口、走 HTTPS 反代、指定初始账号：把 [`.env.example`](.env.example) 复制为 `.env` 改对应项，再 `up -d`。
+```bash
+docker compose ps
+curl -s http://127.0.0.1:3210/api/health
+```
 
-- **更新**：换 `V2_IMAGE` 后 `up -d`；或设 `:latest` 让 Watchtower 跟随，也可在「设置 → 关于」一键更新。
-- **从 1.x 迁移**：在 1.7.4 用「设置 → 数据 → 导出」备份，装好 2.x 后导入。
+## 配置
+
+改端口、走 HTTPS 反代、指定初始账号：把 [`.env.example`](.env.example) 复制成 `.env` 改对应项，
+再 `docker compose up -d`。想跟随最新版就把 `V2_IMAGE` 设为 `ghcr.io/chensnails/feedlore:latest`，
+交给 Watchtower 自动重建，也可在「设置 → 关于」一键更新。
+
+从 1.x 迁移：在 1.7.4 用「设置 → 数据 → 导出」备份，装好 2.x 后导入。
 
 ## 本地开发
 
