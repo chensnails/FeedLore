@@ -1,61 +1,36 @@
-# FeedLore 2.x —— 发布态 Compose（镜像模式，手动/受控升级 + 全新安装）
+# FeedLore 2.x —— 发布态 Compose（全新安装 / 版本升级）
 #
-# 完整步骤、验证与回滚见仓库根 **UPGRADE-v2.md**。
+# 1.x → 2.x 的一次性数据迁移已下线（2026-11-19）：老站点请先在 v1.7.4 用
+# 「设置 → 数据 → 导出」备份，再全新安装本 compose 后导入。
 #
-# 谁需要这份文件：
-#   A. 1.x 站点且**开着 Watchtower**（1.x 默认镜像的部署方式）→ **什么都不用做**，
-#      2.x 正式版把 feedlore:latest 移走后 Watchtower 会自动换镜像，v2 启动时自举
-#      （建 feedlore_v2、迁移数据、校验、改成 UTC），用户不用改配置。
-#   B. 想手动/分步升级、或没有 Watchtower → 用本文件：upgrade 一次性服务先迁移，
-#      成功后才替换应用容器（这期间 1.x 仍在线）。
-#   C. 全新安装 → 也用它（upgrade 会按「空站点」跳过数据迁移）。**零配置**：
-#      不需要 .env、不需要填任何变量，直接 up -d；空站点首次启动自动创建
-#      初始管理员，并生成一次性随机密码：启动横幅完整显示一次，另可用
-#      `docker exec -it feedlore pnpm --filter @feedlore/server initial-password`
-#      在 24 小时内查询（加密落库，不明文留在日志里），登录后请立即改密。
+# 用法：
+#   curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
+#   docker compose -f docker-compose.v2.release.yml up -d
+#   docker compose -f docker-compose.v2.release.yml logs app   # 首次部署看首启横幅
 #
-# 零配置默认值（都只在本机容器网络内使用，共享主机/多容器环境建议覆盖）：
-#   PG_PASSWORD=feedlore、WATCHTOWER_HTTP_API_TOKEN=feedlore-update
-#   已有 1.x 站点升级时**必须沿用原来的 PG_PASSWORD**，否则连不上旧库。
+# 零配置：不需要 .env。数据库密码、更新令牌都有仅在容器网络内使用的默认值；
+# 共享主机/多容器环境建议覆盖 PG_PASSWORD 与 WATCHTOWER_HTTP_API_TOKEN。
+# 空站点首次启动自动建管理员并生成一次性随机密码：横幅完整显示一次，
+# 24h 内可用 `docker exec -it feedlore pnpm --filter @feedlore/server initial-password` 查回。
+# 升级部署不会动已有账号的密码。
 #
-# 与 1.x 的 docker-compose.release.yml **同一个 compose 项目**（name: feedlore），
-# 复用现有的数据卷（feedlore-pgdata）、网络和端口：
-# v2 用同一台 Postgres 实例里的**新库**（默认 feedlore_v2），1.x 的库原样保留，
-# 数据迁移只读 1.x、写入新库，随时可以回退。
+# 升级到新版：默认镜像钉版本号（ghcr.io/chensnails/feedlore:2.5.2），不自己漂移；
+# 改 V2_IMAGE 后 up -d。想跟 latest 滚动就设为 ghcr.io/chensnails/feedlore:latest，
+# app 带 watchtower 标签，Watchtower / 设置页「一键更新」会自动重建。
+# 结构迁移由 app 启动自举完成（幂等），失败只告警不阻断；无 DDL 权限的外部库
+# 需手工 `pnpm --filter @feedlore/db migrate`。
 #
-# 手动升级步骤（在 1.x 的部署目录里）：
-#   1) 备份（可选；upgrade 也会在实例内留一份 <库名>_backup 快照）：
-#        docker exec feedlore-db pg_dump -U "${PG_USER:-feedlore}" -d "${PG_DB:-feedlore}" -Fc > feedlore-v1.dump
-#   2) docker compose -f docker-compose.v2.release.yml up -d
-#      → upgrade 一次性服务先建库、跑结构迁移、迁移数据、校验；
-#        这期间 1.x 应用仍然在线；成功后才替换应用容器（停机 ≈ 重建容器的几秒）。
-#   3) docker compose -f docker-compose.v2.release.yml logs upgrade    查看迁移结果
+# 对外地址：在 .env 设 PUBLIC_URL=https://你的域名（或 http://IP:3210），
+# 首启横幅就显示它；不参与鉴权。HTTPS 反代设 AUTH_SECURE_COOKIES=1，
+# 纯 HTTP 保持 0（否则浏览器不回传 Cookie）。
 #
-# 升级到 v2 之后怎么更新：
-#   - 镜像默认钉版本号（feedlore:2.5.2），不会自己漂移；换版本改 V2_IMAGE 后 up -d。
-#   - 想跟着 latest 滚动：把 V2_IMAGE 设为 ghcr.io/chensnails/feedlore:latest。
-#     app 带 watchtower 标签，Watchtower 会自动重建；设置页「一键更新」也走它。
-#
-# 回滚（切换后写入 v2 的数据不会回流到 1.x）：
-#   docker compose -f docker-compose.release.yml up -d
-#   （用 1.x 的 compose 重新拉起 1.x；1.x 的库与卷从未被写过）
-#
-# 硬约束（都踩过坑，别改）：
-# - upgrade 与 app 固定 TZ=UTC。1.x 是 timestamptz、v2 是 timestamp，且 1.x 的
-#   Postgres 容器时区是 Asia/Shanghai；upgrade 会把 v2 库的库级时区也钉成 UTC，
-#   否则 defaultNow() 写出来的时间整体偏 8 小时。
-# - AUTH_SECRET / AUTH_BASE_URL 都**可以留空**：前者自动生成并持久化到 v2 库，
-#   后者缺省时按访问请求的 Host 做同源校验（登录/登出不再被 Origin 拦截）。
-#   显式填写仍优先——多域名/反代改写 Host 的部署建议填 AUTH_BASE_URL。
-# - 走 HTTPS 反代时设 AUTH_SECURE_COOKIES=1；纯 HTTP 保持 0，否则浏览器不回传 Cookie。
-# - v1 容器的名字/端口/库名都沿用默认（feedlore / 3210 / feedlore），
-#   改过的话同步改这里以及 .env 里的 PG_*。
+# 硬约束：TZ=UTC —— v2 的 timestamp 列按 UTC 壁钟存值，改时区历史时间整体偏移。
 
 name: feedlore
 
 services:
   # ---------------------------------------------------------------
-  # 专用 PostgreSQL —— 与 1.x 完全一致（配置一字不改，避免容器被重建）
+  # 专用 PostgreSQL（沿用既有卷 feedlore-pgdata，不重建）
   # ---------------------------------------------------------------
   db:
     image: postgres:18.4-alpine
@@ -84,50 +59,15 @@ services:
         max-file: "3"
 
   # ---------------------------------------------------------------
-  # 一次性升级任务：建库 → drizzle 结构迁移 → v1 数据迁移 → 图片缓存 → 校验
-  #
-  # - 幂等：成功后在 v2 库写 settings.v1Upgrade 标记，重复执行只跑结构迁移
-  # - 失败即非零退出 → app 的 depends_on 会把它挡在启动之前，1.x 继续服务
-  # - 每次 up 都会执行：兼作后续版本的数据库结构迁移
-  # - 1.x 开着 Watchtower 时不需要它：app 启动自举会做同样的事
-  # ---------------------------------------------------------------
-  upgrade:
-    image: &v2-image ${V2_IMAGE:-ghcr.io/chensnails/feedlore:2.5.2}
-    container_name: feedlore-upgrade
-    restart: "no"
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      TZ: UTC
-      # 源：1.x 的库（只读）。目标：同一实例里的新库，必须不同名。
-      LEGACY_DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD:-feedlore}@db:5432/${PG_DB:-feedlore}
-      DATABASE_URL: postgres://${PG_USER:-feedlore}:${PG_PASSWORD:-feedlore}@db:5432/${V2_DB_NAME:-feedlore_v2}
-      # 可留空：缺失时 upgrade 会自动生成并写入 v2 库，app 启动时读同一枚
-      AUTH_SECRET: ${AUTH_SECRET:-}
-      # 图片缓存体积大时可设 1 跳过（v2 会按需重新回源）
-      UPGRADE_SKIP_IMAGE_CACHE: ${UPGRADE_SKIP_IMAGE_CACHE:-}
-    command: ["pnpm", "--filter", "@feedlore/server", "upgrade:v1"]
-    networks:
-      - feedlore
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # ---------------------------------------------------------------
-  # 应用：upgrade 成功后才启动/替换 1.x 的 app 容器
+  # 应用：db 健康即启动；结构迁移由 app 启动自举完成（幂等）
   # ---------------------------------------------------------------
   app:
-    image: *v2-image
+    image: ${V2_IMAGE:-ghcr.io/chensnails/feedlore:2.5.2}
     container_name: feedlore
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
-      upgrade:
-        condition: service_completed_successfully
     environment:
       # ⚠️ 不要改成 Asia/Shanghai：v2 的 timestamp 列按 UTC 壁钟存值
       TZ: UTC
@@ -151,7 +91,7 @@ services:
       # 反代/局域网访问时填真实地址，例如 https://feed.example.com 或 http://192.168.1.10:3210
       PUBLIC_URL: ${PUBLIC_URL:-}
 
-      # ---- 出网安全 / 反代（与 1.x 同名参数，直接沿用）----
+      # ---- 出网安全 / 反代 ----
       ALLOW_PRIVATE_HOSTS: "${ALLOW_PRIVATE_HOSTS:-}"
       TRUST_PROXY: "${TRUST_PROXY:-}"
 
@@ -183,8 +123,7 @@ services:
         max-file: "3"
 
   # ---------------------------------------------------------------
-  # Watchtower：保留 1.x 的容器（同配置不会被重建）。只更新带 enable 标签的容器，
-  # 也就是本文件里的 app（以及升级前 1.x 的 app —— 零配置升级正是靠它）。
+  # Watchtower：只更新带 enable 标签的容器，即本文件里的 app。
   # ---------------------------------------------------------------
   watchtower:
     image: containrrr/watchtower:1.7.1
