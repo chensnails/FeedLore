@@ -1,0 +1,44 @@
+/* ---------------------------------------------------------------------------
+ * 4. 内容卡片
+ * ---------------------------------------------------------------------------
+ * 文章行 / 卡片 / 列表行三种容器共用同一条「淡描边 + 大圆角」语言。
+ * 阴影刻意沿用主题自带的 --elevation-*：暗色主题有专门的深色阴影，
+ * 在这里写 rgba 会把暗色模式的层次抹平。
+ */
+.art-item, .card, .row-item, .sk-card, .sk-row {
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-lg);
+}
+.card:hover, .row-item:hover, .art-item:hover {
+  border-color: var(--hig-separator-strong);
+}
+
+/* 正在读的那一条：用主色细环把「当前项」标出来，而不是把整块发亮。
+   同时把展开态标题恢复成主文字色 + 600 字重 —— 展开即标记已读，
+   旧规则会顺手把标题降成次要色，用户点开的反而最难看清。 */
+.art-item.open {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--hig-separator));
+  box-shadow: 0 0 0 1px var(--hig-tint-soft), var(--elevation-1);
+}
+.art-item.open .art-title { color: var(--hig-label); font-weight: 600; }
+.art-item.open .art-caret { color: var(--hig-tint-text); }
+
+.art-head, .card, .row-item { -webkit-tap-highlight-color: transparent; }
+/* 按压反馈只走 transform，不用 opacity：文字被压淡会直接掉到 4.5:1 以下 */
+
+/* 未读点：略放大到 7px、加一圈与主色同源的极淡光晕，扫列表时更容易捕捉 */
+.art-dot, .row-dot, .card-dot {
+  box-shadow: 0 0 0 3px var(--hig-tint-soft);
+}
+
+/* 缩略图与媒体：圆角跟着容器走，不再比卡片小一档 */
+.art-thumb, .row-thumb, .card-media { border-radius: var(--radius-sm); }
+
+/* 元信息胶囊：半径统一到 pill，字重降到 500（600 在小字上偏重） */
+/* 计数 / 筛选 chip 与来源、尺寸、标签同属「元信息胶囊」，圆角与字重并入同一组 */
+.src-pill, .meta-size, .mini-tag, .badge-size, .count-chip {
+  border-radius: var(--radius-pill);
+  font-weight: 500;
+}
+.src-pill { background: var(--hig-fill-2); }
+

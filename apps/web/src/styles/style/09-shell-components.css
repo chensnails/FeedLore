@@ -1,0 +1,605 @@
+/* ============================================================
+ * 组件统一（v1.3.8-test2）
+ * 上一轮审查发现同一语义的控件在不同页面各自演化：分段控件三套、空态五套、
+ * 加载态四套、内容卡两种质感。这里用「一条规则覆盖多个选择器」把它们收敛成一套。
+ * 放在文件末尾，同特异度时由源顺序取胜，不必给旧规则逐个打补丁。
+ * ============================================================ */
+
+/* 1) 分段选择：容器 10px / 内部 8px；选中项都是「浮起的拟态块」 */
+.seg, .viewnav { background: var(--surface-soft-2); box-shadow: var(--neu-inset); border-color: var(--border); }
+.seg-btn, .viewnav-btn { font-size: var(--fs-md); }
+.seg-btn.active, .viewnav-btn.active, .viewmode-btn.active {
+  background: var(--surface-soft); color: var(--accent-text); box-shadow: var(--neu-1);
+}
+
+/* 1b) 顶栏的视图切换把外壳去掉（v1.3.10，v1.3.11 断点对齐到 820）
+ *     文字收掉后仍让按钮平分剩余宽度，就成了「一条空胶囊里飘着两个小图标」——
+ *     比右侧三枚工具按钮显眼，却什么信息都没有。改成图标方块，
+ *     与工具按钮同尺寸（--head-ctl）/ 同圆角 / 同图标字号，选中项用 --accent-soft 打底，
+ *     剩余宽度由 margin-right:auto 吃掉，工具按钮自然贴右。
+ *     断点用 820（= .btn-label 收起的那个档）而不是 560：文字在 820 就没了，
+ *     外壳却留到 560 才散，中间这 260px 就是一条空胶囊。
+ *     ⚠️ 必须排在 1) 之后：`.viewnav` 与 `.viewnav-btn.active` 的特异度和上面相同，
+ *     写在前面（响应式段里）会被这里反盖，症状是「外框和拟态阴影还在」。 */
+@media (max-width: 820px) {
+  .viewnav {
+    flex: 0 0 auto; min-width: 0;
+    padding: 0; gap: var(--sp-2);
+    background: none; box-shadow: none; border: 0; border-radius: 0;
+    margin-right: auto;
+  }
+  .viewnav-btn {
+    flex: 0 0 auto;
+    width: var(--head-ctl); height: var(--head-ctl);
+    padding: 0; border-radius: var(--radius-sm); gap: 0;
+  }
+  .viewnav-btn.active {
+    background: var(--accent-soft); color: var(--accent-text); box-shadow: none;
+  }
+}
+
+/* 2) 内容卡统一拟态表面：日报卡 / 骨架屏与卡片页同一层质感。
+ *    文章行不在这里：v2.5.0 起它是无边框行式（透明底 + 发丝分隔线），
+ *    这段写在文件末尾，同特异度会把行式规则反盖成一张张拟态卡。 */
+.dg-card, .sk-card, .sk-row {
+  background: var(--surface-soft);
+  box-shadow: var(--neu-2);
+}
+.sk-card, .sk-row { border: 1px solid var(--border); }
+
+/* 3) 空态：统一字号 / 颜色 / 图标尺寸 */
+.empty, .dg-empty, .dg-loading, .dg-error, .cmdk-empty, .stat-loading,
+.feed-pick-empty, .sl-empty, .settings-empty, .rd-ch-empty {
+  color: var(--text-faint);
+  text-align: center;
+}
+.empty, .dg-empty, .dg-loading, .dg-error { padding: var(--empty-pad-y) var(--empty-pad-x); }
+.empty-ico, .dg-empty-ico { font-size: var(--empty-ico); margin-bottom: var(--empty-ico-gap); line-height: 0; }
+/* 共用外壳（ui/StateBlock.jsx）：段落、图标与动作出口的间距只在这里定一次 */
+.state-block > p { margin: 0 0 var(--sp-2); }
+.state-block > p:last-child { margin-bottom: 0; }
+.state-block .dg-empty-ico { font-size: var(--empty-ico); margin-bottom: var(--empty-ico-gap); line-height: 0; }
+.state-block .hint { margin-top: var(--sp-2); }
+.state-block .btn { margin-top: var(--sp-3); }
+.stat-loading, .cmdk-empty { padding: var(--sp-6); font-size: var(--fs-md); }
+.feed-pick-empty { padding: var(--sp-3); font-size: var(--fs-md); }
+
+/* 4) 加载态：两组圆点统一 8px（此前 8px / 7px 混用） */
+.loading-dots i, .art-loading i { width: 8px; height: 8px; }
+
+/* 5) 搜索框：卡片页与文章页同一套（内凹拟态 + 右侧清除键留位 + 同一图标位） */
+.reader-search input {
+  padding: var(--sp-3) var(--sp-8);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-base);
+  background: var(--surface-soft-2);
+  box-shadow: var(--neu-inset);
+  border-color: var(--border);
+}
+.reader-search input:focus { box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-halo); }
+.reader-search-clear {
+  width: 24px; height: 24px; right: 8px;
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+.reader-search-clear:hover { background: var(--hover); }
+
+/* 6) 弹窗关闭键：统一 44×44（触屏可点）/ 圆角 8（位置语义各自保留：设置在内联标题栏，详情悬浮） */
+.cd-close { width: 44px; height: 44px; font-size: var(--fs-md); border-radius: var(--radius-sm); }
+
+/* 7) 过滤规则输入框的聚焦光环已并入设置面板统一控件规则 */
+
+/* 8) 卡片内标签与筛选 chip 同属「标签」，字号并到同一档 */
+.mini-tag { font-size: var(--fs-2xs); border-radius: var(--radius-xs); }
+
+/* 9) 链接选择菜单：桌面未锁滚动，与下拉面板同一套「实底」语言（禁用模糊） */
+.link-menu {
+  background: var(--panel);
+  border-radius: var(--radius-lg);
+  min-width: 240px;
+}
+.link-menu-item { border-radius: var(--radius-sm); }
+.link-menu-label { font-size: var(--fs-md); }
+
+/* 10) 焦点可见性
+ * 这一段原本给「此前没有焦点环的可点元素」统一画 3px 半透明 box-shadow，并清掉 outline。
+ * 两个问题：① 与全局 :focus-visible 的 2px 实色 outline 并存，同一件事两种粗细与形状；
+ * ② outline:none + box-shadow 正是 DESIGN 第 7 条否掉的写法（后写的 .active 拟物阴影会盖掉它）。
+ * 现在这些元素一律继承全局 2px 实色描边，只有整卡聚焦保留「整卡一圈」的视觉。 */
+.card:focus-within, .row-item:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 11) 日报概览前的图钉：改成 sprite 图标（emoji 跨平台字形不可控） */
+.dg-overview { display: flex; gap: var(--sp-2); }
+.dg-pin { flex: 0 0 auto; width: 1.05em; height: 1.05em; margin-top: .35em; color: var(--accent-text); }
+
+/* 原生搜索框的小叉：只有 3 处输入框隐藏了它，卡片页搜索与频道搜索漏了，
+   Safari 上会和自绘的 × 并排出现两个清除按钮。 */
+.search-box input::-webkit-search-cancel-button,
+.rd-ch-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+/* 12) 卡片页搜索清除键：与文章页同一个尺寸与位置 */
+.search-clear {
+  position: absolute; right: 8px;
+  width: 24px; height: 24px; border-radius: var(--radius-pill);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--text-muted);
+  cursor: pointer;
+}
+.search-clear:hover { background: var(--hover); color: var(--text); }
+.search-clear .ico { width: .8125rem; height: .8125rem; }
+
+/* 13) 标签按钮复位（文章正文 .art-tags 的 .mini-tag 仍是真按钮） */
+button.mini-tag { border: 0; font-family: inherit; cursor: pointer; }
+
+/* 14) 分组「全部已读」占位：字符 ✓ 改为 sprite 图标 */
+.rd-ch-group-empty .ico { width: 12px; height: 12px; vertical-align: middle; }
+
+/* 15) 原先散落在 JSX 里的行内样式，收敛成极少量语义类 */
+.ml-3 { margin-left: var(--sp-3); }
+.mt-2 { margin-top: var(--sp-2); }
+.pane-msg { padding: var(--sp-3); }
+.pane-msg.lg { padding: var(--sp-5); }
+.pane-msg.empty-tip { padding: var(--sp-6) var(--sp-3); }
+.dg-meta.is-plain { border-top: none; padding-top: 0; }
+.dg-warn { color: var(--warn-text); }
+
+/* 16) 卡片详情的已读提示（打开即已读，此前毫无反馈） */
+.cd-read-tip {
+  margin: var(--sp-4) var(--sp-6) var(--sp-6);
+  font-size: var(--fs-2xs); color: var(--text-faint);
+  text-align: center;
+}
+
+/* 17) 移动端弹层统一为「底部整屏抽屉」
+ * 此前下拉 / 卡片详情是 .dd-sheet（从下推入），设置与确认框却是居中浮窗，
+ * 同一个 App 在手机上是两种弹层体验。这里把 .modal 也收进同一套语言：贴底、满宽、
+ * 顶部圆角；入口/出口是遮罩、×、Esc，系统返回键由 overlayStack 统一接管。
+ * 下滑关闭 v2.5.3 下线（真机收起会整屏闪一下），移动端不再有可拖拽的抓手。 */
+@media (max-width: 720px) {
+  .modal-mask { align-items: flex-end; padding: 0; }
+  .modal {
+    max-height: 94dvh;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    animation: sheetUp var(--dur-slow) var(--ease);
+  }
+}
+@keyframes sheetUp { from { transform: translateY(100%); } to { transform: none; } }
+
+/* ============================================================
+ * 页面头部规范（v1.3.10 重构）
+ * ------------------------------------------------------------
+ * 文章页与卡片页共用一套头部，四个元素的位置永远固定：
+ *
+ *   [频道按钮]  当前频道标题 …………………………  [筛选] [页面工具] [搜索]
+ *   ──────────────────────────────────────────────────────────
+ *   [搜索框 …………………………………………………………………………]
+ *
+ *   频道按钮  仅 ≤720px 出现 —— 常驻栏收起后，抽屉的唯一入口
+ *   频道标题  两页都是「当前筛选」的一句话；15px / 550 / 单行省略
+ *   筛选      ≥721px：文章页走左侧常驻树、卡片页走头部下拉
+ *             ≤720px：两页都收进抽屉，头部只留频道按钮（一个入口）
+ *   搜索      桌面常驻一行；≤720px 收成放大镜，点开展开成第二行
+ *
+ * 控件尺寸走 --head-ctl（桌面 32 / 移动 36），触屏命中高度补到 44；
+ * 断点语义见文件中部「断点体系」：720 换导航形态，820 / 720 换密度。
+ * ============================================================ */
+
+:root {
+  --head-h: 48px;        /* 头部条高度（border-box，含内边距） */
+  --head-ctl: 32px;      /* 头部控件边长 / 高度 */
+  --head-gap: var(--sp-3);
+  --search-h: 32px;      /* 搜索胶囊高度：与 --head-ctl 同高，同一排控件才有一条基线 */
+  --search-w: 560px;     /* 搜索胶囊宽度上限（桌面；窄屏展开时回落到整行） */
+  --ico-ctl: 1rem;       /* 工具图标边长：视图导航与页面头部共用这一枚尺寸 */
+  /* 两排控件的水平间距（视图导航与第二行 .view-toolbar 共用）：
+     一上一下紧挨着的两条栏，间距必须同档，否则右簇会「上紧下松」错开半个格。
+     窄屏在 ≤720px 收到 --sp-2。 */
+  --ctl-gap: var(--sp-3);
+  /* 两排控件的高度（视图导航组 与 第二行工具栏控件）：
+     之前视图导航由内容撑到 35、第二行是 36 —— 上下两条栏紧挨着，1px 也看得出来。
+     一枚令牌同时喂给两排，改一次两排一起动。 */
+  --ctl-h: 36px;
+}
+
+/* 桌面：搜索框常驻，放大镜退场 */
+.reader-search-toggle, .cards-search-toggle { display: none; }
+
+/* ---------- v1.6.0 App Shell：整页锁定视口，各视图内容区独立滚动 ---------- */
+/* 工具顶栏作为「非滚动行」留在视图顶部，内容在自己的滚动容器里滚 —— 顶栏不随内容移动。 */
+html, body { height: 100%; }
+body { overflow: hidden; }
+#cardsView { height: 100dvh; overflow: hidden; }
+#cardsRoot { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+/* 卡片内容（卡片网格 / 列表 + 页脚）在自己的滚动容器里滚；顶栏 .cards-sticky 在其上方不滚 */
+#cardsRoot > main.wrap {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  /* ⚠️ 宽度必须跟着视口走（v1.7.0）：.wrap 自带 max-width:1600px，作为 #cardsRoot
+     的 flex 子项时，若不显式 min-width:0 + width:100%，它会被「内容最小宽度」撑开
+     （列表行的标题/摘要很长），实测 1280 视口下 .wrap 宽 1600px、375 视口下 698px，
+     超出视口的部分被 #cardsView{overflow:hidden} 直接裁掉 —— 表现为元素溢出、错位、
+     右侧内容看不见。min-width:0 允许它收缩到视口宽，width:100% 让它占满可用宽度
+     （max-width:1600px 仍对超宽屏生效）。 */
+  min-width: 0; width: 100%;
+}
+/* AI 页：视图本身即滚动容器，.ai-head（.page-head sticky top:0）钉住 */
+#aiView { height: 100dvh; overflow-y: auto; overscroll-behavior: contain; }
+
+/* 卡片页顶栏外壳（桌面与窄屏都是它）：作为 flex 列的非滚动行固定在顶部 */
+.cards-sticky {
+  display: block;
+  flex: 0 0 auto;
+  position: sticky;   /* 保留 sticky（非滚动 flex 父级下等价于静态，不影响布局；守门断言仍要求它） */
+  top: 0;
+  z-index: 6;
+  background: var(--bg);
+}
+.cards-sticky > .cards-head { position: static; }
+
+/* ---------- 一条吸顶头部条（两页共用） ---------- */
+/* 不加底部分隔线：标题、搜索、工具本来就是同一个头部里的东西，线会把这块整体割成
+   两截（还紧贴着搜索框上沿）。层次交给留白 + 不透明吸顶背景，滚动时内容从条下
+   干净地滑过。 */
+.page-head,
+.reader-head,
+.cards-head {
+  display: flex; align-items: center;
+  /* 旧 .reader-head 是 space-between（标题 / 搜索 / 工具均分间隔）；搜索搬进来以后
+     那会让搜索浮在中间、两边各留一截空白。改成从头排起，多余宽度交给搜索的 auto margin。
+     nowrap：桌面这一行是固定的机器部件，宁可让搜索按比例缩，也不要掉到第二行去
+     （窄屏才允许换行 —— 搜索展开时要占一整行）。 */
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: var(--head-gap);
+  min-height: var(--head-h);
+  position: sticky;
+  /* v1.6.0 App Shell：这一行是内容区滚动容器（.reader-main / #aiView）内的吸顶工具条，
+     sticky top:0 钉在容器顶部、不随内容滚动。 */
+  top: 0;
+  z-index: 6;
+  background: var(--bg);
+  border-bottom: 0;
+}
+/* ---------- 视图级工具栏（第二行）的令牌层 ---------- */
+/* 视图导航与工具栏是一组：导航 36px，第二行工具栏 52px ——
+   控件统一 36px：比上一版的 32px 更接近导航按钮的
+   视觉重量，一排看过去没有「小一号」的零件，搜索胶囊也随之同高，落在同一条中线上。
+   间距直接引用 --ctl-gap（视图导航用的是同一个令牌）：
+   两排的间距节奏从此只有一个来源，不会再出现 12 vs 8 这种「上松下紧」的错位。
+   ⚠️ 这些令牌只在工具栏子树内覆盖，绝不动 :root。 */
+.view-toolbar {
+  --head-h: 52px;
+  --head-ctl: var(--ctl-h);
+  --search-h: var(--ctl-h);
+  --head-gap: var(--ctl-gap);
+}
+
+/* 顶栏控件改用同一把尺子（--ctl-h）：
+   视图导航组此前是「内容撑出来的 35px」，第二行工具栏是 36 ——
+   两条栏上下紧挨着，35 vs 36 这 1px 并排看得一清二楚。 */
+.viewnav { height: var(--ctl-h); }
+
+/* 721–820px：图标已收起，头部控件换到 36px，与视图导航组同高。
+   ⚠️ 必须写在这份 :root 之后 —— 基础 :root（--head-ctl: 32px）就在上面几条之前，
+   同特异度（0,1,0）靠源顺序取胜，写在前面的媒体查询会被它整段盖掉（静默失效）。 */
+@media (max-width: 820px) {
+  :root { --head-ctl: 36px; }
+}
+/* 模块钩子（两页共用同一套词表，DOM 顺序即阅读顺序）：
+   .vt-channel 频道入口 / .vt-title 当前频道标题 / .vt-tools 右簇 / .vt-search 搜索。
+   .vt-actions 是文章页专属动作组（单篇、全部已读、全部收起），卡片页没有这一组 ——
+   两边结构因此仍同构：左端「我在看什么」，右端「我能做什么」，搜索永远在最右。 */
+.view-toolbar .vt-channel,
+.view-toolbar .vt-tools { flex: 0 0 auto; }
+/* 右簇必须可收缩：搜索胶囊的 flex-basis 是 560px，整簇若写死 0 0 auto 会按
+   max-content 撑开，搜索就永远缩不到 220px 底线（宽屏下 ⋮ 也会被推出去）。
+   0 1 auto + min-width:0 让搜索先缩；动作按钮在「三枚同时在场」时另有一条
+   flex:0 0 固定，不参与这次收缩。 */
+.view-toolbar .vt-tools { flex: 0 1 auto; min-width: 0; }
+/* 标题：按内容宽度、单行省略 —— 剩余宽度留给搜索，标题不再「吃掉一切」。 */
+.page-title,
+.reader-head h2,
+.cards-title {
+  /* min-width 约 4 个汉字：桌面这一行里标题也会参与收缩，但不许缩成「全…」——
+     真放不下时该缩的是搜索（它有 220px 的底线，再小就不像输入框了） */
+  flex: 0 1 auto; min-width: 60px; margin: 0;
+  font-size: var(--fs-lg); font-weight: 500; line-height: 1.3;
+  color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 上限 40% 必须落在**真正的 flex item** 上：文章的标题外面还有一层 .reader-head-text，
+   把百分比给里面的 h2，包含块宽度本身就由内容决定，算出来是「40% 的 40%」——
+   标题直接被压成「全…」两个字。 */
+.cards-head > .page-title { max-width: 40%; }
+.reader-head-text { flex: 0 1 auto; min-width: 0; max-width: 40%; }
+.reader-head-text .page-title { max-width: 100%; }
+/* 卡片页头部不再额外加 16px 顶部内距：工具栏高度由 --head-h(52) 统一给（36 控件 + 上下各 8）。
+   多出来的那 16px 会让卡片页的栏比文章页高出一截，两页同构就只剩选择器同构。 */
+
+@media (min-width: 721px) {
+  /* ---------- 卡片页：下拉即标题 ----------
+   * 上一版桌面这里是「标题『全部频道』+ 右侧下拉『全部频道（46）』」—— 同一句话写两遍，
+   * 而且只有下拉可点，标题是不可点的死文本。现在标题位置交给下拉本身：它显示当前频道
+   * （含条数），既是标题也是筛选入口，信息只出现一次。
+   * ≤1080px 反过来：下拉退场（抽屉接管入口），文字标题回来 —— 否则吸顶条上就没有「我在看哪个频道」了。 */
+  .cards-head > .cards-title { display: none; }
+  .cards-head > #feedDD { flex: 0 1 auto; min-width: 0; max-width: 40%; }
+  .cards-head > #feedDD .dd-trigger {
+    max-width: 100%;
+    /* 去掉 .select 的框与底色，借标题的字重字号；悬停才显形，避免一排里有块永远亮着的方块。
+       左边距收成 0：文字左缘与顶栏品牌 logo 的左缘严格对齐（都是 .wrap 的 24px 内距），
+       否则这一行会比上面那行整体内缩 8px，两栏左缘错开。 */
+    padding: 0 var(--sp-1) 0 0;
+    border: 1px solid transparent;
+    background: none;
+    font-size: var(--fs-lg); font-weight: 500; color: var(--text);
+  }
+  .cards-head > #feedDD .dd-trigger:hover {
+    background: var(--hover); border-color: var(--border);
+  }
+  .cards-head > #feedDD .dd-label { max-width: 320px; }
+  .cards-head > #feedDD .dd-caret { color: var(--text-faint); }
+}
+
+
+/* ---------- 工具组：两页同一套控件 ---------- */
+/* margin-left:auto 挂在**右簇的第一个**元素上，而不是搜索框上：搜索现在是右簇的末端
+   （排序 → 视图 → 搜索），把自动外边距留给搜索会让空白出现在工具组与搜索之间，
+   一条横栏被撑成两段。挂在这里，右簇整体贴右，空白只留在标题之后。 */
+.page-tools,
+.reader-head-tools {
+  flex: 0 0 auto;
+  display: flex; align-items: center;
+  /* 间距跟着 --head-gap 走（桌面 12 / 窄屏 8）——与视图导航同令牌。
+     之前这里写死 var(--sp-2)=8，而父级（.page-head）用 --head-gap=12：
+     同一簇里「排序→视图」8px、「视图→搜索」12px，两段不等，一眼看得出错位。 */
+  gap: var(--head-gap);
+  margin-left: auto;
+}
+/* v1.6.0：右簇末端（搜索 + ⋮ 菜单）。margin-left:auto 把整簇推到最右。
+   卡片页 / AI 页它是 .page-head 的直接子元素；文章页它嵌在 .reader-head-tools 里，
+   auto 同样把「搜索 + ⋮」推到动作组右侧。 */
+.head-right {
+  display: flex; align-items: center;
+  gap: var(--head-gap);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* ---------- 溢出菜单（⋮）：承载三视图 / 刷新 / 主题 / 设置 / 排序 / 视图切换 ---------- */
+.overflow-wrap { position: relative; display: inline-flex; align-items: center; }
+.overflow-btn { display: inline-flex; align-items: center; justify-content: center; }
+.overflow-menu {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  min-width: 184px; padding: var(--sp-1);
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-hover);
+  z-index: 40;
+}
+.overflow-item {
+  display: flex; align-items: center; gap: var(--sp-2);
+  width: 100%; padding: var(--sp-2) var(--sp-3);
+  border: 0; background: none; color: var(--text);
+  font-family: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.overflow-item:hover { background: var(--state-hover); outline: none; }
+.overflow-item:focus-visible { background: var(--state-focus); outline: none; }
+.overflow-item.is-active { color: var(--accent-text); }
+.overflow-item > span { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.overflow-item .ico { width: var(--ico-ctl); height: var(--ico-ctl); font-size: var(--ico-ctl); opacity: .8; flex: 0 0 auto; }
+.overflow-item.is-active .ico { opacity: 1; }
+.overflow-check, .overflow-caret { margin-left: auto; opacity: .7; }
+.overflow-sep { height: 1px; margin: var(--sp-1) 0; background: var(--border); }
+/* 窄屏专属菜单项（文章页的动作按钮在窄屏收进 ⋮）：桌面不显示，≤720 才露出 */
+.overflow-item.is-narrow-only, .overflow-sep.is-narrow-only { display: none; }
+/* 子菜单（排序）：绝对定位到父项右侧；窄屏空间不足时翻到左侧 */
+.overflow-submenu {
+  position: absolute; top: 0; right: calc(100% + 4px);
+  min-width: 128px; padding: var(--sp-1);
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-hover);
+  z-index: 41;
+}
+.overflow-submenu .overflow-item { padding: var(--sp-2) var(--sp-3); }
+/* 头部控件统一 32px 高、8px 圆角；下拉同高同圆角，一排看过去是同一族 */
+.page-head .btn,
+.page-head .dd-trigger {
+  height: var(--head-ctl);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-md);
+}
+.page-head .btn { padding: 0 var(--sp-2); }
+.page-head .dd-trigger { padding: 0 var(--sp-3); }
+/* 纯图标按钮统一成正方形：一排里宽度一致，视觉才齐。
+   带文字的（桌面「多篇」「全部已读」）不参与 —— 钉死 32px 宽会把文字挤扁。 */
+.page-head .page-tools .btn:has(> .ico:only-child),
+.page-head .reader-head-tools .btn:has(> .ico:only-child),
+.page-head .head-right .btn:has(> .ico:only-child),
+.head-right .overflow-btn {
+  width: var(--head-ctl); padding: 0; justify-content: center;
+}
+/* 带文字的头部按钮：图标与文字之间留 4px，别贴在一起 */
+.page-head .reader-head-tools .btn { gap: var(--sp-1); }
+
+/* ---------- 工具图标同一尺寸 ---------- */
+/* 视图导航与页面头部并排，图标差 1px 都会显出来。
+   .ico 自带 font-size（1em 靠它决定大小），只给按钮写 font-size 是带不动图标的 ——
+   必须把 width / height / font-size 一起钉到 --ico-ctl，两处才真正同尺寸。 */
+.viewnav-btn .ico,
+.page-head .btn .ico,
+.page-head .viewmode-btn .ico,
+.page-head .dd-trigger .ico,
+.page-head .dd-trigger .dd-icon {
+  width: var(--ico-ctl);
+  height: var(--ico-ctl);
+  font-size: var(--ico-ctl);
+}
+
+/* ---------- 搜索（两页共用，住在头部行里） ---------- */
+/* 胶囊：999px 端头 + --search-h 定高 + 内凹拟态，与 chips、标签同一套圆角语言。
+   它现在是右簇的**末端**（排序 → 视图 → 搜索），贴着工具栏右边缘收口 ——
+   两页、两档断点都只有这一个答案：搜索在最右。空白由 .page-tools 的 auto 外边距
+   制造，搜索自己不吃外边距，否则工具组与搜索之间会裂开一道缝。 */
+.page-search,
+.reader-search,
+.search-box {
+  position: relative;
+  display: flex; align-items: center;
+  /* 宽度给满 --search-w 再允许收缩（窄窗口先缩它，标题与工具不缩） */
+  flex: 0 1 var(--search-w);
+  min-width: 220px;
+  max-width: var(--search-w);
+  margin: 0;
+}
+.page-search input,
+.reader-search input,
+.search-box input {
+  width: 100%;
+  height: var(--search-h);
+  padding: 0 var(--sp-8) 0 36px;
+  /* 边框取 border-strong：浅色主题下 --border 几乎与白底同色，胶囊会整个消失，
+     只剩一圈内阴影，看着像脏掉的输入框 */
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft-2);
+  box-shadow: var(--neu-inset);
+  font-size: var(--fs-md); font-family: inherit; color: var(--text);
+  outline: none;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+}
+.page-search input::placeholder,
+.reader-search input::placeholder,
+.search-box input::placeholder { color: var(--text-faint); }
+.page-search input:hover,
+.reader-search input:hover,
+.search-box input:hover { border-color: var(--text-faint); }
+.page-search input:focus,
+.reader-search input:focus,
+.search-box input:focus {
+  border-color: var(--accent-text);
+  box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-halo);
+}
+/* 图标跟着胶囊的端头走（左 36px 内边距 → 图标中心 21px）。
+   ⚠️ position:absolute 不能缺：搜索框是 flex 容器，图标若留在流里就是一个 flex item，
+   会先占掉 13px、把带边框的 input 挤到它右边 —— 看上去就是「放大镜浮在框外面」。
+   （卡片页曾经只有 left 没有 position，正是这个症状；文章页那条则一直是对的。）
+   三处父级写在一起，逐份覆盖只会漂成 13/14/13 三个值。 */
+.page-search .search-ico,
+.reader-search .search-ico,
+.search-box .search-ico {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  font-size: var(--ico-ctl); color: var(--text-faint); pointer-events: none;
+}
+/* 展开是同一次「从头部垂下来」的动作，别硬切显隐 */
+@keyframes headSearchIn { from { opacity: 0; transform: translateY(-6px); } }
+.reader-search.is-open,
+.search-box.is-open { animation: headSearchIn var(--dur-base) var(--ease); }
+
+/* ---------------- 规则适用范围选择器（v2.10.0） ----------------
+   触发器是一枚跟随文本宽度的胶囊；弹层挂在 body 上（设置面板的滚动容器会裁掉子元素），
+   桌面按触发器定位、窄屏整宽贴底。未选任何范围时胶囊用警示色，提醒「这条规则不生效」。 */
+.watch-rule-scope { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.rule-scope-wrap { display: inline-flex; min-width: 0; max-width: 100%; }
+.rule-scope-btn {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0;
+  padding: 4px var(--sp-2); border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  background: var(--panel-2); color: var(--text-muted);
+  font-family: inherit; font-size: var(--fs-sm); line-height: 1.5; cursor: pointer;
+  transition: border-color var(--dur-base), background var(--dur-base), color var(--dur-base), box-shadow var(--dur-base);
+}
+.rule-scope-btn.compact { padding: 2px var(--sp-2); font-size: var(--fs-xs); }
+.rule-scope-btn:hover { border-color: var(--accent-text); color: var(--text); }
+.rule-scope-btn[aria-expanded="true"] {
+  border-color: var(--accent-text); background: var(--panel); color: var(--text);
+  box-shadow: 0 0 0 3px var(--focus-halo);
+}
+.rule-scope-btn .ico { width: .85rem; height: .85rem; flex: 0 0 auto; }
+.rule-scope-btn.compact .ico { width: .75rem; height: .75rem; }
+.rule-scope-btn .ico:last-of-type { width: .7rem; height: .7rem; color: var(--text-faint); }
+.rule-scope-btn-label { color: var(--text-faint); }
+.rule-scope-btn-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rule-scope-btn.is-empty { border-color: var(--warn-border); background: var(--warn-bg); color: var(--warn-text); }
+.rule-scope-btn.is-empty .rule-scope-btn-label { color: var(--warn-text); opacity: .75; }
+
+.rule-scope-pop {
+  position: fixed; left: var(--scope-x); top: var(--scope-y);
+  z-index: calc(var(--z-modal) + 1);
+  width: min(320px, calc(100vw - 16px)); max-height: min(420px, 60vh);
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); box-shadow: var(--elevation-3); overflow: hidden;
+}
+.rule-scope-search {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border);
+  color: var(--text-faint); flex: 0 0 auto;
+}
+.rule-scope-search .ico { width: .85rem; height: .85rem; flex: 0 0 auto; }
+.rule-scope-search input {
+  flex: 1 1 auto; min-width: 0; border: none; outline: none; background: transparent;
+  font-family: inherit; font-size: var(--fs-sm); color: var(--text); padding: 2px 0;
+}
+.rule-scope-search input::-webkit-search-cancel-button { cursor: pointer; }
+.rule-scope-list { flex: 1 1 auto; overflow-y: auto; padding: var(--sp-1) 0; }
+.rule-scope-all,
+.rule-scope-feed,
+.rule-scope-check {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: 6px var(--sp-3); cursor: pointer; min-height: 30px;
+}
+.rule-scope-all { border-bottom: 1px solid var(--border); }
+.rule-scope-all:hover,
+.rule-scope-feed:hover,
+.rule-scope-check:hover { background: var(--hover); }
+.rule-scope-all input,
+.rule-scope-feed input,
+.rule-scope-check input { width: auto; margin: 0; flex: 0 0 auto; accent-color: var(--accent); }
+.rule-scope-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); color: var(--text); }
+.rule-scope-count { flex: 0 0 auto; font-size: var(--fs-2xs); color: var(--text-faint); }
+.rule-scope-hint { flex: 0 0 auto; font-size: var(--fs-2xs); color: var(--text-faint); }
+.rule-scope-group-row { display: flex; align-items: center; }
+.rule-scope-group-row .rule-scope-check { flex: 1 1 auto; min-width: 0; }
+.rule-scope-caret {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; margin-left: 4px;
+  border: none; border-radius: var(--radius-xs); background: none;
+  color: var(--text-faint); cursor: pointer;
+}
+.rule-scope-caret:hover { background: var(--hover); color: var(--text); }
+.rule-scope-caret .ico { width: .75rem; height: .75rem; }
+.rule-scope-feeds { padding-bottom: 2px; }
+.rule-scope-feeds .rule-scope-feed { padding-left: 38px; min-height: 28px; }
+.rule-scope-feeds .rule-scope-feed:has(input:disabled) { cursor: default; opacity: .6; }
+.rule-scope-none { padding: var(--sp-4) var(--sp-3); text-align: center; color: var(--text-faint); font-size: var(--fs-sm); }
+.rule-scope-warn {
+  flex: 0 0 auto; padding: var(--sp-2) var(--sp-3);
+  background: var(--warn-bg); color: var(--warn-text);
+  border-top: 1px solid var(--warn-border); font-size: var(--fs-xs);
+}
+.rule-scope-foot {
+  flex: 0 0 auto; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  padding: var(--sp-2) var(--sp-3); border-top: 1px solid var(--border); background: var(--panel-2);
+}
+.rule-scope-foot-tip { flex: 1 1 160px; min-width: 0; font-size: var(--fs-2xs); color: var(--text-faint); line-height: 1.45; }
+.rule-scope-foot-actions { flex: 0 0 auto; display: inline-flex; gap: var(--sp-2); margin-left: auto; }
+
+@media (max-width: 720px) {
+  /* 窄屏没有可靠的锚点空间：整宽贴底，像一张小面板 */
+  .rule-scope-pop {
+    left: 0; right: 0; top: auto; bottom: 0;
+    width: auto; max-height: 72vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .rule-scope-foot-tip { flex-basis: 100%; }
+  .rule-scope-foot-actions { margin-left: auto; }
+}
+

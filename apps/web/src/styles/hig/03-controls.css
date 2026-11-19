@@ -1,0 +1,96 @@
+/* ---------------------------------------------------------------------------
+ * 3. 按钮与控件
+ * ---------------------------------------------------------------------------
+ * 统一一条反馈规则：可交互控件按下时轻微缩放，抬起回弹。
+ * 旧的 `.btn-primary:active { transform: translateY(1px) }` 是「压下去」的拟物感，
+ * 与 iOS 的「整块轻缩」不一致；这里用更高特异性收成一套。
+ */
+.btn {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  letter-spacing: -.01em;
+  transition:
+    transform var(--hig-press-dur) var(--ease),
+    background var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease),
+    color var(--dur-base) var(--ease),
+    box-shadow var(--dur-base) var(--ease);
+}
+.btn:not(:disabled):not([disabled]):not([aria-disabled="true"]):not([aria-busy="true"]):active {
+  transform: scale(var(--hig-press-scale));
+}
+.btn-primary {
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 28%, transparent),
+              0 4px 14px var(--accent-glow);
+}
+.btn-primary:active { transform: scale(var(--hig-press-scale)); }
+.btn-ghost {
+  background: var(--hig-fill);
+  border-color: var(--hig-separator);
+}
+.btn-ghost:hover { background: var(--hig-tint-soft); }
+.btn-danger-solid:active { transform: scale(var(--hig-press-scale)); }
+.btn-sm { border-radius: var(--radius-sm); }
+
+/* 图标按钮：正方形时用「胶囊半径」自然成圆，比 8px 方角更接近 iOS 工具栏 */
+.icon-btn {
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-md);
+  background: var(--hig-surface);
+  transition:
+    transform var(--hig-press-dur) var(--ease),
+    background var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease),
+    color var(--dur-base) var(--ease);
+}
+.icon-btn:not(:disabled):not([disabled]):active { transform: scale(var(--hig-press-scale)); }
+
+/* 顶栏那些裸按钮（≡ / 搜索 / ⋮）也统一到同一套材质与按压反馈 */
+.reader-head-tools .btn,
+.page-head .reader-head-tools .btn,
+.view-toolbar .btn {
+  -webkit-tap-highlight-color: transparent;
+}
+.reader-head-tools .btn:not(:disabled):active,
+.view-toolbar .btn:not(:disabled):active { transform: scale(var(--hig-press-scale)); }
+
+/* 卡片里的复制 / 打开按钮：同一手势、同一圆角 */
+.btn-copy:active, .btn-open:active, .btn-fav:active, .btn-jump:active {
+  transform: scale(var(--hig-press-scale));
+}
+.btn-copy, .btn-open, .btn-fav, .btn-jump {
+  border-radius: var(--radius-sm);
+  transition:
+    transform var(--hig-press-dur) var(--ease),
+    background var(--dur-base) var(--ease),
+    border-color var(--dur-base) var(--ease),
+    color var(--dur-base) var(--ease);
+}
+
+/* 输入框 / 下拉 / 文本域：iOS 的「填充式」控件 —— 淡填充 + 极淡描边，
+   焦点时实色主色描边而不是半透明光环。禁用态与只读态保持原样。 */
+.form-row input,
+.form-row textarea,
+.settings-modal :where(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="search"]):not(.feed-order):not(.feed-group-edit):not(.feed-title-edit):not(.feed-url-edit)),
+.settings-modal :where(textarea),
+.confirm-input,
+.select {
+  background: var(--hig-fill);
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-md);
+}
+.form-row input:focus,
+.form-row textarea:focus,
+.confirm-input:focus,
+.select:focus {
+  border-color: var(--hig-tint);
+  box-shadow: 0 0 0 3px var(--hig-tint-halo);
+}
+
+/* 开关：轨道更轻，滑块带一层极浅阴影，避免「贴纸感」 */
+.switch-slider { box-shadow: inset 0 0 0 1px var(--hig-separator); }
+.switch input:focus-visible + .switch-slider {
+  /* 评审硬规矩：焦点环必须实色 2px，不能用半透明光环 */
+  box-shadow: inset 0 0 0 1px var(--hig-separator), 0 0 0 2px var(--hig-tint);
+}
+

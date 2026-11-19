@@ -1,0 +1,68 @@
+/* ============================================================================
+ * 笺川 · Apple HIG 视觉层（Design System Layer）
+ * ============================================================================
+ * 定位
+ * ----
+ * 本文件是「设计系统层」，`main.jsx` 在 `style.css` **之后**导入。
+ *   style.css  = 历史布局层：骨架、断点、几何、状态类名、栅格（不在此重写）
+ *   hig.css    = 视觉系统层：设计令牌、材质、圆角、字阶、反馈、控件形态
+ * 之所以分层而不是推倒重写 5600 行历史 CSS：断点规则按功能就近分散，合并会改变
+ * 层叠结果（实测 181 处偏差），且 UI 回归里大量断言直接锚定 style.css 的规则文本。
+ * 分层后：布局与视觉各一份真源、可独立回滚，后续按组件把规则逐块下沉即可。
+ *
+ * 契约（改动前必读）
+ * ------------------
+ * 1. **不改 DOM / class / 几何**：不碰 grid 列数、`--hit-min`、字号下限、断点数值。
+ *    视图切换仍只有 `.viewnav` + `ViewNav` 一份；`--tabbar-h` 派生所有底部留白。
+ * 2. **不新增 `backdrop-filter`**：常驻 fixed 表面逐帧重采样会掉帧，模糊预算
+ *    （≤4 条活跃声明）只留给 `.modal-mask` / `.cmdk-mask`，由 verify-dist 守门。
+ * 3. **焦点描边保持 2px 实色 `--focus-ring`**（= `--accent`）；输入框柔光走
+ *    `--focus-halo`（22% 派生）。两者都定义在 `style.css :root`，视觉层只引用，
+ *    不退回「半透明描边」那种亮色仅 1.26:1 的写法。
+ * 4. **次要文字禁用 opacity 弱化**：全部走实色语义令牌，对比度 ≥4.5:1。
+ * 5. **颜色一律派生自现有主题变量**，自动适配 light / dark / github × 6 档主色，
+ *    不在这里复制一套色板（主题真源仍是 style.css 的 `html[data-theme]`）。
+ * 6. `color-mix()` 只用于「填充 / 分隔线 / 阴影」这类自适应材质，不用于正文文字。
+ *
+ * 目录
+ * ----
+ * 1. 令牌       2. 基础排版    3. 按钮与控件   4. 内容卡片
+ * 5. 导航       6. 弹层与菜单  7. 反馈与状态   8. 动效与可访问
+ * ============================================================================ */
+
+/* ---------------------------------------------------------------------------
+ * 1. 令牌
+ * ---------------------------------------------------------------------------
+ * 形状 / 动效令牌在这里统一收口；颜色令牌只派生，不覆盖主题块。
+ * 圆角 / 焦点反馈 / 颜色的真源都在 `style.css :root`，这里只补形状与动效语义令牌
+ * 并引用它们；`--shadow-*` 会被暗色主题块覆盖，**故意不动**。
+ */
+:root {
+  /* 连续圆角：半径随容器层级递增（小控件 8 → 按钮 12 → 卡片 18 → 弹层 24）。
+     **刻度只在 style.css :root 定义一份**，视觉层不再重定义，否则「后写者胜」
+     会把基础层的值变成死规则；登录页是独立入口，另带一份同源的简化层。 */
+
+  /* Apple 常用的「快出慢收」：起步利落、收尾柔和，比线性 ease-out 更有弹性感。
+     全站过渡与入场动画共用；--dur-* 保持原值，避免打乱已有的等待时序。 */
+  --ease: cubic-bezier(.32, .72, 0, 1);
+  --hig-press-scale: .965;
+  --hig-press-dur: .12s;
+
+  /* 语义材质：从主题色派生，三主题 × 六主色自动适配 */
+  --hig-label: var(--text);
+  --hig-secondary: var(--text-2);
+  --hig-tertiary: var(--text-muted);
+  --hig-quaternary: var(--text-faint);
+  --hig-bg: var(--bg);
+  --hig-surface: var(--panel);
+  --hig-surface-2: var(--panel-2);
+  --hig-separator: color-mix(in srgb, var(--text) 11%, transparent);
+  --hig-separator-strong: color-mix(in srgb, var(--text) 19%, transparent);
+  --hig-fill: color-mix(in srgb, var(--text) 5%, var(--panel));
+  --hig-fill-2: color-mix(in srgb, var(--text) 9%, var(--panel));
+  --hig-tint: var(--accent);
+  --hig-tint-strong: var(--accent-strong);
+  --hig-tint-text: var(--accent-text);
+  --hig-tint-soft: var(--accent-soft);
+  --hig-tint-halo: var(--focus-halo);   /* 与 style.css :root 同一个焦点光环真源 */
+}

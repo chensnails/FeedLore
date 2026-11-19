@@ -1,0 +1,22 @@
+/* ---------------------------------------------------------------------------
+ * 6. 弹层与菜单
+ * --------------------------------------------------------------------------- */
+.modal {
+  border: 1px solid var(--hig-separator);
+  border-radius: var(--radius-xl);
+}
+.modal-head { border-bottom-color: var(--hig-separator); }
+.modal-close {
+  border-radius: 50%;
+  background: var(--hig-fill);
+}
+.modal-close:hover { background: var(--hig-fill-2); }
+.tabs { border-bottom-color: var(--hig-separator); }
+
+.overflow-menu, .dd-panel, .overflow-submenu {
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-lg);
+}
+.overflow-item { border-radius: var(--radius-sm); }
+.overflow-sep { background: var(--hig-separator); }
+

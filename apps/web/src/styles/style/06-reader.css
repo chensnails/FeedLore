@@ -1,0 +1,1088 @@
+/* ============================================================
+ * 阅读页（文章）
+ * 左频道 / 右文章的分栏。折叠态只有标题一行，点标题就地展开全文，
+ * 所以每条都是一个 .art-item，展开只翻它自己的 .art-body，不整页重绘。
+ * ============================================================ */
+/* v1.6.0 App Shell（分栏独立滚动）：整页锁定视口高度，频道栏与内容区各自滚动 ——
+   工具顶栏（.reader-head，仍 position:sticky top:0）钉在内容区滚动容器顶部，永不随内容移动。 */
+.reader {
+  height: 100dvh;
+  overflow: hidden;
+  padding-top: var(--sp-4);
+}
+.reader > #readerRoot {
+  display: grid;
+  grid-template-columns: var(--reader-side-w) 0px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ---------- 左侧频道：满高独立滚动列 ---------- */
+.reader-side {
+  position: static;
+  height: 100%;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--elevation-2);
+  padding:var(--sp-3);
+}
+/* 品牌区（频道栏顶部）：v1.6.0 顶栏并入内容行后，品牌标识落到这里 */
+.side-brand {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+.side-brand .brand-logo { width: 26px; height: 26px; }
+.side-brand-name {
+  font-size: var(--fs-lg); font-weight: 600; letter-spacing: .2px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.reader-side-head, .cards-side-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding:var(--sp-1) var(--sp-2) var(--sp-2);
+  font-size: var(--fs-xs); font-weight: 700; letter-spacing: .04em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+}
+.reader-side-n { font-weight: 600; letter-spacing: 0; text-transform: none; }
+
+/* 频道栏滚动条隐藏（仍可滚轮 / 触摸滚动） */
+.reader-side, .cards-side { scrollbar-width: none; }            /* Firefox */
+.reader-side::-webkit-scrollbar, .cards-side::-webkit-scrollbar { display: none; } /* Chrome / Safari / Edge */
+
+.reader-channels, .cards-channels { display: flex; flex-direction: column; gap: var(--sp-0); }
+.rd-ch {
+  display: flex; align-items: center; gap:var(--sp-2);
+  width: 100%;
+  border: none; background: none; font-family: inherit;
+  text-align: left;
+  padding:var(--sp-2) var(--sp-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: background var(--dur-base), color var(--dur-base);
+}
+.rd-ch:hover { background: var(--hover); color: var(--text); }
+.rd-ch.active { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+/* 目录树层级：分组行贴左（折叠箭头 14px + 组按钮间隙 8px = 组名起线 22px），
+   频道行的头像对齐这条起线，一眼看出「这些频道属于上面那组」。
+   只挑 data-feed：顶部「全部 / 未读 / 收藏」三个固定入口不属于任何分组，保持贴左。 */
+.rd-ch[data-feed] { padding-left: 22px; }
+
+.rd-ch-avatar {
+  width: 24px; height: 24px; flex: 0 0 24px;
+  border-radius: var(--radius-xs);
+  object-fit: cover;
+  background: var(--media-grad);
+  border: 1px solid var(--border);
+}
+/* 头像懒加载占位：进视口前先占住同样的位置，避免图片到达时列表抖动 */
+.rd-ch-avatar-wrap {
+  width: 24px; height: 24px; flex: 0 0 24px;
+  border-radius: var(--radius-xs);
+  background: var(--media-grad);
+  border: 1px solid var(--border);
+  display: inline-flex; overflow: hidden;
+}
+.rd-ch-avatar-wrap .rd-ch-avatar {
+  width: 100%; height: 100%; flex: 0 0 auto; border: 0; border-radius: 0;
+}
+.rd-ch-avatar-txt {
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-sm); font-weight: 700;
+  color: var(--accent-text); background: var(--accent-soft);
+  border-color: transparent;
+}
+.rd-ch-avatar-all { display: flex; align-items: center; justify-content: center; font-size: var(--fs-md); }
+/* 侧栏顶部三个固定入口：全部 / 未读 / 收藏 */
+.rd-ch-avatar-unread {
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-2xs);
+  color: var(--accent-text); background: var(--accent-soft);
+  border-color: transparent;
+}
+.rd-ch-avatar-fav {
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-md);
+  color: var(--star); background: var(--star-soft);
+  border-color: transparent;
+}
+/* 关注 / 屏蔽虚拟视图（v1.6.0-test5）：与上面三个固定入口同一套排版，只换语义色。 */
+.rd-ch-avatar-watch {
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-md);
+  color: var(--accent-text); background: var(--accent-soft);
+  border-color: transparent;
+}
+.rd-ch-avatar-block {
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-md);
+  color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: transparent;
+}
+/* 固定入口与下面的频道列表之间隔一道细线 */
+.rd-ch-sep { height: 1px; background: var(--border); margin:var(--sp-2) var(--sp-2) var(--sp-2); }
+/* 频道抽屉内搜索框：内凹风格与其它输入框一致，仅作用于抽屉内 */
+.rd-ch-search {
+  display: flex; align-items: center; gap: 6px;
+  margin: var(--sp-2) var(--sp-2) 0; padding: 6px 8px;
+  background: var(--surface-soft-2); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--neu-inset);
+}
+.rd-ch-search-ico { width: 1rem; height: 1rem; flex: 0 0 1rem; color: var(--text-muted); }
+.rd-ch-search-input {
+  flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
+  color: var(--text); font-size: 0.875rem; padding: 2px 0;
+}
+.rd-ch-search-clear {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent;
+  color: var(--text-muted); cursor: pointer;
+}
+.rd-ch-search-clear:hover { color: var(--accent-text); background: var(--hover); }
+.rd-ch-search-clear .ico { width: 0.875rem; height: 0.875rem; }
+.rd-ch-empty { padding: var(--sp-4) var(--sp-3); color: var(--text-faint); font-size: var(--fs-sm); text-align: center; }
+
+.rd-ch-name {
+  flex: 1; min-width: 0;
+  font-size: var(--fs-md);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rd-ch-n {
+  flex: 0 0 auto;
+  font-size: var(--fs-2xs); font-weight: 600;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+/* 有未读时徽标高亮，扫一眼就知道哪些频道还有新内容 */
+.rd-ch-n.hot { color: var(--accent-text); }
+.rd-ch.active .rd-ch-n { color: var(--accent-text); }
+/* 停采的频道在阅读页里淡一点，但条目还能翻 */
+.rd-ch.off { opacity: .55; }
+.rd-ch.off:hover, .rd-ch.off.active { opacity: 1; }
+
+/* 阅读页侧栏的分组标题 —— 现在是个按钮，点了就只看这个分组。
+   贴左排版：左侧不留内边距，层级全靠「组名 22px / 频道再缩进」那条起线表达 */
+.rd-ch-group {
+  display: flex; align-items: center; gap:var(--sp-2);
+  width: 100%;
+  border: none; background: none; font-family: inherit;
+  text-align: left; cursor: pointer;
+  padding:var(--sp-3) 0 var(--sp-1);
+  font-size: var(--fs-2xs); font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: .03em;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-base) ease, background var(--dur-base) ease;
+}
+.rd-ch-group-row:first-of-type { margin-top:2px; }
+.rd-ch-group:hover { color: var(--text); }
+.rd-ch-group:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.rd-ch-group.muted { color: var(--text-faint); font-weight: 600; }
+/* 正在「只看这组」：筛选状态是整行的属性，不是组名自己的 */
+.rd-ch-group-row.is-filtered .rd-ch-group { color: var(--accent-text); }
+.rd-ch-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+/* 分组徽标 = 组内未读总数（与频道行的 hot 徽标风格一致） */
+.rd-ch-group > .rd-ch-n { margin-left:0; }
+/* 全已读时用一个小对勾占位，扫一眼能看出"这组没新东西"，且不会跟热徽标撞视觉重量 */
+.rd-ch-group-empty {
+  font-size: var(--fs-2xs); font-weight: 700;
+  color: var(--text-faint);
+  width: 18px; text-align: center;
+}
+/* 收起状态没有未读时的占位：改报「这组有几个频道」，展开键按下去知道会出来多少 */
+.rd-ch-group-n {
+  font-size: var(--fs-2xs); font-weight: 600;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  width: 18px; text-align: center;
+}
+
+/* 折叠状态指示。整行已经是折叠开关，箭头只负责说明现在是展开还是收起，
+   14px + 组按钮的 8px 间隙 = 组名起线 22px，正好是频道行头像的缩进位。 */
+.rd-ch-caret { width: 14px; height: 14px; color: var(--text-faint); }
+.rd-ch-group:hover .rd-ch-caret { color: var(--text-muted); }
+/* 收起时整行略弱一档，与展开的分组拉开层次 */
+.rd-ch-group-row.is-collapsed .rd-ch-group { color: var(--text-muted); }
+
+/* 分组行：整行 = 折叠开关，右端浮一枚「只看这组」漏斗。
+   未读数要和下面频道行的徽标排成同一列，所以漏斗平时不占排版宽度：
+   悬停 / 键盘聚焦时浮到徽标位上，徽标同时淡出（列表行「悬停换出操作」那套）。
+   触屏没有 hover，下面的 @media 把漏斗改成在排版里占位并常显。 */
+.rd-ch-group-row {
+  position: relative;
+  display: flex; align-items: center;
+  margin-top:var(--sp-1);
+  border-radius: var(--radius-sm);
+}
+.rd-ch-group-row:hover { background: var(--hover); }
+.rd-ch-group-row .rd-ch-group { flex: 1; min-width: 0; width: auto; margin-top:0; }
+.rd-ch-filter {
+  position: absolute; right: 1px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: 0 0 auto;
+  border: none; background: var(--hover); border-radius: var(--radius-xs); cursor: pointer;
+  color: var(--text-faint);
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-fast) ease, color var(--dur-base) ease;
+}
+.rd-ch-group-row:is(:hover, :focus-within) .rd-ch-filter { opacity: 1; pointer-events: auto; }
+.rd-ch-group-row:is(:hover, :focus-within) :is(.rd-ch-n, .rd-ch-group-empty, .rd-ch-group-n) { opacity: 0; }
+.rd-ch-filter:hover { color: var(--text); }
+.rd-ch-filter.is-active { color: var(--accent-text); }
+.rd-ch-filter:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+@media (hover: none) {
+  /* 触屏：漏斗没有悬停可依赖，就回到排版里占一格，未读徽标往左让位。
+     底色去掉（填充方块在每行挂一颗太抢眼），平时只用弱化色的裸图标，
+     命中筛选态才亮 accent + 底色，让「哪一组在筛选」一眼可见。 */
+  /* relative 仍占排版位（等价于 static），但能给 44px 命中伪元素当定位参照；
+     right/top 必须一起清掉，否则桌面绝对定位的偏移会在触屏把漏斗推走。 */
+  .rd-ch-filter { position: relative; right: auto; top: auto; transform: none; opacity: 1; pointer-events: auto; background: transparent; }
+  .rd-ch-filter::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: var(--hit-min); height: var(--hit-min);
+    transform: translate(-50%, -50%);
+  }
+  .rd-ch-filter.is-active { background: var(--hover); }
+  .rd-ch-group-row:is(:hover, :focus-within) :is(.rd-ch-n, .rd-ch-group-empty, .rd-ch-group-n) { opacity: 1; }
+}
+
+/* 侧栏底部的「添加频道」入口：跟普通频道行同槽，区别是不带头像、不带徽标 */
+.rd-ch-add {
+  display: flex; align-items: center; gap:var(--sp-2);
+  width: 100%;
+  border: var(--divider-w) solid var(--border-strong); background: none; font-family: inherit;
+  text-align: left;
+  padding:var(--sp-2) var(--sp-2);
+  margin-top:var(--sp-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--fs-md);
+  transition: background var(--dur-base), color var(--dur-base), border-color var(--dur-base);
+}
+.rd-ch-add:hover { background: var(--hover); color: var(--accent-text); border-color: var(--accent-text); }
+.rd-ch-add-ico { width: 1.125rem; height: 1.125rem; flex: 0 0 18px; color: var(--text-muted); }
+.rd-ch-add:hover .rd-ch-add-ico { color: var(--accent-text); }
+
+/* 移动端才出现的「频道」抽屉开关、关闭按钮、遮罩（两页同一条基础规则 ——
+   显示条件写在 ≤1080px 那段，靠源顺序覆盖这里的 display:none） */
+.reader-menu-btn, .cards-menu-btn { display: none; }
+.reader-side-close {
+  display: none;
+  margin-left:auto;
+  align-items: center; justify-content: center;
+  border: none; background: none; cursor: pointer;
+  font-size: var(--fs-xl); line-height: 1;
+  color: var(--text-muted);
+  padding:2px var(--sp-2); border-radius: var(--radius-xs);
+}
+.reader-side-close:hover { background: var(--hover); color: var(--text); }
+.reader-mask, .cards-mask { display: none; }
+/* 卡片页的频道抽屉（v1.3.10）：窄屏才存在，宽屏频道筛选走工具栏下拉 */
+.cards-side { display: none; }
+
+/* 频道栏头部的「收起 / 展开全部分组」：与侧栏标题同排的小图标按钮 */
+.reader-side-fold {
+  margin-left:auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: 0 0 auto;
+  border: none; background: none; cursor: pointer;
+  color: var(--text-faint);
+  border-radius: var(--radius-xs);
+  transition: background var(--dur-base), color var(--dur-base);
+}
+.reader-side-fold:hover { background: var(--hover); color: var(--text); }
+.reader-side-fold:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.reader-side-fold .ico { width: 0.875rem; height: 0.875rem; }
+/* 移动端头部右侧要让位给关闭键（关闭键自带 margin-left:auto） */
+.reader-side-head .reader-side-fold + .reader-side-close { margin-left: var(--sp-1); }
+
+/* 频道栏右缘的拖宽分隔条：本身 0 宽，靠 ::after 撑出一条 14px 命中区。
+   sticky + 与侧栏同高，滚动时始终贴着可见的侧栏，不会长成正文那么高的一条。 */
+.reader-resize {
+  position: sticky;
+  top: 0;
+  /* App Shell：与频道栏同高（撑满网格行），::after 的 top/bottom:0 才能贯穿整列 */
+  align-self: stretch;
+  width: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+.reader-resize::after {
+  content: '';
+  position: absolute; top: 0; bottom: 0; left: -7px; width: 14px;
+  border-radius: var(--radius-pill);
+  transition: background var(--dur-base);
+}
+.reader-resize:hover::after, .reader-resize:active::after { background: var(--accent-soft); }
+.reader-resize:focus-visible { outline: none; }
+/* 旧写法 box-shadow: var(--focus-ring) 缺长度与模糊半径，是无效声明，等于没有反馈 */
+.reader-resize:focus-visible::after { background: var(--accent-soft); box-shadow: 0 0 0 2px var(--focus-halo); }
+
+/* ---------- 右侧文章 ---------- */
+/* 内容区：自己的滚动容器（App Shell）；.reader-head 在其内部 sticky top:0 钉住 */
+.reader-main {
+  min-width: 0; height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  /* --head-h 不在这里另立一份：吸顶工具条的高度由 :root 给（桌面 52 / 窄屏 44，
+     见文件末尾的 ≤720 令牌段），.art-item 的 scroll-margin-top 直接继承它。 */
+}
+/* 头部与列表都按「阅读宽度」居中：两个是兄弟节点，各自写一份才能对齐 */
+.reader-head {
+  /* 头部一行内「标题 / 分组徽标 / 工具按钮」统一的高度与字号 */
+  --rd-head-h: 32px;
+  --rd-head-fs: 0.9375rem;
+  display: flex; align-items: center; justify-content: space-between; gap:var(--sp-4);
+  /* 上下内边距必须对称：以前是 2px / 14px，标题文字（比按钮矮）下方就会多出一截空白，
+     看起来像多了一个空行。改成 8/8 后总高不变，文字上下留白一致。 */
+  /* 上下 8 / 左右 0：左右留白由内容列给（.reader 的 gutter），
+     多补 2px 会让标题比下方的搜索框和列表往右偏 2px —— 一眼看不出来，但就是不对齐 */
+  padding:var(--sp-2) 0;
+  max-width: var(--reader-width);
+  margin:0 auto;
+  /* 头部工具按「自己实际有多宽」收放：它的宽度 = min(内容列, --reader-width)，
+     视口宽度和侧栏宽度都影响它（频道栏还能拖动改宽）。721–1000px 的窗口里
+     这一条只有 417–700px，带文字的整行工具要 760px —— 只按视口断点会在
+     721–1064 这一段把 ⋮ 推出屏幕（实测 721px 下右边缘在 773）。
+     容器查询尺寸取内容盒宽度，正好是工具可用的那一行。 */
+  container-type: inline-size;
+  /* 分组徽标 + 「全部已读 / 全部收起」一起出现时给窄屏留条退路 */
+  flex-wrap: wrap;
+  /* 整条吸顶（v1.3.7-test4，桌面与移动同一套）：滚到列表中段也认得出「现在在看哪个频道」，
+     三个工具按钮不用再翻回列表顶部。v1.6.0 起全局顶栏并入本行 —— 它就是最顶层吸顶条，
+     贴 top:0，并把自身高度写进 --topbar-h 供下方 Row2 标签栏吸顶。背景必须不透明。 */
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.reader-head-text {
+  /* 不再吃掉剩余宽度：那是搜索框的位置（标题按内容宽，超过 40% 由 .page-title 省略） */
+  flex: 0 1 auto; min-width: 0;
+  display: flex; align-items: center;
+  min-height: var(--rd-head-h);
+}
+.reader-head h2 {
+  margin:0;
+  font-size: var(--rd-head-fs); line-height: 1.3;
+  /* 与右侧按钮同字号同字重（700 会让同字号看起来更大） */
+  font-weight: 500; color: var(--text);
+}
+.reader-head-tools { flex: 0 0 auto; display: flex; align-items: center; gap:var(--sp-2); }
+/* 工具按钮与标题同高同字号（否则标题顶对齐、按钮居中，看着不齐） */
+.reader-head-tools .btn {
+  height: var(--rd-head-h);
+  padding:0 var(--sp-3);
+  font-size: var(--rd-head-fs);
+  border-radius: var(--radius-sm);
+}
+/* 手风琴开关：窄屏下按钮只剩图标，靠颜色区分开关状态（否则看不出当前是哪种模式） */
+#readerAccBtn[aria-pressed="true"] {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+}
+
+/* 阅读页搜索框：走服务端检索（防抖 280ms），与当前频道/分组叠加 */
+.reader-search {
+  position: relative;
+  display: flex; align-items: center;
+  /* 与 .reader-head / .reader-list 对齐：都按「阅读宽度」居中，否则会显得比它们宽一截 */
+  max-width: var(--reader-width);
+  margin:0 auto var(--sp-3);
+}
+.reader-search input {
+  width: 100%;
+  padding:var(--sp-2) var(--sp-8);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  font-size: var(--fs-md); font-family: inherit; color: var(--text);
+  outline: none;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base);
+}
+.reader-search input::placeholder { color: var(--text-faint); }
+.reader-search input:focus { border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--focus-halo); }
+/* 去掉浏览器自带的小叉，统一用下面的清除按钮 */
+.reader-search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.reader-search-clear {
+  position: absolute; right: 9px;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: var(--chip-solid); color: var(--text-muted);
+  font-size: var(--fs-2xs); line-height: 1; cursor: pointer;
+}
+.reader-search-clear:hover { background: var(--hover); color: var(--text); }
+
+/* 「添加到手机」的说明文案（原来是独立卡片，现在住在「账号 → 添加到手机」分组里） */
+.install-card-tip { margin:var(--sp-2) 0 var(--sp-3); font-size: var(--fs-sm); line-height: 1.7; color: var(--text-muted); }
+.install-card-tip code { font-size: var(--fs-sm); padding:1px var(--sp-1); border-radius: var(--radius-xs); background: var(--chip-solid); color: var(--text-muted); }
+
+/* 用户管理（账号 → 用户管理，仅管理员）：一行一个用户 + 底部新建表单 */
+.user-list { display: flex; flex-direction: column; gap:var(--sp-2); margin-bottom:var(--sp-3); }
+.user-row {
+  display: flex; align-items: center; gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+.user-row .u-name { font-weight: 600; color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-row .u-meta { font-size: var(--fs-sm); color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.user-row .u-spacer { flex: 1; }
+.user-row .u-badge {
+  flex: 0 0 auto; font-size: var(--fs-2xs); font-weight: 700; padding:1px var(--sp-2); border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--accent-text);
+}
+.user-row .u-badge.role-user { background: var(--chip-solid); color: var(--text-muted); }
+.user-row .u-badge.role-readonly { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+.user-row .u-role { flex: 0 0 auto; font-size: var(--fs-sm); padding:var(--sp-1) var(--sp-2); }
+.user-row .u-self { font-size: var(--fs-2xs); color: var(--text-faint); }
+.user-row .u-btn {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer; font-family: inherit;
+  font-size: var(--fs-sm); color: var(--text-muted); padding:var(--sp-1) var(--sp-2); border-radius: var(--radius-xs);
+}
+.user-row .u-btn:hover { background: var(--hover); color: var(--accent-text); }
+.user-row .u-btn.danger:hover { color: var(--danger); }
+.user-add { display: flex; flex-wrap: wrap; gap:var(--sp-2); align-items: center; }
+.user-add input, .user-add select { flex: 1 1 120px; min-width: 0; }
+.user-add .btn { flex: 0 0 auto; }
+
+/* 登录设备（账号 → 登录设备）：一行一台；本机用主色标出，其余可逐台退出 */
+.dev-list { display: flex; flex-direction: column; gap:var(--sp-2); margin-bottom:var(--sp-3); }
+.dev-row {
+  display: flex; align-items: center; gap:var(--sp-3);
+  padding:var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+.dev-row.current { border-color: var(--border-strong); background: var(--accent-soft); }
+.dev-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dev-name {
+  display: flex; align-items: center; gap:var(--sp-2); min-width: 0;
+  font-size: var(--fs-sm); font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dev-badge {
+  flex: 0 0 auto; font-size: var(--fs-2xs); font-weight: 700;
+  padding:1px var(--sp-2); border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--accent-text);
+}
+.dev-row.current .dev-badge { background: var(--panel); }
+.dev-meta {
+  font-size: var(--fs-xs); color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dev-revoke {
+  flex: 0 0 auto; border: none; background: none; cursor: pointer; font-family: inherit;
+  font-size: var(--fs-sm); color: var(--text-muted);
+  padding:var(--sp-1) var(--sp-2); border-radius: var(--radius-xs);
+}
+.dev-revoke:hover { background: var(--hover); color: var(--danger); }
+.dev-revoke:disabled { cursor: wait; opacity: var(--disabled-opacity); }
+.dev-actions { display: flex; justify-content: flex-end; }
+
+/* 条目过滤规则（账号 → 过滤规则，v2.7.0）：一行一条规则，窄屏自动换行 */
+.filter-row {
+  display: flex; align-items: center; gap:var(--sp-2); flex-wrap: wrap;
+  padding:var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--panel); margin-bottom:var(--sp-2);
+}
+.filter-row .filter-on { flex: 0 0 auto; accent-color: var(--accent); }
+.filter-row .filter-act, .filter-row .filter-field, .filter-row .filter-kind { flex: 0 0 auto; }
+.filter-row .filter-pattern { flex: 1 1 160px; min-width: 0; }
+.filter-row .rule-scope-wrap { flex: 0 1 auto; min-width: 0; }
+.filter-row .filter-del { flex: 0 0 auto; }
+.filter-row .filter-del:hover { color: var(--danger); }
+.filter-actions { margin:2px 0 var(--sp-2); }
+.filter-save { margin-top:var(--sp-3); display: flex; justify-content: flex-end; }
+
+/* 文章列表：卡片行
+ * ------------------------------------------------------------
+ * 每条是一张独立的圆角卡（面板底 + 细边 + 轻阴影），卡片之间留间距；
+ * 标题 / 摘要 / 缩略图都在卡内，展开仍在原位，不再换一套视觉。
+ * 紧凑密度只是把卡里的内容压成一行，卡本身不消失 —— 列表始终是「一叠卡片」。
+ */
+.reader-list { display: flex; flex-direction: column; gap: var(--sp-3); max-width: var(--reader-width); margin: var(--sp-5) auto 0; }
+
+.art-item {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  /* v2.5.0：与卡片 / 行同口径的「薄边 + 一层浅影」。
+     文章行此前比卡片重一档（elevation-2），三视图并排看会显得文章页更「沉」。 */
+  box-shadow: var(--elevation-1);
+  overflow: hidden;
+  transition: border-color var(--dur-slow), box-shadow var(--dur-slow);
+  /* 不加 content-visibility：文章行同样是滚动容器里的布局项，CV 在滚动过程中
+     要反复判定「哪些行相关」，实测 300 行时 layout 74ms 白花（见 .card 处注释）。 */
+  /* 让出下方那根吸顶工具条的高度，否则新文章的第一行正好被工具条盖住。
+     进入文章的置顶由 core/reader.js#scrollReaderToArt 直接设 scrollTop 完成
+     （用 scrollIntoView 会在手风琴收起的旧布局里测量，导致新文章被甩到视口上方）；
+     这条 scroll-margin 留给 focusReaderArt 的 block:'center' 等原生滚动场景。 */
+  /* 由 core/reader.js 每帧按吸顶头部实测高度写入；回退值只用于 JS 尚未跑到的首帧。
+     窄屏头部是两行（工具行 + 频道条），旧写法按 --head-h 会少算一行，把标题盖住。 */
+  scroll-margin-top: var(--reader-sticky-offset, calc(var(--head-h, 52px) + 8px));
+}
+.art-item:hover { border-color: var(--border-strong); box-shadow: var(--elevation-2); }
+
+/* 滚动期间让路：把列表项的悬停过渡关掉。
+ *
+ * 鼠标滚轮滚动时指针**一直停在列表上**，内容从指针底下穿过，:hover 就在行与行
+ * 之间高频切换；每条过渡都要逐帧重绘 box-shadow（带模糊半径，重绘里最贵的一项），
+ * 卡片还要叠加图片缩放，于是「滚起来发涩」。键盘与触屏没有这个问题。
+ *
+ * 只关过渡、不改终值：滚完松手再移鼠标，过渡照旧，观感与设计一致。
+ * 状态类由 ui/scrollBusy.js 挂在 body 上（滚动起止各一次，不参与 React 渲染）。
+ * 实测（ui-lab/perf.mjs，真滚轮、指针停在列表中段，80 项）：
+ *   卡片页 掉帧 12.6% → 0.8%，p95 48.6 → 13.8ms；文章页 300 行 style 153 → 61ms。 */
+body.is-scrolling .card,
+body.is-scrolling .row-item,
+body.is-scrolling .art-item,
+body.is-scrolling .card-media img,
+body.is-scrolling .card-media-actions { transition: none; }
+
+/* 展开态只把描边加深一档，不再抬阴影 / 换底色：
+   卡片本来就是浮起的，读正文时不需要整块发亮抢视线。 */
+.art-item.open { border-color: var(--border-strong); }
+/* 落点指示（v1.3.7）：从卡片页「在文章页查看」跳过来时，滚到这篇并让文章框闪一下，
+   告诉用户「你要的那条在这里」。只动描边与阴影，不动布局；类由 core 的 focusReaderArt
+   挂 1.5s 后摘掉（时长要和这里的 1.5s 对齐）。 */
+.art-item.is-flash { animation: artFlash 1.5s var(--ease); }
+@keyframes artFlash {
+  0%, 55% { box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-1); }
+  100% { box-shadow: var(--elevation-1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 不做闪烁动画，改成静止描边停一瞬 —— 指示作用留着，动效去掉 */
+  .art-item.is-flash {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--accent-glow), var(--elevation-1);
+  }
+}
+
+/* 一行 = 可点开的主体（标题 + 图）+ 右侧一列收藏 / 标未读。
+   两个动作不能塞进 .art-head（button 里不能再嵌 button），所以单独占第二列：
+   grid 自动算出该让多宽，以前「绝对定位 + 64/60/44/40/96px 五套魔法让位」
+   连修三轮仍会让标题钻到按钮底下，加第三枚动作也必崩。 */
+.art-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.art-head {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  flex: 1 1 auto; min-width: 0; width: auto;
+  border: none; background: none; font-family: inherit;
+  text-align: left;
+  padding: var(--sp-4);
+  cursor: pointer;
+  color: inherit;
+}
+.art-item.open .art-head { padding-bottom: var(--sp-3); }
+
+/* 标题 + 元信息竖排；缩略图是这一栏的兄弟，不参与文字换行 */
+.art-text {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+
+/* 未读圆点：已读时用 opacity 藏掉但保留占位，两行标题的左边缘才是齐的 */
+.art-dot {
+  flex: 0 0 auto;
+  width: 6px; height: 6px;
+  margin-top: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: opacity var(--dur-slow);
+}
+.art-item.is-read .art-dot { opacity: 0; }
+
+/* 展开箭头：卡片行首的 ›，展开后转成向下。与未读点同一列、与标题首行对齐；
+   紧凑单行时行内已垂直居中，不再单独抬 margin。 */
+.art-caret {
+  flex: 0 0 auto;
+  font-size: 1rem;
+  color: var(--text-faint);
+  margin-top: 4px;
+  transition: transform var(--dur-slow), color var(--dur-base);
+}
+.art-item.open .art-caret { transform: rotate(90deg); color: var(--text-muted); }
+.art-item.is-line .art-caret { margin-top: 0; }
+
+.art-thumb {
+  flex: 0 0 104px; width: 104px;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--media-grad);
+}
+.art-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.art-acts {
+  /* 第二列：两枚动作竖排，宽度由内容决定；不再用 right/bottom 叠在文字上 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0 6px 0 2px;
+  min-width: 0;
+}
+.art-star {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: none; font-family: inherit;
+  font-size: 1rem; line-height: 1;
+  color: var(--text-faint);
+  cursor: pointer;
+  width: 30px; height: 30px; padding: 0;
+  border-radius: var(--radius-sm);
+  transition: color var(--dur-base), background var(--dur-base), transform var(--dur-fast);
+}
+.art-star:hover { background: var(--hover); color: var(--star); }
+.art-star:active { transform: scale(.9); }
+.art-item.is-fav .art-star[data-fav] { color: var(--star); }
+/* 动作列已是独立一列，不再压在缩略图上：原先那套半透明暗底 + 白图标
+   是为「绝对定位叠在亮图上」准备的，现在反而让两枚动作看起来像贴纸。
+   缩略图和元信息也都不必再为它让出宽度（grid 自动算）。 */
+/* 「标为未读」是补救动作，常驻会和收藏星争视觉；用略弱但仍达标的实色，
+   不用 opacity：叠在已读行的透明度上曾经只剩 2.56:1，触屏上几乎看不见。 */
+.art-unread { color: var(--text-muted); }
+.art-unread:hover { color: var(--accent-text); }
+.art-unread .ico { width: .95rem; height: .95rem; }
+/* 收藏态只由星标标金（.art-star[data-fav]），不在行首压主色竖条：
+   通栏行式列表里左侧亮条容易被误读成「当前选中」或未读标记。 */
+
+.art-title {
+  font-size: var(--fs-lg); font-weight: 600; line-height: 1.5;
+  color: var(--text);
+  /* 最多三行：资讯流的标题以「一眼看全」为准，长标题截断而不是折成四五行把图拉开 */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+/* 已读 / 未读：只靠字重 + 未读圆点区分，不再叠 opacity。
+   以前 .is-read 上 .72 / .78 两层透明度把元信息压到 2.9:1、摘要压到 3.x:1，
+   暗色下更是糊成一片；--text-faint / --text-muted 本身就是合规的弱化色。 */
+.art-item.is-unread .art-title { font-weight: 600; }
+.art-item.is-read .art-title { font-weight: 400; color: var(--text-muted); }
+
+/* 摘要（外观 → 文章列表 → 列表密度：舒适）：标题下补两行，行高与正文接近但降档、降色。
+   开启时标题收到两行，保证整条高度仍受控 —— 几百条列表不能让摘要把行撑成文章。 */
+.art-sum {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+.art-item.has-sum .art-title { -webkit-line-clamp: 2; }
+
+/* 紧凑密度 = 单行清单：标题单行省略，来源与时间并到同一行右侧，
+   行高从「标题 + 元信息」的两段收成一条，扫标题时一屏能多看十几条。
+   展开态在组件里就不加 is-line，正在读的那条仍按普通行式排版显示完整标题。 */
+.art-item.is-line .art-head { padding: 10px var(--sp-4); align-items: center; }
+.art-item.is-line .art-dot { margin-top: 0; }
+.art-item.is-line .art-text { flex-direction: row; align-items: center; gap: var(--sp-3); }
+.art-item.is-line .art-title {
+  flex: 1 1 auto; min-width: 0;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.art-item.is-line .art-meta {
+  flex: 0 0 auto;
+  margin-top: 0;
+  flex-wrap: nowrap;
+}
+/* 同一行里来源最多占 120px，剩下的宽度留给标题；窄屏也不放开 */
+.art-item.is-line .art-meta .src-pill { max-width: 120px; }
+
+.art-meta {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2);
+  min-width: 0;
+  margin-top: auto;
+  /* 元信息是正文辅助信息，最小 12px：11px 在长列表里会糊成一片 */
+  font-size: var(--fs-sm);
+}
+.art-meta .src-pill { max-width: 180px; }
+.art-size { color: var(--text-muted); background: var(--accent-soft); border-radius: var(--radius-pill); padding:2px var(--sp-2); font-weight: 600; }
+.art-date { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+/* 智能去重（T-B）：「N 重复」提示，弱化处理，不抢标题行视线 */
+
+/* ---------- 展开体 ---------- */
+.art-body { border-top: 1px solid var(--border); background: var(--panel-2); }
+/* 限一个阅读宽度：不限的话宽屏下一行能排 70+ 个汉字，读起来很累 */
+.art-inner { padding:var(--sp-6) var(--sp-7); max-width: 100%; display: flex; flex-direction: column; gap:var(--sp-4); }
+/* 展开后骨架 → 正文是同节点替换，给挂载加一段很短的淡入，避免整段文字突然砸下来 */
+.art-inner { animation: artReveal .26s var(--ease) both; }
+@keyframes artReveal { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+@media (max-width: 720px) { .art-inner { padding:var(--sp-4) var(--sp-5); gap:var(--sp-4); } }
+
+/* 展开态的标题行吸顶：长文读到一半想退出时，标题行（点一下就是收起）必须还在手边。
+ * 吸在页面吸顶头部下方 —— 高度由 core/reader.js 每帧实测写入 --reader-sticky-offset，
+ * 与 .art-item 的 scroll-margin-top 同源，窄屏两行头部、横屏压缩都能自动跟随。
+ * ⚠️ 必须放开 .art-item 的 overflow:hidden：`overflow:hidden` 生成 containment，
+ *    sticky 会被关在卡片里、只跟着卡片滚，等于没吸。（基线里曾另有
+ *    content-visibility:auto，同样是 containment 来源；它已按实测移除，
+ *    这里不必再放开，但注释留着 —— 谁再加回来就得把这一行一起改。） */
+.art-item.open { overflow: visible; }
+.art-item.open .art-row {
+  position: sticky;
+  /* 贴住吸顶头部的**底边**，而不是 --reader-sticky-offset（那多留 8px 给 scroll-margin）。
+     留缝的话，正文会从缝里漏出一条，看起来像标题行浮在正文中间。 */
+  top: var(--reader-head-h, var(--head-h, 52px));
+  z-index: 2;
+  background: var(--panel);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  /* 吸附后正文的 border-top 已经跟着内容滚走，分隔线改由标题行自己带 */
+  box-shadow: 0 1px 0 var(--border);
+}
+/* 标题行底边的渐隐遮罩：正文滑到吸顶条底下时，是在行底边被「一刀切」的，
+   半截字贴在那条分隔线上很扎眼。在行底边铺一条 8px 的面板色渐变，
+   让滑上来的文字淡出而不是被切断。
+   始终存在、不随吸附状态切换：行未吸附时它盖的是正文的上内距（没有字），
+   已经吸附时才是切口；这样滚动中不会凭空多出一层要重绘的背景。 */
+.art-item.open .art-row::after {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 100%;
+  height: 8px;
+  background: linear-gradient(to bottom, var(--panel), transparent);
+  pointer-events: none;
+}
+/* 正在读的时候，来源 / 体积 / 日期让位给正文：这行是 chrome，越小越好 */
+.art-item.open .art-row .art-meta { display: none; }
+/* 吸顶条更矮一档：标题最多两行 + 三个动作，横排才塞得下 */
+.art-item.open .art-title { -webkit-line-clamp: 2; }
+.art-item.open .art-acts { flex-direction: row; }
+/* 竖排时给动作之间留的分隔外边距，横排后只会把标题行顶高，清掉 */
+.art-item.open .art-acts .art-star { margin: 0; }
+/* 收起是「退出这篇」的主动作，别和收藏星一样弱；实色不用 opacity（暗色下 4.5:1 会掉） */
+.art-collapse { color: var(--text-muted); }
+.art-collapse:hover { color: var(--accent-text); background: var(--hover); }
+/* overflow 放开了，卡片底部的圆角要由正文自己收口（art-body 自己不含 sticky 元素，
+   所以这里再开 overflow:hidden 是安全的，只裁背景与圆角） */
+.art-item.open .art-body {
+  border-top-color: transparent;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  overflow: hidden;
+}
+
+/* 正文图片：跟随阅读栏宽度等比缩放、自适应屏幕、不变形、不溢出；点一下看大图。
+   用 max-width:100% + height:auto 让大图填满栏宽、小图保持原尺寸；
+   仅对特别高的长图用视口高度兜底，避免占满整屏。 */
+.art-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  width: auto;
+  max-height: 78vh;
+  max-height: 78dvh;
+  margin:var(--sp-3) auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--media-grad);
+  cursor: zoom-in;
+  transition: box-shadow var(--dur-base) ease;
+}
+.art-img:hover { box-shadow: var(--elevation-3); }
+/* 没有原始宽高的正文图（不少源站不写 width/height）：加载前按 16:9 预留一块，
+   图片到位后（.img-ready）这条规则自动让开，由真实比例接管。
+   先前的 1px 占位等于没占：每张图都是从 0 撑到原高的一次布局跳动，
+   会把恢复的阅读位置 / 置顶校正一起顶偏，看起来就是页面自己往下滚。 */
+.art-img[src]:not([width]):not(.img-ready) {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+}
+
+/* 多图文章：图片网格；单图仍是独立的 .art-img（上方规则不变） */
+.art-imgs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap:var(--sp-2);
+  margin:2px 0 var(--sp-2);
+}
+.art-imgs .art-img {
+  margin:0;            /* 取消单图时的居中 margin */
+  width: 100%;          /* 填满网格单元 */
+  height: 160px;        /* 统一瓦片高度，网格才整齐 */
+  object-fit: cover;    /* 裁切对齐；点开灯箱看原图 */
+  border-radius: var(--radius-md);
+}
+@media (min-width: 721px) {
+  .art-imgs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ---------- 图片灯箱 ---------- */
+.lightbox {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  /* 同 .modal-mask：高度按当前可视区算，图不会被地址栏截掉一截 */
+  height: 100vh;
+  height: 100dvh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap:var(--sp-4); padding:var(--sp-6);
+  background: var(--lightbox-bg);
+  animation: lb-in var(--dur-base) ease;
+  cursor: zoom-out;
+}
+@keyframes lb-in { from { opacity: 0; } to { opacity: 1; } }
+.lightbox-img {
+  max-width: 100%; max-height: calc(100vh - 96px);
+  max-height: calc(100dvh - 96px);
+  width: auto; height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  background: var(--media-grad);
+  cursor: zoom-out;
+}
+.lightbox-hint { margin:0; font-size: var(--fs-sm); color: var(--lightbox-text); }
+/* 灯箱关闭按钮：键盘 / 读屏可达的显式关闭入口（鼠标仍可点任意处关闭）。
+   灯箱底色恒暗，故按钮用半透明白，不随主题走。 */
+.lightbox-close {
+  position: absolute; top: var(--sp-4); right: var(--sp-4);
+  width: 40px; height: 40px; display: grid; place-items: center;
+  border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, .14); color: var(--lightbox-text);
+  cursor: pointer; z-index: 1;
+  transition: background var(--dur-fast), transform var(--dur-fast);
+}
+.lightbox-close:hover { background: rgba(255, 255, 255, .24); transform: scale(1.06); }
+.lightbox-close .ico { width: 1.25rem; height: 1.25rem; }
+
+/* 灯箱组内翻页（v1.6.0-test4）：同一篇正文有多张图时才出现。
+   .lightbox 本身是「点任意处关闭」，所以按钮必须 stopPropagation，否则点一下就关了。 */
+.lightbox-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, .14); color: var(--lightbox-text);
+  cursor: pointer; z-index: 1;
+  transition: background var(--dur-fast), transform var(--dur-fast);
+}
+.lightbox-nav:hover { background: rgba(255, 255, 255, .28); }
+.lightbox-nav .ico { width: 1.25rem; height: 1.25rem; }
+.lightbox-nav.is-prev { left: var(--sp-4); }
+.lightbox-nav.is-prev .ico { transform: rotate(180deg); }
+.lightbox-nav.is-next { right: var(--sp-4); }
+.lightbox-count {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--sp-6) + 1.9rem);
+  margin: 0; padding: 2px 10px; border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, .38); color: var(--lightbox-text);
+  font-size: var(--fs-sm); letter-spacing: .04em;
+}
+
+/* 正文按原文换行显示：存的是纯文本，pre-wrap 能保住帖子的行结构
+   字体 / 字号 / 行高走外观偏好 token（--font-read / --reader-fs / --reader-lh），可被用户改 */
+.art-text {
+  margin:0;
+  font-family: var(--font-read);
+  font-size: var(--reader-fs);
+  line-height: var(--reader-lh);
+  letter-spacing: .015em;            /* 中文小字距，笔画更舒展 */
+  color: var(--text-read, var(--text));
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;         /* 仅在词 / 音节边界断行，避免任意字符劈裂 */
+}
+/* 按句读自动分段后，段与段之间留呼吸；散文段首行缩进 2em（字段行不缩） */
+.art-text p { margin:0; }
+.art-text p + p { margin-top:1.15em; }   /* 段距约 11px → 18px+，段落更分明 */
+.art-text p.is-prose { text-indent: 2em; }
+.art-text-empty { color: var(--text-faint); font-style: italic; }
+
+/* ---------- 结构化正文（bodyVersion 2） ----------
+   段落 / 标题 / 列表 / 引用 / 代码 / 链接都由服务端解析成语义块，这里只负责排版。
+   字号、行高、字体仍走上面的 --reader-* / --font-read 偏好 token，用户改外观时整篇跟着变。 */
+.art-rich { white-space: normal; }        /* 块级元素自己管空白；纯文本段仍是 pre-wrap 外的普通流 */
+.art-rich > :first-child { margin-top: 0; }
+.art-rich p { margin: 0; }
+.art-rich p + p { margin-top: 1.05em; }
+
+.art-h2,
+.art-h3 {
+  line-height: 1.35;
+  font-weight: 700;
+  letter-spacing: .01em;
+  color: var(--text);
+  text-wrap: balance;
+}
+.art-h2 { margin: 1.7em 0 .65em; font-size: 1.35em; }
+.art-h3 { margin: 1.35em 0 .5em; font-size: 1.14em; }
+.art-h2 + p,
+.art-h3 + p { margin-top: 0; }
+
+.art-list { margin: .85em 0; padding-left: 1.55em; }
+.art-list li { margin: .35em 0; }
+.art-list li > p { margin: 0; }
+.art-list li > p + p { margin-top: .5em; }
+.art-list .art-list { margin: .3em 0 .1em; }
+
+.art-quote {
+  margin: 1.1em 0;
+  padding: .2em 0 .2em 1em;
+  border-left: 3px solid var(--accent);
+  color: var(--text-muted);
+}
+.art-quote > :first-child { margin-top: 0; }
+.art-quote > :last-child { margin-bottom: 0; }
+.art-quote p + p { margin-top: .6em; }
+
+.art-pre {
+  margin: 1.1em 0;
+  padding: var(--sp-3) var(--sp-4);
+  overflow-x: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  -webkit-overflow-scrolling: touch;
+}
+.art-pre code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: .86em;
+  line-height: 1.6;
+  letter-spacing: 0;
+  color: var(--text);
+  white-space: pre;
+  tab-size: 2;
+}
+
+.art-code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: .88em;
+  letter-spacing: 0;
+  padding: .08em .34em;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.art-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: .16em;
+  word-break: break-word;
+}
+.art-link:hover { text-decoration-thickness: 2px; }
+
+.art-hr {
+  margin: 1.6em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* 表格：窄屏横向滚动，不压缩字号；单元格内允许换行 */
+.art-table-wrap {
+  margin: 1.2em 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.art-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .94em;
+  line-height: 1.5;
+}
+.art-table th,
+.art-table td {
+  padding: .5em .7em;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  word-break: break-word;
+}
+.art-table th {
+  background: var(--panel-2);
+  font-weight: 600;
+}
+
+/* 图注：图与说明成组，说明比正文小一号、居中 */
+.art-figure {
+  margin: 1.2em 0;
+  text-align: center;
+}
+.art-figure .art-img { margin: 0; }
+.art-caption {
+  margin-top: .5em;
+  color: var(--text-muted);
+  font-size: .84em;
+  line-height: 1.5;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .art-h2 { font-size: 1.24em; margin-top: 1.45em; }
+  .art-h3 { font-size: 1.08em; margin-top: 1.2em; }
+  .art-list { padding-left: 1.35em; }
+  .art-pre { padding: var(--sp-3); }
+  .art-table th,
+  .art-table td { padding: .42em .55em; }
+}
+
+.art-tags { display: flex; align-items: center; flex-wrap: wrap; gap:var(--sp-2); }
+.art-tags-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--text-faint); }
+.art-tags-ai { margin-top: var(--sp-1); }
+/* 动作键靠右下：正文读完后视线落在末尾，复制 / 打开就在落点处等着，不用再扫回左边。
+   卡片详情弹窗复用同一族 .art-* 样式，所以一处改动两处生效。 */
+.art-actions { display: flex; align-items: center; gap:var(--sp-2); flex-wrap: wrap; justify-content: flex-end; }
+/* 正文操作收成小方块图标按钮（复制 / 打开原文章 / 收藏 / 跳文章页，纯 SVG 无文字） */
+.art-actions .btn-copy,
+.art-actions .btn-open,
+.art-actions .btn-fav,
+.art-actions .btn-jump { flex: 0 0 auto; width: 34px; height: 34px; padding:0; justify-content: center; }
+/* 复制成功态自带「已复制」文字，在这一排方块里会溢出到按钮外，只留勾图标（文字靠 toast 播报） */
+.art-actions .btn-label { display: none; }
+
+/* 单条目 AI 动作条：挂在 ArtBody 正文末尾，文章页与卡片详情共用。
+   复用 .btn 体系与 --sp 令牌，视觉上与前一排 .art-actions 拉开一档间距，避免误读成同一组。 */
+/* 单条目 AI 动作条：位置在正文之前（标题行正下方，由 ArtBody 的 parts 顺序决定）。
+ * 所以上下留白交给 .art-inner 的 gap，这里不再自带 border-top / margin-top ——
+ * 那是它当年挂在正文末尾时的写法，留着会在标题下面多出一条莫名其妙的横线。 */
+.entry-ai { display: flex; flex-direction: column; gap: var(--sp-3); }
+/* 动作行下沿一条淡线：让「这是工具条、下面才是正文」一眼分开 */
+.entry-ai-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+  padding-bottom: var(--sp-3); border-bottom: 1px solid var(--line); }
+/* 「已等待 12s」：单篇生成可能跑 1~2 分钟，给个还在动的证据 */
+.entry-ai-wait { margin-left: auto; font-size: var(--fs-xs); color: var(--text-faint);
+  font-variant-numeric: tabular-nums; }
+.entry-ai-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--text-faint);
+  padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; }
+.entry-ai-result { display: flex; flex-direction: column; gap: var(--sp-2);
+  background: var(--surface-2, var(--bg-soft)); border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--sp-4); }
+.entry-ai-res-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  font-size: 13px; font-weight: 600; color: var(--text); }
+.entry-ai-res-body { white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 14px; color: var(--text); }
+.entry-ai-tags { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.entry-ai-tags-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--text-faint); }
+.entry-ai-error { color: var(--danger, #c0392b); }
+
+@media (max-width: 720px) {
+  .entry-ai-result { padding: var(--sp-3); }
+}
+.art-loading i {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); opacity: .4;
+  animation: bounce 1s infinite ease-in-out;
+}
+.art-loading i:nth-child(2) { animation-delay: var(--dur-base); }
+.art-loading i:nth-child(3) { animation-delay: .3s; }
+

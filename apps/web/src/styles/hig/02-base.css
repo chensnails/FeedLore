@@ -1,0 +1,35 @@
+
+/* ---------------------------------------------------------------------------
+ * 2. 基础排版
+ * --------------------------------------------------------------------------- */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+body { font-family: var(--font-ui); }
+::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+
+/* 数字表格化：时间 / 计数 / 未读数不随字形抖动，列表滚动时列更稳 */
+.art-date, .meta-date, .list-count, .badge-size, .badge-idx,
+.chan-tabs-more-n, .card-foot, .row-date, .dg-date {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 正文标题字距收紧一点点（Apple 的大标题习惯）；中文不受字距影响排版宽度 */
+.art-title, .card-title, .row-title, .modal-head h2, .page-title,
+.dd-sheet-title, .confirm-label {
+  letter-spacing: -.011em;
+}
+
+/* 滚动条：细、圆头、跟随主题的淡色，不再用系统默认的粗方块 */
+* { scrollbar-width: thin; scrollbar-color: var(--hig-separator-strong) transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--hig-separator-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+

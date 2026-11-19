@@ -1,0 +1,641 @@
+/* ============================================================
+ * 横滑频道条（v2.5.0）
+ * ------------------------------------------------------------
+ * 只在 ≤720px 出现，挂进两页自己的吸顶头部里（文章页 .reader-head 第二行、
+ * 卡片页 .cards-sticky 第二行）—— 头部本来就是 sticky / 非滚动行，
+ * 频道条跟着一起吸顶，不需要再算一层 top 偏移。
+ *
+ * 数据与高亮完全复用抽屉那一套（state.rdScope / rdFeedId / rdWatch、cardFeed…），
+ * 这里是纯展示 + 转发，没有第二份筛选状态。
+ * ============================================================ */
+.chan-tabs { display: none; }
+
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .chan-tabs {
+    display: flex; align-items: stretch; gap: var(--sp-0);
+    /* 100% 基础宽：头部是 flex-wrap 容器，这一行独占第二排 */
+    flex: 1 0 100%;
+    order: 9;
+    min-width: 0;
+    margin: var(--sp-1) 0 0;
+    padding: 0;
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    /* 隐藏了滚动条，右侧渐隐是「后面还有频道」的唯一提示；滚到末尾由
+       ChannelTabs 加 .at-end 撤掉，别让最后一个标签永远灰着一截。 */
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent 100%);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent 100%);
+  }
+  .chan-tabs.at-end { -webkit-mask-image: none; mask-image: none; }
+  .chan-tabs::-webkit-scrollbar { display: none; }
+  /* 基础头部是 nowrap（桌面一行排开）；这条要独占第二行，窄屏才放开换行。
+     padding-bottom 归零：条的 42px 命中高度本身已经提供了下沿留白。 */
+  .reader-head:has(.chan-tabs) { flex-wrap: wrap; row-gap: 0; padding-bottom: 0; }
+
+  .chan-tab {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px;   /* 触屏命中区统一 44px，视觉高度不变（padding 收一点即可） */
+    padding: 0 10px;
+    border: 0; background: none;
+    font-family: inherit;
+    font-size: var(--fs-base);
+    font-weight: 500;
+    color: var(--text-muted);
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .chan-tab:first-child { padding-left: 0; }
+  .chan-tab.active { color: var(--text); font-weight: 600; }
+  /* 选中态用居中的短下划线：比整块底色轻，也不会改变命中区 */
+  .chan-tab.active::after {
+    content: '';
+    position: absolute; left: 50%; bottom: 0;
+    width: 18px; height: 3px;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    background: var(--accent);
+  }
+  .chan-tab:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus-ring); }
+  /* 末尾的「完整频道列表」：与标签同一行，永远贴在滚动末端。
+     数字说明抽屉里还有多少个订阅频道，比一枚孤零零的 ☰ 更能提示「还有内容」。 */
+  .chan-tabs-more { margin-left: auto; padding: 0 6px; color: var(--text-faint); }
+  .chan-tabs-more .ico { width: 18px; height: 18px; }
+  .chan-tabs-more-n {
+    margin-left: 2px;
+    font-size: var(--fs-2xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+  }
+
+  /* 卡片页头部自带左右 16px 内距：频道条用等量负外距铺到两端即可。
+     垂直方向不再加负 margin / 额外下边框 —— 两页都靠基础规则排在各自吸顶头部
+     的第二行，选中项必须落在同一条基线上（此前卡片页比文章页低 8px：flex 行
+     间距 8px 叠在 4px 上外距上）。 */
+  .cards-sticky .chan-tabs {
+    margin: var(--sp-1) calc(var(--sticky-pad, var(--sp-4)) * -1) 0;
+    padding: 0 var(--sticky-pad, var(--sp-4));
+  }
+  .cards-sticky:has(.chan-tabs) { row-gap: 0; }
+
+  /* 阅读头部随滚动收展（v2.5.0）：两行吸顶头部在手机上长期占 88px。
+     类由 core/reader.js 的方向判据挂/摘；只动 transform，不改布局高度，
+     所以滚动中不会触发布局重排。贴顶 / 贴底 / 置顶期间会自动展开。 */
+  .reader-head { transition: transform var(--dur-med) var(--ease); }
+  .reader-main.head-tucked .reader-head { transform: translateY(-100%); }
+  /* 置顶前要把头部复位再量高度：这一步不播动画，否则量到的是过渡中间的位置 */
+  .reader-main.head-instant .reader-head { transition: none; }
+  /* 头部收起后，展开文章的标题行跟着上移，但**不贴死屏顶**：
+     完全贴住时卡片像被切掉一刀（顶部圆角、留白都没了，截图被当成“卡片不完整”）。
+     留 8px 呼吸缝 + 安全区；上方那条缝由头部自己的 ::after 盖成页面底色，
+     否则上一张卡片 / 正文会从缝里滚过去，又变成“标题飘在正文中间”。
+     用 top 而不是 transform —— 还没吸住的标题行不受影响，只有已吸住的才上移。 */
+  .art-item.open .art-row { transition: top var(--dur-med) var(--ease); }
+  .reader-main.head-tucked .art-item.open .art-row { top: calc(env(safe-area-inset-top, 0px) + 8px); }
+  .reader-main.head-tucked .reader-head::after {
+    content: '';
+    position: absolute; left: 0; right: 0; top: 100%;
+    height: calc(env(safe-area-inset-top, 0px) + 8px);
+    background: var(--bg);
+    pointer-events: none;
+  }
+}
+
+/* ============================================================
+ * 移动端底部视图标签栏（v2.4.0）
+ * ------------------------------------------------------------
+ * 手机上一屏最重要的一件事是「看清楚内容」，而不是在顶栏挤三个视图图标。
+ * 视图切换仍只有一份实现（.viewnav + ViewNav）：桌面 / 平板由各视图顶栏右簇
+ * 渲染；≤720px 顶栏里的实例隐藏，改由 main.jsx 挂载在视图之外的全局实例
+ * 停靠到视口底部。DOM 结构、状态与无障碍语义都不变，只换位置。
+ *
+ * 为什么不能直接把顶栏里那个实例改成 fixed：.reader-head 是容器查询容器
+ * （container-type: inline-size），会为 fixed 后代建立包含块，标签栏会被
+ * 压在头部那一小块里。挂到视图外就没有这个问题。
+ *
+ * z-index 压在频道抽屉遮罩（55）之下：抽屉 / 弹层打开时标签栏被盖住，
+ * 不会出现「两层导航打架」。控制台滚动容器在下面同一档断点里预留底部空间。
+ *
+ * 标签文字在 ≤820px 已被全局 .btn-label 收起（移出无障碍树）；底部栏空间足够，
+ * 这里显式放回来，按钮的可访问名仍由 ViewNav 的 aria-label 提供。
+ * ============================================================ */
+.mobile-tabbar { display: none; }
+
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  /* 顶栏里的视图导航让位给底部栏：只隐藏实例，不删结构（桌面仍用它） */
+  .view-toolbar .viewnav { display: none; }
+
+  .mobile-tabbar { display: block; }
+  /* 悬浮胶囊（v2.5.0）：从贴底整条改成浮在内容上的圆角块 ——
+     内容能从栏两侧「透」出来，栏本身只占三枚按钮，不再像一条把页面切开的横杠。
+     v2.5.1 再压一档：栏高 56→48、两侧留白 12→16、距底 8→6，总占位 64→54px；
+     按钮仍是 44×44 触屏命中（只压外框，不压手指落点），图标 20→18、文字 11→10。 */
+  .mobile-tabbar .viewnav {
+    position: fixed;
+    left: var(--sp-4); right: var(--sp-4);
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    z-index: 50;   /* < --z-drawer-mask(55)：抽屉/弹层永远盖住标签栏 */
+    display: flex;
+    align-items: stretch;
+    width: auto;
+    height: var(--tabbar-h);
+    margin: 0;
+    padding: 0 var(--sp-2);
+    gap: var(--sp-0);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    /* 浮起才分得清「栏」与「内容」：一近一远两层柔光 + 顶部高光。
+       不用 backdrop-filter（模糊预算留给全屏遮罩，见玻璃模糊治理）。 */
+    box-shadow: var(--float-shadow), inset 0 1px 0 var(--float-hi);
+    overscroll-behavior: contain;
+  }
+  .mobile-tabbar .viewnav-btn {
+    position: relative;
+    flex: 1 1 0;
+    width: auto; min-width: 0;
+    height: calc(var(--tabbar-h) - 4px);
+    margin: 2px 0;
+    flex-direction: column;
+    gap: var(--sp-0);
+    padding: 0 var(--sp-1);
+    border-radius: 12px;
+    background: none;
+    box-shadow: none;
+    font-size: var(--fs-2xs);
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .mobile-tabbar .viewnav-btn .ico { width: 18px; height: 18px; font-size: 18px; }
+  .mobile-tabbar .viewnav-btn .btn-label {
+    display: block;
+    font-size: var(--fs-sm);
+    line-height: 1;
+    letter-spacing: .02em;
+  }
+  /* 选中项：主色文字 + 淡主色底丸。胶囊底栏里再画一条顶边横杠会像「没贴住的角」 */
+  .mobile-tabbar .viewnav-btn.active {
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    box-shadow: none;
+  }
+  .mobile-tabbar .viewnav-btn:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--focus-ring);
+  }
+
+  /* 滚动收展（方案 A，判据在 src/ui/tabbarAutoHide.js）：下滚累计 24px 滑出，
+     上滚 6px 滑回；贴顶 / 贴底强制展开。
+     ⚠️ 隐藏必须同时给 visibility 与 pointer-events：只写 opacity 会留下
+     「看不见但点得中、Tab 进得去」的盲区。visibility 延后到淡出结束，
+     展开时立刻生效（0s 无延迟），否则回弹会先出现一块透明空栏。
+     只动 transform / opacity —— 内容区的 padding-bottom 保持原值，
+     收展全程不触发重排；代价是滚到最底时底下多出约 54px 空白，可接受。 */
+  .mobile-tabbar .viewnav {
+    will-change: transform;
+    transition: transform var(--dur-base) var(--ease), opacity var(--dur-base) linear,
+                visibility 0s linear 0s;
+  }
+  body.tabbar-tucked .mobile-tabbar .viewnav {
+    transform: translateY(calc(100% + 12px));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform var(--dur-base) var(--ease), opacity var(--dur-base) linear,
+                visibility 0s linear var(--dur-base);
+  }
+  /* 栏走了，回顶钮跟着落回页边距，不然它悬在原来栏的上方半空。
+     用 transform 跟手：bottom 过渡会走布局，transform 只跑合成层。
+     （过渡写在基础 .scroll-top 规则里 —— 这里不能再开一个 `.scroll-top {`
+     块，回归脚本按首个 `.scroll-top {` 取浮层阴影 / fixed 定位。） */
+  body.tabbar-tucked .scroll-top {
+    transform: translateY(calc(var(--tabbar-h) + var(--sp-5) - var(--sp-4)));
+  }
+
+  /* toast 的默认底边（40px）落在这条常驻栏里，而 toast 的 z-index(400) 又压在
+     栏之上 —— 结果是提示语骑在标签栏上。抬到栏顶 + 栏浮起的下边距 + 一档间距。
+     「有新内容」浮标本来就在 92px，不受影响。 */
+  .toast { bottom: calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* ============================================================
+ * 悬浮回顶钮（v2.5.0）
+ * ------------------------------------------------------------
+ * 滚过一屏（600px）才出现：短列表本来就在顶部，多一个钮只是噪音。
+ * 挂在 #scrollTopRoot（视图之外）—— 各视图头部的 container-type 会
+ * 把 fixed 后代关进头部那一小块。
+ * z-index(40) 低于标签栏(50) 与抽屉遮罩(55)：钮在右下角，不跟它们抢层。
+ * ============================================================ */
+.scroll-top {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--text-muted);
+  box-shadow: var(--float-shadow), inset 0 1px 0 var(--float-hi);
+  cursor: pointer;
+  /* 底栏收起 / 展开时这颗钮跟着上下让位（见 body.tabbar-tucked 规则）。
+     只补 transform 的过渡，不改入场动画 scrollTopIn。 */
+  transition: transform var(--dur-base) var(--ease);
+  animation: scrollTopIn .18s ease-out;
+}
+.scroll-top:hover { color: var(--accent-text); border-color: var(--accent-text); }
+/* 回顶钮是浮动按钮：光环之外保留 2px 实色 outline，光环变柔后键盘焦点仍清晰 */
+.scroll-top:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; box-shadow: var(--float-shadow), 0 0 0 3px var(--focus-halo); }
+.scroll-top .ico { width: 20px; height: 20px; }
+@keyframes scrollTopIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* toast 和回顶钮共用同一条底部高度带；长文案会一直延伸到右侧。
+   提示只显示 1.9s，这段时间把回顶钮收起来比让它被压住更清楚（toast 走了自动恢复）。
+   放在基础规则之后：回归里按 `.scroll-top {` 取首条规则验浮层阴影 / fixed 定位。 */
+body:has(.toast.show) .scroll-top { opacity: 0; pointer-events: none; transition: opacity var(--dur-fast); }
+/* 桌面没有底部标签栏：回到普通页边距，别悬在半空 */
+@media (min-width: 721px) {
+  .scroll-top { bottom: var(--sp-6); }
+}
+
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  /* 密度降级：控件长到 36px（命中高度补到 44），头部一行只留 8px 间距。
+     --ctl-gap 同时压低顶栏与工具栏的间距 —— 一套令牌管两排。 */
+  :root { --head-h: 44px; --head-ctl: 36px; --head-gap: var(--sp-2);
+          --search-h: 36px; --search-w: 100%; --ctl-gap: var(--sp-2); }
+  /* 工具栏在窄屏跟着降到 44（36 控件 + 上下各 4 的 padding）：与顶栏贴成更紧的一组，
+     但仍是「比导航矮一档」的关系，不会反过来压过第一行。 */
+  .view-toolbar { --head-h: 44px; }
+  /* 顶栏工具按钮的 36px 外框由 ≤820 那段负责（走 --head-ctl，这一档自然变 36），
+     这里不再重复一份 —— 同一件事写两遍，改一处就会漏一处。 */
+  /* 展开的搜索框要能换到第二行：文章页头部是真 flex 容器，卡片页头部是
+     display:contents（这条对它无效，换行由 .cards-sticky 的 flex-wrap 负责） */
+  .page-head { padding: 4px 0; flex-wrap: wrap; row-gap: var(--sp-2); }
+  /* 窄屏标题回到「吃掉剩余宽度」：这样工具组才会被推到最右（桌面相反 ——
+     桌面剩余宽度要留给搜索，标题按内容宽）。
+     ⚠️ max-width 必须连桌面那条 `.cards-head > .page-title { max-width: 40% }` 一起压掉：
+     那条是 0,2,0 的两个类，光写 `.page-title`（0,1,0）特异度不够，标题仍被钉在屏宽 40%
+     （680px 下 = 259px），右簇就贴不到右 —— 实测会差出 145px 的一整段空白。
+     ⚠️ flex 基准必须是 0（`1 1 0`）而不是 auto：flex 换行是按「假设主尺寸」
+     （= flex-basis，被 min/max 夹住）分行的，基准取 auto 就等于取**内容宽度** ——
+     长频道名（如「奥斯卡4K蓝光(精品)影视磁力站🍟 - Telegram Channel」）的假设尺寸
+     直接撑爆整行，标题独占第一行、右簇工具被挤到第二行，导航栏变成两行（实测 375px
+     下 .reader-head 高度 44 → 88）。基准取 0 后假设尺寸只剩 min-width 的 60px，
+     整行不再被撑破；标题在剩余空间里伸展，长名字按 nowrap + 省略号单行截断。
+     min-width 保留 60px（约 4 个汉字）：既不让标题缩成「全…」，也保证它不会
+     完全消失。 */
+  .page-title,
+  .cards-head > .page-title { flex: 1 1 0; max-width: none; }
+  .reader-head-text { flex: 1 1 0; max-width: none; }
+
+  /* 触屏命中区：视觉 36px，纵向补到 44px。只扩上下 —— 横向扩会与相邻按钮的
+     命中区重叠，点错隔壁比点不中更烦。 */
+  .page-head .btn, .page-head .dd-trigger { position: relative; }
+  .page-head .btn::after,
+  .page-head .dd-trigger::after {
+    content: '';
+    position: absolute; left: 0; right: 0;
+    top: calc((var(--head-ctl) - 44px) / 2);
+    bottom: calc((var(--head-ctl) - 44px) / 2);
+  }
+
+  /* 搜索收进放大镜：两页的放大镜都在工具组最右端（DOM 顺序即此，无需 order） */
+  .reader-search-toggle, .cards-search-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--head-ctl); height: var(--head-ctl); padding: 0;
+  }
+  .reader-search-toggle.is-on,
+  .cards-search-toggle.is-on { color: var(--accent-text); background: var(--accent-soft); }
+
+  /* 文章页顶栏收纳（v1.7.0）：这一行要放 频道 / 标题 / 搜索 / 视图切换 / ⋮，
+     再加三枚动作按钮（单篇·全部已读·全部收起）就换行（实测 375px 下 headH 44→88，
+     右簇整体掉到第二行）。动作收进 ⋮ 菜单（.is-narrow-only），顶栏窄屏保持单行。
+     这两条必须排在基础层「窄屏专属项默认隐藏」之后（源顺序更靠后才盖得住）。 */
+  .reader-head-tools .vt-action { display: none; }
+  .overflow-item.is-narrow-only { display: flex; }
+  .overflow-sep.is-narrow-only { display: block; }
+  /* 元信息瘦身：窄屏一行放不下「来源·体积·日期」，体积先走（大小在手机端最不关心） */
+  .art-size { display: none; }
+  /* 窄屏只有一个图标入口：搜索框整块退场，点放大镜才展开成一行 */
+  .page-search { display: none; }
+  .page-search.is-open {
+    display: flex; flex: 1 0 100%; order: 9; margin: 0;
+    max-width: none;
+  }
+  /* 搜索必须能真的换到第二行：它和放大镜 / 视图导航 / ⋮ 一起嵌在右簇里，
+     而右簇是 nowrap 的 flex 盒 —— 只给搜索 flex-basis:100%，撑大的是右簇本身
+     （390px 实测右簇 450px，整条工具栏被推到 left=-190，文字全部出屏）。
+     把右簇打平成头部行的直接 flex item（与上面 .cards-head 打平同一手法），
+     搜索的 order:9 + flex-basis:100% 才落到第二行；其余控件保持 DOM 顺序，
+     标题的 flex:1 负责把它们推到右侧。AI 页的 .head-right 不在 .cards-head 内，
+     且没有搜索，不受影响。 */
+  .reader-head-tools,
+  .cards-head .head-right { display: contents; }
+  /* 卡片页靠 order 排位：右簇控件接在标题（order 2）之后；
+     搜索已由 .page-search.is-open 的 order 9 排到最后一行。 */
+  .cards-head .head-right > * { order: 5; }
+  .cards-head .head-right > .page-search { order: 9; }
+  /* iOS 聚焦小于 16px 的输入框会自动放大整页；搜索是移动端高频入口，抬到 16px。
+     只改展开后的搜索框，不牵动设置表单的字号。 */
+  .page-search input { font-size: 16px; }
+  /* 卡片页：整条吸顶栏只有一行 —— [频道][标题][排序][视图][搜索]。
+   * 两个 .wrap 与 .page-tools 在这里退化成 display:contents，子元素直接成为这一行的
+   * flex item，靠 order 排位；搜索展开时 flex-basis:100% 自动换到第二行。
+   * display 必须显式写回 flex —— 基础规则是 display:contents，不还原就没有盒子，
+   * position:sticky 会静默失效（高度 0）。上下内边距取 4px，与文章页头部的
+   * 4px + 36px + 4px 等高（两页吸顶条不该差一截）。 */
+  .cards-sticky {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: var(--head-gap);
+    /* 频道条要用等量负外距铺到两端，两处内距共用一个变量：
+       ≤480 档会把内距收到 --sp-3，写死 --sp-4 会让条左右各溢出 4px，
+       右端渐隐与「更多」按钮被推到屏幕外。 */
+    --sticky-pad: var(--sp-4);
+    padding: 4px var(--sticky-pad);
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    background: var(--bg);
+    /* 与桌面同理：不画分隔线（这里曾是"紧贴搜索结果下方的那条长横线"） */
+    border-bottom: 0;
+  }
+  .cards-head, .cards-head .page-tools { display: contents; }
+
+  /* 卡片页靠 order 排位（head / page-tools 都被打平成一行的 item）；
+     文章页的头部是真 flex 容器，频道按钮本身就在第一个，别给 order ——
+     给了会把「频道」推到最右，跟标题、工具组错位。 */
+  .cards-menu-btn { order: 1; }
+  .cards-title { order: 2; }
+  /* v1.6.0：右簇（搜索 + ⋮）在窄屏是 .cards-head 的最后一个 flex item（.cards-head 打平成
+     contents 后成为 .cards-sticky 的 item），靠 order 压在最右，并 margin-left:auto 自行贴右 */
+  .head-right { order: 5; margin-left: auto; }
+  /* 排序从下拉收成图标按钮（Dropdown 的 icon 模式，名字与提示带当前档位） */
+  #sortDD { order: 3; flex: 0 0 auto; }
+  #sortDD .dd-trigger.has-icon {
+    width: var(--head-ctl); height: var(--head-ctl); padding: 0; justify-content: center;
+    border-radius: var(--radius-sm);
+    background-image: none;          /* .select 自带的下拉小箭头，图标模式不需要 */
+  }
+  #sortDD .dd-label, #sortDD .dd-caret { display: none; }
+  #sortDD .dd-icon { display: block; width: 1rem; height: 1rem; }
+  /* 频道下拉在 ≤720px 已由抽屉取代（那边 display:none），没有排位可管 */
+  /* 视图切换的尺寸已在基础规则里压到 32px，这里只管排位 */
+  #viewMode { order: 4; flex: 0 0 auto; }
+  /* v1.6.0：搜索放大镜与 ⋮ 都在 .head-right 内，保持 DOM 顺序（[🔍][⋮]），
+     不再给单独 order —— 否则放大镜会被甩到 ⋮ 右侧，溢出菜单不在最右。 */
+
+  /* 内容区给悬浮标签栏留出高度：栏本身 56 + 浮起的下边距 8 + 一档 12 的呼吸间距。
+     三个视图各有自己的滚动容器，这里一次列全。 */
+  .reader-main,
+  #cardsRoot > main.wrap,
+  #aiView {
+    padding-bottom: calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* 顶部安全区：PWA / 刘海屏里，吸顶头部不再贴住状态栏。
+     写在密度段末尾，才盖得住上面 .cards-sticky 的 padding 简写。 */
+  .reader-head { padding-top: calc(4px + env(safe-area-inset-top, 0px)); }
+  .cards-sticky { padding-top: calc(4px + env(safe-area-inset-top, 0px)); }
+  .ai-head { padding-top: calc(var(--sp-3) + env(safe-area-inset-top, 0px)); }
+}
+
+/* ---------- 阅读页头部按「自身宽度」收放（容器查询） ----------
+ * 带文字的整行工具（标题 + 三枚动作 + 搜索 220 + 视图导航 + ⋮）需要约 760px；
+ * 而头部宽度 = min(内容列, --reader-width)，721–1064px 的窗口里只有 417–760px。
+ * ≤759 收掉按钮文字（title / aria 仍有语义），≤560 再把常驻搜索收成放大镜 ——
+ * 与手机上同一套交互。不支持容器查询的浏览器按旧规则渲染（仍会溢出，但不会更差）。 */
+@container (max-width: 759px) {
+  .reader-head .btn-label { display: none; }
+  .reader-head .btn:has(> .ico + .btn-label) {
+    width: var(--head-ctl); height: var(--head-ctl);
+    padding: 0; justify-content: center; gap: 0;
+  }
+  .reader-head .viewnav {
+    flex: 0 0 auto; min-width: 0;
+    padding: 0; gap: var(--sp-2);
+    background: none; box-shadow: none; border: 0; border-radius: 0;
+    margin-right: auto;
+  }
+  .reader-head .viewnav-btn {
+    flex: 0 0 auto;
+    width: var(--head-ctl); height: var(--head-ctl);
+    padding: 0; border-radius: var(--radius-sm); gap: 0;
+  }
+  .reader-head .viewnav-btn.active {
+    background: var(--accent-soft); color: var(--accent-text); box-shadow: none;
+  }
+  /* 动作按钮收进 ⋮：这一列放不下「单篇 / 全部已读 / 全部收起」三枚带字按钮。
+     .is-narrow-only 菜单项只存在于阅读页的 ⋮ 里，打开不会影响卡片 / AI 页。 */
+  .reader-head-tools .vt-action { display: none; }
+  .overflow-item.is-narrow-only { display: flex; }
+  .overflow-sep.is-narrow-only { display: block; }
+}
+
+@container (max-width: 560px) {
+  /* 搜索退到放大镜；展开时独占第二行（换行由 .reader-head:has(.is-open) 打开） */
+  .reader-head .reader-search-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: var(--head-ctl); height: var(--head-ctl); padding: 0;
+  }
+  .reader-head .reader-search-toggle.is-on {
+    color: var(--accent-text); background: var(--accent-soft);
+  }
+  .reader-head-tools { display: contents; }
+  .reader-head-text { flex: 1 1 0; max-width: none; }
+  .reader-head .page-search { display: none; }
+  .reader-head .page-search.is-open {
+    display: flex; flex: 1 0 100%; order: 9; margin: 0; max-width: none;
+  }
+  .reader-head .page-search input { font-size: 16px; }
+}
+
+/* 搜索展开时头部换行：搜索独占第二行。条件挂在 .is-open 上而不是断点上 ——
+   放大镜可能出现在 560px 以下的列里，也可能在更宽的窗口（拖动侧栏后）。 */
+.reader-head:has(.page-search.is-open) {
+  flex-wrap: wrap; padding: 4px 0; row-gap: var(--sp-2);
+}
+.reader-head:has(.page-search.is-open) .reader-head-tools { display: contents; }
+.reader-head:has(.page-search.is-open) .reader-head-text { flex: 1 1 0; max-width: none; }
+.reader-head:has(.page-search.is-open) .page-search.is-open {
+  flex: 1 0 100%; order: 9; margin: 0; max-width: none;
+}
+/* 展开态就是「可以收起」这个状态：窗口从窄屏拉宽后放大镜会按桌面规则隐去，
+   若不给它出场，搜索会永远占着第二行收不回去。 */
+.reader-head:has(.page-search.is-open) .reader-search-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--head-ctl); height: var(--head-ctl); padding: 0;
+}
+
+/* 三枚动作同时在场的极端情况：带文字时整行约 848px，比默认 760px 的阅读宽度
+   还宽 88px，⋮ 会被挤出头部（「全部已读」+「全部收起」可同时成立）。
+   这时动作只留图标：⋮ 菜单里有同名带文字的项，语义不丢。 */
+.reader-head:has(#readerReadAllBtn:not([hidden])):has(#readerCollapseAll:not([hidden])) .vt-action .btn-label {
+  display: none;
+}
+.reader-head:has(#readerReadAllBtn:not([hidden])):has(#readerCollapseAll:not([hidden])) .vt-action {
+  /* 文字收掉后按钮的 min-content 只剩图标，会把收缩全吃在自己身上（实测 36→19）；
+     固定住，剩余宽度交给搜索去缩（它自己有 220px 底线）。 */
+  flex: 0 0 var(--head-ctl);
+  width: var(--head-ctl); padding: 0; justify-content: center; gap: 0;
+}
+
+/* 更窄一档（≤480）：.wrap 的左右内距在「手机」段收到 12px，吸顶外壳必须跟着收 ——
+ * 否则第二行工具栏比顶栏多凹 4px，右簇与顶栏「设置」差在半根手指的位置上，
+ * 上下两条栏的右边缘对不齐（实测 480px 下 468 vs 464）。 */
+@media (max-width: 480px) {
+  .cards-sticky { --sticky-pad: var(--sp-3); padding: 4px var(--sticky-pad); }
+}
+
+/* 超小屏（≤360，Android 常见的最小宽度档）：
+ * 卡片页这一行需要 332px 内容宽（频道 64 + 标题 88 + 排序 36 + 视图 76 + 放大镜 36 + 4×8 间距），
+ * 加上左右各 16 的内距即 364px 才不换行。320 / 360 都放不下：放不下的那枚（放大镜）会被
+ * flex 换行甩到第二行，工具栏从 44 变成 88 —— 等于「一张卡片的高度换 4 个字」。
+ * 所以只在这一档让文字标题退场：当前频道仍能从抽屉（☰ 上写着「频道」）与下方标签栏认出来，
+ * 右簇再用 margin-left:auto 自己贴右，末尾不留半条空白。
+ * 375 及以上标题照常显示（实测富余 11px）—— 361–374 之间没有真实设备宽度，
+ * 阈值取 360 而不是 364，是为了让降级点落在真实机型上。 */
+@media (max-width: 360px) {
+  .cards-title { display: none; }
+  #sortDD { margin-left: auto; }
+}
+
+/* ≤480：频道按钮收成一枚 ☰（v1.7.0 文章页窄屏收纳的第二刀）。
+ * 375px 下文章页那一行是 [☰ 频道][标题][🔍][视图×3][⋮]：频道按钮的文字占掉约 54px，
+ * 标题被挤到换行（实测 headH 44→88，右簇掉到第二行）。
+ * 文字先走：抽屉的语义由 aria-label（打开频道列表）与 title 兜住，视觉上 ☰ 与
+ * 右上角的搜索/视图一样是图标按钮，读法一致。 */
+@media (max-width: 480px) {
+  .reader-menu-label, .cards-menu-label { display: none; }
+}
+
+
+/* 触屏命中区（v1.6.0-test3）：WCAG 2.2 SC 2.5.8 要求 ≥24×24，iOS HIG 建议 44×44。
+   390px 实测 .reader-side-fold 仅 22×22、.reader-side-close 31×19、.rd-ch-filter 22×22、
+   ⋮ 菜单项高 33px，手指都够不着。这里给的是真实盒子尺寸、不用伪元素虚扩命中区 ——
+   折叠键与关闭键只隔 4px，虚扩会互相抢点击。命中条件同时收 coarse 指针与 ≤720px：
+   前者是真手指，后者是窄窗口（headless 模拟不出 coarse，靠宽度这一条才验得到）。 */
+@media (pointer: coarse), (max-width: 720px) {
+  .reader-side-fold { width: 40px; height: 40px; }
+  .reader-side-fold .ico { width: 1rem; height: 1rem; }
+  .reader-side-close { min-width: 40px; min-height: 40px; padding: 0 var(--sp-2); }
+  .rd-ch-filter { width: 30px; height: 30px; }
+  .overflow-item { min-height: 44px; }
+  /* 文章列表右侧的星标 / 标为未读：真实盒子抬到 44×44，图标视觉尺寸不变。
+     两枚动作在 grid 第二列竖排，列宽由内容自动算出，文字不再需要任何让位宽度。 */
+  .art-star { min-width: 44px; min-height: 44px; margin: var(--sp-1) var(--sp-1) 0 0; padding: 0; }
+  .art-star .ico { width: 1.05rem; height: 1.05rem; }
+  .art-actions .btn-copy,
+  .art-actions .btn-open,
+  .art-actions .btn-fav,
+  .art-actions .btn-jump { width: 44px; height: 44px; }
+  /* 卡面浮层按钮：图片上留白有限，40px 已可稳定点中。
+     文字卡底部操作条同样抬到 40px —— 同一张卡上的复制/打开不该大小不一。 */
+  .card-media-actions .btn-copy,
+  .card-media-actions .btn-open,
+  .card-foot .btn-copy,
+  .card-foot .btn-open,
+  .row-actions .btn-copy,
+  .row-actions .btn-open { width: 40px; height: 40px; }
+
+  /* 触屏上两枚按钮必须常显（没有悬停可依赖），但实心主色 + 描边各占一块，
+     375px 屏的卡宽只有约 172px，两枚按钮加间距吃掉图片一半以上宽度，
+     一屏十几枚方块比标题还抢眼。这里统一成半透明深色底 + 白图标：
+     点击路径不变，只是把视觉层级压回图片后面；复制成功态保留绿色作为唯一反馈。
+     不用 backdrop-filter：模糊预算只留给两个全屏遮罩（见 verify-dist 的守门），
+     卡片网格是长滚动容器，十几枚模糊层每帧重采样会掉帧 —— 用更实的底色达到同一目的。
+     桌面窄窗口也命中本段，但那边仍由 (hover:hover) 规则控制显隐，只是换了皮。 */
+  .card-media-actions .btn-copy,
+  .card-media-actions .btn-open,
+  .card-media-actions .btn-open:hover {
+    background: rgba(14, 16, 22, .62);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, .34);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .28);
+  }
+  .card-media-actions .btn-copy:hover { background: rgba(14, 16, 22, .74); }
+  .card-media-actions .btn-copy.copied {
+    background: var(--green);
+    color: var(--on-accent);
+    border-color: transparent;
+  }
+  .empty-action { min-height: 44px; padding: 0 var(--sp-5); }
+}
+
+/* 粗指针宽屏：动作列同样是 grid 的第二列，列宽自动跟随 44×44 按钮，
+   不再需要单独给紧凑单行补 96px 让位。 */
+
+/* ---------------- 规则面板（v1.6.0-test5）：关注 / 屏蔽 + webhook ----------------
+   复用 .form / .form-row / .input-with-btn / .test-result，这里只补规则卡片自己的排版。
+   规则卡片是「名称 + 动作切换 + 关键字多行框 + 底部开关」的一小块，用 border 而不是
+   阴影分隔（#9 降阴影纪律），收起态 is-off 整块降不透明度表示停用。 */
+.watch-rule {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+.watch-rule.is-off { opacity: .55; }
+.watch-rule-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.watch-rule-name { flex: 1 1 140px; min-width: 0; }
+.seg-btn .ico { width: .85rem; height: .85rem; vertical-align: -.12em; }
+.seg-btn.is-block.active { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); box-shadow: none; }
+.watch-rule-kw { width: 100%; resize: vertical; min-height: 3.4em; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.watch-rule-foot { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.watch-check { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); color: var(--text-muted); cursor: pointer; }
+.watch-check input { width: auto; margin: 0; }
+.watch-check.muted { color: var(--text-faint); }
+.watch-rule-del { margin-left: auto; color: var(--danger); }
+.watch-empty { padding: var(--sp-4) 0; text-align: center; color: var(--text-faint); font-size: var(--fs-sm); }
+.watch-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-2); }
+
+/* 小屏卡片动作瘦身（v2.4.0）：卡宽约 172px 时，两枚 40px 方块加间距要占掉
+   一半以上；卡片本身点击即进详情，详情里复制 / 打开都在。这里只保留更常用的
+   「复制链接」这一枚，并把视觉尺寸收到 36px，让标题和图片重新成为主体。 */
+@media (max-width: 560px) {
+  .card-media-actions .btn-open,
+  .card-foot .btn-open,
+  .row-actions .btn-open { display: none; }
+  .card-media-actions .btn-copy,
+  .card-foot .btn-copy,
+  .row-actions .btn-copy { width: 36px; height: 36px; }
+}
+
+/* ============================================================
+ * 粗指针矮屏 / 手机横屏（844×390 这类）
+ * ------------------------------------------------------------
+ * 宽度 >720 会掉进桌面布局：常驻 232px 侧栏 + 两层吸顶头部把 390px
+ * 的高度吃掉大半，底部又没有标签栏，内容区剩不到 200px。
+ * 上面的四块移动降级（抽屉 / 频道条 / 底栏 / 密度）已把条件扩成
+ * 「窄屏 或 矮屏粗指针」，规则仍各归各位、没有合并成一大块。
+ * 这里只补矮屏独有的纵向压缩：--tabbar-h 保持 48px，按钮命中区仍是 44px，
+ * 不能为了省 8px 把触屏落点压小。
+ * ============================================================ */
+@media (max-height: 500px) and (pointer: coarse) {
+  :root { --head-h: 38px; --head-ctl: 32px; --head-gap: var(--sp-1); --ctl-gap: var(--sp-1); }
+  /* 吸顶头部不再叠安全区与上下留白：横屏每一像素都留给内容 */
+  .reader-head, .cards-sticky, .ai-head { padding-top: 0; padding-bottom: 0; }
+  /* 横屏只压头部，不压手指落点：频道标签仍保持 44px 命中 */
+  .chan-tab { min-height: 44px; }
+  .reader-main, #cardsRoot > main.wrap, #aiView {
+    padding-bottom: calc(var(--tabbar-h) + var(--sp-3) + env(safe-area-inset-bottom, 0px));
+  }
+  /* 横屏抽屉不该盖掉 84vw：给内容留一大半宽度，便于对照着看 */
+  .reader-side, .cards-side { width: min(272px, 40vw); }
+}
+
+/* 极窄两栏（320–400px）：卡宽只剩 ~168px，四行文字 + 一张 4:3 图会把卡塞满。
+   仍守「≤720 最少两栏」的硬规矩（改单栏后一屏只看得到一张卡，像详情页），
+   这里只降信息量：带图摘要收成 1 行、纯文字 2 行，卡内边距与标题行距各收一档。
+   放在文件末尾，用源顺序压过 ≤720 / ≤360 段的 clamp。 */
+@media (max-width: 400px) {
+  .card-body { padding: var(--sp-2); }
+  .card-title { line-height: 1.35; height: calc(1.35em * 2); }
+  .card-desc { -webkit-line-clamp: 2; line-height: 1.45; }
+  .card-has-media .card-desc { -webkit-line-clamp: 1; }
+}

@@ -1,0 +1,325 @@
+/* ============================================================
+ * 顶栏「图标 + 文字 → 只有图标」的降级点（v1.1.17）
+ * 给导航配上图标后，全文字版在 720–900px 这段已经放不下（品牌会被压没），
+ * 所以统一降级点定在 820px：桌面端 图标+文字，平板 / 手机 只有图标。
+ * ============================================================ */
+@media (max-width: 820px) {
+  /* 图标化的降级点同时也是控件尺寸的换挡点：顶栏按钮在这一档收成方形，
+     边长就该与第二行工具栏（恒 36）同值 —— 否则 721–820 这段是「上 32 / 下 36」，
+     两条栏紧挨着，4px 的错位一眼就看见。
+     ⚠️ 换挡本身写在文件末尾的「工具栏令牌层」之后（那里才盖得住基础 :root）。 */
+  .btn-label { display: none; }
+
+  /* 文字收起后，头部按钮实际只剩一枚图标 —— 但 span.btn-label 还在 DOM 里，
+     `:has(> .ico:only-child)` 匹配不到，宽度停在「8 + 16 + 8 = 34」，比同一排的
+     方形按钮（36）窄 2px。工具栏里的「单篇/多篇」「全部已读」正好是这种按钮，
+     三条并排时右边缘会参差 —— 这里按方形按钮收口，一排才真正齐平。 */
+  .page-head .btn:has(> .ico + .btn-label) {
+    width: var(--head-ctl); height: var(--head-ctl);
+    padding: 0; justify-content: center; gap: 0;
+  }
+}
+
+/* ============================================================
+ * 断点体系（v1.3.10 头部重构后统一，全站照此挂样式）
+ *
+ *   ≥ 721px    桌面 / 平板：文章页常驻频道栏 + 内容列；头部只留标题、筛选与页面工具；
+ *              卡片页走头部频道下拉（≥721px 即显示）
+ *   ≤ 720px    移动 / 窄窗口：常驻栏让位给左侧抽屉，头部出现「频道」按钮，
+ *              卡片页的频道下拉同步收进抽屉（同一件事只留一个入口）
+ *   ≤ 480px    极窄：左右内边距收到 12px，标题贴边
+ *
+ * 语义固定为「720 = 导航降级」「820 / 720 = 密度降级」，新样式请挂到这两档之一，
+ * 不要再临时自造 640 / 641 之类的断点。
+ *
+ * 为什么 720 而不是 1080 才收侧栏：旧版在 721–1080 把频道栏收进抽屉，导致窄桌面 /
+ * 半屏窗口里「关注 / 未读 / 收藏」等入口被移出屏幕、点击无响应。频道栏在 721px 以上
+ * 仍有足够空间常驻（内容列约 760px+），故统一到 720，与 JS 的 resize 阈值一致。
+ * ============================================================ */
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  /* 阅读页：分栏 → 单列，左侧频道栏收进抽屉（右滑打开 / 左滑收起） */
+  .reader { padding-top: var(--sp-4); }
+  .reader > #readerRoot { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  /* 抽屉宽度由 min(272px, 84vw) 定，拖宽分隔条在没有常驻栏时没有意义 */
+  .reader-resize { display: none; }
+
+  /* 「频道」开关：两页同款 —— 图标 + 文字、方角、与图标按钮同高。
+     只留一枚 ☰ 时，文章页读到的是「菜单」、卡片页读到的是「频道」，
+     同一个位置同一件事却有两种解读。 */
+  .reader-menu-btn, .cards-menu-btn {
+    display: inline-flex; align-items: center; gap: var(--sp-1);
+    flex: 0 0 auto; padding: 0 var(--sp-2);
+    border-radius: var(--radius-sm);
+  }
+  .reader-menu-label, .cards-menu-label { font-size: var(--fs-md); }
+  .reader-side-close { display: inline-flex; }
+  .reader-mask, .cards-mask {
+    display: block;
+    position: fixed; inset: 0; z-index: var(--z-drawer-mask);
+    background: var(--dim);
+    opacity: 0; visibility: hidden;
+    transition: opacity .22s ease, visibility .22s ease;
+  }
+  body.reader-drawer-open .reader-mask,
+  body.cards-drawer-open .cards-mask { opacity: 1; visibility: visible; }
+  body.reader-drawer-open,
+  body.cards-drawer-open { overflow: hidden; }
+
+  /* 文章页与卡片页的频道抽屉共用这一套尺寸 / 动画 */
+  .reader-side, .cards-side {
+    display: block;
+    position: fixed; left: 0; top: 0; bottom: 0; z-index: var(--z-drawer);
+    /* 高度按当前可视区算（dvh 覆盖上面的 bottom:0），抽屉最后几个频道
+       不会被地址栏压住；内部照常滚。 */
+    height: 100vh;
+    height: 100dvh;
+    width: min(272px, 84vw);
+    max-height: none;
+    background: var(--panel);
+    /* 抽屉是浮在内容上的「一层面板」：双层柔光 + 顶边高光，和底栏同一套浮层语言 */
+    box-shadow: var(--float-shadow), inset 0 1px 0 var(--float-hi);
+    padding: var(--sp-4) var(--sp-3) var(--sp-6);
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+    border: 1px solid var(--border);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: translateX(-104%);
+    /* 收起态只是滑出屏幕，元素仍在 Tab 序列与无障碍树里 —— 加 visibility
+       才真的不可达；延迟到滑出动画结束再隐藏，展开时立即可见。 */
+    visibility: hidden;
+    transition: transform .26s cubic-bezier(.4, 0, .2, 1), visibility 0s linear .26s;
+  }
+  body.reader-drawer-open .reader-side,
+  body.cards-drawer-open .cards-side {
+    transform: none;
+    visibility: visible;
+    transition: transform .26s cubic-bezier(.4, 0, .2, 1), visibility 0s linear 0s;
+  }
+  .reader-side-head, .cards-side-head { padding: 2px var(--sp-1) var(--sp-2); }
+  .reader-channels, .cards-channels { flex-direction: column; gap: var(--sp-0); overflow: visible; }
+  .rd-ch {
+    width: 100%;
+    padding: var(--sp-2) var(--sp-3);
+    border: 1px solid transparent;
+  }
+  .rd-ch.active { border-color: var(--accent-soft); }
+  .rd-ch-avatar { display: flex; }
+  .rd-ch-name { max-width: none; }
+  .rd-ch-n { margin-left: auto; }
+  /* 抽屉里分组标题可以正常显示，别藏 */
+  .rd-ch-group { display: flex; }
+
+  /* 频道筛选：抽屉成为唯一入口，头部的下拉退场（同一件事不留两个入口）。
+     标题位这时换成文字标题（桌面那版是「下拉即标题」，见 .cards-head > .cards-title） */
+  #feedDD { display: none; }
+}
+
+@media (max-width: 720px) {
+  .wrap { padding:0 var(--sp-4); }
+  /* 卡片网格最少两栏：min(160px, 50% - 半格) 把单栏下限压到半宽，
+     320px 宽也能并排两张卡（窄屏一栏 = 一张卡占满整屏，读起来像详情页）。
+     紧凑密度的基础规则（216px）特异度更高，必须在同一断点里按同一口径覆盖。 */
+  .grid { grid-template-columns: repeat(auto-fill, minmax(min(160px, calc(50% - var(--sp-2))), 1fr)); gap:var(--sp-4); }
+  :root[data-density="compact"] .grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(140px, calc(50% - var(--sp-2))), 1fr));
+  }
+  /* ⚠️ 这里曾有「复制链接独占一行」的规则（.btn-copy{flex:1 0 100%}）：那是复制按钮
+     还是带文字的整宽按钮时的设计。v1.7.0 起复制按钮已收成图标方块（宽度定死 32/34px），
+     那条规则会把方块按钮拉成整行宽的巨型蓝条 —— 已移除。 */
+  .search-box { flex-basis: 100%; }
+  .select { flex: 1; }
+  /* ⚠️ 这里曾有 `.viewmode { margin-left:auto }`：那是搜索框整行（flex-basis:100%）时代
+     用来把视图切换推到右边的。现在工具栏打平成一行、靠 order 排位，标题已经吃掉剩余宽度，
+     再留这条 auto 外边距就会在「排序」与「视图切换」之间拉开一道几十像素的空隙
+     （实测 680px 下 153px），右簇被撕成两段。 */
+  /* 卡片摘要的行数不在这里定：卡高与行数在 ≤720px 的「窄屏卡片」段统一给，
+     这里再写一条会在源码顺序上压过它（同为 720 断点）。 */
+
+  /* 列表视图：操作按钮换到第二行，标题/描述各留一行 */
+  .row-item { flex-wrap: wrap; padding:var(--sp-3) var(--sp-3); gap:var(--sp-3); }
+  .row-thumb { flex-basis: 78px; width: 78px; height: 54px; border-radius: var(--radius-sm); }
+  /* 窄屏下标题独占一行，体积/日期挪到下面，避免标题被挤成「玉簟秋（2026）4K 芒…」 */
+  .row-head { flex-wrap: wrap; gap:var(--sp-1) var(--sp-3); }
+  .row-title { flex: 1 0 100%; font-size: var(--fs-md); }
+  .row-facts { font-size: var(--fs-2xs); }
+  .row-desc {
+    white-space: normal;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .row-actions { flex: 1 0 100%; gap:var(--sp-2); justify-content: flex-end; }
+  .sk-row { padding:var(--sp-3) var(--sp-3); gap:var(--sp-3); }
+  .sk-row-thumb { flex-basis: 78px; width: 78px; height: 54px; border-radius: var(--radius-sm); }
+
+  .modal-mask { padding:var(--sp-3); }
+  .modal { max-height: 94vh; max-height: 94dvh; }
+  .modal-head { padding:var(--sp-4) var(--sp-4) var(--sp-3); }
+  .tabs { padding:0 var(--sp-4); }
+  .tab { margin-right:var(--sp-4); }
+  .form { padding:var(--sp-4) var(--sp-4) var(--sp-1); }
+  .pane-foot { padding:var(--sp-3) var(--sp-4) var(--sp-4); flex-wrap: wrap; }
+
+  /* 折叠分组：内边距跟着弹层的 16px 走 */
+  .sec-head { padding:var(--sp-3) var(--sp-4); }
+  .sec-body { padding:2px var(--sp-4) var(--sp-4); }
+  .sec-sub { font-size: var(--fs-2xs); }
+  .pane-scroll > .test-result { margin:var(--sp-3) var(--sp-4) 0; }
+
+  .source-add { padding:var(--sp-4) var(--sp-4) var(--sp-3); }
+  .source-opts { gap:var(--sp-2) var(--sp-4); }
+  .source-opts input[type="number"] { width: 76px; }
+  /* A 方案紧凑行：不换行、整行命中；快捷开关收进详情层，标题让出宽度 */
+  .feed-row { flex-wrap: nowrap; padding:var(--sp-2); gap:var(--sp-2); }
+  .feed-quick { display: none; }
+  .feed-avatar { width: 30px; height: 30px; flex-basis: 30px; }
+  .feed-group input { width: 100%; }
+  /* 触屏命中区：图标按钮 40px、拖拽手柄 44px；排序框同步加高 */
+  .feed-icon-btn { width: 40px; height: 40px; }
+  .feed-row .drag-handle { width: 32px; height: 44px; margin: 0; opacity: 1; color: var(--text-faint); }
+  .feed-order { width: 48px; height: 40px; }
+  .feed-group-head { padding:var(--sp-3) var(--sp-2) var(--sp-1); }
+  .src-toolbar { padding: 0 var(--sp-2); }
+  .sl-row { padding: var(--sp-2); gap: var(--sp-2); }
+  .sl-side .feed-sw-label { display: none; }
+  /* 日报频道清单：触屏行再高一档，滚动区收到半屏内，避免和外层 .pane-scroll 抢手势 */
+  .form-row .feed-pick-row { min-height: 48px; }
+  .feed-pick { max-height: 45vh; }
+  .feed-pick-search { flex-basis: 100%; }
+
+  /* 详情层在手机上 = 贴底整宽弹层（与设置外壳 / 卡片详情同一套手势语言） */
+  .ds-mask { align-items: flex-end; justify-content: stretch; background: var(--overlay); }
+  .ds-sheet {
+    width: 100%; height: auto; max-height: 100%;
+    border-left: 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    animation: sheetUp var(--dur-slow) var(--ease);
+  }
+  .ds-sheet::before {
+    content: '';
+    width: 38px; height: 4px; flex: 0 0 auto;
+    border-radius: var(--radius-pill);
+    background: var(--border-strong); opacity: .7;
+    margin: var(--sp-2) auto 0;
+  }
+  /* 移动端层内只留一个出口（右上角 × + 下滑手势 + Esc）；.ds-back 与外壳的
+     .settings-back 会堆出三个同义「返回」，保留 DOM 供键盘/回归用，这里不显示。 */
+  .ds-back { display: none; }
+  .ds-head { padding: var(--sp-3) var(--sp-3) var(--sp-2); }
+  .ds-body { padding: var(--sp-3); }
+  .ds-foot { padding: var(--sp-3); }
+  /* 批量页脚折行时，让「删除」独占一行，不与相邻动作并排 */
+  .pane-foot-btns .btn-danger { flex: 1 0 100%; margin-left: 0; }
+
+  .viewnav-btn { padding:var(--sp-1) var(--sp-3); }
+  .stat small { display: none; }
+  /* ≤360 也不挤：日期选择独占一行，两枚动作按钮平分下一行 */
+  .digest-head { padding:var(--sp-5) 0 var(--sp-3); }
+  .digest-actions { width: 100%; flex-wrap: wrap; }
+  .digest-actions .select { flex: 1 1 100%; min-width: 0; }
+  .digest-actions .btn { flex: 1 1 auto; }
+  .dg-card { padding:var(--sp-5) var(--sp-4); }
+  .form-grid { grid-template-columns: 1fr; gap:var(--sp-3); }
+  .dg-item-thumb, .dg-item-thumb-fb { width: 52px; height: 52px; }
+
+  /* 抽屉 / 单列 / 频道开关的规则已上移到 ≤720px 那段（导航降级），
+     这里只保留手机档的排版微调。 */
+
+  /* 吸顶本身已收进基础规则（桌面与移动同一套），这里只改窄屏的下边距 */
+  .reader-head { padding:var(--sp-2) 0 var(--sp-3); }
+  .reader-head h2 { font-size: var(--rd-head-fs); }
+  .reader-head-tools .btn { padding:0 var(--sp-2); }
+  /* 窄屏正文图片：跟着屏宽走，只对特别高的长图用视口高度兜底，避免占满整屏 */
+
+  /* 展开态箭头和标题同一行，来源/体积/日期换到第二行 */
+  /* 行式列表的窄屏密度：留白收到 12、缩略图 92、标题 15px。
+     不再换行堆地址 —— 来源与时间本来就在底部那一行，动作压在行末。 */
+  .art-head { gap: var(--sp-2); padding: var(--sp-3); }
+  .art-dot { margin-top: 8px; }
+  .art-thumb { flex: 0 0 92px; width: 92px; }
+  .art-meta .src-pill { max-width: none; }
+  /* 文章密度：手机上紧凑仍占两行 —— 标题一行（最多两行），来源与时间落到下一行，
+     动作键垂直居中靠右收尾。桌面紧凑仍是一行；手机横向不够，标题与元信息挤在
+     同一行会两头都截断。 */
+  .art-item.is-line .art-head { align-items: flex-start; padding: var(--sp-3) var(--sp-4); }
+  .art-item.is-line .art-dot { margin-top: 8px; }
+  .art-item.is-line .art-caret { margin-top: 3px; }
+  /* 动作已是 grid 的第二列（基础规则里竖排 + 垂直居中），内容列不必再让位：
+     以前靠 .art-text / .art-meta 的 44 / 40 / 60 / 96px padding-right 硬腾地方，
+     按钮一多或字号一变就会盖住标题。 */
+  .art-item.is-line .art-text { flex-direction: column; align-items: stretch; gap: 5px; }
+  .art-item.is-line.is-read .art-star { margin: 0; }
+  .art-item.is-line .art-title {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+    overflow: hidden;
+  }
+  .art-item.is-line .art-meta { flex-wrap: wrap; margin-top: 0; }
+  .art-item.is-line .art-meta .src-pill { max-width: 180px; }
+  .art-inner { padding: var(--sp-3); gap: var(--sp-3); }
+  /* 动作键右对齐在窄屏也生效（基础规则已负责，这里不再回退靠左）：
+     读完正文视线落在末尾，复制 / 打开就该在落点，不用再扫回左边。
+     正文不要在窄屏改字号：--reader-fs 归「正文字号」管，钉死界面字号会让手机上的设置失效。 */
+  .art-img { max-height: 72vh; max-height: 72dvh; }
+}
+
+/* ============================================================
+ * 手机（≤560px，覆盖绝大多数机型）：导航收成纯图标
+ *
+ * 视图切换的窄屏形态见文件末尾「组件统一 1b」——
+ * 那里要排在 `.seg, .viewnav` 之后才盖得住（同特异度靠源顺序取胜）。
+ * ============================================================ */
+@media (max-width: 560px) {
+  /* 程序名收掉后 logo 就是唯一的品牌标识，统一到 32px（否则 560→480 会从 40 跳到 30） */
+  .brand-logo { width: 32px; height: 32px; }
+}
+
+/* ============================================================
+ * 更窄的小屏（≤480px）：参考 CommaFeed 的移动端，
+ * 视图切换做成紧凑分段控件，页面主体尽量占满宽度。
+ * ============================================================ */
+@media (max-width: 480px) {
+  .wrap { padding:0 var(--sp-3); }
+  /* 阅读页头部：频道按钮 + 标题；窄屏下间距收一点 */
+  .reader-head { gap:var(--sp-2); padding-bottom:var(--sp-3); }
+
+  /* 文章卡片：内边距再收一点，正文更贴边、更省空间 */
+  .art-head { padding: var(--sp-3); }
+  .art-inner { padding: var(--sp-3); }
+}
+
+/* ============================================================
+ * PWA / 刘海屏：安全区适配
+ * 装到手机后是「独立窗口」，没有浏览器地址栏，需要避开状态栏与底部 Home 指示条。
+ * 依赖 <meta name="viewport" content="…, viewport-fit=cover"> 才会生效；
+ * 非刘海屏 / 桌面浏览器 env() 取 0，无副作用。
+ * ============================================================ */
+body { padding-bottom:env(safe-area-inset-bottom, 0px); }
+
+/* ------------------------------------------------------------
+ * 手机浏览器（不是 PWA）的地址栏会压住视口底部。
+ * 关键点：`vh` 取的是「地址栏收起时」的大视口高度，比当前真正看得见的区域高，
+ * 于是页面最下面一截永远滚不进可视区 —— 页脚、弹层底部的按钮都会被挡住。
+ * 这里给可滚动内容补出「浏览器底栏高度」。
+ * 用 svh（地址栏展开时的小视口）而不是 dvh：svh 是静态值，滚动过程中不会来回抖。
+ * 桌面浏览器与已装成 App 时 100vh == 100svh，这条等于不生效。
+ * 外面套 clamp(0px, …, 140px)：下限防「差值意外为负」——负的 padding 会让整条声明失效，
+ * 连 safe-area 那部分一起丢掉；上限防个别 App 内置浏览器（微信 / QQ）的布局视口
+ * 比可视区大得多，不封顶会在页尾留出一大段莫名其妙的空白。
+ * ------------------------------------------------------------ */
+@supports (height: 100svh) {
+  body {
+    padding-bottom:calc(clamp(0px, 100vh - 100svh, 140px) + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 720px) {
+  /* 频道抽屉要盖满整屏高度，内边距避开刘海与底部指示条 */
+  .reader-side {
+    padding-top:calc(var(--sp-4) + env(safe-area-inset-top, 0px));
+    padding-bottom:calc(var(--sp-6) + env(safe-area-inset-bottom, 0px));
+  }
+  /* 设置弹层底部避开 Home 指示条 */
+  .modal { padding-bottom:env(safe-area-inset-bottom, 0px); }
+}
+

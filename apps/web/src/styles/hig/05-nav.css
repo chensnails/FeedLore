@@ -1,0 +1,53 @@
+/* ---------------------------------------------------------------------------
+ * 5. 导航
+ * ---------------------------------------------------------------------------
+ * 视图切换：胶囊容器 + 胶囊选中项，贴近 iOS segmented control。
+ * 选中底色仍用 `--accent-soft`（沿用既有约定，不另立一套色）。
+ */
+.viewnav {
+  background: var(--hig-fill);
+  border-color: var(--hig-separator);
+  border-radius: var(--radius-pill);
+}
+.viewnav-btn { border-radius: var(--radius-pill); }
+.viewnav-btn.active {
+  background: var(--accent-soft);
+  color: var(--hig-tint-text);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+/* 频道条：选中项的短下划线改成更圆润的胶囊条；焦点环改实色 */
+.chan-tab { border-radius: var(--radius-sm); }
+.chan-tab:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--hig-tint);
+}
+.chan-tab.active { color: var(--hig-tint-text); }
+.chan-tab.active::after {
+  width: 20px; height: 3px;
+  border-radius: 999px;
+  background: var(--hig-tint);
+}
+
+/* 移动端底栏：半径、描边、按压。
+   **必须写在同一个断点里**：style.css 的 `.mobile-tabbar .viewnav` 在
+   `@media (max-width:720px), (max-height:500px) and (pointer:coarse)` 内，
+   放在断点外会被「后写者胜」误伤或反过来失效。 */
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .mobile-tabbar .viewnav {
+    border-color: var(--hig-separator);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--float-shadow), inset 0 1px 0 var(--float-hi);
+  }
+  .mobile-tabbar .viewnav-btn { border-radius: var(--radius-lg); }
+  .mobile-tabbar .viewnav-btn.active {
+    background: var(--accent-soft);
+    color: var(--hig-tint-text);
+  }
+  .mobile-tabbar .viewnav-btn:not(:disabled):active { transform: scale(var(--hig-press-scale)); }
+  .mobile-tabbar .viewnav-btn:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--hig-tint);
+  }
+}
+

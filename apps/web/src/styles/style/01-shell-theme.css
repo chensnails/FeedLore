@@ -1,0 +1,582 @@
+/* ==== CRITICAL_SHELL:START ====
+ * 首屏骨架：主题变量 + 基础排版 + 页面容器。这段会被 vite.config.ts 的
+ * inlineCriticalShell 插件在构建时自动抽出来内联进 index.html 的 <head>，
+ * 让首屏不必等 171KB 的全量样式表。与全量 CSS 同源，不存在两份副本漂移。
+ * 只放「首屏必须先有」的规则：主题色、body 背景、.wrap 容器；
+ * 具体组件样式仍由全量 CSS 负责，它到达时覆盖同值规则，不会闪。 */
+/* ============================================================
+ * 断点索引（改样式前先看这里）
+ * ------------------------------------------------------------
+ * 本文件的响应式规则**按功能就近放置**，同一个断点会出现多段：
+ *   720  —— 导航降级（侧栏 → 抽屉）          · 约 2801
+ *    820 —— 文字收成图标（.btn-label 隐藏）   · 约 2779 / 3687
+ *    720 —— 密度降级（控件 36 / 搜索进放大镜）· 约 742 / 882 / 2669 / 2871 / 3030 / 3818 / 4043
+ *    640 —— 局部排版                          · 约 1060 / 3566
+ *    560 / 480 —— 更窄的排版微调              · 约 2977 / 2990 / 3224 / 3477
+ * 因为段与段之间夹着基础规则，**收成一段会改变层叠结果**（实测 181 处偏差），
+ * 所以保持现状；新增规则时用 `grep -n '@media (max-width: 720px)'` 确认段数与位置，
+ * 并注意同特异度下「后写者胜」——1.3.9 的「选中项没底色」就是顺序写反导致的。
+ * ============================================================ */
+
+/* ---------- 亮色（默认 · 主色 = 蓝） ---------- */
+:root {
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --panel-2: #fbfcfd;
+  --hover: #f5f7fa;
+  --border: #e5e7ec;
+  --border-strong: #d5d9e0;
+  --text: #1b1f26;
+  --text-2: #333c4a;
+  --text-read: #252b36;   /* 长文正文色：比纯黑 --text 略软，比 --text-2 更清晰 */
+  --text-muted: #57616f;
+  --text-faint: #66717f;
+  --toast-bg: #22252b;
+  --toast-text: #f5f7fa;
+  --toast-ok: #6ee7a0;
+  --toast-err: #ff9b9b;
+  --badge-bg: rgba(15, 20, 28, .72);
+  --badge-text: #ffffff;
+  --chip-bg: rgba(255, 255, 255, .9);
+  --chip-bg-strong: rgba(255, 255, 255, .92);
+  --chip-text: #333c4a;
+  --chip-solid: #eef1f7;
+  --sk-a: #eef1f6;
+  --sk-b: #e4e9f0;
+  --media-bg: #eef1f6;
+  --media-grad: linear-gradient(135deg, #f2f5fa, #e7ecf4);
+  --media-ico: #7b8694;
+  --switch-knob: #ffffff;
+  --overlay: rgba(18, 22, 30, .42);
+  --green: #0f7a43;
+  --danger: #c62828;
+  --danger-border: #f0c4c4;
+  --ok-bg: #e9f7ee;
+  --ok-border: #bfe6cd;
+  --ok-text: #0b6b3a;
+  --err-bg: #fdecec;
+  --err-border: #f5c9c9;
+  --err-text: #b91c1c;
+  --warn-bg: #fdf3e0;
+  --warn-border: #f0dcb4;
+  --warn-text: #8a5a08;
+  --star: #9a6608;   /* 4.50:1 on --bg（原 #a8710a 只有 3.83，作文字色不达标） */
+  --star-soft: rgba(168, 113, 10, .14);
+  --accent: #1f5ce8;
+  --accent-strong: #1a4dc3;
+  --accent-text: #1c53d1;
+  --accent-soft: #edf2fd;
+  --accent-soft-2: #dbe5fb;
+  --accent-glow: rgba(31, 92, 232, 0.3);
+  --accent-glow-soft: rgba(31, 92, 232, 0.26);
+  /* 焦点反馈拆两档、只在这里定义一次：
+     --focus-ring = 2px 实色描边（outline / inset），--focus-halo = 22% 派生光环（box-shadow）。
+     各主题块不再各写一份半透明值，换主色 / 换主题自动跟随。 */
+  --focus-ring: var(--accent);
+  --focus-halo: color-mix(in srgb, var(--accent) 22%, transparent);
+  --logo-shadow: rgba(31, 92, 232, 0.26);
+  --on-accent: #ffffff;
+  /* MD3 状态层：on-color 低透明度叠加，跨主题/主色自动适配（hover/focus/press/drag） */
+  --on-surface: var(--text);
+  --state-hover: color-mix(in srgb, var(--on-surface) 8%, transparent);
+  --state-focus: color-mix(in srgb, var(--on-surface) 10%, transparent);
+  --state-press: color-mix(in srgb, var(--on-surface) 12%, transparent);
+  --state-drag: color-mix(in srgb, var(--on-surface) 16%, transparent);
+  --state-hover-accent: color-mix(in srgb, var(--on-accent) 8%, transparent);
+  --logo-fg: #ffffff;   /* logo 图形里的白色部分：三主题恒白，不随主色反色 */
+  --select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%2357616f' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
+  --shadow: 0 1px 2px rgba(20, 24, 30, .04), 0 4px 14px rgba(20, 24, 30, .05);
+  --shadow-hover: 0 6px 24px rgba(20, 24, 30, .10);
+  --shadow-lg: 0 20px 60px rgba(16, 18, 22, .28);
+  --shadow-sm: 0 1px 3px rgba(20, 24, 30, .1);
+  --shadow-toast: 0 8px 28px rgba(16, 18, 22, .3);
+  --radius: 16px;
+
+  /* ---------- 统一设计规范（v1.1.12） ----------
+     下面这组令牌把散落各处的取值收敛成可复用的刻度；组件一律引用令牌，不再硬编码。 */
+  /* 圆角层级：由小到大，同一语义的圆角只用一个令牌 */
+  /* 圆角唯一真源：视觉层 / 登录页不再各写一份（后者有独立入口，另带简化层）。
+     值与原 hig.css 的覆盖值一致，收口后生效结果不变，但改这里就能全站生效。 */
+  --radius-xs: 8px;      /* 行内编辑框、代码块等极小元素 */
+  --radius-sm: 10px;     /* 小控件：图标按钮、小标签 */
+  --radius-md: 12px;     /* 默认控件：按钮、输入框、下拉、Toast */
+  --radius-lg: 18px;     /* 容器：卡片、内容块 */
+  --radius-xl: 24px;     /* 弹层：模态窗 */
+  --radius-pill: 999px;  /* 胶囊：标签、徽标 */
+  /* 字号阶梯（由既有取值收敛，覆盖 11px ~ 21px；阶梯外取值一律并入相邻档） */
+  --fs-2xs: 0.6875rem;   /* 11px  角标 / 元信息 */
+  --fs-xs: 0.7188rem;    /* 11.5px 次要说明 */
+  --fs-sm: 0.75rem;      /* 12px  提示、小标签 */
+  --fs-md: 0.8125rem;    /* 13px  控件正文（默认） */
+  --fs-base: 0.875rem;   /* 14px  强调文本、Toast */
+  --fs-lg: 0.9375rem;    /* 15px  小标题 / 卡片标题 */
+  --fs-xl: 1.0625rem;    /* 17px  弹层标题 */
+  --fs-2xl: 1.3125rem;   /* 21px  页面主标题 */
+  --hit-min: 44px;       /* 触屏最小命中区：视觉尺寸可以小，落点不能小 */
+  /* 动效刻度：统一的时长与缓动（--dur-base 取事实标准 150ms）。
+     注意：这三行必须给出具体值，禁止自引用 var(--dur-xxx)（会导致循环依赖、
+     解析为「保证无效值」，全站 transition/animation 回落 0s 硬切）。 */
+  --dur-fast: .12s;
+  --dur-base: .15s;
+  --dur-med: .18s;
+  --dur-slow: .22s;
+  --ease: cubic-bezier(.32, .72, 0, 1);  /* 与 hig.css 同源；视觉层后写覆盖，基础层留同值避免单独加载时观感漂移 */
+  /* 间距刻度：4px 栅格，组件 padding / margin / gap 一律取刻度 */
+  --sp-0: 2px;  /* 半格：紧凑列表项之间 */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+  /* 空态：文章 / 卡片 / 日报 / 设置共用一组留白与图标刻度，切视图时信息层级不跳 */
+  --empty-pad-y: var(--sp-8); --empty-pad-x: var(--sp-5);
+  --empty-ico: 2.5rem; --empty-ico-gap: var(--sp-3);
+  /* 移动端底部视图标签栏高度（不含 safe-area）：视图导航在 ≤720px 停靠在
+     视口底部，各滚动容器用它预留底部空间，最后一条内容不会被标签栏盖住。 */
+  --tabbar-h: 48px;
+  /* 阅读页频道栏宽度：初值与 core/state.js 的 READER_SIDE_DEFAULT 同源，
+     实际值由 JS 按账号偏好写到 :root（可拖拽调整） */
+  --reader-side-w: 232px;
+  /* 阴影层级：静态容器用 elevation（4 级 + 反馈层），可滚动元素用 neu（3 级 + 内凹） */
+  --elevation-1: var(--shadow-sm);
+  --elevation-2: var(--shadow);
+  --elevation-3: var(--shadow-hover);
+  --elevation-4: var(--shadow-lg);
+  --elevation-toast: var(--shadow-toast);
+  --neu-1: var(--neu-shadow-sm);
+  --neu-2: var(--neu-shadow);
+  --neu-3: var(--neu-shadow-hover);
+  --neu-inset: var(--neu-shadow-inset);
+  /* 分割线：统一实线，粗细两级（普通 / 分组） */
+  --divider-w: 1px;
+  --divider-w-strong: 6px;
+  /* 层级：从页面内容到最顶层覆盖物依次递增。
+     弹层之间必须可比较，别再各写一个魔数（toast 要压在设置弹层 / 移动整屏弹层之上）。 */
+  --z-drawer-mask: 55;
+  --z-drawer: 60;
+  --z-panel: 90;        /* 桌面下拉面板 */
+  --z-float: 95;        /* 「有新内容」浮标 */
+  --z-modal: 200;       /* 模态弹窗 / 灯箱 */
+  --z-sheet: 220;       /* 移动端整屏弹层 */
+  --z-menu: 300;        /* 链接选择菜单 */
+  --z-toast: 400;       /* 轻提示：必须高于所有弹层 */
+  --z-cmdk: 500;        /* 命令面板 */
+  /* 反馈与覆盖层 */
+  --disabled-opacity: .5;              /* 禁用态统一透明度 */
+  --lightbox-bg: rgba(8, 10, 14, .9);  /* 灯箱底色（恒暗，不随主题） */
+  --lightbox-text: rgba(255, 255, 255, .72);
+  --dim: rgba(10, 12, 16, .42);        /* 图片/内容上的压暗层 */
+
+  /* ---------- 拟态玻璃（v1.1.7） ----------
+     拟态（neumorphism）= 双向柔光阴影 + 渐变面，营造「从背景里浮起来」的立体感，
+     不依赖模糊，可在长列表里安全使用；玻璃（glassmorphism）= backdrop-filter 模糊，
+     仅用于弹层 / 命令面板 / 灯箱等静态覆盖场景（页面已滚动锁定，不会逐帧重采样）。 */
+  --glass-bg: rgba(255, 255, 255, .68);
+  --glass-bg-strong: rgba(255, 255, 255, .82);
+  --glass-border: rgba(255, 255, 255, .55);
+  --glass-blur: 16px;
+  /* 浮层（底栏 / 抽屉 / 回顶钮）：一近一远两层柔光 + 顶部 1px 高光。
+     不用 backdrop-filter —— 常驻 fixed 表面逐帧重采样会掉帧，模糊预算只留给全屏遮罩。 */
+  --float-shadow: 0 10px 28px rgba(16, 22, 32, .14), 0 2px 6px rgba(16, 22, 32, .07);
+  --float-hi: rgba(255, 255, 255, .72);
+  --neu-hi: rgba(255, 255, 255, .9);
+  --neu-lo: rgba(163, 177, 198, .55);
+  /* 拟态浮起感 = 双向阴影的「对角落差」，由 offset 主导、blur 决定过渡带宽。
+     v1.4.0 曾把 7/18 降到 4/12（UI 评审 #9「降阴影」），
+     实测 Windows 150% 下浮起深度从 13 掉到 6、阴影过渡带从 21 设备像素缩到 7，
+     卡片从「浮起来」退化成「贴在背景上」——即用户感知的「界面发飘、层次感弱」。
+     现取 6/16：浮起深度回到 11（1.3.9 为 13），比 1.3.9 更轻盈，保留 #9 的降阴影意图。 */
+  --neu-shadow: 6px 6px 16px var(--neu-lo), -6px -6px 16px var(--neu-hi);
+  --neu-shadow-sm: 4px 4px 10px var(--neu-lo), -4px -4px 10px var(--neu-hi);
+  --neu-shadow-hover: 8px 8px 20px var(--neu-lo), -8px -8px 20px var(--neu-hi);
+  --neu-shadow-inset: inset 4px 4px 10px var(--neu-lo), inset -4px -4px 10px var(--neu-hi);
+  --surface-soft: linear-gradient(145deg, #ffffff, #eef1f6);
+  --surface-soft-2: linear-gradient(145deg, #fbfcfe, #e9edf3);
+
+  /* ---------- 外观偏好（字号 / 阅读字体 / 行高 / 阅读宽度） ----------
+     由 <head> 内联脚本按 localStorage 写进 html 的属性上，首屏即生效。
+     页面里所有 font-size 都是 rem，所以改 html 的 font-size 就能整体缩放。 */
+  --font-ui: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-read: "PingFang SC", "HarmonyOS Sans SC", "MiSans",
+    "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --reader-fs: 1rem;            /* 正文`字号`默认档（m）= 16px；可被 data-reader-fs 覆盖 */
+  --reader-lh: 1.8;             /* 默认档上移 1.8（旧 m = 1.75），行盒更松 */
+  --reader-width: 47.5rem;      /* 默认收藏到 760px，每行约 47 字，中文阅读更省力（旧 820px） */
+
+  /* 外观页的 6 个主色色块：跟着「当前主题」深浅换，但不跟选中的主色走，
+     所以 6 个色始终能一眼分辨 */
+  --sw-blue: #1f5ce8;
+  --sw-violet: #6a3fe0;
+  --sw-teal: #0b6f74;
+  --sw-green: #0e7440;
+  --sw-amber: #9a4a06;
+  --sw-rose: #c0255c;
+}
+
+/* ---------- 亮色 · 其它主色 ---------- */
+html[data-accent="violet"] {
+  --accent: #6a3fe0;
+  --accent-strong: #5935bc;
+  --accent-text: #5f39ca;
+  --accent-soft: #f3f0fd;
+  --accent-soft-2: #e7e0fa;
+  --accent-glow: rgba(106, 63, 224, 0.3);
+  --accent-glow-soft: rgba(106, 63, 224, 0.26);
+  --logo-shadow: rgba(106, 63, 224, 0.26);
+  --on-accent: #ffffff;
+}
+html[data-accent="teal"] {
+  --accent: #0b6f74;
+  --accent-strong: #095d61;
+  --accent-text: #0a6468;
+  --accent-soft: #ebf3f4;
+  --accent-soft-2: #d8e8e9;
+  --accent-glow: rgba(11, 111, 116, 0.3);
+  --accent-glow-soft: rgba(11, 111, 116, 0.26);
+  --logo-shadow: rgba(11, 111, 116, 0.26);
+  --on-accent: #ffffff;
+}
+html[data-accent="green"] {
+  --accent: #0e7440;
+  --accent-strong: #0c6136;
+  --accent-text: #0d683a;
+  --accent-soft: #ecf4f0;
+  --accent-soft-2: #d8e9e0;
+  --accent-glow: rgba(14, 116, 64, 0.3);
+  --accent-glow-soft: rgba(14, 116, 64, 0.26);
+  --logo-shadow: rgba(14, 116, 64, 0.26);
+  --on-accent: #ffffff;
+}
+html[data-accent="amber"] {
+  --accent: #9a4a06;
+  --accent-strong: #813e05;
+  --accent-text: #8b4305;
+  --accent-soft: #f7f1eb;
+  --accent-soft-2: #efe2d7;
+  --accent-glow: rgba(154, 74, 6, 0.3);
+  --accent-glow-soft: rgba(154, 74, 6, 0.26);
+  --logo-shadow: rgba(154, 74, 6, 0.26);
+  --on-accent: #ffffff;
+}
+html[data-accent="rose"] {
+  --accent: #c0255c;
+  --accent-strong: #a11f4d;
+  --accent-text: #ad2153;
+  --accent-soft: #faeef2;
+  --accent-soft-2: #f5dce5;
+  --accent-glow: rgba(192, 37, 92, 0.3);
+  --accent-glow-soft: rgba(192, 37, 92, 0.26);
+  --logo-shadow: rgba(192, 37, 92, 0.26);
+  --on-accent: #ffffff;
+}
+
+/* ---------- 深色（CommaFeed 中性灰 · 主色 = 蓝） ---------- */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #242424;
+  --panel: #2e2e2e;
+  --panel-2: #292929;
+  --hover: #3b3b3b;
+  --border: #424242;
+  --border-strong: #575757;
+  --text: #c9c9c9;
+  --text-2: #b8b8b8;
+  --text-read: #d3dae3;   /* 暗色正文提亮一档，不再发灰发虚 */
+  --text-muted: #b0b0b0;  /* 原 #a6a6a6 在 --accent-soft（#393e4b）上只有 4.39:1，提亮到 4.9:1 */
+  --text-faint: #999999;
+  --toast-bg: #e6e6e6;
+  --toast-text: #1a1a1a;
+  /* 暗色把 toast 反相成浅底，状态色必须跟着反过来：原来沿用亮色的
+     #0f7a43 / #ffb3b3 在浅底只有 4.33:1 / 1.36:1，红边与感叹号几乎看不见。 */
+  --toast-ok: #0b6b3a;
+  --toast-err: #b3261e;
+  --badge-bg: rgba(0, 0, 0, .62);
+  --badge-text: #e6e6e6;
+  --chip-bg: rgba(255, 255, 255, .1);
+  --chip-bg-strong: rgba(255, 255, 255, .13);
+  --chip-text: #c2c2c2;
+  --chip-solid: rgba(255, 255, 255, .08);
+  --sk-a: #2b2b2b;
+  --sk-b: #353535;
+  --media-bg: #232323;
+  --media-grad: linear-gradient(135deg, #2b2b2b, #222222);
+  --media-ico: #7d7d7d;
+  --switch-knob: #e6e6e6;
+  --overlay: rgba(0, 0, 0, .62);
+  --green: #5ed68f;
+  --danger: #ff8a8a;
+  --danger-border: rgba(255, 138, 138, .42);
+  --ok-bg: #14261b;
+  --ok-border: #28563a;
+  --ok-text: #7ee2a4;
+  --err-bg: #2b1919;
+  --err-border: #552c2c;
+  --err-text: #ff9c9c;
+  --warn-bg: #2b2416;
+  --warn-border: #55492e;
+  --warn-text: #e8b761;
+  --star: #f0b45f;
+  --star-soft: rgba(240, 180, 95, .18);
+  --accent: #7aa2ff;
+  --accent-strong: #95b5ff;
+  --accent-text: #a2beff;
+  --accent-soft: #393e4b;
+  --accent-soft-2: #424c64;
+  --accent-glow: rgba(122, 162, 255, 0.3);
+  --accent-glow-soft: rgba(122, 162, 255, 0.26);
+  --logo-shadow: rgba(122, 162, 255, 0.3);
+  --on-accent: #111111;
+  --select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%23999999' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
+  --shadow: 0 1px 2px rgba(0, 0, 0, .34), 0 4px 14px rgba(0, 0, 0, .3);
+  --shadow-hover: 0 8px 28px rgba(0, 0, 0, .46);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, .58);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, .48);
+  --shadow-toast: 0 8px 28px rgba(0, 0, 0, .52);
+
+  /* 拟态玻璃（暗色） */
+  --glass-bg: rgba(46, 50, 58, .66);
+  --glass-bg-strong: rgba(46, 50, 58, .82);
+  --glass-border: rgba(255, 255, 255, .12);
+  --glass-blur: 16px;
+  --float-shadow: 0 12px 32px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .4);
+  --float-hi: rgba(255, 255, 255, .06);
+  --neu-hi: rgba(255, 255, 255, .05);
+  --neu-lo: rgba(0, 0, 0, .55);
+  --neu-shadow: 6px 6px 16px var(--neu-lo), -6px -6px 16px var(--neu-hi);
+  --neu-shadow-sm: 4px 4px 10px var(--neu-lo), -4px -4px 10px var(--neu-hi);
+  --neu-shadow-hover: 8px 8px 20px var(--neu-lo), -8px -8px 20px var(--neu-hi);
+  --neu-shadow-inset: inset 4px 4px 10px var(--neu-lo), inset -4px -4px 10px var(--neu-hi);
+  --surface-soft: linear-gradient(145deg, #343434, #262626);
+  --surface-soft-2: linear-gradient(145deg, #323232, #232323);
+
+  --sw-blue: #7aa2ff;
+  --sw-violet: #a68bff;
+  --sw-teal: #4fd1c5;
+  --sw-green: #5ed68f;
+  --sw-amber: #f0b45f;
+  --sw-rose: #ff8fb1;
+}
+
+/* ---------- 深色 · 其它主色 ---------- */
+html[data-theme="dark"][data-accent="violet"] {
+  --accent: #a68bff;
+  --accent-strong: #b8a2ff;
+  --accent-text: #c1aeff;
+  --accent-soft: #3f3b4b;
+  --accent-soft-2: #4d4664;
+  --accent-glow: rgba(166, 139, 255, 0.3);
+  --accent-glow-soft: rgba(166, 139, 255, 0.26);
+  --logo-shadow: rgba(166, 139, 255, 0.3);
+  --on-accent: #111111;
+}
+html[data-theme="dark"][data-accent="teal"] {
+  --accent: #4fd1c5;
+  --accent-strong: #72dad1;
+  --accent-text: #84dfd6;
+  --accent-soft: #334543;
+  --accent-soft-2: #375855;
+  --accent-glow: rgba(79, 209, 197, 0.3);
+  --accent-glow-soft: rgba(79, 209, 197, 0.26);
+  --logo-shadow: rgba(79, 209, 197, 0.3);
+  --on-accent: #111111;
+}
+html[data-theme="dark"][data-accent="green"] {
+  --accent: #5ed68f;
+  --accent-strong: #7edea5;
+  --accent-text: #8ee2b1;
+  --accent-soft: #35463c;
+  --accent-soft-2: #3a5a47;
+  --accent-glow: rgba(94, 214, 143, 0.3);
+  --accent-glow-soft: rgba(94, 214, 143, 0.26);
+  --logo-shadow: rgba(94, 214, 143, 0.3);
+  --on-accent: #111111;
+}
+html[data-theme="dark"][data-accent="amber"] {
+  --accent: #f0b45f;
+  --accent-strong: #f3c37f;
+  --accent-text: #f5cb8f;
+  --accent-soft: #494135;
+  --accent-soft-2: #60513b;
+  --accent-glow: rgba(240, 180, 95, 0.3);
+  --accent-glow-soft: rgba(240, 180, 95, 0.26);
+  --logo-shadow: rgba(240, 180, 95, 0.3);
+  --on-accent: #111111;
+}
+html[data-theme="dark"][data-accent="rose"] {
+  --accent: #ff8fb1;
+  --accent-strong: #ffa5c1;
+  --accent-text: #ffb1c8;
+  --accent-soft: #4b3c40;
+  --accent-soft-2: #644750;
+  --accent-glow: rgba(255, 143, 177, 0.3);
+  --accent-glow-soft: rgba(255, 143, 177, 0.26);
+  --logo-shadow: rgba(255, 143, 177, 0.3);
+  --on-accent: #111111;
+}
+
+/* ---------- GitHub Primer Dark（整套主题，主色固定 GitHub 蓝） ---------- */
+html[data-theme="github"] {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --panel: #151b23;
+  --panel-2: #010409;
+  --hover: #1c242e;
+  --border: #3d444d;
+  --border-strong: #656c76;
+  --text: #f0f6fc;
+  --text-2: #c9d1d9;
+  --text-read: #d3dae3;   /* GitHub 暗黑正文提亮一档 */
+  --text-muted: #9198a1;
+  --text-faint: #8b949e;
+  --green: #3fb950;
+  --danger: #f85149;
+  --danger-border: rgba(248, 81, 73, .42);
+  --ok-bg: #0f2a17;
+  --ok-border: #1f5132;
+  --ok-text: #56d364;
+  --err-bg: #2b1416;
+  --err-border: #5c2327;
+  --err-text: #ff7b72;
+  --warn-bg: #2b2210;
+  --warn-border: #5c4813;
+  --warn-text: #e3b341;
+  --star: #d29922;
+  --star-soft: rgba(210, 153, 34, .18);
+  --toast-bg: #e6edf3;
+  --toast-text: #0d1117;
+  --toast-ok: #1f7a35;
+  --toast-err: #b91c1c;
+  --badge-bg: rgba(0, 0, 0, .68);
+  --badge-text: #e6edf3;
+  --chip-bg: rgba(255, 255, 255, .09);
+  --chip-bg-strong: rgba(255, 255, 255, .12);
+  --chip-text: #c9d1d9;
+  --chip-solid: rgba(255, 255, 255, .07);
+  --sk-a: #21262d;
+  --sk-b: #2a313a;
+  --media-bg: #161b22;
+  --media-grad: linear-gradient(135deg, #21262d, #1a1f26);
+  --media-ico: #8b949e;
+  --switch-knob: #e6edf3;
+  --overlay: rgba(0, 0, 0, .68);
+  --accent: #1f6feb;
+  --accent-strong: #4493f8;
+  --accent-text: #4493f8;
+  --accent-soft: #16273f;
+  --accent-soft-2: #172c4b;
+  --accent-glow: rgba(31, 111, 235, 0.3);
+  --accent-glow-soft: rgba(31, 111, 235, 0.26);
+  --logo-shadow: rgba(31, 111, 235, 0.3);
+  --on-accent: #ffffff;
+  --select-arrow: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%238b949e' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
+  --shadow: 0 1px 2px rgba(1, 4, 9, .5), 0 4px 14px rgba(1, 4, 9, .4);
+  --shadow-hover: 0 8px 28px rgba(1, 4, 9, .58);
+  --shadow-lg: 0 20px 60px rgba(1, 4, 9, .7);
+  --shadow-sm: 0 1px 3px rgba(1, 4, 9, .62);
+  --shadow-toast: 0 8px 28px rgba(1, 4, 9, .6);
+
+  /* 拟态玻璃（GitHub 暗黑） */
+  --glass-bg: rgba(28, 33, 40, .66);
+  --glass-bg-strong: rgba(28, 33, 40, .82);
+  --glass-border: rgba(255, 255, 255, .12);
+  --glass-blur: 16px;
+  --float-shadow: 0 12px 32px rgba(0, 0, 0, .6), 0 2px 8px rgba(0, 0, 0, .45);
+  --float-hi: rgba(255, 255, 255, .06);
+  --neu-hi: rgba(255, 255, 255, .045);
+  --neu-lo: rgba(0, 0, 0, .6);
+  --neu-shadow: 6px 6px 16px var(--neu-lo), -6px -6px 16px var(--neu-hi);
+  --neu-shadow-sm: 4px 4px 10px var(--neu-lo), -4px -4px 10px var(--neu-hi);
+  --neu-shadow-hover: 8px 8px 20px var(--neu-lo), -8px -8px 20px var(--neu-hi);
+  --neu-shadow-inset: inset 4px 4px 10px var(--neu-lo), inset -4px -4px 10px var(--neu-hi);
+  --surface-soft: linear-gradient(145deg, #1b2129, #0f141b);
+  --surface-soft-2: linear-gradient(145deg, #19202a, #0d1219);
+  /* GitHub 主题下不显示主色色板，但 --sw-* 仍要有值（外观页色板可能先渲染）。
+     注意：这些声明必须待在规则块内，否则整段是无效 CSS 会被丢弃。
+     --sw-github 供「主色 = github」的色块使用（此前只靠 var() 兜底）。 */
+  --sw-blue: #7aa2ff;
+  --sw-violet: #a68bff;
+  --sw-teal: #4fd1c5;
+  --sw-green: #5ed68f;
+  --sw-amber: #f0b45f;
+  --sw-rose: #ff8fb1;
+  --sw-github: #1f6feb;
+}
+
+
+/* 主题切换时的过渡（避免生硬闪白） */
+html.theme-anim, html.theme-anim body {
+  transition: background-color var(--dur-med) ease, color var(--dur-med) ease;
+}
+
+/* ---------- 外观偏好的档位 ----------
+   属性由 <head> 内联脚本写入；缺省（无属性）等于「中」档，所以只写 s / l。
+   font-size 写在 html 上 → 全部 rem 一起缩放；宽度用 rem 也跟着缩放，
+   这样调大字号时每行字数基本不变，不会一行塞太多字。
+   「界面字号」保持三档：再大容易把窄屏布局撑破。 */
+html[data-font-size="s"] { font-size: 15px; }
+html[data-font-size="m"] { font-size: 16px; }
+html[data-font-size="l"] { font-size: 17.5px; }
+
+html[data-reader-font="serif"] {
+  --font-read: Georgia, "Songti SC", "Noto Serif SC", "Source Han Serif SC",
+    "SimSun", "Times New Roman", serif;
+}
+
+html[data-reader-lh="s"] { --reader-lh: 1.65; }
+html[data-reader-lh="m"] { --reader-lh: 1.8; }
+html[data-reader-lh="l"] { --reader-lh: 2.1; }
+/* 正文`字号`：五档，默认 m=16px（受 html 根字号整体缩放）。
+   xs / xl 是 2.2 新增，旧值 s / m / l 含义不变，老账号无需迁移。 */
+html[data-reader-fs="xs"] { --reader-fs: 0.875rem; }    /* 14px */
+html[data-reader-fs="s"]  { --reader-fs: 0.9375rem; }   /* 15px */
+html[data-reader-fs="m"]  { --reader-fs: 1rem; }        /* 16px */
+html[data-reader-fs="l"]  { --reader-fs: 1.125rem; }    /* 18px */
+html[data-reader-fs="xl"] { --reader-fs: 1.25rem; }     /* 20px */
+
+html[data-reader-width="s"] { --reader-width: 42.5rem; }
+html[data-reader-width="m"] { --reader-width: 47.5rem; }
+html[data-reader-width="l"] { --reader-width: 62.5rem; }
+/* 铺满全屏：打破 .wrap 的 1280/1600 上限，让阅读区直接撑满视口宽度，
+   右侧不再留大块空白（.wrap 内还有 24px 内边距 + 频道栏 --reader-side-w，主列 = 视口 - 这些）。
+   4K 等极宽屏会觉得一行太长，可手动切回「宽」。 */
+html[data-reader-width="full"] { --reader-width: 100%; }
+html[data-reader-width="full"] .wrap { max-width: none; }
+
+* { box-sizing: border-box; }
+
+/* 保证 hidden 属性始终生效（避免被 .grid / .btn 等 display 规则覆盖） */
+[hidden] { display: none !important; }
+
+html, body {
+  margin:0;
+  padding:0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 弹层打开时把背景页面钉住，别让滚动「穿透」过去。
+   只写 overflow:hidden 在 iOS 上挡不住惯性滚动，所以用 position:fixed + 负 top
+   把页面按原样停在原地（视觉位置不变），关掉时由 JS 滚回原处。
+   --sbw 是页面滚动条宽度，补在右内边距上，免得滚动条一消失内容就整体右移。 */
+body.modal-open {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+  overflow: hidden;
+  padding-right:var(--sbw, 0px);
+}
+
+.wrap {
+  max-width: 1600px;
+  margin:0 auto;
+  padding:0 var(--sp-6);
+}
+/* ==== CRITICAL_SHELL:END ==== */
+

@@ -1,0 +1,47 @@
+/* ---------------------------------------------------------------------------
+ * 8. 动效与可访问
+ * ---------------------------------------------------------------------------
+ * 系统开启「减少动态效果」时，去掉缩放 / 位移 / 淡入，状态仍靠颜色与描边表达。
+ * 不写全局 `* { animation: none }`：启动收口、看门狗与骨架屏都依赖 CSS 状态，
+ * 一刀切会把「加载中」也变成静止空屏。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .btn, .icon-btn, .btn-primary, .btn-ghost, .btn-copy, .btn-open,
+  .btn-fav, .btn-jump, .viewnav-btn, .mobile-tabbar .viewnav-btn,
+  .art-item, .art-row, .card, .row-item, .modal, .toast, .new-pill, .reader-head,
+  .mobile-tabbar .viewnav, .scroll-top {
+    transition: none !important;
+    animation: none !important;
+  }
+  .btn:active, .icon-btn:active, .btn-primary:active,
+  .btn-copy:active, .btn-open:active { transform: none !important; }
+  .grid > .card, .grid > .row-item { animation: none !important; }
+}
+
+/* ---------------------------------------------------------------------------
+ * 9. 自动填充（只针对非登录字段）
+ * ---------------------------------------------------------------------------
+ * Chrome / Edge Android 会忽略 autocomplete="off"，把登录页保存的账号填进同源
+ * 页面里任何文本框，并给输入框刷一层蓝色/黄色内部背景。这里做两件事：
+ *  - 把背景变化压到 9999s 之后（实际永不出现），文字色回到主题实色；
+ *  - 挂 1ms 哨兵动画，src/ui/noAutofill.js 的全局守卫据此清掉被塞进来的值。
+ * 登录页是独立入口、不引入 hig.css，密码管理器在那儿仍然可用。
+ */
+@keyframes flAutofillGuard {
+  from { caret-color: var(--text); }
+  to   { caret-color: var(--text); }
+}
+input[data-fl-no-autofill]:-webkit-autofill,
+input[data-fl-no-autofill]:-webkit-autofill:hover,
+input[data-fl-no-autofill]:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--text);
+  transition: background-color 9999s ease-out, border-color var(--dur-base), box-shadow var(--dur-base);
+  animation-name: flAutofillGuard;
+  animation-duration: 1ms;
+}
+
+/* 自绘下拉触发器复用 .select 外观，箭头由内部 .dd-caret 画。这里在最后加载层
+   再清一次内嵌箭头，避免 text 后与右端各一个箭头（双箭头，真机能力开关区可见）。 */
+button.dd-trigger.select { background-image: none; }
+

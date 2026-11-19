@@ -1,0 +1,17 @@
+/* ---------------------------------------------------------------------------
+ * 7. 反馈与状态
+ * ---------------------------------------------------------------------------
+ * toast 的 max-width / width:max-content / overflow-wrap 由 style.css 负责
+ * （浏览器守门会实测），这里只调形态，不动任何宽度约束。
+ */
+.toast {
+  /* toast 底色反相（亮色主题深底 / 暗色主题浅底），描边必须从 --toast-text 派生：
+     --hig-separator-strong 取自 --text，在暗色主题近白，浅底 toast 上等于没有边。 */
+  border: 1px solid color-mix(in srgb, var(--toast-text) 19%, transparent);
+  border-radius: var(--radius-lg);
+}
+.new-pill, .scroll-top { border-radius: var(--radius-pill); }
+.scroll-top { border-color: var(--hig-separator); }
+.empty-action .btn { border-radius: var(--radius-md); }
+.load-retry .btn { border-radius: var(--radius-sm); }
+

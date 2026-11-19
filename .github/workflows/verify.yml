@@ -54,6 +54,12 @@ jobs:
       - name: 代码规范检查（Biome）
         run: pnpm run lint
 
+      # V4.0：CSS 分片是真相源，style.css / hig.css 是按固定顺序聚合的产物。
+      # 首屏骨架插件与 73 项 UI 守卫都读聚合产物，所以必须保证分片重新聚合后
+      # 与提交的产物逐字节一致 —— 否则改了分片忘了重新生成，CI 照样绿。
+      - name: CSS 分片与聚合产物一致性
+        run: pnpm run css:check
+
       # 六个包逐个 tsc --noEmit。注意它守不住「契约 path 字面量被拓宽」这类问题
       # （P7 的真坑：服务端全绿、前端 hc 却缺路由），所以真正的守门是下面两步。
       - name: 类型检查

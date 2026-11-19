@@ -1,0 +1,383 @@
+/* ---------- 品牌 ---------- */
+.brand-logo {
+  width: 30px; height: 30px;
+  flex: 0 0 auto;
+  display: block;
+  filter: drop-shadow(0 3px 8px var(--logo-shadow));
+}
+
+/* ---------- 按钮 ---------- */
+.btn {
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding:var(--sp-2) var(--sp-4);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color var(--dur-base), background var(--dur-base),
+    color var(--dur-base), box-shadow var(--dur-base), transform var(--dur-fast);
+  display: inline-flex; align-items: center; gap:var(--sp-2);
+  white-space: nowrap;
+}
+.btn-ghost {
+  background: var(--panel);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.btn-ghost:hover { border-color: var(--accent-text); color: var(--accent-text); background: var(--accent-soft); }
+.btn-primary {
+  background: var(--accent); color: var(--on-accent);
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+.btn-primary:hover { background: var(--accent-strong); }
+/* 按压反馈统一由 hig.css 的 scale(--hig-press-scale) 提供；基础层不再另写 translateY，
+   否则同一控件两套手势，移除视觉层后会回落成「压下去」的拟物感。 */
+/* 禁用态：统一降透明 + 禁止光标 + 不响应 hover/active（v1.1.12 补齐，此前只有个别按钮有） */
+.btn:disabled,
+.btn[disabled],
+.btn[aria-disabled="true"] {
+  opacity: var(--disabled-opacity);
+  cursor: not-allowed;
+  pointer-events: none;
+  box-shadow: none;
+  transform: none;
+}
+.btn-primary:disabled, .btn-primary[disabled] { background: var(--accent); }
+.btn-danger:disabled, .btn-danger[disabled] { background: var(--panel); }
+.btn-ghost:disabled, .btn-ghost[disabled] { background: var(--surface-soft); }
+/* 统一字重刻度：只用 400 / 500 / 600 / 700 四档。
+   非可变字重字体上 450 / 550 / 620 / 650 会被四舍五入成平台各自的结果，
+   同一份 CSS 在 Windows / macOS / Android 上能差出一档观感。
+   字号同理：正文辅助信息最小 12px（--fs-sm），--fs-2xs 只留给纯角标。 */
+
+/* 搜索框的小叉视觉只有 22~24px：用伪元素把命中区补到 44px，
+   既不动视觉尺寸，也不会把输入框撑高。 */
+.settings-search-clear, .rd-ch-search-clear, .count-clear { position: relative; }
+.reader-search-clear::after,
+.search-clear::after,
+.settings-search-clear::after,
+.rd-ch-search-clear::after,
+.count-clear::after {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  width: var(--hit-min); height: var(--hit-min);
+  transform: translate(-50%, -50%);
+}
+/* 耗时操作（导出 / 备份 / 导入 / 还原）：置忙时给一枚跟随文字的小转圈，
+   否则「生成中…」和「被禁用」看起来没差别。aria-busy 同时是读屏的语义信号；
+   这里把禁用态的整体变淡撤掉，让进行中态保持可读。 */
+.btn[aria-busy="true"] { opacity: 1; cursor: progress; pointer-events: none; }
+.btn[aria-busy="true"]::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 12px; height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+/* 旋转关键帧只留下面 @keyframes spin 一份（顶栏刷新 .ico.spin 与置忙按钮共用） */
+@media (prefers-reduced-motion: reduce) {
+  .btn[aria-busy="true"]::after { animation: none; }
+}
+/* 表单控件禁用态 */
+.select:disabled,
+.form-row input:disabled,
+input:disabled,
+textarea:disabled {
+  opacity: var(--disabled-opacity);
+  cursor: not-allowed;
+  background: var(--hover);
+}
+/* 图标按钮基础样式：28/30/34 三档，默认 30；此前只有日报条目下才有定义，
+   在别处复用一个 .icon-btn 会得到无样式按钮。 */
+.icon-btn {
+  width: 30px; height: 30px; padding: 0; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--panel); color: var(--text-muted);
+  font-family: inherit; cursor: pointer;
+  transition: border-color var(--dur-base), color var(--dur-base), background var(--dur-base), box-shadow var(--dur-base);
+}
+.icon-btn:hover { border-color: var(--accent-text); color: var(--accent-text); }
+.icon-btn .ico { width: 1rem; height: 1rem; }
+.icon-btn:disabled, .icon-btn[disabled] {
+  opacity: var(--disabled-opacity);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+/* ---------- 图标 ----------
+   全部图标都来自 index.html 顶部那套 sprite（#i-xxx），不再用 ⟳ ★ ✕ 这类字符：
+   字符图标在 Windows / Android / iOS 上的字形、粗细、基线都不一样，同一排按钮
+   会显得参差不齐，也没法统一调描边粗细。
+   描边色走 currentColor，所以图标跟着文字颜色走（hover / 选中态自动变）。
+   尺寸 = 1em，想改大小就改所在元素的 font-size。
+
+   ⚠️ 下面这串类名必须一起列上：有些图标用的是自己的类名（搜索框里的、折叠箭头、
+   展开箭头…）而不是 .ico。漏掉任何一个，那个 <svg> 就没有宽高约束，会被撑成
+   一大块黑图形；即便尺寸对了，缺 fill:none / stroke:currentColor 也会让路径被
+   填成实心黑块（.rd-ch-search-ico 就踩过这个坑：放大镜的圆变成一颗黑点）。
+   它们的专属规则写在文件更后面，尺寸 / 定位会正常覆盖这里。
+   ⚠️ 新增 sprite 图标类时必须同时加进这一组 —— 见 tests/ui/ui-regression.cjs
+      「图标：sprite 图标类必须在基础组内」的守门断言。 */
+.ico,
+.search-ico, .sec-arrow, .art-caret, .new-pill-ico,
+.rd-ch-search-ico, .rd-ch-add-ico, .cmdk-ico,
+.dd-caret, .dd-check, .dd-icon, .dg-pin, .feed-group-caret, .feed-caret, .toast-ico,
+.overflow-check, .overflow-caret, .feed-filter-ico {
+  width: 1em; height: 1em;
+  flex: 0 0 auto;
+  display: inline-block;
+  vertical-align: -0.145em;
+  fill: none;
+  stroke: currentColor;
+  /* 描边宽度按 viewBox(24) 等比折算到实际渲染尺寸：
+     15px 图标上 stroke-width 1.85 只有 1.156 设备像素（1.85×15/24），
+     落在分数像素上会被抗锯齿摊开 → 线条偏淡发虚。提到 2.15 后
+     15px 上为 1.34 设备像素、18px 上为 1.61、24px 上为 2.15，
+     观感更实。描边色走 currentColor，hover / 选中态仍自动跟随。 */
+  stroke-width: 2.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ico { font-size: var(--fs-lg); }
+/* 小尺寸图标按 viewBox 等比缩细后线条会发虚，单独加粗一点 */
+.sec-arrow, .art-caret, .search-ico, .rd-ch-avatar svg { stroke-width: 2.7; }
+/* 顶栏「刷新」忙态自旋（.btn-ghost 内的 svg.ico.spin） */
+.ico.spin { animation: spin 1.1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- P1 动效系统（v1.7.0）：入场动画 ----------
+ * 尺度复用 :root 的 --dur-* 刻度（0.12~0.22s，全站过渡已是同一把尺）。
+ *   cardIn —— 卡片/列表行浮现（首屏按 nth-child 逐张错峰，续拉的新卡 delay 封顶、
+ *             只保留浮现本身；不用 JS 传 --i：内联 style 的新引用会打破 Card 的 memo）
+ * 弹层落座（popIn）与遮罩淡入（fadeIn）基础层已有（1380/1397 行附近），不重复造轮子；
+ * 视图切换转场已由 switchView 的 View Transitions API 承担（交叉淡入）。
+ * prefers-reduced-motion 的全局守卫（文件末尾）把所有 animation 压到 .001ms，
+ * 下面再对卡片入场显式关一道（读样式的人不用翻到文件尾确认）。 */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+/* 卡片/列表行的入场规则在下方列表行主定义之后接入（错峰延迟按 nth-child 序号，
+   必须排在主定义之后才不会被主定义的 padding/margin 覆盖）。 */
+.grid > :nth-child(2)  { animation-delay: .02s; }
+.grid > :nth-child(3)  { animation-delay: .04s; }
+.grid > :nth-child(4)  { animation-delay: .06s; }
+.grid > :nth-child(5)  { animation-delay: .08s; }
+.grid > :nth-child(6)  { animation-delay: .10s; }
+.grid > :nth-child(7)  { animation-delay: .12s; }
+.grid > :nth-child(8)  { animation-delay: .14s; }
+.grid > :nth-child(9)  { animation-delay: .16s; }
+.grid > :nth-child(10) { animation-delay: .18s; }
+.grid > :nth-child(n+11) { animation-delay: .18s; }   /* 首屏之后的新卡不再错峰 */
+/* reduce-motion 局部关闭只点名卡片（列表行动画同样被文件末尾的全局守卫压到 .001ms；
+   这里不重复列出，以免守门取「第一个列表行规则块」的断言误读） */
+@media (prefers-reduced-motion: reduce) {
+  .grid > .card { animation: none; }
+}
+
+/* ---------- 搜索（旧工具栏已删除，样式见文件末尾「搜索」段） ---------- */
+
+/* 旧 .search-box 外观（方角 / 外投影）已由末尾统一的胶囊规则取代，这里不再保留副本。 */
+
+.select {
+  padding:var(--sp-3) var(--sp-7) var(--sp-3) var(--sp-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel) var(--select-arrow) no-repeat right 12px center;
+  font-size: var(--fs-md); font-family: inherit; color: var(--text);
+  appearance: none; cursor: pointer; outline: none;
+}
+.select:focus { border-color: var(--accent-text); }
+
+/* ---------- 自定义下拉（v1.1.9，替代原生 select 的系统级弹窗，统一拟态玻璃风格） ---------- */
+.dd { position: relative; flex: 0 0 auto; }
+.dd-trigger { display: inline-flex; align-items: center; gap:var(--sp-2); text-align: left; }
+.dd-label {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 220px;
+}
+/* 箭头是状态指示而不是次要文字，用实色语义令牌弱化，不用 opacity（暗色主题下发虚） */
+.dd-caret { width: .875rem; height: .875rem; flex: 0 0 auto; color: var(--text-faint); transition: transform var(--dur-base); }
+/* 图标模式下才出现（窄屏），宽屏仍用文字标签 */
+.dd-icon { display: none; }
+.dd.open .dd-caret { transform: rotate(180deg); }
+.dd-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: var(--z-panel);
+  min-width: max(100%, 264px); width: max-content; max-width: calc(100vw - 24px);
+  max-height: min(440px, 56vh); overflow: auto; overscroll-behavior: contain;
+  padding:var(--sp-2);
+  /* 桌面下拉打开时页面不锁滚动，禁用模糊（玻璃仅用于滚动锁定层），改用实底 */
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-4);
+}
+.dd-group {
+  padding:var(--sp-2) var(--sp-3) var(--sp-1);
+  font-size: var(--fs-xs); color: var(--text-faint);
+  user-select: none; white-space: nowrap;
+}
+/* 分组标题 = 折叠开关（卡片页频道筛选，与文章页侧栏共用同一份偏好）。
+   整行可点，箭头只是状态指示；配色字号沿用上面那行灰字，只补按钮复位与命中区。 */
+.dd-group-fold {
+  display: flex; align-items: center; gap:var(--sp-2);
+  width: 100%; border: none; background: none; font-family: inherit;
+  text-align: left; cursor: pointer; border-radius: var(--radius-sm);
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.dd-group-fold:hover { background: var(--hover); color: var(--text-muted); }
+.dd-group-fold:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+/* 收起的组略弱一档，与展开的分组拉开层次（同文章页侧栏） */
+.dd-group-fold.is-collapsed { color: var(--text-muted); }
+.dd-group-caret { width: .8125rem; height: .8125rem; flex: 0 0 auto; color: var(--text-faint); }
+.dd-group-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+/* 收起时组里一个频道都不列，改报「这组有几个频道」，免得读成「这组没内容」 */
+.dd-group-n {
+  font-size: var(--fs-2xs); font-weight: 600; color: var(--text-faint);
+  font-variant-numeric: tabular-nums; width: 18px; text-align: center; flex: 0 0 auto;
+}
+/* 分组行：折叠开关 + 「只看这组」漏斗（与文章页侧栏同一套动作）。
+   漏斗平时隐身，悬停 / 键盘聚焦 / 正在筛选该组时现身；触屏常显。 */
+.dd-group-row {
+  display: flex; align-items: center;
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast);
+}
+.dd-group-row:hover { background: var(--hover); }
+.dd-group-row .dd-group-fold { flex: 1; min-width: 0; width: auto; }
+.dd-group-row:hover .dd-group-fold { background: none; }
+.dd-group-row.is-filtered .dd-group-fold { color: var(--accent-text); }
+.dd-group-filter {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: 0 0 auto;
+  border: none; background: transparent; border-radius: var(--radius-xs); cursor: pointer;
+  color: var(--text-faint);
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--dur-fast) ease, color var(--dur-base) ease;
+}
+.dd-group-row:is(:hover, :focus-within) .dd-group-filter { opacity: 1; pointer-events: auto; }
+.dd-group-row.is-filtered .dd-group-filter { opacity: 1; pointer-events: auto; color: var(--accent-text); background: var(--hover); }
+.dd-group-filter:hover { color: var(--text); }
+.dd-group-filter:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+@media (hover: none) {
+  .dd-group-filter { opacity: 1; pointer-events: auto; position: relative; }
+  .dd-sheet-body .dd-group-filter { width: 30px; height: 30px; }
+  /* 视觉 22~30px，触屏落点统一补到 44px（与搜索清除键同一套做法） */
+  .dd-group-filter::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: var(--hit-min); height: var(--hit-min);
+    transform: translate(-50%, -50%);
+  }
+}
+.dd-item {
+  display: flex; align-items: center; justify-content: space-between; gap:var(--sp-3);
+  width: 100%; padding:var(--sp-2) var(--sp-3);
+  border: none; background: none; font-family: inherit;
+  font-size: var(--fs-md); color: var(--text);
+  border-radius: var(--radius-sm); cursor: pointer; text-align: left;
+  white-space: nowrap;
+  transition: background var(--dur-fast);
+}
+.dd-item:hover, .dd-item.hi { background: var(--state-hover); }
+.dd-item.active { color: var(--accent-text); font-weight: 600; }
+.dd-item-label { overflow: hidden; text-overflow: ellipsis; }
+.dd-check { width: .9375rem; height: .9375rem; flex: 0 0 auto; color: var(--accent-text); }
+@media (max-width: 720px) {
+  /* 移动端筛选栏固定两行：第一行搜索独占；第二行 频道 + 排序 + 视图切换 同行。
+     频道框 flex-basis:0 —— 宽度只由剩余空间决定（与选中频道名长短无关，视觉定宽），
+     否则长频道名会把「视图切换」挤到第三行。频道名超长自动省略。 */
+  #feedDD { flex: 1 1 0; min-width: 0; }
+  #feedDD .dd-trigger { width: 100%; min-width: 0; }
+  .dd-label { max-width: none; flex: 0 1 auto; min-width: 0; }
+  .viewmode-btn { width: 30px; }
+}
+
+/* 移动端弹层（v1.1.10 底部抽屉 → v1.3.4 起整屏 → v1.3.6 一律整屏，不再有半屏形态）：
+   从下方推入铺满一整屏，读起来是「进入一个页面」，不是「盖了一层浮窗」。
+   背后没有内容可透，所以是实底、不做玻璃模糊（白花钱），遮罩也不压暗。
+   出口是 × / Esc / 系统返回键；下滑关闭 v2.5.3 下线（真机收起会整屏闪一下）。 */
+.dd-mask {
+  position: fixed; inset: 0; z-index: var(--z-sheet);
+  display: flex; align-items: flex-end;
+}
+.dd-sheet {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom:env(safe-area-inset-bottom, 0px);
+  animation: ddPush var(--dur-slow) var(--ease);
+}
+/* 头部固定区（下拉的标题行） */
+.dd-sheet-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding:var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-5); flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+}
+.dd-sheet-title { font-size: var(--fs-lg); font-weight: 600; color: var(--text); }
+/* 抽屉标题单行截断，否则长标题会把关闭按钮挤走 */
+.dd-sheet-head .dd-sheet-title {
+  min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.dd-sheet-close {
+  border: none; background: none; font-family: inherit;
+  width: 44px; height: 44px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-muted); cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.dd-sheet-close:hover { background: var(--hover); color: var(--text); }
+.dd-sheet-close .ico { width: 1.0625rem; height: 1.0625rem; }
+.dd-sheet-body { overflow: auto; overscroll-behavior: contain; padding:var(--sp-2) var(--sp-3) var(--sp-4); }
+.dd-sheet-body .dd-item { padding:var(--sp-3) var(--sp-4); font-size: var(--fs-lg); border-radius: var(--radius-md); }
+/* 整屏弹层里组头也是可点开关，得够拇指点得着：命中区提到 44px、字号抬一档，
+   否则一条 24px 的灰字既难点中、又看着像不可点的分隔标签。 */
+.dd-sheet-body .dd-group-fold {
+  min-height: 44px; padding:var(--sp-3) var(--sp-4);
+  font-size: var(--fs-md); border-radius: var(--radius-md);
+}
+
+@keyframes ddPush { from { transform: translateY(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .dd-sheet { animation: none; }
+}
+
+/* ---------- 视图模式切换（卡片 / 列表） ---------- */
+/* v1.3.10 统一：外壳高度跟 --head-ctl 走（桌面 32 / 移动 36），与同排图标按钮等高。
+   固定 34+内边距 4×2+边框 2=44 会把整行顶高，一排按钮里就它凸出来 */
+.viewmode {
+  display: inline-flex;
+  align-items: center;
+  height: var(--head-ctl, 32px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding:0;
+  gap: var(--sp-0);
+  flex: 0 0 auto;
+}
+.viewmode-btn {
+  border: none; background: none; font-family: inherit;
+  font-size: var(--fs-lg); line-height: 1;
+  color: var(--text-muted);
+  width: var(--head-ctl, 32px); height: calc(var(--head-ctl, 32px) - 2px);
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: calc(var(--radius-sm) - 1px); cursor: pointer;
+  transition: background var(--dur-base), color var(--dur-base);
+}
+.viewmode-btn:hover { color: var(--text); }
+.viewmode-btn.active {
+  background: var(--panel); color: var(--accent-text);
+  box-shadow: var(--elevation-1);
+}
+
+/* v1.6.0：页面顶部的标签栏整体移除（对应组件与样式均已删除），标签筛选不再出现在页头；
+   文章正文内的 .art-tags / .mini-tag 仍保留。 */
+
+/* ---------- 卡片网格 ---------- */

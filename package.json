@@ -15,7 +15,9 @@
     "dev": "turbo run dev",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "css:build": "node scripts/build-css.mjs",
+    "css:check": "node scripts/build-css.mjs --check"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",

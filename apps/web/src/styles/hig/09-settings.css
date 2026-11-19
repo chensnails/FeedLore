@@ -1,0 +1,67 @@
+/* ---------- 设置 → 模型：三张大卡片（2026-11-18 二次简化） ----------
+ * 卡 = 原生 <details class="sec model-card">，折叠/持久化/无障碍语义照旧走 .sec。
+ * 这里只加「卡片」视感：圆角 + 细边 + 表面材质 + 编号/说明；卡内子节
+ * (.model-sub) 不再是独立折叠，视觉上属于同一张卡。窄屏就近收边距。 */
+.model-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-soft, var(--panel));
+  margin: var(--sp-4) var(--sp-5) 0;
+  overflow: hidden;
+}
+.pane-scroll > .model-card:first-of-type { margin-top: var(--sp-4); }
+.model-card > .sec-head { padding: var(--sp-4) var(--sp-5); gap: var(--sp-3); flex-wrap: wrap; }
+.model-card > .sec-head:hover { background: var(--hover); }
+.model-card-no {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: var(--fs-2xs); font-weight: 700; letter-spacing: .02em;
+  color: var(--accent-text); background: var(--accent-soft, var(--surface-2));
+  border: 1px solid var(--accent-border, var(--border));
+}
+.model-card > .sec-head .sec-title { font-size: var(--fs-lg); }
+.model-card > .sec-head .sec-sub { font-size: var(--fs-xs); }
+.model-card-desc {
+  flex: 1 1 100%; order: 9;
+  font-size: var(--fs-sm); line-height: 1.6; color: var(--text-muted);
+  font-weight: 400; text-align: left; white-space: normal; overflow: visible;
+}
+.model-card > .sec-body { padding: 0 var(--sp-5) var(--sp-5); }
+
+/* 卡内子节：思考模式 / AI 用量。用一条淡分隔线与上一段分开，标题比卡片头小一档。 */
+.model-sub { border-top: 1px solid var(--border); padding-top: var(--sp-4); margin-top: var(--sp-4); }
+.model-sub-head { display: flex; align-items: baseline; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.model-sub-title { font-size: var(--fs-md); font-weight: 700; color: var(--text); }
+
+/* 默认模型那一行：在列表里置顶并轻微强调，点「编辑」才展开下面的表单。 */
+.ai-cap-provider.is-default {
+  border-color: var(--accent-border, var(--border));
+  background: var(--accent-soft, var(--surface-2));
+}
+/* 默认模型的编辑区：与 .ai-cap-editor 同一套观感，展开后紧贴首行。 */
+.model-edit {
+  padding: var(--sp-4); margin-bottom: var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface-soft, var(--panel));
+}
+.model-edit[hidden] { display: none; }
+
+/* 能力区「按动作单独指定模型」：默认收起，展开后保持原来的四列布局。 */
+.ai-cap-actions-adv { margin-top: var(--sp-2); }
+.ai-cap-actions-adv > summary {
+  cursor: pointer; list-style: none; user-select: none;
+  font-size: var(--fs-xs); color: var(--text-muted);
+  padding: var(--sp-1) 0;
+}
+.ai-cap-actions-adv > summary::-webkit-details-marker { display: none; }
+.ai-cap-actions-adv > summary::before { content: '▸ '; color: var(--text-faint); }
+.ai-cap-actions-adv[open] > summary::before { content: '▾ '; }
+.ai-cap-actions-adv > summary:hover { color: var(--text); }
+.ai-cap-actions-adv .ai-cap-actions { margin-top: var(--sp-2); }
+
+@media (max-width: 820px) {
+  .model-card { margin: var(--sp-3) var(--sp-4) 0; }
+  .model-card > .sec-head { padding: var(--sp-3) var(--sp-4); gap: var(--sp-2); }
+  .model-card > .sec-body { padding: 0 var(--sp-4) var(--sp-4); }
+  .model-edit { padding: var(--sp-3); }
+}

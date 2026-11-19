@@ -1,0 +1,615 @@
+/* ============================================================
+ * 状态页（设置 → 状态）
+ * 只读体检：健康条 + 指标卡 + 键值列表 + 异常频道。
+ * 全部沿用现有主题变量，深浅色自动跟随。
+ * ============================================================ */
+/* 状态页内容 = 健康条（常显）+ 若干 <details class="sec">。
+   外层不留左右内边距：.sec-head 自带 22px，再叠一层会变成 40px。
+   健康条不是 .sec，自己补 margin 即可。 */
+.status-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;      /* 内容比弹层高时自己滚；不设这条会被 .modal-body 的 overflow:hidden 裁掉 */
+  padding:0 0 var(--sp-2);
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-loading,
+.stat-error {
+  margin:0;
+  padding:var(--sp-6);
+  text-align: center;
+  font-size: var(--fs-md);
+  color: var(--text-muted);
+}
+.stat-error { color: var(--err-text); }
+
+/* 健康条：三个状态点 + 一句话结论。不折进分组 —— 它是「是否正常」的即时答案 */
+.stat-health {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap:var(--sp-2) var(--sp-4);
+  margin:var(--sp-4) var(--sp-6) var(--sp-3);
+  padding:var(--sp-3) var(--sp-4);
+  background: var(--hover);
+  border-radius: var(--radius-md);
+}
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap:var(--sp-2);
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.stat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+.stat-dot.ok { background: var(--green); }
+.stat-dot.warn { background: var(--warn-text); }
+.stat-dot.bad { background: var(--danger); }
+
+.stat-health-msg {
+  margin-left:auto;
+  font-size: var(--fs-md);
+  color: var(--text-muted);
+}
+.stat-health-msg.warn { color: var(--warn-text); }
+
+/* 分组标题（现在住在 .sec-body 里，不再靠 .status-body 的 flex gap 撑间距） */
+.stat-h {
+  margin:0 0 var(--sp-2);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text);
+}
+/* 一个分组里放了两段（如「运行实例」+「数据库」）时，后一段要自己带上前间距 */
+.stat-h:not(:first-child) { margin-top:var(--sp-4); }
+
+/* 指标卡 */
+/* 弹层正文宽度只有 ~576px，auto-fit 会排出 3+1 这种不齐的布局，
+   索性固定 2 列（窄屏也是 2 列），副行允许折行，避免长文本被截断。 */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap:var(--sp-3);
+}
+.stat-card {
+  min-width: 0;
+  padding:var(--sp-3) var(--sp-3);
+  background: var(--hover);
+  border-radius: var(--radius-md);
+}
+.stat-label {
+  margin:0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.stat-value {
+  margin:var(--sp-1) 0 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stat-sub {
+  margin:var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+
+/* 键值列表 */
+.stat-list {
+  display: flex;
+  flex-direction: column;
+  padding:var(--sp-1) var(--sp-4);
+  background: var(--hover);
+  border-radius: var(--radius-md);
+}
+.stat-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap:var(--sp-4);
+  padding:var(--sp-2) 0;
+  font-size: var(--fs-md);
+  border-bottom: var(--divider-w) solid var(--border);
+}
+.stat-row:last-child { border-bottom: 0; }
+.stat-k { flex: none; color: var(--text-muted); }
+.stat-v {
+  min-width: 0;
+  color: var(--text);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stat-muted { color: var(--text-faint); }
+.stat-bad { color: var(--err-text); }
+.stat-warn { color: var(--warn-text); }
+
+/* 异常频道：只在有失败时渲染 */
+.stat-problems {
+  padding:var(--sp-1) var(--sp-4);
+  background: var(--panel);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+}
+.stat-problem {
+  display: flex;
+  align-items: center;
+  gap:var(--sp-3);
+  padding:var(--sp-2) 0;
+  font-size: var(--fs-md);
+  border-bottom: var(--divider-w) solid var(--border);
+}
+.stat-problem:last-child { border-bottom: 0; }
+.stat-problem-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stat-problem-err {
+  flex: 0 1 auto;
+  max-width: 42%;
+  font-size: var(--fs-sm);
+  color: var(--err-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 「已自动停用」徽标（v2.5.0）：连续失败达到上限、采集已停的频道 */
+.stat-problem-off {
+  flex: none;
+  padding:2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-2xs);
+  color: var(--warn-text);
+  background: var(--warn-bg);
+  white-space: nowrap;
+}
+.stat-problem .btn { flex: none; }
+
+@media (max-width: 480px) {
+  .stat-health-msg { flex: 1 0 100%; margin-left:0; }
+  .stat-problem-err { max-width: 32%; }
+}
+
+/* ============================================================
+ * 设置弹层里的滚动条
+ * macOS 默认是浮层滚动条，不滚动时完全看不见，容易误以为内容就这么点。
+ * 给三个可滚动区（表单 / 分组容器 / 状态页）统一换成细的常驻滚动条。
+ * ============================================================ */
+.form,
+.pane-scroll,
+.status-body {
+  scrollbar-width: thin;                                  /* Firefox */
+  scrollbar-color: var(--border-strong) transparent;
+}
+.form::-webkit-scrollbar,
+.pane-scroll::-webkit-scrollbar,
+.status-body::-webkit-scrollbar {
+  width: 10px;
+}
+.form::-webkit-scrollbar-track,
+.pane-scroll::-webkit-scrollbar-track,
+.status-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* 用「透明边框 + content-box 裁切」把 10px 轨道收成 4px 的滑块 */
+.form::-webkit-scrollbar-thumb,
+.pane-scroll::-webkit-scrollbar-thumb,
+.status-body::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: var(--radius-pill);
+}
+.form::-webkit-scrollbar-thumb:hover,
+.pane-scroll::-webkit-scrollbar-thumb:hover,
+.status-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+  background-clip: content-box;
+}
+
+/* ============================================================
+ * 频道行的「分组 + 频率」并排区
+ * 频率是每频道单独设置，未设置时跟随全局（select 第一项）
+ * ============================================================ */
+.feed-metas {
+  display: flex;
+  flex-wrap: wrap;
+  gap:var(--sp-1) var(--sp-4);
+}
+.feed-metas .feed-group { margin-top:var(--sp-2); }
+.feed-group select {
+  max-width: 100%;
+  padding:var(--sp-1) var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs); font-family: inherit; color: var(--text-muted);
+  background: var(--panel-2);
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base), background var(--dur-base);
+}
+.feed-group select:focus {
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 3px var(--focus-halo);
+}
+/* 单独设过频率的频道用主色标出来，一眼能看出哪些没跟随全局 */
+.feed-freq.own {
+  color: var(--accent-text);
+  border-color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
+/* ============================================================
+ * 「有新内容」浮标（网页自动刷新）
+ * 用户已经滚下去了就不动列表，先挂这个；点它才套用并回到顶部
+ * ============================================================ */
+.new-pill {
+  position: fixed;
+  left: 50%; bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  transform: translate(-50%, 12px);
+  display: inline-flex; align-items: center; gap:var(--sp-2);
+  padding:var(--sp-2) var(--sp-5);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent); color: var(--on-accent);
+  font-size: var(--fs-md); font-weight: 600; font-family: inherit;
+  box-shadow: var(--elevation-3);
+  cursor: pointer;
+  z-index: var(--z-float);
+  animation: newPillIn .22s ease-out forwards;
+}
+.new-pill:hover { background: var(--accent-strong); }
+.new-pill[hidden] { display: none; }
+.new-pill-ico { font-size: var(--fs-base); line-height: 1; }
+@keyframes newPillIn {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .new-pill { animation: none; transform: translate(-50%, 0); }
+}
+
+/* ============================================================
+ * 链接选择菜单（复制按钮遇到多条链接时从按钮旁弹出）
+ * ============================================================ */
+.link-menu {
+  position: fixed;
+  z-index: var(--z-menu);
+  min-width: 210px;
+  max-width: min(340px, calc(100vw - 16px));
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elevation-3);
+  padding:var(--sp-2);
+  display: flex; flex-direction: column; gap: var(--sp-0);
+  animation: linkMenuIn var(--dur-base) ease-out;
+}
+@keyframes linkMenuIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.link-menu-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-0);
+  width: 100%; text-align: left;
+  background: none; border: 0; border-radius: var(--radius-sm);
+  padding:var(--sp-2) var(--sp-3);
+  font-family: inherit; cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.link-menu-item:hover { background: var(--accent-soft); }
+.link-menu-label { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.link-menu-url { font-size: var(--fs-xs); color: var(--text-muted); word-break: break-all; }
+
+/* 文章页自动加载的触发哨兵：不可见，仅供 IntersectionObserver 观察 */
+/* 滚动哨兵：隐形 1px 锚点，自动加载靠它的 getBoundingClientRect 判定「到底没」。
+   文章页(.reader-sentinel)与卡片页(.cards-sentinel，v1.6.0-test5 替代「加载更多」按钮)同一套。 */
+.reader-sentinel, .cards-sentinel { height: 1px; }
+
+/* 图片加载占位：到位前显示骨架流光，加载完成后由 .img-ready 关闭动画，避免一直空转 */
+.card-media img,
+.row-thumb img,
+.art-img,
+.dg-item-thumb {
+  background: linear-gradient(90deg, var(--sk-a) 25%, var(--sk-b) 37%, var(--sk-a) 63%);
+  background-size: 400% 100%;
+  animation: sk 1.4s ease infinite;
+}
+.card-media img.img-ready,
+.row-thumb img.img-ready,
+.art-img.img-ready,
+.dg-item-thumb.img-ready {
+  /* 骨架流光在到位那一刻停掉，图片本身淡入：比「啪」地整张出现柔和，也不改变占位面积 */
+  animation: imgReveal .36s var(--ease) both;
+  background: none;
+}
+@keyframes imgReveal { from { opacity: .3; } to { opacity: 1; } }
+
+/* 尊重「减少动态效果」系统偏好：关闭所有过渡与动画，避免眩晕 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+ * 命令面板 ⌘K / Ctrl+K（参考 Linear / Vercel 命令面板）
+ * ============================================================ */
+.cmdk-mask {
+  position: fixed; inset: 0; z-index: var(--z-cmdk);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding:12vh var(--sp-4) var(--sp-4);
+  background: var(--dim);
+  animation: cmdkMaskIn var(--dur-base) ease-out;
+}
+.cmdk-mask[hidden] { display: none; }
+@keyframes cmdkMaskIn { from { opacity: 0; } to { opacity: 1; } }
+
+.cmdk {
+  width: min(620px, 100%);
+  max-height: 70vh;
+  display: flex; flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--elevation-4);
+  overflow: hidden;
+  animation: cmdkIn var(--dur-base) cubic-bezier(.16, 1, .3, 1);
+}
+@keyframes cmdkIn {
+  from { opacity: 0; transform: translateY(-8px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+.cmdk-input-wrap {
+  display: flex; align-items: center; gap:var(--sp-3);
+  padding:var(--sp-4) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+.cmdk-input-wrap .search-ico { width: 1.125rem; height: 1.125rem; color: var(--text-faint); flex: none; }
+.cmdk-input {
+  flex: 1; min-width: 0;
+  border: 0; outline: 0; background: none;
+  font: inherit; font-size: var(--fs-lg); color: var(--text);
+}
+.cmdk-input::placeholder { color: var(--text-faint); }
+.cmdk-kbd {
+  flex: none;
+  font: inherit; font-size: var(--fs-2xs); color: var(--text-muted);
+  background: var(--hover); border: 1px solid var(--border);
+  border-radius: var(--radius-xs); padding:2px var(--sp-2);
+}
+.cmdk-list {
+  overflow-y: auto; overscroll-behavior: contain;
+  padding:var(--sp-2);
+}
+.cmdk-group-label {
+  padding:var(--sp-2) var(--sp-3) var(--sp-1);
+  font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-faint);
+}
+.cmdk-item {
+  display: flex; align-items: center; gap:var(--sp-3);
+  padding:var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: 0; background: none; width: 100%; text-align: left;
+  font: inherit; color: var(--text);
+}
+.cmdk-item .cmdk-ico { width: 1.125rem; height: 1.125rem; flex: none; color: var(--text-muted); }
+.cmdk-item .cmdk-label { flex: 1; min-width: 0; font-size: var(--fs-base); }
+.cmdk-item .cmdk-tag {
+  flex: none;
+  font-size: var(--fs-2xs); color: var(--accent-text);
+  background: var(--accent-soft); border-radius: var(--radius-xs); padding:1px var(--sp-2);
+}
+.cmdk-item.active,
+.cmdk-item:hover { background: var(--accent-soft); }
+.cmdk-item.active { box-shadow: inset 2px 0 0 var(--accent); }
+.cmdk-empty { padding:var(--sp-6); text-align: center; color: var(--text-faint); font-size: var(--fs-md); }
+.cmdk-foot {
+  display: flex; gap:var(--sp-4); flex-wrap: wrap;
+  padding:var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-2xs); color: var(--text-faint);
+}
+.cmdk-foot kbd {
+  font: inherit; background: var(--hover); border: 1px solid var(--border);
+  border-radius: var(--radius-xs); padding:1px var(--sp-1); margin-right:2px;
+}
+@media (max-width: 560px) {
+  .cmdk-mask { padding-top:8vh; }
+  .cmdk-foot, .cmdk-kbd { display: none; }
+}
+
+/* 卡片页的两种标记：收藏强调条 + 未读圆点。已读只收掉圆点，卡面照常显示
+   （点开详情即算读过，状态与文章页同步，见 src/views/CardsView.jsx）。 */
+.card.is-fav,
+.row-item.is-fav { box-shadow: var(--elevation-1), inset 3px 0 0 var(--accent); }
+
+/* ---------- 卡片详情弹窗（src/views/CardDetail.jsx） ----------
+ * 桌面用 .modal-mask / .modal 一族，窄屏用 .dd-mask / .dd-sheet 整屏弹层（与 Dropdown 同一约定）；
+ * 正文区沿用文章页的 .art-* 样式。v1.3.3 起弹窗不再有标题栏和底栏，整个面板只剩正文，
+ * 动作全在正文底部那一排图标按钮里，所以这里只补悬浮关闭键与几处留白。 */
+.cd-scroll {
+  flex: 1; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain;
+  /* 给右上角悬浮的关闭键让位，否则正文首行 / 首图会被压在它下面 */
+  padding-top: var(--sp-8);
+}
+/* 移动端挂在 .dd-sheet-body 上：抹掉抽屉自带的一圈 padding，避免和下面的块叠加成双倍留白。
+   同特异度，靠本块位于 .dd-sheet-body 之后取胜。 */
+.cd-body { padding: var(--sp-8) 0 0; }
+.cd-desc {
+  margin: var(--sp-3) var(--sp-6) 0;
+  font-size: var(--fs-md); line-height: 1.6; color: var(--text-muted);
+}
+/* 无正文时正文区整个不渲染，这里只兜摘要 + 复制/打开 */
+.cd-none {
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-6) var(--sp-6);
+}
+.cd-none .cd-desc { margin: 0; }
+/* 弹窗面板：为悬浮关闭键提供定位参照（桌面 .modal 与移动 .dd-sheet 共用） */
+.cd-modal { position: relative; }
+.cd-close {
+  position: absolute; top: var(--sp-3); right: var(--sp-3); z-index: 2;
+  width: 44px; height: 44px; font-size: var(--fs-md);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--panel); color: var(--text-muted);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+}
+/* 与 .modal-close 用同一档 hover 底色，弹层关闭键的反馈不再一处有一处没有 */
+.cd-close:hover { background: var(--hover); border-color: var(--accent-text); color: var(--accent-text); }
+/* 正文块在弹窗里不再铺自己的底色：.art-body 的文章页样式（不透明 panel-2 + 顶部分隔线）
+   放进玻璃面板就成了「一个卡片三种颜色」，撤掉后整个弹窗只剩一层底。 */
+.cd-art { border-top: none; background: transparent; }
+/* 统一的键盘可见焦点环（无障碍 + 现代观感）
+ * --focus-ring（实色描边）与 --focus-halo（22% 光环）已在 :root 定义一次，
+ * 6 套强调色 × 3 套主题不再各写半透明值：换主色自动跟随，也无需靠后的覆盖规则。
+ * 另：焦点指示不能用 box-shadow —— .viewnav-btn.active 等后写的规则会把它盖掉，
+ * 所以全局统一走 outline（见 WCAG 1.4.11 非文本对比 ≥3:1）。 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+/* 输入框自家已有聚焦样式（边框 + 光环），避免双重描边 */
+input:focus-visible,
+textarea:focus-visible { outline: none; }
+/* 按钮 / 分段控件 / 色块 / 视图导航刻意不再覆盖 outline：
+   原先这一段写的是 outline:none + box-shadow 淡环，既被 .active 的拟物阴影盖掉，
+   半透明环本身也不达标。统一继承上面的 2px 实色描边即可。 */
+/* 开关：隐藏的 input 获得焦点时，把光环画在滑块上 */
+.switch input:focus-visible + .switch-slider { box-shadow: 0 0 0 3px var(--focus-halo); }
+
+/* ---------- 关于页（版本信息与更新检测） ---------- */
+.about-body { padding:var(--sp-5) var(--sp-6) var(--sp-6); }
+.about-brand { display: flex; align-items: center; gap:var(--sp-4); margin-bottom:var(--sp-5); }
+.about-logo { border-radius: var(--radius-lg); flex: none; }
+.about-name { font-size: 1.125rem; line-height: 1.3; margin:0 0 var(--sp-1); }
+.about-en { font-size: var(--fs-sm); font-weight: 400; color: var(--text-faint); margin-left:var(--sp-1); letter-spacing: 0.02em; }
+.about-slogan { margin:0; font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.5; }
+.about-kv { margin:0 0 var(--sp-5); }
+.about-kv-row { display: flex; align-items: baseline; justify-content: space-between; gap:var(--sp-5); padding:var(--sp-3) 0; border-bottom: 1px solid var(--border); font-size: var(--fs-md); }
+.about-kv-row:last-child { border-bottom: 0; }
+.about-kv dt { color: var(--text-faint); flex: none; }
+.about-kv dd { margin:0; text-align: right; min-width: 0; word-break: break-all; }
+.about-kv dd a { color: var(--accent); }
+.about-check { margin-bottom:var(--sp-4); }
+.about-body > .test-result { margin-bottom:var(--sp-4); }
+.about-note { margin:0; font-size: var(--fs-xs); color: var(--text-faint); line-height: 1.7; }
+/* 「有新版本」用主色调高亮，和绿色（已最新）／红色（失败）区分 */
+.test-result.upd { background: var(--accent-soft); border: 1px solid var(--accent); color: var(--text); }
+.test-result.upd b { font-variant-numeric: tabular-nums; }
+.test-result.upd a { color: var(--accent); text-decoration: underline; }
+@media (max-width: 640px) {
+  .about-body { padding:var(--sp-4) var(--sp-4) var(--sp-5); }
+  .about-kv-row { flex-direction: column; gap: var(--sp-0); }
+  .about-kv dd { text-align: left; }
+}
+
+/* 快捷键帮助浮层（v1.1.1）已于 v1.1.7 移除（改为 设置 → 帮助），
+ * 其 .shortcuts-* 样式随之成为死代码（且带一堆硬编码回退色），本次一并清理；
+ * 命令面板底部仍在用的 kbd 样式保留并改为引用令牌。 */
+.cmdk-foot kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--fs-sm); line-height: 1.5;
+  min-width: 1.6em; text-align: center;
+  padding:2px var(--sp-2); border-radius: var(--radius-xs);
+  background: var(--surface-soft-2); color: var(--text);
+  border: 1px solid var(--border); border-bottom-width: 2px;
+}
+
+/* ============================================================
+ * 拟态玻璃统一风格（v1.1.7）
+ * 卡片 / 按钮 / 标签 / 侧栏等可滚动元素用拟态柔光阴影（无模糊）；
+ * 弹层 / 命令面板 / 灯箱等静态覆盖场景用玻璃模糊。
+ * 遵守性能铁律：sticky / fixed 的长列表元素禁用 backdrop-filter。
+ * ============================================================ */
+
+/* 按钮：拟态浮起 */
+.btn-ghost {
+  background: var(--surface-soft);
+  border-color: var(--border);
+  box-shadow: var(--neu-1);
+}
+.btn-ghost:hover { box-shadow: var(--neu-2); background: var(--surface-soft); }
+/* 按下只换阴影；位移手势统一由 hig.css 的 scale(--hig-press-scale) 提供，
+   基础层不再写第二份 translateY（同特异性下被覆盖，留着只会误导后来者）。 */
+.btn-ghost:active { box-shadow: var(--neu-inset); }
+.btn-primary { box-shadow: 0 2px 10px var(--accent-glow), var(--neu-1); }
+.btn-primary:hover { box-shadow: 0 4px 14px var(--accent-glow), var(--neu-2); }
+.btn-primary:active { box-shadow: var(--neu-inset); }
+
+/* 选择框 / 搜索框：拟态内凹 */
+.select { background: var(--surface-soft) var(--select-arrow) no-repeat right 12px center; box-shadow: var(--neu-1); }
+/* 自定义下拉触发器：去掉 .select 内嵌箭头（已有 .dd-caret），避免双箭头 */
+.dd-trigger { background-image: none; padding-right:var(--sp-3); }
+.search-box input { background: var(--surface-soft-2); box-shadow: var(--neu-inset); border-color: var(--border); }
+.search-box input:focus { box-shadow: var(--neu-inset), 0 0 0 3px var(--focus-halo); }
+
+/* 视图模式分段控件 */
+.viewmode { background: var(--surface-soft-2); box-shadow: var(--neu-inset); border-color: var(--border); }
+.viewmode-btn.active { background: var(--surface-soft); box-shadow: var(--neu-1); }
+
+/* 卡片 / 列表条目：不再在这里统一拟态。
+ * v2.5.0 起两者改成「薄边 + 一层浅影」（见 .card / .row-item 主定义），
+ * 这段统一规则写在文件末尾，同特异度会把新质感整段反盖掉。 */
+
+/* 阅读页侧栏（sticky，禁用模糊） */
+.reader-side { background: var(--surface-soft); box-shadow: var(--neu-2); }
+
+/* mini-tag / 浮标：轻玻璃 */
+.mini-tag { box-shadow: var(--neu-inset); }
+.new-pill { box-shadow: 0 2px 10px var(--accent-glow), var(--neu-2), inset 0 1px 0 rgba(255, 255, 255, .18); }
+
+/* 弹层 / 命令面板 / 灯箱：玻璃模糊只在遮罩（mask）单层生效。
+   弹层自身用半透明实底盖在已模糊的遮罩上，不再二次模糊（页面已滚动锁定）。
+   v2.5.0 起走 --glass-blur（16px）并加饱和度：只提亮背后的颜色，不加亮度，
+   遮罩上的弹层仍能拉开层次；声明条数不变，模糊预算守着两个遮罩。 */
+.modal-mask { backdrop-filter: blur(var(--glass-blur)) saturate(1.4); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4); }
+.modal {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+}
+.cmdk-mask { backdrop-filter: blur(var(--glass-blur)) saturate(1.4); -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4); }
+.cmdk {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+}
+.cmdk-item.active, .cmdk-item:hover { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent), var(--neu-inset); }
+.cmdk-foot kbd {
+  background: var(--surface-soft-2); box-shadow: var(--neu-inset); border-color: var(--border);
+}
+.lightbox-img { box-shadow: var(--elevation-4); }
+
+/* 阅读页头部工具（v1.3.11）：桌面保留文字，与顶栏「图标 + 文字」同一语言 ——
+   「多篇」「全部已读」都是带状态的开关，一枚光图标读不出是模式还是动作，
+   而头部右侧恰好有大片空白可用。窄屏（≤820）由 .btn-label 统一收成图标。 */
+.reader-head-tools .btn { padding: 0 var(--sp-2); }
+#readerAccBtn[aria-pressed="true"] { color: var(--accent-text); }
+
+
