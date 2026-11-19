@@ -25,9 +25,11 @@ This file records user-visible changes and deployment-related changes for 2.x.
 - **Retrievable one-time password**: `docker exec -it feedlore pnpm --filter @feedlore/server initial-password`
   returns the password and remaining validity within 24h of generation (encrypted at rest,
   `--json` output, exit codes 0/2/1).
-- **Deploy scripts**: `scripts/deploy.sh` runs up -d, waits for healthy, and echoes credentials;
-  `scripts/deploy-cn.sh` is the China-network variant (multi-source compose download + ghcr
-  mirrors, re-tagged to the official name).
+- **Command-line deployment**: README / help docs now give copy-paste blocks for both direct
+  GitHub access and a China network (download via `gh-proxy.org`, pull via `ghcr.nju.edu.cn` then
+  re-tag to the official name), covering fresh installs and upgrades alike;
+  `docker logs feedlore --tail 40` shows the credentials.
+  Optional helper scripts remain under `scripts/` for wait-for-health + echo workflows.
 
 ### Changed
 

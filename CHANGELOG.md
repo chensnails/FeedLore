@@ -21,8 +21,10 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
   （访问地址 / 初始用户名 / 一次性密码 / 下一步）；升级部署不会动原密码，只回显登录链接。
 - **一次性密码可查回**：`docker exec -it feedlore pnpm --filter @feedlore/server initial-password`
   在生成后 24 小时内可查回密码与剩余时间（加密落库，`--json` 输出，退出码 0/2/1）。
-- **部署脚本**：`scripts/deploy.sh` 执行 up -d、等 healthy、直接回显账密与链接；
-  `scripts/deploy-cn.sh` 为国内网络版，多源下载 compose + ghcr 反代拉镜像（拉后 tag 回官方名）。
+- **纯命令行部署**：README / 帮助文档给出可整段复制的命令，海外直连与国内代理站
+  （`gh-proxy.org` 下载、`ghcr.nju.edu.cn` 拉镜像后 tag 回官方名）各一套，覆盖全新安装
+  与老用户升级；`docker logs feedlore --tail 40` 即看凭据。
+  仓库 `scripts/` 内保留可选自动化脚本（等健康 + 回显），需要时才用。
 
 ### 变更
 

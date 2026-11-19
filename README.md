@@ -33,49 +33,73 @@ English: [README.en.md](README.en.md)
 
 需要 Docker 24+ 与 Compose v2，一个空闲端口（默认 `3210`）。不用克隆源码，也不用准备 `.env`。
 
-**方式 A：一键脚本（推荐）** —— 启动、等健康、**直接把登录链接和密码回显在终端**：
+### 全新安装
+
+**海外 / 能直连 GitHub** —— 复制整段执行：
 
 ```bash
-mkdir feedlore && cd feedlore
-curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/scripts/deploy.sh
-chmod +x deploy.sh && ./deploy.sh
-```
-
-国内网络下载慢或 `ghcr.io` 拉不动时，改用 `deploy-cn.sh`（多源下载 + 镜像反代）：
-
-```bash
-curl -fsSL -O https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/scripts/deploy-cn.sh
-chmod +x deploy-cn.sh && ./deploy-cn.sh
-```
-
-**方式 B：手动**
-
-```bash
-mkdir feedlore && cd feedlore
+mkdir -p feedlore && cd feedlore
 curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
+docker pull ghcr.io/chensnails/feedlore:2.5.2
 docker compose -f docker-compose.v2.release.yml up -d
-docker compose -f docker-compose.v2.release.yml logs app   # 看首启横幅
+docker logs feedlore --tail 40        # 首启凭据就在这段日志里
 ```
 
-两种方式都会按场景自动处理，不会覆盖已有数据：
-
-| 场景 | 会发生什么 |
-| --- | --- |
-| **新用户**（全新安装） | 自动创建 `admin` 并生成随机密码：脚本直接回显；手动方式看 `FEEDLORE FIRST RUN` 横幅 |
-| **老用户**（已有数据） | **跳过生成、原密码不变**，日志提示「数据库已有 N 个账号」；想改密码才用 `--reset` |
-
-**忘记密码 / 错过横幅**（容器内执行，不开网络接口）：
+**国内网络** —— 代理站已写死在命令里，直接复制（脚本文件不用下）：
 
 ```bash
-# 24 小时内查回初始密码
-docker exec -it feedlore pnpm --filter @feedlore/server initial-password
-# 忘记密码：重置并打印新密码（旧会话全部失效）
-docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset
+mkdir -p feedlore && cd feedlore
+curl -fsSL -o docker-compose.v2.release.yml   'https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml'
+docker pull ghcr.nju.edu.cn/chensnails/feedlore:2.5.2
+docker tag  ghcr.nju.edu.cn/chensnails/feedlore:2.5.2 ghcr.io/chensnails/feedlore:2.5.2
+docker compose -f docker-compose.v2.release.yml up -d
+docker logs feedlore --tail 40        # 首启凭据就在这段日志里
 ```
 
-> **老用户手动升级**：先换新版 compose 再 `up -d`，否则旧版里的 upgrade 服务会挡住启动：
-> `curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml`
-> Watchtower / 「设置 → 一键更新」路径不用换。
+> `docker tag` 那一步不能省：compose 里的镜像名是官方 `ghcr.io/...`，拉反代后要把名字改回来，
+> Watchtower 和小版本升级才认得出。反代不可用时把 `ghcr.nju.edu.cn` 换成
+> `ghcr.1ms.run` / `ghcr.m.daocloud.io`，或直接 `docker pull ghcr.io/...`（能直连时）。
+
+### 老用户升级（已有数据）
+
+先换新版 compose（旧版含 `upgrade` 服务会挡住启动），再拉新镜像、`up -d`：
+
+```bash
+cd feedlore
+curl -fsSL -o docker-compose.v2.release.yml   'https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml'
+docker pull ghcr.nju.edu.cn/chensnails/feedlore:2.5.3
+docker tag  ghcr.nju.edu.cn/chensnails/feedlore:2.5.3 ghcr.io/chensnails/feedlore:2.5.3
+V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose -f docker-compose.v2.release.yml up -d
+docker logs feedlore --tail 20
+```
+
+把 `2.5.3` 换成目标版本即可。若 `.env` 里已写死 `V2_IMAGE`，改那一行、去掉命令里的
+`V2_IMAGE=` 前缀即可（两处保持一致）。
+
+### 看到密码 / 忘记密码
+
+`docker logs feedlore --tail 40` 里按场景显示：
+
+| 场景 | 日志里会看到 |
+| --- | --- |
+| **新用户**（空库） | 自动建 `admin` + 随机一次性密码（2.5.3+ 是 `FEEDLORE FIRST RUN` 横幅） |
+| **老用户**（已有账号） | **跳过生成、原密码不变**，提示「数据库已有 N 个账号」 |
+
+遗忘时（2.5.3+ 镜像、容器内执行，不开网络接口）：
+
+```bash
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password          # 24h 内查回
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset  # 重置并打印新密码
+```
+
+### 起不来怎么查
+
+```bash
+docker compose -f docker-compose.v2.release.yml ps      # 看 app 是否 healthy / 是否在重启
+docker logs feedlore --tail 60                          # 看真实报错
+```
+
+首次启动要跑一遍结构迁移，低配机器上 1~2 分钟才 healthy 属于正常。
 
 访问 `http://<主机>:3210` 登录并立即改密，然后在「设置 → 数据源」添加 RSS / Atom 或导入 OPML 即可阅读。
 
