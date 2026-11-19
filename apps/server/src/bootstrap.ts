@@ -72,7 +72,14 @@ async function ensureDefaultAdmin(): Promise<void> {
     warn(`Database is not ready yet (the schema migration may not have run), skipping the initial admin: ${(e as Error)?.message ?? e}`);
     return;
   }
-  if (count > 0) return;
+  if (count > 0) {
+    /* 已有账号时不动密码，但要把「怎么拿到密码」喊出来 —— 否则用户升级部署后
+     * 只看到一堆启动日志、找不到凭据。口令是哈希存的，这里给的是重置通道。 */
+    log(`Existing site (${count} account${count === 1 ? '' : 's'}): admin password unchanged.`);
+    log('  Forgot it? Run inside the container:');
+    log('    docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset');
+    return;
+  }
 
   const username = process.env.ADMIN_USER?.trim() || 'admin';
   /* 不再回落到 admin/admin：默认口令等于把刚部署、还没来得及改密的实例直接送人。
