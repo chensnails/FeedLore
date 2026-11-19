@@ -59,7 +59,9 @@ if (tier === 'unit') {
   console.log(`[test:${tier}] ${names.join(', ')}`);
 }
 
-const r = spawnSync(process.execPath, ['--import', 'tsx', '--test', ...selected], {
+// 集成用例共用同一个测试库：默认的文件级并发会让两套账号互相污染
+// （整站还原断言「只剩 1 个账号」却看到另一套测试的 3 个）。必须串行。
+const r = spawnSync(process.execPath, ['--import', 'tsx', '--test', '--test-concurrency=1', ...selected], {
   cwd: root,
   stdio: 'inherit',
 });
