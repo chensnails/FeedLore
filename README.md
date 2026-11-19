@@ -29,11 +29,11 @@
 
 ## 快速开始
 
-需要 Docker 24+ 与 Compose v2，一个空闲端口（默认 `3210`）。不用克隆源码，也不用准备 `.env`。
+Docker 24+ 与 Compose v2，默认端口 `3210`。
 
 ### 全新安装
 
-**国内网络** —— 整段复制执行：
+**国内**
 
 ```bash
 mkdir -p feedlore && cd feedlore
@@ -45,7 +45,7 @@ docker compose -f docker-compose.v2.release.yml up -d
 docker compose -f docker-compose.v2.release.yml logs -f app
 ```
 
-**海外 / 能直连 GitHub** —— 整段复制执行：
+**海外**
 
 ```bash
 mkdir -p feedlore && cd feedlore
@@ -55,20 +55,11 @@ docker compose -f docker-compose.v2.release.yml up -d
 docker compose -f docker-compose.v2.release.yml logs -f app
 ```
 
-最后一条实时输日志，出现下面这行就是初始密码：
-
-```
-[bootstrap] Empty site: created initial admin admin, one-time password: TJ69Z2Pb8oDbM1Jr
-```
-
-按 `Ctrl+C`（只停日志、容器继续运行），用用户名 `admin` + 该密码登录，进去后立刻改密。
-
-> 这台机器以前装过、`feedlore-pgdata` 数据卷还在的话，不会生成新密码。要彻底重来：
-> `docker compose -f docker-compose.v2.release.yml down -v`（删数据卷，不可逆）。
+日志出现 `one-time password: xxxx` 即初始密码，`Ctrl+C` 后用 `admin` 登录。
 
 ### 已有站点升级
 
-**国内网络** —— 整段复制执行（把两处 `2.5.3` 换成目标版本）：
+**国内**
 
 ```bash
 cd feedlore
@@ -77,49 +68,33 @@ curl -fsSL -o docker-compose.v2.release.yml \
 docker pull ghcr.nju.edu.cn/chensnails/feedlore:2.5.3
 docker tag  ghcr.nju.edu.cn/chensnails/feedlore:2.5.3 ghcr.io/chensnails/feedlore:2.5.3
 V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose -f docker-compose.v2.release.yml up -d
-docker compose -f docker-compose.v2.release.yml logs --tail 40 app
 ```
 
-**海外 / 能直连 GitHub** —— 整段复制执行（同样改 `2.5.3`）：
+**海外**
 
 ```bash
 cd feedlore
 curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
 docker pull ghcr.io/chensnails/feedlore:2.5.3
 V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose -f docker-compose.v2.release.yml up -d
-docker compose -f docker-compose.v2.release.yml logs --tail 40 app
 ```
 
-- `.env` 里写死了 `V2_IMAGE` 就改那一行，并去掉命令里的 `V2_IMAGE=` 前缀。
-- **compose 文件必须一起更新**，否则 app 起不来。
-- 账号、密码、订阅、已读状态全部保留，日志里不会出现新密码。
+把 `2.5.3` 换成目标版本。密码与数据不变。
 
-### 忘了密码
+### 忘记密码
 
 ```bash
-docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset   # 需 2.5.3+ 镜像
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset
 ```
 
-2.5.2 及更早没有这个命令，用帮助文档「重置管理员密码」里的一次性脚本。
-
-### 起不来
-
-```bash
-docker compose -f docker-compose.v2.release.yml ps              # healthy / restarting / exited
-docker compose -f docker-compose.v2.release.yml logs --tail 60 app
-```
-
-首次启动要跑结构迁移，低配机器 1~2 分钟才 healthy 属正常。
-
-访问 `http://<主机>:3210` 登录并立即改密，然后在「设置 → 数据源」添加 RSS / Atom 或导入 OPML 即可阅读。
+访问 `http://<主机>:3210`。
 
 ## 配置与升级
 
-默认值开箱可用。改端口、走 HTTPS 反代、复用数据库密码或指定初始账号时，把 [`.env.example`](.env.example)
-复制为 `.env`（每项含义都在注释里），改完重新 `up -d`。
+改端口、走 HTTPS 反代、指定初始账号：把 [`.env.example`](.env.example) 复制为 `.env` 改对应项，再 `up -d`。
 
-- **从 1.x 升级**：在 1.7.4 里用「设置 → 数据 → 导出」备份，装好 2.x 后导入即可。详见 [UPGRADE-v2.md](UPGRADE-v2.md)。
-- **更新**：镜像默认钉版本号，换版本改 `V2_IMAGE`；设为 `:latest` 跟随 Watchtower 滚动升级，也可在「设置 → 关于」一键更新。
+- **更新**：换 `V2_IMAGE` 后 `up -d`；或设 `:latest` 让 Watchtower 跟随，也可在「设置 → 关于」一键更新。
+- **从 1.x 迁移**：在 1.7.4 用「设置 → 数据 → 导出」备份，装好 2.x 后导入。
 
 ## 本地开发
 
