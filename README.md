@@ -1,5 +1,3 @@
-English: [README.en.md](README.en.md)
-
 # 笺川 · FeedLore
 
 > 拾取值得读的 —— 自托管 RSS 阅读器 + 资源卡片墙。
@@ -33,36 +31,57 @@ English: [README.en.md](README.en.md)
 
 需要 Docker 24+ 与 Compose v2，一个空闲端口（默认 `3210`）。不用克隆源码，也不用准备 `.env`。
 
+### 先分清你在哪种情况
+
+| 情况 | 判断依据 | 结果 |
+| --- | --- | --- |
+| **全新安装** | 这台机器没跑过 FeedLore，或已清空数据 | 自动建 `admin` + 生成随机密码，**日志里直接打印** |
+| **已有数据** | 数据卷 `feedlore-pgdata` 还在 | **保留原账号与密码**；跳过生成，日志不打印密码 |
+
+> ⚠️ `docker rm -f feedlore` 只删容器，**数据卷还在**——重新部署仍属"已有数据"，
+> 不会生成新密码。想真正重来（连订阅和账号一起清空）：
+>
+> ```bash
+> docker compose -f docker-compose.v2.release.yml down -v     # -v 删数据卷，不可逆
+> ```
+
 ### 全新安装
 
-**海外 / 能直连 GitHub** —— 复制整段执行：
+**国内网络**（代理站已写死，整段复制）：
 
 ```bash
 mkdir -p feedlore && cd feedlore
-curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
-docker pull ghcr.io/chensnails/feedlore:2.5.2
-docker compose -f docker-compose.v2.release.yml up -d
-docker compose -f docker-compose.v2.release.yml logs -f app   # 实时看，出现密码后 Ctrl+C
-```
-
-**国内网络** —— 代理站已写死在命令里，直接复制（脚本文件不用下）：
-
-```bash
-mkdir -p feedlore && cd feedlore
+docker compose -f docker-compose.v2.release.yml down -v 2>/dev/null   # 清旧容器与数据；首次安装报错可忽略
 curl -fsSL -o docker-compose.v2.release.yml   'https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml'
 docker pull ghcr.nju.edu.cn/chensnails/feedlore:2.5.2
 docker tag  ghcr.nju.edu.cn/chensnails/feedlore:2.5.2 ghcr.io/chensnails/feedlore:2.5.2
 docker compose -f docker-compose.v2.release.yml up -d
-docker compose -f docker-compose.v2.release.yml logs -f app   # 实时看，出现密码后 Ctrl+C
+docker compose -f docker-compose.v2.release.yml logs -f app
 ```
 
-> `docker tag` 那一步不能省：compose 里的镜像名是官方 `ghcr.io/...`，拉反代后要把名字改回来，
-> Watchtower 和小版本升级才认得出。反代不可用时把 `ghcr.nju.edu.cn` 换成
-> `ghcr.1ms.run` / `ghcr.m.daocloud.io`，或直接 `docker pull ghcr.io/...`（能直连时）。
+**海外 / 能直连 GitHub**：把中间四行换成
 
-### 老用户升级（已有数据）
+```bash
+curl -fsSLO https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
+docker pull ghcr.io/chensnails/feedlore:2.5.2
+```
 
-先换新版 compose（旧版含 `upgrade` 服务会挡住启动），再拉新镜像、`up -d`：
+最后一条会实时跟日志，几秒后出现：
+
+```
+[bootstrap] ⚠️ Empty site: created initial admin admin, one-time password: TJ69Z2Pb8oDbM1Jr
+```
+
+看到密码按 `Ctrl+C`（只停日志跟随，容器继续运行），用 `admin` + 该密码登录。
+
+> `docker tag` 不能省：compose 里写的是官方名 `ghcr.io/...`，反代拉下来必须改回官方名，
+> Watchtower 与后续升级才认得出。反代失效时把 `ghcr.nju.edu.cn` 换成
+> `ghcr.1ms.run` / `ghcr.m.daocloud.io`，或能直连时直接用 `ghcr.io`。
+
+### 已有数据升级
+
+**先换 compose**——旧版含 `upgrade` 服务，新镜像里那条命令已删除，会挡住 app 启动。
+再拉新镜像、重启：
 
 ```bash
 cd feedlore
@@ -70,44 +89,27 @@ curl -fsSL -o docker-compose.v2.release.yml   'https://gh-proxy.org/https://raw.
 docker pull ghcr.nju.edu.cn/chensnails/feedlore:2.5.3
 docker tag  ghcr.nju.edu.cn/chensnails/feedlore:2.5.3 ghcr.io/chensnails/feedlore:2.5.3
 V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.3 docker compose -f docker-compose.v2.release.yml up -d
-docker logs feedlore --tail 20
+docker compose -f docker-compose.v2.release.yml logs --tail 40 app
 ```
 
-把 `2.5.3` 换成目标版本即可。若 `.env` 里已写死 `V2_IMAGE`，改那一行、去掉命令里的
-`V2_IMAGE=` 前缀即可（两处保持一致）。
+把 `2.5.3` 换成目标版本。`.env` 里若已写死 `V2_IMAGE`，改那一行并去掉命令里的前缀（两处一致）。
 
-### 看到密码
-
-`logs -f app` 会实时跟着输出，**首启密码直接滚在终端上**：
-
-| 场景 | 输出 |
-| --- | --- |
-| **新用户**（空库） | `Empty site: created initial admin admin, one-time password: XXXX`（2.5.3+ 为 `FEEDLORE FIRST RUN` 横幅） |
-| **老用户**（已有账号） | **什么都不打印**——跳过生成，原密码不变。这也正是「grep 不到密码」的原因 |
-
-看完按 `Ctrl+C`：只停止日志跟随，**容器继续运行**，站点不会中断。
-
-> 想更省事：`docker compose ... logs -f app | grep -m1 -A8 'one-time password'`，
-> 命中即自动退出，连 Ctrl+C 都不用按。
-
-### 忘记密码（已有账号）
-
-2.5.3+ 镜像内置命令：
+**这一步不会打印密码**：库里已有账号，直接沿用原密码。忘了就重置：
 
 ```bash
-docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset
+docker exec -it feedlore pnpm --filter @feedlore/server initial-password --reset   # 需 2.5.3+ 镜像
 ```
 
-2.5.2 及更早没有这个命令，用帮助文档「重置管理员密码」里的临时脚本（一次执行，用完即删）。
+2.5.2 及更早没有这个命令，用帮助文档「重置管理员密码」里的一次性脚本。
 
 ### 起不来怎么查
 
 ```bash
-docker compose -f docker-compose.v2.release.yml ps      # 看 app 是否 healthy / 是否在重启
-docker logs feedlore --tail 60                          # 看真实报错
+docker compose -f docker-compose.v2.release.yml ps            # healthy / restarting / exited
+docker compose -f docker-compose.v2.release.yml logs --tail 60 app
 ```
 
-首次启动要跑一遍结构迁移，低配机器上 1~2 分钟才 healthy 属于正常。
+首次启动要跑结构迁移，低配机器 1~2 分钟才 healthy 属正常。
 
 访问 `http://<主机>:3210` 登录并立即改密，然后在「设置 → 数据源」添加 RSS / Atom 或导入 OPML 即可阅读。
 

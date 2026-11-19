@@ -1,5 +1,3 @@
-English: [CHANGELOG.en.md](CHANGELOG.en.md)
-
 # 更新日志
 
 本文件记录 2.x 的用户可见变化与部署相关变更。
@@ -22,9 +20,9 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 - **一次性密码可查回**：`docker exec -it feedlore pnpm --filter @feedlore/server initial-password`
   在生成后 24 小时内可查回密码与剩余时间（加密落库，`--json` 输出，退出码 0/2/1）。
 - **纯命令行部署**：README / 帮助文档给出可整段复制的命令，海外直连与国内代理站
-  （`gh-proxy.org` 下载、`ghcr.nju.edu.cn` 拉镜像后 tag 回官方名）各一套，覆盖全新安装
-  与老用户升级；`docker logs feedlore --tail 40` 即看凭据。
-  仓库 `scripts/` 内保留可选自动化脚本（等健康 + 回显），需要时才用。
+  （`gh-proxy.org` 下载 compose、`ghcr.nju.edu.cn` 拉镜像后 tag 回官方名）各一套，
+  按「全新安装 / 已有数据升级」两条路径组织；部署末尾用 `compose logs -f app`
+  实时跟日志，首启密码直接滚在终端（Ctrl+C 只停日志、不停容器）。
 
 ### 变更
 
@@ -34,6 +32,8 @@ English: [CHANGELOG.en.md](CHANGELOG.en.md)
 - **结构迁移改由 app 启动自举完成**：每次启动跑一次 drizzle migrate（幂等），
   不再依赖只在 `docker compose up` 时执行的 upgrade 服务；`PUBLIC_URL` 可设对外访问地址，
   仅用于横幅提示，不参与鉴权。
+- **英文文档下线**：移除 `README.en.md`、`CHANGELOG.en.md`、`UPGRADE-v2.en.md`，
+  只维护中文文档（需要旧内容可从 git 历史取回）。
 
 ## 2.5.2 — 2026-11-18
 
