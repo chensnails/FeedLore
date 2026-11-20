@@ -151,14 +151,18 @@ function ConfirmDialog({ c }: { c: OverlayConfirmState }) {
                   {c.cancelText}
                 </button>
               </AlertDialog.Cancel>
-              <AlertDialog.Action asChild>
-                <button
-                  className={'btn ' + (c.danger ? 'btn-danger-solid' : 'btn-primary')}
-                  type="submit"
-                >
-                  {c.confirmText}
-                </button>
-              </AlertDialog.Action>
+              {/* 确认按钮不能用 AlertDialog.Action：Radix 把它实现成 DialogPrimitive.Close，
+               * 点击时 composeEventHandlers 先跑 onOpenChange(false)（→ cancelConfirm 结算成取消），
+               * 等 form 的 onSubmit 再 settleConfirm(true) 时 Promise 已被结算，确认被吞成取消。
+               * 真机「点全部已读」请求根本不发出即是此因。这里只保留原生 submit 按钮，
+               * 关闭权完全交给 core 状态机（submit → settleConfirm(true) → emitOverlays → open=false）。
+               * 取消按钮仍用 AlertDialog.Cancel（取消本就该关框）。DOM 契约 class/role/id 不变。 */}
+              <button
+                className={'btn ' + (c.danger ? 'btn-danger-solid' : 'btn-primary')}
+                type="submit"
+              >
+                {c.confirmText}
+              </button>
             </div>
           </form>
         </AlertDialog.Content>
