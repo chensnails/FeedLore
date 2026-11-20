@@ -2,7 +2,8 @@
 
 import { core } from '@core';
 import type { Feed } from '../core/types.ts';
-import type { FeedSnapshot } from './SourcePane.types.ts';
+import { KEEP_DAYS_OPTIONS } from './SourcePane.constants.ts';
+import type { Cfg, FeedSnapshot } from './SourcePane.types.ts';
 
 export const S = () => core;
 
@@ -87,3 +88,23 @@ export const snapshotFeed = (f: Feed): FeedSnapshot => ({
   refreshMinutes: f.refreshMinutes,
   customTitle: f.customTitle,
 });
+
+/** 采集参数摘要行（收起时也能看到当前值）。 */
+export function paramsSummary(cfg: Cfg): string {
+  const keepDays = Number(cfg.keepDays || 0);
+  const keepDaysText =
+    keepDays > 0
+      ? (KEEP_DAYS_OPTIONS.find(([v]) => v === keepDays) || [null, `${keepDays} 天`])[1]
+      : '不限时长';
+  const auto = Number(cfg.autoRefreshMinutes || 0);
+  const keepN = Number(cfg.keepPerFeed || 0);
+  const keepNText = keepN > 0 ? `${keepN} 条` : '不限条数';
+  const proxy = String(cfg.proxyUrl || '').trim();
+  const proxyText = proxy ? ` · 代理 ${proxy.replace(/\/\/[^@]*@/, '//***@')}` : '';
+  return (
+    `每 ${fmtMinutes(cfg.refreshMinutes)}抓取 · 保留 ${keepNText}` +
+    ` · ${keepDaysText}` +
+    (auto ? ` · 页面刷新 ${fmtMinutes(auto)}` : '') +
+    proxyText
+  );
+}
