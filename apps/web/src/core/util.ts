@@ -12,6 +12,7 @@
 export const $ = (s: any) => document.querySelector(s);
 
 import { EVENT, emit } from '../kernel/events.ts';
+import { matchViewHash } from '../kernel/router.ts';
 import { errorText } from './errorText.ts';
 
 export { errorText as errText };
@@ -667,9 +668,9 @@ export function writeHash(hash: any) {
 
 export function parseHash(hash: any) {
   const h = hash || '';
-  if (h.startsWith('#reader/art/')) return { tab: 'reader', artId: h.slice('#reader/art/'.length) };
-  if (h.startsWith('#cards')) return { tab: 'cards', artId: null };
-  if (h.startsWith('#ai') || h.startsWith('#digest')) return { tab: 'ai', artId: null };
-  if (h.startsWith('#reader')) return { tab: 'reader', artId: null };
+  // V5：路由解析真正交给 React Router 的 matchPath 声明式路由表（kernel/router.ts）。
+  // matchViewHash 同时认新格式 #/reader/... 与旧格式 #reader/...，返回统一结构。
+  const m = matchViewHash(h);
+  if (m) return { tab: m.tab, artId: m.params?.artId ?? null, scope: m.scope ?? null };
   return { tab: null, artId: null };
 }

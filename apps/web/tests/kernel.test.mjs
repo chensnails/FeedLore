@@ -13,6 +13,7 @@ import test from 'node:test';
 import { drop, invalidate, peek, qk, queryClient } from '../src/kernel/query.ts';
 import { matchViewHash, ROUTES, viewHash } from '../src/kernel/router.ts';
 import { bridgeDelete, bridgeGet, bridgeSet, bridgeStore } from '../src/kernel/store.ts';
+import { appStore, readApp, state } from '../src/store/app.ts';
 
 // ---- 1. React Router ----
 test('V4.4/路由：声明式路由表覆盖全部视图', () => {
@@ -81,4 +82,42 @@ test('V4.3/Zustand：桥真源的读写与删除', () => {
   assert.equal(bridgeGet('__other__'), 1);
   bridgeDelete('__other__');
   assert.equal(Object.keys(bridgeStore.getState()).length, 0);
+});
+
+// ---- 4. Zustand 应用状态真源（V5）----
+test('V5/状态真源：state 是 store 的 Proxy，读写共享同一真值', () => {
+  const key = '__v5_probe__';
+  state[key] = 42;
+  assert.equal(
+    readApp((s) => s[key]),
+    42,
+    '写 state 要落到 store',
+  );
+  appStore.setState({ [key]: 99 });
+  assert.equal(state[key], 99, '写 store 要反映到 state');
+  assert.ok(key in state, 'in 操作符转发到 store');
+  delete appStore.getState()[key];
+});
+
+test('V5/状态真源：全部初始字段都在 store 里（真源单一，无散落定义）', () => {
+  const s = appStore.getState();
+  for (const k of [
+    'entries',
+    'feedList',
+    'feedMeta',
+    'tab',
+    'role',
+    'username',
+    'rdEntries',
+    'rdBody',
+    'rdExpanded',
+    'rdFlags',
+    'collapsedGroups',
+    'groupOrder',
+  ]) {
+    assert.ok(k in s, '缺初始字段 ' + k);
+  }
+  assert.equal(s.tab, 'reader');
+  assert.ok(s.rdBody instanceof Map, 'rdBody 保持 Map 语义');
+  assert.ok(s.rdExpanded instanceof Set, 'rdExpanded 保持 Set 语义');
 });

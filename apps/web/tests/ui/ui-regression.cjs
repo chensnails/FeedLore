@@ -7830,7 +7830,8 @@ const withEFP = (el, fn) => {
       throw new Error('后台重拉没递增 listEpoch 收闸');
     if (!/state\.loadMoreErrMsg = ''/.test(ar)) throw new Error('后台重拉没清掉旧的错误文案');
     if (!/forgetViewScroll\('cards'\)/.test(ar)) throw new Error('后台重拉没丢卡片页旧滚动记忆');
-    const st = fs.readFileSync(path.join(root, 'src', 'core', 'state.ts'), 'utf8');
+    // V5：state 初始化值真源迁至 store/app.ts（Zustand），core/state.ts re-export 同一 Proxy
+    const st = fs.readFileSync(path.join(root, 'src', 'store', 'app.ts'), 'utf8');
     if (!/loadMoreErrMsg: ''/.test(st)) throw new Error('state 缺 loadMoreErrMsg 初始值');
     if (!/listEpoch: 0/.test(st)) throw new Error('state 缺 listEpoch 初始值');
   });
@@ -11917,9 +11918,12 @@ const withEFP = (el, fn) => {
    * 才能拦住这种「桩比生产多一个字段」的漂移。 */
   t('折叠状态：state 声明 rdCollapsedGroups 且 setLayout 会回填（否则点分组无反应）', () => {
     const root = path.join(__dirname, '..', '..');
-    const st = fs.readFileSync(path.join(root, 'src', 'core', 'state.ts'), 'utf8');
-    // ① state 对象字面量里必须有这个字段（V4.1 TS：state 带 : Record<string, any> 标注）
-    const stateStart = /export const state(?:\s*:[^=]*)? = \{/.exec(st);
+    // V5：初始字段真源迁至 store/app.ts；core/state.ts 只 re-export Proxy、保留 setter
+    const stBase = fs.readFileSync(path.join(root, 'src', 'core', 'state.ts'), 'utf8');
+    const stStore = fs.readFileSync(path.join(root, 'src', 'store', 'app.ts'), 'utf8');
+    const st = stStore;
+    // ① state 初始化对象里必须有这个字段（V5：真源在 store/app.ts 的 initial）
+    const stateStart = /const initial\s*:\s*AppState\s*=\s*\{/.exec(st);
     if (!stateStart) throw new Error('state 声明缺失');
     const body = st.slice(
       stateStart.index + stateStart[0].length - 1,
@@ -11927,13 +11931,13 @@ const withEFP = (el, fn) => {
     );
     if (!/rdCollapsedGroups\s*:/.test(body))
       throw new Error('state 缺 rdCollapsedGroups 字段（React 侧 memo 会永远读到 undefined）');
-    // ② setLayout 的镜像表要登记它，否则写入不会回填到 state
-    const mirror = st.match(/const LAYOUT_MIRROR\s*=\s*\[([^\]]*)\]/);
+    // ② setLayout 的镜像表要登记它，否则写入不会回填到 state（setter 仍在 core/state.ts）
+    const mirror = stBase.match(/const LAYOUT_MIRROR\s*=\s*\[([^\]]*)\]/);
     if (!mirror) throw new Error('缺 LAYOUT_MIRROR 镜像表');
     if (mirror[1].indexOf('rdCollapsedGroups') < 0)
       throw new Error('LAYOUT_MIRROR 未登记 rdCollapsedGroups');
     // ③ 初始值要从 layoutPref 取，不能留空数组
-    if (!/state\.rdCollapsedGroups\s*=\s*layoutPref\.rdCollapsedGroups/.test(st))
+    if (!/state\.rdCollapsedGroups\s*=\s*layoutPref\.rdCollapsedGroups/.test(stBase))
       throw new Error('启动时未从 layoutPref 取初值');
     // ④ 消费方别改成别的字段名（改了这条就得同步改）
     const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.tsx'), 'utf8');

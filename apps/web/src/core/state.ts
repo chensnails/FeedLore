@@ -7,7 +7,13 @@
 
 import { get } from '../kernel/bridge.ts';
 import { EVENT, emit } from '../kernel/events.ts';
+import { state } from '../store/app.ts';
 import { apiFetch, emitShell, toast } from './util.ts';
+
+/* state 真源已迁至 store/app.ts（Zustand）。此处 re-export 同一个 Proxy：
+ * 字段名、读写语义、原地修改（push/add/set）全部逐字不变，core 各模块照常用它。
+ * 各字段的完整语义注释见 store/app.ts。 */
+export { state };
 
 /* ---------------- 常量 ----------------
  * 分页长度固定：卡片页 50 条，文章页 40 篇。
@@ -19,71 +25,9 @@ export const DEFAULT_READER_PAGE = 40;
  * 全局可变状态容器：字段会因加载阶段从 null/[] 被替换成任意服务端数据形态，
  * 用 Record<string, any> 声明其动态本质（V3.1 类型化：避免 init 值把字段锁成 never）。
  * 各字段的语义见下方注释，读写约定由对应 setter 保证。 */
-export const state: Record<string, any> = {
-  entries: [],
-  offset: 0,
-  hasMore: true,
-  total: 0, // 服务端返回的命中总数（工具栏「共 N 篇」与搜索反馈用）
-  loading: false,
-  loadError: false, // 首屏加载失败（React 卡片视图据此显示错误空态）
-  loadMoreErr: false, // 翻页失败（列表底部给重试按钮，并暂停自动加载）
-  loadMoreErrMsg: '', // 加载失败的具体原因（错误空态 / 底部重试条显示，errText 译好的中文）
-  /* 列表重置代数：每次 loadPage(reset) 自增。CardsView 的手势闸门用它收闸 ——
-     换了列表就要求先出现一次真实滚动输入才允许触底续拉。 */
-  listEpoch: 0,
-  q: '',
-  sort: 'new', // 阅读页排序：new 最新 / old 最早 / name 名称（按账号持久化）
-  tag: null, // 手动标签筛选（entries.tags）
-  aiTag: null, // AI 标签筛选（entry_ai_tags）；与 tag 互斥，点一个清另一个
-  view: 'grid', // 'grid' 卡片视图 | 'list' 列表视图（按账号持久化）
-  pageSize: DEFAULT_PAGE_SIZE,
-  readerPageSize: DEFAULT_READER_PAGE,
-  tagline: '拾取值得读的',
-  feedFilter: null, // 列表页的频道筛选：null = 全部已开启卡片开关的频道
-  cardGroup: null, // 卡片页的分组筛选：null = 不限分组；'' 表示「未分组」
-  feedList: null, // /api/feeds 的 feeds 数组
-  feedMeta: null, // /api/feeds 的整体信息（total / enabled / cardEnabled / groups）
-  groupOrder: [], // 分组顺序（显式保存的串名数组，未分组不计入）
-  collapsedGroups: new Set(), // 分组折叠状态（折叠的分组名集合，按账号持久化）
-  srcGroupsOpen: [], // 数据源面板「展开的分组名」集合（A 方案：命名分组默认收起，展开态按账号持久化）
-  tags: [], // 服务端返回的标签计数
-  username: null,
-  role: null, // 'admin' | 'user' | 'readonly' —— 决定设置里哪些 tab / 分组可见
-
-  /* ---- 阅读页（文章）----
-   * 跟卡片页各自持有自己的一份列表，互不干扰：阅读页按「当前选中的频道」拉，
-   * 卡片页按工具栏的筛选条件拉。展开状态只存在内存里，刷新页面就回到全部收起。 */
-  tab: 'reader', // 当前页面：reader 文章 / cards 卡片 / ai AI（按账号持久化）
-  rdScope: 'all', // 阅读页默认范围：all 全部 / unread 未读 / favorite 收藏（按账号持久化）
-  rdFeedId: null, // 阅读页选中的频道：null = 全部已开启频道
-  rdGroup: null, // 阅读页选中的分组：null = 不限分组；'' 表示「未分组」
-  rdWatch: null, // 关注 / 屏蔽虚拟视图（v21）：null 常规 / 'watch' 关注 / 'block' 屏蔽。
-  // 命中条目不打搬动、只打标记（entries.watch_state），这里选中的是
-  // 「WHERE watch_state = ?」的聚合视图，与范围（未读/收藏）可叠加。
-  rdQ: '', // 阅读页搜索关键词（走服务端检索）
-  rdTag: null, // 阅读页手动标签筛选（与卡片页 tag 独立，互斥 rdAiTag）
-  rdAiTag: null, // 阅读页 AI 标签筛选（服务端按 entry_ai_tags 命中）
-  rdFlags: { total: 0, unread: 0, favorite: 0, watching: 0, blocked: 0 }, // 侧栏计数（含关注/屏蔽命中数）
-  rdEntries: [],
-  rdOffset: 0,
-  rdHasMore: true,
-  rdTotal: 0, // 当前筛选条件下的命中总数（搜索反馈 / 空态文案用）
-  rdLoading: false,
-  rdLoadMoreErr: false, // 翻页失败（列表底部给重试按钮，并暂停自动加载）
-  /* 频道栏里收起的分组名（数组，与 layout.rdCollapsedGroups 同源）。
-   * ⚠️ 必须挂到 state 上：React 侧（ReaderView）用它当 useMemo 的 key，
-   * 只读 layoutPref 的话外部拿不到变化信号，折叠点击会「写进去了但界面不动」。
-   * 写入统一走 setLayout('rdCollapsedGroups', …)，由 setLayout 负责回填这里。 */
-  rdCollapsedGroups: [],
-  rdExpanded: new Set(), // 已展开的条目 id
-  rdBody: new Map(), // id -> 正文（展开时才拉，拉过就缓存）
-  rdBodyErr: new Set(), // 拉正文失败的 id，避免反复重试
-  rdReadError: false, // 首屏加载失败（React 阅读页据此显示错误空态）
-  rdReadErrorMsg: '',
-  /* 刚从卡片页跳过来、要在文章框上闪一下高亮的那条 id（字符串比较）；
-     只活一瞬（core/reader.ts 的 focusReaderArt 设、定时器清），不落任何持久化。 */
-  rdFlashId: null,
-};
+/* 字段初始化值已迁至 store/app.ts（Zustand 真源）。
+ * 下方各字段语义见 store/app.ts 的同名 initial 字段；本模块保留
+ * 所有 setter / getter，它们读写的 state 即 store 的 Proxy。 */
 
 /* ---------------- 当前视图的滚动容器 ----------------
  * App Shell 把 body 锁在视口内，三个视图各自是独立滚动容器，window.scrollY 永远是 0。
