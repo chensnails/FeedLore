@@ -8,7 +8,9 @@
  */
 
 import { core } from '@core';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { qk } from '../kernel/query.ts';
 import { Dropdown } from '../views/Dropdown.tsx';
 import { DetailSheet } from './DetailSheet.tsx';
 import { EditToggle, PaneFoot, ReadonlyField, Result, Section, useResult } from './primitives.tsx';
@@ -441,14 +443,13 @@ export function AccountPane({ onDirtyChange }: any) {
   /** @type {*} */
   const [restoreMsg, setRestoreMsg] = useState<any>(null);
 
-  // 进入面板：回填登录信息（旧 loadAccountForm），管理员再拉一次用户列表
+  // 进入面板：回填登录信息（旧 loadAccountForm）。
+  // 用户列表 / 登录设备由 usersQuery / devicesQuery 按 enabled 自动加载。
   useEffect(() => {
     const st = (s && s.state) || {};
     const name = st.username || '';
     setUsername(name);
     setSavedName(name);
-    loadDevices();
-    if (admin) loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -458,32 +459,65 @@ export function AccountPane({ onDirtyChange }: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function loadUsers() {
-    try {
+  // V5：用户列表 / 登录设备交给 Query；queryFn 走 core.apiFetch 端口，测试桩照常生效。
+  // users 仅管理员拉（enabled: admin），sessions 所有角色都拉。写后 refetch 保留原函数名。
+  const usersQuery = useQuery({
+    queryKey: qk.users,
+    enabled: !!admin,
+    queryFn: async () => {
       const res = await s.apiFetch('/api/users');
       if (!res.ok) throw await s.httpError(res);
-      const data = await res.json();
-      setUsers(data.users || []);
-      setUsersError('');
-    } catch (err) {
-      setUsersError('读取用户失败：' + String((err && err.message) || err));
-    } finally {
-      setUsersLoaded(true);
-    }
-  }
-
-  async function loadDevices() {
-    try {
+      return res.json();
+    },
+    refetchOnMount: 'always',
+    gcTime: 0,
+    retry: false,
+  });
+  const devicesQuery = useQuery({
+    queryKey: qk.sessions,
+    queryFn: async () => {
       const res = await s.apiFetch('/api/sessions');
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
-      setDevices(data.sessions || []);
-      setDevicesError('');
-    } catch (err) {
-      setDevicesError('读取登录设备失败：' + String((err && err.message) || err));
-    } finally {
-      setDevicesLoaded(true);
-    }
+      return data;
+    },
+    refetchOnMount: 'always',
+    gcTime: 0,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!usersQuery.data) return;
+    setUsers(usersQuery.data.users || []);
+    setUsersError('');
+    setUsersLoaded(true);
+  }, [usersQuery.data]);
+  useEffect(() => {
+    if (!usersQuery.isError) return;
+    const err: any = usersQuery.error;
+    setUsersError('读取用户失败：' + String(err?.message || err));
+    setUsersLoaded(true);
+  }, [usersQuery.isError, usersQuery.error]);
+
+  useEffect(() => {
+    if (!devicesQuery.data) return;
+    setDevices(devicesQuery.data.sessions || []);
+    setDevicesError('');
+    setDevicesLoaded(true);
+  }, [devicesQuery.data]);
+  useEffect(() => {
+    if (!devicesQuery.isError) return;
+    const err: any = devicesQuery.error;
+    setDevicesError('读取登录设备失败：' + String(err?.message || err));
+    setDevicesLoaded(true);
+  }, [devicesQuery.isError, devicesQuery.error]);
+
+  // 写后 / 手动刷新沿用原入口：refetch 强制重拉并触发上面的回填。
+  async function loadUsers() {
+    await usersQuery.refetch();
+  }
+  async function loadDevices() {
+    await devicesQuery.refetch();
   }
 
   /**

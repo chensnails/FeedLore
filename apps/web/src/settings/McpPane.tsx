@@ -14,7 +14,9 @@
  */
 
 import { core } from '@core';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { qk } from '../kernel/query.ts';
 import { Icon } from '../ui/Icon.tsx';
 import { DetailSheet } from './DetailSheet.tsx';
 import { Result, Section, useResult } from './primitives.tsx';
@@ -232,22 +234,37 @@ export function McpPane() {
     if (s && s.bindSections && paneRef.current) s.bindSections(paneRef.current);
   }, []);
 
-  async function load() {
-    try {
+  // V5：令牌列表交给 Query；queryFn 走 core.apiFetch 端口，测试桩照常生效。
+  const tokensQuery = useQuery({
+    queryKey: qk.mcpTokens,
+    queryFn: async () => {
       const res = await s.apiFetch('/api/mcp-tokens');
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
-      setTokens(data.tokens || []);
-      setListError('');
-    } catch (err) {
-      setListError('读取令牌失败：' + String((err && err.message) || err));
-      setTokens([]);
-    }
-  }
+      return data;
+    },
+    refetchOnMount: 'always',
+    gcTime: 0,
+    retry: false,
+  });
 
   useEffect(() => {
-    load();
-  }, []);
+    if (tokensQuery.isPending) return;
+    if (tokensQuery.isError) {
+      const err: any = tokensQuery.error;
+      setListError('读取令牌失败：' + String(err?.message || err));
+      setTokens([]);
+      return;
+    }
+    if (!tokensQuery.data) return;
+    setTokens(tokensQuery.data.tokens || []);
+    setListError('');
+  }, [tokensQuery.data, tokensQuery.isPending, tokensQuery.isError, tokensQuery.error]);
+
+  // 吊销后刷新沿用原入口：refetch 强制重拉并触发上面的回填。
+  async function load() {
+    await tokensQuery.refetch();
+  }
 
   /**
    * @param {*} [t]

@@ -41,6 +41,9 @@ export const qk = Object.freeze({
   version: ['version'] as const,
   /** 账号偏好（整份 prefs 是单一真源，各面板取自己字段；写后失效一次即可全量刷新）。 */
   prefs: ['prefs'] as const,
+  users: ['users'] as const,
+  sessions: ['sessions'] as const,
+  mcpTokens: ['mcpTokens'] as const,
 });
 
 /** 失效一组 key（写操作后调用）。保留 core 的 tick 机制，Query 只补缓存一致性。 */
