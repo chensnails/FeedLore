@@ -178,6 +178,7 @@ export function ParamsSection({ c }: { c: SourceController }) {
           <input
             id="srcProxy"
             type="text"
+            inputMode="url"
             placeholder="留空 = 直连"
             autoComplete="off"
             spellCheck={false}

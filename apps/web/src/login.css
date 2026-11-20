@@ -246,3 +246,8 @@ button:not(:disabled):active { transform: scale(.975); }
   button, input, .login-card { transition: none !important; animation: none !important; }
   button:active { transform: none !important; }
 }
+/* iOS Safari：聚焦 <16px 输入框会放大整页且缩不回。登录 / 改密页（共用本样式）
+   在手机上把输入抬到 16px，避开系统缩放。桌面仍走 --fs-base 响应界面字号档位。 */
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  .login-card input { font-size: 16px; }
+}

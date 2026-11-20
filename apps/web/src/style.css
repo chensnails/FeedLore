@@ -6397,6 +6397,21 @@ body { overflow: hidden; }
    提示只显示 1.9s，这段时间把回顶钮收起来比让它被压住更清楚（toast 走了自动恢复）。
    放在基础规则之后：回归里按 `.scroll-top {` 取首条规则验浮层阴影 / fixed 定位。 */
 body:has(.toast.show) .scroll-top { opacity: 0; pointer-events: none; transition: opacity var(--dur-fast); }
+/* iOS Safari：聚焦字号 <16px 的输入框会自动放大整页且缩不回。设置表单 / 命令面板 /
+   确认框 / 各类搜索 / 详情层等所有可键入控件在移动端一律抬到 16px。
+   独立成段（不并入上面的 720 段）：避免长段内语法问题连带失效，且靠源顺序压过
+   04-settings 的 .form-row input / .settings-modal :where(...)（同为 var(--fs-md)）。
+   排除：勾选 / 文件 / 按钮等非文本控件、行内微编辑（feed-order / feed-group-edit /
+   feed-title-edit / feed-url-edit —— 列表行里刻意小字号，抬高会撑破行高）。
+   桌面不受影响。16px 是 iOS 硬下限，与搜索框既有写法一致（守卫只挡 12/13/14/20px）。 */
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
+  :is(input, textarea):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="hidden"]):not([type="range"]):not([type="color"]):not(.feed-order):not(.feed-group-edit):not(.feed-title-edit):not(.feed-url-edit),
+  .cmdk-input,
+  .confirm-input {
+    font-size: 16px;
+  }
+}
+
 /* 桌面没有底部标签栏：回到普通页边距，别悬在半空 */
 @media (min-width: 721px) {
   .scroll-top { bottom: var(--sp-6); }
@@ -6591,6 +6606,11 @@ body:has(.toast.show) .scroll-top { opacity: 0; pointer-events: none; transition
     display: flex; flex: 1 0 100%; order: 9; margin: 0; max-width: none;
   }
   .reader-head .page-search input { font-size: 16px; }
+  /* iOS Safari：聚焦字号 <16px 的输入框会自动放大整页且缩不回。设置表单 / 命令面板 /
+     确认框 / 各类搜索 / 详情层等所有可键入控件在移动端一律抬到 16px（用 max 保留未来
+     字号档位若超过 16px 时跟随）。排除：勾选/文件/按钮等非文本控件、行内微编辑
+     （feed-order / feed-group-edit / feed-title-edit / feed-url-edit —— 它们在列表行里
+     刻意小字号，抬高会撑破行高）。桌面不受影响。 */
 }
 
 /* 搜索展开时头部换行：搜索独占第二行。条件挂在 .is-open 上而不是断点上 ——
@@ -6778,3 +6798,4 @@ body:has(.toast.show) .scroll-top { opacity: 0; pointer-events: none; transition
   .card-desc { -webkit-line-clamp: 2; line-height: 1.45; }
   .card-has-media .card-desc { -webkit-line-clamp: 1; }
 }
+
