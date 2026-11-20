@@ -11,10 +11,12 @@
  */
 
 import { core } from '@core';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
 import { widthVariant } from '../imgSrc.ts';
 import { EVENT, on } from '../kernel/events.ts';
+import { qk } from '../kernel/query.ts';
 import { useTopbarHeight } from '../shell/useTopbarHeight.ts';
 import { CopyIconButton, safeHref } from '../ui/EntryActions.tsx';
 import { Icon } from '../ui/Icon.tsx';
@@ -269,6 +271,28 @@ export function AiView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 
+  // V5：摘要范围（prefs.digest）交给 Query，仅视图激活时拉；queryFn 走 core.apiFetch 端口，
+  // 测试桩照常生效。与设置面板共享 qk.prefs：口径一致，且这里常驻挂载由 enabled 控制。
+  const scopeQuery = useQuery({
+    queryKey: qk.prefs,
+    enabled: active,
+    queryFn: async () => {
+      const r = await s.apiFetch('/api/prefs');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    },
+    refetchOnMount: 'always',
+    retry: false,
+  });
+  useEffect(() => {
+    if (!scopeQuery.data) return;
+    const d = scopeQuery.data.digest || {};
+    setScope({
+      mode: ['all', 'enabled', 'custom'].indexOf(d.mode) >= 0 ? d.mode : 'enabled',
+      feeds: Array.isArray(d.feeds) ? d.feeds.map(Number) : [],
+    });
+  }, [scopeQuery.data]);
+
   // 账号关掉日报后不能停在日报 tab（tab 按钮会隐藏），自动回到问答
   useEffect(() => {
     if (pane === 'digest' && s.digestIsEnabled && !s.digestIsEnabled()) setPane('ask');
@@ -314,16 +338,7 @@ export function AiView() {
     } catch (_) {
       /* 用已有缓存 */
     }
-    // 摘要范围：本账号自己的日报配置
-    try {
-      const d = (await (await s.apiFetch('/api/prefs')).json()).digest || {};
-      setScope({
-        mode: ['all', 'enabled', 'custom'].indexOf(d.mode) >= 0 ? d.mode : 'enabled',
-        feeds: Array.isArray(d.feeds) ? d.feeds.map(Number) : [],
-      });
-    } catch (_) {
-      /* 拿不到就按默认范围显示 */
-    }
+    // 摘要范围已迁到 scopeQuery（见上），与日期列表并行加载，不再串行等待。
     const opts = ds.includes(today) ? ds : [today, ...ds];
     const cur = opts.includes(selected) ? selected : opts[0];
     await showDigest(cur);

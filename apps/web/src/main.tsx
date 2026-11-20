@@ -16,7 +16,6 @@ import '@core';
 import './style.css';
 import './hig.css';
 import { mountAll } from './kernel/mounts.tsx';
-import { QueryProvider } from './kernel/QueryProvider.tsx';
 import { installAutofillGuard } from './ui/noAutofill.ts';
 import { installScrollBusy } from './ui/scrollBusy.ts';
 import { installTabbarAutoHide } from './ui/tabbarAutoHide.ts';
