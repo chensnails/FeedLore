@@ -70,7 +70,14 @@ function ConfirmDialog({ c }: { c: OverlayConfirmState }) {
   };
 
   /* Radix AlertDialog 接管浮层语义。onOpenChange 把 Radix 的 Esc / 遮罩点击关闭
-   * 映射回 core 的取消结算（Promise 状态机仍由 core 掌管，标准库只管浮层行为）。 */
+   * 映射回 core 的取消结算（Promise 状态机仍由 core 掌管，标准库只管浮层行为）。
+   *
+   * 不用 Portal：与 CardDetail 同构——原先用 AlertDialog.Portal 把 Overlay 和 Content
+   * 都甩到 #overlaysRoot，两者成了兄弟，.modal（position:static）不再被 .modal-mask
+   * 的 flex 居中；窄屏页面一长，#overlaysRoot 被推到视口外（y=视口高），弹窗掉出屏幕，
+   * 只剩 fixed 遮罩 → 用户看到「黑屏 / 确认框没显示」。改为就地渲染：.modal-mask 是
+   * 普通 div（保留 DOM 契约与 flex 居中），AlertDialog.Content 作为它的子元素。
+   * Overlay 的遮罩点击语义由 Root 的 onOpenChange + mask 上的点击兜底提供。 */
   return (
     <AlertDialog.Root
       open={!!c.open}
@@ -80,8 +87,13 @@ function ConfirmDialog({ c }: { c: OverlayConfirmState }) {
         }
       }
     >
-      <AlertDialog.Portal container={overlayContainer()}>
-        <AlertDialog.Overlay className="modal-mask confirm-mask" role="presentation" />
+      <div
+        className="modal-mask confirm-mask"
+        role="presentation"
+        onClick={(ev) => {
+          if (ev.target === ev.currentTarget) S().cancelConfirm();
+        }}
+      >
         <AlertDialog.Content asChild>
           <form
             id="confirmBox"
@@ -166,7 +178,7 @@ function ConfirmDialog({ c }: { c: OverlayConfirmState }) {
             </div>
           </form>
         </AlertDialog.Content>
-      </AlertDialog.Portal>
+      </div>
     </AlertDialog.Root>
   );
 }
