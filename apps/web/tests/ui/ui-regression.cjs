@@ -2831,7 +2831,7 @@ const withEFP = (el, fn) => {
     if (!anim) throw new Error('缺 @keyframes artFlash');
     const dur = rule[1].match(/animation:\s*artFlash\s+([\d.]+)s/);
     if (!dur) throw new Error('.is-flash 未按秒设 artFlash 时长，实际：' + rule[1].trim());
-    const js = fs.readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8');
+    const js = fs.readFileSync(path.join(root, 'src', 'core', 'reader.articles.ts'), 'utf8');
     const flashMs = js.match(/const FLASH_MS\s*=\s*(\d+)/);
     if (!flashMs) throw new Error('reader.ts 缺 FLASH_MS');
     if (Number(dur[1]) * 1000 !== Number(flashMs[1])) {
@@ -2843,7 +2843,7 @@ const withEFP = (el, fn) => {
   // 点频道直接抛 ReferenceError（列表不切换），而 UI 测试用的是桩核心，发现不了。
   t('核心：readerSetFeed 引用 rdExpandGroup，无遗留旧名', () => {
     const js = fs.readFileSync(
-      path.join(__dirname, '..', '..', 'src', 'core', 'reader.ts'),
+      path.join(__dirname, '..', '..', 'src', 'core', 'reader.view.ts'),
       'utf8',
     );
     if (/(^|[^\w.])expandRdGroup\s*\(/.test(js))
@@ -2859,7 +2859,7 @@ const withEFP = (el, fn) => {
   // 关注/屏蔽视图下 rdScope 仍是 'all'：早退条件漏掉 rdWatch 会让「全部文章」变成死按钮
   t('核心：readerSetScope 早退条件包含 rdWatch', () => {
     const js = fs.readFileSync(
-      path.join(__dirname, '..', '..', 'src', 'core', 'reader.ts'),
+      path.join(__dirname, '..', '..', 'src', 'core', 'reader.view.ts'),
       'utf8',
     );
     const start = js.indexOf('export function readerSetScope');
@@ -7860,7 +7860,7 @@ const withEFP = (el, fn) => {
   });
   t('P2 标签筛选计数 chip：标签名 + 总数 + 一键清除，搜索态不重复计数', () => {
     const root = path.join(__dirname, '..', '..');
-    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.tsx'), 'utf8');
+    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.parts.tsx'), 'utf8');
     if (!/\(st\.q \|\| st\.tag \|\| st\.aiTag\) && !showSkeleton && !showEmpty/.test(cards))
       throw new Error('计数行显示条件不对');
     if (cards.indexOf('className="count-chip"') < 0) throw new Error('缺标签 chip');
@@ -7882,12 +7882,16 @@ const withEFP = (el, fn) => {
       throw new Error('safeHref 白名单不对（http(s)/mailto）');
     if (!/safeHref\(e\.sourceUrl\) \|\| safeHref\(e\.link\)/.test(ea))
       throw new Error('OpenButton 没过 safeHref');
-    const rv = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.tsx'), 'utf8');
-    if (!/import \{ ArtActions, safeHref \} from '\.\.\/ui\/EntryActions(?:\.tsx)?'/.test(rv))
+    const rv =
+      fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.tsx'), 'utf8') +
+      fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.body.tsx'), 'utf8');
+    if (!/import \{ ArtActions \} from '\.\.\/ui\/EntryActions(?:\.tsx)?'/.test(rv))
       throw new Error('阅读页应复用 safeHref');
+    if (!/import \{ safeHref \} from '\.\.\/ui\/EntryActions(?:\.tsx)?'/.test(rv))
+      throw new Error('正文渲染层应复用 safeHref');
     if (/function safeHref\(/.test(rv)) throw new Error('阅读页不该再各写一份 safeHref');
     if (!/safeHref\(n\.href\)/.test(rv)) throw new Error('正文链接没过 safeHref');
-    const ai = fs.readFileSync(path.join(root, 'src', 'ai', 'AiView.tsx'), 'utf8');
+    const ai = fs.readFileSync(path.join(root, 'src', 'ai', 'AiView.parts.tsx'), 'utf8');
     if (!/import \{ CopyIconButton, safeHref \} from '\.\.\/ui\/EntryActions(?:\.tsx)?'/.test(ai))
       throw new Error('日报应复用 safeHref');
     if (!/safeHref\(e\.link\) \? \(?[\s\S]{0,20}?<a/.test(ai))
@@ -7920,7 +7924,7 @@ const withEFP = (el, fn) => {
   });
   t('P3 错误态说人话：错误空态 / 底部重试条都显示具体原因', () => {
     const root = path.join(__dirname, '..', '..');
-    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.tsx'), 'utf8');
+    const cards = fs.readFileSync(path.join(root, 'src', 'views', 'CardsView.parts.tsx'), 'utf8');
     if (!/st\.loadMoreErrMsg\s*\?\s*`数据加载失败：\$\{st\.loadMoreErrMsg\}`/.test(cards))
       throw new Error('错误空态没带具体原因');
     if (!/加载失败\{st\.loadMoreErrMsg \? `：\$\{st\.loadMoreErrMsg\}`/.test(cards))
@@ -8403,7 +8407,7 @@ const withEFP = (el, fn) => {
   t('文章页点标签就地重拉、不跳卡片页', () => {
     const root = path.join(__dirname, '..', '..');
     const rd = fs
-      .readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8')
+      .readFileSync(path.join(root, 'src', 'core', 'reader.view.ts'), 'utf8')
       .replace(/\r\n/g, '\n');
     const body = rd.slice(
       rd.indexOf('export function readerSetTag'),
@@ -8935,7 +8939,7 @@ const withEFP = (el, fn) => {
   });
   t('源码守卫：条目状态一律换新对象（原地改字段会让 memo 漏掉更新）', () => {
     const root = path.join(__dirname, '..', '..');
-    const rd = fs.readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8');
+    const rd = fs.readFileSync(path.join(root, 'src', 'core', 'reader.articles.ts'), 'utf8');
     const fn = rd.match(/function applyEntryFlag\([\s\S]*?\n\}/);
     if (!fn) throw new Error('找不到 applyEntryFlag');
     if (/e\.isRead = |e\.isFavorite = /.test(fn[0]))
@@ -8972,7 +8976,7 @@ const withEFP = (el, fn) => {
       path.join('..', 'server', 'src', 'lib', 'prefs.ts'),
       'LAYOUT_DEFAULTS = {',
     );
-    const client = keysOf(path.join('src', 'core', 'state.ts'), 'LAYOUT_DEFAULTS = {');
+    const client = keysOf(path.join('src', 'core', 'state.layout.ts'), 'LAYOUT_DEFAULTS = {');
     if (server !== client) throw new Error('服务端 ' + server + ' / 前端 ' + client);
     if (server.indexOf('digestEnabled') < 0) throw new Error('两边都缺 digestEnabled？');
   });
@@ -10627,9 +10631,12 @@ const withEFP = (el, fn) => {
   t('v1.6.0：各视图 Row1 合并 + App Shell 独立滚动；标签栏移除', () => {
     const root = path.join(__dirname, '..', '..');
     const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
-    const cards = read('src/views/CardsView.tsx');
-    const reader = read('src/views/ReaderView.tsx');
-    const ai = read('src/ai/AiView.tsx');
+    const cards = read('src/views/CardsView.tsx') + read('src/views/CardsView.parts.tsx');
+    const reader =
+      read('src/views/ReaderView.tsx') +
+      read('src/views/ReaderView.body.tsx') +
+      read('src/views/ReaderView.parts.tsx');
+    const ai = read('src/ai/AiView.tsx') + read('src/ai/AiView.parts.tsx');
     for (const [name, src] of [
       ['CardsView', cards],
       ['ReaderView', reader],
@@ -11283,7 +11290,12 @@ const withEFP = (el, fn) => {
   // 颜色必须取自 --bg：运行时两处同步都读计算值，报 --panel 会与页面顶部差一档灰。
   t('theme-color：同步色取自 --bg，内联脚本与运行时都改写全部条目', () => {
     const root = path.join(__dirname, '..', '..');
-    for (const f of ['index.html', 'login.html', 'src/core/ui.ts', 'src/core/state.ts']) {
+    for (const f of [
+      'index.html',
+      'login.html',
+      'src/core/ui.pwa.ts',
+      'src/core/state.appearance.ts',
+    ]) {
       const src = fs.readFileSync(path.join(root, f), 'utf8');
       if (!/querySelectorAll\('meta\[name="theme-color"\]'\)/.test(src)) {
         throw new Error(
@@ -11291,7 +11303,7 @@ const withEFP = (el, fn) => {
         );
       }
     }
-    for (const f of ['src/core/ui.ts', 'src/core/state.ts']) {
+    for (const f of ['src/core/ui.pwa.ts', 'src/core/state.appearance.ts']) {
       const src = fs.readFileSync(path.join(root, f), 'utf8');
       if (!/getPropertyValue\('--bg'\)/.test(src)) throw new Error(f + ' 运行时同步没有取 --bg');
       if (/getPropertyValue\('--panel'\)/.test(src))
@@ -11424,7 +11436,9 @@ const withEFP = (el, fn) => {
 
   t('日报：说明行与操作行分层、状态块共用外壳', () => {
     const root = path.join(__dirname, '..', '..');
-    const ai = fs.readFileSync(path.join(root, 'src', 'ai', 'AiView.tsx'), 'utf8');
+    const ai =
+      fs.readFileSync(path.join(root, 'src', 'ai', 'AiView.tsx'), 'utf8') +
+      fs.readFileSync(path.join(root, 'src', 'ai', 'AiView.parts.tsx'), 'utf8');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const sb = fs.readFileSync(path.join(root, 'src', 'ui', 'StateBlock.tsx'), 'utf8');
     const head = ai.match(/<div className="digest-head">([\s\S]*?)<\/div>/);
@@ -11602,7 +11616,7 @@ const withEFP = (el, fn) => {
   // ============ 文章页：进入即置顶 + 条目深链 + 窄屏收纳（v1.7.0） ============
   t('滚动策略：进入一篇文章置顶，等 DOM 提交后按实际布局设 scrollTop', () => {
     const root = path.join(__dirname, '..', '..');
-    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.flow.ts'), 'utf8');
     // 置顶必须走 scrollReaderToArt（双 rAF + 直接设 scrollTop）。
     // 旧的 scrollIntoView({block:'start'}) 会在手风琴收起的**旧布局**里算目标位置，
     // 等 DOM 提交后列表整体上移，新文章被甩到视口上方（实测 openTop=-461）。
@@ -11630,7 +11644,7 @@ const withEFP = (el, fn) => {
   // 一次自动翻页就把视口拽回那篇的标题，表现为「页面自己在快速滚动」。
   t('滚动策略：置顶只覆盖本次布局动作，用户滚动即失效', () => {
     const root = path.join(__dirname, '..', '..');
-    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.flow.ts'), 'utf8');
     if (!/PIN_WINDOW_MS/.test(r) || !/function pinAlive/.test(r))
       throw new Error('置顶缺时间窗（pinAlive）');
     // TS strict 下 readerPinnedId 可能带非空断言/类型断言后缀，语义不变（pinAlive 已保证非空）
@@ -11643,7 +11657,7 @@ const withEFP = (el, fn) => {
         throw new Error('缺用户滚动接管监听：' + ev + '（置顶不会及时失效）');
       }
     }
-    const ui = fs.readFileSync(path.join(root, 'src', 'core', 'ui.ts'), 'utf8');
+    const ui = fs.readFileSync(path.join(root, 'src', 'core', 'ui.nav.ts'), 'utf8');
     if (!/if \(name !== 'reader'\) clearReaderPin\(\)/.test(ui))
       throw new Error('切离文章页必须清掉置顶目标');
     const st = fs.readFileSync(path.join(root, 'src', 'core', 'state.ts'), 'utf8');
@@ -11673,13 +11687,13 @@ const withEFP = (el, fn) => {
   });
   t('深链：条目级 hash 只 replaceState 不进历史，刷新/返回据此恢复并置顶', () => {
     const root = path.join(__dirname, '..', '..');
-    const u = fs.readFileSync(path.join(root, 'src', 'core', 'util.ts'), 'utf8');
+    const u = fs.readFileSync(path.join(root, 'src', 'core', 'util.hash.ts'), 'utf8');
     if (!/export function writeHash/.test(u) || !/export function parseHash/.test(u))
       throw new Error('util 缺 writeHash / parseHash');
     if (!/history\.replaceState/.test(u))
       throw new Error('应只用 replaceState（不把文章写进浏览器历史）');
     if (/history\.pushState/.test(u)) throw new Error('不得 pushState（后退会在文章之间逐条回退）');
-    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.articles.ts'), 'utf8');
     if (!/writeHash\('#reader\/art\/'/.test(r)) throw new Error('展开文章未写条目级 hash');
     if (!/export async function restoreReaderArt/.test(r))
       throw new Error('缺 restoreReaderArt（深链恢复）');
@@ -11720,7 +11734,7 @@ const withEFP = (el, fn) => {
   t('卡片页「在文章页查看」一步到位：直接展开并置顶，不再原生 scrollIntoView', () => {
     const root = path.join(__dirname, '..', '..');
     const r = fs
-      .readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8')
+      .readFileSync(path.join(root, 'src', 'core', 'reader.articles.ts'), 'utf8')
       .split('\n')
       .filter((l) => !/^\s*(\*|\/\/)/.test(l))
       .join('\n');
@@ -11745,7 +11759,7 @@ const withEFP = (el, fn) => {
 
   t('收起文章：统一走 core 的 scrollReaderToArt（只动 .reader-main，用户可打断）', () => {
     const root = path.join(__dirname, '..', '..');
-    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.articles.ts'), 'utf8');
     const start = r.indexOf('export function collapseReaderArt');
     const body = r.slice(start, r.indexOf('export function readerToggleArt'));
     if (!/scrollReaderToArt\(id\)/.test(body))
@@ -11758,7 +11772,7 @@ const withEFP = (el, fn) => {
 
   t('篇内阅读位置：sessionStorage 记录、恢复前清置顶、按文章高度 clamp', () => {
     const root = path.join(__dirname, '..', '..');
-    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.articles.ts'), 'utf8');
     if (!/const READ_POS_KEY = 'feedlore\.readPos\.v1'/.test(r))
       throw new Error('缺阅读位置的会话级存储键');
     if (!/sessionStorage\.setItem\(READ_POS_KEY/.test(r))
@@ -11819,13 +11833,13 @@ const withEFP = (el, fn) => {
     if (!/entries\.read_at = \$\{at\}/.test(s)) throw new Error('撤销必须按批次时间戳精确命中');
     if (!/if \(Number\.isNaN\(at\.getTime\(\)\)\)/.test(s))
       throw new Error('撤销要拒绝非法时间戳（400 而不是 500）');
-    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8');
+    const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.view.ts'), 'utf8');
     if (!/\.\.\.\(p\.get\('fav'\) \? \{ fav: '1' \} : \{\}\)/.test(r)) {
       throw new Error('收藏视图的批量已读必须带 fav（否则会标掉范围外所有未读）');
     }
     if (!/action: \(\) => undoReadAll\(scope, undoAt\)/.test(r))
       throw new Error('提示条未接撤销动作');
-    const u = fs.readFileSync(path.join(root, 'src', 'core', 'util.ts'), 'utf8');
+    const u = fs.readFileSync(path.join(root, 'src', 'core', 'util.toast.ts'), 'utf8');
     if (!/export function runToastAction/.test(u)) throw new Error('util 缺行内动作执行器');
     const o = fs.readFileSync(path.join(root, 'src', 'ui', 'Overlays.tsx'), 'utf8');
     if (!/className="toast-act"/.test(o)) throw new Error('Overlays 未渲染撤销按钮');
@@ -11838,7 +11852,7 @@ const withEFP = (el, fn) => {
   t('窄屏吸顶头部随滚动收展：阈值 / 断点隔离 / 置顶前先复位头部', () => {
     const root = path.join(__dirname, '..', '..');
     const r = fs
-      .readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8')
+      .readFileSync(path.join(root, 'src', 'core', 'reader.flow.ts'), 'utf8')
       .replace(/\r\n/g, '\n');
     if (!/const HEAD_HIDE_AFTER = 32/.test(r) || !/const HEAD_SHOW_AFTER = 6/.test(r)) {
       throw new Error('头部收起阈值必须大于展开阈值（否则来回闪）');
@@ -11921,7 +11935,7 @@ const withEFP = (el, fn) => {
   t('折叠状态：state 声明 rdCollapsedGroups 且 setLayout 会回填（否则点分组无反应）', () => {
     const root = path.join(__dirname, '..', '..');
     // V5：初始字段真源迁至 store/app.ts；core/state.ts 只 re-export Proxy、保留 setter
-    const stBase = fs.readFileSync(path.join(root, 'src', 'core', 'state.ts'), 'utf8');
+    const stBase = fs.readFileSync(path.join(root, 'src', 'core', 'state.layout.ts'), 'utf8');
     const stStore = fs.readFileSync(path.join(root, 'src', 'store', 'app.ts'), 'utf8');
     const st = stStore;
     // ① state 初始化对象里必须有这个字段（V5：真源在 store/app.ts 的 initial）
@@ -12176,7 +12190,7 @@ const withEFP = (el, fn) => {
   /* ---------- 弱网守门：这些坑都是浏览器实测复现过的，别再退回去 ---------- */
   t('弱网：请求层统一超时 + 幂等重试，写操作不自动重试', () => {
     const src = fs
-      .readFileSync(path.join(__dirname, '..', '..', 'src', 'core', 'util.ts'), 'utf8')
+      .readFileSync(path.join(__dirname, '..', '..', 'src', 'core', 'util.fetch.ts'), 'utf8')
       .replace(/\r\n/g, '\n');
     if (!/NET_TIMEOUT_MS = 8000/.test(src)) throw new Error('缺 GET 8s 超时上限');
     if (!/NET_WRITE_TIMEOUT_MS = 30000/.test(src)) throw new Error('缺写操作 30s 上限');
@@ -12219,7 +12233,7 @@ const withEFP = (el, fn) => {
     const root = path.join(__dirname, '..', '..', 'src', 'core');
     const pairs = [
       ['卡片页', 'feeds.ts', 'pageGeneration', 'cancelPageLoad', 'state.loadError'],
-      ['文章页', 'reader.ts', 'readerGeneration', 'cancelReaderLoad', 'state.rdReadError'],
+      ['文章页', 'reader.flow.ts', 'readerGeneration', 'cancelReaderLoad', 'state.rdReadError'],
     ];
     for (const [name, file, gen, cancel, errFlag] of pairs) {
       const src = fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
@@ -12234,7 +12248,7 @@ const withEFP = (el, fn) => {
         throw new Error(name + ' 列表请求没接取消信号 / 超时');
       if (!/if \(stale\(\)\) return/.test(src)) throw new Error(name + ' 缺旧请求失效判定');
     }
-    const ui = fs.readFileSync(path.join(root, 'ui.ts'), 'utf8').replace(/\r\n/g, '\n');
+    const ui = fs.readFileSync(path.join(root, 'ui.nav.ts'), 'utf8').replace(/\r\n/g, '\n');
     if (!/if \(refreshing\) return/.test(ui)) throw new Error('连点「刷新」没有互斥');
     if (!/Promise\.all\(\[/.test(ui)) throw new Error('两页列表刷新仍串行，弱网下延迟累加');
     if (
@@ -12253,7 +12267,7 @@ const withEFP = (el, fn) => {
       .readFileSync(path.join(root, 'core', 'feeds.ts'), 'utf8')
       .replace(/\r\n/g, '\n');
     const reader = fs
-      .readFileSync(path.join(root, 'core', 'reader.ts'), 'utf8')
+      .readFileSync(path.join(root, 'core', 'reader.flow.ts'), 'utf8')
       .replace(/\r\n/g, '\n');
     const cards = fs
       .readFileSync(path.join(root, 'views', 'CardsView.tsx'), 'utf8')
@@ -12273,7 +12287,7 @@ const withEFP = (el, fn) => {
   t('标题置顶：吸顶头部按实测高度让位，不再只读静态 --head-h', () => {
     const root = path.join(__dirname, '..', '..');
     const reader = fs
-      .readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8')
+      .readFileSync(path.join(root, 'src', 'core', 'reader.flow.ts'), 'utf8')
       .replace(/\r\n/g, '\n');
     const fn = reader.match(/function readerHeadOffset\(\) \{[\s\S]*?\n\}/);
     if (!fn) throw new Error('readerHeadOffset 不见了');
@@ -12436,10 +12450,10 @@ const withEFP = (el, fn) => {
     }
     for (const f of [
       'src/settings/SettingsModal.tsx',
-      'src/settings/ModelPane.tsx',
+      'src/settings/ModelPane.sheets.tsx',
       'src/settings/SourcePane.tsx',
       'src/settings/RuleScopePicker.tsx',
-      'src/settings/WatchPane.tsx',
+      'src/settings/WatchPane.sheets.tsx',
       'src/views/CardsView.tsx',
       'src/views/ReaderView.tsx',
       'src/views/ChannelList.tsx',
@@ -12530,7 +12544,7 @@ const withEFP = (el, fn) => {
     if (!/react-alert-dialog/.test(ov) || !/react-dialog/.test(ov))
       throw new Error('确认框 / 灯箱未分别用 AlertDialog / Dialog');
     // popstate 不再问弹层栈，直接按 hash 恢复视图。
-    const ui = read('src/core/ui.ts');
+    const ui = read('src/core/ui.nav.ts');
     const at = ui.indexOf("window.addEventListener('popstate'");
     const pop = at < 0 ? '' : ui.slice(at);
     if (/handleOverlayPop/.test(pop)) throw new Error('popstate 仍在调用已删的弹层栈');
@@ -12739,10 +12753,9 @@ const withEFP = (el, fn) => {
     });
     /* 思考是每个模型自己的参数（0017）：保存时写进 llmModel.thinking，
      * 不再当成账号级 llm 字段一把梭。 */
-    const modelPane = fs.readFileSync(
-      path.join(webRoot, 'src', 'settings', 'ModelPane.tsx'),
-      'utf8',
-    );
+    const modelPane =
+      fs.readFileSync(path.join(webRoot, 'src', 'settings', 'ModelPane.tsx'), 'utf8') +
+      fs.readFileSync(path.join(webRoot, 'src', 'settings', 'ModelPane.sheets.tsx'), 'utf8');
     t('思考开关写进模型配置（llmModel.thinking），不再走账号 llm 字段', () => {
       if (modelPane.indexOf('#modelThinking') < 0 && modelPane.indexOf('id="modelThinking"') < 0) {
         throw new Error('缺模型详情层里的思考开关');
