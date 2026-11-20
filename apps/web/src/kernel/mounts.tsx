@@ -116,7 +116,9 @@ function openSettings(tab?: string) {
     host.open(tab);
     return Promise.resolve();
   }
-  provide('settingsPending', { tab });
+  // 无参打开（⋮ 菜单的「设置」）也要能触发宿主补开：消费方要求 tab 是字符串，
+  // 传空串让 `host.open(t || 默认分区)` 兜底，不能因为没指定分区就丢掉这次点击。
+  provide('settingsPending', { tab: tab ?? '' });
   return loadMount('settingsRoot');
 }
 
