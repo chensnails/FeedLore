@@ -3,8 +3,8 @@
  * 弹层形态沿用 src/views/Dropdown.tsx 的既有约定，不新增第二套弹层语言：
  * - 桌面（>720px）：遮罩 + 居中模态，复用 .modal-mask / .modal 一族；
  * - 移动（≤720px）：整屏铺开（.dd-sheet 在窄屏就是一整屏），从下方推入像进入一个页面；
- *   整屏没有「点遮罩关闭」这回事，出口是右上角悬浮 ×、Esc 或系统返回键
- *   （src/ui/overlayStack.ts 的哨兵）。下滑关闭已于 v2.5.3 下线：真机上收起动画会整屏闪一下。
+ *   出口是右上角悬浮 × / Esc（Radix Dialog 接管模态语义）。下滑关闭已于 v2.5.3 下线：
+ *   真机上收起动画会整屏闪一下。
  * 形态在打开瞬间定格，本次开合内不随窗口变化重排。
  *
  * 正文渲染直接复用文章页的 ArtBody（同一套 .art-* 样式与按钮），两处展示保持一份实现。
@@ -21,43 +21,16 @@
  */
 
 import { core } from '@core';
+import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { qk } from '../kernel/query.ts';
 import { ArtActions } from '../ui/EntryActions.tsx';
 import { Icon } from '../ui/Icon.tsx';
-import { hasLayerAbove } from '../ui/layers.ts';
-import { registerLayer } from '../ui/overlayStack.ts';
 import { isMobileMq } from './Dropdown.tsx';
 import { ArtBody, bodyShowsText } from './ReaderView.tsx';
 
 const S = () => core;
-
-/** 把 Tab / Shift+Tab 圈在弹窗内：背景卡片仍在 DOM 里，不拦的话键盘会跑到弹层后面
- *@param {*} [panel]
- * @param {*} [ev]
- */
-
-function trapTab(panel: any, ev: any) {
-  if (!panel) return;
-  const nodes = Array.from(
-    panel.querySelectorAll(
-      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
-    ),
-  ).filter(
-    /** @param {*} [el] */ (el: any) => el.offsetParent !== null || el === document.activeElement,
-  );
-  if (!nodes.length) return;
-  const first = nodes[0] as any;
-  const last = nodes[nodes.length - 1] as any;
-  if (ev.shiftKey && document.activeElement === first) {
-    ev.preventDefault();
-    last.focus();
-  } else if (!ev.shiftKey && document.activeElement === last) {
-    ev.preventDefault();
-    first.focus();
-  }
-}
 
 /** 有没有正文可展示：图文块、正文文本、正文图片三者有其一即可
  *@param {*} [f]
@@ -91,35 +64,12 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
   const [mobile] = useState<any>(isMobileMq());
   const closeRef: any = useRef<any>(null);
   const dialogRef: any = useRef<any>(null);
-  // CardsView 每次重绘都会传新的 onClose；存进 ref，避免它进入 effect 依赖导致重复拉正文 / 重复锁滚动
-  const onCloseRef: any = useRef(onClose);
-  onCloseRef.current = onClose;
 
+  // 打开即记为已读（V5：滚动锁 / Esc / 焦点陷阱 / 层级仲裁全部交由 Radix Dialog）。
   useEffect(() => {
     const c = S();
     if (c.cardsDetailRead) c.cardsDetailRead(e.id);
-    if (c.lockPageScroll) c.lockPageScroll();
-    /**
-     * @param {*} [ev]
-     */
-    const onKey = (ev: any) => {
-      if (ev.key === 'Escape') {
-        /* 分层：详情上面还压着设置弹层 / 确认框 / 命令面板 / 灯箱时，这一击归它们。
-           之前无条件 onClose()，设置弹层被 Esc 关掉的同时详情也一起关了。
-           传自己的面板节点，避免把自己渲染的 .modal-mask / .dd-mask 当成上层。 */
-        if (hasLayerAbove(mobile ? sheetRef.current : dialogRef.current)) return;
-        onCloseRef.current();
-        return;
-      }
-      if (ev.key === 'Tab') trapTab(mobile ? sheetRef.current : dialogRef.current, ev);
-    };
-    document.addEventListener('keydown', onKey);
-    if (closeRef.current) closeRef.current.focus();
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      if (c.unlockPageScroll) c.unlockPageScroll();
-    };
-  }, [e.id, mobile]);
+  }, [e.id]);
 
   // V5：正文交给 Query；queryFn 走 core.apiFetch 端口，测试桩照常生效。
   // key 带 e.id：切换条目是不同 key，旧响应不会回填到新条目（替代原 dead 竞态守卫）。
@@ -207,13 +157,6 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
     </button>
   );
 
-  // 下滑关闭已下线（v2.5.3）：真机收起时会整屏闪白，退出只留 × / Esc / 系统返回键。
-  const dismiss = useCallback(() => onCloseRef.current(), []);
-  const sheetRef: any = useRef<any>(null);
-
-  // 系统返回键 / 手势返回也走同一个出口：打开即入栈，关闭（任意路径）时由清理函数销账。
-  useEffect(() => registerLayer(dismiss), [dismiss]);
-
   const dialogLabel = e.name || '条目详情';
   let inner: any = null;
   if (err) {
@@ -248,53 +191,49 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
       </div>
     );
 
-  if (mobile) {
-    return (
-      <div className="dd-mask" onClick={onClose}>
-        <div
-          ref={sheetRef}
-          className="dd-sheet cd-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label={dialogLabel}
-          onClick={/** @param {*} [ev] */ (ev: any) => ev.stopPropagation()}
-        >
-          {closeBtn}
-          <div className="dd-sheet-body cd-body">
-            {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
-            {inner}
-            <p className="cd-read-tip">打开此详情已将它标记为已读（两页同步）</p>
-          </div>
-        </div>
+  // 不用 Portal：详情就地渲染在卡片视图容器内（测试按其所在容器作用域查询，
+  // Portal 会把内容甩到别处）。遮罩用原生 div 保留 .modal-mask > [role=dialog] 的
+  // DOM 契约；Radix Content asChild 只接管语义（模态 / focus / Esc / 滚动锁）。
+  const shell = (body: any) => (
+    <Dialog.Root
+      open
+      onOpenChange={(o: any) => {
+        if (!o) onClose();
+      }}
+    >
+      <div className={mobile ? 'dd-mask' : 'modal-mask'} role="presentation">
+        <Dialog.Content asChild ref={dialogRef} aria-describedby={undefined}>
+          {body}
+        </Dialog.Content>
       </div>
+    </Dialog.Root>
+  );
+
+  if (mobile) {
+    return shell(
+      <div className="dd-sheet cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel}>
+        <Dialog.Title className="sr-only">{dialogLabel}</Dialog.Title>
+        <Dialog.Close asChild>{closeBtn}</Dialog.Close>
+        <div className="dd-sheet-body cd-body">
+          {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
+          {inner}
+          <p className="cd-read-tip">打开此详情已将它标记为已读（两页同步）</p>
+        </div>
+      </div>,
     );
   }
 
-  return (
-    <div
-      className="modal-mask"
-      onClick={
-        /** @param {*} [ev] */ (ev: any) => {
-          if (ev.target === ev.currentTarget) onClose();
-        }
-      }
-    >
-      <div
-        className="modal cd-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={dialogLabel}
-        ref={dialogRef}
-      >
-        {closeBtn}
-        <div className="modal-body">
-          <div className="cd-scroll">
-            {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
-            {inner}
-            <p className="cd-read-tip">打开此详情已将它标记为已读（两页同步）</p>
-          </div>
+  return shell(
+    <div className="modal cd-modal" role="dialog" aria-modal="true" aria-label={dialogLabel}>
+      <Dialog.Title className="sr-only">{dialogLabel}</Dialog.Title>
+      <Dialog.Close asChild>{closeBtn}</Dialog.Close>
+      <div className="modal-body">
+        <div className="cd-scroll">
+          {descIsSummary ? <p className="cd-desc">{e.desc}</p> : null}
+          {inner}
+          <p className="cd-read-tip">打开此详情已将它标记为已读（两页同步）</p>
         </div>
       </div>
-    </div>
+    </div>,
   );
 }

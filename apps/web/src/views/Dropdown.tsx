@@ -13,7 +13,6 @@
 
 import { core } from '@core';
 import { useEffect, useRef, useState } from 'react';
-import { registerLayer } from '../ui/overlayStack.ts';
 
 /* 与 style.css 的 720px 断点一致；jsdom 无 matchMedia 或无布局时按桌面处理。
    卡片详情弹窗（CardDetail）也用这条判据选弹层形态，故导出。 */
@@ -161,14 +160,6 @@ export function Dropdown({
     setOpen(true);
     setHi(-1);
   };
-
-  // 系统返回键 / 手势返回：先收起这一层（与 Esc / 关闭键同一个出口）。
-  const closeRef: any = useRef(close);
-  closeRef.current = close;
-  useEffect(() => {
-    if (!open) return undefined;
-    return registerLayer(() => closeRef.current());
-  }, [open]);
 
   /**
    * @param {*} [v]

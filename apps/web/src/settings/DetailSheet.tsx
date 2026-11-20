@@ -13,7 +13,6 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { registerLayer } from '../ui/overlayStack.ts';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -27,8 +26,7 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
   const closeRef: any = useRef(onClose);
   closeRef.current = onClose;
 
-  // 系统返回键 / 手势返回：关这一层，不关外面的设置弹层（栈顶优先）。
-  useEffect(() => registerLayer(() => closeRef.current()), []);
+  // 系统返回键栈已随 V5 移除；本层关闭走 × / Esc / 遮罩点击。
 
   // 打开记住焦点来源，关闭归还（列表行被重渲染也先确认还在文档里）
   useEffect(() => {

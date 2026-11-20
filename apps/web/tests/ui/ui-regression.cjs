@@ -60,6 +60,7 @@ global.ResizeObserver =
     disconnect() {}
   };
 global.DOMRect = w.DOMRect;
+global.NodeFilter = w.NodeFilter; // Radix FocusScope 的 getTabbableCandidates 用 TreeWalker/SHOW_ELEMENT
 // 事件构造器也接到 jsdom realm：Radix 内部 new Event/KeyboardEvent 派发到 jsdom 节点时，
 // 若用 Node 原生 Event 会触发 "parameter 1 is not of type 'Event'"（跨 realm）。
 global.Event = w.Event;
@@ -12497,19 +12498,13 @@ const withEFP = (el, fn) => {
       throw new Error('打开设置时要兜底清「已填好」的账号');
   });
 
-  t('返回键：弹层入栈，popstate 先问弹层栈再切视图', () => {
+  t('浮层架构（V5）：Radix 接管主要浮层，自研返回键栈已移除，popstate 只按 hash 切视图', () => {
     const root = path.join(__dirname, '..', '..');
     const read = (f) => fs.readFileSync(path.join(root, f), 'utf8').replace(/\r\n/g, '\n');
-    const stack = read('src/ui/overlayStack.ts');
-    for (const need of [
-      'export function registerLayer',
-      'export function handleOverlayPop',
-      'history.pushState',
-      'history.back()',
-    ]) {
-      if (stack.indexOf(need) < 0) throw new Error('弹层栈缺关键实现：' + need);
-    }
-    // 六个弹层都要入栈：漏一个，系统返回键就会穿过它去关下面那层 / 切视图
+    // 自研返回键栈模块必须彻底删除（标准库 DismissableLayer 接管浮层关闭）。
+    const stackPath = path.join(root, 'src', 'ui', 'overlayStack.ts');
+    if (fs.existsSync(stackPath)) throw new Error('overlayStack.ts 应随 V5 移除');
+    // 六个浮层组件都不得再残留 registerLayer 引用（漏一个会引用已删模块）。
     for (const f of [
       'src/views/CardDetail.tsx',
       'src/views/Dropdown.tsx',
@@ -12518,18 +12513,30 @@ const withEFP = (el, fn) => {
       'src/cmdk/CommandPalette.tsx',
       'src/ui/Overlays.tsx',
     ]) {
-      if (!/registerLayer\(/.test(read(f))) throw new Error(f + ' 没接入返回键栈');
+      if (/registerLayer\(/.test(read(f))) throw new Error(f + ' 仍接入已删的返回键栈');
     }
+    // Radix 必须真接管四类模态浮层（确认框 / 灯箱 / 详情 / 命令面板）。
+    for (const f of [
+      'src/ui/Overlays.tsx',
+      'src/views/CardDetail.tsx',
+      'src/cmdk/CommandPalette.tsx',
+    ]) {
+      if (!/@radix-ui\/react-(dialog|alert-dialog)/.test(read(f)))
+        throw new Error(f + ' 未用 Radix 原语接管浮层语义');
+    }
+    const ov = read('src/ui/Overlays.tsx');
+    if (!/react-alert-dialog/.test(ov) || !/react-dialog/.test(ov))
+      throw new Error('确认框 / 灯箱未分别用 AlertDialog / Dialog');
+    // popstate 不再问弹层栈，直接按 hash 恢复视图。
     const ui = read('src/core/ui.ts');
     const at = ui.indexOf("window.addEventListener('popstate'");
     const pop = at < 0 ? '' : ui.slice(at);
-    const ask = pop.indexOf('handleOverlayPop()');
-    const view = pop.indexOf('parseHash');
-    if (ask < 0 || view < 0 || ask > view)
-      throw new Error('popstate 必须先问弹层栈，再按 hash 切视图');
+    if (/handleOverlayPop/.test(pop)) throw new Error('popstate 仍在调用已删的弹层栈');
+    if (pop.indexOf('parseHash') < 0) throw new Error('popstate 缺 hash 视图恢复');
+    // 移动端设置的「返回列表」业务路径由 Esc 的 host.escape() 承接（标准库不提供两级历史返回）。
     const sm = read('src/settings/SettingsModal.tsx');
-    if (!/goHome\(\);\s*return false;/.test(sm))
-      throw new Error('移动端设置：返回键应先退回设置列表，而不是整层关闭');
+    if (!/escape\(\)/.test(sm) || !/goHome\(\)/.test(sm))
+      throw new Error('移动端设置：Esc 应先退回设置列表，而不是整层关闭');
   });
 
   t('底栏收展：方向判据 / 安全网 / 样式契约齐备', () => {

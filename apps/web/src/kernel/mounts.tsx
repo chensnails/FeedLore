@@ -1,20 +1,23 @@
-/* 声明式 React 装配：把 mount-points.ts 的数据表变成真实的 createRoot。
+/* 声明式 React 装配（V5：单一 root）。
  *
- * 背景：main.tsx 是渐进式迁移期的「混合入口」，八个 createRoot 各写一遍
- * StrictMode + getElementById + 判空，其中两个还要额外实现按需加载与
- * pending 补调用。新增一个浮层要复制一遍样板，挂载点全集散在 120 行里，
- * 也没有地方能校验 id 是否重复或漏挂。
+ * 历史上八个 DOM 容器各有自己的 createRoot，各写一遍 StrictMode + 判空，
+ * 其中两个还要动态 import + pending 补开。V5 把这些 root 合并为一个：
+ *  - 唯一的 createRoot 挂到动态创建的空 #appRoot（不碰 index.html 的静态骨架）；
+ *  - 每个视图/浮层用 createPortal 分发到原来的 8 个 DOM 容器 —— id 与层级
+ *    全部保留，CSS 高度链（#aiView→.ex-wrap→.ex-pane→.ex-shell）、fixed 包含块、
+ *    #overlaysRoot 查询作用域都不受影响；
+ *  - 单一 React 树意味着 QueryProvider 只需包一层，所有组件共享同一个 Context。
  *
- * 现在 main.tsx 只剩三行；装配逻辑只写一次，挂载点全集由纯数据模块给出：
- *  - 常驻视图在 mountAll() 里一次挂载；
- *  - 设置 / 日报首次使用时才动态 import，宿主未就绪时把目标分区记进桥，
- *    由 SettingsModal 挂载后补一次 open（行为与旧实现一致）；
- *  - roots / loading 两张表防止重复挂载或重复下载，失败允许重试。
+ * 按需加载（SettingsModal / AiView）保持原有 Promise 语义：core 层的 openSettings /
+ * switchView('ai') 会拿到 import 的 Promise 并在失败时 toast；模块加载完成后通知
+ * React 重渲染，再由 createPortal 把组件挂到对应容器，SettingsModal 挂载后照旧
+ * 消费 settingsPending 补上那次打开。
  *
  * 注意：main.tsx 仍须把 `import '@core'` 放在最前 —— 核心模块求值时就会
  * 绑定事件与首屏启动，挂载必须在它之后发生。
  */
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { CommandPalette } from '../cmdk/CommandPalette.tsx';
 import { Overlays } from '../ui/Overlays.tsx';
@@ -51,59 +54,64 @@ export const MOUNTS = Object.freeze(
   ),
 );
 
-const roots = new Map();
+// 按需模块就绪状态：loadMount 在模块外（core 层调用）完成 import 后写入并通知 React。
+const loadedLazy = new Map();
 const loading = new Map();
+const lazyListeners = new Set<() => void>();
 
-/**
- * @param {*} [id]
- * @param {*} [Component]
- */
+function subscribeLazy(fn: () => void) {
+  lazyListeners.add(fn);
+  return () => {
+    lazyListeners.delete(fn);
+  };
+}
+function getLazySnapshot() {
+  return loadedLazy.size;
+}
 
-function render(id: any, Component: any) {
-  const host = document.getElementById(id);
-  if (!host || roots.has(id) || !Component) return;
-  const root = createRoot(host);
-  roots.set(id, root);
-  root.render(
-    <React.StrictMode>
-      <QueryProvider>
-        <Component />
-      </QueryProvider>
-    </React.StrictMode>,
+/** @param {*} [id] */
+function loadMount(id: any) {
+  if (loading.has(id)) return loading.get(id);
+  if (loadedLazy.has(id) || !document.getElementById(id)) return Promise.resolve();
+  const m = MOUNTS.find(/** @param {*} [x] */ (x: any) => x.id === id);
+  if (!m || !m.load) return Promise.resolve();
+  const p = m
+    .load()
+    .then(
+      /** @param {*} [mod] */ (mod: any) => {
+        loadedLazy.set(id, mod[m.exportName]);
+        loading.delete(id);
+        lazyListeners.forEach((fn) => fn());
+      },
+    )
+    .catch(
+      /** @param {*} [err] */ (err: any) => {
+        loading.delete(id); // 允许下次重试，别把失败永久缓存
+        console.error(`[kernel] 按需加载 ${id} 失败`, err);
+        throw err;
+      },
+    );
+  loading.set(id, p);
+  return p;
+}
+
+/** 单一 root 的内容：把每个装配项 portal 到它原来的 DOM 容器。 */
+function App() {
+  useSyncExternalStore(subscribeLazy, getLazySnapshot);
+  return (
+    <>
+      {MOUNTS.map((m: any) => {
+        const host = document.getElementById(m.id);
+        if (!host) return null;
+        const Component = m.lazy ? loadedLazy.get(m.id) : m.component;
+        if (!Component) return null;
+        return createPortal(<Component />, host, m.id);
+      })}
+    </>
   );
 }
 
-/**
- * @param {*} [id]
- */
-
-function loadMount(id: any) {
-  if (roots.has(id) || !document.getElementById(id)) return Promise.resolve();
-  if (!loading.has(id)) {
-    const m = MOUNTS.find(/** @param {*} [x] */ (x: any) => x.id === id);
-    if (!m || !m.load) return Promise.resolve();
-    const p = m
-      .load()
-      .then(
-        /** @param {*} [mod] */ (mod: any) => {
-          render(id, mod[m.exportName]);
-        },
-      )
-      .catch(
-        /** @param {*} [err] */ (err: any) => {
-          loading.delete(id); // 允许下次重试，别把失败永久缓存
-          console.error(`[kernel] 按需加载 ${id} 失败`, err);
-          throw err;
-        },
-      );
-    loading.set(id, p);
-  }
-  return loading.get(id);
-}
-
-/**
- * @param {*} [tab]
- */
+/** @param {*} [tab] */
 function openSettings(tab: any) {
   const host = get('settingsHost');
   if (host && host.open) {
@@ -118,9 +126,27 @@ function openAi() {
   return loadMount('aiRoot');
 }
 
-/** 唯一的启动入口：挂全部常驻视图，并把两个按需加载器登记到能力桥。 */
+let rootInstance: any = null;
+
+/** 唯一的启动入口：建一个 root 挂全部装配项，并把两个按需加载器登记到能力桥。 */
 export function mountAll() {
-  for (const m of MOUNTS) if (!m.lazy) render(m.id, m.component);
+  if (rootInstance) return;
+  // 动态创建空宿主：不往 index.html 加节点（守卫/首屏骨架零改动），
+  // 所有真实内容都 portal 到原来的 8 个容器，appRoot 本身始终为空。
+  let host = document.getElementById('appRoot');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'appRoot';
+    document.body.appendChild(host);
+  }
+  rootInstance = createRoot(host);
+  rootInstance.render(
+    <React.StrictMode>
+      <QueryProvider>
+        <App />
+      </QueryProvider>
+    </React.StrictMode>,
+  );
   provide('mountSettings', openSettings);
   provide('mountAi', openAi);
 }

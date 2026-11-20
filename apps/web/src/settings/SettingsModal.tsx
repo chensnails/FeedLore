@@ -12,7 +12,6 @@ import { core } from '@core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { get, provide, revoke } from '../kernel/bridge.ts';
 import { clearAutofilledInput, NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.ts';
-import { registerLayer } from '../ui/overlayStack.ts';
 import { AboutPane } from './AboutPane.tsx';
 import { AccountPane } from './AccountPane.tsx';
 import { AppearancePane } from './AppearancePane.tsx';
@@ -304,22 +303,8 @@ export function SettingsModal() {
     if (ev.target === ev.currentTarget) requestClose();
   };
 
-  // 系统返回键 / 手势返回与「返回」按钮、Esc 走同一套递减：移动端停在分区内容里时
-  // 先退回设置列表（这一击被吃掉，弹层保持打开），已经在列表上才整层关闭；
-  // 未保存改动由 requestClose 里的确认框拦截，用户选「继续编辑」时返回 false 留在原地。
-  useEffect(() => {
-    if (!open) return undefined;
-    return registerLayer(() => {
-      if (isMobileRef.current && paneOpenRef.current) {
-        goHome();
-        return false;
-      }
-      return requestClose();
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  // 手机上是贴底整屏弹层，出口只有 × / Esc / 系统返回键（下滑关闭 v2.5.3 下线：真机会闪屏）。
+  // 手机上是贴底整屏弹层，出口只有 × / Esc（下滑关闭 v2.5.3 下线：真机会闪屏）。
+  // 系统返回键栈已随 V5 移除；移动端两级返回的等价路径由 Esc 的 host.escape() → goHome() 承接。
   const attachModal = useCallback(
     /** @param {*} [el] */ (el: any) => {
       modalRef.current = el;

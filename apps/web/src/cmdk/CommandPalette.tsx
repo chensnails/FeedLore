@@ -4,11 +4,11 @@
  * 视觉与交互零变化；动作经 `@core` 单例调用核心逻辑。 */
 
 import { core } from '@core';
+import * as Dialog from '@radix-ui/react-dialog';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { isOn, provide, revoke } from '../kernel/bridge.ts';
+import { provide, revoke } from '../kernel/bridge.ts';
 import { hasLayerAbove } from '../ui/layers.ts';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.ts';
-import { registerLayer } from '../ui/overlayStack.ts';
 import { buildCommands, cmdkFilter } from './commands.ts';
 
 const BRIDGE = () => core; // 核心逻辑单例（@core）
@@ -82,11 +82,6 @@ export function CommandPalette() {
   }, [active]);
 
   const close = useCallback(() => setOpen(false), []);
-  // 系统返回键 / 手势返回：先关命令面板（此时它通常就是最上面那一层）。
-  useEffect(() => {
-    if (!open) return undefined;
-    return registerLayer(close);
-  }, [open, close]);
   const matched = open ? cmdkFilter(buildCommands(BRIDGE()), q) : [];
   // 输入词同时当「全文搜索」用：命令都不匹配时它就是唯一一条，回车直接搜；
   // 有命令匹配时排在最后，回车仍先执行命令，想搜再按 ↓ 选它。
@@ -143,51 +138,10 @@ export function CommandPalette() {
   /**
    * @param {*} [ev]
    */
-  const onMaskClick = (ev: any) => {
-    if (ev.target === ev.currentTarget) close();
-  };
-
-  // Tab 不跑出面板：否则模态对话框会把焦点送到背后的页面上
-  /**
-   * @param {*} [ev]
-   */
-  const onPanelKeyDown = (ev: any) => {
-    // Esc 挂在面板而不是输入框：Tab 到某条命令按钮后按 Esc 也要能关，
-    // 否则只能用 ⌘K 或点遮罩（确认框叠在上面时仍让位给它）。
-    if (ev.key === 'Escape') {
-      ev.preventDefault();
-      if (!isOn('confirmOpen')) close();
-      return;
-    }
-    if (ev.key !== 'Tab') return;
-    const root = panelRef.current;
-    if (!root) return;
-    const items = Array.from(
-      root.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])'),
-    ).filter(/** @param {*} [el] */ (el: any) => !el.disabled);
-    if (!items.length) return;
-    const first = items[0] as any;
-    const last = items[items.length - 1] as any;
-    const at = document.activeElement;
-    if (!root.contains(at)) {
-      ev.preventDefault();
-      first.focus();
-      return;
-    }
-    if (ev.shiftKey && at === first) {
-      ev.preventDefault();
-      last.focus();
-    } else if (!ev.shiftKey && at === last) {
-      ev.preventDefault();
-      first.focus();
-    }
-  };
-
   const isMac = /mac|iphone|ipad|ipod/i.test(
     (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '',
   );
 
-  if (!open) return null;
   let rows: any = null;
   let lastGroup: any = null;
   if (!items.length) {
@@ -227,61 +181,77 @@ export function CommandPalette() {
   }
 
   return (
-    <div className="cmdk-mask" onClick={onMaskClick}>
-      <div
-        className="cmdk"
-        role="dialog"
-        aria-modal="true"
-        aria-label="命令面板"
-        ref={panelRef}
-        onKeyDown={onPanelKeyDown}
-      >
-        <div className="cmdk-input-wrap">
-          <svg className="search-ico" aria-hidden="true" focusable="false">
-            <use href="#i-search" />
-          </svg>
-          {/* ↑↓ 只改 active 状态、焦点始终留在输入框，必须靠 aria-activedescendant
+    <Dialog.Root
+      open={open}
+      onOpenChange={(o: any) => {
+        if (!o) close();
+      }}
+    >
+      <Dialog.Portal container={document.getElementById('cmdkRoot') || document.body}>
+        <Dialog.Overlay className="cmdk-mask" role="presentation" />
+        <Dialog.Content asChild aria-describedby={undefined}>
+          <div
+            className="cmdk"
+            role="dialog"
+            aria-modal="true"
+            aria-label="命令面板"
+            ref={panelRef}
+          >
+            <Dialog.Title className="sr-only">命令面板</Dialog.Title>
+            <div className="cmdk-input-wrap">
+              <svg className="search-ico" aria-hidden="true" focusable="false">
+                <use href="#i-search" />
+              </svg>
+              {/* ↑↓ 只改 active 状态、焦点始终留在输入框，必须靠 aria-activedescendant
               把「当前高亮项」报给读屏，否则读屏听不出选中了哪条。 */}
-          <input
-            ref={inputRef}
-            className="cmdk-input"
-            type="text"
-            name={noAutofillName}
-            placeholder="输入命令或搜索…"
-            {...NO_AUTOFILL_PROPS}
-            role="combobox"
-            aria-label="搜索命令"
-            aria-autocomplete="list"
-            aria-expanded="true"
-            aria-controls="cmdkList"
-            aria-activedescendant={items.length ? 'cmdkOpt' + active : undefined}
-            value={q}
-            onChange={
-              /** @param {*} [ev] */ (ev: any) => {
-                setQ(ev.target.value);
-                setActive(0);
-              }
-            }
-            onKeyDown={onInputKeyDown}
-          />
-          <kbd className="cmdk-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
-        </div>
-        <div className="cmdk-list" ref={listRef} role="listbox" id="cmdkList" aria-label="命令列表">
-          {rows}
-        </div>
-        <div className="cmdk-foot">
-          <span>
-            <kbd>↑</kbd>
-            <kbd>↓</kbd> 选择
-          </span>
-          <span>
-            <kbd>↵</kbd> 执行
-          </span>
-          <span>
-            <kbd>Esc</kbd> 关闭
-          </span>
-        </div>
-      </div>
-    </div>
+              <input
+                ref={inputRef}
+                className="cmdk-input"
+                type="text"
+                name={noAutofillName}
+                placeholder="输入命令或搜索…"
+                {...NO_AUTOFILL_PROPS}
+                role="combobox"
+                aria-label="搜索命令"
+                aria-autocomplete="list"
+                aria-expanded="true"
+                aria-controls="cmdkList"
+                aria-activedescendant={items.length ? 'cmdkOpt' + active : undefined}
+                value={q}
+                onChange={
+                  /** @param {*} [ev] */ (ev: any) => {
+                    setQ(ev.target.value);
+                    setActive(0);
+                  }
+                }
+                onKeyDown={onInputKeyDown}
+              />
+              <kbd className="cmdk-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>
+            </div>
+            <div
+              className="cmdk-list"
+              ref={listRef}
+              role="listbox"
+              id="cmdkList"
+              aria-label="命令列表"
+            >
+              {rows}
+            </div>
+            <div className="cmdk-foot">
+              <span>
+                <kbd>↑</kbd>
+                <kbd>↓</kbd> 选择
+              </span>
+              <span>
+                <kbd>↵</kbd> 执行
+              </span>
+              <span>
+                <kbd>Esc</kbd> 关闭
+              </span>
+            </div>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
