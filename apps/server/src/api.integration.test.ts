@@ -1235,6 +1235,8 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       /* 回归：mcpAuth 曾只按 tokenHash 点查、漏了 isNull(revokedAt)，
        * 而令牌管理是软删 —— 用户点了吊销，旧 token 却仍能访问全部 MCP 工具。
        * 这里走真鉴权链路：创建 token → 带 Bearer 打 /mcp → 吊销 → 同一 token 再打。 */
+      // 前面的「只读账户」用例把主账号降过级；令牌创建是 write 档，这里先恢复。
+      await db.execute(sql`update users set role = 'user' where id = ${userId}`);
       const cookie = await loginAs(username, password);
 
       const created = await app.request('/api/mcp-tokens', {
