@@ -17,7 +17,7 @@
 
 import type { Role } from '@feedlore/contract';
 import { type Db, mcpTokens, users } from '@feedlore/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { MiddlewareHandler } from 'hono';
 import { apiErrorBody } from '../lib/apiError';
 import { bearerFromHeader, hashMcpToken, mcpRateLimit } from '../lib/mcpToken';
@@ -63,17 +63,21 @@ export function mcpAuth(db: Db | null): MiddlewareHandler<McpEnv> {
         tokenId: mcpTokens.id,
         scope: mcpTokens.scope,
         prefix: mcpTokens.prefix,
+        revokedAt: mcpTokens.revokedAt,
         userId: users.id,
         username: users.username,
         role: users.role,
       })
       .from(mcpTokens)
       .innerJoin(users, eq(users.id, mcpTokens.userId))
-      .where(eq(mcpTokens.tokenHash, hashMcpToken(secret)))
+      // 吊销是软删（写 revokedAt）：必须和令牌管理接口用同一条「未吊销」过滤，
+      // 否则已吊销 token 立即可继续访问 —— 见「吊销后 401」集成测试。
+      .where(and(eq(mcpTokens.tokenHash, hashMcpToken(secret)), isNull(mcpTokens.revokedAt)))
       .limit(1);
 
     const row = rows[0];
-    if (!row || (row.scope !== 'read' && row.scope !== 'write')) {
+    // 双保险：SQL 已过滤未吊销，这里再挡一次，防止将来有人改 SQL 时漏掉吊销语义。
+    if (!row || row.revokedAt || (row.scope !== 'read' && row.scope !== 'write')) {
       return c.json(apiErrorBody('E_MCP_TOKEN_INVALID'), 401);
     }
 

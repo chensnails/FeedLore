@@ -1231,6 +1231,66 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal(s.authenticated, false);
     });
 
+    await t.test('MCP 令牌吊销后立即失效：吊销前可用，吊销后 Bearer 401', async () => {
+      /* 回归：mcpAuth 曾只按 tokenHash 点查、漏了 isNull(revokedAt)，
+       * 而令牌管理是软删 —— 用户点了吊销，旧 token 却仍能访问全部 MCP 工具。
+       * 这里走真鉴权链路：创建 token → 带 Bearer 打 /mcp → 吊销 → 同一 token 再打。 */
+      const cookie = await loginAs(username, password);
+
+      const created = await app.request('/api/mcp-tokens', {
+        method: 'POST',
+        headers: { origin: ORIGIN, cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'itest-revoke', scope: 'read' }),
+      });
+      assert.equal(created.status, 200, `建令牌失败：${await created.clone().text()}`);
+      const { secret, token } = (await created.json()) as {
+        secret: string;
+        token: { id: string };
+      };
+      assert.ok(secret.startsWith('flm_'));
+      assert.ok(token.id);
+
+      const mcpInit = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'itest-revoke', version: '1' },
+        },
+      };
+      const mcpHeaders = {
+        authorization: `Bearer ${secret}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      };
+
+      // 吊销前：鉴权应通过（MCP 协议层可能因测试请求细节返回 400，但绝不能是 401）
+      const before = await app.request('/mcp', {
+        method: 'POST',
+        headers: mcpHeaders,
+        body: JSON.stringify(mcpInit),
+      });
+      assert.notEqual(before.status, 401, '未吊销的令牌必须能通过 Bearer 鉴权');
+
+      const revoked = await app.request(`/api/mcp-tokens/${token.id}`, {
+        method: 'DELETE',
+        headers: { origin: ORIGIN, cookie },
+      });
+      assert.equal(revoked.status, 200, `吊销失败：${await revoked.clone().text()}`);
+
+      // 吊销后：同一令牌必须立即 401
+      const after = await app.request('/mcp', {
+        method: 'POST',
+        headers: mcpHeaders,
+        body: JSON.stringify(mcpInit),
+      });
+      assert.equal(after.status, 401, '已吊销的令牌必须立即被拒（这是本次修复的核心断言）');
+      const body = (await after.json()) as { error?: string };
+      assert.equal(body.error, 'E_MCP_TOKEN_INVALID');
+    });
+
     /* ---------------------------------------------------------------- 整站还原
      * 放在最后：它会清空并重建全库，之后的用例都不该再有登录态。 */
     await t.test('整站还原：替换数据、旧会话失效、账号可重新登录', async () => {
