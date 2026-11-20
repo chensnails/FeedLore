@@ -881,7 +881,7 @@ textarea:disabled {
 /* 移动端弹层（v1.1.10 底部抽屉 → v1.3.4 起整屏 → v1.3.6 一律整屏，不再有半屏形态）：
    从下方推入铺满一整屏，读起来是「进入一个页面」，不是「盖了一层浮窗」。
    背后没有内容可透，所以是实底、不做玻璃模糊（白花钱），遮罩也不压暗。
-   出口是 × / Esc / 系统返回键；下滑关闭 v2.5.3 下线（真机收起会整屏闪一下）。 */
+   出口是 × / Esc / 遮罩；下滑关闭 v2.5.3 下线（真机收起会整屏闪一下）。 */
 .dd-mask {
   position: fixed; inset: 0; z-index: var(--z-sheet);
   display: flex; align-items: flex-end;
@@ -2627,7 +2627,7 @@ body.is-dragging-feeds .drag-handle { cursor: grabbing; }
  * 设置 A 方案（v2.5.0）：列表 + 详情两层
  * ------------------------------------------------------------
  * 列表只留紧凑行（整行命中，≥64px），点行打开 DetailSheet：
- * 桌面是内容区右侧抽屉（列表仍可见可对照），移动是贴底弹层（下滑关闭）。
+ * 桌面是内容区右侧抽屉（列表仍可见可对照），移动是贴底弹层。
  * 行级修改即改即生效，toast 带撤销；批量模式多选后统一操作。
  * ============================================================ */
 
@@ -4793,7 +4793,7 @@ body.is-scrolling .card-media-actions { transition: none; }
     background: var(--border-strong); opacity: .7;
     margin: var(--sp-2) auto 0;
   }
-  /* 移动端层内只留一个出口（右上角 × + 下滑手势 + Esc）；.ds-back 与外壳的
+  /* 移动端层内只留一个出口（右上角 × + Esc）；.ds-back 与外壳的
      .settings-back 会堆出三个同义「返回」，保留 DOM 供键盘/回归用，这里不显示。 */
   .ds-back { display: none; }
   .ds-head { padding: var(--sp-3) var(--sp-3) var(--sp-2); }
@@ -5693,7 +5693,7 @@ button.mini-tag { border: 0; font-family: inherit; cursor: pointer; }
 /* 17) 移动端弹层统一为「底部整屏抽屉」
  * 此前下拉 / 卡片详情是 .dd-sheet（从下推入），设置与确认框却是居中浮窗，
  * 同一个 App 在手机上是两种弹层体验。这里把 .modal 也收进同一套语言：贴底、满宽、
- * 顶部圆角；入口/出口是遮罩、×、Esc，系统返回键由 overlayStack 统一接管。
+ * 顶部圆角；入口/出口是遮罩、×、Esc（V5 起模态由 Radix Dialog 接管）。
  * 下滑关闭 v2.5.3 下线（真机收起会整屏闪一下），移动端不再有可拖拽的抓手。 */
 @media (max-width: 720px) {
   .modal-mask { align-items: flex-end; padding: 0; }
@@ -6248,7 +6248,7 @@ body { overflow: hidden; }
  * ------------------------------------------------------------
  * 手机上一屏最重要的一件事是「看清楚内容」，而不是在顶栏挤三个视图图标。
  * 视图切换仍只有一份实现（.viewnav + ViewNav）：桌面 / 平板由各视图顶栏右簇
- * 渲染；≤720px 顶栏里的实例隐藏，改由 main.jsx 挂载在视图之外的全局实例
+ * 渲染；≤720px 顶栏里的实例隐藏，改由 main.tsx 挂载在视图之外的全局实例
  * 停靠到视口底部。DOM 结构、状态与无障碍语义都不变，只换位置。
  *
  * 为什么不能直接把顶栏里那个实例改成 fixed：.reader-head 是容器查询容器

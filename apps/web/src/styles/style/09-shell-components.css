@@ -160,7 +160,7 @@ button.mini-tag { border: 0; font-family: inherit; cursor: pointer; }
 /* 17) 移动端弹层统一为「底部整屏抽屉」
  * 此前下拉 / 卡片详情是 .dd-sheet（从下推入），设置与确认框却是居中浮窗，
  * 同一个 App 在手机上是两种弹层体验。这里把 .modal 也收进同一套语言：贴底、满宽、
- * 顶部圆角；入口/出口是遮罩、×、Esc，系统返回键由 overlayStack 统一接管。
+ * 顶部圆角；入口/出口是遮罩、×、Esc（V5 起模态由 Radix Dialog 接管）。
  * 下滑关闭 v2.5.3 下线（真机收起会整屏闪一下），移动端不再有可拖拽的抓手。 */
 @media (max-width: 720px) {
   .modal-mask { align-items: flex-end; padding: 0; }

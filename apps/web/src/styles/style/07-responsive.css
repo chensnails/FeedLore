@@ -200,7 +200,7 @@
     background: var(--border-strong); opacity: .7;
     margin: var(--sp-2) auto 0;
   }
-  /* 移动端层内只留一个出口（右上角 × + 下滑手势 + Esc）；.ds-back 与外壳的
+  /* 移动端层内只留一个出口（右上角 × + Esc）；.ds-back 与外壳的
      .settings-back 会堆出三个同义「返回」，保留 DOM 供键盘/回归用，这里不显示。 */
   .ds-back { display: none; }
   .ds-head { padding: var(--sp-3) var(--sp-3) var(--sp-2); }
