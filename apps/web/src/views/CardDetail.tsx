@@ -21,7 +21,9 @@
  */
 
 import { core } from '@core';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { qk } from '../kernel/query.ts';
 import { ArtActions } from '../ui/EntryActions.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { hasLayerAbove } from '../ui/layers.ts';
@@ -84,8 +86,7 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
   /** @type {*} */
   const [full, setFull] = useState<any>(null);
   const [err, setErr] = useState<any>(false);
-  // 正文重试计数：+1 就重跑拉取 effect，其余（锁滚动 / 记已读 / 焦点）不重复执行
-  const [reloadKey, setReloadKey] = useState<any>(0);
+  // 正文重试走 bodyQuery.refetch()（见下方加载逻辑），锁滚动 / 记已读 / 焦点不重复执行
   // 打开瞬间定格形态（与 Dropdown 同一约定），避免开合途中换布局
   const [mobile] = useState<any>(isMobileMq());
   const closeRef: any = useRef<any>(null);
@@ -120,30 +121,33 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
     };
   }, [e.id, mobile]);
 
+  // V5：正文交给 Query；queryFn 走 core.apiFetch 端口，测试桩照常生效。
+  // key 带 e.id：切换条目是不同 key，旧响应不会回填到新条目（替代原 dead 竞态守卫）。
+  const bodyQuery = useQuery({
+    queryKey: qk.readerBody(e.id),
+    queryFn: async () => {
+      const res = await S().apiFetch('/api/entries/' + encodeURIComponent(e.id));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    },
+    refetchOnMount: 'always',
+    retry: false,
+  });
   useEffect(() => {
-    let dead = false;
-    setErr(false);
-    setFull(null);
-    S()
-      .apiFetch('/api/entries/' + encodeURIComponent(e.id))
-      .then(
-        /** @param {*} [res] */ (res: any) => {
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          return res.json();
-        },
-      )
-      .then(
-        /** @param {*} [d] */ (d: any) => {
-          if (!dead) setFull(d);
-        },
-      )
-      .catch(() => {
-        if (!dead) setErr(true);
-      });
-    return () => {
-      dead = true;
-    };
-  }, [e.id, reloadKey]);
+    if (bodyQuery.isPending) {
+      setFull(null);
+      setErr(false);
+      return;
+    }
+    if (bodyQuery.isError) {
+      setErr(true);
+      return;
+    }
+    if (bodyQuery.data) {
+      setFull(bodyQuery.data);
+      setErr(false);
+    }
+  }, [bodyQuery.data, bodyQuery.isPending, bodyQuery.isError]);
 
   const fav = !!e.isFavorite;
   const toggleFav = () => {
@@ -216,11 +220,7 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
     inner = (
       <div className="hint">
         正文加载失败
-        <button
-          type="button"
-          className="btn btn-sm"
-          onClick={() => setReloadKey(/** @param {*} [k] */ (k: any) => k + 1)}
-        >
+        <button type="button" className="btn btn-sm" onClick={() => bodyQuery.refetch()}>
           重试
         </button>
       </div>
