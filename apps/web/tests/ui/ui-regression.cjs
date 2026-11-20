@@ -2068,6 +2068,22 @@ const waitFor = async (fn, ms = 1000, step = 20) => {
   }
   return false;
 };
+/* 详情动作行（.btn-fav / .btn-jump）依赖异步拉正文：CardDetail 在 full 到位前渲染
+ * .art-loading，此时没有动作行。旧写法用固定 sleep(40) 后裸 .click()，jsdom 下偶发
+ * 渲染更慢就命中 null → 未捕获 FATAL 吞掉整份报告（且掩盖前面 t() 的真实失败）。
+ * 这里等到元素就绪再点；超时不抛，留给紧随其后的 t() 断言去判 FAIL，既不误杀也不掩盖。 */
+const clickReady = async (sel, ms = 1200) => {
+  await waitFor(() => !!document.querySelector(sel), ms);
+  const el = document.querySelector(sel);
+  if (el) el.click();
+};
+/* 打开详情弹窗后正文走异步 query，旧写法固定 sleep(60) 等渲染：jsdom 慢时断言
+ * 命中 .art-loading（正文未到位）而误报 FAIL。改为等到目标正文节点出现再断言。 */
+const waitReady = (sel, ms = 1500) => waitFor(() => !!document.querySelector(sel), ms);
+/* 关闭弹窗是异步的（Radix Dialog 状态落地 + React 卸载）；直接 sleep(40) 后再开新弹窗，
+ * 旧正文节点可能还没卸载，waitReady 会命中旧 DOM 立即返回 → 断言读到上一模式的内容。
+ * 显式等旧遮罩消失，保证下一次打开是干净的 DOM。 */
+const waitGone = (sel, ms = 1500) => waitFor(() => !document.querySelector(sel), ms);
 const mask = () => document.querySelector('.modal-mask');
 // 窄屏下 .tab 里还有描述文字，按 .tab-label 比对才不会被 desc 干扰
 const tabBtn = (label) =>
@@ -7359,7 +7375,7 @@ const withEFP = (el, fn) => {
   C('#grid .card[data-id="e1"] .card-desc').dispatchEvent(
     new w.MouseEvent('click', { bubbles: true }),
   );
-  await sleep(60);
+  await waitReady('.modal .art-actions .btn-fav');
   t('点卡片空白处 → 打开详情弹窗 + 拉正文 + 记为已读（两页同步、计数只减一次）', () => {
     const dlg = C('.modal-mask [role="dialog"][aria-modal="true"]');
     if (!dlg) throw new Error('未弹出模态');
@@ -7403,13 +7419,13 @@ const withEFP = (el, fn) => {
     if (C('.modal .art-actions .btn-jump').textContent.trim())
       throw new Error('纯图标按钮不该再带文字');
   });
-  C('.modal .art-actions .btn-fav').click();
+  await clickReady('.modal .art-actions .btn-fav');
   await sleep(40);
   t('动作行里的收藏按钮：切收藏态但不关弹窗', () => {
     if (!C('.modal .art-actions .btn-fav.is-fav')) throw new Error('未切到已收藏');
     if (!C('.modal-mask')) throw new Error('点收藏不该关闭弹窗');
   });
-  C('.modal .art-actions .btn-fav').click();
+  await clickReady('.modal .art-actions .btn-fav');
   await sleep(40);
   t('再点一次取消收藏（回到初始态，不影响后续用例）', () => {
     if (C('.modal .art-actions .btn-fav.is-fav')) throw new Error('未取消收藏');
@@ -7428,7 +7444,7 @@ const withEFP = (el, fn) => {
     if (detailGets() !== getsBefore) throw new Error('重复拉正文');
     if (callsOf('cardsDetailRead').length !== 1) throw new Error('重复记已读');
   });
-  C('.modal .art-actions .btn-jump').click();
+  await clickReady('.modal .art-actions .btn-jump');
   await sleep(40);
   t('「在文章页查看」→ jumpToFeed(频道, 条目) 且弹窗关闭', () => {
     if (C('.modal-mask')) throw new Error('弹窗未关闭');
@@ -7437,7 +7453,7 @@ const withEFP = (el, fn) => {
     if (hit[2] !== 'e1') throw new Error('没带上要高亮的那条 id：' + hit[2]);
   });
   C('#grid .card[data-id="e2"] .title-btn').click();
-  await sleep(60);
+  await waitReady('.modal .cd-none');
   t('无正文条目：正文区收起，只留摘要 / 链接动作', () => {
     if (!C('.modal-mask [role="dialog"]')) throw new Error('未弹出');
     if (C('.art-inner')) throw new Error('无正文时不应渲染正文区');
@@ -7456,36 +7472,39 @@ const withEFP = (el, fn) => {
 
   // 摘要与正文同源（rss.js 里 desc 就是 content 压平换行），正文有文字时再列摘要等于同一段话摆两遍
   C('#grid .card[data-id="e1"] .title-btn').click();
-  await sleep(60);
+  await waitReady('.art-inner .art-text');
   t('正文有文字 → 不再另列摘要行', () => {
     if (C('.cd-desc')) throw new Error('正文已含文字，不该再列一行摘要');
     if (!C('.art-inner .art-text')) throw new Error('正文没渲染出来');
   });
   C('.modal-close').click();
-  await sleep(40);
+  await waitGone('.modal-mask');
   detailBodyMode = 'rich';
   C('#grid .card[data-id="e1"] .title-btn').click();
-  await sleep(60);
+  await waitReady('.cd-art .art-rich .art-h3');
   t('v2 正文有文字 → 不再列摘要，标题 / 图片块都渲染', () => {
     if (C('.cd-desc')) throw new Error('v2 正文已含文字，不该再列一行摘要');
     if (!C('.cd-art .art-rich .art-h3')) throw new Error('v2 标题块未渲染');
     if (!C('.cd-art .art-rich .art-img')) throw new Error('v2 图片块未渲染');
   });
   C('.modal-close').click();
-  await sleep(40);
+  await waitGone('.modal-mask');
   detailBodyMode = 'images';
   C('#grid .card[data-id="e1"] .title-btn').click();
-  await sleep(60);
+  await waitFor(() => {
+    const d = document.querySelector('.cd-desc');
+    return !!d && d.textContent === '描述一' && !!document.querySelector('.art-inner .art-img');
+  });
   t('正文只有图片 → 摘要仍单独列一行（此时它是唯一的文字）', () => {
     if (!C('.cd-desc') || C('.cd-desc').textContent !== '描述一')
       throw new Error('纯图正文缺少摘要行');
     if (!C('.art-inner .art-img')) throw new Error('正文图没渲染');
   });
   C('.modal-close').click();
-  await sleep(40);
+  await waitGone('.modal-mask');
   detailBodyMode = 'no-text';
   C('#grid .card[data-id="e1"] .title-btn').click();
-  await sleep(60);
+  await waitReady('.art-inner .art-text');
   t('老数据没有正文文字 → desc 只出现一次（当正文渲染，不再重复列摘要）', () => {
     if (C('.cd-desc')) throw new Error('回退路径已把 desc 当正文，不该再列摘要');
     const txt = C('.art-inner .art-text');
@@ -7500,7 +7519,7 @@ const withEFP = (el, fn) => {
      出口是右上角 ×、Esc、手势 —— 这三条在任何滚动位置都可用。 */
   detailBodyMode = 'long';
   C('#grid .card[data-id="e1"] .title-btn').click();
-  await sleep(60);
+  await waitReady('.cd-art .art-inner .art-text');
   t('长文详情一次铺开：没有折叠容器，也没有多余的「展开全文」', () => {
     if (!C('.cd-art')) throw new Error('正文没渲染');
     if (C('.cd-art .art-clip')) throw new Error('还在折叠');
@@ -7525,7 +7544,7 @@ const withEFP = (el, fn) => {
   await sleep(40);
   detailBodyMode = 'text';
   C('#grid .card[data-id="e1"] .title-btn').click();
-  await sleep(60);
+  await waitReady('.cd-art .art-actions');
   t('短正文同样一次铺开：两页对正文长度没有分支', () => {
     if (C('.cd-art .art-clip') || C('.cd-art .art-more-btn')) throw new Error('不该有任何折叠残留');
     if (!C('.cd-art .art-actions')) throw new Error('动作行缺失');
@@ -7541,7 +7560,7 @@ const withEFP = (el, fn) => {
     removeEventListener() {},
   });
   C('#grid .card[data-id="e1"] .title-btn').click();
-  await sleep(60);
+  await waitReady('.dd-mask > .dd-sheet[role="dialog"] .art-actions');
   t('移动端形态：详情整屏铺开（.dd-mask > .dd-sheet），无手势条 / 标题栏 / 底栏', () => {
     if (!C('.dd-mask > .dd-sheet[role="dialog"]')) throw new Error('未整屏弹出');
     if (C('.modal-mask')) throw new Error('移动端不应再用居中模态');
