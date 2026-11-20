@@ -11,8 +11,10 @@
  */
 
 import { core } from '@core';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { isOn } from '../kernel/bridge.ts';
+import { qk } from '../kernel/query.ts';
 import { PaneFoot, Section } from './primitives.tsx';
 
 const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
@@ -270,46 +272,58 @@ export function StatusPane() {
   const [, tick] = useState<any>(0); // 每秒重绘，驱动「已运行」本地递增
   const baseRef: any = useRef<any>(null); // { sec, at } 用于推算当前 uptime
   const dataRef: any = useRef<any>(null); // 供复制诊断读取最新快照
-  const aliveRef: any = useRef(true);
 
-  /**
-   * @param {*} [manual]
-   */
-  async function load(manual?: any) {
-    if (manual) setBusy(true);
-    try {
+  // V5：/api/status 交给 Query；queryFn 走 core.apiFetch 端口，测试桩照常生效。
+  // 30s 轮询改用 refetchInterval（仅在设置打开时拉，等价于旧 poll 里的 isOn 判断）；
+  // 「已运行时长」本地每秒递增的 tick 与轮询解耦，保留原样。
+  const statusQuery = useQuery({
+    queryKey: qk.status,
+    queryFn: async () => {
       const res = await s.apiFetch('/api/status');
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const j = await res.json();
-      if (!aliveRef.current) return;
-      baseRef.current = { sec: Number(j.app && j.app.uptimeSec) || 0, at: Date.now() };
-      dataRef.current = j;
-      setData(j);
-      setHint('每 30 秒自动刷新 · 内存与 CPU 取自容器 cgroup');
-    } catch (err) {
-      if (!aliveRef.current) return;
-      setHint('读取失败：' + String((err && err.message) || err));
-      // 已有快照时保留旧内容（与旧实现一致：失败不清屏）
-      if (!dataRef.current) setData({ __error: String((err && err.message) || err) });
-    } finally {
-      if (manual) setBusy(false);
-    }
-  }
+      return res.json();
+    },
+    refetchOnMount: 'always',
+    refetchInterval: () => (isOn('settingsOpen') ? 30000 : false),
+    // 条件挂载面板每次进入干净加载；卸载即弃缓存，避免重挂载时旧快照先回填、
+    // 让「失败且无快照才显示错误态」的判定拿到过期数据。
+    gcTime: 0,
+    retry: false,
+  });
+
+  // 回填：-query 的 data 变化时更新快照与 uptime 基准（沿用旧 load() 成功分支语义）。
+  useEffect(() => {
+    if (!statusQuery.data) return;
+    const j = statusQuery.data;
+    baseRef.current = { sec: Number(j.app && j.app.uptimeSec) || 0, at: Date.now() };
+    dataRef.current = j;
+    setData(j);
+    setHint('每 30 秒自动刷新 · 内存与 CPU 取自容器 cgroup');
+  }, [statusQuery.data]);
+
+  // 读取失败：hint 提示错误；已有快照时保留旧内容（失败不清屏），无快照才显示错误态。
+  useEffect(() => {
+    if (!statusQuery.isError) return;
+    const err = statusQuery.error;
+    setHint('读取失败：' + String((err as any)?.message || err));
+    if (!dataRef.current) setData({ __error: String((err as any)?.message || err) });
+  }, [statusQuery.isError, statusQuery.error]);
 
   useEffect(() => {
-    aliveRef.current = true;
-    load(); // 进入即拉一次
-    const poll = setInterval(() => {
-      if (isOn('settingsOpen')) load();
-    }, 30000);
+    // 每秒重绘驱动 uptime 本地递增；轮询已由 statusQuery.refetchInterval 接管。
     const t = setInterval(() => tick(/** @param {*} [x] */ (x: any) => x + 1), 1000);
-    return () => {
-      aliveRef.current = false;
-      clearInterval(poll);
-      clearInterval(t);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => clearInterval(t);
   }, []);
+
+  // 手动刷新：refetch + 忙碌态（轮询不置忙，与旧实现一致）。
+  async function refreshStatus() {
+    setBusy(true);
+    try {
+      await statusQuery.refetch();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // 每次重绘后重新套上分组的展开态（新出现的异常频道分组也要绑上）
   useEffect(() => {
@@ -359,7 +373,7 @@ export function StatusPane() {
       if (!res.ok || er) throw new Error(s.errText(er, 'HTTP ' + res.status));
       s.toast('抓取成功，新增 ' + ((d.result && d.result.added) || 0) + ' 条');
       if (s.loadFeeds) await s.loadFeeds();
-      await load();
+      await statusQuery.refetch(); // 刷新快照（不置刷新按钮忙碌态，与旧 load() 无参一致）
     } catch (e) {
       s.toast('重试失败：' + ((e && e.message) || e), false);
     } finally {
@@ -393,7 +407,7 @@ export function StatusPane() {
         type="button"
         className="btn btn-primary"
         id="statusRefreshBtn"
-        onClick={() => load(true)}
+        onClick={refreshStatus}
         disabled={busy}
         aria-busy={busy ? 'true' : undefined}
         title="重试读取运行状态"

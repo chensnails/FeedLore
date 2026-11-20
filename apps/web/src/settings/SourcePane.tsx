@@ -24,8 +24,10 @@
  */
 
 import { core } from '@core';
+import { useQuery } from '@tanstack/react-query';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
+import { qk } from '../kernel/query.ts';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.ts';
 import { Dropdown } from '../views/Dropdown.tsx';
 import { DetailSheet } from './DetailSheet.tsx';
@@ -677,52 +679,71 @@ export function SourcePane({ admin, onDirtyChange }: any) {
       s.setSettingsSummary(s.getSettingsSummary());
   }, []);
 
-  const loadConfig = useCallback(async () => {
-    try {
+  // V5：/api/config 交给 Query（仅管理员拉）；queryFn 走 core.apiFetch 端口，测试桩照常生效。
+  // 图片缓存统计沿用原来的「跟随 config、失败不阻塞」语义，放在同一 queryFn 尾部。
+  const configQuery = useQuery({
+    queryKey: qk.config,
+    enabled: !!admin,
+    queryFn: async () => {
       const res = await S().apiFetch('/api/config');
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
-      const src = data.source || {};
-      const next = {
-        refreshMinutes: String(src.refreshMinutes == null ? '' : src.refreshMinutes),
-        keepPerFeed: String(src.keepPerFeed == null ? '' : src.keepPerFeed),
-        keepDays: String(src.keepDays == null ? 0 : src.keepDays),
-        timeoutSeconds: String(src.timeoutSeconds == null ? '' : src.timeoutSeconds),
-        concurrency: String(src.concurrency == null ? '' : src.concurrency),
-        autoRefreshMinutes: String(src.autoRefreshMinutes == null ? 0 : src.autoRefreshMinutes),
-        proxyUrl: String(src.proxyUrl || ''),
-        imgTtlDays: String(src.imgTtlDays == null ? '' : src.imgTtlDays),
-        imgKeepDays: String(src.imgKeepDays == null ? '' : src.imgKeepDays),
-        imgMaxDim: String(src.imgMaxDim == null ? '' : src.imgMaxDim),
-        imgQuality: String(src.imgQuality == null ? '' : src.imgQuality),
-        feedFailLimit: String(src.feedFailLimit == null ? '' : src.feedFailLimit),
-      };
-      const applied = cfgGuard.apply(() => {
-        setCfg(next);
-        setSavedCfg(JSON.stringify(next));
-      });
-      // 用户已在回填前改过字段：保留输入，脏态基线按默认指纹算（与 ModelPane 同口径），
-      // 这样改动不会被静默吃掉，「有未保存的更改」也会立刻出现。
-      if (!applied)
-        setSavedCfg(/** @param {*} [v] */ (v: any) => v || JSON.stringify(CFG_DEFAULTS));
-      setCfgLoaded(true);
-      // 图片缓存统计失败不阻塞参数回填（面板照常可用，只是看不到张数）
+      let img: any = null;
       try {
         const sres = await S().apiFetch('/api/image-cache');
-        if (sres.ok) {
-          const sd = await sres.json();
-          setImgStats({ count: Number(sd.count) || 0, bytes: Number(sd.bytes) || 0 });
-        }
+        if (sres.ok) img = await sres.json();
       } catch (_) {
         /* 统计接口异常时保持兜底 */
       }
-    } catch (err) {
-      // 拉取失败：保持兜底值 + 禁止保存（旧实现此时直接把整个面板打成读取失败，这里更健壮）
-      setCfgLoaded(false);
-      const s = S();
-      if (s && s.toast) s.toast('采集参数读取失败：' + String((err && err.message) || err), false);
-    }
-  }, []);
+      return { data, img };
+    },
+    refetchOnMount: 'always',
+    // 条件挂载面板每次进入都是干净加载（旧实现无跨实例缓存），卸载即弃缓存；
+    // 否则重挂载时旧 data 会先回填，破坏「未加载完禁止保存」的守卫。
+    gcTime: 0,
+    retry: false,
+  });
+
+  // 回填仍走 cfgGuard：首包到达前用户改过字段就保留输入，脏态基线按默认指纹算。
+  useEffect(() => {
+    if (configQuery.isPending || !configQuery.data) return;
+    const { data } = configQuery.data;
+    const src = data.source || {};
+    const next = {
+      refreshMinutes: String(src.refreshMinutes == null ? '' : src.refreshMinutes),
+      keepPerFeed: String(src.keepPerFeed == null ? '' : src.keepPerFeed),
+      keepDays: String(src.keepDays == null ? 0 : src.keepDays),
+      timeoutSeconds: String(src.timeoutSeconds == null ? '' : src.timeoutSeconds),
+      concurrency: String(src.concurrency == null ? '' : src.concurrency),
+      autoRefreshMinutes: String(src.autoRefreshMinutes == null ? 0 : src.autoRefreshMinutes),
+      proxyUrl: String(src.proxyUrl || ''),
+      imgTtlDays: String(src.imgTtlDays == null ? '' : src.imgTtlDays),
+      imgKeepDays: String(src.imgKeepDays == null ? '' : src.imgKeepDays),
+      imgMaxDim: String(src.imgMaxDim == null ? '' : src.imgMaxDim),
+      imgQuality: String(src.imgQuality == null ? '' : src.imgQuality),
+      feedFailLimit: String(src.feedFailLimit == null ? '' : src.feedFailLimit),
+    };
+    const applied = cfgGuard.apply(() => {
+      setCfg(next);
+      setSavedCfg(JSON.stringify(next));
+    });
+    if (!applied) setSavedCfg(/** @param {*} [v] */ (v: any) => v || JSON.stringify(CFG_DEFAULTS));
+    setCfgLoaded(true);
+    const img = configQuery.data.img;
+    if (img) setImgStats({ count: Number(img.count) || 0, bytes: Number(img.bytes) || 0 });
+  }, [configQuery.data, configQuery.isPending]);
+
+  // 拉取失败：保持兜底值 + 禁止保存（与旧实现一致）。
+  useEffect(() => {
+    if (!configQuery.isError) return;
+    setCfgLoaded(false);
+    const s = S();
+    if (s && s.toast)
+      s.toast(
+        '采集参数读取失败：' + String((configQuery.error as any)?.message || configQuery.error),
+        false,
+      );
+  }, [configQuery.isError, configQuery.error]);
 
   const reloadFeeds = useCallback(async () => {
     await S().loadFeeds();
@@ -1110,10 +1131,8 @@ export function SourcePane({ admin, onDirtyChange }: any) {
     };
   }, [bump, pushSummary]);
 
-  // 采集参数：管理员才拉（普通用户看不到这一段，也不该碰 /api/config）
-  useEffect(() => {
-    if (admin && !cfgLoaded) loadConfig();
-  }, [admin, cfgLoaded, loadConfig]);
+  // 采集参数改由 configQuery.enabled=admin 驱动（普通用户不发 /api/config）；
+  // 切回管理员时 SourcePane 重新挂载，refetchOnMount:'always' 补拉配置。
 
   // 可折叠分组：套上按账号记住的开合状态并监听变化（与旧 bindSections 同一机制）
   useEffect(() => {
