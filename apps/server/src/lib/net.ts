@@ -77,6 +77,10 @@ export function isBlockedIp(ip: string): boolean {
   /* ⚠️ **不要**拦 198.18.0.0/15：Clash / Surge 的 fake-ip 模式正是把所有域名解析成
    * 198.18.x.x 再本地转发。拦了它，用户全部订阅会被判成「内网地址」——线上实测踩过。 */
   if (a === 192 && b === 0 && c === 0) return true; // IETF 192.0.0.0/24
+  /* RFC 5737 文档保留段：不可路由，解析到这些地址只可能是伪造/误配置。 */
+  if (a === 192 && b === 0 && c === 2) return true; // 192.0.2.0/24
+  if (a === 198 && b === 51 && c === 100) return true; // 198.51.100.0/24
+  if (a === 203 && b === 0 && c === 113) return true; // 203.0.113.0/24
   if (a >= 224) return true; // 组播 / 保留
   return false;
 }

@@ -50,6 +50,12 @@ test('198.18.0.0/15 必须放行（Clash / Surge 的 fake-ip）', () => {
   assert.equal(isBlockedIp('198.19.255.254'), false);
 });
 
+test('RFC 5737 文档保留段一律拦（不可路由，只可能是伪造/误配置）', () => {
+  for (const ip of ['192.0.2.1', '198.51.100.42', '203.0.113.7']) {
+    assert.equal(isBlockedIp(ip), true, `${ip} 应该被拦`);
+  }
+});
+
 test('非 IP 字面量（域名）交给解析阶段判，不在这里拦', () => {
   assert.equal(isBlockedIp('example.com'), false);
 });

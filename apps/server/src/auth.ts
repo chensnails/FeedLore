@@ -33,6 +33,14 @@ const trimmed = (v: string | undefined): string => v?.trim() ?? '';
  * 同时给 http/https 两种协议：容器里看不到反代的 TLS 终结，而站点实际用哪种协议
  * 只有浏览器知道。多给一种协议不会放宽跨站防护 —— 攻击者页面的 Origin 是它自己的
  * 域名，永远不会等于本站 Host。
+ *
+ * ⚠️ 为何这里**刻意不按 `TRUST_PROXY` 门控** `x-forwarded-host/proto`（与限流的
+ * pickClientIp 语义不同）：这两个头用来推导「本站可信来源」，不是用来取客户端 IP。
+ * 反代部署（本站演示站就是 CF → OpenResty → 容器）常常没设 TRUST_PROXY，但容器看到的
+ * Host 是内网地址；若此时忽略转发头，CSRF 白名单就会变成内网 host，浏览器带公网 Origin
+ * 的写请求全部 403，站点直接不可用。而攻击者无法在受害者浏览器里伪造自定义头（跨站
+ * fetch 自定义头会触发 CORS 预检并被拒），所以这里的宽松不等于 CSRF 失守；真正需要
+ * 严格门控的是取客户端 IP 做限流，那已由 pickClientIp 处理。
  */
 export function sameOriginCandidates(request?: Request): string[] {
   if (!request) return [];
