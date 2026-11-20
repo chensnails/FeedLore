@@ -4,13 +4,17 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 
 /**
- * 首屏骨架内联：从 style.css 抽取 CRITICAL_SHELL 标记之间的规则（主题变量 +
- * body 基础 + .wrap 容器），构建时注入两个 HTML 入口的 <head>。
+ * 首屏骨架内联：从 style.css 抽取 CRITICAL_SHELL 标记之间的规则，构建时注入
+ * **主站 index.html** 的 <head>。
  *
  * 为什么不在 index.html 手写一份：手写副本必然与全量 CSS 漂移 —— 主题色改了
  * 内联没改，首屏就会先闪一个旧颜色。同源抽取让两者永远一致，全量 CSS 到达时
- * 覆盖同值规则，用户看不到跳变。骨架只含「首屏必须先有」的十几条规则，
- * 体积远小于 171KB 全量样式表。
+ * 覆盖同值规则，用户看不到跳变。
+ *
+ * 骨架约 20KB，几乎全是三套主题 × 各强调色的 CSS 变量（392 行变量 + 1 条
+ * `.wrap` 规则）—— 这是「首帧就按 localStorage 应用主题、不闪白」的必要成本，
+ * 不是可以随手删的冗余。login.html / change-password.html **不注入**：它们是独立
+ * 文档，自带 login.css 里的全套主题变量，注入整站骨架纯属重复下载。
  */
 function inlineCriticalShell(): Plugin {
   return {
@@ -18,7 +22,9 @@ function inlineCriticalShell(): Plugin {
     apply: 'build',
     transformIndexHtml: {
       order: 'pre',
-      handler(html) {
+      handler(html, ctx) {
+        // 只给主站注入；两个独立文档有自己的 login.css 主题层（约省 20KB/页）
+        if (!ctx.path.endsWith('/index.html')) return html;
         try {
           const css = readFileSync(path.resolve(import.meta.dirname, 'src/style.css'), 'utf8');
           const m =
