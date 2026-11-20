@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { errorText } from '../src/core/errorText.js';
+import { errorText } from '../src/core/errorText.ts';
 
 test('命中的错误码出中文', () => {
   assert.equal(

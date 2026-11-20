@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasLayerAbove, LAYER_SELECTORS } from '../src/ui/layers.js';
+import { hasLayerAbove, LAYER_SELECTORS } from '../src/ui/layers.ts';
 
 /** 造一个「元素」：只实现 contains，够 hasLayerAbove 用 */
 function el(children = []) {

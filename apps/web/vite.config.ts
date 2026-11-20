@@ -49,7 +49,7 @@ export default defineConfig({
   plugins: [react(), inlineCriticalShell()],
   resolve: {
     alias: {
-      '@core': path.resolve(import.meta.dirname, 'src/core/index.js'),
+      '@core': path.resolve(import.meta.dirname, 'src/core/index.ts'),
     },
   },
   publicDir: 'public',

@@ -14,7 +14,7 @@ import {
   NET_AI_TIMEOUT_MS,
   NET_TIMEOUT_MS,
   NET_WRITE_TIMEOUT_MS,
-} from '../src/core/util.js';
+} from '../src/core/util.ts';
 
 /** 模拟「上游一直不回」：只有 abort 时才 reject，且抛的是浏览器那句底层英文。 */
 function installHangingFetch(holder) {

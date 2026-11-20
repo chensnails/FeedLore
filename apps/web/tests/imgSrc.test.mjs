@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { widthSrcSet, widthVariant } from '../src/imgSrc.js';
+import { widthSrcSet, widthVariant } from '../src/imgSrc.ts';
 
 test('widthVariant: 代理地址追加档位，外链先补代理', () => {
   assert.equal(widthVariant('/api/img?u=a%2Fb.png', 320), '/api/img?u=a%2Fb.png&w=320');

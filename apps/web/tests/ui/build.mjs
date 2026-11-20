@@ -16,7 +16,7 @@ const COMMON = {
   bundle: true,
   format: 'cjs',
   platform: 'browser',
-  loader: { '.jsx': 'jsx' },
+  loader: { '.jsx': 'jsx', '.ts': 'ts', '.tsx': 'tsx' },
   jsx: 'automatic',
   define: { 'process.env.NODE_ENV': '"development"' },
   logLevel: 'warning',

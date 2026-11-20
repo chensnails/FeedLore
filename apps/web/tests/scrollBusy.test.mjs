@@ -11,7 +11,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { installScrollBusy } from '../src/ui/scrollBusy.js';
+import { installScrollBusy } from '../src/ui/scrollBusy.ts';
 
 /** 造一个假 document：classList 记状态，addEventListener 记监听器 */
 function fakeDoc() {

@@ -16,7 +16,7 @@ let caseNo = 0;
 
 /** 重新加载模块：哨兵 / expected / 栈都是模块级状态 */
 function fresh() {
-  return import('../src/ui/overlayStack.js?case=' + ++caseNo);
+  return import('../src/ui/overlayStack.ts?case=' + ++caseNo);
 }
 
 function mountEnv(hash = '#cards') {

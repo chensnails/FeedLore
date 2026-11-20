@@ -7,7 +7,7 @@ import {
   imgFailKey,
   isImgFailed,
   markImgFailed,
-} from '../src/imgFail.js';
+} from '../src/imgFail.ts';
 
 test('imgFailKey: 去掉宽度、重试标记与 hash，srcset 变体归一到同一 key', () => {
   const base = '/api/img?u=https%3A%2F%2Fimg.example%2Fa.png';

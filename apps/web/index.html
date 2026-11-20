@@ -75,19 +75,19 @@
   el.setAttribute('data-reader-width', pick(ap.readerWidth, ['s', 'm', 'l', 'full'], 'm'));
 })();
 </script>
-<!-- 样式表不再手写 <link>：style.css 已移入 src/，由 main.jsx 的 import 引入，
+<!-- 样式表不再手写 <link>：style.css 已移入 src/，由 main.tsx 的 import 引入，
      Vite 会打出带内容哈希的 /assets/style-<hash>.css 并自动注入 <link>。
      此前是固定路径 /style.css，CDN 缓存 1~4 小时而 HTML 总是新的，
-     新旧错配会让新增元素完全没有样式（见 src/main.jsx 注释）。 -->
+     新旧错配会让新增元素完全没有样式（见 src/main.tsx 注释）。 -->
 <!-- 加载优先级：样式表是首屏渲染的硬阻塞资源。
      Vite 注入的 <link rel=stylesheet> 本身已是最高优先级（渲染阻塞），
-     这里不再手写 preload —— 手写 /src/main.jsx 会被 Vite 当成入口直接内联整段代码，
+     这里不再手写 preload —— 手写 /src/main.tsx 会被 Vite 当成入口直接内联整段代码，
      反而把 HTML 撑大。 -->
 <style>
 /* 启动层：必须内联在这里。样式表与入口模块都要等网络，冷启动（尤其 ARM 测试机）
    会先白屏几秒；这段 CSS 与下面的标记随 HTML 一起到达，第一帧就有东西可看。
    主题/主色由 head 里的内联脚本预先写到 <html> 与 --boot-accent，
-   READY 由 bootstrap.js 在首个视图渲染完成后调用 window.__boot.ready()。 */
+   READY 由 bootstrap.ts 在首个视图渲染完成后调用 window.__boot.ready()。 */
 #appBoot {
   position: fixed; inset: 0; z-index: 9999;
   display: grid; place-items: center;
@@ -134,7 +134,7 @@ html.boot-lock { overflow: hidden; }
 </style>
 </head>
 <body>
-<!-- 冷启动加载层（详见 <head> 内的注释与脚本）。ready / fail 由 src/core/bootstrap.js 调用 -->
+<!-- 冷启动加载层（详见 <head> 内的注释与脚本）。ready / fail 由 src/core/bootstrap.ts 调用 -->
 <div id="appBoot" role="status" aria-live="polite" aria-label="正在加载">
   <div class="boot-inner">
     <div class="boot-mark" aria-hidden="true">
@@ -287,9 +287,9 @@ html.boot-lock { overflow: hidden; }
 <div id="overlaysRoot"></div>
 
 <!-- 命令面板 ⌘K / Ctrl+K（现代化快捷键交互，参考 Linear / Vercel 命令面板）。
-     已 React 化：组件见 src/cmdk/CommandPalette.jsx，由 main.jsx 挂载到下面的节点 -->
+     已 React 化：组件见 src/cmdk/CommandPalette.jsx，由 main.tsx 挂载到下面的节点 -->
 <div id="cmdkRoot"></div>
 
-<script type="module" src="/src/main.jsx"></script>
+<script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

@@ -3,14 +3,13 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["vite/client"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "allowJs": true,
-    "checkJs": true,
     "useUnknownInCatchVariables": false,
     "baseUrl": ".",
     "paths": {
-      "@core": ["./src/core/index.js"]
+      "@core": ["./src/core/index.ts"]
     }
   },
   "include": ["src", "vite.config.ts"]

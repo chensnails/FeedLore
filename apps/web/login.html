@@ -39,9 +39,9 @@
   window.__themeBoot = { KEY: KEY, mq: mq, mode: mode, MODES: MODES };
 })();
 </script>
-<!-- 样式表由 src/login-main.js 引入，Vite 打出带内容哈希的 /assets/login-<hash>.css
+<!-- 样式表由 src/login-main.ts 引入，Vite 打出带内容哈希的 /assets/login-<hash>.css
      并自动注入 <link>（此前固定路径 /login.css 会被 CDN 缓存，与主站同样错配）。 -->
-<script type="module" src="/src/login-main.js"></script>
+<script type="module" src="/src/login-main.ts"></script>
 </head>
 <body>
   <!-- 图标 sprite：登录页是独立文档，拿不到主站 index.html 的 sprite，这里只带主题图标 -->
@@ -124,7 +124,7 @@
     themeBtn.setAttribute('aria-label', '主题：' + THEME_META[m].label);
     // 兜底是两条 theme-color（亮 / 暗各一条带 media），必须一起改，
     // 否则系统深浅与当前主题相反时，浏览器命中的那条还留着旧色。
-    // 与主站 state.js 同源：颜色取 CSS 里 --bg 的计算值，主题块改色不必再改这里。
+    // 与主站 state.ts 同源：颜色取 CSS 里 --bg 的计算值，主题块改色不必再改这里。
     const cssBg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
     // 三目只是「样式表尚未就绪」时的兜底，正常路径始终取上面的计算值
     const tcColor = cssBg || (eff === 'github' ? '#0d1117' : (eff === 'light' ? '#f4f5f7' : '#242424'));

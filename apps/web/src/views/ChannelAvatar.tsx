@@ -1,0 +1,66 @@
+/* 频道头像：图标加载失败（拉取 404 / 防盗链）时回退到首字母，避免破图标。
+ * 文章页侧栏与卡片页频道抽屉共用（从 ReaderView 抽出来）。
+ *
+ * 改成「进入视口才加载」。
+ * 此前用 loading="lazy"，但抽屉在窄屏是 display:none，里面的 24 个头像
+ * 仍会全部发出请求（实测首屏 38 个请求里有 24 个是频道头像）——
+ * 弱网下这些请求会占满浏览器的 6 条并发连接，把真正该先到的首屏图片挤到后面。
+ * 抽屉打开时由 IntersectionObserver 触发加载；用户看不到的东西不占带宽。
+ */
+import { useEffect, useRef, useState } from 'react';
+import { isImgFailed, markImgFailed } from '../imgFail.ts';
+
+/**
+ * @param {*} opts
+ */
+
+export function ChannelAvatar({ icon, name }: any) {
+  const [failed, setFailed] = useState<any>(false);
+  const [visible, setVisible] = useState<any>(false);
+  const ref: any = useRef<any>(null);
+
+  // 元素进入视口（或已在视口内）才置为可见 → 才开始请求图片
+  useEffect(() => {
+    if (visible || !icon) return undefined;
+    const el = ref.current;
+    if (!el) return undefined;
+    if (typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return undefined;
+    }
+    const io = new IntersectionObserver(
+      /** @param {*} [entries] */ (entries: any) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setVisible(true);
+            io.disconnect();
+          }
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visible, icon]);
+
+  if (!icon || failed || isImgFailed(icon)) {
+    return <span className="rd-ch-avatar rd-ch-avatar-txt">{String(name || '?').slice(0, 1)}</span>;
+  }
+  return (
+    <span className="rd-ch-avatar-wrap" ref={ref}>
+      {visible ? (
+        <img
+          className="rd-ch-avatar"
+          src={icon}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={() => {
+            markImgFailed(icon);
+            setFailed(true);
+          }}
+        />
+      ) : null}
+    </span>
+  );
+}

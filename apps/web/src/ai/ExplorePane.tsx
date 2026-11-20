@@ -1,0 +1,473 @@
+/* 探索页的「问答」模式——IM 聊天形态。
+ *
+ * 用大白话检索自己的订阅，AI 给答案 + 引用条目卡（可跳文章）。连续消息流：
+ * 双方气泡、时间戳、正在输入动画、自动滚动；支持全部历史轮次的多轮追问。
+ *
+ * 数据流与日报同构：submitAiJob → pollAiJob，四态齐全；历史只存内存（刷新即清），
+ * 组件卸载即停止轮询（任务在服务端继续跑，与 DESIGN.md 的长任务约定一致）。
+ * 提交时把已完成的轮次打包成 history：[#n] 的跨轮编号错位由服务端按 refs 修正。
+ */
+import { core } from '@core';
+import { useEffect, useRef, useState } from 'react';
+import { isImgFailed, markImgFailed } from '../imgFail.ts';
+import { widthVariant } from '../imgSrc.ts';
+import { Icon } from '../ui/Icon.tsx';
+
+const S = () => core;
+
+/* 空态着陆页的预设问题（点一条直接提问）。 */
+const SUGGESTIONS = [
+  '最近有什么好剧？',
+  '最近服务器有什么羊毛？',
+  '这周 AI 圈有哪些大事？',
+  '最近存了哪些值得重读的文章？',
+];
+
+/* 领域快捷词：对应设计图那排能力标签，贴合 RSS 订阅场景。
+   显示短词，点击时用完整问句提问（短词直接召回命中率低）。 */
+const DOMAINS = [
+  { label: '好剧', q: '最近有什么好剧推荐？' },
+  { label: '服务器羊毛', q: '最近服务器有什么羊毛？' },
+  { label: 'AI 圈', q: '这周 AI 圈有哪些大事？' },
+  { label: '技术', q: '最近有哪些值得看的技术文章？' },
+  { label: '财经', q: '最近财经方面有什么值得关注的？' },
+  { label: '深度长文', q: '最近有哪些值得读的深度长文？' },
+];
+
+/** 引用卡日期：服务端给的是 ISO 原值（2026-11-17T04:27:...Z），这里统一成人看的「今天 HH:mm / MM-DD HH:mm」，与文章/卡片页一致。 */
+/**
+ * @param {*} [d]
+ */
+const fmtDate = (d: any) => {
+  const f = S().fmtDate;
+  if (typeof f === 'function') return f(d);
+  return d ? String(d).slice(0, 16).replace('T', ' ') : '';
+};
+
+/**
+ * @param {*} [ts]
+ */
+const hhmm = (ts: any) => {
+  const d = ts ? new Date(ts) : new Date();
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+};
+
+/** 一条引用条目：缩略图 + 来源 + 标题 + 跳文章。
+ *@param {*} opts
+ */
+
+function RefCard({ ref: hit }: any) {
+  const s = S();
+  const [imgFailed, setImgFailed] = useState<any>(false);
+  const thumb =
+    hit.image && !imgFailed && !isImgFailed(hit.image) ? (
+      <img
+        className="ex-ref-thumb"
+        loading="lazy"
+        src={widthVariant(hit.image, 160) || hit.image}
+        alt=""
+        onLoad={/** @param {*} [ev] */ (ev: any) => ev.currentTarget.classList.add('img-ready')}
+        onError={() => {
+          markImgFailed(hit.image);
+          setImgFailed(true);
+        }}
+      />
+    ) : (
+      <div className="ex-ref-thumb ex-ref-thumb-fb">
+        <Icon n="file" />
+      </div>
+    );
+  const openArticle = () => {
+    // 引用卡只有条目 id，没有 feedId：先用 id 在已加载的条目里找频道，找不到也能让
+    // jumpToFeed 走「全部」范围按 id 定位（focusReaderArt 会翻页找目标）。
+    let feedId: any = null;
+    const all: any = (s.state && (s.state.entries || s.state.rdEntries)) || [];
+    const found = all.find(/** @param {*} [e] */ (e: any) => String(e.id) === String(hit.id));
+    if (found && found.feedId != null) feedId = found.feedId;
+    if (typeof s.jumpToFeed === 'function') s.jumpToFeed(feedId, hit.id);
+  };
+  return (
+    <div className="ex-ref">
+      {thumb}
+      <div className="ex-ref-main">
+        <div className="ex-ref-name" title={hit.name}>
+          {hit.name || '(无标题)'}
+        </div>
+        <div className="ex-ref-meta">
+          <span title={`${hit.feedName || '订阅'}${hit.date ? ` · ${fmtDate(hit.date)}` : ''}`}>
+            {hit.feedName || '订阅'}
+            {hit.date ? ` · ${fmtDate(hit.date)}` : ''}
+          </span>
+          <button
+            className="ex-ref-go"
+            type="button"
+            title="在文章页打开并展开这篇"
+            aria-label={`读文章：${hit.name || ''}`}
+            onClick={openArticle}
+          >
+            <Icon n="external" />
+            <span>读文章</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** 用户消息气泡（右侧）。
+ *@param {*} opts
+ */
+function MeBubble({ turn }: any) {
+  return (
+    <div className="ex-row ex-row-me">
+      <div className="ex-col">
+        <div className="ex-bubble ex-bubble-me">{turn.question}</div>
+        <div className="ex-time">{hhmm(turn.at)}</div>
+      </div>
+    </div>
+  );
+}
+
+/** AI 消息气泡（左侧）：排队/生成中显示输入动画，成功显示答案 + 引用卡，失败显示错误 + 重试。
+ *@param {*} opts
+ */
+
+function AiBubble({ turn }: any) {
+  const busy = turn.status === 'queued' || turn.status === 'running';
+  return (
+    <div className="ex-row ex-row-ai">
+      <div className="ex-avatar" aria-hidden="true">
+        AI
+      </div>
+      <div className="ex-col">
+        <div className="ex-bubble ex-bubble-ai">
+          {/* 秒数每秒跳一次：只把静态状态交给读屏（role=status 播报一次），
+              会变的数字 aria-hidden，避免每秒念一遍「已等待 Ns」。 */}
+          {busy ? (
+            <div className="ex-typing">
+              <i />
+              <i />
+              <i />
+              <span className="ex-typing-text">
+                <span className="sr-only" role="status">
+                  {turn.status === 'queued' ? '已提交，排队中' : '正在检索你的订阅'}
+                </span>
+                <span aria-hidden="true">
+                  {turn.status === 'queued'
+                    ? '排队中…'
+                    : `检索你的订阅 · 已等待 ${turn.elapsed || 0}s`}
+                </span>
+              </span>
+            </div>
+          ) : turn.status === 'error' ? (
+            <div className="ex-error" role="alert">
+              <span>{turn.errorText || '生成失败'}</span>
+              {turn.retry ? (
+                <button className="btn btn-ghost btn-sm" type="button" onClick={turn.retry}>
+                  重试
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <div className="ex-answer">{turn.answer}</div>
+              {turn.refs && turn.refs.length ? (
+                <div className="ex-refs">
+                  {turn.refs.map(
+                    /** @param {*} [hit] @param {*} [i] */ (hit: any, i: any) => (
+                      <RefCard ref={hit} key={hit.id || i} />
+                    ),
+                  )}
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+        <div className="ex-time">
+          {turn.status === 'succeeded'
+            ? `${hhmm(turn.at)}${turn.model ? ` · ${turn.model}` : ''}${turn.matched ? ` · 检索 ${turn.matched} 条` : ''}`
+            : busy
+              ? '正在生成…'
+              : ''}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * @param {*} opts
+ */
+export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
+  const s = S();
+  const [turns, setTurns] = useState<any>([]);
+  const [draft, setDraft] = useState<any>('');
+  const aliveRef: any = useRef(true);
+  const scrollRef: any = useRef<any>(null);
+  const [tick, setTick] = useState<any>(0);
+
+  /* 「+」= 开始新一轮对话：与顶栏那枚按钮同一语义（重挂载整个面板、清空内存历史），
+   * 不是只把草稿清掉 —— 两个入口长得一样，行为也得一样。 */
+  const startNew = () => {
+    if (typeof onNewSession === 'function') onNewSession();
+    else setDraft('');
+  };
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  // 有任务在跑时每秒刷新等待秒数（IM 里体现为「正在输入」旁的实时秒数）
+  useEffect(() => {
+    if (
+      !turns.some(/** @param {*} [t] */ (t: any) => t.status === 'queued' || t.status === 'running')
+    )
+      return undefined;
+    const iv = setInterval(() => setTick(/** @param {*} [n] */ (n: any) => n + 1), 1000);
+    return () => clearInterval(iv);
+  }, [turns]);
+
+  // 新消息 / 计时刷新都自动滚到底部（IM 的基本手感）
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [turns, tick]);
+
+  /**
+   * @param {*} [question]
+   */
+  async function ask(question: any) {
+    const q = String(question || '').trim();
+    if (!q || !s || typeof s.submitAiJob !== 'function') return;
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const t0 = Date.now();
+    /* 全部历史：把已经成功/失败但有内容的轮次都打包。失败的轮次不带答案，
+     * 免得把错误信息喂给模型；只带 question + answer + refs。 */
+    const history = turns
+      .filter(/** @param {*} [t] */ (t: any) => t.status === 'succeeded' && t.answer)
+      .map(
+        /** @param {*} [t] */ (t: any) => ({
+          question: t.question,
+          answer: t.answer,
+          refs: (t.refs || []).map(
+            /** @param {*} [r] */ (r: any) => ({ id: String(r.id), name: r.name }),
+          ),
+        }),
+      );
+    /**
+     * @param {*} [fn]
+     */
+    const patch = (fn: any) => {
+      if (aliveRef.current)
+        setTurns(
+          /** @param {*} [prev] */ (prev: any) =>
+            prev.map(/** @param {*} [t] */ (t: any) => (t.id === id ? fn(t) : t)),
+        );
+    };
+    setTurns(
+      /** @param {*} [prev] */ (prev: any) => [
+        ...prev,
+        { id, question: q, status: 'queued', at: new Date(t0).toISOString(), startedAt: t0 },
+      ],
+    );
+    setDraft('');
+    try {
+      const job = await s.submitAiJob({ kind: 'explore', question: q, history });
+      if (!aliveRef.current) return;
+      patch(/** @param {*} [t] */ (t: any) => ({ ...t, status: job.status || 'queued' }));
+      const done = await s.pollAiJob(job.id, {
+        onStatus: /** @param {*} [j] */ (j: any) =>
+          patch(/** @param {*} [t] */ (t: any) => ({ ...t, status: j.status })),
+        isCancelled: () => !aliveRef.current,
+      });
+      if (!aliveRef.current) return;
+      const r = (done && done.result) || {};
+      if (!r.answer) throw new Error('任务完成但没有返回答案');
+      patch(
+        /** @param {*} [t] */ (t: any) => ({
+          ...t,
+          status: 'succeeded',
+          answer: r.answer,
+          refs: Array.isArray(r.refs) ? r.refs : [],
+          model: r.model || '',
+          matched: Number(r.matched) || 0,
+        }),
+      );
+    } catch (err) {
+      if (!aliveRef.current) return;
+      const msg = s.errText ? s.errText(err, '检索失败') : String((err && err.message) || err);
+      patch(
+        /** @param {*} [t] */ (t: any) => ({
+          ...t,
+          status: 'error',
+          errorText: msg,
+          retry: () => ask(q),
+        }),
+      );
+    }
+  }
+
+  const hasTurns = turns.length > 0;
+
+  /* 空态 = 着陆页（居中大标题 + 领域标签 + 大输入框 + 纵向预设问题），
+     对齐参考设计的层次；任一入口提问后立刻切到下面的 IM 对话流。
+     对话态保持既有实现不动——滚动目标、ID、四态、引用卡全部原样。 */
+  if (!hasTurns) {
+    return (
+      <section
+        className="ai-pane ex-pane is-landing"
+        data-ai-pane="explore"
+        hidden={!!hidden}
+        {...panelProps}
+      >
+        <div className="ex-landing">
+          <h1 className="ex-landing-title">想从订阅里找点什么？</h1>
+          <p className="ai-sub" id="exploreSub">
+            用大白话问你的订阅，AI 检索条目后回答，可直接追问
+          </p>
+          <div className="ex-domains" aria-label="领域快捷提问">
+            {DOMAINS.map(
+              /** @param {*} [d] */ (d: any) => (
+                <button className="ex-domain" type="button" key={d.label} onClick={() => ask(d.q)}>
+                  {d.label}
+                </button>
+              ),
+            )}
+          </div>
+          <form
+            className="ex-landing-compose"
+            id="exploreCompose"
+            onSubmit={
+              /** @param {*} [e] */ (e: any) => {
+                e.preventDefault();
+                ask(draft);
+              }
+            }
+          >
+            <div className="ex-landing-field">
+              <input
+                id="exploreInput"
+                type="search"
+                value={draft}
+                placeholder="今天想从订阅里找点什么？直接问就好"
+                aria-label="向探索提问"
+                autoComplete="off"
+                onChange={/** @param {*} [e] */ (e: any) => setDraft(e.target.value)}
+              />
+            </div>
+            <div className="ex-landing-bar">
+              <button
+                className="ex-landing-plus"
+                type="button"
+                aria-label="开始新一轮对话"
+                title="开始新一轮对话"
+                onClick={startNew}
+              >
+                <Icon n="plus" />
+              </button>
+              <button
+                className="ex-landing-send"
+                type="submit"
+                disabled={!draft.trim()}
+                aria-label="发送问题"
+                title="发送问题"
+              >
+                <Icon n="arrow-up" />
+              </button>
+            </div>
+          </form>
+          <div className="ex-landing-suggest" aria-label="试试这些问题">
+            {SUGGESTIONS.map(
+              /** @param {*} [q] */ (q: any) => (
+                <button className="ex-suggest-btn" type="button" key={q} onClick={() => ask(q)}>
+                  {q}
+                  <Icon n="arrow-up" />
+                </button>
+              ),
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className="ai-pane ex-pane is-chatting"
+      data-ai-pane="explore"
+      hidden={!!hidden}
+      {...panelProps}
+    >
+      {/* 对话容器：消息区 / 输入栏 / 免责声明同处一个面板，输入栏固定不随消息滚动。
+          ID 与类名全部保留，滚动目标仍是 #exploreThread。 */}
+      <div className="ex-shell">
+        <div className="ex-thread" ref={scrollRef} id="exploreThread" role="log" aria-live="polite">
+          <p className="ex-day">本次会话 · 可连续追问</p>
+          {turns.map(
+            /** @param {*} [t] */ (t: any) => (
+              <div className="ex-pair" key={t.id}>
+                <MeBubble turn={t} />
+                <AiBubble
+                  turn={{
+                    ...t,
+                    elapsed: t.startedAt ? Math.round((Date.now() - t.startedAt) / 1000) : 0,
+                  }}
+                />
+              </div>
+            ),
+          )}
+        </div>
+        {/* 整卡式输入栏：与空态大输入框同款（浅边圆角卡 + 输入行 + 工具行圆形发送），
+            消除裸输入框聚焦时叠出的深色粗描边。ID 与提交逻辑不变。 */}
+        <form
+          className="ex-compose"
+          id="exploreCompose"
+          onSubmit={
+            /** @param {*} [e] */ (e: any) => {
+              e.preventDefault();
+              ask(draft);
+            }
+          }
+        >
+          <div className="ex-compose-field">
+            <input
+              id="exploreInput"
+              type="search"
+              value={draft}
+              placeholder="追问一句话…"
+              aria-label="向探索提问"
+              autoComplete="off"
+              onChange={/** @param {*} [e] */ (e: any) => setDraft(e.target.value)}
+            />
+          </div>
+          <div className="ex-compose-bar">
+            <button
+              className="ex-compose-plus"
+              type="button"
+              aria-label="开始新一轮对话"
+              title="开始新一轮对话"
+              onClick={startNew}
+            >
+              <Icon n="plus" />
+            </button>
+            <button
+              className="ex-compose-send"
+              type="submit"
+              disabled={!draft.trim()}
+              aria-label="发送问题"
+              title="发送问题"
+            >
+              <Icon n="arrow-up" />
+            </button>
+          </div>
+        </form>
+        <footer className="foot">答案由模型生成，可能不准确，请以引用条目的原文为准</footer>
+      </div>
+    </section>
+  );
+}
