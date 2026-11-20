@@ -90,6 +90,7 @@ function ConfirmDialog({ c }: { c: OverlayConfirmState }) {
       <div
         className="modal-mask confirm-mask"
         role="presentation"
+        hidden={!c.open}
         onClick={(ev) => {
           if (ev.target === ev.currentTarget) S().cancelConfirm();
         }}
