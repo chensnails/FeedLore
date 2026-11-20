@@ -38,6 +38,7 @@ export const qk = Object.freeze({
   readerBody: (id: any) => ['readerBody', String(id)] as const,
   status: ['status'] as const,
   config: ['config'] as const,
+  version: ['version'] as const,
 });
 
 /** 失效一组 key（写操作后调用）。保留 core 的 tick 机制，Query 只补缓存一致性。 */

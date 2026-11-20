@@ -24,6 +24,7 @@ import { CardsView } from '../views/CardsView.tsx';
 import { ReaderView } from '../views/ReaderView.tsx';
 import { get, provide } from './bridge.ts';
 import { MOUNT_POINTS } from './mount-points.ts';
+import { QueryProvider } from './QueryProvider.tsx';
 
 const COMPONENTS = {
   CommandPalette,
@@ -65,7 +66,9 @@ function render(id: any, Component: any) {
   roots.set(id, root);
   root.render(
     <React.StrictMode>
-      <Component />
+      <QueryProvider>
+        <Component />
+      </QueryProvider>
     </React.StrictMode>,
   );
 }

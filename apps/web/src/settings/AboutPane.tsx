@@ -5,42 +5,44 @@
  * 触发后轮询 /api/version 直到版本号变化（请求失败视为容器重启中），完成后刷新。 */
 
 import { core } from '@core';
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { qk } from '../kernel/query.ts';
 
 const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
 const GH_REPO = 'https://github.com/chensnails/feedlore';
 
 export function AboutPane() {
-  const [version, setVersion] = useState<any>('读取中…');
   // result: { kind: 'upd', latest, current, releaseUrl } | { kind: 'ok', current } | { kind: 'err', msg }
   /** @type {*} */
   const [result, setResult] = useState<any>(null);
   const isAdmin = S().isAdmin ? S().isAdmin() : false;
   const [checking, setChecking] = useState<any>(false);
   const [updating, setUpdating] = useState<any>(false); // 一键更新：已触发，等 watchtower 拉镜像重启
-  /** @type {*} */
-  const [updateEnabled, setUpdateEnabled] = useState<any>(null); // 是否接入一键更新通道（镜像+watchtower）；null=未知
 
   // 进入「关于」页拉一次版本号（旧 loadAboutPage 的迁移）；
-  // 面板随 tab 切换挂载/卸载，每次进入都会重新拉取，与旧行为一致
-  useEffect(() => {
-    let dead = false;
-    (async () => {
-      try {
-        const res = await S().apiFetch('/api/version');
-        if (!res.ok) throw await S().httpError(res);
-        const d = await res.json();
-        if (!dead) setVersion('v' + (d.version || '—'));
-        if (!dead && d.updateEnabled !== undefined) setUpdateEnabled(!!d.updateEnabled);
-      } catch (_err) {
-        if (!dead) setVersion('读取失败');
-      }
-    })();
-    return () => {
-      dead = true;
-    };
-  }, []);
+  // 面板随 tab 切换挂载/卸载，每次进入都会重新拉取，与旧行为一致。
+  // V5：走 TanStack Query 缓存/去重；queryFn 仍调 core.apiFetch（可注入 I/O 端口，测试桩照常生效）。
+  // refetchOnMount:'always' 保住「每次进入都重拉」的产品语义（默认 stale 缓存会跳过）。
+  const versionQuery = useQuery({
+    queryKey: qk.version,
+    queryFn: async () => {
+      const res = await S().apiFetch('/api/version');
+      if (!res.ok) throw await S().httpError(res);
+      return res.json();
+    },
+    refetchOnMount: 'always',
+    retry: false,
+  });
+  const version = versionQuery.isError
+    ? '读取失败'
+    : versionQuery.data
+      ? 'v' + (versionQuery.data.version || '—')
+      : '读取中…';
+  // 是否接入一键更新通道（镜像+watchtower）：随版本数据派生，null=尚未知
+  const updateEnabled =
+    versionQuery.data?.updateEnabled === undefined ? null : !!versionQuery.data.updateEnabled;
 
   const check = async () => {
     setChecking(true);
