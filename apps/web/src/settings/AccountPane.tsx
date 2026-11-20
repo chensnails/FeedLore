@@ -8,7 +8,9 @@
  */
 
 import { core } from '@core';
+import type { AccountBody, AdminUser, Role, SessionDevice } from '@feedlore/contract';
 import { useQuery } from '@tanstack/react-query';
+import type * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { qk } from '../kernel/query.ts';
 import { Dropdown } from '../views/Dropdown.tsx';
@@ -18,11 +20,17 @@ import { EditToggle, PaneFoot, ReadonlyField, Result, Section, useResult } from 
 const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 const ROLE_LABEL: Record<string, string> = { admin: '管理员', user: '普通', readonly: '只读' };
 
-/** UA 只取「浏览器 · 系统」两段，原文太长且没人读得懂；认不出就截断原文兜底。
- *@param {*} [ua]
- */
+type OpResult = { ok: boolean; error?: string; canceled?: boolean };
+type OpResultMaybe = OpResult | undefined;
+type ResultState = { ok: boolean; msg: string } | null;
+type SheetState =
+  | { type: 'device'; id: string }
+  | { type: 'user'; id: string }
+  | { type: 'addUser' }
+  | null;
 
-function deviceLabel(ua: any) {
+/** UA 只取「浏览器 · 系统」两段，原文太长且没人读得懂；认不出就截断原文兜底。 */
+function deviceLabel(ua: string | null | undefined) {
   if (!ua) return '未知设备';
   const os = /Windows NT/.test(ua)
     ? 'Windows'
@@ -50,11 +58,8 @@ function deviceLabel(ua: any) {
   return ua.length > 48 ? ua.slice(0, 48) + '…' : ua;
 }
 
-/** 最近活跃时间按相对量显示；超过 30 天回落到日期，绝对时间留在 title 里。
- *@param {*} [iso]
- */
-
-function fmtRel(iso: any) {
+/** 最近活跃时间按相对量显示；超过 30 天回落到日期，绝对时间留在 title 里。 */
+function fmtRel(iso: string) {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return '—';
   const diff = Date.now() - t;
@@ -65,10 +70,7 @@ function fmtRel(iso: any) {
   return iso.slice(0, 10);
 }
 
-/**
- * @param {*} [fn]
- */
-const openOnKey = (fn: any) => /** @param {*} [ev] */ (ev: any) => {
+const openOnKey = (fn: () => void) => (ev: React.KeyboardEvent<HTMLElement>) => {
   if (ev.target !== ev.currentTarget) return;
   if (ev.key === 'Enter' || ev.key === ' ') {
     ev.preventDefault();
@@ -77,12 +79,18 @@ const openOnKey = (fn: any) => /** @param {*} [ev] */ (ev: any) => {
 };
 
 /* ---------- 登录设备详情层 ---------- */
-/**
- * @param {*} opts
- */
-
-function DeviceSheet({ device, busy, onClose, onRevoke }: any) {
-  const [err, setErr] = useState<any>('');
+function DeviceSheet({
+  device,
+  busy,
+  onClose,
+  onRevoke,
+}: {
+  device: SessionDevice;
+  busy: boolean;
+  onClose: () => void;
+  onRevoke: (device: SessionDevice) => Promise<OpResultMaybe>;
+}) {
+  const [err, setErr] = useState('');
   const revoke = async () => {
     const res = await onRevoke(device);
     if (res && !res.ok) setErr(res.error || '退出失败');
@@ -127,20 +135,28 @@ function DeviceSheet({ device, busy, onClose, onRevoke }: any) {
 }
 
 /* ---------- 用户详情层（改角色 / 改密码 / 删除） ---------- */
-/**
- * @param {*} opts
- */
-function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }: any) {
-  const [pass, setPass] = useState<any>('');
-  const [err, setErr] = useState<any>('');
+function UserSheet({
+  user,
+  busy,
+  onClose,
+  onRole,
+  onPassword,
+  onDelete,
+}: {
+  user: AdminUser;
+  busy: boolean;
+  onClose: () => void;
+  onRole: (user: AdminUser, next: Role) => Promise<OpResult>;
+  onPassword: (user: AdminUser, pass: string) => Promise<OpResult>;
+  onDelete: (user: AdminUser) => Promise<OpResultMaybe>;
+}) {
+  const [pass, setPass] = useState('');
+  const [err, setErr] = useState('');
   const self = !!user.isSelf;
 
   // Dropdown 是受控组件：value={user.role}，失败时 user.role 没变，显示自然回滚，
   // 不再需要原生 select 那种 roleRef.current.value 手动回滚。
-  /**
-   * @param {*} [next]
-   */
-  const changeRole = async (next: any) => {
+  const changeRole = async (next: Role) => {
     if (next === user.role) return;
     setErr('');
     const res = await onRole(user, next);
@@ -227,9 +243,9 @@ function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }: any) {
               placeholder="至少 4 位"
               autoComplete="new-password"
               value={pass}
-              onChange={/** @param {*} [ev] */ (ev: any) => setPass(ev.target.value)}
+              onChange={/** @param {*} [ev] */ (ev) => setPass(ev.target.value)}
               onKeyDown={
-                /** @param {*} [ev] */ (ev: any) => {
+                /** @param {*} [ev] */ (ev) => {
                   if (ev.key === 'Enter') {
                     ev.preventDefault();
                     submitPass();
@@ -260,14 +276,19 @@ function UserSheet({ user, busy, onClose, onRole, onPassword, onDelete }: any) {
 }
 
 /* ---------- 新增用户详情层 ---------- */
-/**
- * @param {*} opts
- */
-function AddUserSheet({ busy, onClose, onCreate }: any) {
-  const [name, setName] = useState<any>('');
-  const [pass, setPass] = useState<any>('');
-  const [role, setRole] = useState<any>('user');
-  const [err, setErr] = useState<any>('');
+function AddUserSheet({
+  busy,
+  onClose,
+  onCreate,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  onCreate: (name: string, pass: string, role: Role) => Promise<OpResult>;
+}) {
+  const [name, setName] = useState('');
+  const [pass, setPass] = useState('');
+  const [role, setRole] = useState<Role>('user');
+  const [err, setErr] = useState('');
 
   const submit = async () => {
     const n = name.trim();
@@ -316,9 +337,9 @@ function AddUserSheet({ busy, onClose, onCreate }: any) {
           aria-label="新用户的用户名"
           autoComplete="off"
           value={name}
-          onChange={/** @param {*} [ev] */ (ev: any) => setName(ev.target.value)}
+          onChange={/** @param {*} [ev] */ (ev) => setName(ev.target.value)}
           onKeyDown={
-            /** @param {*} [ev] */ (ev: any) => {
+            /** @param {*} [ev] */ (ev) => {
               if (ev.key === 'Enter') {
                 ev.preventDefault();
                 submit();
@@ -336,9 +357,9 @@ function AddUserSheet({ busy, onClose, onCreate }: any) {
           aria-label="新用户的密码"
           autoComplete="new-password"
           value={pass}
-          onChange={/** @param {*} [ev] */ (ev: any) => setPass(ev.target.value)}
+          onChange={/** @param {*} [ev] */ (ev) => setPass(ev.target.value)}
           onKeyDown={
-            /** @param {*} [ev] */ (ev: any) => {
+            /** @param {*} [ev] */ (ev) => {
               if (ev.key === 'Enter') {
                 ev.preventDefault();
                 submit();
@@ -355,7 +376,7 @@ function AddUserSheet({ busy, onClose, onCreate }: any) {
           title="角色"
           ariaLabel="角色"
           value={role}
-          onChange={/** @param {*} [v] */ (v: any) => setRole(v)}
+          onChange={(v: Role) => setRole(v)}
           options={[
             { value: 'user', label: '普通用户' },
             { value: 'readonly', label: '只读用户' },
@@ -371,62 +392,54 @@ function AddUserSheet({ busy, onClose, onCreate }: any) {
   );
 }
 
-/**
- * @param {*} opts
- */
-export function AccountPane({ onDirtyChange }: any) {
+export function AccountPane({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
   const s = S();
   const admin = !!(s && s.isAdmin && s.isAdmin());
   // 只读账户：只能阅读；配置项全部由服务端拒绝，账号凭据由管理员掌握
   const readonly = !!(s && s.state && s.state.role === 'readonly');
-  const paneRef: any = useRef<any>(null);
-  /** @type {*} */
-  const [sheet, setSheet] = useState<any>(null); // {type:'device'|'user'|'addUser', id?}
+  const paneRef = useRef<HTMLDivElement>(null);
+  const [sheet, setSheet] = useState<SheetState>(null);
 
   // 登录信息
-  const [username, setUsername] = useState<any>('');
-  const [savedName, setSavedName] = useState<any>('');
-  const [current, setCurrent] = useState<any>('');
-  const [newPass, setNewPass] = useState<any>('');
+  const [username, setUsername] = useState('');
+  const [savedName, setSavedName] = useState('');
+  const [current, setCurrent] = useState('');
+  const [newPass, setNewPass] = useState('');
   // null = 只读摘要；'name' = 展开用户名；'pass' = 展开当前/新密码
-  /** @type {*} */
-  const [editLogin, setEditLogin] = useState<any>(null);
-  const [saving, setSaving] = useState<any>(false);
+  const [editLogin, setEditLogin] = useState<'name' | 'pass' | null>(null);
+  const [saving, setSaving] = useState(false);
   const [accResult, showAccResult, clearAccResult] = useResult();
 
   // 用户管理
-  const [users, setUsers] = useState<any>([]);
-  const [usersLoaded, setUsersLoaded] = useState<any>(false);
-  const [usersError, setUsersError] = useState<any>('');
-  const [userBusy, setUserBusy] = useState<any>(''); // '' | add | role | pass | del
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
+  const [usersError, setUsersError] = useState('');
+  const [userBusy, setUserBusy] = useState(''); // '' | add | role | pass | del
   const [userResult, showUserResult] = useResult();
 
   // 登录设备（会话）：所有角色都能看自己的设备并逐台退出
-  const [devices, setDevices] = useState<any>([]);
-  const [devicesLoaded, setDevicesLoaded] = useState<any>(false);
-  const [devicesError, setDevicesError] = useState<any>('');
-  const [revoking, setRevoking] = useState<any>('');
+  const [devices, setDevices] = useState<SessionDevice[]>([]);
+  const [devicesLoaded, setDevicesLoaded] = useState(false);
+  const [devicesError, setDevicesError] = useState('');
+  const [revoking, setRevoking] = useState('');
   const [devResult, showDevResult] = useResult();
 
   // 数据导出：模型 Key 默认不打包，勾选才附带（导出的是明文，提示放在勾选项下）
-  const [inclLlm, setInclLlm] = useState<any>(false);
+  const [inclLlm, setInclLlm] = useState(false);
 
   /* 下载走 <a> 由浏览器接管，前端拿不到「生成完成」事件（流式 tar.gz 不落内存）。
      这里只在生成窗口内把按钮置忙、防重复点击：服务端本来就会用
      E_BACKUP_IN_PROGRESS 拒绝第二份，与其让用户点完收到一条报错，不如先拦住。 */
-  const [exporting, setExporting] = useState<any>(false);
-  const [backingUp, setBackingUp] = useState<any>(false);
-  const downloadTimers: any = useRef<any>([]);
+  const [exporting, setExporting] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const downloadTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   useEffect(
     () => () => {
       downloadTimers.current.forEach(clearTimeout);
     },
     [],
   );
-  /**
-   * @param {*} [setBusy]
-   */
-  const busyDownload = (setBusy: any) => {
+  const busyDownload = (setBusy: (v: boolean) => void) => {
     setBusy(true);
     downloadTimers.current.push(setTimeout(() => setBusy(false), 5000));
   };
@@ -436,12 +449,10 @@ export function AccountPane({ onDirtyChange }: any) {
   }, [inclLlm]);
 
   // 数据导入 / 整站还原：结果提示常驻到下一次操作（条数比 toast 更值得细看）
-  const [importing, setImporting] = useState<any>(false);
-  /** @type {*} */
-  const [importMsg, setImportMsg] = useState<any>(null);
-  const [restoring, setRestoring] = useState<any>(false);
-  /** @type {*} */
-  const [restoreMsg, setRestoreMsg] = useState<any>(null);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState<ResultState>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState<ResultState>(null);
 
   // 进入面板：回填登录信息（旧 loadAccountForm）。
   // 用户列表 / 登录设备由 usersQuery / devicesQuery 按 enabled 自动加载。
@@ -494,7 +505,7 @@ export function AccountPane({ onDirtyChange }: any) {
   }, [usersQuery.data]);
   useEffect(() => {
     if (!usersQuery.isError) return;
-    const err: any = usersQuery.error;
+    const err = usersQuery.error;
     setUsersError('读取用户失败：' + String(err?.message || err));
     setUsersLoaded(true);
   }, [usersQuery.isError, usersQuery.error]);
@@ -507,7 +518,7 @@ export function AccountPane({ onDirtyChange }: any) {
   }, [devicesQuery.data]);
   useEffect(() => {
     if (!devicesQuery.isError) return;
-    const err: any = devicesQuery.error;
+    const err = devicesQuery.error;
     setDevicesError('读取登录设备失败：' + String(err?.message || err));
     setDevicesLoaded(true);
   }, [devicesQuery.isError, devicesQuery.error]);
@@ -520,10 +531,7 @@ export function AccountPane({ onDirtyChange }: any) {
     await devicesQuery.refetch();
   }
 
-  /**
-   * @param {*} [d]
-   */
-  async function revokeDevice(d: any) {
+  async function revokeDevice(d: SessionDevice): Promise<OpResultMaybe> {
     const ok = await s.confirm({
       title: '退出这台设备？',
       desc: `${deviceLabel(d.userAgent)}（${d.ip || '未知地址'}）会立即失去登录状态，需要重新输入密码。`,
@@ -550,7 +558,7 @@ export function AccountPane({ onDirtyChange }: any) {
   }
 
   async function revokeOthers() {
-    const others = devices.filter(/** @param {*} [d] */ (d: any) => !d.current).length;
+    const others = devices.filter((d) => !d.current).length;
     if (!others) return;
     const ok = await s.confirm({
       title: `退出其它 ${others} 台设备？`,
@@ -579,7 +587,7 @@ export function AccountPane({ onDirtyChange }: any) {
     try {
       /* 只提交本次真的要改的字段：契约里 newPassword 带 min(4)、username 有格式要求，
          把空串原样发过去会在 zod 处 400（「只改用户名」/「只改密码」两种正常用法都走不通）。 */
-      const body: any = { currentPassword: current };
+      const body: AccountBody = { currentPassword: current };
       if (username) body.username = username;
       if (newPass) body.newPassword = newPass;
       const res = await s.apiFetch('/api/account', {
@@ -634,10 +642,7 @@ export function AccountPane({ onDirtyChange }: any) {
   }
 
   /* 删除用户：不可恢复，走危险确认 */
-  /**
-   * @param {*} [u]
-   */
-  async function deleteUser(u: any) {
+  async function deleteUser(u: AdminUser): Promise<OpResultMaybe> {
     const ok = await s.confirm({
       title: `删除用户「${u.username}」？`,
       desc: '其订阅源、条目与日报都会一并删除，且不可恢复。',
@@ -663,11 +668,7 @@ export function AccountPane({ onDirtyChange }: any) {
   }
 
   /* 改角色：服务端立即生效，确认框里说明该角色能做什么；取消返回 false 让下拉回退 */
-  /**
-   * @param {*} [u]
-   * @param {*} [next]
-   */
-  async function changeUserRole(u: any, next: any) {
+  async function changeUserRole(u: AdminUser, next: Role): Promise<OpResult> {
     const ok = await s.confirm({
       title: `将「${u.username}」设为${ROLE_LABEL[next] || next}？`,
       desc:
@@ -700,11 +701,7 @@ export function AccountPane({ onDirtyChange }: any) {
   }
 
   /* 管理员重置他人密码：不再用浏览器 prompt，输入框就在详情层里 */
-  /**
-   * @param {*} [u]
-   * @param {*} [np]
-   */
-  async function setUserPassword(u: any, np: any) {
+  async function setUserPassword(u: AdminUser, np: string): Promise<OpResult> {
     if (np.length < 4) return { ok: false, error: '密码至少 4 位' };
     setUserBusy('pass');
     try {
@@ -728,12 +725,7 @@ export function AccountPane({ onDirtyChange }: any) {
   }
 
   /* 新增用户：成功即关层并重拉列表（服务端会分配 id） */
-  /**
-   * @param {*} [name]
-   * @param {*} [pass]
-   * @param {*} [role]
-   */
-  async function createUser(name: any, pass: any, role: any) {
+  async function createUser(name: string, pass: string, role: Role): Promise<OpResult> {
     setUserBusy('add');
     try {
       const res = await s.apiFetch('/api/users', {
@@ -784,10 +776,7 @@ export function AccountPane({ onDirtyChange }: any) {
   }
 
   /* 账号导入：只做增量合并，已存在的频道与文章跳过（保留现状） */
-  /**
-   * @param {*} [ev]
-   */
-  async function importArchive(ev: any) {
+  async function importArchive(ev: React.ChangeEvent<HTMLInputElement>) {
     const input = ev.target;
     const file = input.files && input.files[0];
     input.value = ''; // 清掉选择，同一个文件还能再选一次
@@ -828,10 +817,7 @@ export function AccountPane({ onDirtyChange }: any) {
   }
 
   /* 整站还原：两次确认，成功后会话已被清空，直接回登录页 */
-  /**
-   * @param {*} [ev]
-   */
-  async function restoreSite(ev: any) {
+  async function restoreSite(ev: React.ChangeEvent<HTMLInputElement>) {
     const input = ev.target;
     const file = input.files && input.files[0];
     input.value = '';
@@ -866,7 +852,7 @@ export function AccountPane({ onDirtyChange }: any) {
   }
 
   const usersSub = users.length ? `共 ${users.length} 个` : '';
-  const otherDevices = devices.filter(/** @param {*} [d] */ (d: any) => !d.current).length;
+  const otherDevices = devices.filter(/** @param {*} [d] */ (d) => !d.current).length;
   // 登录信息草稿；用户 / 设备的改动都在各自详情层里即时生效，不计入面板脏态
   const dirty = !readonly && (username !== savedName || current !== '' || newPass !== '');
   useEffect(() => {
@@ -874,18 +860,10 @@ export function AccountPane({ onDirtyChange }: any) {
   }, [dirty, onDirtyChange]);
 
   const sheetDevice =
-    sheet && sheet.type === 'device'
-      ? devices.find(/** @param {*} [d] */ (d: any) => d.id === sheet.id)
-      : null;
-  const sheetUser =
-    sheet && sheet.type === 'user'
-      ? users.find(/** @param {*} [u] */ (u: any) => u.id === sheet.id)
-      : null;
+    sheet && sheet.type === 'device' ? devices.find((d) => d.id === sheet.id) : null;
+  const sheetUser = sheet && sheet.type === 'user' ? users.find((u) => u.id === sheet.id) : null;
 
-  /**
-   * @param {*} [d]
-   */
-  const renderDeviceRow = (d: any) => (
+  const renderDeviceRow = (d: SessionDevice) => (
     <div
       className={'sl-row' + (d.current ? ' is-current' : '')}
       key={d.id}
@@ -916,10 +894,7 @@ export function AccountPane({ onDirtyChange }: any) {
     </div>
   );
 
-  /**
-   * @param {*} [u]
-   */
-  const renderUserRow = (u: any) => (
+  const renderUserRow = (u: AdminUser) => (
     <div
       className="sl-row"
       key={u.id}
@@ -999,7 +974,7 @@ export function AccountPane({ onDirtyChange }: any) {
                   type="text"
                   spellCheck="false"
                   value={username}
-                  onChange={/** @param {*} [e] */ (e: any) => setUsername(e.target.value)}
+                  onChange={/** @param {*} [e] */ (e) => setUsername(e.target.value)}
                 />
               </div>
               <div className="form-row">
@@ -1012,7 +987,7 @@ export function AccountPane({ onDirtyChange }: any) {
                   placeholder="修改密码时需验证当前密码"
                   autoComplete="current-password"
                   value={current}
-                  onChange={/** @param {*} [e] */ (e: any) => setCurrent(e.target.value)}
+                  onChange={/** @param {*} [e] */ (e) => setCurrent(e.target.value)}
                 />
               </div>
               <div className="form-row">
@@ -1023,7 +998,7 @@ export function AccountPane({ onDirtyChange }: any) {
                   placeholder="留空则不修改，至少 4 位"
                   autoComplete="new-password"
                   value={newPass}
-                  onChange={/** @param {*} [e] */ (e: any) => setNewPass(e.target.value)}
+                  onChange={/** @param {*} [e] */ (e) => setNewPass(e.target.value)}
                 />
               </div>
               <div className="ro-actions">
@@ -1090,7 +1065,7 @@ export function AccountPane({ onDirtyChange }: any) {
                     id="exportLlm"
                     type="checkbox"
                     checked={inclLlm}
-                    onChange={/** @param {*} [e] */ (e: any) => setInclLlm(e.target.checked)}
+                    onChange={/** @param {*} [e] */ (e) => setInclLlm(e.target.checked)}
                   />
                   <span className="switch-slider" />
                 </span>

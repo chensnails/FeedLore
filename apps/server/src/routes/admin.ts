@@ -42,8 +42,7 @@ import { type AppEnv, requireAuth } from '../middleware/auth';
 import { resetImageCache } from './img';
 
 /** 原始 SQL 的行结果（drizzle `execute` 的 rows 是 unknown[]）。 */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Row = Record<string, any>;
+type Row = Record<string, unknown>;
 
 /* ============================================================================
  * 版本 / 更新

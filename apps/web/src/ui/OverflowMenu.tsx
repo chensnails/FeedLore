@@ -6,10 +6,45 @@
  * 面板为实底（同 .link-menu 治理思路：未锁滚动不模糊），不触发滚动锁定。 */
 
 import { core } from '@core';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import type { SortMode, ViewMode, ViewTab } from '../core/types.ts';
 import { EVENT, on } from '../kernel/events.ts';
 
 const S = () => core;
+
+/** 顶栏快照（getShell / shellSnapshot 返回形状；读取失败时为空对象）。 */
+interface ShellSnap {
+  subtitle?: string;
+  view?: ViewTab;
+  themeLabel?: string;
+  themeIco?: string;
+  installReady?: boolean;
+  digestVisible?: boolean;
+}
+
+/** 文章页专属动作的状态（由 ReaderView 传入）。 */
+interface ReaderMenuState {
+  accordionOn?: boolean;
+  hasUnread?: boolean;
+  anyExpanded?: boolean;
+}
+
+interface OverflowMenuProps {
+  view?: ViewTab;
+  cardControls?: boolean;
+  sortValue?: SortMode;
+  viewMode?: ViewMode;
+  readerControls?: boolean;
+  readerState?: ReaderMenuState;
+  refreshLabel?: string;
+  refreshHint?: string;
+}
 
 /* 只有真正的悬停设备才用 hover 开子菜单：触屏 / 粗指针的点击会合成 mouseenter，
    与 onClick 的 toggle 叠在一起会出现「点一下刚开、又立刻关掉」。
@@ -19,23 +54,19 @@ const canHover = () =>
   typeof window.matchMedia === 'function' &&
   window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
-const SORTS = [
+const SORTS: ReadonlyArray<{ v: SortMode; label: string }> = [
   { v: 'new', label: '最新' },
   { v: 'old', label: '最早' },
   { v: 'name', label: '名称' },
 ];
 
-function readShell() {
+function readShell(): ShellSnap {
   try {
     return core.getShell();
   } catch (_) {
     return {};
   }
 }
-
-/**
- * @param {*} opts
- */
 
 export function OverflowMenu({
   cardControls = false,
@@ -45,15 +76,15 @@ export function OverflowMenu({
   readerState,
   refreshLabel,
   refreshHint,
-}: any) {
-  const [open, setOpen] = useState<any>(false);
-  const [subOpen, setSubOpen] = useState<any>(false);
-  const [busy, setBusy] = useState<any>(false);
-  const [snap, setSnap] = useState<any>(readShell);
-  const btnRef: any = useRef<any>(null);
-  const menuRef: any = useRef<any>(null);
-  const subRef: any = useRef<any>(null);
-  const rs = readerState || {};
+}: OverflowMenuProps) {
+  const [open, setOpen] = useState(false);
+  const [subOpen, setSubOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [snap, setSnap] = useState<ShellSnap>(readShell);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const subRef = useRef<HTMLDivElement>(null);
+  const rs: ReaderMenuState = readerState || {};
 
   const refreshSnap = useCallback(() => setSnap(readShell()), []);
   useEffect(() => {
@@ -73,25 +104,21 @@ export function OverflowMenu({
       return undefined;
     }
     const first =
-      menuRef.current && menuRef.current.querySelector('[role="menuitem"],[role="menuitemradio"]');
+      menuRef.current &&
+      menuRef.current.querySelector<HTMLElement>('[role="menuitem"],[role="menuitemradio"]');
     if (first) first.focus();
-    /**
-     * @param {*} [ev]
-     */
-    const onDocDown = (ev: any) => {
+    const onDocDown = (ev: MouseEvent) => {
+      const target = ev.target instanceof Node ? ev.target : null;
       if (
         menuRef.current &&
-        !menuRef.current.contains(ev.target) &&
+        !menuRef.current.contains(target) &&
         btnRef.current &&
-        !btnRef.current.contains(ev.target)
+        !btnRef.current.contains(target)
       ) {
         setOpen(false);
       }
     };
-    /**
-     * @param {*} [ev]
-     */
-    const onKey = (ev: any) => {
+    const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Escape') {
         ev.preventDefault();
         close();
@@ -108,7 +135,7 @@ export function OverflowMenu({
   // 子菜单打开时入焦首个排序项
   useEffect(() => {
     if (subOpen && subRef.current) {
-      const f = subRef.current.querySelector('[role="menuitemradio"]');
+      const f = subRef.current.querySelector<HTMLElement>('[role="menuitemradio"]');
       if (f) f.focus();
     }
   }, [subOpen]);
@@ -122,22 +149,20 @@ export function OverflowMenu({
     }
   };
 
-  /**
-   * @param {*} [dir]
-   */
-  const focusWithin = (dir: any) => {
+  const focusWithin = (dir: number) => {
+    const menu = menuRef.current;
+    if (!menu) return;
     const items = Array.from(
-      menuRef.current.querySelectorAll('[role="menuitem"],[role="menuitemradio"]'),
+      menu.querySelectorAll<HTMLElement>('[role="menuitem"],[role="menuitemradio"]'),
     );
-    const idx = items.indexOf(document.activeElement);
+    const idx = items.indexOf(document.activeElement as HTMLElement);
     const next = items[Math.max(0, Math.min(items.length - 1, Math.max(idx, 0) + dir))];
-    if (next) (next as any).focus();
+    if (next) next.focus();
   };
 
-  /**
-   * @param {*} [ev]
-   */
-  const onMenuKey = (ev: any) => {
+  const onMenuKey = (ev: ReactKeyboardEvent<HTMLDivElement>) => {
+    const menu = menuRef.current;
+    if (!menu) return;
     if (ev.key === 'ArrowDown') {
       ev.preventDefault();
       focusWithin(1);
@@ -146,24 +171,23 @@ export function OverflowMenu({
       focusWithin(-1);
     } else if (ev.key === 'Home') {
       ev.preventDefault();
-      const f = menuRef.current.querySelector('[role="menuitem"],[role="menuitemradio"]');
-      f && f.focus();
+      const f = menu.querySelector<HTMLElement>('[role="menuitem"],[role="menuitemradio"]');
+      if (f) f.focus();
     } else if (ev.key === 'End') {
       ev.preventDefault();
-      const a = menuRef.current.querySelectorAll('[role="menuitem"],[role="menuitemradio"]');
-      a.length && a[a.length - 1].focus();
+      const a = menu.querySelectorAll<HTMLElement>('[role="menuitem"],[role="menuitemradio"]');
+      if (a.length) a[a.length - 1]?.focus();
     }
   };
 
-  /**
-   * @param {*} [ev]
-   */
-  const onSubKey = (ev: any) => {
+  const onSubKey = (ev: ReactKeyboardEvent<HTMLDivElement>) => {
+    const menu = menuRef.current;
+    if (!menu) return;
     if (ev.key === 'ArrowLeft' || ev.key === 'Escape') {
       ev.preventDefault();
       setSubOpen(false);
-      const t = menuRef.current.querySelector('[data-subtrigger]');
-      t && t.focus();
+      const t = menu.querySelector<HTMLElement>('[data-subtrigger]');
+      if (t) t.focus();
       return;
     }
     // 子菜单内自己漫游；必须 stopPropagation，否则同一击会冒泡到父菜单的
@@ -172,11 +196,11 @@ export function OverflowMenu({
       ev.preventDefault();
       ev.stopPropagation();
       const items = subRef.current
-        ? Array.from(subRef.current.querySelectorAll('[role="menuitemradio"]'))
+        ? Array.from(subRef.current.querySelectorAll<HTMLElement>('[role="menuitemradio"]'))
         : [];
       if (!items.length) return;
-      const idx = items.indexOf(document.activeElement);
-      let next: any;
+      const idx = items.indexOf(document.activeElement as HTMLElement);
+      let next: number;
       if (ev.key === 'Home') next = 0;
       else if (ev.key === 'End') next = items.length - 1;
       else
@@ -184,7 +208,7 @@ export function OverflowMenu({
           0,
           Math.min(items.length - 1, Math.max(idx, 0) + (ev.key === 'ArrowDown' ? 1 : -1)),
         );
-      (items[next] as any).focus();
+      items[next]?.focus();
     }
   };
 
@@ -198,7 +222,7 @@ export function OverflowMenu({
         aria-expanded={open}
         aria-label="更多功能"
         title="更多功能"
-        onClick={() => setOpen(/** @param {*} [v] */ (v: any) => !v)}
+        onClick={() => setOpen(/** @param {*} [v] */ (v) => !v)}
       >
         <svg className="ico" aria-hidden="true" focusable="false">
           <use href="#i-more" />
@@ -329,10 +353,10 @@ export function OverflowMenu({
                 onClick={() => {
                   // 桌面已由 hover 打开，再 toggle 一次反而关掉；触屏才需要点击开合
                   if (canHover()) setSubOpen(true);
-                  else setSubOpen(/** @param {*} [v] */ (v: any) => !v);
+                  else setSubOpen(/** @param {*} [v] */ (v) => !v);
                 }}
                 onKeyDown={
-                  /** @param {*} [e] */ (e: any) => {
+                  /** @param {*} [e] */ (e) => {
                     if (e.key === 'ArrowRight') {
                       e.preventDefault();
                       setSubOpen(true);
@@ -351,7 +375,7 @@ export function OverflowMenu({
               {subOpen && (
                 <div className="overflow-submenu" role="menu" ref={subRef} onKeyDown={onSubKey}>
                   {SORTS.map(
-                    /** @param {*} [o] */ (o: any) => (
+                    /** @param {*} [o] */ (o) => (
                       <button
                         type="button"
                         key={o.v}

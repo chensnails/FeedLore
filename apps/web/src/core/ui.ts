@@ -38,6 +38,14 @@ import {
   THEME_MODES,
   unlockPageScroll,
 } from './state.ts';
+import type {
+  EntityId,
+  EntryFlagPatch,
+  Feed,
+  LightboxState,
+  ReaderScope,
+  ViewTab,
+} from './types.ts';
 import {
   $,
   apiFetch,
@@ -76,7 +84,7 @@ export async function refreshFeeds() {
     if (!r.ok) throw await httpError(r);
     const data = await r.json();
     // V4.2：写操作后清掉服务端状态缓存，保证紧随其后的 loadFeeds() 真正重取。
-    await drop(qk.feeds, qk.entries(null, null));
+    await drop(qk.feeds, ['entries']);
     await loadFeeds();
     state.tag = null;
     // 阅读页有自己的列表，也一起刷新（顺带更新左侧频道计数）
@@ -104,24 +112,18 @@ export async function refreshFeeds() {
 
 /* OPML 导出：把当前账号的订阅源整理成标准 OPML（分组作为文件夹），浏览器下载 */
 export function exportOpml() {
-  const feeds: any = state.feedList || [];
+  const feeds = state.feedList || [];
   if (!feeds.length) {
     toast('没有可导出的订阅源', false);
     return;
   }
-  /**
-   * @param {*} [s]
-   */
-  const esc = (s: any) =>
+  const esc = (s: unknown) =>
     String(s == null ? '' : s)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
-  /**
-   * @param {*} [f]
-   */
-  const feedOutline = (f: any) => {
+  const feedOutline = (f: Feed) => {
     const title = feedTitle(f) || f.url || '未命名订阅源';
     const xml = f.url || '';
     const html = f.siteUrl || '';
@@ -138,24 +140,22 @@ export function exportOpml() {
     );
   };
   // 按分组归类；未分组的放在顶层
-  const groups: Record<string, any> = {};
-  const ungrouped = [];
+  const groups: Record<string, Feed[]> = {};
+  const ungrouped: Feed[] = [];
   for (const f of feeds) {
     const g = String(f.groupName || '').trim();
     if (g) (groups[g] = groups[g] || []).push(f);
     else ungrouped.push(f);
   }
   let body = '';
-  for (const g of Object.keys(groups).sort(
-    /** @param {*} [a] @param {*} [b] */ (a: any, b: any) => a.localeCompare(b, 'zh'),
-  )) {
+  for (const g of Object.keys(groups).sort((a, b) => a.localeCompare(b, 'zh'))) {
     body +=
       '  <outline text="' +
       esc(g) +
       '" title="' +
       esc(g) +
       '">\n' +
-      groups[g].map(feedOutline).join('\n') +
+      groups[g]!.map(feedOutline).join('\n') +
       '\n' +
       '  </outline>\n';
   }
@@ -182,9 +182,8 @@ export function exportOpml() {
 /**
  * 触发一次同源 GET 下载。服务端用 Content-Disposition 给文件名，所以不给 download
  * 属性（给了浏览器会覆盖掉服务端命名）。临时锚点即点即弃，不打断当前页面。
- * @param {*} [url]
  */
-export function downloadUrl(url: any) {
+export function downloadUrl(url: string) {
   const a = document.createElement('a');
   a.href = url;
   a.rel = 'noopener';
@@ -197,7 +196,7 @@ export function downloadUrl(url: any) {
    整屏下拉弹层 / 命令面板 / 灯箱 / 确认框开着时，这一击归它们，不能顺手把设置也关掉。 */
 document.addEventListener(
   'keydown',
-  /** @param {*} [ev] */ (ev: any) => {
+  /** @param {*} [ev] */ (ev) => {
     if (ev.key !== 'Escape' || !isOn('settingsOpen')) return;
     if (document.querySelector('.dd-mask')) return; // 移动端整屏下拉
     // 设置里的详情层（列表 → 详情）自己处理 Esc：输入框里第一击只失焦、第二击才关层。
@@ -210,7 +209,7 @@ document.addEventListener(
     if (isOn('confirmOpen')) return; // 统一确认框
     // 最后交给宿主：移动端停在「分区内容」这一层时，Esc 应先退回设置列表，
     // 只有已经在列表上才整层关闭（与「返回」按钮一致）。返回 true = 已消化。
-    const host = get('settingsHost');
+    const host = get('settingsHost') as { escape?: () => boolean } | undefined;
     if (host && typeof host.escape === 'function' && host.escape()) return;
     closeSettings();
   },
@@ -219,12 +218,16 @@ document.addEventListener(
 /* ============================================================
  * 页面切换（文章 / 卡片 / AI）
  * ============================================================ */
-/**
- * @param {*} [name]
- * @param {*} [opts]
- */
-export function switchView(name?: any, opts?: any) {
-  if (TABS.indexOf(name) < 0) name = 'reader';
+interface SwitchViewOpts {
+  skipReaderLoad?: boolean;
+  retap?: boolean;
+  restoreScroll?: boolean;
+}
+
+export function switchView(name: string = 'reader', opts: SwitchViewOpts = {}): Promise<void> {
+  // 守卫后 name 必是 TABS 之一，收敛成精确联合类型供 state 使用。
+  name = (TABS.indexOf(name) >= 0 ? name : 'reader') as ViewTab;
+  const view = name as ViewTab;
   const o = opts || {};
   const from = state.tab;
   // 切走之前先把「离开的那一页」滚到哪儿记下来；回来时（仅 ViewNav 显式要求）
@@ -241,7 +244,7 @@ export function switchView(name?: any, opts?: any) {
     if (p && p.catch) p.catch(() => toast('AI 页面加载失败，请检查网络后重试', false));
   }
   const apply = () => {
-    state.tab = name;
+    state.tab = view;
     setLayout('tab', name); // 按账号持久化当前页面，刷新后保持一致
     hideNewPill(); // 浮标里的新内容是上一个页面拉到的，切页就作废
     // 离开文章页时把频道抽屉收掉（否则它会盖在卡片/AI 页上，还占着页面滚动锁）
@@ -251,9 +254,9 @@ export function switchView(name?: any, opts?: any) {
     // 卡片页的频道抽屉同理
     if (name !== 'cards') setCardsDrawer(false);
 
-    $('#readerView').hidden = name !== 'reader';
-    $('#cardsView').hidden = name !== 'cards';
-    $('#aiView').hidden = name !== 'ai';
+    ($('#readerView') as HTMLElement).hidden = name !== 'reader';
+    ($('#cardsView') as HTMLElement).hidden = name !== 'cards';
+    ($('#aiView') as HTMLElement).hidden = name !== 'ai';
     // 地址栏记下当前视图（只 replaceState，不进浏览器历史：
     // 见 util.writeHash 的说明——「后退」不该在文章之间逐条回退）。
     if (name !== 'reader') writeHash('#' + name);
@@ -286,7 +289,7 @@ export function switchView(name?: any, opts?: any) {
     // - 视图导航切回来 → 恢复上次离开的位置；
     // - 其它入口（筛选 / 深链 / 命令面板）→ 保持旧行为，回到顶部。
     if (same && o.retap) scrollActiveTop(prefersReducedMotion() ? 'auto' : 'smooth');
-    else if (o.restoreScroll && !same) restoreViewScroll(name);
+    else if (o.restoreScroll && !same) restoreViewScroll(view);
     else scrollActiveTop('auto');
   };
   // View Transitions API：视图切换时整页交叉淡入（渐进增强，减少动态效果时跳过）
@@ -332,11 +335,8 @@ window.addEventListener('popstate', () => {
  *  否则后端只查手动标签列，结果为空或牛头不对马嘴。 */
 /** 旧入口兼容：文章页点标签改为就地筛选，不再跳卡片页（卡片页受 cardEnabled 限制会漏文章）。
  *  统一走 reader.js#readerSetTag，两排标签同一套逻辑。
- *@param {*} [tag]
- * @param {*} [ai]
  */
-
-export function readerTagToCards(tag: any, ai: any = false) {
+export function readerTagToCards(tag: string, ai = false) {
   readerSetTag(tag, ai);
 }
 
@@ -346,15 +346,16 @@ export function readerTagToCards(tag: any, ai: any = false) {
  * v2.1.0 起灯箱 DOM 改由 src/ui/Overlays.tsx 渲染，核心只维护状态并派发 __overlaysTick。
  * 同一篇正文里的图组成一组，支持 ← → 翻看；关闭时把焦点还给触发图。
  */
-export let lightboxState = { src: '', show: false, list: [], index: 0 };
+export let lightboxState: LightboxState = { src: '', show: false, list: [], index: 0 };
 /** 触发灯箱的元素（不放进 state：它是 DOM 引用，进 state 会跟着快照到处传） */
-let lightboxOpener: any = null;
+let lightboxOpener: HTMLElement | null = null;
 
-/**
- * @param {*} [src]
- * @param {*} [opts]
- */
-export function openLightbox(src: any, opts: any) {
+interface LightboxOpts {
+  list?: string[];
+  opener?: HTMLElement | null;
+}
+
+export function openLightbox(src: string, opts: LightboxOpts = {}) {
   if (!src) return;
   const o = opts || {};
   const list = Array.isArray(o.list) && o.list.length ? o.list : [src];
@@ -372,7 +373,7 @@ export function closeLightbox() {
   unlockPageScroll();
   // 焦点归还触发图：不还的话关掉后焦点掉到 body，键盘用户得从头 Tab。
   // 正文图是 <img>、默认不可聚焦，临时补 tabindex="-1"（不进 Tab 序列，但可程序聚焦）。
-  const op: any = lightboxOpener;
+  const op = lightboxOpener;
   lightboxOpener = null;
   if (op && document.contains(op) && typeof op.focus === 'function') {
     if (!op.hasAttribute('tabindex') && !op.matches('a[href],button,input,select,textarea')) {
@@ -382,11 +383,8 @@ export function closeLightbox() {
   }
 }
 
-/** 组内翻页（±1）。只有一张图时是空操作。
- *@param {*} [d]
- */
-
-export function stepLightbox(d: any) {
+/** 组内翻页（±1）。只有一张图时是空操作。 */
+export function stepLightbox(d: number) {
   const st = lightboxState;
   if (!st.show || !st.list || st.list.length < 2) return;
   const n = st.list.length;
@@ -397,28 +395,28 @@ export function stepLightbox(d: any) {
 
 document.addEventListener(
   'click',
-  /** @param {*} [ev] */ (ev: any) => {
+  /** @param {*} [ev] */ (ev) => {
     if (lightboxState.show) {
       closeLightbox();
       return;
     } // 开着的时候点哪儿都关
-    const img = ev.target.closest ? ev.target.closest('.art-img') : null;
+    if (!(ev.target instanceof Element)) return;
+    const img = ev.target.closest('.art-img');
     if (!img) return;
     // 同一篇正文内的图算一组：卡片详情 / 文章页正文 / 列表展开体
     const scope = img.closest('.art-body, .cd-body, .cd-modal, .art-item') || document;
-    const list = Array.prototype.map
-      .call(
-        scope.querySelectorAll('.art-img'),
-        /** @param {*} [el] */ (el: any) => el.getAttribute('src'),
-      )
-      .filter(Boolean);
-    openLightbox(img.getAttribute('src'), { list, opener: img });
+    const list = Array.from(scope.querySelectorAll('.art-img'))
+      .map((el) => el.getAttribute('src'))
+      .filter((s): s is string => !!s);
+    const src = img.getAttribute('src');
+    if (!src) return;
+    openLightbox(src, { list, opener: img as HTMLElement });
   },
 );
 
 document.addEventListener(
   'keydown',
-  /** @param {*} [ev] */ (ev: any) => {
+  /** @param {*} [ev] */ (ev) => {
     if (!lightboxState.show) return;
     if (ev.key === 'Escape') closeLightbox();
     else if (ev.key === 'ArrowRight') {
@@ -444,16 +442,18 @@ if ('serviceWorker' in navigator) {
 }
 
 // 安装到手机：Chromium 系（Edge / Chrome）满足条件时会触发 beforeinstallprompt
-export let deferredInstall: any = null; // 捕获到的 beforeinstallprompt 事件（账号面板「一键安装」经桥 promptInstall 触发）
+/** 浏览器尚未把 beforeinstallprompt 纳入 lib.dom，按实际用到的面声明。 */
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+export let deferredInstall: BeforeInstallPromptEvent | null = null; // 捕获到的事件（账号面板「一键安装」经桥 promptInstall 触发）
 
-window.addEventListener(
-  'beforeinstallprompt',
-  /** @param {*} [ev] */ (ev: any) => {
-    ev.preventDefault();
-    deferredInstall = ev;
-    emitShell(); // 顶栏「添加到手机」按钮由 React 按 installReady 显隐
-  },
-);
+window.addEventListener('beforeinstallprompt', (ev) => {
+  ev.preventDefault();
+  deferredInstall = ev as BeforeInstallPromptEvent;
+  emitShell(); // 顶栏「添加到手机」按钮由 React 按 installReady 显隐
+});
 
 window.addEventListener('appinstalled', () => {
   deferredInstall = null;
@@ -496,7 +496,7 @@ export function syncThemeColor() {
     meta.setAttribute('content', color);
     return;
   }
-  metas.forEach(/** @param {*} [meta] */ (meta: any) => meta.setAttribute('content', color));
+  metas.forEach(/** @param {*} [meta] */ (meta) => meta.setAttribute('content', color));
 }
 syncThemeColor();
 new MutationObserver(syncThemeColor).observe(document.documentElement, {
@@ -514,12 +514,7 @@ export function savedSections() {
   return layoutPref.sections && typeof layoutPref.sections === 'object' ? layoutPref.sections : {};
 }
 
-/**
- * @param {*} [key]
- * @param {*} [open]
- */
-
-export function saveSectionState(key: any, open: any) {
+export function saveSectionState(key: string, open: boolean) {
   const next = Object.assign({}, layoutPref.sections || {}, { [key]: !!open });
   setLayout('sections', next);
 }
@@ -528,20 +523,17 @@ export function saveSectionState(key: any, open: any) {
  * 给 root 里所有 details.sec 套上记住的开合状态，并挂上变化监听。
  * 静态区域在启动时调一次就够；**动态重绘的区域每次渲染后都要再调一次**
  * —— 状态页每 30s 重绘一遍，不重新绑定的话展开态会被冲掉。
- * @param {*} [root]
  */
-
-export function bindSections(root: any) {
+export function bindSections(root: ParentNode | null | undefined) {
   const saved = savedSections();
-  (root || document).querySelectorAll('details.sec[data-sec]').forEach(
-    /** @param {*} [d] */ (d: any) => {
-      if (d.dataset.secBound === '1') return; // 已经绑过，别重复挂监听
-      d.dataset.secBound = '1';
-      const k = d.getAttribute('data-sec');
-      if (k in saved) d.open = !!saved[k];
-      d.addEventListener('toggle', () => saveSectionState(k, d.open));
-    },
-  );
+  (root || document).querySelectorAll<HTMLDetailsElement>('details.sec[data-sec]').forEach((d) => {
+    if (d.dataset.secBound === '1') return; // 已经绑过，别重复挂监听
+    d.dataset.secBound = '1';
+    const k = d.getAttribute('data-sec');
+    if (!k) return;
+    if (k in saved) d.open = !!saved[k];
+    d.addEventListener('toggle', () => saveSectionState(k, d.open));
+  });
 }
 
 bindSections(document);
@@ -559,10 +551,7 @@ bindSections(document);
    下面的 selectScope / jumpToFeed / focusSearchBox 是普通页面函数，
    通过文件末尾导出的 `core` 单例供 React 组件调用（v2.0.0 起改为模块引用）。 */
 
-/**
- * @param {*} [scope]
- */
-export function selectScope(scope: any) {
+export function selectScope(scope: ReaderScope) {
   if (state.tab !== 'reader') switchView('reader');
   state.rdScope = scope;
   setLayout('rdScope', scope);
@@ -576,10 +565,8 @@ export function selectScope(scope: any) {
 }
 /** 跳到阅读页并锁定某个频道；传了 focusId 就把那篇文章指给用户看（滚过去 + 闪一下高亮）。
  *  focusId 只在这一次跳转里用，不写进任何持久化偏好。
- *@param {*} [id]
- * @param {*} [focusId]
  */
-export function jumpToFeed(id: any, focusId: any) {
+export function jumpToFeed(id: EntityId, focusId?: EntityId | null) {
   // 先落筛选条件再切页：switchView 在列表为空时会自动加载，用目标频道的筛选才不白拉一次
   state.rdScope = 'all';
   state.rdFeedId = Number(id);
@@ -598,12 +585,12 @@ export function jumpToFeed(id: any, focusId: any) {
 }
 export function focusSearchBox() {
   if (state.tab === 'cards') {
-    const focusCards = get('cardsFocusSearch');
+    const focusCards = get('cardsFocusSearch') as (() => void) | undefined;
     if (focusCards) focusCards(); // 卡片搜索框已 React 化
     return;
   }
   if (state.tab !== 'reader') switchView('reader');
-  const focusReader = get('readerFocusSearch');
+  const focusReader = get('readerFocusSearch') as (() => void) | undefined;
   if (focusReader) focusReader();
 }
 
@@ -611,10 +598,11 @@ export function focusSearchBox() {
 // 正在输入框里打字时不抢（用户可能真的要打斜杠），任何弹层开着时也不抢。
 document.addEventListener(
   'keydown',
-  /** @param {*} [ev] */ (ev: any) => {
+  /** @param {*} [ev] */ (ev) => {
     if (ev.key !== '/' || ev.metaKey || ev.ctrlKey || ev.altKey) return;
     const t = ev.target;
-    if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
+    if (t instanceof HTMLElement && (t.isContentEditable || t.matches('input,textarea,select')))
+      return;
     if (isOn('settingsOpen') || isOn('cmdkOpen') || isOn('confirmOpen')) return;
     // 设置弹层常驻挂载（关闭时只是 hidden），必须排除隐藏态，否则「/」永远被它吃掉
     if (document.querySelector('.lightbox, .modal-mask:not([hidden]), .dd-mask:not([hidden])'))
@@ -626,20 +614,13 @@ document.addEventListener(
 
 /* 卡片页条目收藏/已读：与阅读页走同一套标记逻辑（reader.ts 的 setEntryFlag）——
  * 两页列表各持一份条目对象，统一入口才能保证改一处、两边同时换新对象并同步计数。 */
-/**
- * @param {*} [id]
- * @param {*} [patch]
- */
-export function cardSetFlag(id: any, patch: any) {
+export function cardSetFlag(id: EntityId, patch: EntryFlagPatch) {
   return setEntryFlag(id, patch);
 }
 
 /* 卡片详情弹窗打开即算读过：与文章页展开同样走 markEntryRead（状态同步到两页列表）。
  * 同一条只发一次 PATCH —— 已读过就直接跳过，避免每次点开都打一次请求。 */
-/**
- * @param {*} [id]
- */
-export function cardDetailRead(id: any) {
+export function cardDetailRead(id: EntityId) {
   markEntryRead(id);
 }
 
@@ -648,10 +629,8 @@ export const digestIsEnabled = () => layoutPref.digestEnabled !== false;
 
 /** 开 / 关日报（设置面板的开关经桥调用）。
  *  探索页常驻：关掉日报只隐藏页内「日报」tab，不再把人带离探索页。
- *@param {*} [on]
  */
-
-export function setDigestEnabled(on: any) {
+export function setDigestEnabled(on: boolean) {
   const next = on !== false;
   if (digestIsEnabled() === next) return;
   setLayout('digestEnabled', next);

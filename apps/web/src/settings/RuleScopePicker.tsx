@@ -1,3 +1,5 @@
+import type { Feed, RuleScope } from '@feedlore/contract';
+import type { ChangeEvent, CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.ts';
@@ -15,57 +17,50 @@ import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.ts';
  * 窄屏由 CSS 改成底部整宽面板。
  */
 
-export const emptyScope = () => ({ all: false, groups: [], feeds: [] });
-export const allScope = () => ({ all: true, groups: [], feeds: [] });
+export const emptyScope = (): RuleScope => ({ all: false, groups: [], feeds: [] });
+export const allScope = (): RuleScope => ({ all: true, groups: [], feeds: [] });
 
-/**
- * @param {*} [raw]
- */
-
-export function normalizeScope(raw: any) {
+/** scope 来自服务端 JSON，形状不确定：用 unknown 边界 + 窄化，产出契约 DTO。 */
+export function normalizeScope(raw: unknown): RuleScope {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return allScope();
-  if (raw.all === true) return allScope();
+  const obj = raw as Record<string, unknown>;
+  if (obj.all === true) return allScope();
   return {
     all: false,
-    groups: Array.isArray(raw.groups)
-      ? raw.groups.filter(/** @param {*} [g] */ (g: any) => typeof g === 'string')
+    groups: Array.isArray(obj.groups)
+      ? obj.groups.filter((g: unknown): g is string => typeof g === 'string')
       : [],
-    feeds: Array.isArray(raw.feeds)
-      ? raw.feeds.map(Number).filter(/** @param {*} [n] */ (n: any) => Number.isInteger(n) && n > 0)
+    feeds: Array.isArray(obj.feeds)
+      ? obj.feeds.map((n: unknown) => Number(n)).filter((n) => Number.isInteger(n) && n > 0)
       : [],
   };
 }
 
-/**
- * @param {*} [scope]
- */
-
-export function scopeIsEmpty(scope: any) {
+export function scopeIsEmpty(scope: unknown) {
   const s = normalizeScope(scope);
   return !s.all && !s.groups.length && !s.feeds.length;
 }
 
-/**
- * @param {*} [scope]
- */
-
-export function scopeSummary(scope: any) {
+export function scopeSummary(scope: unknown) {
   const s = normalizeScope(scope);
   if (s.all) return '全部频道';
-  const parts = [];
+  const parts: string[] = [];
   if (s.groups.length) parts.push(`${s.groups.length} 个分组`);
   if (s.feeds.length) parts.push(`${s.feeds.length} 个频道`);
   return parts.length ? parts.join(' · ') : '未选择（不生效）';
 }
 
-/**
- * @param {*} [f]
- */
-const feedName = (f: any) => f.customTitle || f.title || f.url || '未命名频道';
+const feedName = (f: Feed) => f.customTitle || f.title || f.url || '未命名频道';
 
-/**
- * @param {*} opts
- */
+/** 范围选择器 props。除 onChange 外全部可选，避免给调用方制造必填级联。 */
+export interface RuleScopePickerProps {
+  /** 服务端来的 scope，形状不确定，由 normalizeScope 收窄。 */
+  value?: unknown;
+  onChange?: (scope: RuleScope) => void;
+  feeds?: Feed[];
+  groupOrder?: string[];
+  compact?: boolean;
+}
 
 export function RuleScopePicker({
   value,
@@ -73,56 +68,52 @@ export function RuleScopePicker({
   feeds = [],
   groupOrder = [],
   compact = false,
-}: any) {
+}: RuleScopePickerProps) {
   const scope = normalizeScope(value);
   const searchName = useNoAutofillName('scope-q');
-  const [open, setOpen] = useState<any>(false);
-  const [q, setQ] = useState<any>('');
-  const [expanded, setExpanded] = useState<any>(() => new Set());
-  const [pos, setPos] = useState<any>({ x: 0, y: 0 });
-  const wrapRef: any = useRef<any>(null);
-  const popRef: any = useRef<any>(null);
-  const triggerRef: any = useRef<any>(null);
-  const inputRef: any = useRef<any>(null);
-  const groups: any = useMemo(() => {
-    const map = new Map();
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const popRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const groups = useMemo(() => {
+    const map = new Map<string, Feed[]>();
     for (const f of feeds) {
       const name = f.groupName || '';
       const list = map.get(name);
       if (list) list.push(f);
       else map.set(name, [f]);
     }
-    const names: any = [];
+    const names: string[] = [];
     for (const n of groupOrder) {
       if (map.has(n) && !names.includes(n)) names.push(n);
     }
     for (const n of map.keys()) {
       if (!names.includes(n)) names.push(n);
     }
-    return names.map(/** @param {*} [name] */ (name: any) => ({ name, feeds: map.get(name) }));
+    return names.map((name) => ({ name, feeds: map.get(name) ?? [] }));
   }, [feeds, groupOrder]);
 
   const query = q.trim().toLowerCase();
   const visibleGroups = groups
-    .map(
-      /** @param {*} [g] */ (g: any) => {
-        const label = g.name || '未分组';
-        if (!query) return { ...g, feeds: g.feeds, nameHit: false };
-        const nameHit = label.toLowerCase().includes(query);
-        const hitFeeds = g.feeds.filter(
-          /** @param {*} [f] */ (f: any) =>
-            [feedName(f), f.url, label].some(
-              /** @param {*} [t] */ (t: any) =>
-                String(t || '')
-                  .toLowerCase()
-                  .includes(query),
-            ),
-        );
-        if (!nameHit && !hitFeeds.length) return null;
-        return { ...g, feeds: nameHit ? g.feeds : hitFeeds, nameHit };
-      },
-    )
-    .filter(Boolean);
+    .map((g) => {
+      const label = g.name || '未分组';
+      if (!query) return { ...g, nameHit: false };
+      const nameHit = label.toLowerCase().includes(query);
+      const hitFeeds = g.feeds.filter((f) =>
+        [feedName(f), f.url, label].some((t) =>
+          String(t || '')
+            .toLowerCase()
+            .includes(query),
+        ),
+      );
+      if (!nameHit && !hitFeeds.length) return null;
+      return { ...g, feeds: nameHit ? g.feeds : hitFeeds, nameHit };
+    })
+    .filter((g): g is { name: string; feeds: Feed[]; nameHit: boolean } => g !== null);
 
   // 打开时把已选的频道展开，别让「已选 3 个」藏在折叠里
   useEffect(() => {
@@ -130,14 +121,9 @@ export function RuleScopePicker({
       setQ('');
       return;
     }
-    const next = new Set();
+    const next = new Set<string>();
     for (const g of groups) {
-      if (
-        scope.feeds.some(
-          /** @param {*} [id] */ (id: any) =>
-            g.feeds.some(/** @param {*} [f] */ (f: any) => Number(f.id) === Number(id)),
-        )
-      )
+      if (scope.feeds.some((id) => g.feeds.some((f) => Number(f.id) === Number(id))))
         next.add(g.name);
     }
     setExpanded(next);
@@ -147,7 +133,7 @@ export function RuleScopePicker({
   useEffect(() => {
     if (!open) return undefined;
     const place = () => {
-      const r = triggerRef.current && triggerRef.current.getBoundingClientRect();
+      const r = triggerRef.current?.getBoundingClientRect();
       if (!r) return;
       // 触发按钮被滚出可视区（弹层在 body 上，不会跟着走）就收起，别留一块悬空面板
       // 无布局环境（jsdom）矩形恒为 0，此时跳过判定
@@ -187,12 +173,9 @@ export function RuleScopePicker({
 
   useEffect(() => {
     if (!open) return undefined;
-    /**
-     * @param {*} [ev]
-     */
-    const onDown = (ev: any) => {
-      if (wrapRef.current && wrapRef.current.contains(ev.target)) return;
-      if (popRef.current && popRef.current.contains(ev.target)) return;
+    const onDown = (ev: MouseEvent) => {
+      if (wrapRef.current && wrapRef.current.contains(ev.target as Node)) return;
+      if (popRef.current && popRef.current.contains(ev.target as Node)) return;
       setOpen(false);
     };
     document.addEventListener('mousedown', onDown);
@@ -207,53 +190,35 @@ export function RuleScopePicker({
     return () => clearTimeout(t);
   }, [open]);
 
-  /**
-   * @param {*} [groupsNext]
-   * @param {*} [feedsNext]
-   */
-  const commit = (groupsNext: any, feedsNext: any) =>
-    onChange({ all: false, groups: groupsNext, feeds: feedsNext });
+  const commit = (groupsNext: string[], feedsNext: number[]) =>
+    onChange?.({ all: false, groups: groupsNext, feeds: feedsNext });
 
-  /**
-   * @param {*} [on]
-   */
-  const toggleAll = (on: any) => {
-    onChange(on ? allScope() : emptyScope());
+  const toggleAll = (on: boolean) => {
+    onChange?.(on ? allScope() : emptyScope());
     if (!on) setExpanded(new Set());
   };
 
-  /**
-   * @param {*} [name]
-   */
-  const toggleGroup = (name: any) => {
+  const toggleGroup = (name: string) => {
     const groupsNext = scope.groups.includes(name)
-      ? scope.groups.filter(/** @param {*} [g] */ (g: any) => g !== name)
+      ? scope.groups.filter((g) => g !== name)
       : scope.groups.concat([name]);
     commit(groupsNext, scope.feeds);
   };
 
-  /**
-   * @param {*} [id]
-   */
-  const toggleFeed = (id: any) => {
+  const toggleFeed = (id: number) => {
     const feedsNext = scope.feeds.includes(id)
-      ? scope.feeds.filter(/** @param {*} [n] */ (n: any) => n !== id)
+      ? scope.feeds.filter((n) => n !== id)
       : scope.feeds.concat([id]);
     commit(scope.groups, feedsNext);
   };
 
-  /**
-   * @param {*} [name]
-   */
-  const toggleExpand = (name: any) => {
-    setExpanded(
-      /** @param {*} [old] */ (old: any) => {
-        const next = new Set(old);
-        if (next.has(name)) next.delete(name);
-        else next.add(name);
-        return next;
-      },
-    );
+  const toggleExpand = (name: string) => {
+    setExpanded((old) => {
+      const next = new Set(old);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   };
 
   const summary = scopeSummary(scope);
@@ -267,7 +232,7 @@ export function RuleScopePicker({
       aria-haspopup="dialog"
       aria-expanded={open ? 'true' : 'false'}
       title={empty ? '未选择适用范围，这条规则不会生效' : `适用范围：${summary}`}
-      onClick={() => setOpen(/** @param {*} [v] */ (v: any) => !v)}
+      onClick={() => setOpen((v) => !v)}
     >
       <svg className="ico" aria-hidden="true" focusable="false">
         <use href="#i-filter" />
@@ -280,6 +245,11 @@ export function RuleScopePicker({
     </button>
   );
 
+  const popStyle = {
+    '--scope-x': pos.x + 'px',
+    '--scope-y': pos.y + 'px',
+  } as CSSProperties & Record<string, string>;
+
   const panel = open
     ? createPortal(
         <div
@@ -287,14 +257,12 @@ export function RuleScopePicker({
           className={'rule-scope-pop' + (compact ? ' compact' : '')}
           role="dialog"
           aria-label="选择适用范围"
-          style={{ '--scope-x': pos.x + 'px', '--scope-y': pos.y + 'px' } as any}
-          onKeyDown={
-            /** @param {*} [ev] */ (ev: any) => {
-              if (ev.key !== 'Escape') return;
-              ev.stopPropagation();
-              setOpen(false);
-            }
-          }
+          style={popStyle}
+          onKeyDown={(ev: ReactKeyboardEvent<HTMLDivElement>) => {
+            if (ev.key !== 'Escape') return;
+            ev.stopPropagation();
+            setOpen(false);
+          }}
         >
           <div className="rule-scope-search">
             <svg className="ico" aria-hidden="true" focusable="false">
@@ -307,7 +275,7 @@ export function RuleScopePicker({
               value={q}
               placeholder="搜索分组 / 频道"
               aria-label="搜索分组或频道"
-              onChange={/** @param {*} [ev] */ (ev: any) => setQ(ev.target.value)}
+              onChange={(ev: ChangeEvent<HTMLInputElement>) => setQ(ev.target.value)}
               {...NO_AUTOFILL_PROPS}
             />
           </div>
@@ -317,69 +285,63 @@ export function RuleScopePicker({
               <input
                 type="checkbox"
                 checked={scope.all}
-                onChange={/** @param {*} [ev] */ (ev: any) => toggleAll(ev.target.checked)}
+                onChange={(ev: ChangeEvent<HTMLInputElement>) => toggleAll(ev.target.checked)}
               />
               <span className="rule-scope-name">全部频道</span>
               <span className="rule-scope-hint">含以后新增的频道</span>
             </label>
 
             {!scope.all &&
-              visibleGroups.map(
-                /** @param {*} [g] */ (g: any) => {
-                  const groupOn = scope.groups.includes(g.name);
-                  const isOpen = !!query || expanded.has(g.name);
-                  return (
-                    <div className="rule-scope-group" key={g.name || '__ungrouped'}>
-                      <div className="rule-scope-group-row">
-                        <button
-                          type="button"
-                          className="rule-scope-caret"
-                          aria-expanded={isOpen ? 'true' : 'false'}
-                          aria-label={(isOpen ? '收起' : '展开') + `分组「${g.name || '未分组'}」`}
-                          onClick={() => toggleExpand(g.name)}
-                        >
-                          <svg className="ico" aria-hidden="true" focusable="false">
-                            <use href={isOpen ? '#i-chevron-down' : '#i-chevron-right'} />
-                          </svg>
-                        </button>
-                        <label className="rule-scope-check">
-                          <input
-                            type="checkbox"
-                            checked={groupOn}
-                            onChange={() => toggleGroup(g.name)}
-                          />
-                          <span className="rule-scope-name">{g.name || '未分组'}</span>
-                          <span className="rule-scope-count">{g.feeds.length}</span>
-                        </label>
-                      </div>
-                      {isOpen ? (
-                        <div className="rule-scope-feeds">
-                          {g.feeds.map(
-                            /** @param {*} [f] */ (f: any) => {
-                              const id = Number(f.id);
-                              const on = groupOn || scope.feeds.includes(id);
-                              return (
-                                <label className="rule-scope-feed" key={f.id}>
-                                  <input
-                                    type="checkbox"
-                                    checked={on}
-                                    disabled={groupOn}
-                                    onChange={() => toggleFeed(id)}
-                                  />
-                                  <span className="rule-scope-name">{feedName(f)}</span>
-                                  {groupOn ? (
-                                    <span className="rule-scope-hint">整组已选</span>
-                                  ) : null}
-                                </label>
-                              );
-                            },
-                          )}
-                        </div>
-                      ) : null}
+              visibleGroups.map((g) => {
+                const groupOn = scope.groups.includes(g.name);
+                const isOpen = !!query || expanded.has(g.name);
+                return (
+                  <div className="rule-scope-group" key={g.name || '__ungrouped'}>
+                    <div className="rule-scope-group-row">
+                      <button
+                        type="button"
+                        className="rule-scope-caret"
+                        aria-expanded={isOpen ? 'true' : 'false'}
+                        aria-label={(isOpen ? '收起' : '展开') + `分组「${g.name || '未分组'}」`}
+                        onClick={() => toggleExpand(g.name)}
+                      >
+                        <svg className="ico" aria-hidden="true" focusable="false">
+                          <use href={isOpen ? '#i-chevron-down' : '#i-chevron-right'} />
+                        </svg>
+                      </button>
+                      <label className="rule-scope-check">
+                        <input
+                          type="checkbox"
+                          checked={groupOn}
+                          onChange={() => toggleGroup(g.name)}
+                        />
+                        <span className="rule-scope-name">{g.name || '未分组'}</span>
+                        <span className="rule-scope-count">{g.feeds.length}</span>
+                      </label>
                     </div>
-                  );
-                },
-              )}
+                    {isOpen ? (
+                      <div className="rule-scope-feeds">
+                        {g.feeds.map((f) => {
+                          const id = Number(f.id);
+                          const on = groupOn || scope.feeds.includes(id);
+                          return (
+                            <label className="rule-scope-feed" key={f.id}>
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                disabled={groupOn}
+                                onChange={() => toggleFeed(id)}
+                              />
+                              <span className="rule-scope-name">{feedName(f)}</span>
+                              {groupOn ? <span className="rule-scope-hint">整组已选</span> : null}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
 
             {!scope.all && !visibleGroups.length ? (
               <div className="rule-scope-none">没有匹配的频道</div>
@@ -397,7 +359,7 @@ export function RuleScopePicker({
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => {
-                  onChange(emptyScope());
+                  onChange?.(emptyScope());
                   setExpanded(new Set());
                 }}
               >

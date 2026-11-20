@@ -3,7 +3,7 @@
 /**
  * @param {*} opts
  */
-export function BrandLogo({ className = '' }: any) {
+export function BrandLogo({ className = '' }) {
   return (
     <svg
       className={'brand-logo' + (className ? ' ' + className : '')}

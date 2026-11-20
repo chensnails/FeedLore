@@ -1,7 +1,16 @@
 /* 设置分区元数据（导航、移动端摘要、命令面板共用一份）。
  * group 决定左导航分组；desc 只在移动端列表里显示；keywords 供设置内搜索与 ⌘K 使用。 */
 
-export const SETTINGS_TABS = [
+export interface SettingsTab {
+  name: string;
+  label: string;
+  group: string;
+  icon: string;
+  desc: string;
+  keywords: string;
+}
+
+export const SETTINGS_TABS: SettingsTab[] = [
   {
     name: 'source',
     label: '数据源',
@@ -86,39 +95,30 @@ export const ADMIN_TABS = ['status'];
 // 只读账户只保留「阅读体验 / 账号信息 / 关于」
 export const READONLY_TABS = ['account', 'appearance', 'about'];
 
-export const TAB_BY_NAME = SETTINGS_TABS.reduce(
-  /** @param {*} [m] @param {*} [t] */ (m: any, t: any) => {
-    m[t.name] = t;
-    return m;
-  },
-  {},
-);
+export const TAB_BY_NAME: Record<string, SettingsTab> = SETTINGS_TABS.reduce<
+  Record<string, SettingsTab>
+>((m, t) => {
+  m[t.name] = t;
+  return m;
+}, {});
 
-/**
- * @param {*} [admin]
- * @param {*} [readonly]
- */
-export function visibleTabs(admin: any, readonly: any) {
-  return SETTINGS_TABS.filter(
-    /** @param {*} [t] */ (t: any) => {
-      if (ADMIN_TABS.indexOf(t.name) >= 0 && !admin) return false;
-      if (readonly && READONLY_TABS.indexOf(t.name) < 0) return false;
-      return true;
-    },
-  );
+/** 按角色过滤可见分区。admin / readonly 可选，缺省按普通用户处理。 */
+export function visibleTabs(admin?: boolean, readonly?: boolean): SettingsTab[] {
+  return SETTINGS_TABS.filter((t) => {
+    if (ADMIN_TABS.indexOf(t.name) >= 0 && !admin) return false;
+    if (readonly && READONLY_TABS.indexOf(t.name) < 0) return false;
+    return true;
+  });
 }
 
-/** 搜索匹配 label / desc / keywords / 分组名；空查询返回全部。
- *@param {*} [tabs]
- * @param {*} [query]
- */
-export function matchTabs(tabs: any, query: any) {
+/** 搜索匹配 label / desc / keywords / 分组名；空查询返回全部。 */
+export function matchTabs(tabs: SettingsTab[], query?: string): SettingsTab[] {
   const q = String(query || '')
     .trim()
     .toLowerCase();
   if (!q) return tabs;
   return tabs.filter(
-    /** @param {*} [t] */ (t: any) =>
+    (t) =>
       (t.label + ' ' + t.desc + ' ' + t.keywords + ' ' + t.group).toLowerCase().indexOf(q) >= 0,
   );
 }

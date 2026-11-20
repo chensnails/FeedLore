@@ -9,7 +9,26 @@ import { isOn } from '../kernel/bridge.ts';
 import { applyCardScope, loadFeeds, render } from './feeds.ts';
 import { readerFilterParams, renderReader } from './reader.ts';
 import { activeScrollTop, forgetViewScroll, scrollActiveTop, state } from './state.ts';
+import type { Card, TagCount, ViewTab } from './types.ts';
 import { apiFetch, emitOverlays, emitShell, httpError, toast } from './util.ts';
+
+/** 自动刷新只作用于列表页（阅读 / 卡片），AI 页不参与。 */
+type FreshView = 'reader' | 'cards';
+
+/** /api/entries 首屏响应的相关字段（其余字段忽略）。 */
+interface FreshHeadData {
+  entries?: Card[] | null;
+  hasMore?: boolean;
+  total?: number | string;
+  tags?: TagCount[];
+}
+
+/** 已拉到但还没套用的新首屏。 */
+interface PendingFresh {
+  view: FreshView;
+  data: FreshHeadData;
+  n: number;
+}
 
 /* ============================================================
  * 网页自动刷新
@@ -18,9 +37,9 @@ import { apiFetch, emitOverlays, emitShell, httpError, toast } from './util.ts';
  *   - 用户停在顶部、也没有展开中的文章 → 直接套用
  *   - 已经滚下去了 → 挂个浮标，点了才套用，避免列表在眼皮底下跳
  * ============================================================ */
-export let autoRefreshTimer: any = null;
+export let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 export let autoRefreshLastAt = 0; // 上一次检查的时刻（回到前台时判断要不要补一次）
-export let pendingFresh: any = null; // { view, data, n } 已拉到但还没套用的新内容
+export let pendingFresh: PendingFresh | null = null; // 已拉到但还没套用的新内容
 
 /** 「N 条新内容」浮标的可视图状态，由 src/ui/Overlays.tsx 渲染（v2.1.0 起不再直接改 DOM） */
 export let newPillState = { show: false, text: '' };
@@ -30,7 +49,7 @@ export let newPillState = { show: false, text: '' };
  * @param {*} [text]
  */
 
-function setNewPill(show?: any, text?: any) {
+function setNewPill(show: boolean, text?: string) {
   newPillState = { show, text: text || '' };
   emitOverlays();
 }
@@ -62,7 +81,7 @@ export function scheduleAutoRefresh() {
  *@param {*} [view]
  */
 
-export async function fetchHead(view: any) {
+export async function fetchHead(view: ViewTab): Promise<FreshHeadData> {
   const params = new URLSearchParams();
   const loaded = view === 'reader' ? state.rdEntries.length : state.entries.length;
   const base = view === 'reader' ? state.readerPageSize : state.pageSize;
@@ -91,8 +110,8 @@ export async function fetchHead(view: any) {
  * @param {*} [current]
  */
 
-export function countNewHead(fresh: any, current: any) {
-  const known = new Set(current.map(/** @param {*} [e] */ (e: any) => String(e.id)));
+export function countNewHead(fresh: Card[], current: Card[]) {
+  const known = new Set(current.map(/** @param {*} [e] */ (e) => String(e.id)));
   let n = 0;
   for (const e of fresh) {
     if (known.has(String(e.id))) break;
@@ -110,7 +129,7 @@ export function hideNewPill() {
  *@param {*} opts
  */
 
-export function applyFresh({ view, data }: any) {
+export function applyFresh({ view, data }: Pick<PendingFresh, 'view' | 'data'>) {
   const list = data.entries || [];
   if (view === 'reader') {
     state.rdEntries = list;
@@ -158,7 +177,7 @@ export async function checkForNew() {
     if (state.tab === 'reader' && state.rdScope === 'favorite') return 0;
     if (state.loading || state.rdLoading) return 0;
     const view = state.tab === 'cards' ? 'cards' : 'reader';
-    const current: any = view === 'reader' ? state.rdEntries : state.entries;
+    const current = view === 'reader' ? state.rdEntries : state.entries;
 
     const data = await fetchHead(view);
     const n = countNewHead(data.entries || [], current);

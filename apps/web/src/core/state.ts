@@ -8,7 +8,56 @@
 import { get } from '../kernel/bridge.ts';
 import { EVENT, emit } from '../kernel/events.ts';
 import { state } from '../store/app.ts';
+import type { ReaderScope, SortMode, ThemeMode, ViewMode, ViewTab } from './types.ts';
 import { apiFetch, emitShell, toast } from './util.ts';
+
+/** 设置弹层宿主暴露给 core 的命令面（经能力桥提供，缺失时静默）。 */
+interface LayoutPref {
+  view: ViewMode;
+  tab: ViewTab;
+  collapsedGroups: string[];
+  srcGroupsOpen: string[];
+  accordion: boolean;
+  sections: Record<string, boolean>;
+  sort: SortMode;
+  rdScope: ReaderScope;
+  rdCollapsedGroups: string[];
+  readerSideWidth: number;
+  digestEnabled: boolean;
+  [key: string]: unknown;
+}
+
+interface LayoutValues {
+  view: readonly string[];
+  tab: readonly string[];
+  sort: readonly string[];
+  rdScope: readonly string[];
+  [key: string]: readonly unknown[];
+}
+
+interface ThemeMeta {
+  auto: { ico: string; label: string };
+  light: { ico: string; label: string };
+  dark: { ico: string; label: string };
+  github: { ico: string; label: string };
+  [key: string]: { ico: string; label: string };
+}
+
+interface ThemeDataAttr {
+  auto: string | null;
+  light: string | null;
+  dark: string | null;
+  github: string | null;
+  [key: string]: string | null;
+}
+
+interface SettingsHost {
+  open?: (tab?: string) => void;
+  close?: () => void;
+  setAdminFlag?: (v: boolean) => void;
+  setRoleFlag?: (v: string) => void;
+  setSummary?: (v: string) => void;
+}
 
 /* state 真源已迁至 store/app.ts（Zustand）。此处 re-export 同一个 Proxy：
  * 字段名、读写语义、原地修改（push/add/set）全部逐字不变，core 各模块照常用它。
@@ -23,7 +72,7 @@ export const DEFAULT_READER_PAGE = 40;
 
 /* ---------------- 状态 ----------------
  * 全局可变状态容器：字段会因加载阶段从 null/[] 被替换成任意服务端数据形态，
- * 用 Record<string, any> 声明其动态本质（V3.1 类型化：避免 init 值把字段锁成 never）。
+ * 用精确接口声明其字段（V3.1 类型化：避免 init 值把字段锁成 never）。
  * 各字段的语义见下方注释，读写约定由对应 setter 保证。 */
 /* 字段初始化值已迁至 store/app.ts（Zustand 真源）。
  * 下方各字段语义见 store/app.ts 的同名 initial 字段；本模块保留
@@ -49,7 +98,7 @@ export function activeScrollTop() {
  * @param {*} [behavior]
  */
 
-export function scrollActiveTop(behavior: any = 'auto') {
+export function scrollActiveTop(behavior: ScrollBehavior = 'auto') {
   const el = activeScrollEl();
   if (!el) {
     window.scrollTo({ top: 0, behavior });
@@ -74,7 +123,7 @@ const viewScroll = new Map();
  * @param {*} [tab]
  */
 
-export function rememberViewScroll(tab: any = state.tab) {
+export function rememberViewScroll(tab = state.tab) {
   const el = activeScrollEl();
   if (!el) return;
   const top = Math.max(0, Number(el.scrollTop) || 0);
@@ -87,7 +136,7 @@ export function rememberViewScroll(tab: any = state.tab) {
 /**
  * @param {*} [tab]
  */
-export function forgetViewScroll(tab: any = state.tab) {
+export function forgetViewScroll(tab = state.tab) {
   viewScroll.delete(tab);
 }
 
@@ -95,7 +144,7 @@ export function forgetViewScroll(tab: any = state.tab) {
  * @param {*} [tab]
  */
 
-export function restoreViewScroll(tab: any = state.tab) {
+export function restoreViewScroll(tab = state.tab) {
   if (tab !== state.tab) return;
   const want = viewScroll.get(tab) || 0;
   if (!want) return;
@@ -104,7 +153,7 @@ export function restoreViewScroll(tab: any = state.tab) {
    * @param {*} [el]
    * @param {*} [top]
    */
-  const write = (el: any, top: any) => {
+  const write = (el: Element, top: number) => {
     // 与 scrollActiveTop 同一套兜底：jsdom / 老浏览器没有 Element.scrollTo
     if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: 'auto' });
     else el.scrollTop = top;
@@ -152,7 +201,7 @@ export const READER_SIDE_MAX = 400;
 /** 持久化用的硬边界：非法值（0 / NaN / 串）一律回落默认
  *@param {*} [px]
  */
-export function clampReaderSide(px: any) {
+export function clampReaderSide(px: number | string) {
   const n = Math.round(Number(px));
   if (!Number.isFinite(n) || n <= 0) return READER_SIDE_DEFAULT;
   return Math.min(READER_SIDE_MAX, Math.max(READER_SIDE_MIN, n));
@@ -170,7 +219,7 @@ export function readerSideCap() {
  * @param {*} [px]
  */
 
-export function applyReaderSideWidth(px: any) {
+export function applyReaderSideWidth(px: number | string) {
   const w = Math.min(readerSideCap(), clampReaderSide(px));
   document.documentElement.style.setProperty('--reader-side-w', w + 'px');
   return w;
@@ -180,7 +229,7 @@ export function applyReaderSideWidth(px: any) {
  * @param {*} [px]
  */
 
-export function setReaderSideWidth(px: any) {
+export function setReaderSideWidth(px: number | string) {
   const hard = clampReaderSide(px);
   applyReaderSideWidth(hard);
   if (hard === layoutPref.readerSideWidth) return;
@@ -193,7 +242,7 @@ export function setReaderSideWidth(px: any) {
  * 统一按账号维度持久化到服务端（users.prefs.layout），不再落浏览器 localStorage，
  * 换设备也一致。首屏初值由 server.js 注入的 window.__LAYOUT__ 提供。
  * 单一可信源是 window.__LAYOUT__（缺省回落默认）。 */
-export const LAYOUT_DEFAULTS: Record<string, any> = {
+export const LAYOUT_DEFAULTS: LayoutPref = {
   view: 'grid',
   tab: 'reader',
   collapsedGroups: [],
@@ -206,7 +255,7 @@ export const LAYOUT_DEFAULTS: Record<string, any> = {
   readerSideWidth: READER_SIDE_DEFAULT,
   digestEnabled: true,
 };
-export const LAYOUT_VALUES: Record<string, any> = {
+export const LAYOUT_VALUES: LayoutValues = {
   view: ['grid', 'list'],
   tab: ['reader', 'cards', 'ai'],
   sort: ['new', 'old', 'name'],
@@ -215,47 +264,47 @@ export const LAYOUT_VALUES: Record<string, any> = {
 /**
  * @param {*} [raw]
  */
-export function sanitizeLayoutLocal(raw: any) {
+export function sanitizeLayoutLocal(raw: unknown): LayoutPref {
   const out = Object.assign({}, LAYOUT_DEFAULTS);
-  if (raw && typeof raw === 'object') {
-    if (LAYOUT_VALUES.view.indexOf(raw.view) >= 0) out.view = raw.view;
-    if (LAYOUT_VALUES.tab.indexOf(raw.tab) >= 0) out.tab = raw.tab;
-    if (Array.isArray(raw.collapsedGroups)) {
-      out.collapsedGroups = raw.collapsedGroups
-        .filter(/** @param {*} [g] */ (g: any) => typeof g === 'string')
-        .map(/** @param {*} [g] */ (g: any) => g.slice(0, 40));
+  const r = raw as Partial<LayoutPref> | null;
+  if (r && typeof r === 'object') {
+    if (r.view && LAYOUT_VALUES.view.indexOf(r.view) >= 0) out.view = r.view;
+    if (r.tab && LAYOUT_VALUES.tab.indexOf(r.tab) >= 0) out.tab = r.tab;
+    if (Array.isArray(r.collapsedGroups)) {
+      out.collapsedGroups = r.collapsedGroups
+        .filter((g: unknown): g is string => typeof g === 'string')
+        .map((g: string) => g.slice(0, 40));
     }
     // 数据源面板展开的分组（A 方案默认收起，这里记「显式展开」的组名）
-    if (Array.isArray(raw.srcGroupsOpen)) {
-      out.srcGroupsOpen = raw.srcGroupsOpen
-        .filter(/** @param {*} [g] */ (g: any) => typeof g === 'string')
-        .map(/** @param {*} [g] */ (g: any) => g.slice(0, 40));
+    if (Array.isArray(r.srcGroupsOpen)) {
+      out.srcGroupsOpen = r.srcGroupsOpen
+        .filter((g: unknown): g is string => typeof g === 'string')
+        .map((g: string) => g.slice(0, 40));
     }
-    out.accordion = raw.accordion !== false;
-    if (raw.sections && typeof raw.sections === 'object') {
-      const sec: Record<string, any> = {};
-      Object.keys(raw.sections).forEach(
-        /** @param {*} [k] */ (k: any) => {
-          sec[k] = raw.sections[k] === true;
-        },
-      );
+    out.accordion = r.accordion !== false;
+    if (r.sections && typeof r.sections === 'object') {
+      const src = r.sections;
+      const sec: Record<string, boolean> = {};
+      Object.keys(src).forEach((k: string) => {
+        sec[k] = src[k] === true;
+      });
       out.sections = sec;
     }
-    if (LAYOUT_VALUES.sort.indexOf(raw.sort) >= 0) out.sort = raw.sort;
-    if (LAYOUT_VALUES.rdScope.indexOf(raw.rdScope) >= 0) out.rdScope = raw.rdScope;
+    if (r.sort && LAYOUT_VALUES.sort.indexOf(r.sort) >= 0) out.sort = r.sort;
+    if (r.rdScope && LAYOUT_VALUES.rdScope.indexOf(r.rdScope) >= 0) out.rdScope = r.rdScope;
     // 阅读页频道栏的分组折叠：与设置面板的 collapsedGroups 各存一份，互不影响
-    if (Array.isArray(raw.rdCollapsedGroups)) {
-      out.rdCollapsedGroups = raw.rdCollapsedGroups
-        .filter(/** @param {*} [g] */ (g: any) => typeof g === 'string')
-        .map(/** @param {*} [g] */ (g: any) => g.slice(0, 40));
+    if (Array.isArray(r.rdCollapsedGroups)) {
+      out.rdCollapsedGroups = r.rdCollapsedGroups
+        .filter((g: unknown): g is string => typeof g === 'string')
+        .map((g: string) => g.slice(0, 40));
     }
-    out.readerSideWidth = clampReaderSide(raw.readerSideWidth);
+    out.readerSideWidth = clampReaderSide(r.readerSideWidth ?? READER_SIDE_DEFAULT);
     // 日报对本账号是否开启（与服务端 lib/prefs.js 同一口径：只有显式 false 才关）
-    out.digestEnabled = raw.digestEnabled !== false;
+    out.digestEnabled = r.digestEnabled !== false;
   }
   return out;
 }
-export let layoutPref: Record<string, any> = sanitizeLayoutLocal(window.__LAYOUT__);
+export let layoutPref: LayoutPref = sanitizeLayoutLocal(window.__LAYOUT__);
 
 // 频道栏宽度首屏生效（偏好来自服务端注入，晚一步会让侧栏先按默认宽画一帧再跳）
 applyReaderSideWidth(layoutPref.readerSideWidth);
@@ -288,7 +337,7 @@ export const isWritable = () => state.role !== 'readonly';
 export function applyRoleUI() {
   const admin = isAdmin();
   // 设置弹层 tab 已 React 化：按角色过滤交给宿主（管理员专属 tab 由外壳不再渲染）
-  const host = get('settingsHost');
+  const host = get('settingsHost') as SettingsHost | undefined;
   if (host && host.setAdminFlag) host.setAdminFlag(admin);
   if (host && host.setRoleFlag) host.setRoleFlag(state.role || '');
 }
@@ -331,15 +380,15 @@ export function unlockPageScroll() {
  *@param {*} [tab]
  */
 
-export function openSettings(tab?: any) {
-  const host = get('settingsHost');
+export function openSettings(tab?: string) {
+  const host = get('settingsHost') as SettingsHost | undefined;
   if (host && host.open) {
     host.open(tab);
     return;
   }
   // 设置弹层自 v2.2.0 起按需加载：宿主还没注册时交给入口去拉 chunk，
   // 拉完由 SettingsModal 读取 __settingsPending 补上这次打开。
-  const mount = get('mountSettings');
+  const mount = get('mountSettings') as ((tab?: string) => Promise<unknown>) | undefined;
   if (typeof mount === 'function') {
     const p = mount(tab);
     if (p && p.catch) p.catch(() => toast('设置页面加载失败，请检查网络后重试', false));
@@ -347,17 +396,17 @@ export function openSettings(tab?: any) {
 }
 
 export function closeSettings() {
-  const host = get('settingsHost');
+  const host = get('settingsHost') as SettingsHost | undefined;
   if (host && host.close) host.close();
 }
 
 /** 设置弹层副标题文本（纯计算：React 宿主打开弹层时也要用同一份） */
 export function getSettingsSummary() {
-  const meta = state.feedMeta || {};
-  const total = meta.total || 0;
+  const meta = state.feedMeta;
+  const total = meta?.total || 0;
   if (!total) return '还没有订阅源';
-  const on = meta.enabled || 0;
-  const card = meta.cardEnabled == null ? on : meta.cardEnabled;
+  const on = meta?.enabled || 0;
+  const card = meta?.cardEnabled == null ? on : meta.cardEnabled;
   return `共 ${total} 个订阅源 · 采集开启 ${on} 个 · 卡片展示 ${card} 个`;
 }
 
@@ -365,8 +414,8 @@ export function getSettingsSummary() {
  *@param {*} [text]
  */
 
-export function setSettingsSummary(text: any) {
-  const host = get('settingsHost');
+export function setSettingsSummary(text: string) {
+  const host = get('settingsHost') as SettingsHost | undefined;
   if (host && host.setSummary) host.setSummary(text);
 }
 
@@ -378,8 +427,8 @@ export function setSettingsSummary(text: any) {
 // 4 档：跟随系统 / 浅色 / 暖灰 / 暗黑。
 // 前两档保持原样（dark 是中性偏暖的一档），github 是整包主题，不进「跟随系统」
 // —— 跟随系统只在浅色与暖灰之间切，想要暗黑必须显式选。
-export const THEME_MODES = ['auto', 'light', 'dark', 'github'];
-export const THEME_META: Record<string, any> = {
+export const THEME_MODES: ThemeMode[] = ['auto', 'light', 'dark', 'github'];
+export const THEME_META: ThemeMeta = {
   auto: { ico: 'theme-auto', label: '跟随系统' },
   light: { ico: 'sun', label: '浅色' },
   dark: { ico: 'moon', label: '暖灰' },
@@ -387,25 +436,24 @@ export const THEME_META: Record<string, any> = {
 };
 // 每档主题实际写进 data-theme 的值：github 主题另外用一套 CSS 变量块，
 // 主色固定 GitHub 蓝（不对应 6 套 accent，所以外观页要把主色调板禁掉）。
-export const THEME_DATA_ATTR: Record<string, any> = {
+export const THEME_DATA_ATTR: ThemeDataAttr = {
   auto: null,
   light: 'light',
   dark: 'dark',
   github: 'github',
 };
 // 这些主题自带主色，不随 6 套主色调板变
-export const THEME_FIXED_ACCENT: Record<string, any> = { github: '#1f6feb' };
+export const THEME_FIXED_ACCENT: Record<string, string> = { github: '#1f6feb' };
 // GitHub 主题自带主色：切到它时把当前主色暂存，切回浅/暗时恢复（仅会话内有效，不落本机）
-export let githubKeepAccent: any = null;
+export let githubKeepAccent: string | null = null;
 
 export function prefersDark() {
   return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
 }
 
-export function currentThemeMode() {
-  return appearancePref && THEME_MODES.indexOf(appearancePref.theme) >= 0
-    ? appearancePref.theme
-    : 'auto';
+export function currentThemeMode(): ThemeMode {
+  const t = appearancePref?.theme;
+  return t && (THEME_MODES as string[]).indexOf(t) >= 0 ? (t as ThemeMode) : 'auto';
 }
 
 /**
@@ -413,8 +461,8 @@ export function currentThemeMode() {
  * @param {*} [animate]
  */
 
-export function applyTheme(mode: any, animate: any) {
-  const m = THEME_MODES.indexOf(mode) >= 0 ? mode : 'auto';
+export function applyTheme(mode: ThemeMode | string, animate: boolean) {
+  const m: ThemeMode = (THEME_MODES as string[]).indexOf(mode) >= 0 ? (mode as ThemeMode) : 'auto';
   // auto 只看系统深浅（不出 GitHub），其余三档各自写自己的 CSS 变量块
   const resolved = m === 'auto' ? null : THEME_DATA_ATTR[m];
   const eff = resolved || (prefersDark() ? 'dark' : 'light');
@@ -436,7 +484,10 @@ export function applyTheme(mode: any, animate: any) {
     githubKeepAccent = accent;
     el.setAttribute('data-accent', 'github');
   } else {
-    el.setAttribute('data-accent', APPR_VALUES.accent.indexOf(accent) >= 0 ? accent : 'blue');
+    el.setAttribute(
+      'data-accent',
+      (APPR_VALUES.accent ?? []).indexOf(accent) >= 0 ? accent : 'blue',
+    );
     githubKeepAccent = null;
   }
   el.setAttribute('data-fixed-accent', fixed ? 'github' : '');
@@ -456,7 +507,7 @@ export function applyTheme(mode: any, animate: any) {
   const color = bg || (dark ? '#242424' : '#f4f5f7');
   document
     .querySelectorAll('meta[name="theme-color"]')
-    .forEach(/** @param {*} [tc] */ (tc: any) => tc.setAttribute('content', color));
+    .forEach(/** @param {*} [tc] */ (tc) => tc.setAttribute('content', color));
   emitShell(); // ⋮ 菜单里的夜间模式图标由 React 重绘
 
   // 外观页的主题分段控件已 React 化：选中态由窗口级 __appearanceChanged 事件回流，
@@ -464,9 +515,10 @@ export function applyTheme(mode: any, animate: any) {
 }
 
 export function cycleTheme() {
-  const next: any = THEME_MODES[(THEME_MODES.indexOf(currentThemeMode()) + 1) % THEME_MODES.length];
+  const cur = currentThemeMode() as ThemeMode;
+  const next = THEME_MODES[(THEME_MODES.indexOf(cur) + 1) % THEME_MODES.length]!;
   applyTheme(next, true);
-  toast('主题：' + THEME_META[next].label);
+  toast('主题：' + THEME_META[next]!.label);
 }
 
 try {
@@ -486,7 +538,7 @@ try {
  * ============================================================ */
 export const APPR_STORAGE_KEY = 'feedlore.appearance.v2';
 // 默认值：尺寸类一律中间档，主题跟随系统、主色蓝、正文字体无衬线
-export const APPR_DEFAULTS: Record<string, any> = {
+export const APPR_DEFAULTS: Record<string, string> = {
   theme: 'auto',
   accent: 'blue',
   fontSize: 'm',
@@ -498,7 +550,7 @@ export const APPR_DEFAULTS: Record<string, any> = {
   readerWidth: 'm',
 };
 // 键名 → html 属性名；同时这个属性名就是控件上用来标值的 data 属性名
-export const APPR_ATTR: Record<string, any> = {
+export const APPR_ATTR: Record<string, string> = {
   accent: 'data-accent',
   fontSize: 'data-font-size',
   density: 'data-density',
@@ -508,7 +560,7 @@ export const APPR_ATTR: Record<string, any> = {
   readerFs: 'data-reader-fs',
   readerWidth: 'data-reader-width',
 };
-export const APPR_VALUES: Record<string, any> = {
+export const APPR_VALUES: Record<string, readonly string[]> = {
   theme: ['auto', 'light', 'dark', 'github'],
   accent: ['blue', 'violet', 'teal', 'green', 'amber', 'rose'],
   fontSize: ['s', 'm', 'l'],
@@ -525,11 +577,14 @@ export const APPR_VALUES: Record<string, any> = {
 /**
  * @param {*} [raw]
  */
-export function sanitizeAppearanceLocal(raw: any) {
+export function sanitizeAppearanceLocal(raw: unknown): Record<string, string> {
   const out = Object.assign({}, APPR_DEFAULTS);
-  if (raw && typeof raw === 'object') {
+  const r = raw as Record<string, string> | null;
+  if (r && typeof r === 'object') {
     for (const k of Object.keys(APPR_DEFAULTS)) {
-      if (APPR_VALUES[k] && APPR_VALUES[k].indexOf(raw[k]) >= 0) out[k] = raw[k];
+      const rv = r[k];
+      const allowed = APPR_VALUES[k];
+      if (rv !== undefined && allowed && allowed.indexOf(rv) >= 0) out[k] = rv;
     }
   }
   return out;
@@ -550,13 +605,13 @@ export function readAppearance() {
 }
 
 // 布局仍按账号保存（跨设备一致），外观只落本机，两者不再共用一次写入
-export let prefsSaveTimer: any = null;
+export let prefsSaveTimer: ReturnType<typeof setTimeout> | null = null;
 /* 偏好没存上时必须让用户知道：排序 / 折叠 / 侧栏宽度看起来「改了」，下次刷新却变回去，
  * 用户只会觉得设置自己漂移了。走统一的 apiFetch（写操作 30s 超时、绝不重试），
  * 失败只提示一次，避免连续改几个开关时叠一串 toast。 */
 let prefsFailToast = false;
 export function saveUserPrefs() {
-  clearTimeout(prefsSaveTimer);
+  if (prefsSaveTimer) clearTimeout(prefsSaveTimer);
   prefsSaveTimer = setTimeout(() => {
     apiFetch('/api/prefs', {
       method: 'POST',
@@ -564,7 +619,7 @@ export function saveUserPrefs() {
       body: JSON.stringify({ layout: layoutPref }),
     })
       .then(
-        /** @param {*} [res] */ (res: any) => {
+        /** @param {*} [res] */ (res) => {
           if (res && res.ok) {
             prefsFailToast = false;
             return;
@@ -589,15 +644,21 @@ export function saveUserPrefs() {
  * 渲染层做即时判断（排序、默认范围、频道栏折叠集合）。只写 layoutPref 不回填
  * state 的话，读 state 的一方永远看不到变化 —— 折叠点击「写进去了但界面不动」
  * 就是这么来的（1.7.2 回归）。新增同类项请一并登记在这里。 */
-const LAYOUT_MIRROR = ['sort', 'rdScope', 'rdCollapsedGroups', 'srcGroupsOpen'];
+const LAYOUT_MIRROR: (keyof import('../core/types.ts').AppState)[] = [
+  'sort',
+  'rdScope',
+  'rdCollapsedGroups',
+  'srcGroupsOpen',
+];
 
 /**
  * @param {*} [key]
  * @param {*} [value]
  */
-export function setLayout(key: any, value: any) {
+export function setLayout(key: string, value: unknown) {
   layoutPref = sanitizeLayoutLocal(Object.assign({}, layoutPref, { [key]: value }));
-  if (LAYOUT_MIRROR.indexOf(key) >= 0) state[key] = layoutPref[key];
+  if ((LAYOUT_MIRROR as string[]).indexOf(key) >= 0)
+    (state as unknown as Record<string, unknown>)[key] = layoutPref[key];
   saveUserPrefs();
 }
 
@@ -605,7 +666,7 @@ export function setLayout(key: any, value: any) {
  * @param {*} [pref]
  */
 
-export function saveAppearance(pref: any) {
+export function saveAppearance(pref: Record<string, string>) {
   appearancePref = sanitizeAppearanceLocal(pref);
   try {
     localStorage.setItem(APPR_STORAGE_KEY, JSON.stringify(appearancePref));
@@ -621,11 +682,9 @@ export function saveAppearance(pref: any) {
  *@param {*} [pref]
  */
 
-export function applyAppearance(pref: any) {
+export function applyAppearance(pref: Record<string, string>) {
   const el = document.documentElement;
-  Object.keys(APPR_ATTR).forEach(
-    /** @param {*} [k] */ (k: any) => el.setAttribute(APPR_ATTR[k], pref[k]),
-  );
+  Object.keys(APPR_ATTR).forEach((k) => el.setAttribute(APPR_ATTR[k] ?? '', pref[k] ?? ''));
   emit(EVENT.APPEARANCE);
 }
 
@@ -633,7 +692,7 @@ export function applyAppearance(pref: any) {
  * @param {*} [key]
  * @param {*} [value]
  */
-export function setAppearance(key: any, value: any) {
+export function setAppearance(key: string, value: string) {
   if (!APPR_VALUES[key] || APPR_VALUES[key].indexOf(value) < 0) return;
   const pref = readAppearance();
   pref[key] = value;
@@ -664,19 +723,19 @@ applyAppearance(readAppearance());
   try {
     const v = localStorage.getItem('feedlore.view.v1') || '';
     if (LAYOUT_VALUES.view.indexOf(v) >= 0) {
-      lpref.view = v;
+      lpref.view = v as ViewMode;
       lChanged = true;
     }
     const tb = localStorage.getItem('feedlore.tab.v1') || '';
     if (LAYOUT_VALUES.tab.indexOf(tb) >= 0) {
-      lpref.tab = tb;
+      lpref.tab = tb as ViewTab;
       lChanged = true;
     }
     const cg = JSON.parse(localStorage.getItem('feedlore.collapsedGroups.v1') || 'null');
     if (Array.isArray(cg)) {
       lpref.collapsedGroups = cg
-        .filter(/** @param {*} [g] */ (g: any) => typeof g === 'string')
-        .map(/** @param {*} [g] */ (g: any) => g.slice(0, 40));
+        .filter((g: unknown): g is string => typeof g === 'string')
+        .map((g: string) => g.slice(0, 40));
       lChanged = true;
     }
     const ac = localStorage.getItem('feedlore.reader.accordion.v1');
@@ -695,11 +754,9 @@ applyAppearance(readAppearance());
   if (lChanged) {
     layoutPref = sanitizeLayoutLocal(lpref);
     // 迁移是整体替换 layoutPref 的另一条写入路径，镜像字段要一并回填
-    LAYOUT_MIRROR.forEach(
-      /** @param {*} [k] */ (k: any) => {
-        state[k] = layoutPref[k];
-      },
-    );
+    LAYOUT_MIRROR.forEach((k) => {
+      (state as unknown as Record<string, unknown>)[k] = layoutPref[k];
+    });
     saveUserPrefs();
   }
   try {
@@ -709,7 +766,7 @@ applyAppearance(readAppearance());
       'feedlore.collapsedGroups.v1',
       'feedlore.reader.accordion.v1',
       'feedlore.settings.sections.v1',
-    ].forEach(/** @param {*} [k] */ (k: any) => localStorage.removeItem(k));
+    ].forEach(/** @param {*} [k] */ (k) => localStorage.removeItem(k));
   } catch (_) {
     /* 忽略 */
   }

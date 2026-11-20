@@ -11,6 +11,7 @@
  *  - util.parseHash / writeHash 的门面保留，内部委托给本模块；测试钉的 hash 格式不变。
  */
 import { matchPath } from 'react-router-dom';
+import type { ViewTab } from '../core/types.ts';
 
 /** 路由模式表：path 用 React Router 语法，name 对应 state.tab。 */
 export const ROUTES = Object.freeze([
@@ -21,10 +22,18 @@ export const ROUTES = Object.freeze([
   { path: '/digest', tab: 'ai', art: false }, // 老深链兼容
   { path: '/favorite', tab: 'reader', art: false, scope: 'favorite' },
   { path: '/unread', tab: 'reader', art: false, scope: 'unread' },
-]);
+] as const);
 
 /** 解析 hash（'#/reader/art/x' 或旧式 '#reader/art/x'）为路由匹配结果。 */
-export function matchViewHash(hash: any): any {
+export interface RouteMatch {
+  path: string;
+  tab: ViewTab;
+  art: boolean;
+  scope?: string;
+  params: Record<string, string | undefined>;
+}
+
+export function matchViewHash(hash: string | null | undefined): RouteMatch | null {
   const raw = String(hash || '').replace(/^#\/?/, '');
   if (!raw) return null;
   for (const r of ROUTES) {
@@ -48,7 +57,7 @@ export function matchViewHash(hash: any): any {
 }
 
 /** 生成视图 hash（replace-only 语义由调用方 writeHash 保证）。 */
-export function viewHash(tab: any, artId?: any): string {
+export function viewHash(tab: ViewTab, artId?: string | number | null): string {
   if (tab === 'reader' && artId != null) return '#/reader/art/' + encodeURIComponent(String(artId));
   if (tab === 'cards') return '#/cards';
   if (tab === 'ai') return '#/ai';

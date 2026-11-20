@@ -10,7 +10,15 @@
  */
 
 import { core } from '@core';
+import type { ArticleInline } from '@feedlore/contract';
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+  PointerEvent as ReactPointerEvent,
+  SyntheticEvent as ReactSyntheticEvent,
+} from 'react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Card, EntityId, EntryDetail, ReaderScope, WatchFilter } from '../core/types.ts';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
 import { widthSrcSet } from '../imgSrc.ts';
 import { provide, revoke } from '../kernel/bridge.ts';
@@ -26,9 +34,60 @@ import { Icon } from '../ui/Icon.tsx';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.ts';
 import { OverflowMenu } from '../ui/OverflowMenu.tsx';
 import { ViewNav } from '../ui/ViewNav.tsx';
+import type { ChannelGroup } from './ChannelList.tsx';
 import { ChannelList } from './ChannelList.tsx';
 
 const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
+
+/** 正文块：v1 纯文本块与 v2 结构化块共用的形状（字段都可选，按 t 取用）。 */
+interface BodyBlock {
+  t: string;
+  v?: ArticleInline[];
+  text?: string;
+  src?: string;
+  alt?: string;
+  w?: number;
+  h?: number;
+  level?: 2 | 3;
+  ordered?: boolean;
+  items?: BodyBlock[][];
+  blocks?: BodyBlock[];
+  code?: string;
+  lang?: string;
+  head?: ArticleInline[][];
+  rows?: ArticleInline[][][];
+  img?: { src: string; alt?: string; w?: number; h?: number };
+  caption?: ArticleInline[];
+}
+
+/** ArtBody 的 props：正文用 EntryDetail（列表 / 弹窗取到的是带 content 的详情）。 */
+interface ArtBodyProps {
+  e: EntryDetail;
+  onTag?: (tag: string) => void;
+  onAiTag?: (tag: string) => void;
+  extraActions?: ReactNode;
+}
+
+/** ArtItem 的 props。 */
+interface ArtItemProps {
+  e: Card;
+  expanded: boolean;
+  full?: EntryDetail;
+  bodyErr: boolean;
+  flash: boolean;
+  comfortable: boolean;
+  onToggle: (id: EntityId) => void;
+  onFav: (id: EntityId) => void;
+  onTag: (tag: string) => void;
+  onAiTag: (tag: string) => void;
+  onUnread: (id: EntityId) => void;
+  onRetryBody: (id: EntityId) => void;
+}
+
+interface EmptyAction {
+  label: string;
+  run: () => void;
+}
 
 /* ---------- 正文分层纯函数（自 app.js 迁移，纯函数、不依赖 DOM） ---------- */
 const LONG_LINE = 110;
@@ -41,23 +100,24 @@ const TITLE_LINE_RE = /^\s*(?:名\s*称|标\s*题|主\s*题|题\s*目)\s*[：:]\
  *@param {*} [line]
  */
 
-function splitLongLine(line: any) {
+function splitLongLine(line: string): string[] {
   if (line.length < LONG_LINE) return [line];
-  const spans: any = [];
-  for (const m of line.matchAll(URL_RE)) spans.push([m.index, m.index + m[0].length]);
-  /**
-   * @param {*} [i]
-   */
-  const inUrl = (i: any) => spans.some(/** @param {*} arr */ ([a, b]: any) => i >= a && i < b);
-  const sentences = [];
+  const spans: [number, number][] = [];
+  for (const m of line.matchAll(URL_RE)) {
+    const at = m.index ?? 0;
+    spans.push([at, at + m[0].length]);
+  }
+  const inUrl = (i: number) => spans.some(([a, b]) => i >= a && i < b);
+  const sentences: string[] = [];
   let last = 0;
   for (const m of line.matchAll(BREAK_RE)) {
-    if (inUrl(m.index)) continue;
-    sentences.push(line.slice(last, m.index));
-    last = m.index;
+    const at = m.index ?? 0;
+    if (inUrl(at)) continue;
+    sentences.push(line.slice(last, at));
+    last = at;
   }
   sentences.push(line.slice(last));
-  const out = [];
+  const out: string[] = [];
   let buf = '';
   for (const s of sentences) {
     if (!s.trim()) continue;
@@ -71,11 +131,8 @@ function splitLongLine(line: any) {
   return out.length ? out : [line];
 }
 
-/**
- * @param {*} [text]
- */
-function bodyParagraphs(text: any) {
-  const paras = [];
+function bodyParagraphs(text: string): { cls: string; text: string }[] {
+  const paras: { cls: string; text: string }[] = [];
   for (const raw of text.split('\n')) {
     if (!raw.trim()) continue;
     for (const seg of splitLongLine(raw)) {
@@ -88,25 +145,18 @@ function bodyParagraphs(text: any) {
   return paras;
 }
 
-/**
- * @param {*} [json]
- */
-
-function parseBlocks(json: any) {
+function parseBlocks(json: string | null | undefined): BodyBlock[] | null {
   if (!json) return null;
   try {
-    const a = JSON.parse(json);
-    return Array.isArray(a) && a.length ? a : null;
+    const a = JSON.parse(json) as unknown;
+    return Array.isArray(a) && a.length ? (a as BodyBlock[]) : null;
   } catch (_) {
     return null;
   }
 }
 
 /* ---------- 结构化正文（bodyVersion 2）的纯函数 ---------- */
-/**
- * @param {*} [nodes]
- */
-function inlineText(nodes: any) {
+function inlineText(nodes: ArticleInline[] | null | undefined): string {
   if (!Array.isArray(nodes)) return '';
   let s = '';
   for (const n of nodes) {
@@ -118,18 +168,11 @@ function inlineText(nodes: any) {
   return s;
 }
 
-/**
- * @param {*} [b]
- */
-
-function blockText(b: any) {
+function blockText(b: BodyBlock | null | undefined): string {
   if (!b) return '';
   if (b.t === 'p' || b.t === 'h') return inlineText(b.v);
   if (b.t === 'pre') return String(b.code || '');
-  if (b.t === 'list')
-    return (b.items || [])
-      .map(/** @param {*} [it] */ (it: any) => it.map(blockText).join('\n'))
-      .join('\n');
+  if (b.t === 'list') return (b.items || []).map((it) => it.map(blockText).join('\n')).join('\n');
   if (b.t === 'quote') return (b.blocks || []).map(blockText).join('\n');
   if (b.t === 'table')
     return [...(b.head || []), ...(b.rows || []).flat()].map(inlineText).join('\n');
@@ -137,11 +180,7 @@ function blockText(b: any) {
   return '';
 }
 
-/**
- * @param {*} [b]
- */
-
-function blockHasText(b: any) {
+function blockHasText(b: BodyBlock): boolean {
   return blockText(b).trim().length > 0;
 }
 
@@ -151,12 +190,12 @@ function blockHasText(b: any) {
  * @param {*} [blocks]
  */
 
-function isRichBody(e: any, blocks: any) {
+function isRichBody(e: EntryDetail | Card, blocks: BodyBlock[]): boolean {
   if (Number(e && e.bodyVersion) === 2) return true;
   return (
     !!blocks &&
     blocks.some(
-      /** @param {*} [b] */ (b: any) =>
+      (b) =>
         b &&
         (b.t === 'h' ||
           b.t === 'list' ||
@@ -174,7 +213,7 @@ function isRichBody(e: any, blocks: any) {
  * @param {*} [txt]
  * @param {*} [name]
  */
-function isDuplicateTitleLine(txt: any, name: any) {
+function isDuplicateTitleLine(txt: unknown, name: unknown): boolean {
   const m = String(txt).match(TITLE_LINE_RE);
   return !!(m && (m[1] || '').trim() === String(name || '').trim());
 }
@@ -183,12 +222,12 @@ function isDuplicateTitleLine(txt: any, name: any) {
  *@param {*} [e]
  */
 
-function readerBodyText(e: any) {
-  let t = e.content || e.desc || '';
+function readerBodyText(e: EntryDetail | Card): string {
+  let t = ('content' in e ? e.content : '') || e.desc || '';
   if (!t) return '';
   const first = t.split('\n')[0] || '';
   const m = first.match(/^\s*(?:名\s*称|标\s*题|主\s*题|题\s*目)\s*[：:]\s*(.*)$/);
-  if (m && m[1].trim() === String(e.name || '').trim())
+  if (m && (m[1] || '').trim() === String(e.name || '').trim())
     t = t.slice(first.length).replace(/^\n+/, '');
   return t.trim();
 }
@@ -199,13 +238,13 @@ function readerBodyText(e: any) {
  *@param {*} [e]
  */
 
-export function bodyShowsText(e: any) {
+export function bodyShowsText(e: EntryDetail | null | undefined): boolean {
   if (!e) return false;
   const blocks = parseBlocks(e.bodyJson);
   if (blocks) {
     if (isRichBody(e, blocks)) return blocks.some(blockHasText);
     return blocks.some(
-      /** @param {*} [b] @param {*} [i] */ (b: any, i: any) =>
+      (b, i) =>
         b &&
         b.t !== 'img' &&
         String(b.text || '').trim() &&
@@ -218,7 +257,7 @@ export function bodyShowsText(e: any) {
 /**
  * @param {*} [u]
  */
-const proxied = (u: any) => {
+const proxied = (u: unknown): string => {
   const s = String(u || '');
   if (/^https?:\/\//i.test(s)) return '/api/img?u=' + encodeURIComponent(s);
   // 服务端已改写成代理地址的、以及内嵌图片直接放行；其它协议（javascript: / file: …）一律丢掉
@@ -232,8 +271,18 @@ const proxied = (u: any) => {
  *  v2 块会带 alt 与原始宽高，宽高只用于预留比例，最终尺寸仍由 CSS 决定。
  *@param {*} opts
  */
-function ArtImg({ src, alt, w, h }: any) {
-  const [failed, setFailed] = useState<any>(false);
+function ArtImg({
+  src,
+  alt,
+  w,
+  h,
+}: {
+  src?: string | null;
+  alt?: string | null;
+  w?: number;
+  h?: number;
+}) {
+  const [failed, setFailed] = useState(false);
   const url = proxied(src);
   if (failed || !url || isImgFailed(url)) return null;
   return (
@@ -248,7 +297,9 @@ function ArtImg({ src, alt, w, h }: any) {
       loading="lazy"
       decoding="async"
       title="点击查看大图"
-      onLoad={/** @param {*} [ev] */ (ev: any) => ev.currentTarget.classList.add('img-ready')}
+      onLoad={(ev: ReactSyntheticEvent<HTMLImageElement>) =>
+        ev.currentTarget.classList.add('img-ready')
+      }
       onError={() => {
         markImgFailed(url);
         setFailed(true);
@@ -260,84 +311,80 @@ function ArtImg({ src, alt, w, h }: any) {
 /** 内联节点：只输出文本与语义标签，不接收 HTML 字符串。
  *@param {*} opts
  */
-function Inline({ nodes }: any) {
-  return (nodes || []).map(
-    /** @param {*} [n] @param {*} [i] */ (n: any, i: any) => {
-      if (!n) return null;
-      switch (n.t) {
-        case 'text':
-          return n.v;
-        case 'code':
-          return (
-            <code className="art-code" key={i}>
-              {n.v}
-            </code>
-          );
-        case 'br':
-          return <br key={i} />;
-        case 'a':
-          return safeHref(n.href) ? (
-            <a
-              className="art-link"
-              href={safeHref(n.href)}
-              target="_blank"
-              rel="noopener noreferrer"
-              key={i}
-            >
-              <Inline nodes={n.v} />
-            </a>
-          ) : (
-            <Inline nodes={n.v} key={i} />
-          );
-        case 'strong':
-          return (
-            <strong key={i}>
-              <Inline nodes={n.v} />
-            </strong>
-          );
-        case 'em':
-          return (
-            <em key={i}>
-              <Inline nodes={n.v} />
-            </em>
-          );
-        case 'del':
-          return (
-            <del key={i}>
-              <Inline nodes={n.v} />
-            </del>
-          );
-        default:
-          return null;
-      }
-    },
-  );
+function Inline({ nodes }: { nodes?: ArticleInline[] }) {
+  return (nodes || []).map((n, i) => {
+    if (!n) return null;
+    switch (n.t) {
+      case 'text':
+        return n.v;
+      case 'code':
+        return (
+          <code className="art-code" key={i}>
+            {n.v}
+          </code>
+        );
+      case 'br':
+        return <br key={i} />;
+      case 'a':
+        return safeHref(n.href) ? (
+          <a
+            className="art-link"
+            href={safeHref(n.href)}
+            target="_blank"
+            rel="noopener noreferrer"
+            key={i}
+          >
+            <Inline nodes={n.v} />
+          </a>
+        ) : (
+          <Inline nodes={n.v} key={i} />
+        );
+      case 'strong':
+        return (
+          <strong key={i}>
+            <Inline nodes={n.v} />
+          </strong>
+        );
+      case 'em':
+        return (
+          <em key={i}>
+            <Inline nodes={n.v} />
+          </em>
+        );
+      case 'del':
+        return (
+          <del key={i}>
+            <Inline nodes={n.v} />
+          </del>
+        );
+      default:
+        return null;
+    }
+  });
 }
 
 /** 块级节点。列表 / 引用内部递归复用；连续图片合并成图集。
  *@param {*} opts
  */
-function RichBlocks({ blocks }: any) {
-  const out = [];
+function RichBlocks({ blocks }: { blocks: BodyBlock[] }) {
+  const out: ReactNode[] = [];
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
     if (b && b.t === 'img') {
-      const grp = [];
-      while (i < blocks.length && blocks[i] && blocks[i].t === 'img') {
-        grp.push(blocks[i]);
+      const grp: BodyBlock[] = [];
+      while (i < blocks.length && blocks[i]?.t === 'img') {
+        grp.push(blocks[i]!);
         i++;
       }
       i--;
       out.push(
         grp.length === 1 ? (
-          <ArtImg src={grp[0].src} alt={grp[0].alt} w={grp[0].w} h={grp[0].h} key={'r' + i} />
+          <ArtImg src={grp[0]!.src} alt={grp[0]!.alt} w={grp[0]!.w} h={grp[0]!.h} key={'r' + i} />
         ) : (
           <div className="art-imgs" key={'r' + i}>
-            {grp.map(
-              /** @param {*} [im] @param {*} [k] */ (im: any, k: any) => (
-                <ArtImg src={im.src} alt={im.alt} w={im.w} h={im.h} key={k} />
-              ),
-            )}
+            {grp.map((im, k) => (
+              <ArtImg src={im.src} alt={im.alt} w={im.w} h={im.h} key={k} />
+            ))}
           </div>
         ),
       );
@@ -369,13 +416,11 @@ function RichBlocks({ blocks }: any) {
         const Tag = b.ordered ? 'ol' : 'ul';
         out.push(
           <Tag className="art-list" key={'r' + i}>
-            {(b.items || []).map(
-              /** @param {*} [item] @param {*} [k] */ (item: any, k: any) => (
-                <li key={k}>
-                  <RichBlocks blocks={item} />
-                </li>
-              ),
-            )}
+            {(b.items || []).map((item, k) => (
+              <li key={k}>
+                <RichBlocks blocks={item} />
+              </li>
+            ))}
           </Tag>,
         );
         break;
@@ -403,30 +448,24 @@ function RichBlocks({ blocks }: any) {
               {head.length ? (
                 <thead>
                   <tr>
-                    {head.map(
-                      /** @param {*} [cell] @param {*} [k] */ (cell: any, k: any) => (
-                        <th key={k}>
-                          <Inline nodes={cell} />
-                        </th>
-                      ),
-                    )}
+                    {head.map((cell, k) => (
+                      <th key={k}>
+                        <Inline nodes={cell} />
+                      </th>
+                    ))}
                   </tr>
                 </thead>
               ) : null}
               <tbody>
-                {rows.map(
-                  /** @param {*} [row] @param {*} [ri] */ (row: any, ri: any) => (
-                    <tr key={ri}>
-                      {row.map(
-                        /** @param {*} [cell] @param {*} [ci] */ (cell: any, ci: any) => (
-                          <td key={ci}>
-                            <Inline nodes={cell} />
-                          </td>
-                        ),
-                      )}
-                    </tr>
-                  ),
-                )}
+                {rows.map((row, ri) => (
+                  <tr key={ri}>
+                    {row.map((cell, ci) => (
+                      <td key={ci}>
+                        <Inline nodes={cell} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>,
@@ -465,10 +504,10 @@ function RichBlocks({ blocks }: any) {
  *  extraActions：弹窗会把「收藏 / 在文章页查看」也塞进这条动作行，保证一个弹窗只有一排按钮。
  *@param {*} opts
  */
-export function ArtBody({ e, onTag, onAiTag, extraActions }: any) {
+export function ArtBody({ e, onTag, onAiTag, extraActions }: ArtBodyProps) {
   const s = S();
-  const fmtFull = /** @type {(d?: any) => any} */ (s.fmtFull || ((d: any) => (d ? String(d) : '')));
-  const parts = [];
+  const fmtFull = s.fmtFull || ((d: unknown) => (d ? String(d) : ''));
+  const parts: ReactNode[] = [];
   /* 单条目 AI 动作条放在正文之前 —— 也就是标题行的正下方。
    * 文章页与卡片详情共用这个 ArtBody，一处生效两处；早先挂在正文末尾，
    * 要读完整篇才看得见入口（用户反馈后调整，别再挪回底部）。 */
@@ -485,11 +524,11 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }: any) {
     } else {
       let i = 0;
       while (i < blocks.length) {
-        const b = blocks[i];
+        const b = blocks[i]!;
         if (b.t === 'img') {
-          const grp = [];
-          while (i < blocks.length && blocks[i].t === 'img') {
-            grp.push(blocks[i].src);
+          const grp: string[] = [];
+          while (i < blocks.length && blocks[i]?.t === 'img') {
+            grp.push(blocks[i]!.src || '');
             i++;
           }
           parts.push(
@@ -497,11 +536,9 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }: any) {
               <ArtImg src={grp[0]} key={'b' + i} />
             ) : (
               <div className="art-imgs" key={'b' + i}>
-                {grp.map(
-                  /** @param {*} [src] @param {*} [k] */ (src: any, k: any) => (
-                    <ArtImg src={src} key={k} />
-                  ),
-                )}
+                {grp.map((src, k) => (
+                  <ArtImg src={src} key={k} />
+                ))}
               </div>
             ),
           );
@@ -512,13 +549,11 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }: any) {
           }
           parts.push(
             <div className="art-text" key={'b' + i}>
-              {bodyParagraphs(b.text).map(
-                /** @param {*} [p] @param {*} [k] */ (p: any, k: any) => (
-                  <p className={p.cls || undefined} key={k}>
-                    {p.text}
-                  </p>
-                ),
-              )}
+              {bodyParagraphs(b.text || '').map((p, k) => (
+                <p className={p.cls || undefined} key={k}>
+                  {p.text}
+                </p>
+              ))}
             </div>,
           );
           i++;
@@ -532,18 +567,17 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }: any) {
         </div>,
       );
   } else {
-    const imgs = Array.isArray(e.images) && e.images.length ? e.images : e.image ? [e.image] : [];
+    const imgs: string[] =
+      Array.isArray(e.images) && e.images.length ? e.images : e.image ? [e.image] : [];
     if (imgs.length) {
       parts.push(
         imgs.length === 1 ? (
           <ArtImg src={imgs[0]} key="img" />
         ) : (
           <div className="art-imgs" key="img">
-            {imgs.map(
-              /** @param {*} [src] @param {*} [k] */ (src: any, k: any) => (
-                <ArtImg src={src} key={k} />
-              ),
-            )}
+            {imgs.map((src, k) => (
+              <ArtImg src={src} key={k} />
+            ))}
           </div>
         ),
       );
@@ -552,13 +586,11 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }: any) {
     parts.push(
       text ? (
         <div className="art-text" key="text">
-          {bodyParagraphs(text).map(
-            /** @param {*} [p] @param {*} [k] */ (p: any, k: any) => (
-              <p className={p.cls || undefined} key={k}>
-                {p.text}
-              </p>
-            ),
-          )}
+          {bodyParagraphs(text).map((p, k) => (
+            <p className={p.cls || undefined} key={k}>
+              {p.text}
+            </p>
+          ))}
         </div>
       ) : (
         <div className="art-text art-text-empty" key="text">
@@ -583,19 +615,17 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }: any) {
   if (e.tags && e.tags.length) {
     parts.push(
       <div className="art-tags" key="tags">
-        {e.tags.map(
-          /** @param {*} [t] */ (t: any) => (
-            <button
-              className="mini-tag"
-              type="button"
-              data-tag={t}
-              key={t}
-              onClick={() => onTag(t)}
-            >
-              #{t}
-            </button>
-          ),
-        )}
+        {e.tags.map((t) => (
+          <button
+            className="mini-tag"
+            type="button"
+            data-tag={t}
+            key={t}
+            onClick={() => onTag?.(t)}
+          >
+            #{t}
+          </button>
+        ))}
       </div>,
     );
   }
@@ -604,19 +634,17 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }: any) {
     parts.push(
       <div className="art-tags art-tags-ai" key="aiTags">
         <span className="art-tags-label">AI 标签</span>
-        {e.aiTags.map(
-          /** @param {*} [t] */ (t: any) => (
-            <button
-              className="mini-tag mini-tag-ai"
-              type="button"
-              data-tag={t}
-              key={t}
-              onClick={() => (onAiTag || onTag)(t)}
-            >
-              #{t}
-            </button>
-          ),
-        )}
+        {e.aiTags.map((t) => (
+          <button
+            className="mini-tag mini-tag-ai"
+            type="button"
+            data-tag={t}
+            key={t}
+            onClick={() => (onAiTag || onTag)?.(t)}
+          >
+            #{t}
+          </button>
+        ))}
       </div>,
     );
   }
@@ -632,7 +660,7 @@ function useArticleListPrefs() {
     const a = (S().getAppearance && S().getAppearance()) || {};
     return a.listDensity !== 'compact';
   };
-  const [comfortable, setComfortable] = useState<any>(read);
+  const [comfortable, setComfortable] = useState<boolean>(read);
   useEffect(() => {
     const sync = () => setComfortable(read());
     return on(EVENT.APPEARANCE, sync);
@@ -644,216 +672,200 @@ function useArticleListPrefs() {
  *  做成 memo：每次 __readerTick 都会把整列 entries 重新 map 一遍，而条目对象只在
  *  状态真的变化时才换新（core/reader.ts 的 applyEntryFlag / ui.ts 的 cardSetFlag 同口径），
  *  所以没变的那几百条不必跟着重新渲染。 */
-const ArtItem = memo(
-  /** @param {*} opts */
-  function ArtItem({
-    e,
-    expanded,
-    full,
-    bodyErr,
-    flash,
-    comfortable,
-    onToggle,
-    onFav,
-    onTag,
-    onAiTag,
-    onUnread,
-    onRetryBody,
-  }: any) {
-    const s = S();
-    const src = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
-    const fmtFull = /** @type {(d?: any) => any} */ (
-      s.fmtFull || ((d: any) => (d ? String(d) : ''))
-    );
-    const fmtDate = /** @type {(d?: any) => any} */ (
-      s.fmtDate || ((d: any) => (d ? String(d) : ''))
-    );
-    const fav = !!e.isFavorite;
-    /* 未读态此前只有一个 aria-hidden 的 6px 圆点 + 字重差，读屏完全听不出来。
+const ArtItem = memo(function ArtItem({
+  e,
+  expanded,
+  full,
+  bodyErr,
+  flash,
+  comfortable,
+  onToggle,
+  onFav,
+  onTag,
+  onAiTag,
+  onUnread,
+  onRetryBody,
+}: ArtItemProps) {
+  const s = S();
+  const src = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
+  const fmtFull = s.fmtFull || ((d: unknown) => (d ? String(d) : ''));
+  const fmtDate = s.fmtDate || ((d: unknown) => (d ? String(d) : ''));
+  const fav = !!e.isFavorite;
+  /* 未读态此前只有一个 aria-hidden 的 6px 圆点 + 字重差，读屏完全听不出来。
      把标题 / 来源 / 时间 / 未读 / 收藏拼进按钮的可访问名，视觉冗余保持不变；
      aria-label 会取代内部文本的朗读，所以这里要把信息补全而不是只写「未读」。 */
-    const ariaLabel = [
-      e.name,
-      src,
-      fmtDate(e.date),
-      e.isRead ? '已读' : '未读',
-      fav ? '已收藏' : '',
-    ]
-      .filter(Boolean)
-      .join('，');
-    /* 缩略图：列表接口本来就把首图放在 e.image（已走 /api/img 代理），只是以前没渲染。
+  const ariaLabel = [e.name, src, fmtDate(e.date), e.isRead ? '已读' : '未读', fav ? '已收藏' : '']
+    .filter(Boolean)
+    .join('，');
+  /* 缩略图：列表接口本来就把首图放在 e.image（已走 /api/img 代理），只是以前没渲染。
      展开后让位给正文（正文自己会出图），加载失败退成纯文字行 —— 不留一个灰框。
      失败态记在组件本地：条目对象换新时（已读 / 收藏）不该把失败的图又试一遍。
      「紧凑」密度直接不渲染 <img>：不只是藏起来，连首图请求都不发。 */
-    const [imgFailed, setImgFailed] = useState<any>(false);
-    const thumb =
-      !expanded && comfortable && e.image && !imgFailed && !isImgFailed(e.image) ? e.image : null;
-    /* 摘要来自抓取时压平的 description（纯文本），展开后正文已经在读，不再重复一遍 */
-    const desc = !expanded && comfortable && e.desc ? String(e.desc) : '';
-    /* 紧凑密度 = 单行清单：标题单行省略，来源与时间并到同一行。
+  const [imgFailed, setImgFailed] = useState(false);
+  const thumb =
+    !expanded && comfortable && e.image && !imgFailed && !isImgFailed(e.image) ? e.image : null;
+  /* 摘要来自抓取时压平的 description（纯文本），展开后正文已经在读，不再重复一遍 */
+  const desc = !expanded && comfortable && e.desc ? String(e.desc) : '';
+  /* 紧凑密度 = 单行清单：标题单行省略，来源与时间并到同一行。
      展开的那条恢复普通行式排版，别让正在读的文章标题也被截成一行。 */
-    const lineMode = !comfortable && !expanded;
-    // has-thumb 让样式知道图占了右下角：动作按钮要垫一层暗底，否则压在亮图上就看不见了
-    const cls =
-      'art-item' +
-      (e.isRead ? ' is-read' : ' is-unread') +
-      (fav ? ' is-fav' : '') +
-      (expanded ? ' open' : '') +
-      (thumb ? ' has-thumb' : '') +
-      (desc ? ' has-sum' : '') +
-      (lineMode ? ' is-line' : '') +
-      (flash ? ' is-flash' : '');
+  const lineMode = !comfortable && !expanded;
+  // has-thumb 让样式知道图占了右下角：动作按钮要垫一层暗底，否则压在亮图上就看不见了
+  const cls =
+    'art-item' +
+    (e.isRead ? ' is-read' : ' is-unread') +
+    (fav ? ' is-fav' : '') +
+    (expanded ? ' open' : '') +
+    (thumb ? ' has-thumb' : '') +
+    (desc ? ' has-sum' : '') +
+    (lineMode ? ' is-line' : '') +
+    (flash ? ' is-flash' : '');
 
-    /* 收起后的滚动在 core（readerCollapseArt → scrollReaderToArt）里做：
+  /* 收起后的滚动在 core（readerCollapseArt → scrollReaderToArt）里做：
      只动 .reader-main，且按每帧真实布局修正；组件里不再碰原生 scrollIntoView。 */
-    const toggle = () => {
-      onToggle(e.id);
-    };
-    let inner: any = null;
-    if (expanded) {
-      if (full) inner = <ArtBody e={full} onTag={onTag} onAiTag={onAiTag} />;
-      else if (bodyErr) {
-        inner = (
-          <div className="art-inner">
-            <div className="hint">
-              正文加载失败
-              <button type="button" className="btn btn-sm" onClick={() => onRetryBody(e.id)}>
-                重试
-              </button>
-            </div>
+  const toggle = () => {
+    onToggle(e.id);
+  };
+  let inner = null;
+  if (expanded) {
+    if (full) inner = <ArtBody e={full} onTag={onTag} onAiTag={onAiTag} />;
+    else if (bodyErr) {
+      inner = (
+        <div className="art-inner">
+          <div className="hint">
+            正文加载失败
+            <button type="button" className="btn btn-sm" onClick={() => onRetryBody(e.id)}>
+              重试
+            </button>
           </div>
-        );
-      } else
-        inner = (
-          <div className="art-inner">
-            <div className="art-loading">
-              <i />
-              <i />
-              <i />
-            </div>
+        </div>
+      );
+    } else
+      inner = (
+        <div className="art-inner">
+          <div className="art-loading">
+            <i />
+            <i />
+            <i />
           </div>
-        );
-    }
+        </div>
+      );
+  }
 
-    return (
-      <article className={cls} data-id={e.id}>
-        <div className="art-row">
-          <button
-            className="art-head"
-            type="button"
-            aria-expanded={expanded ? 'true' : 'false'}
-            aria-label={ariaLabel}
-            onClick={toggle}
-          >
-            <span className="art-dot" aria-hidden="true" />
-            <svg className="art-caret" aria-hidden="true" focusable="false">
-              <use href="#i-chevron-right" />
-            </svg>
-            {/* 标题与来源/时间竖排成一栏：右边留给缩略图，底部只留一行元信息，
+  return (
+    <article className={cls} data-id={e.id}>
+      <div className="art-row">
+        <button
+          className="art-head"
+          type="button"
+          aria-expanded={expanded ? 'true' : 'false'}
+          aria-label={ariaLabel}
+          onClick={toggle}
+        >
+          <span className="art-dot" aria-hidden="true" />
+          <svg className="art-caret" aria-hidden="true" focusable="false">
+            <use href="#i-chevron-right" />
+          </svg>
+          {/* 标题与来源/时间竖排成一栏：右边留给缩略图，底部只留一行元信息，
               与「标题 3 行 + 图 + 时间」的资讯流排版一致。 */}
-            <span className="art-text">
-              <span className="art-title">{e.name}</span>
-              {desc ? <span className="art-sum">{desc}</span> : null}
-              <span className="art-meta">
-                {src ? <span className="src-pill">{src}</span> : null}
-                {e.size ? <span className="art-size">{e.size}</span> : null}
-                <span className="art-date" title={fmtFull(e.date)}>
-                  {fmtDate(e.date)}
-                </span>
+          <span className="art-text">
+            <span className="art-title">{e.name}</span>
+            {desc ? <span className="art-sum">{desc}</span> : null}
+            <span className="art-meta">
+              {src ? <span className="src-pill">{src}</span> : null}
+              {e.size ? <span className="art-size">{e.size}</span> : null}
+              <span className="art-date" title={fmtFull(e.date)}>
+                {fmtDate(e.date)}
               </span>
             </span>
-            {thumb ? (
-              <span className="art-thumb">
-                <img
-                  src={thumb}
-                  srcSet={widthSrcSet(thumb, [200, 400])}
-                  sizes="104px"
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  onError={() => {
-                    markImgFailed(e.image);
-                    setImgFailed(true);
-                  }}
-                />
-              </span>
-            ) : null}
-          </button>
-          <span className="art-acts">
-            {/* 收起这篇：读到一半时的退出按钮。标题行本身也能点（同一个 toggle），
+          </span>
+          {thumb ? (
+            <span className="art-thumb">
+              <img
+                src={thumb}
+                srcSet={widthSrcSet(thumb, [200, 400])}
+                sizes="104px"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={() => {
+                  markImgFailed(e.image);
+                  setImgFailed(true);
+                }}
+              />
+            </span>
+          ) : null}
+        </button>
+        <span className="art-acts">
+          {/* 收起这篇：读到一半时的退出按钮。标题行本身也能点（同一个 toggle），
               但滚了几屏之后没人会想到「再点一次标题」，显式按钮才让退出路径看得见。 */}
-            {expanded ? (
-              <button
-                className="art-star art-collapse"
-                type="button"
-                aria-label="收起这篇"
-                title="收起这篇"
-                onClick={
-                  /** @param {*} [ev] */ (ev: any) => {
-                    ev.stopPropagation();
-                    toggle();
-                  }
-                }
-              >
-                <Icon n="chevrons-up" />
-              </button>
-            ) : null}
+          {expanded ? (
             <button
-              className="art-star"
+              className="art-star art-collapse"
               type="button"
-              data-fav={e.id}
-              aria-pressed={fav ? 'true' : 'false'}
-              aria-label={fav ? '取消收藏' : '收藏'}
-              title={fav ? '取消收藏' : '收藏这篇'}
+              aria-label="收起这篇"
+              title="收起这篇"
               onClick={
-                /** @param {*} [ev] */ (ev: any) => {
+                /** @param {*} [ev] */ (ev) => {
                   ev.stopPropagation();
-                  onFav(e.id);
+                  toggle();
                 }
               }
             >
-              <Icon n={fav ? 'star' : 'star-o'} />
+              <Icon n="chevrons-up" />
             </button>
-            {e.isRead ? (
-              <button
-                className="art-star art-unread"
-                type="button"
-                data-unread={e.id}
-                aria-label="标为未读"
-                title="标为未读"
-                onClick={
-                  /** @param {*} [ev] */ (ev: any) => {
-                    ev.stopPropagation();
-                    onUnread(e.id);
-                  }
+          ) : null}
+          <button
+            className="art-star"
+            type="button"
+            data-fav={e.id}
+            aria-pressed={fav ? 'true' : 'false'}
+            aria-label={fav ? '取消收藏' : '收藏'}
+            title={fav ? '取消收藏' : '收藏这篇'}
+            onClick={
+              /** @param {*} [ev] */ (ev) => {
+                ev.stopPropagation();
+                onFav(e.id);
+              }
+            }
+          >
+            <Icon n={fav ? 'star' : 'star-o'} />
+          </button>
+          {e.isRead ? (
+            <button
+              className="art-star art-unread"
+              type="button"
+              data-unread={e.id}
+              aria-label="标为未读"
+              title="标为未读"
+              onClick={
+                /** @param {*} [ev] */ (ev) => {
+                  ev.stopPropagation();
+                  onUnread(e.id);
                 }
-              >
-                <Icon n="circle" />
-              </button>
-            ) : null}
-          </span>
-        </div>
-        <div className="art-body" hidden={!expanded}>
-          {inner}
-        </div>
-      </article>
-    );
-  },
-);
+              }
+            >
+              <Icon n="circle" />
+            </button>
+          ) : null}
+        </span>
+      </div>
+      <div className="art-body" hidden={!expanded}>
+        {inner}
+      </div>
+    </article>
+  );
+});
 
 /* ---------- 频道栏宽度分隔条 ----------
  * 拖拽期间只写 :root 上的 --reader-side-w（一次拖拽几十帧，走 state 会把整棵阅读页重渲染），
  * 松手才落一次账号偏好；双击复位默认宽度；方向键微调（键盘也要能调，不能只有鼠标）。 */
 function ReaderSideResize() {
-  const dragRef: any = useRef<any>(null);
+  const dragRef = useRef<number | null>(null);
   // 当前宽度只用于 aria-valuenow：拖动时直接写 CSS 变量（不走 React），
   // 所以这里同步维护一份，键盘调整后读屏能立刻读到新值。
-  const [width, setWidth] = useState<any>(() => S().getReaderSideWidth());
+  const [width, setWidth] = useState<number>(() => S().getReaderSideWidth());
 
-  /**
-   * @param {*} [ev]
-   */
-  const onPointerDown = (ev: any) => {
+  const onPointerDown = (ev: ReactPointerEvent<HTMLDivElement>) => {
     // 移动端抽屉宽度由 CSS 的 min(272px,84vw) 决定，拖了也没意义
     if (window.innerWidth <= 720) return;
     const s = S();
@@ -864,10 +876,7 @@ function ReaderSideResize() {
     // 量不到（宽度为 0，如无布局的测试环境）时以偏好值起算
     const startW = measured > 0 ? measured : s.getReaderSideWidth();
     dragRef.current = startW;
-    /**
-     * @param {*} [e]
-     */
-    const move = (e: any) => {
+    const move = (e: PointerEvent) => {
       const w = Math.min(
         s.readerSideCap(),
         Math.max(s.READER_SIDE_MIN, startW + (e.clientX - startX)),
@@ -895,10 +904,7 @@ function ReaderSideResize() {
     s.toast('频道栏宽度已恢复默认');
   };
 
-  /**
-   * @param {*} [ev]
-   */
-  const onKeyDown = (ev: any) => {
+  const onKeyDown = (ev: ReactKeyboardEvent<HTMLDivElement>) => {
     const s = S();
     const step = 16;
     const cur = s.getReaderSideWidth();
@@ -941,19 +947,19 @@ function ReaderSideResize() {
 export function ReaderView() {
   const searchName = useNoAutofillName('reader-q');
   const s = S();
-  const [, bump] = useState<any>(0);
-  const searchRef: any = useRef<any>(null);
-  const debounceRef: any = useRef<any>(null);
+  const [, bump] = useState(0);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // 合并后第一行（≡频道 / 标题 / 文章动作 / 搜索 / ⋮）即吸顶条，由其写入 --topbar-h
-  const headRef: any = useRef<any>(null);
+  const headRef = useRef<HTMLDivElement | null>(null);
   // 窄屏（≤720px）搜索框默认收起，标题栏里只留一个放大镜按钮 —— 一整条搜索框占掉
   // 手机上最金贵的一行，而它大部分时间是空的。桌面不受影响（CSS 里按钮隐藏、搜索框常驻）。
-  const [searchOpen, setSearchOpen] = useState<any>(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   // 列表密度（外观偏好，只存本机）：改变的是 DOM 结构，订阅事件后重绘整列
   const listComfortable = useArticleListPrefs();
 
   useEffect(() => {
-    const onTick = () => bump(/** @param {*} [x] */ (x: any) => x + 1);
+    const onTick = () => bump((x) => x + 1);
     return on(EVENT.READER, onTick);
   }, []);
 
@@ -990,38 +996,34 @@ export function ReaderView() {
 
   const st = (s && s.state) || {};
   const writable = !!(s && s.isWritable ? s.isWritable() : true);
-  const feeds: any = st.feedList || [];
-  const entries: any = st.rdEntries || [];
+  const feeds = st.feedList || [];
+  const entries = st.rdEntries || [];
   const rawFlags = st.rdFlags || { total: 0, unread: 0, favorite: 0 };
   const flagsKey = `${rawFlags.total}|${rawFlags.unread}|${rawFlags.favorite}|${rawFlags.watching ?? ''}|${rawFlags.blocked ?? ''}`;
   // D：标记仅在计数变化时重算，避免每次 tick 重建对象导致侧栏无谓重渲染
   const flags = useMemo(() => rawFlags, [flagsKey]);
-  const expanded = st.rdExpanded || new Set();
-  const bodyMap = st.rdBody || new Map();
-  const bodyErrSet = st.rdBodyErr || new Set();
+  const expanded = st.rdExpanded || new Set<number | string>();
+  const bodyMap = st.rdBody || new Map<number | string, EntryDetail>();
+  const bodyErrSet = st.rdBodyErr || new Set<number | string>();
   const accordionOn = !!(s && s.readerAccordionOn && s.readerAccordionOn());
   const flashId = st.rdFlashId == null ? null : String(st.rdFlashId);
 
   // 频道栏：分组与折叠状态一次算好，头部「全部折叠」按钮与列表必须同源
   // D：分组 / 折叠只在订阅源或折叠集合变化时重算，避免每次阅读页 tick 都重建整条侧栏
-  const grouped = useMemo(
+  const grouped: ChannelGroup[] = useMemo(
     () => (s.groupFeeds ? s.groupFeeds(feeds) : [{ name: '', feeds }]),
     [st.feedList],
   );
   const collapseKey = JSON.stringify(st.rdCollapsedGroups || []);
   const collapsed = useMemo(
-    () => (s.readerCollapsedGroups ? s.readerCollapsedGroups() : new Set()),
+    () => (s.readerCollapsedGroups ? s.readerCollapsedGroups() : new Set<string>()),
     [collapseKey],
   );
-  const hasGroups = grouped.some(/** @param {*} [g] */ (g: any) => g.name);
-  const allCollapsed =
-    hasGroups && grouped.every(/** @param {*} [g] */ (g: any) => collapsed.has(g.name || ''));
+  const hasGroups = grouped.some((g) => g.name);
+  const allCollapsed = hasGroups && grouped.every((g) => collapsed.has(g.name || ''));
 
   // 标题
-  const cur =
-    st.rdFeedId == null
-      ? null
-      : feeds.find(/** @param {*} [f] */ (f: any) => String(f.id) === String(st.rdFeedId));
+  const cur = st.rdFeedId == null ? null : feeds.find((f) => String(f.id) === String(st.rdFeedId));
   let title = '全部文章';
   if (cur)
     title = s.shortFeedName
@@ -1035,12 +1037,12 @@ export function ReaderView() {
   if (st.rdTag) title += ` · ${st.rdTag}`;
   else if (st.rdAiTag) title += ` · AI ${st.rdAiTag}`;
 
-  const hasUnread = entries.some(/** @param {*} [e] */ (e: any) => !e.isRead);
+  const hasUnread = entries.some((e) => !e.isRead);
   const anyExpanded = expanded.size > 0;
   const q = st.rdQ || '';
   // 搜索框本身是非受控的（打字不被抢光标）；草稿只用于「清除」按钮的即时显隐，
   // 否则要等 280ms 防抖请求回来、q 变了、按钮才出现。
-  const [qDraft, setQDraft] = useState<any>(q);
+  const [qDraft, setQDraft] = useState<string>(q);
 
   // 别处带来的搜索词（命令面板 / 卡片页跳转）要让框是展开的，否则关键词在生效、框却收着
   useEffect(() => {
@@ -1066,7 +1068,7 @@ export function ReaderView() {
   const firstLoad = !!st.rdLoading && !entries.length;
 
   let emptyMsg = '';
-  let emptyAction: any = null;
+  let emptyAction: EmptyAction | null = null;
   if (!entries.length && !firstLoad) {
     if (st.rdReadError) {
       emptyMsg = st.rdReadErrorMsg || '加载失败';
@@ -1077,7 +1079,7 @@ export function ReaderView() {
     } else if (st.rdTag || st.rdAiTag) {
       const t = st.rdAiTag || st.rdTag;
       emptyMsg = `「${t}」标签下暂无文章`;
-      emptyAction = { label: '清除标签筛选', run: () => s.readerSetTag(null, !!st.rdAiTag) };
+      emptyAction = { label: '清除标签筛选', run: () => s.readerSetTag('', !!st.rdAiTag) };
     } else if (st.rdWatch === 'watch') {
       emptyMsg = writable
         ? '还没有命中的文章；在「设置 → 规则」里配置关键词，保存后点「应用到已有文章」'
@@ -1103,11 +1105,8 @@ export function ReaderView() {
     }
   }
 
-  /**
-   * @param {*} [ev]
-   */
-  const onSearchInput = (ev: any) => {
-    const v = ev.target.value;
+  const onSearchInput = (ev: ReactSyntheticEvent<HTMLInputElement>) => {
+    const v = ev.currentTarget.value;
     const box = searchRef.current;
     if (box) box.dataset.hasval = v ? '1' : '';
     // setQDraft 本身就会触发重绘（清除按钮的显隐读它），不必再 bump 一次
@@ -1125,15 +1124,12 @@ export function ReaderView() {
     }
     setQDraft('');
     if (s.readerSearch) s.readerSearch('');
-    bump(/** @param {*} [x] */ (x: any) => x + 1);
+    bump((x) => x + 1);
   };
-  /**
-   * @param {*} [ev]
-   */
-  const onSearchKey = (ev: any) => {
+  const onSearchKey = (ev: ReactKeyboardEvent<HTMLInputElement>) => {
     if (ev.key === 'Enter') {
       clearTimeout(debounceRef.current);
-      if (s.readerSearch) s.readerSearch(String(ev.target.value).trim());
+      if (s.readerSearch) s.readerSearch(String((ev.target as HTMLInputElement).value).trim());
     }
     // Esc 收起搜索（与 iOS 搜索框一致）；有词时先清词再收，避免「看不见却生效」的过滤
     if (ev.key === 'Escape') {
@@ -1141,7 +1137,7 @@ export function ReaderView() {
       if (qDraft) onSearchClear();
       setSearchOpen(false);
       // 收起后输入框在窄屏是 display:none，焦点会掉到 body；还给放大镜按钮
-      const toggle: any = document.querySelector('.reader-search-toggle');
+      const toggle = document.querySelector<HTMLElement>('.reader-search-toggle');
       if (toggle && toggle.focus) toggle.focus();
     }
   };
@@ -1158,58 +1154,37 @@ export function ReaderView() {
 
   // memo 的前提是回调稳定：写成行内箭头函数的话，每次 tick 每个条目都会拿到新函数 props，
   // 几百条一起重渲染，等于把 memo 白加。core 是单例，回调里现取即可。
-  const onToggleArt = useCallback(
-    /** @param {*} id */ (id: any) => {
-      const c = S();
-      if (c.readerToggleArt) c.readerToggleArt(id);
-    },
-    [],
-  );
-  const onFavArt = useCallback(
-    /** @param {*} id */ (id: any) => {
-      const c = S();
-      if (c.readerToggleFav) c.readerToggleFav(id);
-    },
-    [],
-  );
-  const onUnreadArt = useCallback(
-    /** @param {*} id */ (id: any) => {
-      const c = S();
-      if (c.readerMarkUnread) c.readerMarkUnread(id);
-    },
-    [],
-  );
-  const onRetryBodyArt = useCallback(
-    /** @param {*} id */ (id: any) => {
-      const c = S();
-      if (c.readerRetryBody) c.readerRetryBody(id);
-    },
-    [],
-  );
-  const onTagArt = useCallback(
-    /** @param {*} t */ (t: any) => {
-      const c = S();
-      if (c.readerSetTag) c.readerSetTag(t, false);
-    },
-    [],
-  );
+  const onToggleArt = useCallback((id: EntityId) => {
+    const c = S();
+    if (c.readerToggleArt) c.readerToggleArt(id);
+  }, []);
+  const onFavArt = useCallback((id: EntityId) => {
+    const c = S();
+    if (c.readerToggleFav) c.readerToggleFav(id);
+  }, []);
+  const onUnreadArt = useCallback((id: EntityId) => {
+    const c = S();
+    if (c.readerMarkUnread) c.readerMarkUnread(id);
+  }, []);
+  const onRetryBodyArt = useCallback((id: EntityId) => {
+    const c = S();
+    if (c.readerRetryBody) c.readerRetryBody(id);
+  }, []);
+  const onTagArt = useCallback((t: string) => {
+    const c = S();
+    if (c.readerSetTag) c.readerSetTag(t, false);
+  }, []);
   // AI 标签走独立筛选参数，不能和手动标签混一条链路（后端两张表物理隔离）
-  const onAiTagArt = useCallback(
-    /** @param {*} t */ (t: any) => {
-      const c = S();
-      if (c.readerSetTag) c.readerSetTag(t, true);
-    },
-    [],
-  );
+  const onAiTagArt = useCallback((t: string) => {
+    const c = S();
+    if (c.readerSetTag) c.readerSetTag(t, true);
+  }, []);
   // D：侧栏回调稳定化（memo 的前提是 props 引用稳定），否则每次 tick 都拿到新函数、memo 失效
-  const cbScope = useCallback(/** @param {*} [k] */ (k: any) => S().readerSetScope(k), []);
-  const cbFeed = useCallback(/** @param {*} [id] */ (id: any) => S().readerSetFeed(id), []);
-  const cbGroup = useCallback(/** @param {*} [g] */ (g: any) => S().readerSetGroup(g), []);
-  const cbFold = useCallback(
-    /** @param {*} [g] */ (g: any) => S().readerToggleGroupCollapse(g),
-    [],
-  );
-  const cbWatch = useCallback(/** @param {*} [k] */ (k: any) => S().readerSetWatch(k), []);
+  const cbScope = useCallback((k: ReaderScope) => S().readerSetScope(k), []);
+  const cbFeed = useCallback((id: EntityId | null) => S().readerSetFeed(id), []);
+  const cbGroup = useCallback((g: string) => S().readerSetGroup(g), []);
+  const cbFold = useCallback((g: string) => S().readerToggleGroupCollapse(g), []);
+  const cbWatch = useCallback((k: WatchFilter) => S().readerSetWatch(k), []);
   const cbAdd = useCallback(() => S().readerOpenSource(), []);
 
   return (
@@ -1427,7 +1402,7 @@ export function ReaderView() {
                   className="count-clear"
                   aria-label="清除标签筛选"
                   title="清除标签筛选"
-                  onClick={() => s.readerSetTag(null, false)}
+                  onClick={() => s.readerSetTag('', false)}
                 >
                   <svg className="ico" aria-hidden="true" focusable="false">
                     <use href="#i-x" />
@@ -1444,7 +1419,7 @@ export function ReaderView() {
                   className="count-clear"
                   aria-label="清除 AI 标签筛选"
                   title="清除 AI 标签筛选"
-                  onClick={() => s.readerSetTag(null, true)}
+                  onClick={() => s.readerSetTag('', true)}
                 >
                   <svg className="ico" aria-hidden="true" focusable="false">
                     <use href="#i-x" />
@@ -1456,7 +1431,7 @@ export function ReaderView() {
         ) : null}
         <div className="reader-list" id="readerList">
           {entries.map(
-            /** @param {*} [e] */ (e: any) => (
+            /** @param {*} [e] */ (e) => (
               <ArtItem
                 key={e.id}
                 e={e}

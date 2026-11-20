@@ -3,13 +3,9 @@
  * 内容吸顶锚点（抽屉、频道列表、浮层、两页头部）统一消费这个变量。
  * 三个视图常驻挂载、靠显隐切换；用 getClientRects 守卫：display:none 的视图测得 0 高时不写，
  * 避免把 --topbar-h 误写成 0 拖累其它可见视图。 */
-import { useEffect } from 'react';
+import { type RefObject, useEffect } from 'react';
 
-/**
- * @param {*} [ref]
- */
-
-export function useTopbarHeight(ref: any) {
+export function useTopbarHeight(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
@@ -26,7 +22,7 @@ export function useTopbarHeight(ref: any) {
     const onResize = () => apply();
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
-    let ro: any = null;
+    let ro = null;
     if (window.ResizeObserver) {
       ro = new ResizeObserver(apply);
       ro.observe(el);

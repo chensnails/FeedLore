@@ -12,39 +12,57 @@
  * 确认框 / 灯箱 / 范围选择浮层叠在上面时，Esc 让位给它们（捕获阶段先检查）。
  */
 
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
-/**
- * @param {*} opts
- */
+/** 详情层 props。除 onClose 外全部可选，避免给调用方制造必填级联。 */
+export interface DetailSheetProps {
+  title?: ReactNode;
+  subtitle?: ReactNode;
+  onClose?: () => void;
+  foot?: ReactNode;
+  children?: ReactNode;
+  saveHint?: ReactNode;
+}
 
-export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint }: any) {
-  const panelRef: any = useRef<any>(null);
-  const openerRef: any = useRef<any>(null);
-  const closeRef: any = useRef(onClose);
+export function DetailSheet({
+  title,
+  subtitle,
+  onClose,
+  foot,
+  children,
+  saveHint,
+}: DetailSheetProps) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const closeRef = useRef<(() => void) | undefined>(onClose);
   closeRef.current = onClose;
 
   // 系统返回键栈已随 V5 移除；本层关闭走 × / Esc / 遮罩点击。
 
   // 打开记住焦点来源，关闭归还（列表行被重渲染也先确认还在文档里）
   useEffect(() => {
-    openerRef.current = document.activeElement;
+    openerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const t = setTimeout(() => {
       const el = panelRef.current;
       if (!el) return;
       // .ds-back 在桌面与移动端都不显示，focus() 是空操作；正文没有可聚焦元素时
       // 焦点必须落在恒可见的 .ds-close 上，而不是 tabIndex=-1 的容器（读屏只念「详情」）。
       const first =
-        el.querySelector('.ds-body ' + FOCUSABLE) || el.querySelector('.ds-close') || el;
-      if (first && first.focus) first.focus();
+        el.querySelector<HTMLElement>('.ds-body ' + FOCUSABLE) ||
+        el.querySelector<HTMLElement>('.ds-close') ||
+        el;
+      if (first && 'focus' in first) first.focus();
     }, 0);
     return () => {
       clearTimeout(t);
       const back = openerRef.current;
       openerRef.current = null;
-      if (back && back !== document.body && document.contains(back) && back.focus) back.focus();
+      if (back && back !== document.body && document.contains(back) && 'focus' in back)
+        back.focus();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -52,44 +70,44 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
   // Esc / Tab 收在详情层内。捕获阶段注册：先于设置外壳的冒泡监听，
   // 但确认框 / 灯箱 / 范围浮层叠在上面时让位（它们自己消化这一击）。
   useEffect(() => {
-    /**
-     * @param {*} [ev]
-     */
-    const onKey = (ev: any) => {
+    const onKey = (ev: KeyboardEvent) => {
       const root = panelRef.current;
       if (!root) return;
       if (document.querySelector('.confirm-mask') || document.querySelector('.lightbox')) return;
-      const t = ev.target;
-      if (t && t.closest && t.closest('.rule-scope-pop')) return;
+      const t = ev.target instanceof Element ? ev.target : null;
+      if (t && t.closest('.rule-scope-pop')) return;
       if (ev.key === 'Escape') {
         // 输入控件里的 Esc：第一击只失焦，第二击才关层。不能在这里 stopPropagation ——
         // 有的字段自己监听 Esc 还原草稿（数据源的名称 / 地址）；也不能当场 blur ——
         // 那会抢在字段的 onKeyDown 之前触发 onBlur，把草稿当成提交发出 PATCH。
         // 等同一击的冒泡处理跑完，焦点仍在输入框里才说明没人接管，我们再补一次失焦。
         // 设置外壳已对 .ds-sheet 让位，首击不会误关整个设置弹层。
-        if (t && t.closest && root.contains(t) && t.closest('input, textarea, select')) {
+        if (t && root.contains(t) && t.closest('input, textarea, select')) {
           const field = t;
           setTimeout(() => {
-            if (document.activeElement === field && field.blur) field.blur();
+            if (field instanceof HTMLElement && document.activeElement === field) field.blur();
           }, 0);
           return;
         }
         ev.preventDefault();
         ev.stopPropagation();
-        closeRef.current();
+        closeRef.current?.();
         return;
       }
       if (ev.key !== 'Tab') return;
-      const items = Array.prototype.filter.call(
-        root.querySelectorAll(FOCUSABLE),
-        /** @param {*} [el] */ (el: any) => !el.disabled && el.offsetParent !== null,
+      const items = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => !('disabled' in el && el.disabled) && el.offsetParent !== null,
       );
       if (!items.length) {
         ev.preventDefault();
         return;
       }
-      const first = items[0] as any;
-      const last = items[items.length - 1] as any;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first || !last) {
+        ev.preventDefault();
+        return;
+      }
       const at = document.activeElement;
       if (!root.contains(at)) {
         ev.preventDefault();
@@ -116,11 +134,9 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
   return (
     <div
       className="ds-mask"
-      onClick={
-        /** @param {*} [ev] */ (ev: any) => {
-          if (ev.target === ev.currentTarget) closeRef.current();
-        }
-      }
+      onClick={(ev: ReactMouseEvent<HTMLDivElement>) => {
+        if (ev.target === ev.currentTarget) closeRef.current?.();
+      }}
     >
       <div
         className="ds-sheet"
@@ -135,7 +151,7 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
             className="ds-back"
             type="button"
             aria-label="返回列表"
-            onClick={() => closeRef.current()}
+            onClick={() => closeRef.current?.()}
           >
             <svg className="ico" aria-hidden="true" focusable="false">
               <use href="#i-chevron-right" />
@@ -149,7 +165,7 @@ export function DetailSheet({ title, subtitle, onClose, foot, children, saveHint
             className="ds-close"
             type="button"
             aria-label="关闭详情，返回列表"
-            onClick={() => closeRef.current()}
+            onClick={() => closeRef.current?.()}
           >
             <svg className="ico" aria-hidden="true" focusable="false">
               <use href="#i-x" />

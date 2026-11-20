@@ -20,40 +20,34 @@ const CLASS = 'is-scrolling';
 const IDLE = 160; // 最后一次滚动后多久算「停下」
 const SCROLLERS = '.reader-main, #cardsRoot > main.wrap, #aiView, .pane-scroll, .feed-list';
 
-/**
- * @param {*} [doc]
- * @param {*} [options]
- */
+export interface ScrollBusyOptions {
+  idle?: number;
+}
 
-export function installScrollBusy(doc: any = document, options: any = {}) {
+export function installScrollBusy(doc: Document = document, options: ScrollBusyOptions = {}) {
   const idle = typeof options.idle === 'number' ? options.idle : IDLE;
-  let timer: any = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
   let on = false;
 
-  /**
-   * @param {*} [next]
-   */
-
-  function set(next: any) {
+  function set(next: boolean) {
     if (next === on) return;
     on = next;
     if (doc.body) doc.body.classList.toggle(CLASS, next);
   }
 
-  /**
-   * @param {*} [ev]
-   */
-
-  function onScroll(ev: any) {
-    const t = ev.target;
-    const el = t && t.nodeType === 9 ? doc.scrollingElement : t;
+  function onScroll(ev: Event) {
+    const t = ev.target as
+      | (EventTarget & { nodeType?: number; matches?: (s: string) => boolean })
+      | null;
+    // 鸭子类型判断：测试桩用普通对象伪造 DOM，不能用 instanceof Node/HTMLElement
+    const el = t && t.nodeType === 9 ? (doc.scrollingElement as typeof t) : t;
     if (!el || el.nodeType !== 1) return;
     if (el !== doc.scrollingElement && typeof el.matches === 'function' && !el.matches(SCROLLERS))
       return;
     set(true);
-    if (timer) clearTimeout(timer);
+    if (timer !== null) clearTimeout(timer);
     timer = setTimeout(() => {
-      timer = 0;
+      timer = null;
       set(false);
     }, idle);
   }
@@ -62,9 +56,9 @@ export function installScrollBusy(doc: any = document, options: any = {}) {
 
   return function dispose() {
     doc.removeEventListener('scroll', onScroll, { capture: true });
-    if (timer) {
+    if (timer !== null) {
       clearTimeout(timer);
-      timer = 0;
+      timer = null;
     }
     set(false);
   };

@@ -24,14 +24,12 @@ export const EVENT = Object.freeze({
   OVERLAYS: '__overlaysTick', // 灯箱 / 提示 / 确认框快照需要重读
 });
 
-const KNOWN = new Set(Object.values(EVENT));
+const KNOWN = new Set<string>(Object.values(EVENT));
 
-/**
- * @param {*} [kind]
- * @param {*} [name]
- */
+export type EventName = (typeof EVENT)[keyof typeof EVENT];
+type EventHandler = (ev: Event) => void;
 
-function assertKnown(kind: any, name: any) {
+function assertKnown(kind: string, name: string) {
   if (KNOWN.has(name)) return;
   // 不阻断：迁移期允许尚未登记的调用点先跑起来，但让拼写错误立刻可见。
   console.warn(
@@ -39,12 +37,8 @@ function assertKnown(kind: any, name: any) {
   );
 }
 
-/** 派发事件。detail 为空时用 Event，有值时用 CustomEvent（读 ev.detail）。
- *@param {*} [name]
- * @param {*} [detail]
- */
-
-export function emit(name?: any, detail?: any) {
+/** 派发事件。detail 为空时用 Event，有值时用 CustomEvent（读 ev.detail）。 */
+export function emit(name: string, detail?: unknown) {
   assertKnown('emit', name);
   // 显式取 window 上的构造器：jsdom / iframe 等跨 realm 场景里，裸 Event 属于
   // 另一个 realm，dispatchEvent 会抛 "parameter 1 is not of type 'Event'"。
@@ -54,24 +48,16 @@ export function emit(name?: any, detail?: any) {
   return ev;
 }
 
-/** 订阅事件，返回 unsubscribe。组件里 `useEffect(() => on(EVENT.X, fn), [])` 即可。
- *@param {*} [name]
- * @param {*} [handler]
- */
-
-export function on(name?: any, handler?: any) {
+/** 订阅事件，返回 unsubscribe。组件里 `useEffect(() => on(EVENT.X, fn), [])` 即可。 */
+export function on(name: string, handler: EventHandler) {
   assertKnown('on', name);
   window.addEventListener(name, handler);
   return () => window.removeEventListener(name, handler);
 }
 
-/** 一次订阅多个事件（ViewNav 同时关心视图切换与顶栏快照）。
- *@param {*} [names]
- * @param {*} [handler]
- */
-
-export function onAny(names?: any, handler?: any) {
-  const stops = names.map(/** @param {*} [n] */ (n: any) => on(n, handler));
+/** 一次订阅多个事件（ViewNav 同时关心视图切换与顶栏快照）。 */
+export function onAny(names: string[], handler: EventHandler) {
+  const stops = names.map((n) => on(n, handler));
   return () => {
     for (const stop of stops) stop();
   };

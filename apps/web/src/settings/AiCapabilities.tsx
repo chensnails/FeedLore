@@ -13,6 +13,7 @@
  */
 
 import { core } from '@core';
+import type { LlmModelView, LlmRoute, LlmRoutes, LlmVendorView } from '@feedlore/contract';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { qk } from '../kernel/query.ts';
@@ -47,31 +48,43 @@ const CAP_ICONS: Record<string, string> = {
   auto: 'i-clock',
 };
 
+interface CapDef {
+  key: string;
+  name: string;
+  hint?: string;
+}
+interface OpMsg {
+  ok: boolean;
+  text: string;
+}
+interface AiPrefsData {
+  llmVendors?: LlmVendorView[];
+  llmModels?: LlmModelView[];
+  llmRoutes?: LlmRoutes;
+}
+type PostBody = Record<string, unknown>;
+
 /** 与服务端 isRouteEnabled 一致：ai_tags 默认关，其它默认开。 */
-/**
- * @param {*} [key]
- * @param {*} [r]
- */
-const capOn = (key: any, r: any) => (key === 'ai_tags' ? r.enabled === true : r.enabled !== false);
+const capOn = (key: string, r: LlmRoute) =>
+  key === 'ai_tags' ? r.enabled === true : r.enabled !== false;
 
-/** 模型的展示名：优先用户起的名字，其次上游模型名。
- *@param {*} [m]
- */
-
-export function modelLabel(m: any) {
+/** 模型的展示名：优先用户起的名字，其次上游模型名。 */
+export function modelLabel(m: LlmModelView | null | undefined) {
   return String((m && (m.name || m.model)) || '').trim() || '未命名模型';
 }
 
-/** chip 文案：未分配跟随默认模型；引用了已删除的模型时明说，避免显示成默认。
- *@param {*} [r]
- * @param {*} [models]
- * @param {*} [actionKey]
- */
-
-function chipOf(r: any, models: any, actionKey: any) {
-  const id = actionKey ? (r.actions || {})[actionKey] : r.providerId;
+/** chip 文案：未分配跟随默认模型；引用了已删除的模型时明说，避免显示成默认。 */
+function chipOf(
+  r: LlmRoute,
+  models: LlmModelView[],
+  actionKey?: string | null,
+): {
+  label: string;
+  custom: boolean;
+} {
+  const id = actionKey ? r.actions?.[actionKey] : r.providerId;
   if (!id) return { label: '默认模型', custom: false };
-  const m = models.find(/** @param {*} [x] */ (x: any) => String(x.id) === String(id));
+  const m = models.find((x) => String(x.id) === String(id));
   return m ? { label: modelLabel(m), custom: true } : { label: '已移除的模型', custom: false };
 }
 
@@ -83,14 +96,13 @@ function chipOf(r: any, models: any, actionKey: any) {
  * - 详情层里的保存 / 删除直接把异常抛给调用方，由层内内联报错（层会立刻关闭，看不到外层提示）。
  */
 export function useAiSettings() {
-  const [vendors, setVendors] = useState<any>([]);
-  const [models, setModels] = useState<any>([]);
-  const [routes, setRoutes] = useState<any>({});
-  const [loaded, setLoaded] = useState<any>(false);
-  const [loadError, setLoadError] = useState<any>('');
-  const [busy, setBusy] = useState<any>('');
-  /** @type {*} */
-  const [msg, setMsg] = useState<any>(null);
+  const [vendors, setVendors] = useState<LlmVendorView[]>([]);
+  const [models, setModels] = useState<LlmModelView[]>([]);
+  const [routes, setRoutes] = useState<LlmRoutes>({});
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [busy, setBusy] = useState('');
+  const [msg, setMsg] = useState<OpMsg | null>(null);
 
   // V5：/api/prefs 交给 Query；queryFn 走 core.apiFetch 端口，测试桩照常生效。
   const prefsQuery = useQuery({
@@ -104,7 +116,7 @@ export function useAiSettings() {
     retry: false,
   });
 
-  const applyData = (d: any) => {
+  const applyData = (d: AiPrefsData) => {
     setVendors(Array.isArray(d.llmVendors) ? d.llmVendors : []);
     setModels(Array.isArray(d.llmModels) ? d.llmModels : []);
     setRoutes(d.llmRoutes && typeof d.llmRoutes === 'object' ? d.llmRoutes : {});
@@ -114,7 +126,7 @@ export function useAiSettings() {
   useEffect(() => {
     if (prefsQuery.isPending) return;
     if (prefsQuery.isError) {
-      const err: any = prefsQuery.error;
+      const err = prefsQuery.error;
       setLoadError('读取模型配置失败：' + String((err && err.message) || err));
       return;
     }
@@ -128,10 +140,7 @@ export function useAiSettings() {
     if (result.data) applyData(result.data);
   };
 
-  /**
-   * @param {*} [body]
-   */
-  const post = async (body: any) => {
+  const post = async (body: PostBody) => {
     const res = await S().apiFetch('/api/prefs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -144,12 +153,7 @@ export function useAiSettings() {
   };
 
   /* ---- 列表级即时动作：乐观更新 + 失败回滚 ---- */
-  /**
-   * @param {*} [nextRoutes]
-   * @param {*} [body]
-   * @param {*} [okText]
-   */
-  const routeAction = async (nextRoutes: any, body: any, okText: any) => {
+  const routeAction = async (nextRoutes: LlmRoutes, body: PostBody, okText: string) => {
     if (busy) return;
     const prev = routes;
     setRoutes(nextRoutes);
@@ -166,11 +170,7 @@ export function useAiSettings() {
     }
   };
 
-  /**
-   * @param {*} [cap]
-   * @param {*} [on]
-   */
-  const onToggle = (cap: any, on: any) => {
+  const onToggle = (cap: CapDef, on: boolean) => {
     const prev = routes[cap.key] || {};
     routeAction(
       { ...routes, [cap.key]: { ...prev, enabled: on } },
@@ -179,12 +179,7 @@ export function useAiSettings() {
     );
   };
 
-  /**
-   * @param {*} [capKey]
-   * @param {*} [modelId]
-   * @param {*} [actionKey]
-   */
-  const onAssign = (capKey: any, modelId: any, actionKey: any) => {
+  const onAssign = (capKey: string, modelId: string, actionKey?: string | null) => {
     const prev = routes[capKey] || {};
     const nextRoute = actionKey
       ? { ...prev, actions: { ...(prev.actions || {}), [actionKey]: modelId } }
@@ -201,37 +196,19 @@ export function useAiSettings() {
   };
 
   /* ---- 详情层动作：失败抛给调用方 ---- */
-  /**
-   * @param {*} [input]
-   * @param {*} [id]
-   */
-  const saveVendor = (input: any, id: any) => post({ llmVendor: id ? { ...input, id } : input });
-  /**
-   * @param {*} [id]
-   */
-  const removeVendor = (id: any) => post({ llmVendorDelete: id });
-  /**
-   * @param {*} [input]
-   * @param {*} [id]
-   */
-  const saveModel = (input: any, id: any) => post({ llmModel: id ? { ...input, id } : input });
-  /**
-   * @param {*} [id]
-   */
-  const removeModel = (id: any) => post({ llmModelDelete: id });
-  /**
-   * @param {*} [m]
-   */
-  const setDefaultModel = (m: any) =>
+  const saveVendor = (input: PostBody, id?: string | null) =>
+    post({ llmVendor: id ? { ...input, id } : input });
+  const removeVendor = (id: string) => post({ llmVendorDelete: id });
+  const saveModel = (input: PostBody, id?: string | null) =>
+    post({ llmModel: id ? { ...input, id } : input });
+  const removeModel = (id: string) => post({ llmModelDelete: id });
+  const setDefaultModel = (m: LlmModelView) =>
     post({
       llmModel: { id: m.id, vendorId: m.vendorId, model: m.model, isDefault: true },
     });
 
   /** 列表行上的「设为默认」：即时生效，失败只提示不抛。 */
-  /**
-   * @param {*} [m]
-   */
-  const makeDefault = async (m: any) => {
+  const makeDefault = async (m: LlmModelView) => {
     if (busy) return;
     setBusy('default');
     setMsg(null);
@@ -246,10 +223,7 @@ export function useAiSettings() {
   };
 
   /** 拉上游模型列表（OpenAI 兼容 GET {base}/models），只读、不消耗模型额度。 */
-  /**
-   * @param {*} [vendorId]
-   */
-  const fetchUpstreamModels = async (vendorId: any) => {
+  const fetchUpstreamModels = async (vendorId: string) => {
     const res = await S().apiFetch('/api/llm/models', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -263,10 +237,7 @@ export function useAiSettings() {
   };
 
   /** 真发一次模型请求。不传 modelId = 测当前默认模型。返回 { ok, text }，不写全局提示。 */
-  /**
-   * @param {*} [modelId]
-   */
-  const testModel = async (modelId?: any) => {
+  const testModel = async (modelId?: string) => {
     setBusy('test');
     try {
       const res = await S().apiFetch('/api/digest/test-llm', {
@@ -308,20 +279,16 @@ export function useAiSettings() {
   };
 }
 
-/** 任务分配：一项能力一行（名称 / 说明 + 模型 chip + 开关）；单篇四动作的高级分配默认收起。
- *@param {*} opts
- */
-export function TaskAssignments({ ai }: any) {
+/** 任务分配：一项能力一行（名称 / 说明 + 模型 chip + 开关）；单篇四动作的高级分配默认收起。 */
+export function TaskAssignments({ ai }: { ai: ReturnType<typeof useAiSettings> }) {
   const { models, routes, busy, onToggle, onAssign } = ai;
   const options = [
     { value: 'default', label: '默认模型', group: '' },
-    ...models.map(
-      /** @param {*} [m] */ (m: any) => ({
-        value: m.id,
-        label: modelLabel(m),
-        group: m.vendorName || '',
-      }),
-    ),
+    ...models.map((m) => ({
+      value: m.id,
+      label: modelLabel(m),
+      group: m.vendorName || '',
+    })),
   ];
   return (
     <div className="ai-cap">
@@ -329,92 +296,82 @@ export function TaskAssignments({ ai }: any) {
         关闭某项能力后，服务端会直接拒绝这类调用（包括 API 与 MCP），不再消耗额度。
       </p>
       <div className="ai-cap-matrix">
-        {CAPS.map(
-          /** @param {*} [c] */ (c: any) => {
-            const r = routes[c.key] || {};
-            const enabled = capOn(c.key, r);
-            const chip = chipOf(r, models, null);
-            return (
-              <div
-                className={'ai-cap-row' + (enabled ? '' : ' is-off')}
-                key={c.key}
-                data-cap={c.key}
-              >
-                <div className="ai-cap-main">
-                  <div className="ai-cap-top">
-                    <span className="ai-cap-ico" aria-hidden="true">
-                      <svg className="ico" focusable="false">
-                        <use href={'#' + CAP_ICONS[c.key]} />
-                      </svg>
-                    </span>
-                    <span className="ai-cap-name">{c.name}</span>
-                    {c.key === 'ai_tags' && !enabled ? (
-                      <span className="ai-cap-tag">默认关闭</span>
-                    ) : null}
-                  </div>
-                  <small className="form-tip ai-cap-hint">{c.hint}</small>
-                  {c.key === 'entry_ai' && enabled && models.length > 1 ? (
-                    <details className="ai-cap-adv ai-cap-actions-adv">
-                      <summary>高级：按动作单独指定模型</summary>
-                      <div className="ai-cap-actions">
-                        {ACTIONS.map(
-                          /** @param {*} [a] */ (a: any) => (
-                            <label key={a.key} className="ai-cap-action">
-                              <span>{a.name}</span>
-                              <Dropdown
-                                id={'aiCapAction-' + a.key}
-                                wrapId={'aiCapActionDD-' + a.key}
-                                title={`${a.name}使用的模型`}
-                                ariaLabel={`${a.name}使用的模型`}
-                                disabled={!!busy}
-                                value={(r.actions || {})[a.key] || r.providerId || 'default'}
-                                onChange={
-                                  /** @param {*} [v] */ (v: any) => onAssign(c.key, v, a.key)
-                                }
-                                options={options}
-                                extraClass="ai-cap-act-chip"
-                              />
-                            </label>
-                          ),
-                        )}
-                      </div>
-                      <p className="form-tip">
-                        不改就跟随上面的「单篇 AI」模型；这里只覆盖单个动作。
-                      </p>
-                    </details>
+        {CAPS.map((c) => {
+          const r: LlmRoute = routes[c.key] || {};
+          const enabled = capOn(c.key, r);
+          const chip = chipOf(r, models, null);
+          return (
+            <div className={'ai-cap-row' + (enabled ? '' : ' is-off')} key={c.key} data-cap={c.key}>
+              <div className="ai-cap-main">
+                <div className="ai-cap-top">
+                  <span className="ai-cap-ico" aria-hidden="true">
+                    <svg className="ico" focusable="false">
+                      <use href={'#' + (CAP_ICONS[c.key] ?? 'i-sparkle')} />
+                    </svg>
+                  </span>
+                  <span className="ai-cap-name">{c.name}</span>
+                  {c.key === 'ai_tags' && !enabled ? (
+                    <span className="ai-cap-tag">默认关闭</span>
                   ) : null}
                 </div>
-                <div className="ai-cap-ctl">
-                  <Dropdown
-                    id={'aiCapModel-' + c.key}
-                    wrapId={'aiCapModelDD-' + c.key}
-                    title={`${c.name}使用的模型`}
-                    ariaLabel={`${c.name}使用的模型`}
-                    disabled={!!busy || !enabled}
-                    value={r.providerId || 'default'}
-                    valueLabel={chip.label}
-                    onChange={/** @param {*} [v] */ (v: any) => onAssign(c.key, v)}
-                    options={options}
-                    extraClass="ai-cap-chip"
-                    dataAttrs={{ 'data-custom': chip.custom ? 'true' : 'false' }}
-                  />
-                  <label className="ai-cap-sw">
-                    <span className="switch">
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        disabled={!!busy}
-                        aria-label={`${c.name}开关`}
-                        onChange={/** @param {*} [e] */ (e: any) => onToggle(c, e.target.checked)}
-                      />
-                      <span className="switch-slider" />
-                    </span>
-                  </label>
-                </div>
+                <small className="form-tip ai-cap-hint">{c.hint}</small>
+                {c.key === 'entry_ai' && enabled && models.length > 1 ? (
+                  <details className="ai-cap-adv ai-cap-actions-adv">
+                    <summary>高级：按动作单独指定模型</summary>
+                    <div className="ai-cap-actions">
+                      {ACTIONS.map((a) => (
+                        <label key={a.key} className="ai-cap-action">
+                          <span>{a.name}</span>
+                          <Dropdown
+                            id={'aiCapAction-' + a.key}
+                            wrapId={'aiCapActionDD-' + a.key}
+                            title={`${a.name}使用的模型`}
+                            ariaLabel={`${a.name}使用的模型`}
+                            disabled={!!busy}
+                            value={(r.actions || {})[a.key] || r.providerId || 'default'}
+                            onChange={/** @param {*} [v] */ (v) => onAssign(c.key, v, a.key)}
+                            options={options}
+                            extraClass="ai-cap-act-chip"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <p className="form-tip">
+                      不改就跟随上面的「单篇 AI」模型；这里只覆盖单个动作。
+                    </p>
+                  </details>
+                ) : null}
               </div>
-            );
-          },
-        )}
+              <div className="ai-cap-ctl">
+                <Dropdown
+                  id={'aiCapModel-' + c.key}
+                  wrapId={'aiCapModelDD-' + c.key}
+                  title={`${c.name}使用的模型`}
+                  ariaLabel={`${c.name}使用的模型`}
+                  disabled={!!busy || !enabled}
+                  value={r.providerId || 'default'}
+                  valueLabel={chip.label}
+                  onChange={/** @param {*} [v] */ (v) => onAssign(c.key, v)}
+                  options={options}
+                  extraClass="ai-cap-chip"
+                  dataAttrs={{ 'data-custom': chip.custom ? 'true' : 'false' }}
+                />
+                <label className="ai-cap-sw">
+                  <span className="switch">
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      disabled={!!busy}
+                      aria-label={`${c.name}开关`}
+                      onChange={/** @param {*} [e] */ (e) => onToggle(c, e.target.checked)}
+                    />
+                    <span className="switch-slider" />
+                  </span>
+                </label>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

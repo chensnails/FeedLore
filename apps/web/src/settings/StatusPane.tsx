@@ -12,6 +12,7 @@
 
 import { core } from '@core';
 import { useQuery } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { isOn } from '../kernel/bridge.ts';
 import { qk } from '../kernel/query.ts';
@@ -19,13 +20,100 @@ import { PaneFoot, Section } from './primitives.tsx';
 
 const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
+/** /api/status 快照中本面板用到的字段（服务端 schema 的子集）。 */
+interface StatusSnapshot {
+  app: {
+    version: string;
+    node: string;
+    pid: number;
+    uptimeSec: number;
+    startedAt: string | null;
+    now: string | null;
+    memory: { rss: number; heapUsed: number };
+    container: {
+      memoryUsed: number | null;
+      memoryLimit: number | null;
+      cpuPercent: number | null;
+    } | null;
+    loadavg: number[];
+    cpuCount: number;
+  };
+  db: {
+    ready: boolean;
+    error: string | null;
+    latencyMs: number | null;
+    pool: { total: number; idle: number; waiting: number; max: number } | null;
+    tables: { feeds: number; entries: number; digests: number } | null;
+    sizeBytes: number | null;
+  };
+  rss: {
+    refreshMinutes: number;
+    keepPerFeed: number;
+    keepDays: number;
+    concurrency: number;
+    timeoutSeconds: number;
+    feedFailLimit: number;
+    lastRefreshAt: string | null;
+    nextRefreshAt: string | null;
+    dueCount: number;
+    refreshing: number | null;
+    autoRefreshMinutes: number;
+    lastResult: {
+      added: number;
+      pruned: number;
+      skipped: number;
+      failed: number;
+      autoDisabled: number;
+      durationMs: number;
+    } | null;
+    feeds: {
+      total: number;
+      enabled: number;
+      cardEnabled: number;
+      error: number;
+      neverFetched: number;
+      perFeedInterval: number;
+      autoDisabled: number;
+    };
+    entries: {
+      total: number;
+      unread: number;
+      favorite: number;
+      added24h: number;
+      oldest: string | null;
+      newest: string | null;
+    };
+    problems: {
+      feedId: string;
+      title: string;
+      error: string;
+      enabled: boolean;
+    }[];
+  };
+  digest: {
+    autoUsers: number;
+    totalUsers: number;
+    count: number;
+    nextRunAt: string | null;
+    oldestDate: string | null;
+    latest: {
+      date: string;
+      model: string;
+      fallback: boolean;
+      error: string | null;
+      stats: { collected: number; kept: number; feeds: number } | null;
+    } | null;
+  };
+}
+interface StatusError {
+  __error: string;
+}
+type StatusView = StatusSnapshot | StatusError;
+
 /* ---------- 纯格式化（自旧 app.js 迁移，纯函数、不依赖 DOM） ---------- */
 
-/** 秒 → 粗粒度时长：3 天 4 小时 / 2 小时 5 分 / 42 秒
- *@param {*} [sec]
- */
-
-function fmtDuration(sec: any) {
+/** 秒 → 粗粒度时长：3 天 4 小时 / 2 小时 5 分 / 42 秒 */
+function fmtDuration(sec: unknown) {
   const s = Math.max(0, Math.round(Number(sec) || 0));
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
@@ -36,11 +124,8 @@ function fmtDuration(sec: any) {
   return `${s} 秒`;
 }
 
-/** 字节 → MB / GB
- *@param {*} [n]
- */
-
-function fmtBytes(n: any) {
+/** 字节 → MB / GB */
+function fmtBytes(n: unknown) {
   const b = Number(n);
   if (!Number.isFinite(b) || b <= 0) return '—';
   const mb = b / 1048576;
@@ -48,17 +133,15 @@ function fmtBytes(n: any) {
   return mb.toFixed(mb >= 100 ? 0 : 1) + ' MB';
 }
 
-/** 相对时间。dir='past' → 「12 分钟前」；dir='future' → 「约 12 分钟后」
- *@param {*} [ts]
- * @param {*} [dir]
- */
-
-function fmtRel(ts: any, dir: any) {
+/** 相对时间。dir='past' → 「12 分钟前」；dir='future' → 「约 12 分钟后」 */
+function fmtRel(ts: unknown, dir?: string) {
   if (!ts) return '';
   const diff =
-    dir === 'future' ? new Date(ts).getTime() - Date.now() : Date.now() - new Date(ts).getTime();
+    dir === 'future'
+      ? new Date(ts as string).getTime() - Date.now()
+      : Date.now() - new Date(ts as string).getTime();
   const s = Math.abs(Math.round(diff / 1000));
-  let txt: any;
+  let txt: string;
   if (s < 60) txt = `${s} 秒`;
   else if (s < 3600) txt = `${Math.round(s / 60)} 分钟`;
   else if (s < 86400) txt = `${Math.round(s / 3600)} 小时`;
@@ -66,32 +149,28 @@ function fmtRel(ts: any, dir: any) {
   return dir === 'future' ? `约 ${txt}后` : `${txt}前`;
 }
 
-/** 完整时间戳 YYYY-MM-DD HH:mm
- *@param {*} [ts]
- */
-
-function fmtFull(ts: any) {
+/** 完整时间戳 YYYY-MM-DD HH:mm */
+function fmtFull(ts: unknown) {
   if (!ts) return '';
-  const d = new Date(ts);
-  /**
-   * @param {*} [n]
-   */
-  const p = (n: any) => String(n).padStart(2, '0');
+  const d = new Date(ts as string);
+  const p = (n: unknown) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 const numFmt = new Intl.NumberFormat('zh-CN');
-/**
- * @param {*} [n]
- */
-const fmtNum = (n: any) => numFmt.format(Number(n) || 0);
+const fmtNum = (n: unknown) => numFmt.format(Number(n) || 0);
 
 /* ---------- 小组件 ---------- */
 
-/**
- * @param {*} opts
- */
-const StatCard = ({ label, value, sub }: any) => (
+const StatCard = ({
+  label,
+  value,
+  sub,
+}: {
+  label?: ReactNode;
+  value?: ReactNode;
+  sub?: ReactNode;
+}) => (
   <div className="stat-card">
     <p className="stat-label">{label}</p>
     <p className="stat-value">{value}</p>
@@ -99,10 +178,7 @@ const StatCard = ({ label, value, sub }: any) => (
   </div>
 );
 
-/**
- * @param {*} opts
- */
-const StatRow = ({ k, v }: any) => (
+const StatRow = ({ k, v }: { k?: ReactNode; v?: ReactNode }) => (
   <div className="stat-row">
     <span className="stat-k">{k}</span>
     <span className="stat-v">{v}</span>
@@ -113,10 +189,7 @@ const StatRow = ({ k, v }: any) => (
 const StatSection = Section;
 
 /* ---------- 诊断文本（拼好后贴到 issue / 聊天里） ---------- */
-/**
- * @param {*} [d]
- */
-function buildDiagnostics(d: any) {
+function buildDiagnostics(d: StatusSnapshot) {
   const app = d.app || {};
   const db = d.db || {};
   const rss = d.rss || {};
@@ -238,9 +311,8 @@ function buildDiagnostics(d: any) {
   L.push(
     '页面自动刷新: ' + (rss.autoRefreshMinutes ? '每 ' + rss.autoRefreshMinutes + ' 分钟' : '关闭'),
   );
-  (rss.problems || []).forEach(
-    /** @param {*} [p] */ (p: any) =>
-      L.push('  ! ' + p.title + (p.enabled === false ? '（已自动停用）' : '') + ' → ' + p.error),
+  (rss.problems || []).forEach((p) =>
+    L.push('  ! ' + p.title + (p.enabled === false ? '（已自动停用）' : '') + ' → ' + p.error),
   );
   L.push('');
   L.push('[日报]');
@@ -262,16 +334,15 @@ function buildDiagnostics(d: any) {
 
 export function StatusPane() {
   const s = S();
-  const paneRef: any = useRef<any>(null);
-  /** @type {*} */
-  const [data, setData] = useState<any>(null);
-  const [hint, setHint] = useState<any>('正在读取运行状态…');
-  const [retrying, setRetrying] = useState<any>({});
+  const paneRef = useRef<HTMLDivElement | null>(null);
+  const [data, setData] = useState<StatusView | null>(null);
+  const [hint, setHint] = useState('正在读取运行状态…');
+  const [retrying, setRetrying] = useState<Record<string, boolean>>({});
   // 手动刷新的忙碌态（30 秒轮询不置忙，否则按钮每半分钟闪一次）
-  const [busy, setBusy] = useState<any>(false);
-  const [, tick] = useState<any>(0); // 每秒重绘，驱动「已运行」本地递增
-  const baseRef: any = useRef<any>(null); // { sec, at } 用于推算当前 uptime
-  const dataRef: any = useRef<any>(null); // 供复制诊断读取最新快照
+  const [busy, setBusy] = useState(false);
+  const [, tick] = useState(0); // 每秒重绘，驱动「已运行」本地递增
+  const baseRef = useRef<{ sec: number; at: number } | null>(null); // { sec, at } 用于推算当前 uptime
+  const dataRef = useRef<StatusSnapshot | null>(null); // 供复制诊断读取最新快照
 
   // V5：/api/status 交给 Query；queryFn 走 core.apiFetch 端口，测试桩照常生效。
   // 30s 轮询改用 refetchInterval（仅在设置打开时拉，等价于旧 poll 里的 isOn 判断）；
@@ -305,13 +376,14 @@ export function StatusPane() {
   useEffect(() => {
     if (!statusQuery.isError) return;
     const err = statusQuery.error;
-    setHint('读取失败：' + String((err as any)?.message || err));
-    if (!dataRef.current) setData({ __error: String((err as any)?.message || err) });
+    const msg = err instanceof Error ? err.message : String(err);
+    setHint('读取失败：' + msg);
+    if (!dataRef.current) setData({ __error: msg });
   }, [statusQuery.isError, statusQuery.error]);
 
   useEffect(() => {
     // 每秒重绘驱动 uptime 本地递增；轮询已由 statusQuery.refetchInterval 接管。
-    const t = setInterval(() => tick(/** @param {*} [x] */ (x: any) => x + 1), 1000);
+    const t = setInterval(() => tick((x) => x + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
@@ -360,12 +432,8 @@ export function StatusPane() {
     }
   }
 
-  /**
-   * @param {*} [id]
-   */
-
-  async function retry(id: any) {
-    setRetrying(/** @param {*} [r] */ (r: any) => ({ ...r, [id]: true }));
+  async function retry(id: string) {
+    setRetrying((r) => ({ ...r, [id]: true }));
     try {
       const res = await s.apiFetch('/api/feeds/' + id + '/refresh', { method: 'POST' });
       const d = await res.json().catch(() => ({}));
@@ -377,13 +445,11 @@ export function StatusPane() {
     } catch (e) {
       s.toast('重试失败：' + ((e && e.message) || e), false);
     } finally {
-      setRetrying(
-        /** @param {*} [r] */ (r: any) => {
-          const n = { ...r };
-          delete n[id];
-          return n;
-        },
-      );
+      setRetrying((r) => {
+        const n = { ...r };
+        delete n[id];
+        return n;
+      });
     }
   }
 
@@ -391,7 +457,7 @@ export function StatusPane() {
   /* 三个分支（加载中 / 读取失败 / 正常）此前各渲染一份同样的页脚，id 重复、改一处漏两处。
      现在只写一份：按钮带 type="button"，刷新走忙碌三件套（禁用 + aria-busy + 文案）。 */
   // 无快照时正文已给出「读取失败：原因」，页脚不再复制一遍，改成行动引导
-  const footLead = data && data.__error ? '读取失败，点「刷新」重试' : hint;
+  const footLead = data && '__error' in data ? '读取失败，点「刷新」重试' : hint;
   const foot = (
     <PaneFoot
       lead={
@@ -428,7 +494,7 @@ export function StatusPane() {
     );
   }
 
-  if (data.__error) {
+  if ('__error' in data) {
     return (
       <div className="tab-pane" data-pane="status" ref={paneRef}>
         <div className="status-body" id="statusBody">
@@ -665,37 +731,35 @@ export function StatusPane() {
             open
           >
             <div className="stat-problems">
-              {problems.map(
-                /** @param {*} [p] */ (p: any) => (
-                  <div className="stat-problem" key={p.feedId}>
-                    <i className="stat-dot bad" />
-                    <span className="stat-problem-name" title={p.title}>
-                      {p.title}
-                    </span>
-                    {p.enabled === false && (
-                      <span
-                        className="stat-problem-off"
-                        title={`连续失败已达上限，已自动停止采集；重试成功会自动恢复`}
-                      >
-                        已自动停用
-                      </span>
-                    )}
-                    <span className="stat-problem-err" title={s.errText(p.error)}>
-                      {s.errText(p.error)}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      data-retry={p.feedId}
-                      disabled={!!retrying[p.feedId]}
-                      aria-busy={retrying[p.feedId] ? 'true' : undefined}
-                      onClick={() => retry(p.feedId)}
+              {problems.map((p) => (
+                <div className="stat-problem" key={p.feedId}>
+                  <i className="stat-dot bad" />
+                  <span className="stat-problem-name" title={p.title}>
+                    {p.title}
+                  </span>
+                  {p.enabled === false && (
+                    <span
+                      className="stat-problem-off"
+                      title={`连续失败已达上限，已自动停止采集；重试成功会自动恢复`}
                     >
-                      {retrying[p.feedId] ? '抓取中…' : p.enabled === false ? '重试并恢复' : '重试'}
-                    </button>
-                  </div>
-                ),
-              )}
+                      已自动停用
+                    </span>
+                  )}
+                  <span className="stat-problem-err" title={s.errText(p.error)}>
+                    {s.errText(p.error)}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    data-retry={p.feedId}
+                    disabled={!!retrying[p.feedId]}
+                    aria-busy={retrying[p.feedId] ? 'true' : undefined}
+                    onClick={() => retry(p.feedId)}
+                  >
+                    {retrying[p.feedId] ? '抓取中…' : p.enabled === false ? '重试并恢复' : '重试'}
+                  </button>
+                </div>
+              ))}
             </div>
           </StatSection>
         )}

@@ -15,26 +15,40 @@
 import { core } from '@core';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { type FormEvent, useEffect, useRef, useState } from 'react';
+import type { LightboxState } from '../core/types.ts';
 import { provide, revoke } from '../kernel/bridge.ts';
 import { EVENT, on } from '../kernel/events.ts';
 
 const S = () => core;
+
+/** 确认框快照（core.confirmState）：input 还带 label / required / autoComplete。 */
+interface OverlayConfirmState {
+  open: boolean;
+  title?: string;
+  desc?: string;
+  confirmText?: string;
+  cancelText?: string;
+  danger?: boolean;
+  input?: {
+    placeholder?: string;
+    type?: string;
+    label?: string;
+    required?: boolean;
+    autoComplete?: string;
+  } | null;
+}
 
 /** Radix Portal 统一挂到 #overlaysRoot：保住层叠上下文与查询作用域。 */
 function overlayContainer() {
   return document.getElementById('overlaysRoot') || document.body;
 }
 
-/**
- * @param {*} opts
- */
-
-function ConfirmDialog({ c }: any) {
-  const valueRef: any = useRef<any>(null);
-  const [value, setValue] = useState<any>('');
+function ConfirmDialog({ c }: { c: OverlayConfirmState }) {
+  const valueRef = useRef<HTMLInputElement | null>(null);
+  const [value, setValue] = useState('');
   // 必填校验的内联错误：常驻 role=alert 容器，空态只收掉视觉占位
-  const [err, setErr] = useState<any>('');
+  const [err, setErr] = useState('');
 
   // 每次打开重置输入值（Radix FocusScope 负责把焦点放进对话框）
   useEffect(() => {
@@ -43,7 +57,7 @@ function ConfirmDialog({ c }: any) {
     setErr('');
   }, [c.open, c.input]);
 
-  const submit = (ev: any) => {
+  const submit = (ev: FormEvent<HTMLFormElement>) => {
     ev.preventDefault();
     const raw = c.input ? (c.input.type === 'password' ? value : value.trim()) : true;
     if (c.input && c.input.required && !raw) {
@@ -61,7 +75,7 @@ function ConfirmDialog({ c }: any) {
     <AlertDialog.Root
       open={!!c.open}
       onOpenChange={
-        /** @param {*} [open] */ (open: any) => {
+        /** @param {*} [open] */ (open) => {
           if (!open) S().cancelConfirm();
         }
       }
@@ -118,7 +132,7 @@ function ConfirmDialog({ c }: any) {
                   aria-invalid={err ? 'true' : undefined}
                   aria-describedby={err ? 'confirmErr' : undefined}
                   onChange={
-                    /** @param {*} [ev] */ (ev: any) => {
+                    /** @param {*} [ev] */ (ev) => {
                       setValue(ev.target.value);
                       if (err) setErr('');
                     }
@@ -155,13 +169,10 @@ function ConfirmDialog({ c }: any) {
 
 /* 图片灯箱：点文章里的图片看大图。Radix Dialog 接管模态语义 —— FocusScope 管焦点、
  * DismissableLayer 管 Esc / 遮罩关闭、自带滚动锁。DOM 契约逐字保留。 */
-/**
- * @param {*} opts
- */
-function Lightbox({ box, close }: any) {
+function Lightbox({ box, close }: { box: LightboxState; close: () => void }) {
   const list = Array.isArray(box.list) ? box.list : [];
   const multi = list.length > 1;
-  const step = (d: any) => {
+  const step = (d: number) => {
     const s = S();
     if (s && s.stepLightbox) s.stepLightbox(d);
   };
@@ -169,7 +180,7 @@ function Lightbox({ box, close }: any) {
   return (
     <Dialog.Root
       open
-      onOpenChange={(o: any) => {
+      onOpenChange={(o) => {
         if (!o) close();
       }}
     >
@@ -195,7 +206,7 @@ function Lightbox({ box, close }: any) {
                   className="lightbox-nav is-prev"
                   type="button"
                   aria-label="上一张"
-                  onClick={(ev: any) => {
+                  onClick={(ev) => {
                     ev.stopPropagation();
                     step(-1);
                   }}
@@ -208,7 +219,7 @@ function Lightbox({ box, close }: any) {
                   className="lightbox-nav is-next"
                   type="button"
                   aria-label="下一张"
-                  onClick={(ev: any) => {
+                  onClick={(ev) => {
                     ev.stopPropagation();
                     step(1);
                   }}
@@ -240,9 +251,9 @@ function Lightbox({ box, close }: any) {
 }
 
 export function Overlays() {
-  const [, bump] = useState<any>(0);
+  const [, bump] = useState(0);
   useEffect(() => {
-    const onTick = () => bump((n: any) => n + 1);
+    const onTick = () => bump((n) => n + 1);
     return on(EVENT.OVERLAYS, onTick);
   }, []);
 
@@ -252,7 +263,8 @@ export function Overlays() {
       ? s.getToastState()
       : { msg: '', ok: true, show: false, action: null, actionText: '' };
   const pill = s && s.getNewPillState ? s.getNewPillState() : { show: false, text: '' };
-  const box = s && s.getLightboxState ? s.getLightboxState() : { src: '', show: false };
+  const box: LightboxState =
+    s && s.getLightboxState ? s.getLightboxState() : { src: '', show: false, list: [], index: 0 };
   const cfm = s && s.getConfirmState ? s.getConfirmState() : { open: false };
 
   // 确认框开着时告诉其它（自研）Esc 处理器让位：core/ui.ts 的层级仲裁读这个桥。

@@ -26,7 +26,7 @@ const OPEN_ZONE = () => Math.round((window.innerWidth * 2) / 3); // 关闭态下
 const drawerMode = () => window.innerWidth <= 720; // 与 style.css 的 720px 抽屉断点一致
 
 /** 当前页面用哪套抽屉；不是带抽屉的页面则返回 null */
-function target() {
+function target(): DrawerTarget | null {
   if (state.tab === 'cards') {
     return {
       sideId: 'cardsSide',
@@ -47,48 +47,46 @@ function target() {
 }
 
 const SIDE_W = () => Math.min(272, window.innerWidth * 0.84);
-/**
- * @param {*} [t]
- */
-const sideOf = (t: any) => (t ? document.getElementById(t.sideId) : null);
-/**
- * @param {*} [t]
- */
-const maskOf = (t: any) => (t ? document.getElementById(t.maskId) : null);
-let x0: any = 0,
+
+/** target() 描述当前页面用哪套抽屉：两侧面板 id、body 上的开合类名、开合 setter。 */
+interface DrawerTarget {
+  sideId: string;
+  maskId: string;
+  cls: string;
+  set: (open: boolean) => void;
+}
+
+const sideOf = (t: DrawerTarget | null) => (t ? document.getElementById(t.sideId) : null);
+const maskOf = (t: DrawerTarget | null) => (t ? document.getElementById(t.maskId) : null);
+let x0 = 0,
   y0 = 0,
   dragging = false,
   decided = false,
   dir = 0;
-let active: any = null;
+let active: DrawerTarget | null = null;
 
-/** px = 抽屉已滑出的像素（0=关，抽屉宽=开）→ 换算成 translateX 百分比
- *@param {*} [px]
- */
-function place(px: any) {
+/** px = 抽屉已滑出的像素（0=关，抽屉宽=开）→ 换算成 translateX 百分比 */
+function place(px: number) {
   const w = SIDE_W();
   px = Math.max(0, Math.min(w, px));
   const pct = px / w;
-  const side: any = sideOf(active);
+  const side = sideOf(active);
   if (side) {
     // 收起态由 CSS 设了 visibility:hidden（不能占 Tab 序）；拖出来的过程还没加 open 类，
     // 得在这里临时放开，否则跟手时抽屉是空的。
     side.style.visibility = 'visible';
     side.style.transform = `translateX(${(-104 + pct * 104).toFixed(2)}%)`;
   }
-  const mask: any = maskOf(active);
+  const mask = maskOf(active);
   if (mask) {
     mask.style.visibility = 'visible';
     mask.style.opacity = String(pct);
   }
 }
 
-/** 触摸点是否落在可横向滚动的容器内（如 <pre> 代码块）：是则把横滑让给容器，不抢抽屉手势
- *@param {*} [el]
- */
-
-function inHorizontalScroller(el: any) {
-  let n = el;
+/** 触摸点是否落在可横向滚动的容器内（如 <pre> 代码块）：是则把横滑让给容器，不抢抽屉手势 */
+function inHorizontalScroller(el: EventTarget | null) {
+  let n = el instanceof Element ? el : null;
   while (n && n.nodeType === 1 && n !== document.body) {
     if (n.scrollWidth > n.clientWidth + 1) {
       const ox = getComputedStyle(n).overflowX;
@@ -101,7 +99,7 @@ function inHorizontalScroller(el: any) {
 
 document.addEventListener(
   'touchstart',
-  /** @param {*} [ev] */ (ev: any) => {
+  /** @param {*} [ev] */ (ev) => {
     const t = ev.touches && ev.touches[0];
     if (!t) return;
     // 宽屏并排布局 / 当前页面没有抽屉，不拦截（避免误锁页面滚动）
@@ -135,7 +133,7 @@ document.addEventListener(
 
 document.addEventListener(
   'touchmove',
-  /** @param {*} [ev] */ (ev: any) => {
+  /** @param {*} [ev] */ (ev) => {
     if (!dragging || !active) return;
     const t = ev.touches && ev.touches[0];
     if (!t) return;
@@ -168,7 +166,7 @@ document.addEventListener(
 
 document.addEventListener(
   'touchend',
-  /** @param {*} [ev] */ (ev: any) => {
+  /** @param {*} [ev] */ (ev) => {
     if (!dragging || !active) return;
     dragging = false;
     if (!decided) return; // 只是轻点，没拖动

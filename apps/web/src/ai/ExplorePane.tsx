@@ -7,13 +7,46 @@
  * 组件卸载即停止轮询（任务在服务端继续跑，与 DESIGN.md 的长任务约定一致）。
  * 提交时把已完成的轮次打包成 history：[#n] 的跨轮编号错位由服务端按 refs 修正。
  */
+
 import { core } from '@core';
-import { useEffect, useRef, useState } from 'react';
+import type { ExploreHistoryTurn, ExploreRef, ExploreResult } from '@feedlore/contract';
+import { type HTMLAttributes, useEffect, useRef, useState } from 'react';
+import type { EntityId } from '../core/types.ts';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
 import { widthVariant } from '../imgSrc.ts';
 import { Icon } from '../ui/Icon.tsx';
 
 const S = () => core;
+
+/** 一轮对话（内存态）：等待中 / 成功 / 失败三态各用不同字段。 */
+interface ExploreTurn {
+  id: string;
+  question: string;
+  /** job.status（queued / running / succeeded / failed）。 */
+  status: string;
+  /** 用户提问 / AI 回答的时间戳（ISO 字符串）。 */
+  at: string;
+  startedAt?: number;
+  elapsed?: number;
+  answer?: string;
+  refs?: ExploreRef[];
+  model?: string;
+  matched?: number;
+  errorText?: string;
+  retry?: () => void;
+}
+
+interface ExplorePaneProps {
+  hidden?: boolean;
+  onNewSession?: () => void;
+  /** 透传给 <section> 的 tabpanel 属性（id / role / aria-labelledby）。 */
+  panelProps?: HTMLAttributes<HTMLElement>;
+}
+
+/** done.result 是 dynamic（unknown），用类型守卫收窄成探索结果。 */
+function isExploreResult(v: unknown): v is ExploreResult {
+  return !!v && typeof v === 'object' && typeof (v as ExploreResult).answer === 'string';
+}
 
 /* 空态着陆页的预设问题（点一条直接提问）。 */
 const SUGGESTIONS = [
@@ -35,32 +68,23 @@ const DOMAINS = [
 ];
 
 /** 引用卡日期：服务端给的是 ISO 原值（2026-11-17T04:27:...Z），这里统一成人看的「今天 HH:mm / MM-DD HH:mm」，与文章/卡片页一致。 */
-/**
- * @param {*} [d]
- */
-const fmtDate = (d: any) => {
+const fmtDate = (d: string) => {
   const f = S().fmtDate;
   if (typeof f === 'function') return f(d);
   return d ? String(d).slice(0, 16).replace('T', ' ') : '';
 };
 
-/**
- * @param {*} [ts]
- */
-const hhmm = (ts: any) => {
+const hhmm = (ts?: string | number | null) => {
   const d = ts ? new Date(ts) : new Date();
   return Number.isNaN(d.getTime())
     ? ''
     : d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
-/** 一条引用条目：缩略图 + 来源 + 标题 + 跳文章。
- *@param {*} opts
- */
-
-function RefCard({ ref: hit }: any) {
+/** 一条引用条目：缩略图 + 来源 + 标题 + 跳文章。 */
+function RefCard({ ref: hit }: { ref: ExploreRef }) {
   const s = S();
-  const [imgFailed, setImgFailed] = useState<any>(false);
+  const [imgFailed, setImgFailed] = useState(false);
   const thumb =
     hit.image && !imgFailed && !isImgFailed(hit.image) ? (
       <img
@@ -68,7 +92,7 @@ function RefCard({ ref: hit }: any) {
         loading="lazy"
         src={widthVariant(hit.image, 160) || hit.image}
         alt=""
-        onLoad={/** @param {*} [ev] */ (ev: any) => ev.currentTarget.classList.add('img-ready')}
+        onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
         onError={() => {
           markImgFailed(hit.image);
           setImgFailed(true);
@@ -82,11 +106,12 @@ function RefCard({ ref: hit }: any) {
   const openArticle = () => {
     // 引用卡只有条目 id，没有 feedId：先用 id 在已加载的条目里找频道，找不到也能让
     // jumpToFeed 走「全部」范围按 id 定位（focusReaderArt 会翻页找目标）。
-    let feedId: any = null;
-    const all: any = (s.state && (s.state.entries || s.state.rdEntries)) || [];
-    const found = all.find(/** @param {*} [e] */ (e: any) => String(e.id) === String(hit.id));
+    let feedId: EntityId | null = null;
+    const all = (s.state && (s.state.entries || s.state.rdEntries)) || [];
+    const found = all.find((e) => String(e.id) === String(hit.id));
     if (found && found.feedId != null) feedId = found.feedId;
-    if (typeof s.jumpToFeed === 'function') s.jumpToFeed(feedId, hit.id);
+    // 找不到频道时沿用「全部」定位：Number(null)===Number(0)===0，行为不变。
+    if (typeof s.jumpToFeed === 'function') s.jumpToFeed(feedId ?? 0, hit.id);
   };
   return (
     <div className="ex-ref">
@@ -116,10 +141,8 @@ function RefCard({ ref: hit }: any) {
   );
 }
 
-/** 用户消息气泡（右侧）。
- *@param {*} opts
- */
-function MeBubble({ turn }: any) {
+/** 用户消息气泡（右侧）。 */
+function MeBubble({ turn }: { turn: ExploreTurn }) {
   return (
     <div className="ex-row ex-row-me">
       <div className="ex-col">
@@ -130,11 +153,8 @@ function MeBubble({ turn }: any) {
   );
 }
 
-/** AI 消息气泡（左侧）：排队/生成中显示输入动画，成功显示答案 + 引用卡，失败显示错误 + 重试。
- *@param {*} opts
- */
-
-function AiBubble({ turn }: any) {
+/** AI 消息气泡（左侧）：排队/生成中显示输入动画，成功显示答案 + 引用卡，失败显示错误 + 重试。 */
+function AiBubble({ turn }: { turn: ExploreTurn }) {
   const busy = turn.status === 'queued' || turn.status === 'running';
   return (
     <div className="ex-row ex-row-ai">
@@ -175,11 +195,9 @@ function AiBubble({ turn }: any) {
               <div className="ex-answer">{turn.answer}</div>
               {turn.refs && turn.refs.length ? (
                 <div className="ex-refs">
-                  {turn.refs.map(
-                    /** @param {*} [hit] @param {*} [i] */ (hit: any, i: any) => (
-                      <RefCard ref={hit} key={hit.id || i} />
-                    ),
-                  )}
+                  {turn.refs.map((hit, i) => (
+                    <RefCard ref={hit} key={hit.id || i} />
+                  ))}
                 </div>
               ) : null}
             </>
@@ -197,16 +215,13 @@ function AiBubble({ turn }: any) {
   );
 }
 
-/**
- * @param {*} opts
- */
-export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
+export function ExplorePane({ hidden, onNewSession, panelProps }: ExplorePaneProps) {
   const s = S();
-  const [turns, setTurns] = useState<any>([]);
-  const [draft, setDraft] = useState<any>('');
-  const aliveRef: any = useRef(true);
-  const scrollRef: any = useRef<any>(null);
-  const [tick, setTick] = useState<any>(0);
+  const [turns, setTurns] = useState<ExploreTurn[]>([]);
+  const [draft, setDraft] = useState('');
+  const aliveRef = useRef(true);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [tick, setTick] = useState(0);
 
   /* 「+」= 开始新一轮对话：与顶栏那枚按钮同一语义（重挂载整个面板、清空内存历史），
    * 不是只把草稿清掉 —— 两个入口长得一样，行为也得一样。 */
@@ -224,11 +239,8 @@ export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
 
   // 有任务在跑时每秒刷新等待秒数（IM 里体现为「正在输入」旁的实时秒数）
   useEffect(() => {
-    if (
-      !turns.some(/** @param {*} [t] */ (t: any) => t.status === 'queued' || t.status === 'running')
-    )
-      return undefined;
-    const iv = setInterval(() => setTick(/** @param {*} [n] */ (n: any) => n + 1), 1000);
+    if (!turns.some((t) => t.status === 'queued' || t.status === 'running')) return undefined;
+    const iv = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(iv);
   }, [turns]);
 
@@ -241,74 +253,57 @@ export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
   /**
    * @param {*} [question]
    */
-  async function ask(question: any) {
+  async function ask(question: string) {
     const q = String(question || '').trim();
     if (!q || !s || typeof s.submitAiJob !== 'function') return;
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const t0 = Date.now();
     /* 全部历史：把已经成功/失败但有内容的轮次都打包。失败的轮次不带答案，
      * 免得把错误信息喂给模型；只带 question + answer + refs。 */
-    const history = turns
-      .filter(/** @param {*} [t] */ (t: any) => t.status === 'succeeded' && t.answer)
-      .map(
-        /** @param {*} [t] */ (t: any) => ({
-          question: t.question,
-          answer: t.answer,
-          refs: (t.refs || []).map(
-            /** @param {*} [r] */ (r: any) => ({ id: String(r.id), name: r.name }),
-          ),
-        }),
-      );
-    /**
-     * @param {*} [fn]
-     */
-    const patch = (fn: any) => {
-      if (aliveRef.current)
-        setTurns(
-          /** @param {*} [prev] */ (prev: any) =>
-            prev.map(/** @param {*} [t] */ (t: any) => (t.id === id ? fn(t) : t)),
-        );
+    const history: ExploreHistoryTurn[] = turns
+      .filter((t) => t.status === 'succeeded' && t.answer)
+      .map((t) => ({
+        question: t.question,
+        answer: t.answer || '',
+        refs: (t.refs || []).map((r) => ({ id: String(r.id), name: r.name })),
+      }));
+    const patch = (fn: (t: ExploreTurn) => ExploreTurn) => {
+      if (aliveRef.current) setTurns((prev) => prev.map((t) => (t.id === id ? fn(t) : t)));
     };
-    setTurns(
-      /** @param {*} [prev] */ (prev: any) => [
-        ...prev,
-        { id, question: q, status: 'queued', at: new Date(t0).toISOString(), startedAt: t0 },
-      ],
-    );
+    setTurns((prev) => [
+      ...prev,
+      { id, question: q, status: 'queued', at: new Date(t0).toISOString(), startedAt: t0 },
+    ]);
     setDraft('');
     try {
       const job = await s.submitAiJob({ kind: 'explore', question: q, history });
       if (!aliveRef.current) return;
-      patch(/** @param {*} [t] */ (t: any) => ({ ...t, status: job.status || 'queued' }));
+      patch((t) => ({ ...t, status: job.status || 'queued' }));
       const done = await s.pollAiJob(job.id, {
-        onStatus: /** @param {*} [j] */ (j: any) =>
-          patch(/** @param {*} [t] */ (t: any) => ({ ...t, status: j.status })),
+        onStatus: (j) => patch((t) => ({ ...t, status: j.status })),
         isCancelled: () => !aliveRef.current,
       });
       if (!aliveRef.current) return;
-      const r = (done && done.result) || {};
-      if (!r.answer) throw new Error('任务完成但没有返回答案');
-      patch(
-        /** @param {*} [t] */ (t: any) => ({
-          ...t,
-          status: 'succeeded',
-          answer: r.answer,
-          refs: Array.isArray(r.refs) ? r.refs : [],
-          model: r.model || '',
-          matched: Number(r.matched) || 0,
-        }),
-      );
+      const raw: unknown = done && done.result;
+      if (!isExploreResult(raw)) throw new Error('任务完成但没有返回答案');
+      const r = raw;
+      patch((t) => ({
+        ...t,
+        status: 'succeeded',
+        answer: r.answer,
+        refs: Array.isArray(r.refs) ? r.refs : [],
+        model: r.model || '',
+        matched: Number(r.matched) || 0,
+      }));
     } catch (err) {
       if (!aliveRef.current) return;
       const msg = s.errText ? s.errText(err, '检索失败') : String((err && err.message) || err);
-      patch(
-        /** @param {*} [t] */ (t: any) => ({
-          ...t,
-          status: 'error',
-          errorText: msg,
-          retry: () => ask(q),
-        }),
-      );
+      patch((t) => ({
+        ...t,
+        status: 'error',
+        errorText: msg,
+        retry: () => ask(q),
+      }));
     }
   }
 
@@ -332,7 +327,7 @@ export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
           </p>
           <div className="ex-domains" aria-label="领域快捷提问">
             {DOMAINS.map(
-              /** @param {*} [d] */ (d: any) => (
+              /** @param {*} [d] */ (d) => (
                 <button className="ex-domain" type="button" key={d.label} onClick={() => ask(d.q)}>
                   {d.label}
                 </button>
@@ -343,7 +338,7 @@ export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
             className="ex-landing-compose"
             id="exploreCompose"
             onSubmit={
-              /** @param {*} [e] */ (e: any) => {
+              /** @param {*} [e] */ (e) => {
                 e.preventDefault();
                 ask(draft);
               }
@@ -357,7 +352,7 @@ export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
                 placeholder="今天想从订阅里找点什么？直接问就好"
                 aria-label="向探索提问"
                 autoComplete="off"
-                onChange={/** @param {*} [e] */ (e: any) => setDraft(e.target.value)}
+                onChange={/** @param {*} [e] */ (e) => setDraft(e.target.value)}
               />
             </div>
             <div className="ex-landing-bar">
@@ -383,7 +378,7 @@ export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
           </form>
           <div className="ex-landing-suggest" aria-label="试试这些问题">
             {SUGGESTIONS.map(
-              /** @param {*} [q] */ (q: any) => (
+              /** @param {*} [q] */ (q) => (
                 <button className="ex-suggest-btn" type="button" key={q} onClick={() => ask(q)}>
                   {q}
                   <Icon n="arrow-up" />
@@ -409,7 +404,7 @@ export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
         <div className="ex-thread" ref={scrollRef} id="exploreThread" role="log" aria-live="polite">
           <p className="ex-day">本次会话 · 可连续追问</p>
           {turns.map(
-            /** @param {*} [t] */ (t: any) => (
+            /** @param {*} [t] */ (t) => (
               <div className="ex-pair" key={t.id}>
                 <MeBubble turn={t} />
                 <AiBubble
@@ -428,7 +423,7 @@ export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
           className="ex-compose"
           id="exploreCompose"
           onSubmit={
-            /** @param {*} [e] */ (e: any) => {
+            /** @param {*} [e] */ (e) => {
               e.preventDefault();
               ask(draft);
             }
@@ -442,7 +437,7 @@ export function ExplorePane({ hidden, onNewSession, panelProps }: any) {
               placeholder="追问一句话…"
               aria-label="向探索提问"
               autoComplete="off"
-              onChange={/** @param {*} [e] */ (e: any) => setDraft(e.target.value)}
+              onChange={/** @param {*} [e] */ (e) => setDraft(e.target.value)}
             />
           </div>
           <div className="ex-compose-bar">

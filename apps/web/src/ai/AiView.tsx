@@ -11,8 +11,23 @@
  */
 
 import { core } from '@core';
+import type {
+  Digest,
+  DigestItem,
+  DigestSection,
+  Feed,
+  FeedsListResponse,
+  PrefsResponse,
+} from '@feedlore/contract';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type SyntheticEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
 import { widthVariant } from '../imgSrc.ts';
 import { EVENT, on } from '../kernel/events.ts';
@@ -28,6 +43,31 @@ import { ExplorePane } from './ExplorePane.tsx';
 
 const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
+/** 日报视图的四态（读取中 / 生成中 / 就绪 / 空 / 错误）。 */
+type DigestViewState =
+  | { kind: 'loading' }
+  | { kind: 'genLoading'; phase: string; at?: string }
+  | { kind: 'ready'; digest: Digest }
+  | { kind: 'empty'; date: string }
+  | { kind: 'error'; msg: string }
+  | { kind: 'genError'; msg: string };
+
+interface FeedsInfo {
+  total: number;
+  enabled: number;
+}
+
+interface DigestScope {
+  mode: string;
+  feeds: number[];
+}
+
+/** 日报任务 result 的形状（entry_ai job 的 result 是 dynamic，这里按已知字段收窄）。 */
+interface DigestJobResult {
+  digest?: Digest;
+  cached?: boolean;
+}
+
 function shanghaiToday() {
   return new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'Asia/Shanghai',
@@ -37,13 +77,12 @@ function shanghaiToday() {
   }).format(new Date());
 }
 
-/** 日报里的一条条目
- *@param {*} opts
- */
+/** 日报里的一条条目（来自 DigestSection.items）。 */
+type DigestEntry = DigestSection['items'][number];
 
-function DgItem({ it }: any) {
-  const e = it.item || {};
-  const [imgFailed, setImgFailed] = useState<any>(false);
+function DgItem({ it }: { it: DigestEntry }) {
+  const e: Partial<DigestItem> = it.item || {};
+  const [imgFailed, setImgFailed] = useState(false);
   const thumb =
     e.image && !imgFailed && !isImgFailed(e.image) ? (
       <img
@@ -51,7 +90,9 @@ function DgItem({ it }: any) {
         loading="lazy"
         src={widthVariant(e.image, 320) || e.image}
         alt=""
-        onLoad={/** @param {*} [ev] */ (ev: any) => ev.currentTarget.classList.add('img-ready')}
+        onLoad={(ev: SyntheticEvent<HTMLImageElement>) =>
+          ev.currentTarget.classList.add('img-ready')
+        }
         onError={() => {
           markImgFailed(e.image);
           setImgFailed(true);
@@ -92,10 +133,8 @@ function DgItem({ it }: any) {
   );
 }
 
-/** 日报正文（有数据时）
- *@param {*} opts
- */
-function DigestView({ digest }: any) {
+/** 日报正文（有数据时） */
+function DigestView({ digest }: { digest: Digest }) {
   const d = digest;
   const gen = d.generatedAt
     ? new Date(d.generatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
@@ -148,7 +187,7 @@ function DigestView({ digest }: any) {
           </h3>
           <div className="dg-hl-list">
             {highlights.map(
-              /** @param {*} [h] @param {*} [i] */ (h: any, i: any) => (
+              /** @param {*} [h] @param {*} [i] */ (h, i) => (
                 <div className="dg-hl" key={i}>
                   <div className="dg-hl-idx">{i + 1}</div>
                   <div className="dg-hl-body">
@@ -164,7 +203,7 @@ function DigestView({ digest }: any) {
 
       {sections.length ? (
         sections.map(
-          /** @param {*} [s] @param {*} [i] */ (s: any, i: any) => (
+          /** @param {*} [s] @param {*} [i] */ (s, i) => (
             <div className="dg-card" key={i}>
               <h3 className="dg-section-title">
                 {s.title || '未分类'}
@@ -172,7 +211,7 @@ function DigestView({ digest }: any) {
               </h3>
               <div className="dg-items">
                 {s.items.map(
-                  /** @param {*} [it] @param {*} [j] */ (it: any, j: any) => (
+                  /** @param {*} [it] @param {*} [j] */ (it, j) => (
                     <DgItem it={it} key={j} />
                   ),
                 )}
@@ -192,27 +231,24 @@ function DigestView({ digest }: any) {
 export function AiView() {
   const s = S();
   const writable = !!(s && s.isWritable ? s.isWritable() : true);
-  const [active, setActive] = useState<any>(() => !!(s && s.state && s.state.tab === 'ai'));
+  const [active, setActive] = useState<boolean>(() => !!(s && s.state && s.state.tab === 'ai'));
   /* 探索页两级：问答（默认，新的对话式检索）/ 日报（原能力，DOM 与 ID 原样保留）。
    * 放内存不落布局：刷新回到问答是探索页的默认入口，日报从 tab 一键切回。
    * tab 切换只 hidden 不卸载问答面板：切去看日报再回来，会话与在跑的任务都还在。 */
-  const [pane, setPane] = useState<any>('ask');
+  const [pane, setPane] = useState('ask');
   // 「新对话」：换 key 让 ExplorePane 重挂载，内存历史与轮询一起重置（任务在服务端继续）。
-  const [sessionKey, setSessionKey] = useState<any>(0);
-  const newSession = () => setSessionKey(/** @param {*} [k] */ (k: any) => k + 1);
+  const [sessionKey, setSessionKey] = useState(0);
+  const newSession = () => setSessionKey(/** @param {*} [k] */ (k) => k + 1);
 
   /* 二级 tab 的键盘语义（自动激活）：←/→ 在可见 tab 间移动并立即切换，
    * Home/End 跳到首尾。鼠标点击照旧；隐藏的「日报」tab 不参与遍历。 */
-  /**
-   * @param {*} [e]
-   */
-  function onTabKey(e: any) {
-    const list = Array.from(e.currentTarget.parentElement.querySelectorAll('[role="tab"]')).filter(
-      /** @param {*} [el] */ (el: any) => !el.hidden,
-    );
+  function onTabKey(e: ReactKeyboardEvent<HTMLButtonElement>) {
+    const list = Array.from(
+      e.currentTarget.parentElement!.querySelectorAll<HTMLElement>('[role="tab"]'),
+    ).filter((el) => !el.hidden);
     if (list.length < 2) return;
     const i = list.indexOf(e.currentTarget);
-    let next: any = null;
+    let next: HTMLElement | undefined;
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = list[(i + 1) % list.length];
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
       next = list[(i - 1 + list.length) % list.length];
@@ -224,20 +260,19 @@ export function AiView() {
     next.focus();
   }
   // 合并后第一行（标题 + ⋮）即吸顶条，由其写入 --topbar-h
-  const headRef: any = useRef<any>(null);
+  const headRef = useRef<HTMLDivElement | null>(null);
 
   // 日报
-  const [dates, setDates] = useState<any>([]);
-  const [selected, setSelected] = useState<any>(shanghaiToday);
-  const [view, setView] = useState<any>({ kind: 'loading' });
+  const [dates, setDates] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string>(shanghaiToday);
+  const [view, setView] = useState<DigestViewState>({ kind: 'loading' });
   /* 忙碌态按按钮区分（'regen' / 'gen'）：两个按钮共用一枚 boolean 时，点「重新生成」
      会让「生成摘要」也一起变成「生成中… ⟳」，看起来像同时在跑两个任务。 */
-  /** @type {*} */
-  const [genKey, setGenKey] = useState<any>(null);
-  const genBusy: any = useRef(false);
+  const [genKey, setGenKey] = useState<string | null>(null);
+  const genBusy = useRef(false);
   /* 等待秒数：任务改成轮询后，界面需要一个「确实在跑」的证据。
      只显示转圈 + 一句「运行中」，用户很容易在 2 分钟里反复点。 */
-  const [genElapsed, setGenElapsed] = useState<any>(0);
+  const [genElapsed, setGenElapsed] = useState(0);
   useEffect(() => {
     if (!genKey) {
       setGenElapsed(0);
@@ -249,17 +284,14 @@ export function AiView() {
   }, [genKey]);
   /* 请求代际：日期切换是「点第二个日期时第一个可能还在飞」，慢响应回来会盖掉新内容，
      日期选择器与正文对不上。回包时对不上代际就整包丢弃（与两页列表同一套做法）。 */
-  const reqGen: any = useRef(0);
-  const [feedsInfo, setFeedsInfo] = useState<any>({ total: 0, enabled: 0 });
+  const reqGen = useRef(0);
+  const [feedsInfo, setFeedsInfo] = useState<FeedsInfo>({ total: 0, enabled: 0 });
   // 摘要范围读本账号的 prefs.digest（不设站点级那一份）
-  const [scope, setScope] = useState<any>({ mode: 'enabled', feeds: [] });
+  const [scope, setScope] = useState<DigestScope>({ mode: 'enabled', feeds: [] });
 
   // 视图激活感知（React 常驻挂载，只在切到 AI 页时拉数据）
   useEffect(() => {
-    /**
-     * @param {*} [ev]
-     */
-    const onView = (ev: any) => setActive(ev.detail === 'ai');
+    const onView = (ev: Event) => setActive((ev as CustomEvent<unknown>).detail === 'ai');
     return on(EVENT.VIEW, onView);
   }, []);
 
@@ -276,10 +308,10 @@ export function AiView() {
   const scopeQuery = useQuery({
     queryKey: qk.prefs,
     enabled: active,
-    queryFn: async () => {
+    queryFn: async (): Promise<PrefsResponse> => {
       const r = await s.apiFetch('/api/prefs');
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
+      return (await r.json()) as PrefsResponse;
     },
     refetchOnMount: 'always',
     retry: false,
@@ -299,8 +331,8 @@ export function AiView() {
   }, [pane]);
 
   const today = shanghaiToday();
-  const dateOptions: any = useMemo(() => {
-    const list: any = dates.slice();
+  const dateOptions = useMemo(() => {
+    const list = dates.slice();
     if (!list.includes(today)) list.unshift(today);
     return list;
   }, [dates, today]);
@@ -318,10 +350,10 @@ export function AiView() {
 
   async function loadDigest() {
     // 日期列表
-    let ds = [];
+    let ds: string[] = [];
     try {
       const r = await s.apiFetch('/api/digests');
-      const d = await r.json();
+      const d = (await r.json()) as { dates?: string[] };
       ds = d.dates || [];
     } catch (_) {
       ds = [];
@@ -329,31 +361,28 @@ export function AiView() {
     setDates(ds);
     // 频道计数（副标题用）
     try {
-      const data = await s.loadFeeds();
-      const list = (data && data.feeds) || [];
+      const data = (await s.loadFeeds()) as FeedsListResponse;
+      const list: Feed[] = (data && data.feeds) || [];
       setFeedsInfo({
         total: list.length,
-        enabled: list.filter(/** @param {*} [f] */ (f: any) => f.enabled).length,
+        enabled: list.filter((f) => f.enabled).length,
       });
     } catch (_) {
       /* 用已有缓存 */
     }
     // 摘要范围已迁到 scopeQuery（见上），与日期列表并行加载，不再串行等待。
     const opts = ds.includes(today) ? ds : [today, ...ds];
-    const cur = opts.includes(selected) ? selected : opts[0];
+    const cur = opts.includes(selected) ? selected : (opts[0] ?? today);
     await showDigest(cur);
   }
 
-  /**
-   * @param {*} [date]
-   */
-  async function showDigest(date: any) {
+  async function showDigest(date: string) {
     const gen = ++reqGen.current;
     setSelected(date);
     setView({ kind: 'loading' });
     try {
       const res = await s.apiFetch('/api/digest?date=' + encodeURIComponent(date));
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as { digest?: Digest | null };
       // 500 / 网关 HTML 不能当成「今天还没有摘要」，否则引导用户去点生成重试一个坏接口
       if (!res.ok) throw new Error(s.errText(data, '读取失败'));
       if (gen !== reqGen.current) return; // 已有更新的请求，丢弃这一包
@@ -367,11 +396,7 @@ export function AiView() {
 
   /* 日报生成已改异步：提交任务 → 轮询。请求从「挂 3 分钟」变成毫秒级，
    * 网关的 100 秒读超时不再生效；关掉页面任务也会在服务端跑完。 */
-  /**
-   * @param {*} [force]
-   * @param {*} [key]
-   */
-  async function generate(force?: any, key?: any) {
+  async function generate(force?: boolean, key?: string) {
     if (genBusy.current) return;
     if (!s || typeof s.submitAiJob !== 'function') {
       setView({ kind: 'genError', msg: 'AI 功能当前不可用' });
@@ -386,7 +411,7 @@ export function AiView() {
       if (gen !== reqGen.current) return;
       setView({ kind: 'genLoading', phase: job.status || 'queued' });
       const done = await s.pollAiJob(job.id, {
-        onStatus: /** @param {*} [j] */ (j: any) => {
+        onStatus: /** @param {*} [j] */ (j) => {
           // 期间切了日期 / 又发起一次生成：旧任务的状态不该盖掉新视图
           if (gen === reqGen.current)
             setView({ kind: 'genLoading', phase: j.status, at: j.createdAt });
@@ -394,12 +419,12 @@ export function AiView() {
         isCancelled: () => gen !== reqGen.current,
       });
       if (gen !== reqGen.current) return;
-      const r = (done && done.result) || {};
+      const raw = done && done.result;
+      const r: DigestJobResult =
+        typeof raw === 'object' && raw !== null ? (raw as DigestJobResult) : {};
       const d = r.digest;
       if (!d) throw new Error('生成失败：任务完成但没有返回日报');
-      setDates(
-        /** @param {*} [prev] */ (prev: any) => (prev.includes(d.date) ? prev : [d.date, ...prev]),
-      );
+      setDates((prev: string[]) => (prev.includes(d.date) ? prev : [d.date, ...prev]));
       setSelected(d.date);
       setView({ kind: 'ready', digest: d });
       // 服务端偶尔不给 stats：不能在已经生成成功之后抛 TypeError 把 ready 态改写成「生成失败」
@@ -418,7 +443,7 @@ export function AiView() {
       setGenKey(null);
     }
   }
-  let body: any = null;
+  let body = null;
   if (view.kind === 'loading') {
     body = (
       <StateBlock className="dg-loading" spinner>
@@ -571,9 +596,9 @@ export function AiView() {
               title="选择日期"
               ariaLabel="选择日期"
               value={selected}
-              onChange={/** @param {*} [v] */ (v: any) => showDigest(v)}
+              onChange={/** @param {*} [v] */ (v) => showDigest(v)}
               options={dateOptions.map(
-                /** @param {*} [d] */ (d: any) => ({
+                /** @param {*} [d] */ (d) => ({
                   value: d,
                   label: (d === today ? '今天 · ' : '') + d,
                 }),

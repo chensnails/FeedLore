@@ -9,7 +9,9 @@
  * 让顶栏立刻收到 shell tick；服务端会保留 lastAuto（调度器独占字段），这里不用回传。 */
 
 import { core } from '@core';
+import type { Feed } from '@feedlore/contract';
 import { useQuery } from '@tanstack/react-query';
+import type { ChangeEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { invalidate, qk } from '../kernel/query.ts';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.ts';
@@ -22,7 +24,19 @@ const S = () => core;
 // 真正的截断在服务端（这里写小了也不会坏，只是提示不够准）
 const PROMPT_MAX = 2000;
 
-const EMPTY = {
+interface DigestForm {
+  auto: boolean;
+  time: string;
+  mode: string;
+  feeds: number[];
+  maxPerFeed: string;
+  maxTotal: string;
+  keepDays: string;
+  style: string;
+}
+type ResultState = { ok: boolean; msg: string } | null;
+
+const EMPTY: DigestForm = {
   auto: false,
   time: '08:00',
   mode: 'enabled',
@@ -33,23 +47,18 @@ const EMPTY = {
   style: '',
 };
 
-/**
- * @param {*} opts
- */
-
-export function DigestPane({ onDirtyChange }: any) {
-  const paneRef: any = useRef<any>(null);
-  const [enabled, setEnabled] = useState<any>(true);
-  const [form, setForm] = useState<any>(EMPTY);
+export function DigestPane({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
+  const paneRef = useRef<HTMLDivElement | null>(null);
+  const [enabled, setEnabled] = useState(true);
+  const [form, setForm] = useState<DigestForm>(EMPTY);
   // saved：服务端当前值（字符串化后比较，用来判断「有没有没保存的改动」）
-  const [saved, setSaved] = useState<any>(JSON.stringify(EMPTY));
-  const [feedsList, setFeedsList] = useState<any>([]);
-  const [feedsLoading, setFeedsLoading] = useState<any>(true);
-  const [feedsError, setFeedsError] = useState<any>('');
-  /** @type {*} */
-  const [result, setResult] = useState<any>(null); // { ok, msg } | null
-  const [busy, setBusy] = useState<any>(false);
-  const [feedQ, setFeedQ] = useState<any>('');
+  const [saved, setSaved] = useState<string>(JSON.stringify(EMPTY));
+  const [feedsList, setFeedsList] = useState<Feed[]>([]);
+  const [feedsLoading, setFeedsLoading] = useState(true);
+  const [feedsError, setFeedsError] = useState('');
+  const [result, setResult] = useState<ResultState>(null); // { ok, msg } | null
+  const [busy, setBusy] = useState(false);
+  const [feedQ, setFeedQ] = useState('');
   const feedSearchName = useNoAutofillName('dig-feed-q');
   // 异步回填守卫：/api/prefs 还没回来时用户已改动，就不能拿服务端旧值盖掉本地编辑
   const guard = useFormLoadGuard();
@@ -83,7 +92,7 @@ export function DigestPane({ onDirtyChange }: any) {
   useEffect(() => {
     if (prefsQuery.isPending) return;
     if (prefsQuery.isError) {
-      const err: any = prefsQuery.error;
+      const err = prefsQuery.error;
       setResult({ ok: false, msg: '读取日报设置失败：' + String((err && err.message) || err) });
       return;
     }
@@ -121,19 +130,12 @@ export function DigestPane({ onDirtyChange }: any) {
     }
   }
 
-  /**
-   * @param {*} [k]
-   * @param {*} [v]
-   */
-  const setField = (k: any, v: any) => {
+  const setField = (k: keyof DigestForm, v: DigestForm[keyof DigestForm]) => {
     guard.mark();
-    setForm(/** @param {*} [f] */ (f: any) => Object.assign({}, f, { [k]: v }));
+    setForm((f) => Object.assign({}, f, { [k]: v }));
   };
 
-  /**
-   * @param {*} [ev]
-   */
-  const onToggle = (ev: any) => {
+  const onToggle = (ev: ChangeEvent<HTMLInputElement>) => {
     const on = ev.target.checked;
     guard.mark();
     setEnabled(on);
@@ -142,47 +144,33 @@ export function DigestPane({ onDirtyChange }: any) {
     S().toast(on ? '已开启日报，顶栏恢复入口' : '已关闭日报，顶栏不再显示入口');
   };
 
-  /**
-   * @param {*} [fid]
-   * @param {*} [on]
-   */
-  const onToggleFeed = (fid: any, on: any) => {
+  const onToggleFeed = (fid: number, on: boolean) => {
     guard.mark();
-    setForm(
-      /** @param {*} [f] */ (f: any) => {
-        const set = new Set(f.feeds);
-        if (on) set.add(fid);
-        else set.delete(fid);
-        return Object.assign({}, f, { feeds: [...set] });
-      },
-    );
+    setForm((f) => {
+      const set = new Set(f.feeds);
+      if (on) set.add(fid);
+      else set.delete(fid);
+      return Object.assign({}, f, { feeds: [...set] });
+    });
   };
 
-  /**
-   * @param {*} [f]
-   */
-  const feedName = (f: any) => f.customTitle || f.title || f.url;
+  const feedName = (f: Feed) => f.customTitle || f.title || f.url;
 
   // 频道多了以后一屏放不下，按名称 / 地址 / 分组过滤；已勾选但被过滤掉的仍保留
   const feedQuery = feedQ.trim().toLowerCase();
-  const visibleFeeds: any = feedQuery
-    ? feedsList.filter(
-        /** @param {*} [f] */ (f: any) =>
-          [feedName(f), f.url, f.groupName].some(
-            /** @param {*} [t] */ (t: any) =>
-              String(t || '')
-                .toLowerCase()
-                .includes(feedQuery),
-          ),
+  const visibleFeeds = feedQuery
+    ? feedsList.filter((f) =>
+        [feedName(f), f.url, f.groupName].some((t) =>
+          String(t || '')
+            .toLowerCase()
+            .includes(feedQuery),
+        ),
       )
     : feedsList;
 
-  /**
-   * @param {*} [ids]
-   */
-  const setFeedIds = (ids: any) => {
+  const setFeedIds = (ids: number[]) => {
     guard.mark();
-    setForm(/** @param {*} [f] */ (f: any) => Object.assign({}, f, { feeds: ids }));
+    setForm((f) => Object.assign({}, f, { feeds: ids }));
   };
 
   // 全选 / 清空都只作用在当前可见结果上：搜出 3 个再点「清空」，
@@ -193,12 +181,11 @@ export function DigestPane({ onDirtyChange }: any) {
     setFeedIds([...ids]);
   };
   const clearVisibleFeeds = () => {
-    const ids = new Set(visibleFeeds.map(/** @param {*} [f] */ (f: any) => Number(f.id)));
-    setFeedIds(form.feeds.filter(/** @param {*} [id] */ (id: any) => !ids.has(Number(id))));
+    const ids = new Set(visibleFeeds.map((f) => Number(f.id)));
+    setFeedIds(form.feeds.filter((id) => !ids.has(Number(id))));
   };
   const allVisiblePicked =
-    visibleFeeds.length > 0 &&
-    visibleFeeds.every(/** @param {*} [f] */ (f: any) => form.feeds.includes(Number(f.id)));
+    visibleFeeds.length > 0 && visibleFeeds.every((f) => form.feeds.includes(Number(f.id)));
 
   const onSave = async () => {
     setBusy(true);
@@ -257,7 +244,7 @@ export function DigestPane({ onDirtyChange }: any) {
       return;
     }
     guard.mark();
-    setForm(/** @param {*} [f] */ (f: any) => Object.assign({}, f, { style: '' }));
+    setForm(/** @param {*} [f] */ (f) => Object.assign({}, f, { style: '' }));
     // 这里只改本地表单：按钮变灰容易让人误以为已落库，明确告诉用户还要点保存
     setResult({ ok: true, msg: '已清空风格，点「保存日报设置」后生效' });
   };
@@ -307,7 +294,7 @@ export function DigestPane({ onDirtyChange }: any) {
                   id="digAuto"
                   type="checkbox"
                   checked={form.auto}
-                  onChange={/** @param {*} [ev] */ (ev: any) => setField('auto', ev.target.checked)}
+                  onChange={/** @param {*} [ev] */ (ev) => setField('auto', ev.target.checked)}
                 />
                 <span className="switch-slider" />
               </span>
@@ -327,7 +314,7 @@ export function DigestPane({ onDirtyChange }: any) {
               id="digTime"
               type="time"
               value={form.time}
-              onChange={/** @param {*} [ev] */ (ev: any) => setField('time', ev.target.value)}
+              onChange={/** @param {*} [ev] */ (ev) => setField('time', ev.target.value)}
             />
             <small className="form-tip">
               服务进程得在那个点活着才会跑；错过一次不补，第二天照常
@@ -342,7 +329,7 @@ export function DigestPane({ onDirtyChange }: any) {
               title="摘要范围"
               ariaLabel="摘要范围"
               value={form.mode}
-              onChange={/** @param {*} [v] */ (v: any) => setField('mode', v)}
+              onChange={/** @param {*} [v] */ (v) => setField('mode', v)}
               options={[
                 { value: 'enabled', label: '仅「采集」开启的频道' },
                 { value: 'all', label: '全部频道' },
@@ -373,7 +360,7 @@ export function DigestPane({ onDirtyChange }: any) {
                         value={feedQ}
                         placeholder="搜索频道"
                         aria-label="搜索频道"
-                        onChange={/** @param {*} [ev] */ (ev: any) => setFeedQ(ev.target.value)}
+                        onChange={/** @param {*} [ev] */ (ev) => setFeedQ(ev.target.value)}
                         {...NO_AUTOFILL_PROPS}
                       />
                     </div>
@@ -413,30 +400,27 @@ export function DigestPane({ onDirtyChange }: any) {
                 {/* 已有清单优先渲染：一次重拉失败不该把用户正在看的频道行整片抹掉 */}
                 {feedsList.length ? (
                   visibleFeeds.length ? (
-                    visibleFeeds.map(
-                      /** @param {*} [f] */ (f: any) => {
-                        const fid = Number(f.id);
-                        const checked = form.feeds.includes(fid);
-                        return (
-                          <label
-                            key={f.id}
-                            className={'feed-pick-row' + (checked ? ' on' : '')}
-                            title={feedName(f)}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={
-                                /** @param {*} [ev] */ (ev: any) =>
-                                  onToggleFeed(fid, ev.target.checked)
-                              }
-                            />
-                            <span className="feed-pick-name">{feedName(f)}</span>
-                            {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
-                          </label>
-                        );
-                      },
-                    )
+                    visibleFeeds.map((f) => {
+                      const fid = Number(f.id);
+                      const checked = form.feeds.includes(fid);
+                      return (
+                        <label
+                          key={f.id}
+                          className={'feed-pick-row' + (checked ? ' on' : '')}
+                          title={feedName(f)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={
+                              /** @param {*} [ev] */ (ev) => onToggleFeed(fid, ev.target.checked)
+                            }
+                          />
+                          <span className="feed-pick-name">{feedName(f)}</span>
+                          {!f.enabled ? <span className="feed-pick-off">采集关闭</span> : null}
+                        </label>
+                      );
+                    })
                   ) : (
                     <div className="feed-pick-empty">没有匹配的频道</div>
                   )
@@ -476,9 +460,7 @@ export function DigestPane({ onDirtyChange }: any) {
                 min="1"
                 max="100"
                 value={form.maxPerFeed}
-                onChange={
-                  /** @param {*} [ev] */ (ev: any) => setField('maxPerFeed', ev.target.value)
-                }
+                onChange={/** @param {*} [ev] */ (ev) => setField('maxPerFeed', ev.target.value)}
               />
             </div>
             <div className="form-row">
@@ -489,7 +471,7 @@ export function DigestPane({ onDirtyChange }: any) {
                 min="10"
                 max="500"
                 value={form.maxTotal}
-                onChange={/** @param {*} [ev] */ (ev: any) => setField('maxTotal', ev.target.value)}
+                onChange={/** @param {*} [ev] */ (ev) => setField('maxTotal', ev.target.value)}
               />
             </div>
             <div className="form-row">
@@ -500,7 +482,7 @@ export function DigestPane({ onDirtyChange }: any) {
                 min="1"
                 max="365"
                 value={form.keepDays}
-                onChange={/** @param {*} [ev] */ (ev: any) => setField('keepDays', ev.target.value)}
+                onChange={/** @param {*} [ev] */ (ev) => setField('keepDays', ev.target.value)}
               />
               <small className="form-tip">超期的日报由生成时顺带清理，只影响你自己的历史</small>
             </div>
@@ -524,7 +506,7 @@ export function DigestPane({ onDirtyChange }: any) {
                 '例：侧重新版影视和音乐，技术教程只挑对我有用的；语气随意些，别用「赋能」「抓手」这类词；概览压到两句话。'
               }
               value={form.style}
-              onChange={/** @param {*} [ev] */ (ev: any) => setField('style', ev.target.value)}
+              onChange={/** @param {*} [ev] */ (ev) => setField('style', ev.target.value)}
             />
             <small className="form-tip">
               {form.style.length} / {PROMPT_MAX} 字 ·

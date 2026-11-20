@@ -9,6 +9,7 @@
  */
 
 import { core } from '@core';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { get, provide, revoke } from '../kernel/bridge.ts';
 import { clearAutofilledInput, NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.ts';
@@ -35,29 +36,29 @@ const isAdminNow = () => !!(S() && S().isAdmin && S().isAdmin());
 const isReadonlyNow = () => !!(S() && S().isReadonly && S().isReadonly());
 
 export function SettingsModal() {
-  const [open, setOpen] = useState<any>(false);
-  const [tab, setTab] = useState<any>('source');
-  const [summary, setSummary] = useState<any>('');
-  const [query, setQuery] = useState<any>('');
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState('source');
+  const [summary, setSummary] = useState('');
+  const [query, setQuery] = useState('');
   // 当前面板是否有未保存的改动：面板通过 onDirtyChange 上报，切换 / 关闭前据此拦截
-  const [dirty, setDirty] = useState<any>(false);
-  const [admin, setAdmin] = useState<any>(isAdminNow);
-  const [role, setRole] = useState<any>(() => (S().state && S().state.role) || '');
+  const [dirty, setDirty] = useState(false);
+  const [admin, setAdmin] = useState<boolean>(isAdminNow);
+  const [role, setRole] = useState<string>(() => (S().state && S().state.role) || '');
   // 移动端（≤820）用「首页列表 → 分区内容」的两级下钻；桌面端忽略这两个状态
-  const [isMobile, setIsMobile] = useState<any>(false);
-  const [mobilePane, setMobilePane] = useState<any>(false);
-  const modalRef: any = useRef<any>(null);
-  const openerRef: any = useRef<any>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobilePane, setMobilePane] = useState(false);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   // 搜索框绝不能带登录语义：Chrome Android 会把保存的账号启发式填进来。
   const searchName = useNoAutofillName('settings-q');
   // 宿主回调是 [] 依赖的闭包，读 state 会读到首次渲染的旧值；Esc / 返回要判断
   // 「现在是不是窄屏、是不是停在分区内容里」，所以镜像一份最新值到 ref。
-  const isMobileRef: any = useRef(false);
-  const paneOpenRef: any = useRef(false);
-  const tabRef: any = useRef(tab);
-  const dirtyRef: any = useRef(false);
+  const isMobileRef = useRef(false);
+  const paneOpenRef = useRef(false);
+  const tabRef = useRef(tab);
+  const dirtyRef = useRef(false);
   // 确认框开着时忽略第二次切换/关闭，避免叠出两个「放弃更改」
-  const guardingRef: any = useRef(false);
+  const guardingRef = useRef(false);
 
   useEffect(() => {
     isMobileRef.current = isMobile;
@@ -71,13 +72,10 @@ export function SettingsModal() {
 
   // 面板上报脏状态时同步写 ref：仅靠 effect 镜像会晚一个被动副作用周期，
   // 用户在刚改完就立刻切分区时可能漏拦。
-  const reportDirty = useCallback(
-    /** @param {*} [v] */ (v: any) => {
-      dirtyRef.current = !!v;
-      setDirty(!!v);
-    },
-    [],
-  );
+  const reportDirty = useCallback((v: boolean) => {
+    dirtyRef.current = !!v;
+    setDirty(!!v);
+  }, []);
 
   /** 有未保存改动时先确认；返回 true 表示可以继续（无改动或用户选择放弃）。 */
   async function askDiscard() {
@@ -103,16 +101,13 @@ export function SettingsModal() {
   }
 
   // 切分区：移动端同时进入「分区内容」这一层（桌面端忽略 mobilePane）
-  /**
-   * @param {*} [name]
-   */
-  async function selectTab(name: any) {
+  async function selectTab(name: string) {
     // 移动端在首页点当前分区只是进入内容层，草稿还在，不该弹「放弃更改」
     if (name === tabRef.current) {
       if (!isMobile || paneOpenRef.current) return;
       setMobilePane(true);
       setTimeout(() => {
-        const el = modalRef.current && modalRef.current.querySelector('.settings-back');
+        const el = modalRef.current?.querySelector<HTMLElement>('.settings-back');
         if (el) el.focus();
       }, 0);
       return;
@@ -125,7 +120,7 @@ export function SettingsModal() {
     // 进分区后原来的 tab 列表已经被隐藏，焦点必须搬进内容层（返回键），
     // 否则焦点会掉回 body，键盘用户直接丢失位置。
     setTimeout(() => {
-      const el = modalRef.current && modalRef.current.querySelector('.settings-back');
+      const el = modalRef.current?.querySelector<HTMLElement>('.settings-back');
       if (el) el.focus();
     }, 0);
   }
@@ -135,9 +130,9 @@ export function SettingsModal() {
   function goHome() {
     setMobilePane(false);
     setTimeout(() => {
-      const el =
-        modalRef.current &&
-        modalRef.current.querySelector('.tab[data-tab="' + tabRef.current + '"]');
+      const el = modalRef.current?.querySelector<HTMLElement>(
+        '.tab[data-tab="' + tabRef.current + '"]',
+      );
       if (el) el.focus();
     }, 0);
   }
@@ -159,10 +154,7 @@ export function SettingsModal() {
   // 宿主注册：旧 app 的 openSettings/closeSettings 委托到这里
   useEffect(() => {
     const host = {
-      /**
-       * @param {*} [t]
-       */
-      open(t: any) {
+      open(t?: string) {
         const adm = isAdminNow();
         const ro = isReadonlyNow();
         setAdmin(adm);
@@ -195,16 +187,10 @@ export function SettingsModal() {
         return false;
       },
       setSummary,
-      /**
-       * @param {*} [a]
-       */
-      setAdminFlag(a: any) {
+      setAdminFlag(a?: boolean) {
         setAdmin(!!a);
       },
-      /**
-       * @param {*} [r]
-       */
-      setRoleFlag(r: any) {
+      setRoleFlag(r?: string) {
         setRole(r || '');
       },
     };
@@ -214,7 +200,14 @@ export function SettingsModal() {
     const pending = get('settingsPending');
     if (pending) {
       revoke('settingsPending');
-      host.open(pending.tab);
+      if (
+        pending &&
+        typeof pending === 'object' &&
+        'tab' in pending &&
+        typeof pending.tab === 'string'
+      ) {
+        host.open(pending.tab);
+      }
     }
     return () => {
       revoke('settingsHost');
@@ -243,9 +236,10 @@ export function SettingsModal() {
   // 键盘用户关掉设置后焦点会丢到 body，得从头 Tab）。
   useEffect(() => {
     if (open) {
-      openerRef.current = document.activeElement;
+      openerRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const t = setTimeout(() => {
-        const el = modalRef.current && modalRef.current.querySelector('.modal-close');
+        const el = modalRef.current?.querySelector<HTMLElement>('.modal-close');
         if (el) el.focus();
       }, 0);
       return () => clearTimeout(t);
@@ -259,26 +253,24 @@ export function SettingsModal() {
   // 焦点陷阱：Tab / Shift+Tab 在弹层内循环，不会跑到背后的页面上
   useEffect(() => {
     if (!open) return undefined;
-    /**
-     * @param {*} [ev]
-     */
-    const onKey = (ev: any) => {
+    const onKey = (ev: KeyboardEvent) => {
       if (ev.key !== 'Tab') return;
       const root = modalRef.current;
       if (!root) return;
-      const nodes = root.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      // roving tabIndex 的非激活页签不该进 Tab 序：它们是 button，会被上面的选择器命中，
-      // 但按一次 Tab 要穿过 8 个「不可激活」的页签才到内容区。
-      const list = Array.prototype.filter.call(
-        nodes,
-        /** @param {*} [el] */ (el: any) =>
-          !el.disabled && el.offsetParent !== null && el.getAttribute('tabindex') !== '-1',
+      const list = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter(
+        (el) =>
+          !('disabled' in el && el.disabled) &&
+          el.offsetParent !== null &&
+          el.getAttribute('tabindex') !== '-1',
       );
       if (!list.length) return;
-      const first = list[0] as any;
-      const last = list[list.length - 1] as any;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (!first || !last) return;
       if (ev.shiftKey && (document.activeElement === first || document.activeElement === root)) {
         ev.preventDefault();
         last.focus();
@@ -296,44 +288,38 @@ export function SettingsModal() {
     setOpen(false);
     return true;
   };
-  /**
-   * @param {*} [ev]
-   */
-  const onMaskClick = (ev: any) => {
+  const onMaskClick = (ev: ReactMouseEvent<HTMLDivElement>) => {
     if (ev.target === ev.currentTarget) requestClose();
   };
 
   // 手机上是贴底整屏弹层，出口只有 × / Esc（下滑关闭 v2.5.3 下线：真机会闪屏）。
   // 系统返回键栈已随 V5 移除；移动端两级返回的等价路径由 Esc 的 host.escape() → goHome() 承接。
-  const attachModal = useCallback(
-    /** @param {*} [el] */ (el: any) => {
-      modalRef.current = el;
-    },
-    [],
-  );
+  const attachModal = useCallback((el: HTMLDivElement | null) => {
+    modalRef.current = el;
+  }, []);
 
   // 浏览器可能在弹层打开之后又填一次：state 说空、DOM 却有值，直接纠偏。
   // 全局哨兵（main.tsx → installAutofillGuard）负责填充发生当刻，这里兜「打开时已填好」。
   useEffect(() => {
     if (!open || query) return;
-    const el = modalRef.current && modalRef.current.querySelector('#settingsSearch');
+    const el = modalRef.current?.querySelector<HTMLInputElement>('#settingsSearch');
     if (el && el.value) clearAutofilledInput(el);
   }, [open, query]);
 
   const readonly = role === 'readonly';
   const tabs = visibleTabs(admin, readonly);
   const matched = matchTabs(tabs, query);
-  const matchedNames = matched.map(/** @param {*} [t] */ (t: any) => t.name);
+  const matchedNames = matched.map(/** @param {*} [t] */ (t) => t.name);
   const activeTab = TAB_BY_NAME[tab];
   const activeVisible = matchedNames.indexOf(tab) >= 0;
   // 搜索把当前分区过滤掉时，把 tablist 的 roving tabIndex 落到第一个可见项
   const focusTab = activeVisible ? tab : matchedNames[0];
   const navGroups = TAB_GROUPS.map(
-    /** @param {*} [group] */ (group: any) => ({
+    /** @param {*} [group] */ (group) => ({
       group,
-      items: matched.filter(/** @param {*} [t] */ (t: any) => t.group === group),
+      items: matched.filter(/** @param {*} [t] */ (t) => t.group === group),
     }),
-  ).filter(/** @param {*} [g] */ (g: any) => g.items.length);
+  ).filter(/** @param {*} [g] */ (g) => g.items.length);
 
   // 角色在弹层打开期间被改成只读（或反过来）时，把停在不允许分区上的用户带回可见页
   useEffect(() => {
@@ -345,10 +331,7 @@ export function SettingsModal() {
 
   // tablist 的键盘约定：↑↓（竖排）或 ←→ 移动并选中，Home/End 跳首尾；
   // 焦点跟着走，避免「按了方向键但焦点还在原处」。
-  /**
-   * @param {*} [ev]
-   */
-  const onTabsKey = (ev: any) => {
+  const onTabsKey = (ev: ReactKeyboardEvent<HTMLDivElement>) => {
     const k = ev.key;
     if (
       k !== 'ArrowDown' &&
@@ -368,13 +351,14 @@ export function SettingsModal() {
     else if (k === 'ArrowUp' || k === 'ArrowLeft') next = (i - 1 + names.length) % names.length;
     else if (k === 'Home') next = 0;
     else next = names.length - 1;
+    const nextName = names[next];
+    if (nextName === undefined) return;
     ev.preventDefault();
     // 桌面端方向键直接切分区（自动激活，符合 tablist 习惯）；移动端只用方向键
     // 移动焦点、回车才进分区 —— 否则第一次按方向键就把列表换成了内容层，
     // 列表消失、焦点无处可落。
-    if (!isMobile) selectTab(names[next]);
-    const el =
-      modalRef.current && modalRef.current.querySelector('.tab[data-tab="' + names[next] + '"]');
+    if (!isMobile) selectTab(nextName);
+    const el = modalRef.current?.querySelector<HTMLElement>('.tab[data-tab="' + nextName + '"]');
     if (el) el.focus();
   };
 
@@ -443,7 +427,7 @@ export function SettingsModal() {
               value={query}
               placeholder="搜索设置"
               aria-label="搜索设置分区"
-              onChange={/** @param {*} [ev] */ (ev: any) => setQuery(ev.target.value)}
+              onChange={/** @param {*} [ev] */ (ev) => setQuery(ev.target.value)}
               {...NO_AUTOFILL_PROPS}
             />
             {query ? (
@@ -479,7 +463,7 @@ export function SettingsModal() {
                     {group}
                   </div>
                   {items.map(
-                    /** @param {*} [t] */ (t: any) => (
+                    /** @param {*} [t] */ (t) => (
                       <button
                         key={t.name}
                         type="button"

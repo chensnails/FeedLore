@@ -10,8 +10,9 @@
 
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import type { AppState } from '../core/types.ts';
 
-export type AppState = Record<string, any>;
+export type { AppState };
 
 const initial: AppState = {
   entries: [],
@@ -76,10 +77,10 @@ export const appStore = createStore<AppState>(() => ({ ...initial }));
  */
 export const state: AppState = new Proxy({} as AppState, {
   get(_t, key) {
-    return appStore.getState()[key as string];
+    return appStore.getState()[key as keyof AppState];
   },
   set(_t, key, value) {
-    appStore.setState({ [key as string]: value });
+    appStore.setState({ [key as string]: value } as Partial<AppState>);
     return true;
   },
   has(_t, key) {
@@ -89,7 +90,11 @@ export const state: AppState = new Proxy({} as AppState, {
     return Reflect.ownKeys(appStore.getState());
   },
   getOwnPropertyDescriptor(_t, key) {
-    return { enumerable: true, configurable: true, value: appStore.getState()[key as string] };
+    return {
+      enumerable: true,
+      configurable: true,
+      value: appStore.getState()[key as keyof AppState],
+    };
   },
 });
 

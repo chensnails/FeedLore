@@ -14,13 +14,15 @@
  */
 import { createStore } from 'zustand/vanilla';
 
-export type BridgeState = Record<string, any>;
+/** 桥值形态各异（布尔开关 / 函数 / 宿主对象），统一用 unknown，消费处窄化。 */
+export type BridgeValue = unknown;
+export type BridgeState = Record<string, BridgeValue>;
 
 /** 桥状态存储：key 是 window.__* 的原始属性名（如 '__settingsOpen'）。 */
 export const bridgeStore = createStore<BridgeState>(() => ({}));
 
 /** 写一个桥值。undefined/null 等价于删除（与 bridge.provide 的语义一致）。 */
-export function bridgeSet(key: string, value: any) {
+export function bridgeSet(key: string, value: BridgeValue) {
   const next = { ...bridgeStore.getState() };
   if (value == null) delete next[key];
   else next[key] = value;
@@ -28,7 +30,7 @@ export function bridgeSet(key: string, value: any) {
 }
 
 /** 读一个桥值。 */
-export function bridgeGet(key: string): any {
+export function bridgeGet(key: string): BridgeValue {
   return bridgeStore.getState()[key];
 }
 

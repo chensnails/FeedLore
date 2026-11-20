@@ -13,13 +13,17 @@ const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引�
 
 const GH_REPO = 'https://github.com/chensnails/feedlore';
 
+type CheckResult =
+  | { kind: 'upd'; latest: string; current: string; releaseUrl: string }
+  | { kind: 'ok'; current: string }
+  | { kind: 'err'; msg: string };
+
 export function AboutPane() {
   // result: { kind: 'upd', latest, current, releaseUrl } | { kind: 'ok', current } | { kind: 'err', msg }
-  /** @type {*} */
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<CheckResult | null>(null);
   const isAdmin = S().isAdmin ? S().isAdmin() : false;
-  const [checking, setChecking] = useState<any>(false);
-  const [updating, setUpdating] = useState<any>(false); // 一键更新：已触发，等 watchtower 拉镜像重启
+  const [checking, setChecking] = useState(false);
+  const [updating, setUpdating] = useState(false); // 一键更新：已触发，等 watchtower 拉镜像重启
 
   // 进入「关于」页拉一次版本号（旧 loadAboutPage 的迁移）；
   // 面板随 tab 切换挂载/卸载，每次进入都会重新拉取，与旧行为一致。
@@ -87,7 +91,7 @@ export function AboutPane() {
       S().toast('更新失败：' + String((err && err.message) || err), false);
       return;
     }
-    const from = result.current;
+    const from = result && 'current' in result ? result.current : '';
     const started = Date.now();
     const poll = async () => {
       try {

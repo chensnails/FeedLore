@@ -27,7 +27,7 @@ declare global {
     /** 首屏主题模式，见 index.html 内联脚本 */
     __themeBoot?: unknown;
     /** 全局错误文案函数，见 login-main.js（登录页独立文档） */
-    errText?: (...args: any[]) => string;
+    errText?: (input: unknown, fallbackText?: string) => string;
   }
 }
 

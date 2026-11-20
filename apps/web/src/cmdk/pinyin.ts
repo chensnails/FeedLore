@@ -188,11 +188,7 @@ export const PINYIN: Record<string, string> = {
   退: 'tui',
 };
 
-/**
- * @param {*} [text]
- */
-
-export function cjkPinyin(text: any) {
+export function cjkPinyin(text: unknown): string {
   const s = String(text || '');
   let full = '',
     initial = '';

@@ -6,7 +6,7 @@ import { useSyncExternalStore } from 'react';
 import { bridgeStore } from './store.ts';
 
 /** 订阅单个桥值（key 是 window.__* 原始名，通常从 BRIDGE 取）。 */
-export function useBridge(key: string): any {
+export function useBridge(key: string): unknown {
   return useSyncExternalStore(
     bridgeStore.subscribe,
     () => bridgeStore.getState()[key],

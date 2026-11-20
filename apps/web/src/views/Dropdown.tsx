@@ -12,7 +12,14 @@
  * 符合「弹层才用模糊」铁律。 */
 
 import { core } from '@core';
+import type {
+  FocusEvent as ReactFocusEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  ReactNode,
+} from 'react';
 import { useEffect, useRef, useState } from 'react';
+import type { EntityId } from '../core/types.ts';
 
 /* 与 style.css 的 720px 断点一致；jsdom 无 matchMedia 或无布局时按桌面处理。
    卡片详情弹窗（CardDetail）也用这条判据选弹层形态，故导出。 */
@@ -24,11 +31,36 @@ export function isMobileMq() {
   }
 }
 
-/**
- * @param {*} opts
- */
+/** 下拉选项的值：服务端 id（数字/字符串）或本地枚举字符串。 */
+export type DropdownValue = EntityId;
+/** 单个选项。 */
+export interface DropdownOption<V extends DropdownValue = DropdownValue> {
+  value: V;
+  label: ReactNode;
+  group?: string;
+}
+/** 下拉 props。除 options / onChange 外全部可选，避免给调用方制造必填级联。 */
+export interface DropdownProps<V extends DropdownValue = DropdownValue> {
+  id?: string;
+  wrapId?: string;
+  title?: string;
+  ariaLabel?: string;
+  icon?: string;
+  value?: V | null;
+  valueLabel?: ReactNode;
+  options?: DropdownOption<V>[];
+  onChange?: (value: V) => void;
+  collapsible?: boolean;
+  collapsedGroups?: Set<string> | string[] | null;
+  onToggleGroup?: (name: string) => void;
+  activeGroup?: string | null;
+  onGroupFilter?: (name: string) => void;
+  disabled?: boolean;
+  extraClass?: string;
+  dataAttrs?: Record<string, string>;
+}
 
-export function Dropdown({
+export function Dropdown<V extends DropdownValue = DropdownValue>({
   id,
   wrapId,
   title,
@@ -36,7 +68,7 @@ export function Dropdown({
   icon,
   value,
   valueLabel,
-  options,
+  options = [],
   onChange,
   collapsible,
   collapsedGroups,
@@ -46,35 +78,30 @@ export function Dropdown({
   disabled,
   extraClass,
   dataAttrs,
-}: any) {
+}: DropdownProps<V>) {
   // options: [{ value, label, group }]；group 为分组名（'' / undefined 表示无分组）
-  const [open, setOpen] = useState<any>(false);
-  const [mobile, setMobile] = useState<any>(false); // 打开瞬间定格，本次开合内不切换形态
-  const [hi, setHi] = useState<any>(-1); // 键盘 ↑↓ / 悬停高亮的下标（在「可见选项」里数）
-  const rootRef: any = useRef<any>(null);
-  const panelRef: any = useRef<any>(null); // 可滚动列表容器（桌面面板 / 移动弹窗体共用）
-  const triggerRef: any = useRef<any>(null);
-  const sheetCloseRef: any = useRef<any>(null);
+  const [open, setOpen] = useState(false);
+  const [mobile, setMobile] = useState(false); // 打开瞬间定格，本次开合内不切换形态
+  const [hi, setHi] = useState(-1); // 键盘 ↑↓ / 悬停高亮的下标（在「可见选项」里数）
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null); // 可滚动列表容器（桌面面板 / 移动弹窗体共用）
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const sheetCloseRef = useRef<HTMLButtonElement | null>(null);
 
-  const cur = options.find(/** @param {*} [o] */ (o: any) => String(o.value) === String(value));
-  /**
-   * @param {*} [o]
-   */
-  const isActive = (o: any) => !!cur && String(o.value) === String(cur.value);
+  const cur = options.find((o) => String(o.value) === String(value));
+  const isActive = (o: DropdownOption<V>) => !!cur && String(o.value) === String(cur.value);
 
   /* 折叠集合：只有 collapsible 才生效。收起的组里若藏着当前选中项，那一条要留下 ——
      否则「筛选中」的频道会从列表里凭空消失，触发按钮还写着它的名字。 */
   const foldSet = collapsible
     ? collapsedGroups instanceof Set
       ? collapsedGroups
-      : new Set(Array.isArray(collapsedGroups) ? collapsedGroups : [])
+      : new Set<string>(Array.isArray(collapsedGroups) ? collapsedGroups : [])
     : null;
-  /**
-   * @param {*} [o]
-   */
-  const isVisible = (o: any) => !foldSet || !o.group || !foldSet.has(o.group) || isActive(o);
+  const isVisible = (o: DropdownOption<V>) =>
+    !foldSet || !o.group || !foldSet.has(o.group) || isActive(o);
   const visible = foldSet ? options.filter(isVisible) : options;
-  const groupTotal: Record<string, any> = {};
+  const groupTotal: Record<string, number> = {};
   for (const o of options) {
     const g = o.group || '';
     groupTotal[g] = (groupTotal[g] || 0) + 1;
@@ -88,10 +115,7 @@ export function Dropdown({
 
   // 焦点被 Tab 移出整个下拉时收起。这里不能走 close()——它会把焦点抢回触发键，
   // 等于把刚 Tab 出去的用户又弹回原地。焦点掉到页面外（relatedTarget 为空）时不动。
-  /**
-   * @param {*} [ev]
-   */
-  const onBlur = (ev: any) => {
+  const onBlur = (ev: ReactFocusEvent<HTMLDivElement>) => {
     if (!open) return;
     const next = ev.relatedTarget;
     if (!next || (rootRef.current && rootRef.current.contains(next))) return;
@@ -102,16 +126,10 @@ export function Dropdown({
   // 打开期间：点外面 / Esc 关闭（移动端另有遮罩点击 + 关闭按钮）
   useEffect(() => {
     if (!open) return;
-    /**
-     * @param {*} [ev]
-     */
-    const onDoc = (ev: any) => {
-      if (rootRef.current && !rootRef.current.contains(ev.target)) setOpen(false);
+    const onDoc = (ev: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(ev.target as Node)) setOpen(false);
     };
-    /**
-     * @param {*} [ev]
-     */
-    const onKey = (ev: any) => {
+    const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Escape') close();
     };
     document.addEventListener('mousedown', onDoc);
@@ -136,14 +154,14 @@ export function Dropdown({
   useEffect(() => {
     if (!open || !panelRef.current) return;
     const el = panelRef.current.querySelector('.dd-item.active');
-    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    if (el && 'scrollIntoView' in el) el.scrollIntoView({ block: 'nearest' });
   }, [open]);
 
   // 移动端整屏弹层是模态对话框：焦点必须跟着进去，否则 Tab 先走完背后的页面。
   // 落在关闭按钮上最稳（它就是弹层的出口），↑↓/Enter 仍在根节点统一处理。
   useEffect(() => {
     if (!open || !mobile) return;
-    if (sheetCloseRef.current && sheetCloseRef.current.focus) sheetCloseRef.current.focus();
+    if (sheetCloseRef.current) sheetCloseRef.current.focus();
   }, [open, mobile]);
 
   // 键盘 ↑↓ 高亮时把那一项滚进视野（长频道列表里否则看不到当前高亮在哪）
@@ -151,7 +169,7 @@ export function Dropdown({
     if (!open || hi < 0 || !panelRef.current) return;
     const items = panelRef.current.querySelectorAll('.dd-item');
     const el = items[hi];
-    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    if (el && 'scrollIntoView' in el) el.scrollIntoView({ block: 'nearest' });
   }, [hi, open]);
 
   const openPanel = () => {
@@ -161,10 +179,7 @@ export function Dropdown({
     setHi(-1);
   };
 
-  /**
-   * @param {*} [v]
-   */
-  const pick = (v: any) => {
+  const pick = (v: V) => {
     setOpen(false);
     setHi(-1);
     // 点选后焦点回到触发键：否则焦点随面板卸载而丢到 body，键盘用户要从头 Tab
@@ -175,30 +190,30 @@ export function Dropdown({
   // 移动端弹层内的可聚焦元素（组头折叠键、选项、关闭键）；收起组里的按钮不算
   const sheetFocusables = () => {
     const body = panelRef.current;
-    const sheet = body && body.closest ? body.closest('.dd-sheet') : null;
+    const sheet = body ? body.closest('.dd-sheet') : null;
     if (!sheet) return null;
-    const list = Array.from(sheet.querySelectorAll('button:not([disabled])')).filter(
-      /** @param {*} [el] */ (el: any) => !el.closest('[hidden]'),
-    );
+    const list = Array.from(
+      sheet.querySelectorAll<HTMLButtonElement>('button:not([disabled])'),
+    ).filter((el) => !el.closest('[hidden]'));
     return list.length ? list : null;
   };
 
-  /**
-   * @param {*} [ev]
-   */
-  const onKeyDown = (ev: any) => {
+  const onKeyDown = (ev: ReactKeyboardEvent<HTMLDivElement>) => {
     if (disabled) return;
     // 模态弹层里 Tab 不能跑出去（背后页面还开着，跑出去等于把焦点丢进遮罩后面）
     if (ev.key === 'Tab' && open && mobile) {
       const list = sheetFocusables();
       if (list) {
-        const first = list[0] as any;
-        const last = list[list.length - 1] as any;
+        const first = list[0];
+        const last = list[list.length - 1];
+        if (!first || !last) return;
         const at = document.activeElement;
-        if (ev.shiftKey && (at === first || !list.includes(at))) {
+        // 鸭子类型：测试桩的元素未必来自浏览器 realm，用 includes 判成员即可
+        const atInList = at !== null && list.includes(at as HTMLButtonElement);
+        if (ev.shiftKey && (at === first || !atInList)) {
           ev.preventDefault();
           last.focus();
-        } else if (!ev.shiftKey && (at === last || !list.includes(at))) {
+        } else if (!ev.shiftKey && (at === last || !atInList)) {
           ev.preventDefault();
           first.focus();
         }
@@ -207,43 +222,39 @@ export function Dropdown({
     }
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
       ev.preventDefault();
-      const at = visible.indexOf(/** @param {*} [o] */ cur);
+      const at = cur ? visible.indexOf(cur) : -1;
       if (!open) {
         openPanel();
         setHi(at);
         return;
       }
-      setHi(
-        /** @param {*} [h] */ (h: any) => {
-          const base = h < 0 ? at : h;
-          return ev.key === 'ArrowDown'
-            ? Math.min(visible.length - 1, base + 1)
-            : Math.max(0, base - 1);
-        },
-      );
+      setHi((h) => {
+        const base = h < 0 ? at : h;
+        return ev.key === 'ArrowDown'
+          ? Math.min(visible.length - 1, base + 1)
+          : Math.max(0, base - 1);
+      });
     } else if (ev.key === 'Enter' && open && hi >= 0) {
+      const target = visible[hi];
+      if (!target) return;
       ev.preventDefault();
-      pick(visible[hi].value);
+      pick(target.value);
     }
   };
 
   // 选项按组归并（保持首次出现顺序），供折叠态渲染与键盘导航共用
-  const groupOrder = [];
-  const byGroup = new Map();
+  const groupOrder: string[] = [];
+  const byGroup = new Map<string, DropdownOption<V>[]>();
   for (const o of options) {
     const g = o.group || '';
     if (!byGroup.has(g)) {
       byGroup.set(g, []);
       groupOrder.push(g);
     }
-    byGroup.get(g).push(o);
+    byGroup.get(g)?.push(o);
   }
 
-  /**
-   * @param {*} [o]
-   * @param {*} [vi]
-   */
-  const renderItem = (o: any, vi: any) => {
+  const renderItem = (o: DropdownOption<V>, vi: number) => {
     const active = isActive(o);
     return (
       <button
@@ -268,17 +279,17 @@ export function Dropdown({
   };
 
   // 高亮项（hi）对应的 option / 所属分组：用于给 listbox 设 aria-activedescendant
-  const activeOpt = hi >= 0 ? visible[hi] : null;
+  const activeOpt = (hi >= 0 ? visible[hi] : null) ?? null;
   const _activeOptGroup = activeOpt ? activeOpt.group || '' : null;
 
-  let rows: any;
+  let rows: ReactNode[] = [];
   if (collapsible) {
     // 折叠态：每个分组独立成 listbox，折叠开关（按钮）作为 listbox 的兄弟节点，
     // 不再嵌进 listbox —— 满足「listbox 子节点只放 option」的 ARIA 约束。
     rows = [];
     let vi = -1;
     for (const g of groupOrder) {
-      const opts = byGroup.get(g);
+      const opts = byGroup.get(g) ?? [];
       const folded = foldSet ? foldSet.has(g) : false;
       if (g) {
         const filtered = activeGroup != null && activeGroup === g;
@@ -335,36 +346,31 @@ export function Dropdown({
           aria-activedescendant={g === activeGroup && activeOpt ? 'dd-opt-' + hi : undefined}
           key={'gl:' + g}
         >
-          {groupItems.map(
-            /** @param {*} [o] */ (o: any) => {
-              vi++;
-              return renderItem(o, vi);
-            },
-          )}
+          {groupItems.map((o) => {
+            vi++;
+            return renderItem(o, vi);
+          })}
         </div>,
       );
     }
   } else {
     // 非折叠：保持原结构（纯文本分组标题 + 平铺选项），测试要求保留 <div className="dd-group">
     rows = [];
-    /** @type {*} */
-    let lastGroup: any;
+    let lastGroup: string | undefined;
     let vi = -1;
-    options.forEach(
-      /** @param {*} [o] */ (o: any) => {
-        const g = o.group || '';
-        if (g && g !== lastGroup)
-          rows.push(
-            <div className="dd-group" key={'g:' + g}>
-              {g}
-            </div>,
-          );
-        lastGroup = g;
-        if (!isVisible(o)) return;
-        vi++;
-        rows.push(renderItem(o, vi));
-      },
-    );
+    options.forEach((o) => {
+      const g = o.group || '';
+      if (g && g !== lastGroup)
+        rows.push(
+          <div className="dd-group" key={'g:' + g}>
+            {g}
+          </div>,
+        );
+      lastGroup = g;
+      if (!isVisible(o)) return;
+      vi++;
+      rows.push(renderItem(o, vi));
+    });
   }
 
   return (
@@ -426,7 +432,7 @@ export function Dropdown({
             role="dialog"
             aria-modal="true"
             aria-label={ariaLabel || title}
-            onClick={/** @param {*} [ev] */ (ev: any) => ev.stopPropagation()}
+            onClick={(ev: ReactMouseEvent<HTMLDivElement>) => ev.stopPropagation()}
           >
             <div className="dd-sheet-head">
               <span className="dd-sheet-title">{title}</span>

@@ -87,7 +87,7 @@ export interface CreateAuthOptions {
    * 而 better-auth 的 drizzleAdapter 只按运行时形态访问表；若把泛型收紧成
    * Record<string, never>，传入具体实例会因 dbName 不兼容而编译失败。
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // biome-ignore lint/suspicious/noExplicitAny: better-auth drizzleAdapter 只按运行时形态访问表，收紧泛型会因 dbName 不兼容而编译失败
   db: NodePgDatabase<any>;
   /** 会话加密密钥（对应 AUTH_SECRET / BETTER_AUTH_SECRET）。 */
   secret: string;

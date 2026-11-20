@@ -15,8 +15,8 @@ import { EVENT, on } from '../kernel/events.ts';
 const SHOW_AFTER = 600;
 
 export function ScrollTop() {
-  const [show, setShow] = useState<any>(false);
-  const rafRef: any = useRef(0);
+  const [show, setShow] = useState(false);
+  const rafRef = useRef(0);
 
   useEffect(() => {
     const read = () => {

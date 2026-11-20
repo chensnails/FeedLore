@@ -10,6 +10,7 @@ import { scheduleAutoRefresh } from './autorefresh.ts';
 import { applyViewMode, currentTab, currentViewMode, loadFeeds } from './feeds.ts';
 import { restoreReaderArt } from './reader.ts';
 import { applyRoleUI, applyTheme, currentThemeMode, openSettings, state } from './state.ts';
+import type { ViewTab } from './types.ts';
 import { switchView } from './ui.ts';
 import { emitShell, toast } from './util.ts';
 
@@ -43,7 +44,7 @@ function bootReady() {
 /**
  * @param {*} [message]
  */
-function bootFail(message: any) {
+function bootFail(message: string) {
   if (window.__boot) window.__boot.fail(message);
 }
 /* switchView 在支持 View Transitions 时是异步落地的（apply 回调在旧画面快照后才执行），
@@ -53,7 +54,7 @@ function bootFail(message: any) {
 /**
  * @param {*} [tab]
  */
-async function waitViewFirstPaint(tab: any) {
+async function waitViewFirstPaint(tab: ViewTab) {
   const VIEW_IDS: Record<string, string> = {
     reader: 'readerView',
     cards: 'cardsView',
@@ -64,24 +65,24 @@ async function waitViewFirstPaint(tab: any) {
   while (Date.now() - t0 < 12000) {
     const el = document.getElementById(viewId);
     if (el && !el.hidden) break;
-    await new Promise(/** @param {*} [r] */ (r: any) => setTimeout(r, 50));
+    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
   }
   if (tab === 'reader') {
     while (state.rdLoading && Date.now() - t0 < 12000)
-      await new Promise(/** @param {*} [r] */ (r: any) => setTimeout(r, 50));
+      await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
     if (state.rdEntries.length && !state.rdReadError) {
       const t = Date.now();
       while (!document.querySelector('#readerList .art-item') && Date.now() - t < 3000) {
-        await new Promise(/** @param {*} [r] */ (r: any) => setTimeout(r, 40));
+        await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 40));
       }
     }
   } else if (tab === 'cards') {
     while (state.loading && Date.now() - t0 < 12000)
-      await new Promise(/** @param {*} [r] */ (r: any) => setTimeout(r, 50));
+      await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
     if ((state.entries || []).length && !state.loadError) {
       const t = Date.now();
       while (!document.querySelector('#grid .card, #grid .row-item') && Date.now() - t < 3000) {
-        await new Promise(/** @param {*} [r] */ (r: any) => setTimeout(r, 40));
+        await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 40));
       }
     }
   }
@@ -89,10 +90,8 @@ async function waitViewFirstPaint(tab: any) {
   // 后台标签页不排帧，只等帧会让整条启动链卡在这里（启动层于是被看门狗判成超时），
   // 所以给帧一个定时兜底：拿不到帧也放行。
   await Promise.race([
-    new Promise(
-      /** @param {*} [r] */ (r: any) => requestAnimationFrame(() => requestAnimationFrame(r)),
-    ),
-    new Promise(/** @param {*} [r] */ (r: any) => setTimeout(r, 300)),
+    new Promise(/** @param {*} [r] */ (r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 300)),
   ]);
 }
 
@@ -101,7 +100,7 @@ async function waitViewFirstPaint(tab: any) {
   // allSettled 一次等齐两个请求，也避免先失败的一方留下未处理的 rejection。
   const [sessionRes, feedsRes] = await Promise.allSettled([
     cachedGet(qk.session, () =>
-      fetch('/api/session').then(/** @param {*} [res] */ (res: any) => res.json()),
+      fetch('/api/session').then(/** @param {*} [res] */ (res) => res.json()),
     ),
     loadFeeds(),
   ]);
@@ -139,9 +138,7 @@ async function waitViewFirstPaint(tab: any) {
   const urlFeed = new URLSearchParams(location.search).get('feed');
   if (
     urlFeed &&
-    (state.feedList || []).some(
-      /** @param {*} [f] */ (f: any) => String(f.id) === urlFeed && f.enabled,
-    )
+    (state.feedList || []).some(/** @param {*} [f] */ (f) => String(f.id) === urlFeed && f.enabled)
   ) {
     state.feedFilter = Number(urlFeed);
     state.rdFeedId = Number(urlFeed);
@@ -154,7 +151,7 @@ async function waitViewFirstPaint(tab: any) {
   // ⚠️ 先定目标视图再拉列表（v2.2.0）：以前无条件加载卡片列表，从文章页启动时
   //    白拉一整页用户看不到的卡片和图片请求。
   let tab = currentTab();
-  let deepArtId: any = null;
+  let deepArtId = null;
   if (location.hash.startsWith('#reader/art/')) {
     tab = 'reader';
     deepArtId = location.hash.slice('#reader/art/'.length);
@@ -197,7 +194,7 @@ async function waitViewFirstPaint(tab: any) {
     await restoreReaderArt(deepArtId);
   }
 })().catch(
-  /** @param {*} [err] */ (err: any) => {
+  /** @param {*} [err] */ (err) => {
     bootFail('加载失败：' + (err && err.message ? err.message : '未知错误'));
   },
 );

@@ -5,21 +5,28 @@
 
 import { core } from '@core';
 import * as Dialog from '@radix-ui/react-dialog';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { provide, revoke } from '../kernel/bridge.ts';
 import { hasLayerAbove } from '../ui/layers.ts';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.ts';
-import { buildCommands, cmdkFilter } from './commands.ts';
+import { buildCommands, type Command, cmdkFilter } from './commands.ts';
 
 const BRIDGE = () => core; // 核心逻辑单例（@core）
 
 export function CommandPalette() {
-  const [open, setOpen] = useState<any>(false);
-  const [q, setQ] = useState<any>('');
-  const [active, setActive] = useState<any>(0);
-  const inputRef: any = useRef<any>(null);
-  const listRef: any = useRef<any>(null);
-  const panelRef: any = useRef<any>(null);
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [active, setActive] = useState(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   // 命令面板是全局搜索框，不是登录框：名字要唯一且被密码管理器忽略（DESIGN 第 10 条）。
   // 之前漏了这层防护，Chrome/Edge Android 会把保存的用户名填进来当成搜索词。
   const noAutofillName = useNoAutofillName('cmdk');
@@ -29,18 +36,13 @@ export function CommandPalette() {
   // 之前能在确认框 / 设置之上再叠一层模态，两层 Tab 陷阱互相抢焦点、Esc 关错层。
   // 已经开着时永远允许关（这是「我就要退出」的意图）。
   useEffect(() => {
-    /**
-     * @param {*} [ev]
-     */
-    const onKey = (ev: any) => {
+    const onKey = (ev: KeyboardEvent) => {
       if ((ev.metaKey || ev.ctrlKey) && (ev.key === 'k' || ev.key === 'K')) {
         ev.preventDefault();
-        setOpen(
-          /** @param {*} [o] */ (o: any) => {
-            if (o) return false;
-            return !hasLayerAbove('cmdk');
-          },
-        );
+        setOpen((o) => {
+          if (o) return false;
+          return !hasLayerAbove('cmdk');
+        });
       }
     };
     document.addEventListener('keydown', onKey);
@@ -57,10 +59,11 @@ export function CommandPalette() {
 
   // 打开时清空输入并聚焦；关闭时把焦点还给打开它的那个按钮（与设置弹层 / 灯箱一致）。
   // 不还的话焦点掉到 body，键盘用户得从头 Tab 回原来那块地方。
-  const openerRef: any = useRef<any>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (open) {
-      openerRef.current = document.activeElement;
+      openerRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setQ('');
       setActive(0);
       const raf = requestAnimationFrame(() => {
@@ -88,7 +91,7 @@ export function CommandPalette() {
   const query = q.trim();
   const searchCmd =
     open && query
-      ? {
+      ? ({
           group: '搜索',
           icon: 'search',
           label: `在文章中搜索「${query}」`,
@@ -98,12 +101,12 @@ export function CommandPalette() {
             if (c.state.tab !== 'reader') c.switchView('reader');
             if (c.readerSearch) c.readerSearch(query);
           },
-        }
+        } satisfies Command)
       : null;
   const items = searchCmd ? matched.concat([searchCmd]) : matched;
 
   const runCmdk = useCallback(
-    /** @param {*} [idx] */ (idx: any) => {
+    (idx: number) => {
       const c = items[idx];
       if (!c) return;
       close();
@@ -116,19 +119,13 @@ export function CommandPalette() {
     [items, close],
   );
 
-  /**
-   * @param {*} [ev]
-   */
-  const onInputKeyDown = (ev: any) => {
+  const onInputKeyDown = (ev: ReactKeyboardEvent<HTMLInputElement>) => {
     if (ev.key === 'ArrowDown') {
       ev.preventDefault();
-      setActive(/** @param {*} [i] */ (i: any) => (items.length ? (i + 1) % items.length : 0));
+      setActive((i) => (items.length ? (i + 1) % items.length : 0));
     } else if (ev.key === 'ArrowUp') {
       ev.preventDefault();
-      setActive(
-        /** @param {*} [i] */ (i: any) =>
-          items.length ? (i - 1 + items.length) % items.length : 0,
-      );
+      setActive((i) => (items.length ? (i - 1 + items.length) % items.length : 0));
     } else if (ev.key === 'Enter') {
       ev.preventDefault();
       runCmdk(active);
@@ -142,48 +139,46 @@ export function CommandPalette() {
     (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '',
   );
 
-  let rows: any = null;
-  let lastGroup: any = null;
+  let rows = null;
+  let lastGroup: string | null = null;
   if (!items.length) {
     rows = <div className="cmdk-empty">没有匹配的命令</div>;
   } else {
-    rows = items.map(
-      /** @param {*} [c] @param {*} [idx] */ (c: any, idx: any) => {
-        const head: any =
-          c.group !== lastGroup ? (
-            <div className="cmdk-group-label" key={'g-' + idx}>
-              {c.group}
-            </div>
-          ) : null;
-        lastGroup = c.group;
-        return (
-          <React.Fragment key={idx}>
-            {head}
-            <button
-              className={'cmdk-item' + (idx === active ? ' active' : '')}
-              type="button"
-              role="option"
-              id={'cmdkOpt' + idx}
-              aria-selected={idx === active ? 'true' : 'false'}
-              onMouseMove={() => setActive(idx)}
-              onClick={() => runCmdk(idx)}
-            >
-              <svg className="cmdk-ico" aria-hidden="true" focusable="false">
-                <use href={'#i-' + c.icon} />
-              </svg>
-              <span className="cmdk-label">{c.label}</span>
-              {c.hint ? <span className="cmdk-tag">{c.hint}</span> : null}
-            </button>
-          </React.Fragment>
-        );
-      },
-    );
+    rows = items.map((c, idx) => {
+      const head =
+        c.group !== lastGroup ? (
+          <div className="cmdk-group-label" key={'g-' + idx}>
+            {c.group}
+          </div>
+        ) : null;
+      lastGroup = c.group;
+      return (
+        <React.Fragment key={idx}>
+          {head}
+          <button
+            className={'cmdk-item' + (idx === active ? ' active' : '')}
+            type="button"
+            role="option"
+            id={'cmdkOpt' + idx}
+            aria-selected={idx === active ? 'true' : 'false'}
+            onMouseMove={() => setActive(idx)}
+            onClick={() => runCmdk(idx)}
+          >
+            <svg className="cmdk-ico" aria-hidden="true" focusable="false">
+              <use href={'#i-' + c.icon} />
+            </svg>
+            <span className="cmdk-label">{c.label}</span>
+            {c.hint ? <span className="cmdk-tag">{c.hint}</span> : null}
+          </button>
+        </React.Fragment>
+      );
+    });
   }
 
   return (
     <Dialog.Root
       open={open}
-      onOpenChange={(o: any) => {
+      onOpenChange={(o) => {
         if (!o) close();
       }}
     >
@@ -218,12 +213,10 @@ export function CommandPalette() {
                 aria-controls="cmdkList"
                 aria-activedescendant={items.length ? 'cmdkOpt' + active : undefined}
                 value={q}
-                onChange={
-                  /** @param {*} [ev] */ (ev: any) => {
-                    setQ(ev.target.value);
-                    setActive(0);
-                  }
-                }
+                onChange={(ev: ChangeEvent<HTMLInputElement>) => {
+                  setQ(ev.target.value);
+                  setActive(0);
+                }}
                 onKeyDown={onInputKeyDown}
               />
               <kbd className="cmdk-kbd">{isMac ? '⌘K' : 'Ctrl K'}</kbd>

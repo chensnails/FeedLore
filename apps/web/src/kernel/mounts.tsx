@@ -16,9 +16,9 @@
  * 注意：main.tsx 仍须把 `import '@core'` 放在最前 —— 核心模块求值时就会
  * 绑定事件与首屏启动，挂载必须在它之后发生。
  */
-import React, { useSyncExternalStore } from 'react';
+import React, { type ComponentType, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import { CommandPalette } from '../cmdk/CommandPalette.tsx';
 import { Overlays } from '../ui/Overlays.tsx';
 import { ScrollTop } from '../ui/ScrollTop.tsx';
@@ -44,19 +44,20 @@ const LOADERS = {
 
 /** 完整装配描述（数据 + 组件引用），供诊断与测试使用。 */
 export const MOUNTS = Object.freeze(
-  MOUNT_POINTS.map(
-    /** @param {*} [p] */ (p: any) =>
-      Object.freeze({
-        ...p,
-        component: (COMPONENTS as any)[p.component],
-        load: p.lazy ? (LOADERS as any)[p.exportName] : undefined,
-      }),
+  MOUNT_POINTS.map((p) =>
+    Object.freeze({
+      ...p,
+      component: p.component
+        ? (COMPONENTS as Record<string, ComponentType>)[p.component]
+        : undefined,
+      load: p.lazy && p.exportName ? LOADERS[p.exportName as keyof typeof LOADERS] : undefined,
+    }),
   ),
 );
 
 // 按需模块就绪状态：loadMount 在模块外（core 层调用）完成 import 后写入并通知 React。
-const loadedLazy = new Map();
-const loading = new Map();
+const loadedLazy = new Map<string, ComponentType>();
+const loading = new Map<string, Promise<void>>();
 const lazyListeners = new Set<() => void>();
 
 function subscribeLazy(fn: () => void) {
@@ -69,28 +70,26 @@ function getLazySnapshot() {
   return loadedLazy.size;
 }
 
-/** @param {*} [id] */
-function loadMount(id: any) {
-  if (loading.has(id)) return loading.get(id);
+function loadMount(id: string): Promise<void> {
+  const pending = loading.get(id);
+  if (pending) return pending;
   if (loadedLazy.has(id) || !document.getElementById(id)) return Promise.resolve();
-  const m = MOUNTS.find(/** @param {*} [x] */ (x: any) => x.id === id);
-  if (!m || !m.load) return Promise.resolve();
-  const p = m
+  const m = MOUNTS.find((x) => x.id === id);
+  if (!m || !m.load || !m.exportName) return Promise.resolve();
+  const exportName = m.exportName;
+  const p: Promise<void> = m
     .load()
-    .then(
-      /** @param {*} [mod] */ (mod: any) => {
-        loadedLazy.set(id, mod[m.exportName]);
-        loading.delete(id);
-        lazyListeners.forEach((fn) => fn());
-      },
-    )
-    .catch(
-      /** @param {*} [err] */ (err: any) => {
-        loading.delete(id); // 允许下次重试，别把失败永久缓存
-        console.error(`[kernel] 按需加载 ${id} 失败`, err);
-        throw err;
-      },
-    );
+    .then((mod: Record<string, unknown>) => {
+      const Comp = mod[exportName];
+      if (typeof Comp === 'function') loadedLazy.set(id, Comp as ComponentType);
+      loading.delete(id);
+      lazyListeners.forEach((fn) => fn());
+    })
+    .catch((err: unknown) => {
+      loading.delete(id); // 允许下次重试，别把失败永久缓存
+      console.error(`[kernel] 按需加载 ${id} 失败`, err);
+      throw err;
+    });
   loading.set(id, p);
   return p;
 }
@@ -100,7 +99,7 @@ function App() {
   useSyncExternalStore(subscribeLazy, getLazySnapshot);
   return (
     <>
-      {MOUNTS.map((m: any) => {
+      {MOUNTS.map((m) => {
         const host = document.getElementById(m.id);
         if (!host) return null;
         const Component = m.lazy ? loadedLazy.get(m.id) : m.component;
@@ -111,9 +110,8 @@ function App() {
   );
 }
 
-/** @param {*} [tab] */
-function openSettings(tab: any) {
-  const host = get('settingsHost');
+function openSettings(tab?: string) {
+  const host = get('settingsHost') as { open?: (tab?: string) => void } | undefined;
   if (host && host.open) {
     host.open(tab);
     return Promise.resolve();
@@ -126,7 +124,7 @@ function openAi() {
   return loadMount('aiRoot');
 }
 
-let rootInstance: any = null;
+let rootInstance: Root | null = null;
 
 /** 唯一的启动入口：建一个 root 挂全部装配项，并把两个按需加载器登记到能力桥。 */
 export function mountAll() {

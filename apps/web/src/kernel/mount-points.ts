@@ -7,7 +7,14 @@
  * component 是组件名（映射到 mounts.tsx 的注册表），exportName 是按需 chunk
  * 里导出的名字。两个 lazy 项首屏不下载。
  */
-export const MOUNT_POINTS = Object.freeze([
+export interface MountPoint {
+  id: string;
+  component?: string;
+  lazy?: boolean;
+  exportName?: string;
+}
+
+export const MOUNT_POINTS: readonly MountPoint[] = Object.freeze([
   { id: 'cmdkRoot', component: 'CommandPalette' },
   { id: 'cardsRoot', component: 'CardsView' },
   { id: 'readerRoot', component: 'ReaderView' },
@@ -20,4 +27,4 @@ export const MOUNT_POINTS = Object.freeze([
   { id: 'aiRoot', lazy: true, exportName: 'AiView' },
 ]);
 
-export const MOUNT_IDS = Object.freeze(MOUNT_POINTS.map(/** @param {*} [m] */ (m: any) => m.id));
+export const MOUNT_IDS = Object.freeze(MOUNT_POINTS.map((m) => m.id));

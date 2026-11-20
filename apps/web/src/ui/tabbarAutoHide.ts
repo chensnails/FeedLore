@@ -29,25 +29,20 @@ const CLASS = 'tabbar-tucked';
 // 只认这三个滚动容器：抽屉 / 弹层 / 卡片详情里的滚动不该让底栏"消失"
 const SCROLLERS = '.reader-main, #cardsRoot > main.wrap, #aiView';
 
-/**
- * @param {*} [doc]
- * @param {*} [options]
- */
+export interface AutoHideOptions {
+  cooldown?: number;
+}
 
-export function installTabbarAutoHide(doc: any = document, options: any = {}) {
+export function installTabbarAutoHide(doc: Document = document, options: AutoHideOptions = {}) {
   const win = doc.defaultView || window;
   const cooldown = typeof options.cooldown === 'number' ? options.cooldown : COOLDOWN;
-  let nav: any = null; // 当前跟踪的滚动容器
+  let nav: HTMLElement | null = null; // 当前跟踪的滚动容器
   let lastTop = 0;
   let acc = 0; // 带符号累计位移：正 = 向下，负 = 向上
   let tucked = false;
   let lastFlip = 0;
 
-  /**
-   * @param {*} [next]
-   */
-
-  function apply(next: any) {
+  function apply(next: boolean) {
     if (next === tucked) return;
     tucked = next;
     // 冷却只由「收起」计时：展开是安全网，不该推迟下一次收起，
@@ -63,14 +58,12 @@ export function installTabbarAutoHide(doc: any = document, options: any = {}) {
     apply(false);
   }
 
-  /**
-   * @param {*} [ev]
-   */
-
-  function onScroll(ev: any) {
+  function onScroll(ev: Event) {
     const target = ev.target;
-    const el = target && target.nodeType === 9 ? doc.scrollingElement : target;
-    if (!el || el.nodeType !== 1 || typeof el.matches !== 'function') return;
+    const raw =
+      target && target instanceof Node && target.nodeType === 9 ? doc.scrollingElement : target;
+    if (!(raw instanceof HTMLElement) || raw.nodeType !== 1) return;
+    const el = raw;
     if (!el.matches(SCROLLERS)) return;
     if (el.scrollHeight <= el.clientHeight) return; // 不可滚动的容器不管
 

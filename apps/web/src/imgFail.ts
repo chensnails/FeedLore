@@ -16,13 +16,13 @@ export const IMG_FAIL_TTL_MS = 10 * 60 * 1000;
 export const IMG_FAIL_MAX = 500;
 
 const PROXY_PREFIX = '/api/img?';
-const failed = new Map(); // key -> 过期时间戳（Map 插入序用于淘汰最旧的一条）
+const failed = new Map<string, number>(); // key -> 过期时间戳（Map 插入序用于淘汰最旧的一条）
 
 /** 归一化图片地址：去掉 srcset 宽度、重试标记与 hash；空值返回 ''。
  *@param {*} [src]
  */
 
-export function imgFailKey(src: any) {
+export function imgFailKey(src: unknown): string {
   const raw = String(src || '');
   // data URI 本身就是完整图片（可能是几十 KB 的 base64），不该塞进内存表
   if (!raw || /^data:/i.test(raw)) return '';
@@ -38,7 +38,7 @@ export function imgFailKey(src: any) {
  *@param {*} [src]
  * @param {*} [now]
  */
-export function isImgFailed(src: any, now = Date.now()) {
+export function isImgFailed(src: unknown, now: number = Date.now()): boolean {
   const key = imgFailKey(src);
   if (!key) return false;
   const expiresAt = failed.get(key);
@@ -54,7 +54,7 @@ export function isImgFailed(src: any, now = Date.now()) {
  *@param {*} [src]
  * @param {*} [now]
  */
-export function markImgFailed(src: any, now = Date.now()) {
+export function markImgFailed(src: unknown, now: number = Date.now()): void {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   const key = imgFailKey(src);
   if (!key) return;

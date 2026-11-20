@@ -16,7 +16,7 @@ import { PaneFoot } from './primitives.tsx';
 
 const S = () => core; // 核心逻辑单例（@core，v2.0.0 起改为模块引用）
 
-// 分段控件行：key 为外观偏好键，attr 即旧控件上标值的 data 属性名，options 与旧 HTML 一一对应
+// 分段控件行：options 为 [值, 文案] 列表
 const ROWS = {
   theme: {
     key: 'theme',
@@ -109,10 +109,12 @@ const ROWS = {
   },
 };
 
+type AppearanceRow = (typeof ROWS)[keyof typeof ROWS];
+
 // 分组：从「主题怎么长」到「界面尺寸」再到「正文怎么读」，后者影响范围更小。
 // 卡片密度与文章密度并排放在「界面」组：分别管卡片页和文章页两套列表。
 // 主色调属于主题组，单独渲染（色块控件不是分段控件）。
-const GROUPS = [
+const GROUPS: { title: string; accent?: boolean; rows: AppearanceRow[] }[] = [
   { title: '主题与配色', accent: true, rows: [ROWS.theme] },
   { title: '界面', rows: [ROWS.fontSize, ROWS.density, ROWS.listDensity] },
   { title: '正文阅读', rows: [ROWS.readerFont, ROWS.readerLh, ROWS.readerFs, ROWS.readerWidth] },
@@ -135,7 +137,7 @@ const ACCENT_HINT_FIXED = '「暗黑」是整套配色包，主色固定为蓝�
 const NARROW_QUERY = '(max-width: 720px)';
 
 function useNarrowViewport() {
-  const [narrow, setNarrow] = useState<any>(() => {
+  const [narrow, setNarrow] = useState<boolean>(() => {
     try {
       return !!(window.matchMedia && window.matchMedia(NARROW_QUERY).matches);
     } catch (_) {
@@ -143,17 +145,14 @@ function useNarrowViewport() {
     }
   });
   useEffect(() => {
-    let mq: any = null;
+    let mq = null;
     try {
       mq = window.matchMedia ? window.matchMedia(NARROW_QUERY) : null;
     } catch (_) {
       mq = null;
     }
     if (!mq) return undefined;
-    /**
-     * @param {*} [e]
-     */
-    const onChange = (e: any) => setNarrow(e.matches);
+    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches);
     if (mq.addEventListener) mq.addEventListener('change', onChange);
     else if (mq.addListener) mq.addListener(onChange);
     return () => {
@@ -165,7 +164,7 @@ function useNarrowViewport() {
 }
 
 export function AppearancePane() {
-  const [pref, setPref] = useState<any>(() => {
+  const [pref, setPref] = useState<Record<string, string> | null>(() => {
     const s = S();
     return (s && s.getAppearance && s.getAppearance()) || null;
   });
@@ -187,11 +186,7 @@ export function AppearancePane() {
   // GitHub 主题自带主色（旧 THEME_FIXED_ACCENT 唯一键）：整套调板禁用，选中态退还真实主色
   const fixedAccent = pref.theme === 'github';
 
-  /**
-   * @param {*} [key]
-   * @param {*} [value]
-   */
-  const onSeg = (key: any, value: any) => {
+  const onSeg = (key: string, value: string) => {
     const s = S();
     if (key === 'theme') {
       // 主题是全局状态，走桥的 applyTheme（会持久化 + 联动顶栏按钮）
@@ -201,10 +196,7 @@ export function AppearancePane() {
     }
   };
 
-  /**
-   * @param {*} [value]
-   */
-  const onAccent = (value: any) => {
+  const onAccent = (value: string) => {
     if (fixedAccent) return; // GitHub 主题下连点也不改（与旧逻辑一致）
     const s = S();
     if (s && s.setAppearance) s.setAppearance('accent', value);
@@ -215,10 +207,7 @@ export function AppearancePane() {
     if (s && s.resetAppearance) s.resetAppearance();
   };
 
-  /**
-   * @param {*} [row]
-   */
-  const renderRow = (row: any) => {
+  const renderRow = (row: AppearanceRow) => {
     const widthLocked = row.key === 'readerWidth' && narrow;
     const hint = widthLocked ? '窄屏下自动铺满整行，桌面端可调' : row.small;
     return (
@@ -229,25 +218,25 @@ export function AppearancePane() {
         </div>
         <div className="appr-ctl">
           <div className="seg" id={row.key === 'theme' ? 'apprTheme' : undefined}>
-            {row.options.map(
-              /** @param {*} arr */ ([value, text]: any) => {
-                const on = pref[row.key] === value;
-                return (
-                  <button
-                    key={value}
-                    className={'seg-btn' + (on ? ' active' : '')}
-                    type="button"
-                    {...{ [row.attr]: value }}
-                    aria-pressed={on ? 'true' : 'false'}
-                    disabled={widthLocked}
-                    aria-disabled={widthLocked ? 'true' : undefined}
-                    onClick={() => onSeg(row.key, value)}
-                  >
-                    {text}
-                  </button>
-                );
-              },
-            )}
+            {row.options.map((arr) => {
+              const value = arr[0] ?? '';
+              const text = arr[1] ?? '';
+              const on = pref[row.key] === value;
+              return (
+                <button
+                  key={value}
+                  className={'seg-btn' + (on ? ' active' : '')}
+                  type="button"
+                  {...{ [row.attr]: value }}
+                  aria-pressed={on ? 'true' : 'false'}
+                  disabled={widthLocked}
+                  aria-disabled={widthLocked ? 'true' : undefined}
+                  onClick={() => onSeg(row.key, value)}
+                >
+                  {text}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -262,24 +251,24 @@ export function AppearancePane() {
       </div>
       <div className="appr-ctl">
         <div className={'swatches' + (fixedAccent ? ' disabled' : '')} id="apprAccent">
-          {ACCENTS.map(
-            /** @param {*} arr */ ([value, title]) => {
-              const on = !fixedAccent && pref.accent === value;
-              return (
-                <button
-                  key={value}
-                  className={'swatch' + (on ? ' active' : '')}
-                  type="button"
-                  data-accent={value}
-                  title={title}
-                  aria-label={title}
-                  aria-pressed={on ? 'true' : 'false'}
-                  aria-disabled={fixedAccent ? 'true' : 'false'}
-                  onClick={() => onAccent(value)}
-                />
-              );
-            },
-          )}
+          {ACCENTS.map((arr) => {
+            const value = arr[0] ?? '';
+            const title = arr[1] ?? '';
+            const on = !fixedAccent && pref.accent === value;
+            return (
+              <button
+                key={value}
+                className={'swatch' + (on ? ' active' : '')}
+                type="button"
+                data-accent={value}
+                title={title}
+                aria-label={title}
+                aria-pressed={on ? 'true' : 'false'}
+                aria-disabled={fixedAccent ? 'true' : 'false'}
+                onClick={() => onAccent(value)}
+              />
+            );
+          })}
         </div>
       </div>
     </div>
@@ -290,7 +279,7 @@ export function AppearancePane() {
       <div className="pane-scroll">
         <div className="appr">
           {GROUPS.map(
-            /** @param {*} [group] */ (group: any) => (
+            /** @param {*} [group] */ (group) => (
               <section className="appr-group" key={group.title}>
                 <h3 className="appr-group-h">{group.title}</h3>
                 {group.rows.map(renderRow)}

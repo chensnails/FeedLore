@@ -11633,7 +11633,8 @@ const withEFP = (el, fn) => {
     const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.ts'), 'utf8');
     if (!/PIN_WINDOW_MS/.test(r) || !/function pinAlive/.test(r))
       throw new Error('置顶缺时间窗（pinAlive）');
-    if (!/if \(pinAlive\(\)\) scrollReaderToArt\(readerPinnedId\)/.test(r)) {
+    // TS strict 下 readerPinnedId 可能带非空断言/类型断言后缀，语义不变（pinAlive 已保证非空）
+    if (!/if \(pinAlive\(\)\) scrollReaderToArt\(readerPinnedId!?\)/.test(r)) {
       throw new Error('翻页后的重校必须受置顶窗口约束，否则用户滚走后会被拽回');
     }
     if (!/takenOver/.test(r)) throw new Error('置顶校正循环必须能在用户接管后停手');
@@ -11933,7 +11934,8 @@ const withEFP = (el, fn) => {
     if (!/rdCollapsedGroups\s*:/.test(body))
       throw new Error('state 缺 rdCollapsedGroups 字段（React 侧 memo 会永远读到 undefined）');
     // ② setLayout 的镜像表要登记它，否则写入不会回填到 state（setter 仍在 core/state.ts）
-    const mirror = stBase.match(/const LAYOUT_MIRROR\s*=\s*\[([^\]]*)\]/);
+    // TS 下镜像表可能带类型标注（如 `: (keyof AppState)[]`），语义不变
+    const mirror = stBase.match(/const LAYOUT_MIRROR(?:\s*:[^=]+)?\s*=\s*\[([^\]]*)\]/);
     if (!mirror) throw new Error('缺 LAYOUT_MIRROR 镜像表');
     if (mirror[1].indexOf('rdCollapsedGroups') < 0)
       throw new Error('LAYOUT_MIRROR 未登记 rdCollapsedGroups');

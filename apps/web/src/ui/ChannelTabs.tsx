@@ -10,13 +10,24 @@
  */
 
 import { core } from '@core';
-import { useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from 'react';
+import type { EntityId, Feed, ReaderScope, WatchFilter } from '../core/types.ts';
+import type { ChannelGroup } from '../views/ChannelList.tsx';
 
 const S = () => core;
 
-/**
- * @param {*} opts
- */
+interface ChannelTabsProps {
+  variant?: 'reader' | 'cards';
+  groups?: ChannelGroup[];
+  activeScope?: ReaderScope | null;
+  activeFeedId?: EntityId | null;
+  activeGroup?: string | null;
+  activeWatch?: WatchFilter | null;
+  onScope?: (scope: ReaderScope) => void;
+  onFeed?: (id: EntityId | null) => void;
+  onWatch?: (watch: WatchFilter) => void;
+  onManage?: () => void;
+}
 
 export function ChannelTabs({
   variant = 'reader',
@@ -29,28 +40,22 @@ export function ChannelTabs({
   onFeed,
   onWatch,
   onManage,
-}: any) {
+}: ChannelTabsProps) {
   const s = S();
   const isReader = variant === 'reader';
-  const activeRef: any = useRef<any>(null);
-  const navRef: any = useRef<any>(null);
-  const [atEnd, setAtEnd] = useState<any>(false);
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
+  const [atEnd, setAtEnd] = useState(false);
 
   // 分组里的频道摊平：标签条是一维的，分组层级留在抽屉里
-  const feeds = [];
+  const feeds: Feed[] = [];
   for (const g of groups || []) for (const f of g.feeds || []) feeds.push(f);
 
   // 卡片页的「全部」是空字符串（cardsFilterFeed 的约定），两种空值按同一个语义算
   const feedId = activeFeedId == null || activeFeedId === '' ? null : activeFeedId;
   const baseAll = feedId == null;
-  /**
-   * @param {*} [key]
-   */
-  const scopeOn = (key: any) => baseAll && activeWatch == null && activeScope === key;
-  /**
-   * @param {*} [key]
-   */
-  const watchOn = (key: any) => baseAll && activeGroup == null && activeWatch === key;
+  const scopeOn = (key: ReaderScope) => baseAll && activeWatch == null && activeScope === key;
+  const watchOn = (key: WatchFilter) => baseAll && activeGroup == null && activeWatch === key;
 
   // 分组筛选在抽屉里选，标签条上没有对应项：仍把「全部」标上，
   // 否则整条看起来一个选中项都没有，像是筛选丢了。
@@ -96,30 +101,23 @@ export function ChannelTabs({
   /* 标签条用 roving tabindex：Tab 一次进入，方向键在频道间移动并直接切换，
      不再让键盘用户逐个穿过几十个频道才能到达末尾的「完整频道列表」。 */
   const rovingKey = activeKey || 'scope:all';
-  /**
-   * @param {*} [ev]
-   */
-  const onKeyDown = (ev: any) => {
+  const onKeyDown = (ev: ReactKeyboardEvent<HTMLElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) return;
-    const tabs = Array.from(ev.currentTarget.querySelectorAll('.chan-tab'));
-    const idx = tabs.indexOf(document.activeElement);
+    const tabs = Array.from(ev.currentTarget.querySelectorAll<HTMLElement>('.chan-tab'));
+    const idx = tabs.indexOf(document.activeElement as HTMLElement);
     if (idx < 0 || !tabs.length) return;
     ev.preventDefault();
     let next = idx;
     if (ev.key === 'Home') next = 0;
     else if (ev.key === 'End') next = tabs.length - 1;
     else next = Math.max(0, Math.min(tabs.length - 1, idx + (ev.key === 'ArrowRight' ? 1 : -1)));
-    (tabs[next] as any).focus();
-    (tabs[next] as any).click();
+    tabs[next]?.focus();
+    tabs[next]?.click();
   };
 
   // 再点当前项：筛选条件没变，重设状态不会重绘列表 —— 顺手把视线带回顶部，
   // 与底部视图导航的 retap 同一套手感。换项时仍走原来的 setter（会自己回顶）。
-  /**
-   * @param {*} [active]
-   * @param {*} [run]
-   */
-  const activate = (active: any, run: any) => () => {
+  const activate = (active: boolean, run?: () => void) => () => {
     if (active) {
       const api = S();
       if (api.scrollTop) api.scrollTop();
@@ -127,14 +125,13 @@ export function ChannelTabs({
     if (run) run();
   };
 
-  /**
-   * @param {*} [key]
-   * @param {*} [label]
-   * @param {*} [active]
-   * @param {*} [onClick]
-   * @param {*} [title]
-   */
-  const tab = (key: any, label: any, active: any, onClick: any, title?: any) => (
+  const tab = (
+    key: string,
+    label: string,
+    active: boolean,
+    onClick: () => void,
+    title?: string,
+  ) => (
     <button
       key={key}
       type="button"
@@ -149,10 +146,7 @@ export function ChannelTabs({
     </button>
   );
 
-  /**
-   * @param {*} [f]
-   */
-  const feedName = (f: any) => {
+  const feedName = (f: Feed) => {
     const full = s.feedTitle ? s.feedTitle(f) : f.title;
     return s.shortFeedName ? s.shortFeedName(full) : full;
   };
@@ -175,7 +169,7 @@ export function ChannelTabs({
         </>
       ) : null}
       {feeds.map(
-        /** @param {*} [f] */ (f: any) =>
+        /** @param {*} [f] */ (f) =>
           tab(
             'feed:' + f.id,
             feedName(f),

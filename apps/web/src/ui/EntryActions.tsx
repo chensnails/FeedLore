@@ -7,16 +7,20 @@
  */
 
 import { core } from '@core';
-import { useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, type ReactNode, useState } from 'react';
 import { Icon } from './Icon.tsx';
 
 const S = () => core;
 
-/** 可复制的链接列表：多条时优先 links，单条退回 link
- *@param {*} [e]
- */
+/** 条目里与链接相关的字段（Card / EntryDetail / 日报引用项都满足）。 */
+export interface LinkEntry {
+  links?: readonly string[] | null;
+  link?: string | null;
+  sourceUrl?: string | null;
+}
 
-export function copyableLinks(e: any) {
+/** 可复制的链接列表：多条时优先 links，单条退回 link */
+export function copyableLinks(e: LinkEntry): string[] {
   const list = Array.isArray(e.links) ? e.links.filter(Boolean) : [];
   if (list.length) return list;
   return e.link ? [e.link] : [];
@@ -24,11 +28,8 @@ export function copyableLinks(e: any) {
 
 /** 链接兜底清洗：只放行 http(s) / mailto，其余（javascript: / file: / data: …）一律返回空。
  *  服务端入库前已清洗过，这里再兜一层，防历史脏数据或回归把危险协议塞进 <a href>。
- *  卡片页 OpenButton、文章页正文链接、AI 日报条目共用这一份，别处不再各写一套。
- *@param {*} [h]
- */
-
-export function safeHref(h: any) {
+ *  卡片页 OpenButton、文章页正文链接、AI 日报条目共用这一份，别处不再各写一套。 */
+export function safeHref(h: unknown): string {
   const s = String(h || '');
   return /^(https?:|mailto:)/i.test(s) ? s : '';
 }
@@ -36,11 +37,8 @@ export function safeHref(h: any) {
 /** 复制 + 反馈的唯一实现：成功换勾 1.6s，失败 toast 提示。
  *  两个视觉（.btn-copy / .icon-btn）共用它，避免第三份复制逻辑再长出来。 */
 function useCopyAction() {
-  const [copied, setCopied] = useState<any>(false);
-  /**
-   * @param {*} [url]
-   */
-  const run = async (url: any) => {
+  const [copied, setCopied] = useState(false);
+  const run = async (url: string) => {
     const ok = await S().copyText(url);
     if (!ok) {
       S().toast('复制失败，请手动选择链接', false);
@@ -53,10 +51,8 @@ function useCopyAction() {
   return { copied, run };
 }
 
-/** 复制按钮：单条直接复制，多条弹选择菜单（复用 openLinkMenu）
- *@param {*} opts
- */
-export function CopyButton({ e }: any) {
+/** 复制按钮：单条直接复制，多条弹选择菜单（复用 openLinkMenu） */
+export function CopyButton({ e }: { e: LinkEntry }) {
   const { copied, run } = useCopyAction();
   const list = copyableLinks(e);
 
@@ -64,16 +60,14 @@ export function CopyButton({ e }: any) {
   if (!list.length) return null;
 
   const many = list.length > 1;
-  /**
-   * @param {*} [ev]
-   */
-  const onClick = (ev: any) => {
+  const onClick = (ev: ReactMouseEvent<HTMLButtonElement>) => {
+    const first = list[0];
     if (!many) {
-      run(list[0]);
+      if (first) run(first);
       return;
     }
     if (S().openLinkMenu) S().openLinkMenu(ev.currentTarget, list, run);
-    else run(list[0]);
+    else if (first) run(first);
   };
 
   return (
@@ -99,10 +93,8 @@ export function CopyButton({ e }: any) {
 }
 
 /** 紧凑版复制按钮（日报条目用）：同样是「复制链接 + 成功换勾」，
- *  只是视觉是 .icon-btn —— 行为与 CopyButton 共用同一个 hook，不再各写一份。
- *@param {*} opts
- */
-export function CopyIconButton({ url }: any) {
+ *  只是视觉是 .icon-btn —— 行为与 CopyButton 共用同一个 hook，不再各写一份。 */
+export function CopyIconButton({ url }: { url?: string | null }) {
   const { copied, run } = useCopyAction();
   if (!url) return null;
   return (
@@ -120,10 +112,8 @@ export function CopyIconButton({ url }: any) {
 
 /** 打开原文：只在有「安全」地址时出现，不做禁用态。
  *  sourceUrl / link 先过 safeHref：危险协议（javascript: 等）清洗成空 → 不渲染。
- *@param {*} opts
  */
-
-export function OpenButton({ e }: any) {
+export function OpenButton({ e }: { e: LinkEntry }) {
   const url = safeHref(e.sourceUrl) || safeHref(e.link);
   if (!url) return null;
   return (
@@ -142,11 +132,8 @@ export function OpenButton({ e }: any) {
 
 /** 正文底部那一排动作（复制 / 打开原文，弹窗再加收藏 / 在文章页查看）。
  *  ArtBody 内部用它；卡片详情在「没有正文」的分支也直接渲染这一排，
- *  保证两处都是同一组按钮、同一套间距。
- *@param {*} opts
- */
-
-export function ArtActions({ e, extraActions }: any) {
+ *  保证两处都是同一组按钮、同一套间距。 */
+export function ArtActions({ e, extraActions }: { e: LinkEntry; extraActions?: ReactNode }) {
   return (
     <div className="art-actions">
       <CopyButton e={e} />

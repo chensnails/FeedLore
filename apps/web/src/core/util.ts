@@ -6,14 +6,12 @@
  * ============================================================ */
 
 /* ---------------- DOM ---------------- */
-/**
- * @param {*} [s]
- */
-export const $ = (s: any) => document.querySelector(s);
+export const $ = (s: string): Element | null => document.querySelector(s);
 
 import { EVENT, emit } from '../kernel/events.ts';
 import { matchViewHash } from '../kernel/router.ts';
 import { errorText } from './errorText.ts';
+import type { ApiFetchOpts, ConfirmOptions, ConfirmState, Feed, ToastState } from './types.ts';
 
 export { errorText as errText };
 /* ---------------- 网络层 ----------------
@@ -37,8 +35,8 @@ export const NET_RETRY_DELAY_MS = 400;
 /**
  * @param {*} [status]
  */
-function isRetryableStatus(status: any) {
-  return status === 408 || status === 429 || (Number(status) >= 500 && Number(status) < 600);
+function isRetryableStatus(status: number) {
+  return status === 408 || status === 429 || (status >= 500 && status < 600);
 }
 
 /** 单次请求：超时既 abort 真实请求，也用 race 保证「fetch 实现忽略 signal」时仍能结束。
@@ -49,7 +47,12 @@ function isRetryableStatus(status: any) {
  * @param {*} [outerSignal]
  */
 
-function fetchOnce(url: any, opts: any, timeoutMs: any, outerSignal: any): Promise<any> {
+function fetchOnce(
+  url: string,
+  opts: RequestInit & { timeoutMs?: number; retry?: boolean; skipPasswordGate?: boolean },
+  timeoutMs: number,
+  outerSignal?: AbortSignal | null,
+): Promise<Response> {
   const clean = { ...opts };
   delete clean.timeoutMs;
   delete clean.retry;
@@ -66,45 +69,41 @@ function fetchOnce(url: any, opts: any, timeoutMs: any, outerSignal: any): Promi
 
   const req = fetch(url, clean);
   req.catch(() => {}); // 超时胜出后，被 abort 的请求可能晚一步 reject，别留悬空 rejection
-  let timer: any = null;
-  let timeoutErr: any = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timeoutErr: Error | null = null;
   const timeout =
     timeoutMs > 0
-      ? new Promise(
-          /** @param {*} [_] @param {*} [reject] */ (_: any, reject: any) => {
-            timer = setTimeout(() => {
-              /* 顺序很重要：先把可读错误交给 race，再 abort 真实请求。
-               * 反过来的话，abort 会让 fetch 立刻 reject 一个底层英文
-               * （Chrome 是 `signal is aborted without reason`），它抢在中文提示前面，
-               * 用户看到的就是这句天书 —— 实测线上截图就是这个。 */
-              const err = new Error(
-                `网络请求超时（${Math.round(timeoutMs / 1000)} 秒），请稍后重试`,
-              );
-              err.name = 'TimeoutError';
-              timeoutErr = err;
-              reject(err);
-              if (ctrl) {
-                // 带 reason 的 abort：个别实现即使同步 reject，拿到的也是我们的可读错误
-                try {
-                  ctrl.abort(err);
-                } catch {
-                  ctrl.abort();
-                }
+      ? new Promise((_: unknown, reject: (reason?: unknown) => void) => {
+          timer = setTimeout(() => {
+            /* 顺序很重要：先把可读错误交给 race，再 abort 真实请求。
+             * 反过来的话，abort 会让 fetch 立刻 reject 一个底层英文
+             * （Chrome 是 `signal is aborted without reason`），它抢在中文提示前面，
+             * 用户看到的就是这句天书 —— 实测线上截图就是这个。 */
+            const err = new Error(`网络请求超时（${Math.round(timeoutMs / 1000)} 秒），请稍后重试`);
+            err.name = 'TimeoutError';
+            timeoutErr = err;
+            reject(err);
+            if (ctrl) {
+              // 带 reason 的 abort：个别实现即使同步 reject，拿到的也是我们的可读错误
+              try {
+                ctrl.abort(err);
+              } catch {
+                ctrl.abort();
               }
-            }, timeoutMs);
-          },
-        )
+            }
+          }, timeoutMs);
+        })
       : null;
 
-  const raced = timeout ? Promise.race([req, timeout]) : req;
+  const raced: Promise<Response> = timeout
+    ? (Promise.race([req, timeout]) as Promise<Response>)
+    : req;
   return raced
-    .catch(
-      /** @param {*} [err] */ (err: any) => {
-        // 兜一层：某些实现对 abort 是同步 reject，仍可能抢在中文错误前面
-        if (timeoutErr && err !== timeoutErr) throw timeoutErr;
-        throw err;
-      },
-    )
+    .catch((err: unknown) => {
+      // 兜一层：某些实现对 abort 是同步 reject，仍可能抢在中文错误前面
+      if (timeoutErr && err !== timeoutErr) throw timeoutErr;
+      throw err;
+    })
     .finally(() => {
       if (timer) clearTimeout(timer);
       if (ctrl && outerSignal) outerSignal.removeEventListener('abort', onOuterAbort);
@@ -115,7 +114,7 @@ function fetchOnce(url: any, opts: any, timeoutMs: any, outerSignal: any): Promi
  *@param {*} [url]
  * @param {*} opts
  */
-export async function apiFetch(url: any, opts: any = {}): Promise<any> {
+export async function apiFetch(url: string, opts: ApiFetchOpts = {}): Promise<Response> {
   const o = opts || {};
   const method = String(o.method || 'GET').toUpperCase();
   const idempotent = method === 'GET' || method === 'HEAD';
@@ -128,7 +127,7 @@ export async function apiFetch(url: any, opts: any = {}): Promise<any> {
       : o.signal && o.timeoutMs == null
         ? 0
         : o.timeoutMs || (idempotent ? NET_TIMEOUT_MS : NET_WRITE_TIMEOUT_MS);
-  let lastErr: any = null;
+  let lastErr = null;
   for (let i = 0; i < attempts; i += 1) {
     try {
       const res = await fetchOnce(url, o, timeoutMs, o.signal);
@@ -162,9 +161,7 @@ export async function apiFetch(url: any, opts: any = {}): Promise<any> {
       lastErr = err;
       if (i + 1 >= attempts) throw err;
     }
-    await new Promise(
-      /** @param {*} [r] */ (r: any) => setTimeout(r, NET_RETRY_DELAY_MS * (i + 1)),
-    );
+    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, NET_RETRY_DELAY_MS * (i + 1)));
   }
   throw lastErr || new Error('网络请求失败');
 }
@@ -178,11 +175,8 @@ export function goLogin() {
  * 上传导出包：请求体就是文件本身（服务端按 `application/gzip` 原始流接收），
  * 不套 multipart。浏览器给 File 请求体自动带 Content-Length；同源 POST 自带
  * Origin / Referer，CSRF 中间件照常放行。401 仍由 apiFetch 统一跳登录页。
- * @param {*} [url]
- * @param {*} [file]
  */
-
-export async function uploadArchive(url: any, file: any) {
+export async function uploadArchive(url: string, file: Blob): Promise<Response> {
   return apiFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/gzip' },
@@ -202,10 +196,8 @@ export async function uploadArchive(url: any, file: any) {
  *
  *  ⚠️ 会消费 res 的 body，只能在失败分支调用；成功分支的 `res.json()` 各走各的，
  *  互斥分支不受影响（各处本来就是这个结构）。
- *@param {*} [res]
  */
-
-export async function httpError(res: any) {
+export async function httpError(res: Response): Promise<Error & { status: number }> {
   let msg = '';
   try {
     const d = await res.json();
@@ -213,7 +205,7 @@ export async function httpError(res: any) {
   } catch (_e) {
     /* 非 JSON（网关 HTML、空 body、被截断）→ 退回状态码 */
   }
-  const err: any = new Error(msg || 'HTTP ' + res.status);
+  const err = new Error(msg || 'HTTP ' + res.status) as Error & { status: number };
   err.status = res.status;
   return err;
 }
@@ -223,21 +215,14 @@ export async function httpError(res: any) {
  *  计数会随文章无限增长，直接显示会把频道行撑变形。不足 1000 原样显示；
  *  之后按量级换单位，并保留一位小数（四舍五入；到 10 个单位以上只用整数），
  *  例如 1234 → 1.2k、9999 → 10k、12345 → 1.2w。精确值仍放在 tooltip 里。
- * @param {*} [v]
- * @param {*} [unit]
  */
-
-function compactUnit(v: any, unit: any) {
+function compactUnit(v: number, unit: number): string {
   const tenths = Math.round(v / (unit / 10));
   if (tenths >= 100) return String(Math.round(tenths / 10));
   return (tenths / 10).toFixed(1).replace(/\.0$/, '');
 }
 
-/**
- * @param {*} [n]
- */
-
-export function fmtBadge(n: any) {
+export function fmtBadge(n: number): string {
   const v = Math.max(0, Math.floor(Number(n) || 0));
   if (v < 1000) return String(v);
   if (v >= 100000000) return compactUnit(v, 100000000) + '亿';
@@ -245,30 +230,19 @@ export function fmtBadge(n: any) {
   return compactUnit(v, 1000) + 'k';
 }
 
-/** 完整时间戳，用于 title 提示与展开体的发布时间
- *@param {*} [ts]
- */
-
-export function fmtFull(ts: any) {
+/** 完整时间戳，用于 title 提示与展开体的发布时间 */
+export function fmtFull(ts: string | number | null | undefined): string {
   if (!ts) return '';
   const d = new Date(ts);
-  /**
-   * @param {*} [n]
-   */
-  const p = (n: any) => String(n).padStart(2, '0');
+  const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** 文章日期：始终显示到分钟。今天/昨天给「今天 HH:mm」，同年给「MM-DD HH:mm」，跨年补上年份
- *@param {*} [ts]
- */
-export function fmtDate(ts: any) {
+/** 文章日期：始终显示到分钟。今天/昨天给「今天 HH:mm」，同年给「MM-DD HH:mm」，跨年补上年份 */
+export function fmtDate(ts: string | number | null | undefined): string {
   if (!ts) return '';
   const d = new Date(ts);
-  /**
-   * @param {*} [n]
-   */
-  const p = (n: any) => String(n).padStart(2, '0');
+  const p = (n: number) => String(n).padStart(2, '0');
   const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
@@ -283,24 +257,39 @@ export function fmtDate(ts: any) {
 /** 轻提示。v2.1.0 起不再直接改 DOM，改为写状态 + 通知 src/ui/Overlays.tsx 重绘。
  *  第三参可选 `{ action, actionText, ms }`：带一个行内动作按钮（批量已读的「撤销」）。
  *  有动作时默认停留 6 秒，给用户留出反应时间；没有动作仍是最短的 1.9 秒。 */
-export let toastTimer: any = null;
-export let toastState: any = { msg: '', ok: true, show: false, action: null, actionText: '' };
+export let toastTimer: ReturnType<typeof setTimeout> | null = null;
+export let toastState: ToastState = {
+  msg: '',
+  ok: true,
+  show: false,
+  action: null,
+  actionText: '',
+};
 /* 带「撤销」的提示还在倒计时时，后来的普通提示先排队：
  * 否则一次成功的复制 / 自动刷新一来，撤销按钮就在用户眼皮底下被换掉了。 */
-/** @type {*} */
-let pendingToast: any = null;
+interface PendingToast {
+  msg: string;
+  ok: boolean;
+  ms: number;
+}
+let pendingToast: PendingToast | null = null;
 
-/**
- * @param {*} [msg]
- * @param {*} [ok]
- * @param {*} [action]
- * @param {*} [actionText]
- * @param {*} [ms]
- */
-function showToastNow(msg: any, ok: any, action: any, actionText: any, ms: any) {
+interface ToastOpts {
+  action?: (() => void) | null;
+  actionText?: string;
+  ms?: number;
+}
+
+function showToastNow(
+  msg: string,
+  ok: boolean,
+  action: (() => void) | null,
+  actionText: string,
+  ms: number,
+) {
   toastState = { msg, ok, show: true, action, actionText };
   emitOverlays();
-  clearTimeout(toastTimer);
+  if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     toastState = { msg, ok, show: false, action: null, actionText: '' };
     emitOverlays();
@@ -312,13 +301,7 @@ function showToastNow(msg: any, ok: any, action: any, actionText: any, ms: any) 
   }, ms);
 }
 
-/**
- * @param {*} [msg]
- * @param {*} [ok]
- * @param {*} opts
- */
-
-export function toast(msg: any, ok: any = true, opts: any = {}) {
+export function toast(msg: string, ok = true, opts: ToastOpts = {}) {
   const action = opts && typeof opts.action === 'function' ? opts.action : null;
   const actionText = (opts && opts.actionText) || '撤销';
   const ms = (opts && opts.ms) || (action ? 6000 : 1900);
@@ -335,7 +318,7 @@ export function toast(msg: any, ok: any = true, opts: any = {}) {
 export function runToastAction() {
   const action = toastState.action;
   if (typeof action !== 'function') return;
-  clearTimeout(toastTimer);
+  if (toastTimer) clearTimeout(toastTimer);
   toastState = {
     msg: toastState.msg,
     ok: toastState.ok,
@@ -344,7 +327,7 @@ export function runToastAction() {
     actionText: '',
   };
   emitOverlays();
-  const queued: any = pendingToast;
+  const queued = pendingToast;
   pendingToast = null;
   action();
   // 动作自己弹了新提示就让新提示留下，排队那条放弃
@@ -360,7 +343,7 @@ export function runToastAction() {
  *   if (!(await confirm({ title: '删除订阅', desc: '…', danger: true, confirmText: '删除' }))) return;
  *   const pwd = await confirm({ title: '设置新密码', input: { placeholder: '至少 4 位', type: 'password' } });
  */
-export let confirmState = {
+export let confirmState: ConfirmState = {
   open: false,
   title: '',
   desc: '',
@@ -369,20 +352,20 @@ export let confirmState = {
   danger: false,
   input: null,
 };
-let confirmResolve: any = null;
 
-/** 打开确认框；返回 Promise<boolean|string|null>
- *@param {*} opts
- */
+/** confirm 结算回调：取消回 false/null，确认回 true 或输入框的值。 */
+type ConfirmResolver = (value: boolean | string | null) => void;
+let confirmResolve: ConfirmResolver | null = null;
 
-export function confirm(opts: any = {}) {
+/** 打开确认框；返回 Promise<boolean|string|null> */
+export function confirm(opts: ConfirmOptions | string = {}): Promise<boolean | string | null> {
   // 上一个还没结束就先按「取消」结算，避免 Promise 永久挂起
   if (confirmResolve) {
     const prev = confirmResolve;
     confirmResolve = null;
     prev(confirmState.input ? null : false);
   }
-  const o = typeof opts === 'string' ? { title: opts } : opts || {};
+  const o: ConfirmOptions = typeof opts === 'string' ? { title: opts } : opts || {};
   confirmState = {
     open: true,
     title: o.title || '确认操作',
@@ -393,19 +376,14 @@ export function confirm(opts: any = {}) {
     input: o.input || null,
   };
   emitOverlays();
-  return new Promise(
-    /** @param {*} [resolve] */ (resolve: any) => {
-      confirmResolve = resolve;
-    },
-  );
+  return new Promise<boolean | string | null>((resolve) => {
+    confirmResolve = resolve;
+  });
 }
 
-/** 结算确认框：ok=true 时返回 true（或有输入框时返回输入值）
- *@param {*} [ok]
- * @param {*} [value]
- */
-export function settleConfirm(ok?: any, value?: any) {
-  const r: any = confirmResolve;
+/** 结算确认框：ok=true 时返回 true（或有输入框时返回输入值） */
+export function settleConfirm(ok?: boolean, value?: unknown) {
+  const r = confirmResolve;
   confirmResolve = null;
   const withInput = !!confirmState.input;
   confirmState = { ...confirmState, open: false };
@@ -423,11 +401,7 @@ export function cancelConfirm() {
   settleConfirm(false);
 }
 
-/**
- * @param {*} [text]
- */
-
-export async function copyText(text: any) {
+export async function copyText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);
@@ -451,11 +425,7 @@ export async function copyText(text: any) {
   }
 }
 
-/**
- * @param {*} [s]
- */
-
-export function escapeHtml(s: any) {
+export function escapeHtml(s: unknown): string {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -464,23 +434,17 @@ export function escapeHtml(s: any) {
     .replace(/'/g, '&#39;');
 }
 
-/**
- * @param {*} [n]
- */
-
-export function shortFeedName(n: any) {
+export function shortFeedName(n: unknown): string {
   return String(n || '')
     .replace(/\s*-\s*Telegram Channel\s*$/i, '')
     .trim();
 }
 
-/** 频道的展示名：自定义名优先，否则抓取来的标题，再否则 url
- *@param {*} [f]
- */
-
-export function feedTitle(f: any) {
-  if (!f || typeof f !== 'object') return f || '';
-  return f.customTitle || f.title || f.url || '';
+/** 频道的展示名：自定义名优先，否则抓取来的标题，再否则 url */
+export function feedTitle(f: unknown): string {
+  if (!f || typeof f !== 'object') return '';
+  const o = f as Partial<Feed>;
+  return o.customTitle || o.title || o.url || '';
 }
 
 /** 通知视图导航 / ⋮ 菜单重绘：它们监听 __shellTick 后重读 getShell() */
@@ -496,7 +460,7 @@ export function emitOverlays() {
 /* ---------------- 链接：标签 / 复制 / 打开原文 ---------------- */
 
 /** 常见网盘域名 → 中文标签，其余用主机名 */
-export const HOST_LABELS: any[] = [
+export const HOST_LABELS: Array<[RegExp, string]> = [
   [/pan\.quark\.cn$|(^|\.)quark\.cn$/, '夸克'],
   [/pan\.baidu\.com$/, '百度网盘'],
   [/aliyundrive\.(com|net)$|(^|\.)alipan\.com$/, '阿里云盘'],
@@ -506,11 +470,7 @@ export const HOST_LABELS: any[] = [
   [/mypikpak\.com$/, 'PikPak'],
   [/(^|\.)t\.me$|(^|\.)telegram\.me$/, 'Telegram'],
 ];
-/**
- * @param {*} [url]
- */
-
-export function linkLabel(url: any) {
+export function linkLabel(url: string): string {
   let host = '';
   try {
     host = new URL(url).hostname.toLowerCase();
@@ -520,17 +480,15 @@ export function linkLabel(url: any) {
   for (const [re, name] of HOST_LABELS) if (re.test(host)) return name;
   return host.replace(/^www\./, '');
 }
-/** 菜单里显示的短地址：去协议、超长中间省略
- *@param {*} [url]
- */
-export function shortUrl(url: any) {
+/** 菜单里显示的短地址：去协议、超长中间省略 */
+export function shortUrl(url: string): string {
   const s = String(url).replace(/^https?:\/\//i, '');
   return s.length > 46 ? s.slice(0, 30) + '…' + s.slice(-12) : s;
 }
 
 /* 链接选择菜单：多条链接时从按钮旁弹出（fixed 定位，自动避让视口边缘） */
-export let linkMenuEl: any = null;
-let linkMenuReturnFocus: any = null;
+export let linkMenuEl: HTMLDivElement | null = null;
+let linkMenuReturnFocus: HTMLElement | null = null;
 export function closeLinkMenu() {
   if (!linkMenuEl) return;
   linkMenuEl.remove();
@@ -540,20 +498,14 @@ export function closeLinkMenu() {
   window.removeEventListener('resize', closeLinkMenu);
   window.removeEventListener('scroll', closeLinkMenu, true);
   // 菜单是键盘可达的：关掉时把焦点还给打开它的按钮，别让用户掉到 body
-  const back: any = linkMenuReturnFocus;
+  const back = linkMenuReturnFocus;
   linkMenuReturnFocus = null;
   if (back && document.contains(back) && typeof back.focus === 'function') back.focus();
 }
-/**
- * @param {*} [ev]
- */
-export function onLinkMenuDocClick(ev: any) {
-  if (linkMenuEl && !linkMenuEl.contains(ev.target)) closeLinkMenu();
+export function onLinkMenuDocClick(ev: MouseEvent) {
+  if (linkMenuEl && !(ev.target instanceof Node && linkMenuEl.contains(ev.target))) closeLinkMenu();
 }
-/**
- * @param {*} [ev]
- */
-export function onLinkMenuKey(ev: any) {
+export function onLinkMenuKey(ev: KeyboardEvent) {
   if (!linkMenuEl) return;
   if (ev.key === 'Escape') {
     ev.preventDefault();
@@ -568,10 +520,10 @@ export function onLinkMenuKey(ev: any) {
   if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Home' || ev.key === 'End') {
     ev.preventDefault();
     ev.stopPropagation();
-    const items = Array.from(linkMenuEl.querySelectorAll('.link-menu-item'));
+    const items = Array.from(linkMenuEl.querySelectorAll<HTMLElement>('.link-menu-item'));
     if (!items.length) return;
-    const idx = items.indexOf(document.activeElement);
-    let next: any;
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    let next: number;
     if (ev.key === 'Home') next = 0;
     else if (ev.key === 'End') next = items.length - 1;
     else
@@ -579,25 +531,20 @@ export function onLinkMenuKey(ev: any) {
         0,
         Math.min(items.length - 1, Math.max(idx, 0) + (ev.key === 'ArrowDown' ? 1 : -1)),
       );
-    (items[next] as any).focus();
+    items[next]?.focus();
   }
 }
 
-/**
- * @param {*} [anchor]
- * @param {*} [urls]
- * @param {*} [onPick]
- */
-
-export function openLinkMenu(anchor: any, urls: any, onPick: any) {
+export function openLinkMenu(anchor: HTMLElement, urls: string[], onPick: (url: string) => void) {
   closeLinkMenu();
-  linkMenuReturnFocus = document.activeElement;
+  linkMenuReturnFocus =
+    document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const menu = document.createElement('div');
   menu.className = 'link-menu';
   menu.setAttribute('role', 'menu');
   menu.innerHTML = urls
     .map(
-      /** @param {*} [u] @param {*} [i] */ (u: any, i: any) => `
+      (u, i) => `
     <button type="button" class="link-menu-item" role="menuitem" data-i="${i}">
       <span class="link-menu-label">${escapeHtml(linkLabel(u))}</span>
       <span class="link-menu-url">${escapeHtml(shortUrl(u))}</span>
@@ -617,19 +564,17 @@ export function openLinkMenu(anchor: any, urls: any, onPick: any) {
   menu.style.top = top + 'px';
 
   // 弹出即入焦首项，↑↓ 漫游（见 onLinkMenuKey）
-  const first: any = menu.querySelector('.link-menu-item');
+  const first = menu.querySelector<HTMLElement>('.link-menu-item');
   if (first) first.focus();
 
-  menu.addEventListener(
-    'click',
-    /** @param {*} [ev] */ (ev: any) => {
-      const item = ev.target.closest('.link-menu-item');
-      if (!item) return;
-      const u = urls[Number(item.getAttribute('data-i'))];
-      closeLinkMenu();
-      if (u) onPick(u);
-    },
-  );
+  menu.addEventListener('click', (ev) => {
+    if (!(ev.target instanceof Element)) return;
+    const item = ev.target.closest('.link-menu-item');
+    if (!item) return;
+    const u = urls[Number(item.getAttribute('data-i'))];
+    closeLinkMenu();
+    if (u) onPick(u);
+  });
   // 延后一帧再挂「点外面关闭」，否则这次点击本身就会把刚弹出的菜单关掉
   setTimeout(() => {
     document.addEventListener('click', onLinkMenuDocClick, true);
@@ -649,10 +594,7 @@ export function prefersReducedMotion() {
  * 那不是「后退」，是罚站。地址栏只留当前状态（视图 / 当前篇），
  * 刷新或从别处回来时按它恢复，并统一滚到该篇顶部。
  * 与「进入一篇文章」的滚动策略一致：谁进来都从文章开头看起。 */
-/**
- * @param {*} [hash]
- */
-export function writeHash(hash: any) {
+export function writeHash(hash: string) {
   try {
     if (!hash) return;
     if (location.hash === hash) return;
@@ -662,11 +604,8 @@ export function writeHash(hash: any) {
   }
 }
 
-/** 从 hash 里解析「视图 + 条目」：#cards / #reader / #reader/art/<id> / #ai …
- *@param {*} [hash]
- */
-
-export function parseHash(hash: any) {
+/** 从 hash 里解析「视图 + 条目」：#cards / #reader / #reader/art/<id> / #ai … */
+export function parseHash(hash: string | null | undefined) {
   const h = hash || '';
   // V5：路由解析真正交给 React Router 的 matchPath 声明式路由表（kernel/router.ts）。
   // matchViewHash 同时认新格式 #/reader/... 与旧格式 #reader/...，返回统一结构。

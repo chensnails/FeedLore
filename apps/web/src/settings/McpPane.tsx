@@ -14,7 +14,9 @@
  */
 
 import { core } from '@core';
+import type { McpTokenInfo } from '@feedlore/contract';
 import { useQuery } from '@tanstack/react-query';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { qk } from '../kernel/query.ts';
 import { Icon } from '../ui/Icon.tsx';
@@ -23,11 +25,7 @@ import { Result, Section, useResult } from './primitives.tsx';
 
 const S = () => core;
 
-/**
- * @param {*} [iso]
- */
-
-function fmtRel(iso: any) {
+function fmtRel(iso: string | null | undefined) {
   if (!iso) return '从未使用';
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return '—';
@@ -39,10 +37,7 @@ function fmtRel(iso: any) {
   return iso.slice(0, 10);
 }
 
-/**
- * @param {*} [fn]
- */
-const openOnKey = (fn: any) => /** @param {*} [ev] */ (ev: any) => {
+const openOnKey = (fn: () => void) => (ev: ReactKeyboardEvent<HTMLDivElement>) => {
   if (ev.target !== ev.currentTarget) return;
   if (ev.key === 'Enter' || ev.key === ' ') {
     ev.preventDefault();
@@ -51,11 +46,15 @@ const openOnKey = (fn: any) => /** @param {*} [ev] */ (ev: any) => {
 };
 
 /* ---------- 令牌详情层：查看 + 吊销 ---------- */
-/**
- * @param {*} opts
- */
+interface TokenSheetProps {
+  token: McpTokenInfo;
+  busy?: boolean;
+  onClose?: () => void;
+  onRevoke?: (token: McpTokenInfo) => void;
+  error?: string | null;
+}
 
-function TokenSheet({ token, busy, onClose, onRevoke, error }: any) {
+function TokenSheet({ token, busy, onClose, onRevoke, error }: TokenSheetProps) {
   return (
     <DetailSheet
       title={token.name}
@@ -67,7 +66,7 @@ function TokenSheet({ token, busy, onClose, onRevoke, error }: any) {
           id="revokeTokenBtn"
           type="button"
           disabled={busy}
-          onClick={() => onRevoke(token)}
+          onClick={() => onRevoke?.(token)}
         >
           {busy ? '吊销中…' : '吊销令牌'}
         </button>
@@ -90,17 +89,18 @@ function TokenSheet({ token, busy, onClose, onRevoke, error }: any) {
 }
 
 /* ---------- 新建令牌详情层：创建后在同一层展示明文 ---------- */
-/**
- * @param {*} opts
- */
-function NewTokenSheet({ onClose, onCreated }: any) {
+interface NewTokenSheetProps {
+  onClose?: () => void;
+  onCreated?: () => void;
+}
+
+function NewTokenSheet({ onClose, onCreated }: NewTokenSheetProps) {
   const s = S();
-  const [name, setName] = useState<any>('');
-  const [busy, setBusy] = useState<any>(false);
-  /** @type {*} */
-  const [fresh, setFresh] = useState<any>(null); // {secret, prefix}
-  const [copied, setCopied] = useState<any>(false);
-  const [err, setErr] = useState<any>('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [fresh, setFresh] = useState<{ secret: string; prefix: string } | null>(null); // {secret, prefix}
+  const [copied, setCopied] = useState(false);
+  const [err, setErr] = useState('');
 
   const create = async () => {
     const n = name.trim();
@@ -121,7 +121,7 @@ function NewTokenSheet({ onClose, onCreated }: any) {
       setFresh({ secret: data.secret, prefix: data.token.prefix });
       setCopied(false);
       s.toast('令牌已创建');
-      onCreated();
+      onCreated?.();
     } catch (e) {
       setErr('创建失败：' + String((e && e.message) || e));
     } finally {
@@ -191,15 +191,13 @@ function NewTokenSheet({ onClose, onCreated }: any) {
             maxLength={40}
             autoComplete="off"
             value={name}
-            onChange={/** @param {*} [ev] */ (ev: any) => setName(ev.target.value)}
-            onKeyDown={
-              /** @param {*} [ev] */ (ev: any) => {
-                if (ev.key === 'Enter') {
-                  ev.preventDefault();
-                  create();
-                }
+            onChange={(ev) => setName(ev.target.value)}
+            onKeyDown={(ev) => {
+              if (ev.key === 'Enter') {
+                ev.preventDefault();
+                create();
               }
-            }
+            }}
           />
           <small className="form-tip">
             名字只用来区分客户端，之后删改都按它找；令牌本身只读，不会改动你的数据。
@@ -211,21 +209,25 @@ function NewTokenSheet({ onClose, onCreated }: any) {
   );
 }
 
+interface SheetStateNew {
+  type: 'new';
+}
+interface SheetStateToken {
+  type: 'token';
+  id: string;
+}
+type SheetState = SheetStateNew | SheetStateToken;
+
 export function McpPane() {
   const s = S();
-  const paneRef: any = useRef<any>(null);
+  const paneRef = useRef<HTMLDivElement | null>(null);
   const [result, show] = useResult();
-  /** @type {*} */
-  const [tokens, setTokens] = useState<any>(null); // null = 读取中
-  const [listError, setListError] = useState<any>('');
-  const [revoking, setRevoking] = useState<any>('');
-  /** @type {*} */
-  const [sheet, setSheet] = useState<any>(null); // {type:'new'} | {type:'token', id}
-  const [sheetError, setSheetError] = useState<any>('');
-  /**
-   * @param {*} [next]
-   */
-  const openSheet = (next: any) => {
+  const [tokens, setTokens] = useState<McpTokenInfo[] | null>(null); // null = 读取中
+  const [listError, setListError] = useState('');
+  const [revoking, setRevoking] = useState('');
+  const [sheet, setSheet] = useState<SheetState | null>(null); // {type:'new'} | {type:'token', id}
+  const [sheetError, setSheetError] = useState('');
+  const openSheet = (next: SheetState) => {
     setSheetError('');
     setSheet(next);
   };
@@ -235,7 +237,7 @@ export function McpPane() {
   }, []);
 
   // V5：令牌列表交给 Query；queryFn 走 core.apiFetch 端口，测试桩照常生效。
-  const tokensQuery = useQuery({
+  const tokensQuery = useQuery<{ tokens: McpTokenInfo[] }>({
     queryKey: qk.mcpTokens,
     queryFn: async () => {
       const res = await s.apiFetch('/api/mcp-tokens');
@@ -251,7 +253,7 @@ export function McpPane() {
   useEffect(() => {
     if (tokensQuery.isPending) return;
     if (tokensQuery.isError) {
-      const err: any = tokensQuery.error;
+      const err = tokensQuery.error;
       setListError('读取令牌失败：' + String(err?.message || err));
       setTokens([]);
       return;
@@ -266,10 +268,7 @@ export function McpPane() {
     await tokensQuery.refetch();
   }
 
-  /**
-   * @param {*} [t]
-   */
-  async function revoke(t: any) {
+  async function revoke(t: McpTokenInfo) {
     const ok = await s.confirm({
       title: '吊销这个令牌？',
       desc: `${t.name}（${t.prefix}…）会立即失去访问权，用它的 AI 客户端需要换新令牌。`,
@@ -298,14 +297,9 @@ export function McpPane() {
   }
 
   const token =
-    sheet && sheet.type === 'token'
-      ? (tokens || []).find(/** @param {*} [t] */ (t: any) => t.id === sheet.id)
-      : null;
+    sheet && sheet.type === 'token' ? (tokens || []).find((t) => t.id === sheet.id) : null;
 
-  /**
-   * @param {*} [t]
-   */
-  const renderTokenRow = (t: any) => (
+  const renderTokenRow = (t: McpTokenInfo) => (
     <div
       className="sl-row"
       key={t.id}

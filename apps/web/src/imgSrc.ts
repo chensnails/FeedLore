@@ -7,12 +7,8 @@
 
 const PROXY = '/api/img?';
 
-/**
- * @param {*} [src]
- * @param {*} [w]
- */
-
-export function widthVariant(src: any, w: any) {
+/** 代理地址（src 允许 null/undefined，来自 DTO 的可选字段）。 */
+export function widthVariant(src: unknown, w: number): string {
   const s = String(src || '');
   if (!s || /^data:/i.test(s)) return '';
   if (s.startsWith(PROXY)) return s + '&w=' + w;
@@ -20,13 +16,9 @@ export function widthVariant(src: any, w: any) {
   return '';
 }
 
-/** 拼 srcset；拿不到任何代理变体时返回 undefined，<img> 就只发 src 一张。
- *@param {*} [src]
- * @param {*} [widths]
- */
-
-export function widthSrcSet(src: any, widths: any) {
-  const list = [];
+/** 拼 srcset；拿不到任何代理变体时返回 undefined，<img> 就只发 src 一张。 */
+export function widthSrcSet(src: unknown, widths: number[]): string | undefined {
+  const list: string[] = [];
   for (const w of widths) {
     const u = widthVariant(src, w);
     if (u) list.push(u + ' ' + w + 'w');

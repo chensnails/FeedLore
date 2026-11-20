@@ -1,13 +1,15 @@
+import type { ReactNode } from 'react';
 import { Icon } from './Icon.tsx';
 
-/**
- * @param {object}  p
- * @param {string} [p.className] 旧状态类名，保留样式与选择器契约
- * @param {string} [p.icon]      sprite 图标名；传 spinner=true 时忽略
- * @param {boolean} [p.spinner]  渲染转圈而不是图标
- * @param {boolean} [p.alert]    失败态：补 role=alert 让读屏立刻播报
- * @param {any} [p.children]     块内内容
- */
+export interface StateBlockProps {
+  className?: string;
+  /** sprite 图标名；传 spinner=true 时忽略 */
+  icon?: string;
+  spinner?: boolean;
+  /** 失败态：补 role=alert 让读屏立刻播报 */
+  alert?: boolean;
+  children?: ReactNode;
+}
 
 export function StateBlock({
   className = '',
@@ -15,7 +17,7 @@ export function StateBlock({
   spinner = false,
   alert = false,
   children,
-}: any) {
+}: StateBlockProps) {
   return (
     <div
       className={['state-block', className].filter(Boolean).join(' ')}

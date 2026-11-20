@@ -34,8 +34,8 @@ export const queryClient = new QueryClient({
 export const qk = Object.freeze({
   session: ['session'] as const,
   feeds: ['feeds'] as const,
-  entries: (scope: any, extra: any) => ['entries', scope, extra] as const,
-  readerBody: (id: any) => ['readerBody', String(id)] as const,
+  entries: (scope: string, extra?: string) => ['entries', scope, extra] as const,
+  readerBody: (id: string | number) => ['readerBody', String(id)] as const,
   status: ['status'] as const,
   config: ['config'] as const,
   version: ['version'] as const,
@@ -45,12 +45,14 @@ export const qk = Object.freeze({
   sessions: ['sessions'] as const,
   mcpTokens: ['mcpTokens'] as const,
   aiUsage: ['aiUsage'] as const,
-  aiRequests: (limit: any) => ['aiRequests', String(limit)] as const,
+  aiRequests: (limit: number) => ['aiRequests', String(limit)] as const,
 });
 
+type QueryKey = readonly unknown[];
+
 /** 失效一组 key（写操作后调用）。保留 core 的 tick 机制，Query 只补缓存一致性。 */
-export function invalidate(...keys: ReadonlyArray<readonly any[]>) {
-  return Promise.all(keys.map((k) => queryClient.invalidateQueries({ queryKey: k as any })));
+export function invalidate(...keys: QueryKey[]) {
+  return Promise.all(keys.map((k) => queryClient.invalidateQueries({ queryKey: k })));
 }
 
 /**
@@ -58,13 +60,13 @@ export function invalidate(...keys: ReadonlyArray<readonly any[]>) {
  * 与 invalidate 的区别：invalidate 只标脏（fetchQuery 仍先返回旧值再后台刷新），
  * 而订阅源增删改后 UI 必须立刻反映新状态，不能先闪一帧旧数据。
  */
-export function drop(...keys: ReadonlyArray<readonly any[]>) {
-  return Promise.all(keys.map((k) => queryClient.removeQueries({ queryKey: k as any })));
+export function drop(...keys: QueryKey[]) {
+  return Promise.all(keys.map((k) => queryClient.removeQueries({ queryKey: k })));
 }
 
 /** 读缓存快照（同步），供需要「先旧后新」渲染的地方取数。 */
-export function peek<T = any>(key: readonly any[]): T | undefined {
-  return queryClient.getQueryData<T>(key as any);
+export function peek<T = unknown>(key: QueryKey): T | undefined {
+  return queryClient.getQueryData<T>(key);
 }
 
 /**
@@ -74,16 +76,14 @@ export function peek<T = any>(key: readonly any[]): T | undefined {
  * 调用方的 state 写入逻辑保持逐字不变：这里只替换「发请求 + 判 ok + 解析 json」这一段，
  * 返回结构与各 load* 函数原本拿到的 data 一致。去重 / stale / 失效由 Query 负责，
  * 弱网超时与幂等重试仍在 apiFetch 内（queryFn 里照常调用它）。
- * @param {*} key
- * @param {*} loader  返回已解析数据的异步函数
  */
-export function cachedGet(key: readonly any[], loader: () => Promise<any>): Promise<any> {
-  return queryClient.fetchQuery({ queryKey: key as any, queryFn: loader }).then(clone);
+export function cachedGet<T>(key: QueryKey, loader: () => Promise<T>): Promise<T> {
+  return queryClient.fetchQuery({ queryKey: key, queryFn: loader }).then(clone<T>);
 }
 
 /** 返回副本：core 的 state.feedList / feedMeta 会被组件原地修改，
  * 若直接把 Query 缓存里的对象交出去，原地写会污染缓存，下一次命中就是脏数据。 */
-function clone(v: any): any {
+function clone<T>(v: T): T {
   if (v == null || typeof v !== 'object') return v;
   try {
     return typeof structuredClone === 'function'

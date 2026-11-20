@@ -137,8 +137,7 @@ export function compareVersion(a: string, b: string): number {
  * 状态聚合
  * ==========================================================================*/
 
-/** eslint-disable-next-line @typescript-eslint/no-explicit-any */
-type Row = Record<string, any>;
+type Row = Record<string, unknown>;
 
 async function tableCounts(db: Db): Promise<Record<string, number>> {
   const res = await db.execute(sql`

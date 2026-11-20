@@ -18,36 +18,49 @@ const S = () => core;
 
 const newId = () => 'r' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
 
-/**
- * @param {*} [text]
- */
-const parseLines = (text: any) =>
+/** 规则草稿（表单里的扁平形状）。 */
+interface RuleDraft {
+  id: string;
+  name: string;
+  on: boolean;
+  keywords: string;
+  match: string;
+  tag: string;
+  addTags: string;
+  favorite: boolean;
+  markRead: boolean;
+  notify: boolean;
+}
+type ResultState = { ok: boolean; msg: string } | null;
+
+const parseLines = (text: unknown): string[] =>
   String(text || '')
     .split(/\r?\n/)
-    .map(/** @param {*} [x] */ (x: any) => x.trim())
+    .map((x) => x.trim())
     .filter(Boolean);
-/**
- * @param {*} [text]
- */
-const parseComma = (text: any) =>
+const parseComma = (text: unknown): string[] =>
   String(text || '')
     .split(/[,，]/)
-    .map(/** @param {*} [x] */ (x: any) => x.trim())
+    .map((x) => x.trim())
     .filter(Boolean);
 
 const ALL_SCOPE = { all: true, groups: [], feeds: [] };
 
-/**
- * @param {*} [r]
- */
-
-function toDraft(r: any) {
-  const when = (r && r.when) || {};
-  const then = (r && r.then) || {};
+/** 服务端规则 → 草稿。输入是 JSON 边界，用 unknown + 窄化。 */
+function toDraft(r: unknown): RuleDraft {
+  const obj = (r && typeof r === 'object' && !Array.isArray(r) ? r : {}) as Record<string, unknown>;
+  const when = (obj.when && typeof obj.when === 'object' ? obj.when : {}) as Record<
+    string,
+    unknown
+  >;
+  const then = (obj.then && typeof obj.then === 'object' ? obj.then : {}) as Record<
+    string,
+    unknown
+  >;
   return {
-    id: (r && r.id) || newId(),
-    name: (r && r.name) || '',
-    on: !r || r.on !== false,
+    id: typeof obj.id === 'string' ? obj.id : newId(),
+    name: typeof obj.name === 'string' ? obj.name : '',
+    on: obj.on !== false,
     keywords: Array.isArray(when.keywords) ? when.keywords.join('\n') : '',
     match: when.match === 'all' ? 'all' : 'any',
     tag: typeof when.tag === 'string' ? when.tag : '',
@@ -58,11 +71,7 @@ function toDraft(r: any) {
   };
 }
 
-/**
- * @param {*} [d]
- */
-
-function toPayload(d: any) {
+function toPayload(d: RuleDraft) {
   return {
     id: d.id,
     name: String(d.name || '').trim(),
@@ -82,23 +91,19 @@ function toPayload(d: any) {
   };
 }
 
-const blank = () => toDraft(null);
+const blank = (): RuleDraft => toDraft(null);
 
-/**
- * @param {*} [d]
- */
-const isComplete = (d: any) =>
-  (parseLines(d.keywords).length > 0 || String(d.tag || '').trim()) &&
+const isComplete = (d: RuleDraft): boolean =>
+  (parseLines(d.keywords).length > 0 || !!String(d.tag || '').trim()) &&
   (parseComma(d.addTags).length > 0 || d.favorite || d.markRead || d.notify);
 
 export function RulesEditor() {
-  const [drafts, setDrafts] = useState<any>([]);
-  const [saved, setSaved] = useState<any>('[]');
-  const [loading, setLoading] = useState<any>(true);
-  const [error, setError] = useState<any>('');
-  /** @type {*} */
-  const [result, setResult] = useState<any>(null);
-  const [busy, setBusy] = useState<any>(false);
+  const [drafts, setDrafts] = useState<RuleDraft[]>([]);
+  const [saved, setSaved] = useState('[]');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<ResultState>(null);
+  const [busy, setBusy] = useState(false);
 
   // V5：服务端数据交给 Query 管理（去重 / stale / 写后失效）；queryFn 仍走 core.apiFetch
   // 这个 I/O 端口，行为测试桩照常生效。面板条件挂载，refetchOnMount:'always' 保住
@@ -119,7 +124,7 @@ export function RulesEditor() {
   useEffect(() => {
     if (prefsQuery.isPending) return;
     if (prefsQuery.isError) {
-      const err: any = prefsQuery.error;
+      const err = prefsQuery.error;
       setError('读取规则失败：' + String((err && err.message) || err));
       setLoading(false);
       return;
@@ -132,29 +137,15 @@ export function RulesEditor() {
     setLoading(false);
   }, [prefsQuery.data, prefsQuery.isPending, prefsQuery.isError, prefsQuery.error]);
 
-  /**
-   * @param {*} [id]
-   * @param {*} [patch]
-   */
-  const update = (id: any, patch: any) =>
-    setDrafts(
-      /** @param {*} [list] */ (list: any) =>
-        list.map(/** @param {*} [d] */ (d: any) => (d.id === id ? { ...d, ...patch } : d)),
-    );
-  /**
-   * @param {*} [id]
-   */
-  const remove = (id: any) =>
-    setDrafts(
-      /** @param {*} [list] */ (list: any) =>
-        list.filter(/** @param {*} [d] */ (d: any) => d.id !== id),
-    );
-  const add = () => setDrafts(/** @param {*} [list] */ (list: any) => [...list, blank()]);
+  const update = (id: string, patch: Partial<RuleDraft>) =>
+    setDrafts((list) => list.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+  const remove = (id: string) => setDrafts((list) => list.filter((d) => d.id !== id));
+  const add = () => setDrafts((list) => [...list, blank()]);
 
   async function onSave() {
     if (busy) return;
     setResult(null);
-    const incomplete = drafts.some(/** @param {*} [d] */ (d: any) => !isComplete(d));
+    const incomplete = drafts.some((d) => !isComplete(d));
     if (incomplete) {
       setResult({ ok: false, msg: '每条规则至少要有一个条件（关键词或标签）和一个动作' });
       return;
@@ -203,128 +194,115 @@ export function RulesEditor() {
       {!loading && !error ? (
         <div className="sl-list">
           {drafts.length ? (
-            drafts.map(
-              /** @param {*} [d] */ (d: any) => (
-                <div className="rule-card" key={d.id}>
-                  <div className="rule-card-head">
-                    <label className="switch" title={d.on ? '已启用' : '已停用'}>
-                      <input
-                        type="checkbox"
-                        checked={d.on}
-                        onChange={
-                          /** @param {*} [e] */ (e: any) => update(d.id, { on: e.target.checked })
-                        }
-                      />
-                      <span className="switch-slider" />
-                    </label>
+            drafts.map((d) => (
+              <div className="rule-card" key={d.id}>
+                <div className="rule-card-head">
+                  <label className="switch" title={d.on ? '已启用' : '已停用'}>
                     <input
-                      className="rule-name"
-                      type="text"
-                      placeholder="规则名称（可选）"
-                      value={d.name}
+                      type="checkbox"
+                      checked={d.on}
+                      onChange={/** @param {*} [e] */ (e) => update(d.id, { on: e.target.checked })}
+                    />
+                    <span className="switch-slider" />
+                  </label>
+                  <input
+                    className="rule-name"
+                    type="text"
+                    placeholder="规则名称（可选）"
+                    value={d.name}
+                    onChange={/** @param {*} [e] */ (e) => update(d.id, { name: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => remove(d.id)}
+                  >
+                    删除
+                  </button>
+                </div>
+                <div className="rule-grid">
+                  <label>
+                    <span>关键词（一行一个，任选其一→ any）</span>
+                    <textarea
+                      rows={2}
+                      spellCheck="false"
+                      placeholder={'锂电\n新能源'}
+                      value={d.keywords}
                       onChange={
-                        /** @param {*} [e] */ (e: any) => update(d.id, { name: e.target.value })
+                        /** @param {*} [e] */ (e) => update(d.id, { keywords: e.target.value })
                       }
                     />
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => remove(d.id)}
-                    >
-                      删除
-                    </button>
-                  </div>
-                  <div className="rule-grid">
-                    <label>
-                      <span>关键词（一行一个，任选其一→ any）</span>
-                      <textarea
-                        rows={2}
-                        spellCheck="false"
-                        placeholder={'锂电\n新能源'}
-                        value={d.keywords}
-                        onChange={
-                          /** @param {*} [e] */ (e: any) =>
-                            update(d.id, { keywords: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>匹配方式</span>
-                      <Dropdown
-                        id={'ruleMatch-' + d.id}
-                        wrapId={'ruleMatchDD-' + d.id}
-                        title="匹配方式"
-                        ariaLabel="匹配方式"
-                        value={d.match}
-                        onChange={/** @param {*} [v] */ (v: any) => update(d.id, { match: v })}
-                        options={[
-                          { value: 'any', label: '命中任一关键词' },
-                          { value: 'all', label: '需同时命中全部关键词' },
-                        ]}
-                      />
-                    </label>
-                    <label>
-                      <span>标签（可选，需已有该标签）</span>
-                      <input
-                        type="text"
-                        placeholder="AI"
-                        value={d.tag}
-                        onChange={
-                          /** @param {*} [e] */ (e: any) => update(d.id, { tag: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>加标签（逗号分隔）</span>
-                      <input
-                        type="text"
-                        placeholder="新能源, 关注"
-                        value={d.addTags}
-                        onChange={
-                          /** @param {*} [e] */ (e: any) =>
-                            update(d.id, { addTags: e.target.value })
-                        }
-                      />
-                    </label>
-                  </div>
-                  <div className="rule-actions">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={d.favorite}
-                        onChange={
-                          /** @param {*} [e] */ (e: any) =>
-                            update(d.id, { favorite: e.target.checked })
-                        }
-                      />{' '}
-                      收藏
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={d.markRead}
-                        onChange={
-                          /** @param {*} [e] */ (e: any) =>
-                            update(d.id, { markRead: e.target.checked })
-                        }
-                      />{' '}
-                      标记已读
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={d.notify}
-                        onChange={
-                          /** @param {*} [e] */ (e: any) =>
-                            update(d.id, { notify: e.target.checked })
-                        }
-                      />{' '}
-                      通知（webhook）
-                    </label>
-                  </div>
+                  </label>
+                  <label>
+                    <span>匹配方式</span>
+                    <Dropdown
+                      id={'ruleMatch-' + d.id}
+                      wrapId={'ruleMatchDD-' + d.id}
+                      title="匹配方式"
+                      ariaLabel="匹配方式"
+                      value={d.match}
+                      onChange={/** @param {*} [v] */ (v) => update(d.id, { match: v })}
+                      options={[
+                        { value: 'any', label: '命中任一关键词' },
+                        { value: 'all', label: '需同时命中全部关键词' },
+                      ]}
+                    />
+                  </label>
+                  <label>
+                    <span>标签（可选，需已有该标签）</span>
+                    <input
+                      type="text"
+                      placeholder="AI"
+                      value={d.tag}
+                      onChange={/** @param {*} [e] */ (e) => update(d.id, { tag: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    <span>加标签（逗号分隔）</span>
+                    <input
+                      type="text"
+                      placeholder="新能源, 关注"
+                      value={d.addTags}
+                      onChange={
+                        /** @param {*} [e] */ (e) => update(d.id, { addTags: e.target.value })
+                      }
+                    />
+                  </label>
                 </div>
-              ),
-            )
+                <div className="rule-actions">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={d.favorite}
+                      onChange={
+                        /** @param {*} [e] */ (e) => update(d.id, { favorite: e.target.checked })
+                      }
+                    />{' '}
+                    收藏
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={d.markRead}
+                      onChange={
+                        /** @param {*} [e] */ (e) => update(d.id, { markRead: e.target.checked })
+                      }
+                    />{' '}
+                    标记已读
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={d.notify}
+                      onChange={
+                        /** @param {*} [e] */ (e) => update(d.id, { notify: e.target.checked })
+                      }
+                    />{' '}
+                    通知（webhook）
+                  </label>
+                </div>
+              </div>
+            ))
           ) : (
             <div className="sl-empty">
               还没有自动化规则。点「新增规则」，比如：标题含「锂电」→ 加标签「新能源」并收藏。

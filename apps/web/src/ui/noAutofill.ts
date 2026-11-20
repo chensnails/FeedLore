@@ -24,12 +24,9 @@ export const AUTOFILL_ANIMATION = 'flAutofillGuard';
 
 let seq = 0;
 
-/** 稳定但非语义化的 name：同一组件多次挂载互不相同，浏览器无法匹配已保存的账号字段。
- *@param {*} [scope]
- */
-
-export function useNoAutofillName(scope: any = 'fl-field') {
-  const ref: any = useRef<any>(null);
+/** 稳定但非语义化的 name：同一组件多次挂载互不相同，浏览器无法匹配已保存的账号字段。 */
+export function useNoAutofillName(scope = 'fl-field'): string {
+  const ref = useRef<string | null>(null);
   if (!ref.current) {
     seq += 1;
     ref.current = scope + '-' + Date.now().toString(36) + '-' + seq.toString(36);
@@ -50,11 +47,8 @@ export const NO_AUTOFILL_PROPS = Object.freeze({
   'data-fl-no-autofill': 'true',
 });
 
-/** 清掉被自动填充的值，并让 React 受控组件同步到空状态。
- *@param {*} [input]
- */
-
-export function clearAutofilledInput(input: any) {
+/** 清掉被自动填充的值，并让 React 受控组件同步到空状态。 */
+export function clearAutofilledInput(input: HTMLInputElement | null | undefined): boolean {
   if (!input || !input.value) return false;
   const win = input.ownerDocument && input.ownerDocument.defaultView;
   const proto =
@@ -73,20 +67,15 @@ export function clearAutofilledInput(input: any) {
 
 /**
  * 全局守卫：装在 document 上，覆盖所有带 data-fl-no-autofill 的输入框。
- * 返回卸载函数（便于测试与热更新）；可在任意入口调用一次。
- * @param {*} [doc]
- */
-
-export function installAutofillGuard(doc?: any) {
+ * 返回卸载函数（便于测试与热更新）；可在任意入口调用一次。 */
+export function installAutofillGuard(doc?: Document | null): () => void {
   const target = doc || (typeof document !== 'undefined' ? document : null);
   if (!target || !target.addEventListener) return () => {};
-  /**
-   * @param {*} [ev]
-   */
-  const onAnim = (ev: any) => {
+  const onAnim = (ev: AnimationEvent) => {
     if (ev.animationName !== AUTOFILL_ANIMATION) return;
-    const el = ev.target;
-    if (el && el.matches && el.matches('input[data-fl-no-autofill]')) clearAutofilledInput(el);
+    const el = ev.target as Element | null;
+    if (el && el.matches && el.matches('input[data-fl-no-autofill]'))
+      clearAutofilledInput(el as HTMLInputElement);
   };
   target.addEventListener('animationstart', onAnim, true);
   return () => target.removeEventListener('animationstart', onAnim, true);

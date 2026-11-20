@@ -21,8 +21,10 @@
  */
 
 import { core } from '@core';
+import type { Card, EntryDetail } from '@feedlore/contract';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { qk } from '../kernel/query.ts';
 import { ArtActions } from '../ui/EntryActions.tsx';
@@ -32,10 +34,8 @@ import { ArtBody, bodyShowsText } from './ReaderView.tsx';
 
 const S = () => core;
 
-/** 有没有正文可展示：图文块、正文文本、正文图片三者有其一即可
- *@param {*} [f]
- */
-function hasBody(f: any) {
+/** 有没有正文可展示：图文块、正文文本、正文图片三者有其一即可 */
+function hasBody(f: EntryDetail | null | undefined): boolean {
   if (!f) return false;
   if (f.bodyJson) {
     try {
@@ -50,20 +50,22 @@ function hasBody(f: any) {
   return Array.isArray(f.images) && f.images.length > 0;
 }
 
-/**
- * @param {*} opts
- */
+interface CardDetailProps {
+  e: Card;
+  onClose?: () => void;
+  onTag?: (tag: string) => void;
+  onAiTag?: (tag: string) => void;
+}
 
-export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
+export function CardDetail({ e, onClose, onTag, onAiTag }: CardDetailProps) {
   const s = S();
-  /** @type {*} */
-  const [full, setFull] = useState<any>(null);
-  const [err, setErr] = useState<any>(false);
+  const [full, setFull] = useState<EntryDetail | null>(null);
+  const [err, setErr] = useState(false);
   // 正文重试走 bodyQuery.refetch()（见下方加载逻辑），锁滚动 / 记已读 / 焦点不重复执行
   // 打开瞬间定格形态（与 Dropdown 同一约定），避免开合途中换布局
-  const [mobile] = useState<any>(isMobileMq());
-  const closeRef: any = useRef<any>(null);
-  const dialogRef: any = useRef<any>(null);
+  const [mobile] = useState<boolean>(isMobileMq());
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
 
   // 打开即记为已读（V5：滚动锁 / Esc / 焦点陷阱 / 层级仲裁全部交由 Radix Dialog）。
   useEffect(() => {
@@ -103,7 +105,7 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
   const toggleFav = () => {
     const next = !fav;
     s.cardsSetFlag(e.id, { isFavorite: next }).then(
-      /** @param {*} [ok] */ (ok: any) => {
+      /** @param {*} [ok] */ (ok) => {
         if (ok) s.toast(next ? '已收藏' : '已取消收藏');
       },
     );
@@ -111,7 +113,7 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
 
   const toReader = () => {
     s.jumpToFeed(e.feedId, e.id);
-    onClose();
+    onClose?.();
   };
 
   const showBody = !!full && hasBody(full);
@@ -158,7 +160,7 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
   );
 
   const dialogLabel = e.name || '条目详情';
-  let inner: any = null;
+  let inner = null;
   if (err) {
     inner = (
       <div className="hint">
@@ -194,11 +196,11 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: any) {
   // 不用 Portal：详情就地渲染在卡片视图容器内（测试按其所在容器作用域查询，
   // Portal 会把内容甩到别处）。遮罩用原生 div 保留 .modal-mask > [role=dialog] 的
   // DOM 契约；Radix Content asChild 只接管语义（模态 / focus / Esc / 滚动锁）。
-  const shell = (body: any) => (
+  const shell = (body: ReactNode) => (
     <Dialog.Root
       open
-      onOpenChange={(o: any) => {
-        if (!o) onClose();
+      onOpenChange={(o) => {
+        if (!o) onClose?.();
       }}
     >
       <div className={mobile ? 'dd-mask' : 'modal-mask'} role="presentation">

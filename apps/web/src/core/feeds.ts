@@ -15,24 +15,22 @@ import {
   state,
   unlockPageScroll,
 } from './state.ts';
+import type { Feed, ViewMode } from './types.ts';
 import { apiFetch, emitShell, errText, httpError, NET_TIMEOUT_MS, toast } from './util.ts';
 
-/** 按分组名把频道归类：未分组的排最前，其余按名称排序；组内保持原顺序
- *@param {*} [feeds]
- */
-
-export function groupFeeds(feeds: any) {
-  const map = new Map();
+/** 按分组名把频道归类：未分组的排最前，其余按名称排序；组内保持原顺序 */
+export function groupFeeds(feeds: Feed[]) {
+  const map = new Map<string, Feed[]>();
   for (const f of feeds) {
     const g = String(f.groupName || '').trim();
     if (!map.has(g)) map.set(g, []);
-    map.get(g).push(f);
+    map.get(g)!.push(f);
   }
   // 分组顺序：优先用显式保存的 groupOrder；不在其中的命名分组按出现顺序补到后面；
   // 「未分组」（空串）永远放最后，不参与拖拽排序。
-  const order: any = state.groupOrder || [];
-  const seen = new Set();
-  const names = [];
+  const order = state.groupOrder || [];
+  const seen = new Set<string>();
+  const names: string[] = [];
   for (const g of order)
     if (g && map.has(g) && !seen.has(g)) {
       names.push(g);
@@ -44,14 +42,14 @@ export function groupFeeds(feeds: any) {
       seen.add(g);
     }
   if (map.has('')) names.push('');
-  return names.map(/** @param {*} [name] */ (name: any) => ({ name, feeds: map.get(name) }));
+  return names.map((name) => ({ name, feeds: map.get(name) }));
 }
 
 /* ---------------- 视图模式（卡片 / 列表） ----------------
  * 按账号持久化（users.prefs.layout.view），不再落浏览器 localStorage。
  * 两种模式用同一份 state.entries 重新渲染，不做双份 DOM 隐藏切换。
  */
-export const VIEW_MODES = ['grid', 'list'];
+export const VIEW_MODES: ViewMode[] = ['grid', 'list'];
 
 export function currentViewMode() {
   return VIEW_MODES.indexOf(layoutPref.view) >= 0 ? layoutPref.view : 'grid';
@@ -63,19 +61,18 @@ export function currentViewMode() {
 export function cardGroupFeedIds() {
   return (state.feedList || [])
     .filter(
-      /** @param {*} [f] */ (f: any) =>
+      /** @param {*} [f] */ (f) =>
         f.cardEnabled && String(f.groupName || '').trim() === state.cardGroup,
     )
-    .map(/** @param {*} [f] */ (f: any) => f.id);
+    .map(/** @param {*} [f] */ (f) => f.id);
 }
 
 /** 卡片页的检索范围写进查询参数。
  *  挂着标签筛选（手动 tag / AI aiTag）时是全库检索 —— 与文章页同一口径，
  *  只把「怎么展示」限定在卡片页，不再被频道 / 分组 / 卡片开关收窄；
  *  没挂标签时才是卡片页一贯的范围：分组 → 频道 → 卡片开关打开的频道。
- *@param {*} [params]
  */
-export function applyCardScope(params: any) {
+export function applyCardScope(params: URLSearchParams) {
   if (state.tag || state.aiTag) {
     params.set('scope', 'all');
     return;
@@ -86,27 +83,20 @@ export function applyCardScope(params: any) {
 }
 
 /* 分组折叠状态：按账号持久化（users.prefs.layout.collapsedGroups），不再落浏览器 */
-export function loadCollapsedGroups() {
-  const arr: any = Array.isArray(layoutPref.collapsedGroups) ? layoutPref.collapsedGroups : [];
-  return new Set(arr.filter(/** @param {*} [g] */ (g: any) => typeof g === 'string'));
+export function loadCollapsedGroups(): Set<string> {
+  const arr: unknown = Array.isArray(layoutPref.collapsedGroups) ? layoutPref.collapsedGroups : [];
+  return new Set((arr as unknown[]).filter((g): g is string => typeof g === 'string'));
 }
 
-/** 把模式写到 state / DOM / 按钮态；persist=true 时才写账号（手动切换才记）
- *@param {*} [mode]
- * @param {*} [persist]
- */
-
-export function applyViewMode(mode: any, persist: any) {
+/** 把模式写到 state / DOM / 按钮态；persist=true 时才写账号（手动切换才记） */
+export function applyViewMode(mode: ViewMode, persist: boolean) {
   state.view = VIEW_MODES.indexOf(mode) >= 0 ? mode : 'grid';
   if (persist) setLayout('view', state.view);
   render(); // 通知 CardsView 重绘（含 viewMode 按钮态）
 }
 
-/** 用户点击切换：切完立刻按新模式重绘
- *@param {*} [mode]
- */
-
-export function setViewMode(mode: any) {
+/** 用户点击切换：切完立刻按新模式重绘 */
+export function setViewMode(mode: ViewMode) {
   if (mode === state.view) return;
   applyViewMode(mode, true); // 内部已 render()
   toast(state.view === 'list' ? '已切换到列表视图' : '已切换到卡片视图');
@@ -121,7 +111,8 @@ export const TABS = ['reader', 'cards', 'ai'];
 export function currentTab() {
   const t = layoutPref.tab;
   // 老版本存的是 'digest'，那个页面已经升级成「AI」了
-  if (t === 'digest') return 'ai';
+  // 旧值来自持久化数据，运行时是字符串；ViewTab 类型不覆盖这个历史遗留值，故按字符串比较。
+  if (String(t) === 'digest') return 'ai';
   return TABS.indexOf(t) >= 0 ? t : 'reader';
 }
 
@@ -136,7 +127,7 @@ export async function loadFeeds() {
   });
   state.feedList = data.feeds || [];
   state.feedMeta = data;
-  state.groupOrder = Array.isArray(data.groupOrder) ? data.groupOrder : [];
+  state.groupOrder = Array.isArray(data.groupOrder) ? (data.groupOrder as string[]) : [];
   state.collapsedGroups = loadCollapsedGroups();
   // 侧栏「全部 / 未读 / 收藏」的计数跟频道一起回来，省一次请求
   if (data.flags) state.rdFlags = data.flags;
@@ -144,7 +135,7 @@ export async function loadFeeds() {
   if (
     state.feedFilter != null &&
     !(state.feedList || []).some(
-      /** @param {*} [f] */ (f: any) => String(f.id) === String(state.feedFilter) && f.cardEnabled,
+      /** @param {*} [f] */ (f) => String(f.id) === String(state.feedFilter) && f.cardEnabled,
     )
   ) {
     state.feedFilter = null;
@@ -153,7 +144,7 @@ export async function loadFeeds() {
   if (
     state.cardGroup != null &&
     !(state.feedList || []).some(
-      /** @param {*} [f] */ (f: any) =>
+      /** @param {*} [f] */ (f) =>
         f.cardEnabled && String(f.groupName || '').trim() === state.cardGroup,
     )
   ) {
@@ -173,7 +164,7 @@ let pagePendingReset = false;
 /* 同一时刻只认最后一次列表请求：切换筛选、搜索连打、点「重试」都会发起新请求，
  * 旧的慢响应不能回来覆盖当前列表（弱网下旧响应常常比新响应晚到）。
  * controller 让「重试」能真正打断仍挂在半路的请求，而不是被 loading 闸门吞掉。 */
-let pageController: any = null;
+let pageController: AbortController | null = null;
 let pageGeneration = 0;
 
 export function cancelPageLoad() {
@@ -196,7 +187,7 @@ export function firstPageSize() {
  * @param {*} [reset]
  */
 
-export async function loadPage(reset: any = false) {
+export async function loadPage(reset = false) {
   // 错误空态里的「重试」：上一次可能还挂在半路，先让它失效、释放闸门再发新的。
   // 旧实现只往 pagePendingReset 排队，请求永不返回时就永远不会补跑 —— 按钮点了没反应。
   const force = reset && state.loadError;
@@ -267,7 +258,7 @@ export async function loadPage(reset: any = false) {
     if (reset) state.tags = data.tags || [];
 
     const list = data.entries || [];
-    const seen = new Set(state.entries.map(/** @param {*} [e] */ (e: any) => e.id));
+    const seen = new Set(state.entries.map(/** @param {*} [e] */ (e) => e.id));
     for (const e of list) if (!seen.has(e.id)) state.entries.push(e);
 
     state.offset += list.length;
@@ -336,11 +327,7 @@ export function render() {
  */
 export let cardsDrawerLocked = false; // 抽屉当前是否拿着页面滚动锁
 
-/**
- * @param {*} [open]
- */
-
-export function setCardsDrawer(open: any) {
+export function setCardsDrawer(open: boolean) {
   const on = !!open;
   if (on === document.body.classList.contains('cards-drawer-open')) return;
   document.body.classList.toggle('cards-drawer-open', on);

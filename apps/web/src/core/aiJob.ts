@@ -20,30 +20,30 @@ export const AI_JOB_FAST_POLLS = 3;
 /** 前端等待上限：比服务端最长的单次预算（日报多批）再宽一点，超了只放弃等待，不取消任务。 */
 export const AI_JOB_MAX_MS = 240_000;
 
-/**
- * @param {*} [ms]
- */
-const sleep = (ms: any) =>
-  new Promise(
-    /** @param {*} [resolve] */ (resolve: any) => {
-      setTimeout(resolve, ms);
-    },
-  );
+import type { AiJob, AiJobBody, AiJobError, AiPollOpts, ApiErrorBody } from './types.ts';
+
+/** 最小 core 依赖面：aiJob 只用 apiFetch 与 errText，避免依赖整个 core 单例类型。 */
+type AiJobCore = {
+  apiFetch: (url: string, opts?: Record<string, unknown>) => Promise<Response>;
+  errText: (data: ApiErrorBody | null, fallback: string) => string;
+};
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 /**
  * 提交任务。失败抛错（message 里是已经翻译过的中文）：
  * 提交阶段就会返回 4xx —— 条目不存在、越权、日期非法、任务过多都在这里。
- * @param {*} [core]
- * @param {*} [body]
  */
-
-export async function submitAiJob(core: any, body: any) {
+export async function submitAiJob(core: AiJobCore, body: AiJobBody): Promise<AiJob> {
   const res = await core.apiFetch('/api/ai/jobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = await res.json().catch(() => ({}));
+  const data = (await res.json().catch(() => ({}))) as ApiErrorBody & { job?: AiJob };
   if (!res.ok) throw new Error(core.errText(data, '提交 AI 任务失败'));
   const job = data && data.job;
   if (!job || !job.id) throw new Error('提交 AI 任务失败：服务端没有返回任务号');
@@ -51,32 +51,30 @@ export async function submitAiJob(core: any, body: any) {
 }
 
 /**
- * 轮询到任务结束。
- *
- * @param {any} core  core 单例（要用它的 apiFetch / errText）
- * @param {string} jobId  提交时拿到的 id
- * @param {{onStatus?: Function, isCancelled?: Function, maxMs?: number}} [opts]
- *   onStatus 每次拿到新状态时回调（更新「排队中 / 生成中」）；
- *   isCancelled 返回 true 就停轮询（组件卸载 / 用户切走）
- * @returns {Promise<any>} 成功时的完整 job（含 result）
+ * 轮询到任务结束。onStatus 拿到新状态时回调（更新「排队中 / 生成中」）；
+ * isCancelled 返回 true 就停轮询（组件卸载 / 用户切走）。
+ * 成功返回完整 job（含 result）；失败 / 超时 / 中止抛带 job 字段的 Error。
  */
-
-export async function pollAiJob(core: any, jobId: any, opts: any = {}) {
+export async function pollAiJob(
+  core: AiJobCore,
+  jobId: string,
+  opts: AiPollOpts = {},
+): Promise<AiJob> {
   const onStatus = typeof opts.onStatus === 'function' ? opts.onStatus : null;
   const isCancelled = typeof opts.isCancelled === 'function' ? opts.isCancelled : () => false;
   const maxMs = Number(opts.maxMs) > 0 ? Number(opts.maxMs) : AI_JOB_MAX_MS;
   const startedAt = Date.now();
-  let last: any = null;
+  let last: AiJob | null = null;
   let polls = 0;
 
   while (Date.now() - startedAt < maxMs) {
     if (isCancelled()) {
-      const aborted: any = new Error('E_AI_ABORTED: the page stopped waiting');
+      const aborted: AiJobError = new Error('E_AI_ABORTED: the page stopped waiting');
       aborted.job = last;
       throw aborted;
     }
     const res = await core.apiFetch('/api/ai/jobs/' + encodeURIComponent(jobId));
-    const data = await res.json().catch(() => ({}));
+    const data = (await res.json().catch(() => ({}))) as ApiErrorBody & { job?: AiJob };
     if (!res.ok) throw new Error(core.errText(data, '读取任务状态失败'));
     const job = data && data.job;
     if (!job) throw new Error('读取任务状态失败：响应里没有任务');
@@ -84,14 +82,14 @@ export async function pollAiJob(core: any, jobId: any, opts: any = {}) {
     if (onStatus) onStatus(job);
     if (job.status === 'succeeded') return job;
     if (job.status === 'failed') {
-      const failed: any = new Error(job.error || 'AI 调用失败');
+      const failed: AiJobError = new Error(job.error || 'AI 调用失败');
       failed.job = job;
       throw failed;
     }
     polls += 1;
     await sleep(polls <= AI_JOB_FAST_POLLS ? AI_JOB_FAST_POLL_MS : AI_JOB_POLL_MS);
   }
-  const timeout: any = new Error(
+  const timeout: AiJobError = new Error(
     'E_AI_TIMEOUT: the task is still running after ' + Math.round(maxMs / 1000) + 's',
   );
   timeout.job = last;

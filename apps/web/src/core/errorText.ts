@@ -7,7 +7,9 @@
  *
  * 加新码时这里也要补一条，否则界面会掉到英文。
  */
-const CN: Record<import('@feedlore/contract').KnownErrorCode, string | ((p: any) => string)> = {
+import type { ApiErrorParams, KnownErrorCode } from '@feedlore/contract';
+
+const CN: Record<KnownErrorCode, string | ((p: ApiErrorParams) => string)> = {
   E_DB_NOT_READY: '数据库未就绪',
   E_SERVICE_NOT_READY: '服务未就绪',
   E_AUTH_NOT_READY: '鉴权服务未就绪',
@@ -134,17 +136,18 @@ const CODE_RE = /^(E_[A-Z0-9_]+)(?::(.+))?$/;
  * @param {any} input  响应体对象（`{ error, message, params }`）、或裸字符串（如库里存的 lastError `E_CODE:403`）
  * @param {string} [fallbackText] 调用方的中文兜底
  */
-export function errorText(input: any, fallbackText: string = '') {
+export function errorText(input: unknown, fallbackText: string = ''): string {
   let code = '';
-  let params: Record<string, any> = {};
+  let params: ApiErrorParams = {};
   let english = '';
 
   if (typeof input === 'string') {
     code = input;
   } else if (input && typeof input === 'object') {
-    code = typeof input.error === 'string' ? input.error : '';
-    english = typeof input.message === 'string' ? input.message : '';
-    if (input.params && typeof input.params === 'object') params = input.params;
+    const body = input as Record<string, unknown>;
+    code = typeof body.error === 'string' ? body.error : '';
+    english = typeof body.message === 'string' ? body.message : '';
+    if (body.params && typeof body.params === 'object') params = body.params as ApiErrorParams;
   }
 
   /* Error 实例（`new Error(s.errText(...))`、`throw httpError(res)`）没有 `error` 字段，
@@ -152,15 +155,16 @@ export function errorText(input: any, fallbackText: string = '') {
   if (!code && english && CODE_RE.test(english)) code = english;
 
   const m = CODE_RE.exec(code);
-  if (m) {
+  const rawCode = m?.[1];
+  if (rawCode) {
     // CODE_RE 第一个捕获组是 E_ 开头的码；词典按 KnownErrorCode 建索引。
-    const key: import('@feedlore/contract').KnownErrorCode = m[1] as any;
+    const key = rawCode as KnownErrorCode;
     code = key;
     const entry = CN[key];
     if (entry) {
       const base = typeof entry === 'function' ? entry(params) : entry;
       // 补充信息：持久化错误码的冒号后缀（HTTP 状态），或服务端透传的上游原文
-      const detail = String(params.detail ?? m[2] ?? '').trim();
+      const detail = String(params.detail ?? m?.[2] ?? '').trim();
       return detail && !base.includes(detail) ? `${base}：${detail}` : base;
     }
   }

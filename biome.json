@@ -54,7 +54,7 @@
         "noArrayIndexKey": "off",
         "noAssignInExpressions": "off",
         "noControlCharactersInRegex": "off",
-        "noExplicitAny": "off",
+        "noExplicitAny": "error",
         "noMisleadingCharacterClass": "off",
         "noThenProperty": "off",
         "useIterableCallbackReturn": "off"

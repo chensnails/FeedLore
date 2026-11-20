@@ -13,22 +13,36 @@
  */
 
 import { core } from '@core';
+import type { AiJobBody, ENTRY_AI_ACTIONS } from '@feedlore/contract';
 import { useEffect, useRef, useState } from 'react';
+import type { EntityId } from '../core/types.ts';
 
 const S = () => core;
 
-const AI_ACTIONS = [
+type EntryAiAction = (typeof ENTRY_AI_ACTIONS)[number];
+
+const AI_ACTIONS: Array<{ k: EntryAiAction; label: string }> = [
   { k: 'summary', label: '摘要' },
   { k: 'keypoints', label: '要点' },
   { k: 'translate', label: '翻译' },
   { k: 'explain', label: '解释' },
 ];
 
-/**
- * @param {*} opts
- */
+/** 单篇 AI 任务的 result 形状（按动作收窄 dynamic）。 */
+interface EntryAiResult {
+  result?: string;
+  tags?: string[];
+}
 
-export function EntryAiBar({ entryId }: any) {
+function asResult(v: unknown): EntryAiResult {
+  return typeof v === 'object' && v !== null ? (v as EntryAiResult) : {};
+}
+
+interface EntryAiBarProps {
+  entryId?: EntityId | null;
+}
+
+export function EntryAiBar({ entryId }: EntryAiBarProps) {
   const s = S();
   // 只读账户不提供 AI 写能力（后端也会拦 write 权限）；没有 id 无从定位条目
   const writable = s && s.isWritable ? !!s.isWritable() : true;
@@ -36,13 +50,9 @@ export function EntryAiBar({ entryId }: any) {
   /* 忙碌态按动作区分：只有一个正在跑，其余按钮只置灰、不变「…」也不转圈。
    * 共用一枚 boolean 时点「摘要」会让四个兄弟按钮同时变「… ⟳」，看起来像四个任务都在跑
    * （用户明确反馈过这一点）。并发仍要挡：AI_ACTIONS 共用一块结果区，两个请求同时回来会互相覆盖。 */
-  /** @type {*} */
-  const [busyKey, setBusyKey] = useState<any>(null);
-  const busyRef: any = useRef<any>(null);
-  /**
-   * @param {*} [k]
-   */
-  const begin = (k: any) => {
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const busyRef = useRef<string | null>(null);
+  const begin = (k: string) => {
     if (busyRef.current) return false;
     busyRef.current = k;
     setBusyKey(k);
@@ -56,7 +66,7 @@ export function EntryAiBar({ entryId }: any) {
 
   /* 已等待秒数：单篇生成实测可能跑 1~2 分钟（长文 + 慢上游），只显示一个「…」
    * 用户会以为卡死并重复点击。超过 3 秒才亮出来，避免快请求闪一下。 */
-  const [elapsed, setElapsed] = useState<any>(0);
+  const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (!anyBusy) {
       setElapsed(0);
@@ -70,21 +80,17 @@ export function EntryAiBar({ entryId }: any) {
   /* 任务阶段：'' | 'queued'（已提交、排队中）| 'running'（模型在跑）。
    * 长任务改成「提交 → 轮询」后，请求本身是毫秒级的，界面上的等待感来自任务状态，
    * 而不是一个挂 90 秒的 POST。 */
-  const [phase, setPhase] = useState<any>('');
+  const [phase, setPhase] = useState('');
 
-  /** @type {*} */
-  const [result, setResult] = useState<any>(null);
-  /** @type {*} */
-  const [error, setError] = useState<any>(null);
-  const [open, setOpen] = useState<any>(false);
-  /** @type {*} */
-  const [tagResult, setTagResult] = useState<any>(null);
-  /** @type {*} */
-  const [tagError, setTagError] = useState<any>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [tagResult, setTagResult] = useState<string[] | null>(null);
+  const [tagError, setTagError] = useState<string | null>(null);
 
   /* 组件卸载（收起文章 / 切走）后不再轮询：任务在服务端照常跑完，
    * 结果仍会写进「模型状态」列表，只是这个组件不再更新。 */
-  const aliveRef: any = useRef(true);
+  const aliveRef = useRef(true);
   useEffect(
     () => () => {
       aliveRef.current = false;
@@ -93,27 +99,21 @@ export function EntryAiBar({ entryId }: any) {
   );
 
   if (!writable || id == null) return null;
+  const eid: EntityId = id;
 
-  /** 提交并轮询一个任务；成功返回 job，失败抛出已翻译的错误。
-   *@param {*} [body]
-   * @param {*} [onPhase]
-   */
-  async function runJob(body: any, onPhase: any) {
+  /** 提交并轮询一个任务；成功返回 job，失败抛出已翻译的错误。 */
+  async function runJob(body: AiJobBody, onPhase: (status: string) => void) {
     const job = await s.submitAiJob(body);
     if (aliveRef.current) onPhase(job.status || 'queued');
     return s.pollAiJob(job.id, {
-      onStatus: /** @param {*} [j] */ (j: any) => {
+      onStatus: (j) => {
         if (aliveRef.current) onPhase(j.status);
       },
       isCancelled: () => !aliveRef.current,
     });
   }
 
-  /**
-   * @param {*} [k]
-   */
-
-  async function run(k: any) {
+  async function run(k: EntryAiAction) {
     if (busyRef.current) return;
     if (!s || typeof s.submitAiJob !== 'function') {
       if (s && s.toast) s.toast('AI 功能当前不可用', false);
@@ -124,8 +124,8 @@ export function EntryAiBar({ entryId }: any) {
     setResult(null);
     setPhase('');
     try {
-      const job = await runJob({ kind: 'entry_ai', entryId: id, action: k }, setPhase);
-      const r = (job && job.result) || {};
+      const job = await runJob({ kind: 'entry_ai', entryId: eid, action: k }, setPhase);
+      const r = asResult(job && job.result);
       const text = typeof r.result === 'string' ? r.result : '';
       if (!text) throw new Error('AI 调用失败：任务完成但没有返回内容');
       setResult(text);
@@ -153,9 +153,9 @@ export function EntryAiBar({ entryId }: any) {
     setTagResult(null);
     setPhase('');
     try {
-      const job = await runJob({ kind: 'ai_tags', entryId: id }, setPhase);
-      const r = (job && job.result) || {};
-      const tags = Array.isArray(r.tags) ? r.tags : [];
+      const job = await runJob({ kind: 'ai_tags', entryId: eid }, setPhase);
+      const r = asResult(job && job.result);
+      const tags: string[] = Array.isArray(r.tags) ? r.tags : [];
       setTagResult(tags);
     } catch (err) {
       if (!aliveRef.current) return;
@@ -174,7 +174,7 @@ export function EntryAiBar({ entryId }: any) {
           AI
         </span>
         {AI_ACTIONS.map(
-          /** @param {*} [a] */ (a: any) => (
+          /** @param {*} [a] */ (a) => (
             <button
               key={a.k}
               type="button"
@@ -240,7 +240,7 @@ export function EntryAiBar({ entryId }: any) {
           <span className="entry-ai-tags-label">AI 标签</span>
           {tagResult.length ? (
             tagResult.map(
-              /** @param {*} [t] */ (t: any) => (
+              /** @param {*} [t] */ (t) => (
                 <span key={t} className="mini-tag mini-tag-ai">
                   #{t}
                 </span>
