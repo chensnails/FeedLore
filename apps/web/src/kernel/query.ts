@@ -44,6 +44,8 @@ export const qk = Object.freeze({
   users: ['users'] as const,
   sessions: ['sessions'] as const,
   mcpTokens: ['mcpTokens'] as const,
+  aiUsage: ['aiUsage'] as const,
+  aiRequests: (limit: any) => ['aiRequests', String(limit)] as const,
 });
 
 /** 失效一组 key（写操作后调用）。保留 core 的 tick 机制，Query 只补缓存一致性。 */
