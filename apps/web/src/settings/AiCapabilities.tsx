@@ -13,7 +13,9 @@
  */
 
 import { core } from '@core';
-import { useCallback, useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { qk } from '../kernel/query.ts';
 import { Dropdown } from '../views/Dropdown.tsx';
 
 const S = () => core;
@@ -90,23 +92,41 @@ export function useAiSettings() {
   /** @type {*} */
   const [msg, setMsg] = useState<any>(null);
 
-  const load = useCallback(async () => {
-    try {
+  // V5：/api/prefs 交给 Query；queryFn 走 core.apiFetch 端口，测试桩照常生效。
+  const prefsQuery = useQuery({
+    queryKey: qk.prefs,
+    queryFn: async () => {
       const res = await S().apiFetch('/api/prefs');
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const d = await res.json();
-      setVendors(Array.isArray(d.llmVendors) ? d.llmVendors : []);
-      setModels(Array.isArray(d.llmModels) ? d.llmModels : []);
-      setRoutes(d.llmRoutes && typeof d.llmRoutes === 'object' ? d.llmRoutes : {});
-      setLoadError('');
-      setLoaded(true);
-    } catch (err) {
-      setLoadError('读取模型配置失败：' + String((err && err.message) || err));
-    }
-  }, []);
+      return res.json();
+    },
+    refetchOnMount: 'always',
+    retry: false,
+  });
+
+  const applyData = (d: any) => {
+    setVendors(Array.isArray(d.llmVendors) ? d.llmVendors : []);
+    setModels(Array.isArray(d.llmModels) ? d.llmModels : []);
+    setRoutes(d.llmRoutes && typeof d.llmRoutes === 'object' ? d.llmRoutes : {});
+    setLoadError('');
+    setLoaded(true);
+  };
   useEffect(() => {
-    load();
-  }, [load]);
+    if (prefsQuery.isPending) return;
+    if (prefsQuery.isError) {
+      const err: any = prefsQuery.error;
+      setLoadError('读取模型配置失败：' + String((err && err.message) || err));
+      return;
+    }
+    if (prefsQuery.data) applyData(prefsQuery.data);
+  }, [prefsQuery.data, prefsQuery.isPending, prefsQuery.isError, prefsQuery.error]);
+
+  // 写后同步刷新：refetch 强制重拉（绕过 stale 缓存），回填仍走 applyData。
+  // 导出给详情层在保存/删除后立即看到落库真值，保留原有 await load() 契约。
+  const load = async () => {
+    const result = await prefsQuery.refetch();
+    if (result.data) applyData(result.data);
+  };
 
   /**
    * @param {*} [body]

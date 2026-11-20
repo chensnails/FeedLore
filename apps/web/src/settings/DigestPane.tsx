@@ -9,7 +9,9 @@
  * 让顶栏立刻收到 shell tick；服务端会保留 lastAuto（调度器独占字段），这里不用回传。 */
 
 import { core } from '@core';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { invalidate, qk } from '../kernel/query.ts';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.ts';
 import { Dropdown } from '../views/Dropdown.tsx';
 import { PaneFoot, Result, Section, useFormLoadGuard } from './primitives.tsx';
@@ -52,9 +54,21 @@ export function DigestPane({ onDirtyChange }: any) {
   // 异步回填守卫：/api/prefs 还没回来时用户已改动，就不能拿服务端旧值盖掉本地编辑
   const guard = useFormLoadGuard();
 
+  // V5：/api/prefs 交给 Query（去重 / 失效），queryFn 走 core.apiFetch 端口，测试桩照常生效。
+  // 面板条件挂载 + refetchOnMount:'always' 保住「每次进入重拉」语义。
+  const prefsQuery = useQuery({
+    queryKey: qk.prefs,
+    queryFn: async () => {
+      const res = await S().apiFetch('/api/prefs');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    },
+    refetchOnMount: 'always',
+    retry: false,
+  });
+
   // 两份数据互不依赖，并行发：频道清单不必等 /api/prefs 回来才开拉
   useEffect(() => {
-    load();
     loadFeedList();
   }, []);
 
@@ -64,33 +78,34 @@ export function DigestPane({ onDirtyChange }: any) {
     if (s && s.bindSections && paneRef.current) s.bindSections(paneRef.current);
   }, []);
 
-  async function load() {
-    try {
-      const res = await S().apiFetch('/api/prefs');
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const d = data.digest || {};
-      const next = {
-        auto: d.auto === true,
-        time: typeof d.time === 'string' ? d.time : '08:00',
-        mode: ['enabled', 'all', 'custom'].indexOf(d.mode) >= 0 ? d.mode : 'enabled',
-        feeds: Array.isArray(d.feeds) ? d.feeds.map(Number) : [],
-        maxPerFeed: String(d.maxPerFeed == null ? 20 : d.maxPerFeed),
-        maxTotal: String(d.maxTotal == null ? 150 : d.maxTotal),
-        keepDays: String(d.keepDays == null ? 30 : d.keepDays),
-        style: typeof d.style === 'string' ? d.style : '',
-      };
-      // 用户已经在加载完成前动过表单：跳过回填，脏态基线仍是初始 EMPTY，
-      // 所以「有未保存的更改」会立刻出现，改动也不会被静默吃掉。
-      guard.apply(() => {
-        setForm(next);
-        setSaved(JSON.stringify(next));
-        setEnabled((data.layout && data.layout.digestEnabled) !== false);
-      });
-    } catch (err) {
+  // 回填仍走 guard.apply：Query 首包到达前用户动过表单就跳过，脏态语义不变。
+  // 首包之前显示初始 EMPTY，与旧 load() 尚未返回时一致。
+  useEffect(() => {
+    if (prefsQuery.isPending) return;
+    if (prefsQuery.isError) {
+      const err: any = prefsQuery.error;
       setResult({ ok: false, msg: '读取日报设置失败：' + String((err && err.message) || err) });
+      return;
     }
-  }
+    if (!prefsQuery.data) return;
+    const data = prefsQuery.data;
+    const d = data.digest || {};
+    const next = {
+      auto: d.auto === true,
+      time: typeof d.time === 'string' ? d.time : '08:00',
+      mode: ['enabled', 'all', 'custom'].indexOf(d.mode) >= 0 ? d.mode : 'enabled',
+      feeds: Array.isArray(d.feeds) ? d.feeds.map(Number) : [],
+      maxPerFeed: String(d.maxPerFeed == null ? 20 : d.maxPerFeed),
+      maxTotal: String(d.maxTotal == null ? 150 : d.maxTotal),
+      keepDays: String(d.keepDays == null ? 30 : d.keepDays),
+      style: typeof d.style === 'string' ? d.style : '',
+    };
+    guard.apply(() => {
+      setForm(next);
+      setSaved(JSON.stringify(next));
+      setEnabled((data.layout && data.layout.digestEnabled) !== false);
+    });
+  }, [prefsQuery.data, prefsQuery.isPending, prefsQuery.isError, prefsQuery.error]);
 
   /** 频道清单只有「自定义范围」用得到；失败必须给可重试的出口，不能一直停在「加载中」。 */
   async function loadFeedList() {
@@ -226,6 +241,8 @@ export function DigestPane({ onDirtyChange }: any) {
       setForm(next);
       setSaved(JSON.stringify(next));
       setResult({ ok: true, msg: '日报设置已保存，下次生成生效' });
+      // 写后失效：其它读 prefs 的面板下次进入重拉；本面板已用回包回填，不受影响。
+      void invalidate(qk.prefs);
     } catch (err) {
       setResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
     } finally {

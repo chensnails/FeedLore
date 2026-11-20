@@ -1,5 +1,7 @@
 import { core } from '@core';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { qk } from '../kernel/query.ts';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.ts';
 import { Dropdown } from '../views/Dropdown.tsx';
 import { DetailSheet } from './DetailSheet.tsx';
@@ -530,49 +532,65 @@ export function WatchPane({ onDirtyChange }: any) {
   const [feedsList, setFeedsList] = useState<any>([]);
   const [groupOrder, setGroupOrder] = useState<any>([]);
 
-  /** 进入面板与「重试」共用一份回填。读取失败时不能把空数组显示成「还没有规则」：
-   *  用户会以为服务端本来就没规则，新建一条后整组替换，把真实规则覆盖掉。 */
-  const loadPrefs = async (alive = () => true) => {
-    setPrefsError('');
-    try {
+  // V5：/api/prefs 交给 Query（去重 / 失效）；queryFn 走 core.apiFetch 端口，测试桩照常生效。
+  const prefsQuery = useQuery({
+    queryKey: qk.prefs,
+    queryFn: async () => {
       const res = await s.apiFetch('/api/prefs');
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const d = await res.json();
-      if (!alive()) return;
-      setRules(fromServer(d.watchRules));
-      const w = typeof d.webhookUrl === 'string' ? d.webhookUrl : '';
-      const days = Number.isFinite(Number(d.watchExpireDays))
-        ? String(Number(d.watchExpireDays))
-        : '90';
-      setWebhook(w);
-      setSavedWebhook(w);
-      setExpireDays(days);
-      setSavedExpireDays(days);
-      setFilters(filtersFromServer(d.filters));
-    } catch (err) {
-      if (alive()) setPrefsError('读取失败：' + String((err && err.message) || err));
-    } finally {
-      if (alive()) setLoaded(true);
+      return res.json();
+    },
+    refetchOnMount: 'always',
+    retry: false,
+  });
+
+  // 读取失败时不能把空数组显示成「还没有规则」——空态要等首包成功后才放行。
+  const applyPrefs = (d: any) => {
+    setRules(fromServer(d.watchRules));
+    const w = typeof d.webhookUrl === 'string' ? d.webhookUrl : '';
+    const days = Number.isFinite(Number(d.watchExpireDays))
+      ? String(Number(d.watchExpireDays))
+      : '90';
+    setWebhook(w);
+    setSavedWebhook(w);
+    setExpireDays(days);
+    setSavedExpireDays(days);
+    setFilters(filtersFromServer(d.filters));
+  };
+  useEffect(() => {
+    if (prefsQuery.isPending) return;
+    if (prefsQuery.isError) {
+      const err: any = prefsQuery.error;
+      setPrefsError('读取失败：' + String((err && err.message) || err));
+      setLoaded(true);
+      return;
     }
-    // 频道清单只有适用范围选择器用得到，失败时选择器里只剩「全部频道」
+    if (!prefsQuery.data) return;
+    setPrefsError('');
+    applyPrefs(prefsQuery.data);
+    setLoaded(true);
+  }, [prefsQuery.data, prefsQuery.isPending, prefsQuery.isError, prefsQuery.error]);
+
+  // 频道清单只有适用范围选择器用得到，失败时选择器里只剩「全部频道」（原 loadPrefs 后半段）。
+  const loadFeeds = async () => {
     try {
       const data = await s.loadFeeds();
-      if (!alive()) return;
       setFeedsList((data && data.feeds) || []);
       setGroupOrder(data && Array.isArray(data.groupOrder) ? data.groupOrder : []);
     } catch (_) {
       /* 拿不到频道清单时选择器仍可切「全部频道」 */
     }
   };
-
   useEffect(() => {
-    let alive = true;
-    loadPrefs(() => alive);
-    return () => {
-      alive = false;
-    };
+    loadFeeds();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 「重试」沿用原入口名：强制重拉 prefs（refetch 绕过 stale 缓存）+ 频道清单。
+  const loadPrefs = async () => {
+    await prefsQuery.refetch();
+    await loadFeeds();
+  };
 
   // 可折叠分组的开合按账号持久化（与其它面板同一机制）
   useEffect(() => {

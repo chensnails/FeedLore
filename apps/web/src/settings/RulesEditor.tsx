@@ -8,7 +8,9 @@
  */
 
 import { core } from '@core';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { invalidate, qk } from '../kernel/query.ts';
 import { Dropdown } from '../views/Dropdown.tsx';
 import { Section } from './primitives.tsx';
 
@@ -98,26 +100,37 @@ export function RulesEditor() {
   const [result, setResult] = useState<any>(null);
   const [busy, setBusy] = useState<any>(false);
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function load() {
-    setLoading(true);
-    setError('');
-    try {
+  // V5：服务端数据交给 Query 管理（去重 / stale / 写后失效）；queryFn 仍走 core.apiFetch
+  // 这个 I/O 端口，行为测试桩照常生效。面板条件挂载，refetchOnMount:'always' 保住
+  // 「每次进入都重拉」的旧语义（stale 缓存不会让二次进入跳过请求）。
+  const prefsQuery = useQuery({
+    queryKey: qk.prefs,
+    queryFn: async () => {
       const res = await S().apiFetch('/api/prefs');
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      const list = Array.isArray(data.rules) ? data.rules.map(toDraft) : [];
-      setDrafts(list);
-      setSaved(JSON.stringify(list));
-    } catch (err) {
+      return res.json();
+    },
+    refetchOnMount: 'always',
+    retry: false,
+  });
+
+  // 把 Query 的取数结果喂回原有的回填逻辑（drafts/saved/loading/error 语义逐字保留）。
+  // loading 初值为 true，只等首包；写后 invalidate 的后台重拉不闪 loading（旧实现亦如此）。
+  useEffect(() => {
+    if (prefsQuery.isPending) return;
+    if (prefsQuery.isError) {
+      const err: any = prefsQuery.error;
       setError('读取规则失败：' + String((err && err.message) || err));
-    } finally {
       setLoading(false);
+      return;
     }
-  }
+    if (!prefsQuery.data) return;
+    setError('');
+    const list = Array.isArray(prefsQuery.data.rules) ? prefsQuery.data.rules.map(toDraft) : [];
+    setDrafts(list);
+    setSaved(JSON.stringify(list));
+    setLoading(false);
+  }, [prefsQuery.data, prefsQuery.isPending, prefsQuery.isError, prefsQuery.error]);
 
   /**
    * @param {*} [id]
@@ -162,6 +175,8 @@ export function RulesEditor() {
       setDrafts(list);
       setSaved(JSON.stringify(list));
       setResult({ ok: true, msg: '自动化规则已保存，对之后新抓的文章生效' });
+      // 写后失效：其它也读 prefs 的面板下次进入会重拉；本面板回填仍用保存回包（clamp 后的真值）。
+      void invalidate(qk.prefs);
     } catch (err) {
       setResult({ ok: false, msg: '保存失败：' + String((err && err.message) || err) });
     } finally {

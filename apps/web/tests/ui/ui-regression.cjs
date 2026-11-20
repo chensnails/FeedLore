@@ -12392,12 +12392,13 @@ const withEFP = (el, fn) => {
       const src = fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r\n/g, '\n');
       if (!/const guard = useFormLoadGuard\(\)/.test(src)) throw new Error(f + ' 未接入守卫');
       if (!/guard\.mark\(\)/.test(src)) throw new Error(f + ' 用户输入没有标记 touched');
-      const load = src.match(/async function load\([^)]*\) \{[\s\S]*?\n {2}\}/);
-      if (!load) throw new Error(f + ' 找不到 load()');
-      const iApply = load[0].indexOf('guard.apply(');
+      const iApply = src.indexOf('guard.apply(');
       if (iApply < 0) throw new Error(f + ' 回填没走守卫');
-      // 守卫回调内部的 setForm(next) 是合法的；只拦「进守卫之前就无条件覆盖」
-      if (/setForm\(next\)/.test(load[0].slice(0, iApply)))
+      // V5：回填从 async load() 迁进 useQuery 数据的 useEffect。定位守卫所在那段
+      // 回填作用域（最近的 useEffect 起点 → guard.apply），只拦「进守卫之前就无条件覆盖」。
+      const blockStart = src.lastIndexOf('useEffect(() => {', iApply);
+      if (blockStart < 0) throw new Error(f + ' 找不到异步回填块');
+      if (/setForm\(next\)/.test(src.slice(blockStart, iApply)))
         throw new Error(f + ' 仍在无条件覆盖表单');
     }
     // 模型页已改为列表 + 详情层：字段在开层时用当前行初始化，没有异步回填可覆盖
