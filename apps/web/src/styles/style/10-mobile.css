@@ -220,6 +220,8 @@
      栏之上 —— 结果是提示语骑在标签栏上。抬到栏顶 + 栏浮起的下边距 + 一档间距。
      「有新内容」浮标本来就在 92px，不受影响。 */
   .toast { bottom: calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom, 0px)); }
+  /* 多槽容器接替定位（单条已在 .toast-stack 内改成 relative） */
+  .toast-stack { bottom: calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* ============================================================

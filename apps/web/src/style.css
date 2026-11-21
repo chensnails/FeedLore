@@ -1424,6 +1424,23 @@ textarea:disabled {
 .toast-act:hover { background: color-mix(in srgb, var(--toast-text) 12%, transparent); }
 /* toast 底色反相，焦点环取状态色，深浅两版 toast 上都看得见 */
 .toast-act:focus-visible { outline: 2px solid var(--toast-ok); outline-offset: 2px; box-shadow: none; }
+/* 多槽叠放（v3.0.0）：容器占原先 .toast 的 fixed 位置，单条改为容器内相对布局；
+   .toast 自身的定位规则原样保留（守卫与旧文档依赖它），这里只做局部覆盖。 */
+.toast-stack {
+  position: fixed;
+  left: 50%; bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--sp-2);
+  max-width: min(560px, calc(100vw - 32px));
+  pointer-events: none;
+  z-index: var(--z-toast);
+}
+.toast-stack .toast {
+  position: relative; left: auto; bottom: auto;
+  transform: translateY(8px);
+}
+.toast-stack .toast.show { transform: none; }
 
 /* ---------- 无图卡片的紧凑信息行 ---------- */
 .card-meta {
@@ -6396,6 +6413,8 @@ body { overflow: hidden; }
      栏之上 —— 结果是提示语骑在标签栏上。抬到栏顶 + 栏浮起的下边距 + 一档间距。
      「有新内容」浮标本来就在 92px，不受影响。 */
   .toast { bottom: calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom, 0px)); }
+  /* 多槽容器接替定位（单条已在 .toast-stack 内改成 relative） */
+  .toast-stack { bottom: calc(var(--tabbar-h) + var(--sp-5) + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* ============================================================

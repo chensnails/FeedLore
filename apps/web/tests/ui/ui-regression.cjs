@@ -9587,6 +9587,51 @@ const withEFP = (el, fn) => {
       }
       c2.toast('清理', true, { ms: 10 }); // 收掉长驻提示，别影响后续用例
     });
+    t('冒烟：toast 多槽队列 —— 稳定 id / 叠放三条 / 失败插队 / 撤销不被覆盖', () => {
+      const c2 = sw.__coreForTest;
+      const q = () => c2.getToastQueue();
+      // 失败插队会清空旧队列，保证这几条从干净状态开始
+      c2.toast('重置', false, { ms: 1 });
+      c2.toast('甲', true, { ms: 60000 });
+      c2.toast('乙', true, { ms: 60000 });
+      c2.toast('丙', true, { ms: 60000 });
+      const ids = q().map((x) => x.id);
+      if (ids.length !== 3 || new Set(ids).size !== 3)
+        throw new Error('队列不是三条稳定 id：' + ids);
+      if (q()[0].msg !== '甲' || q()[2].msg !== '丙')
+        throw new Error('叠放顺序错：' + q().map((x) => x.msg));
+      c2.toast('第四条', true, { ms: 60000 });
+      if (q().length !== 3 || q()[0].msg !== '乙') throw new Error('超限没淘汰最早一条');
+      if (c2.getToastState().msg !== '乙') throw new Error('主提示没跟着队首走');
+      c2.toast('失败插队', false, { ms: 60000 });
+      if (q()[0].msg !== '失败插队' || q().length !== 1) throw new Error('失败没有插队并清旧队列');
+      c2.toast('撤销条', true, { action: () => {}, ms: 60000 });
+      c2.toast('普通成功', true, { ms: 60000 });
+      if (c2.getToastState().msg !== '撤销条') throw new Error('普通成功挤掉了撤销条');
+      if (q().length !== 2) throw new Error('普通成功没进队列');
+      c2.runToastAction();
+      if (c2.getToastState().msg !== '普通成功') throw new Error('撤销后排队项没接上');
+      // 动作自己弹新提示时放弃原排队项
+      c2.toast('第二撤销', true, {
+        action: () => c2.toast('动作新提示', true, { ms: 20 }),
+        ms: 60000,
+      });
+      c2.toast('待放弃', true, { ms: 60000 });
+      c2.runToastAction();
+      if (q().length !== 1 || q()[0].msg !== '动作新提示') throw new Error('未放弃原排队项');
+      c2.toast('清理', true, { ms: 1 });
+    });
+    t('冒烟：toast 渲染取队列，role/aria-live 分级逐条保留', () => {
+      const ov = fs.readFileSync(
+        path.join(__dirname, '..', '..', 'src', 'ui', 'Overlays.tsx'),
+        'utf8',
+      );
+      if (!/getToastQueue/.test(ov)) throw new Error('Overlays 未读队列');
+      if (!/toasts\.map\(/.test(ov)) throw new Error('未逐条渲染');
+      if (!/role=\{toast\.ok \? 'status' : 'alert'\}/.test(ov)) throw new Error('失败态 role 丢了');
+      if (!/aria-live=\{toast\.ok \? 'polite' : 'assertive'\}/.test(ov))
+        throw new Error('分级播报丢了');
+    });
     t('外观：默认全「中」、两套密度默认紧凑，首屏属性一致，且初始不写本机', () => {
       const got = sw.__coreForTest.getAppearance();
       const want = {

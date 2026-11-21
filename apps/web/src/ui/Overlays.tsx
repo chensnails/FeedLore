@@ -16,7 +16,7 @@ import { core } from '@core';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
 import React, { type FormEvent, useEffect, useRef, useState } from 'react';
-import type { LightboxState } from '../core/types.ts';
+import type { LightboxState, ToastState } from '../core/types.ts';
 import { provide, revoke } from '../kernel/bridge.ts';
 import { EVENT, on } from '../kernel/events.ts';
 
@@ -275,10 +275,13 @@ export function Overlays() {
   }, []);
 
   const s = S();
-  const toast =
+  const toast: ToastState =
     s && s.getToastState
       ? s.getToastState()
       : { msg: '', ok: true, show: false, action: null, actionText: '' };
+  /* 多槽队列：并发提示不再互相覆盖；旧桥（测试桩）没有队列时退回单条。 */
+  const queue = s && s.getToastQueue ? s.getToastQueue() : null;
+  const toasts: ToastState[] = queue && queue.length ? [...queue] : [toast];
   const pill = s && s.getNewPillState ? s.getNewPillState() : { show: false, text: '' };
   const box: LightboxState =
     s && s.getLightboxState ? s.getLightboxState() : { src: '', show: false, list: [], index: 0 };
@@ -297,32 +300,41 @@ export function Overlays() {
   return (
     <>
       {/* 轻提示：成功走 polite 的 status，失败走 assertive 的 alert ——
-          错误不该排在其它状态消息之后才播报。 */}
-      <div
-        className={'toast' + (toast.show ? ' show' + (toast.ok ? ' ok' : ' err') : '')}
-        role={toast.ok ? 'status' : 'alert'}
-        aria-live={toast.ok ? 'polite' : 'assertive'}
-        aria-atomic="true"
-      >
-        {toast.ok ? (
-          <svg className="ico toast-ico" aria-hidden="true" focusable="false">
-            <use href="#i-check" />
-          </svg>
-        ) : (
-          <svg className="ico toast-ico err" aria-hidden="true" focusable="false">
-            <use href="#i-alert" />
-          </svg>
-        )}
-        {toast.msg}
-        {toast.action ? (
-          <button
-            type="button"
-            className="toast-act"
-            onClick={() => s.runToastAction && s.runToastAction()}
+          错误不该排在其它状态消息之后才播报。多条并发时按到达顺序叠放，
+          带撤销动作的那条不会被普通成功提示挤掉。 */}
+      <div className="toast-stack">
+        {toasts.map((toast, i) => (
+          <div
+            key={(toast as { id?: number }).id || 'legacy-' + i}
+            className={'toast' + (toast.show ? ' show' + (toast.ok ? ' ok' : ' err') : '')}
+            role={toast.ok ? 'status' : 'alert'}
+            aria-live={toast.ok ? 'polite' : 'assertive'}
+            aria-atomic="true"
           >
-            {toast.actionText || '撤销'}
-          </button>
-        ) : null}
+            {toast.ok ? (
+              <svg className="ico toast-ico" aria-hidden="true" focusable="false">
+                <use href="#i-check" />
+              </svg>
+            ) : (
+              <svg className="ico toast-ico err" aria-hidden="true" focusable="false">
+                <use href="#i-alert" />
+              </svg>
+            )}
+            {toast.msg}
+            {toast.action ? (
+              <button
+                type="button"
+                className="toast-act"
+                onClick={() => {
+                  const id = (toast as { id?: number }).id;
+                  if (s.runToastAction) s.runToastAction(id);
+                }}
+              >
+                {toast.actionText || '撤销'}
+              </button>
+            ) : null}
+          </div>
+        ))}
       </div>
 
       {/* 自动刷新发现了新内容、但用户已经滚下去了：点它才套用，避免列表在眼皮底下跳 */}
