@@ -7,7 +7,7 @@ import { EVENT, emit, on } from '../kernel/events.ts';
 import { clearReaderPin, readerPinnedAt, readerPinnedId } from './reader.articles.ts';
 import { state } from './state.ts';
 import type { EntityId } from './types.ts';
-import { apiFetch, httpError, NET_TIMEOUT_MS } from './util.ts';
+import { apiFetch, httpError, NET_TIMEOUT_MS, noteListStale } from './util.ts';
 
 /* 当前「置顶目标」：文章列表内容变化后（翻页追加、正文异步到达）要重新对准它。
  *  列表一变动，之前算好的位置就失效了——翻页时列表总高会剧烈变化
@@ -161,6 +161,7 @@ export async function loadReader({ reset = false }: { reset?: boolean } = {}) {
   renderReader();
 
   const gen = ++readerGeneration;
+  const startedAt = Date.now(); // 只用来判断「旧请求是否挂得够久，值得解释一句」
   const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
   readerController = ctrl;
   const stale = () => gen !== readerGeneration || !!(ctrl && ctrl.signal.aborted);
@@ -196,7 +197,11 @@ export async function loadReader({ reset = false }: { reset?: boolean } = {}) {
     }
   } finally {
     if (readerController === ctrl) readerController = null;
-    if (gen !== readerGeneration) return; // 新请求已接管，别动它的状态与滚动副作用
+    if (gen !== readerGeneration) {
+      // 竞态判断照旧：先把新请求的状态与滚动副作用让开，再解释旧请求为什么没结果。
+      noteListStale(startedAt);
+      return;
+    }
     state.rdLoading = false;
     renderReader();
     // 翻页追加会让列表总高剧变（实测 scrollHeight 21411 → 14797），此前算好的

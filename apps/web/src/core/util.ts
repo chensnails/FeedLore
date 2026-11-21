@@ -14,6 +14,7 @@ export * from './util.fetch.ts';
 export * from './util.format.ts';
 export * from './util.hash.ts';
 export * from './util.linkmenu.ts';
+export * from './util.staleHint.ts';
 export * from './util.toast.ts';
 export { errorText as errText };
 

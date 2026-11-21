@@ -12295,6 +12295,31 @@ const withEFP = (el, fn) => {
       throw new Error('改密页必须保留自身 session guard（裸 fetch，不经 apiFetch）');
   });
 
+  t('弱网：慢响应被取代只给低干扰提示，竞态防护本身不变', () => {
+    const root = path.join(__dirname, '..', '..', 'src', 'core');
+    const hint = fs
+      .readFileSync(path.join(root, 'util.staleHint.ts'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    if (!/STALE_HINT_MIN_MS = 1500/.test(hint)) throw new Error('缺快速操作免打扰阈值');
+    if (!/STALE_HINT_COOLDOWN_MS = 4000/.test(hint)) throw new Error('缺提示冷却窗');
+    if (!/toast\(STALE_HINT_TEXT, true\)/.test(hint))
+      throw new Error('低干扰提示必须走成功态，不抢撤销/不清空队列');
+    if (!/if \(now - startedAt < STALE_HINT_MIN_MS\) return/.test(hint))
+      throw new Error('快速操作必须静默');
+    for (const [name, file, gen] of [
+      ['卡片页', 'feeds.ts', 'pageGeneration'],
+      ['文章页', 'reader.flow.ts', 'readerGeneration'],
+    ]) {
+      const src = fs.readFileSync(path.join(root, file), 'utf8').replace(/\r\n/g, '\n');
+      if (!/noteListStale\(startedAt\)/.test(src)) throw new Error(name + ' 未接入慢响应提示');
+      const iGen = src.indexOf('if (gen !== ' + gen + ') {');
+      if (iGen < 0) throw new Error(name + ' 的代际判断丢了（提示不能替代竞态防护）');
+      const block = src.slice(iGen, iGen + 300);
+      if (!/noteListStale\(startedAt\);[\s\S]*?return;/.test(block))
+        throw new Error(name + ' 提示必须放在代际判断的 return 分支里');
+    }
+  });
+
   t('弱网：启动层不等数据请求，失败时也不锁死页面', () => {
     const root = path.join(__dirname, '..', '..');
     const boot = fs

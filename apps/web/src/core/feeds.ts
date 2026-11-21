@@ -16,7 +16,15 @@ import {
   unlockPageScroll,
 } from './state.ts';
 import type { Feed, ViewMode } from './types.ts';
-import { apiFetch, emitShell, errText, httpError, NET_TIMEOUT_MS, toast } from './util.ts';
+import {
+  apiFetch,
+  emitShell,
+  errText,
+  httpError,
+  NET_TIMEOUT_MS,
+  noteListStale,
+  toast,
+} from './util.ts';
 
 /** 按分组名把频道归类：未分组的排最前，其余按名称排序；组内保持原顺序 */
 export function groupFeeds(feeds: Feed[]) {
@@ -224,6 +232,7 @@ export async function loadPage(reset = false) {
   render(); // 立刻反映骨架 / 加载态（渲染归 React 卡片视图）
 
   const gen = ++pageGeneration;
+  const startedAt = Date.now(); // 只用来判断「旧请求是否挂得够久，值得解释一句」
   const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
   pageController = ctrl;
   const stale = () => gen !== pageGeneration || !!(ctrl && ctrl.signal.aborted);
@@ -276,7 +285,11 @@ export async function loadPage(reset = false) {
     else state.loadMoreErr = true; // 翻页失败 → 列表底部给「重试」，不再只弹一下 toast
   } finally {
     if (pageController === ctrl) pageController = null;
-    if (gen !== pageGeneration) return; // 新请求已接管，别把它的 loading 状态清掉
+    if (gen !== pageGeneration) {
+      // 竞态判断照旧：先把新请求的 loading 让开，再解释旧请求为什么没结果。
+      noteListStale(startedAt);
+      return;
+    }
     state.loading = false;
     render();
     // 加载途中排队的「重置重载」：补跑一次，让用户的第二次点击真正生效
