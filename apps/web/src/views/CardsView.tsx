@@ -209,6 +209,7 @@ export function CardsView() {
                 type="search"
                 ref={searchRef}
                 placeholder="搜索资源名称、描述、正文或标签…"
+                title="搜索当前列表 · ⌘K / Ctrl K 打开命令面板"
                 enterKeyHint="search"
                 aria-label="搜索"
                 value={qDraft}

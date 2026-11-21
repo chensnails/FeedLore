@@ -33,7 +33,9 @@ function reportUndoResult(
   retry: () => Promise<void>,
 ) {
   if (!failed) {
-    s.toast(okText);
+    // v3.0.1：成功也给出数量，让批量操作的确定性可感知；文案前缀保持不变，
+    // 既有「已撤销」「已恢复订阅」的语义与读屏播报都不变，只是尾部补一项计数。
+    s.toast(`${okText} · ${total} 项`);
     return;
   }
   s.toast(`已撤销 ${total - failed} 项，${failed} 项未成功`, false, {

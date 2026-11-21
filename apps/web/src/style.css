@@ -976,6 +976,11 @@ textarea:disabled {
      文字整体缩放；卡高若钉死 px，大字号下最后一行会被卡底裁掉。 */
   --card-h: 21.25rem;      /* 340px @16px */
   --card-media-max: 10rem; /* 160px @16px */
+  /* v3.0.1：超宽屏给网格一个可读上限并居中。此前 268px 自适应在 4K 上排到 8 列，
+     单卡过窄、标题两行截断后信息量反而下降；1440px 上约 5 列，标题更完整。
+     只加容器宽度，不改 minmax / 密度 / 卡高，窄屏与两栏守卫不受影响。 */
+  max-width: 1440px;
+  margin-inline: auto;
 }
 /* 密度偏好：紧凑档收小卡片最小宽度与间距，同屏容纳更多卡片（舒适档=上方默认） */
 :root[data-density="compact"] .grid {

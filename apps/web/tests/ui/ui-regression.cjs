@@ -3237,7 +3237,8 @@ const withEFP = (el, fn) => {
     const body = lastPatchBody('/api/feeds/2');
     if (!body || body.fullText !== false) throw new Error(JSON.stringify(body));
     if (document.querySelector('[data-sheet-fulltext="2"]').checked) throw new Error('未回滚');
-    if (!callsOf('toast').some((c) => c[1] === '已撤销')) throw new Error('无撤销 toast');
+    if (!callsOf('toast').some((c) => String(c[1]).startsWith('已撤销')))
+      throw new Error('无撤销 toast');
   });
   document.querySelector('[data-sheet-fulltext="2"]').click();
   await sleep(80); // 再开回去，保持后续用例的前置态
@@ -3618,7 +3619,8 @@ const withEFP = (el, fn) => {
     const body = lastPostBody('/api/feeds');
     if (body.url !== 'https://new.example.com/rss.xml') throw new Error(JSON.stringify(body));
     if (!rowOf('13')) throw new Error('恢复的行未出现: ' + rowIds().join(','));
-    if (!callsOf('toast').some((c) => c[1] === '已恢复订阅')) throw new Error('无恢复 toast');
+    if (!callsOf('toast').some((c) => String(c[1]).startsWith('已恢复订阅')))
+      throw new Error('无恢复 toast');
   });
   // 再删一次（不撤销）：未分组只剩 f3，供后面拖拽用例断言「未分组头消失」
   await openSheet('13');
@@ -3991,7 +3993,8 @@ const withEFP = (el, fn) => {
     const body = lastPatchBody('/api/feeds/1');
     if (!body || body.enabled !== true) throw new Error(JSON.stringify(body));
     if (rowOf('1').classList.contains('off')) throw new Error('未还原');
-    if (!callsOf('toast').some((c) => c[1] === '已撤销')) throw new Error('无撤销完成 toast');
+    if (!callsOf('toast').some((c) => String(c[1]).startsWith('已撤销')))
+      throw new Error('无撤销完成 toast');
   });
   bulkBtn('全选').click();
   await sleep(40);
@@ -4060,7 +4063,8 @@ const withEFP = (el, fn) => {
     if (posts.some((c) => JSON.parse(c[3]).groupName !== '甲组')) {
       throw new Error(JSON.stringify(posts.map((c) => JSON.parse(c[3]))));
     }
-    if (!callsOf('toast').some((c) => c[1] === '已恢复订阅')) throw new Error('无恢复 toast');
+    if (!callsOf('toast').some((c) => String(c[1]).startsWith('已恢复订阅')))
+      throw new Error('无恢复 toast');
   });
 
   // ---- 搜索：跨分组过滤 + 空结果 ----
@@ -9170,6 +9174,33 @@ const withEFP = (el, fn) => {
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
     if (!/\.entry-ai-write \{[^}]*border-left: 1px solid var\(--line\)/.test(css))
       throw new Error('写入型动作缺视觉分隔');
+  });
+  // v3.0.1 P2：网格宽度上限 / ⌘K 可发现 / 批量撤销量化
+  t('布局结构：卡片网格有超宽屏可读上限并居中', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const grid = css.match(/\.grid \{[\s\S]*?\n\}/);
+    if (!grid || !/max-width:\s*1440px/.test(grid[0]) || !/margin-inline:\s*auto/.test(grid[0]))
+      throw new Error('卡片网格缺超宽屏上限或居中');
+    // 两栏 / 密度守卫生效的前提：minmax 与 --card-h 不能被这版改动替换
+    if (!/minmax\(268px, 1fr\)/.test(grid[0])) throw new Error('桌面自适应列定义被改');
+  });
+  t('操作流程：两页搜索框可发现命令面板 ⌘K', () => {
+    for (const f of ['CardsView.tsx', 'ReaderView.tsx']) {
+      const src = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'views', f), 'utf8');
+      if (!/title="搜索当前列表 · ⌘K \/ Ctrl K 打开命令面板"/.test(src))
+        throw new Error(f + ' 搜索框缺 ⌘K 提示');
+    }
+  });
+  t('反馈机制：批量撤销成功也量化条数', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'src', 'settings', 'SourcePane.bulk.ts'),
+      'utf8',
+    );
+    if (!/s\.toast\(`\$\{okText\} · \$\{total\} 项`\)/.test(src))
+      throw new Error('批量撤销成功文案未补量化条数');
+    // 失败汇总的量化不能被回退
+    if (!/已撤销 \$\{total - failed\} 项，\$\{failed\} 项未成功/.test(src))
+      throw new Error('失败汇总量化丢失');
   });
   // 触屏上卡片的两组操作按钮尺寸要一致（浮层 40px，底部操作条不能还是 32px）
   t('style.css：触屏卡片底部操作条与浮层按钮同为 40px', () => {
