@@ -2044,6 +2044,7 @@ require('./.build/mount-ai.cjs');
 require('./.build/mount-cards.cjs');
 require('./.build/mount-reader.cjs');
 require('./.build/mount-overlays.cjs');
+require('./.build/mount-error-boundary.cjs');
 require('./.build/kernel.cjs');
 require('./.build/ui.cjs');
 const __mount = w.__mount;
@@ -8160,8 +8161,8 @@ const withEFP = (el, fn) => {
   });
 
   // 频道内搜索回归：groupsView 曾引用下方才声明的 titleOf（const 箭头函数 → 暂时性死区），
-  // 搜索词一非空就抛 ReferenceError；没有错误边界时 React 卸掉整个 ReaderView 根（白屏）。
-  // 断言过滤结果本身 —— 渲染抛错时 DOM 不会更新，这里必然红。
+  // 搜索词一非空就抛 ReferenceError；引入错误边界前 React 会卸掉整个 ReaderView 根（白屏），
+  // 现在降级为 fallback。断言过滤结果本身 —— 无论白屏还是 fallback，这里都必然红。
   setInput('#readerChannels .rd-ch-search-input', '例子');
   await waitFor(() => RA('#readerChannels .rd-ch[data-feed]').length === 1, 800);
   t('频道搜索：按名过滤频道、隐藏空分组，不再抛 TDZ', () => {
@@ -12786,6 +12787,54 @@ const withEFP = (el, fn) => {
         throw new Error('任务分配区段锚点丢了');
     });
   }
+
+  // ============ 运行期错误边界（v3.0.0）：渲染抛错降级而非白屏 ============
+  ta('错误边界：渲染抛错展示中文 fallback，三个出口齐备，无英文堆栈', async () => {
+    const ebHost = document.createElement('div');
+    ebHost.id = 'ebHost';
+    document.body.appendChild(ebHost);
+    const origError = console.error;
+    console.error = () => {}; // React 会把被捕获的错误打到控制台，测试期静音避免刷屏
+    try {
+      w.__mountErrorBoundary(ebHost, 'view');
+      await sleep(20);
+      if (!ebHost.querySelector('.eb-ok')) throw new Error('前置：正常子树未渲染');
+      w.__ebSetThrow(true);
+      await waitFor(() => !!ebHost.querySelector('.eb-fallback'), 800);
+      const fb = ebHost.querySelector('.eb-fallback');
+      if (!fb) throw new Error('渲染抛错后没有 fallback（仍白屏）');
+      if (/synthetic render failure|Error:/.test(fb.textContent))
+        throw new Error('fallback 把英文堆栈直呈用户');
+      for (const text of ['测试视图暂时无法显示', '重试', '回到文章页', '重新加载']) {
+        if (fb.textContent.indexOf(text) < 0) throw new Error('fallback 缺出口/文案：' + text);
+      }
+      if (fb.getAttribute('role') !== 'alert') throw new Error('fallback 缺 role=alert');
+      // 关掉抛错开关后点「重试」：子树重新挂载，fallback 让位给正常内容。
+      // 必须先重渲染一次让 Bomb 拿到新 props，否则重试拿到的还是那棵会抛错的子树。
+      w.__ebSetThrow(false);
+      await sleep(20);
+      const btn = [...fb.querySelectorAll('button')].find((b) => b.textContent === '重试');
+      if (!btn) throw new Error('重试按钮不可点');
+      btn.click();
+      await waitFor(() => !!ebHost.querySelector('.eb-ok'), 800);
+      if (ebHost.querySelector('.eb-fallback')) throw new Error('重试后 fallback 未卸载');
+    } finally {
+      console.error = origError;
+      ebHost.remove();
+    }
+  });
+  t('错误边界：应用级 / 视图级双层挂载，fallback 只降级局部', () => {
+    const root = path.join(__dirname, '..', '..');
+    const mounts = fs
+      .readFileSync(path.join(root, 'src', 'kernel', 'mounts.tsx'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    const appWrap = /<ErrorBoundary\s+scope="app"/.test(mounts);
+    const viewWrap = /<ErrorBoundary\s+label=\{BOUNDARY_LABELS/.test(mounts);
+    if (!appWrap) throw new Error('缺应用级错误边界');
+    if (!viewWrap) throw new Error('缺视图级错误边界');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    if (!/\.eb-fallback\s*\{/.test(css)) throw new Error('fallback 样式未进聚合产物');
+  });
 
   await pending;
   let fail = 0;

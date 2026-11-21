@@ -506,8 +506,8 @@ export function renderBodyContent(
   }
 
   if (e.date) {
-    // 脏数据里的非法日期不能在这里抛 RangeError：React 19 没有错误边界，
-    // 渲染期一抛会卸掉整个根（文章页 / 卡片详情共用这个 ArtBody，两处一起白屏）。
+    // 脏数据里的非法日期不能在这里抛 RangeError：错误边界是最后一道网，
+    // 渲染期仍不抛（文章页 / 卡片详情共用这个 ArtBody，别让一处脏数据降级两块）。
     const d = new Date(e.date);
     const iso = Number.isFinite(d.getTime()) ? d.toISOString() : undefined;
     parts.push(

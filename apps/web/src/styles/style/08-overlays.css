@@ -612,4 +612,41 @@ textarea:focus-visible { outline: none; }
 .reader-head-tools .btn { padding: 0 var(--sp-2); }
 #readerAccBtn[aria-pressed="true"] { color: var(--accent-text); }
 
+/* 运行期错误边界的降级卡片（v3.0.0）：只降级出问题的那一块，
+   用户侧只有中文说明与三个出口，英文堆栈只进控制台。 */
+.eb-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  min-height: 240px;
+  padding: var(--sp-8) var(--sp-5);
+  text-align: center;
+  color: var(--text);
+}
+.eb-fallback-app {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  min-height: 100dvh;
+  background: var(--bg);
+}
+.eb-fallback .eb-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+}
+.eb-fallback h3 { margin: 0; font-size: var(--fs-lg); }
+.eb-fallback p { margin: 0; max-width: 36em; color: var(--text-2); font-size: var(--fs-base); }
+.eb-fallback .eb-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); }
+.eb-fallback .eb-actions .btn { min-height: 44px; }
+
 

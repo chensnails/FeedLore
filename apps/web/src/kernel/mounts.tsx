@@ -20,6 +20,7 @@ import React, { type ComponentType, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { CommandPalette } from '../cmdk/CommandPalette.tsx';
+import { ErrorBoundary } from '../ui/ErrorBoundary.tsx';
 import { Overlays } from '../ui/Overlays.tsx';
 import { ScrollTop } from '../ui/ScrollTop.tsx';
 import { ViewNav } from '../ui/ViewNav.tsx';
@@ -94,7 +95,20 @@ function loadMount(id: string): Promise<void> {
   return p;
 }
 
-/** 单一 root 的内容：把每个装配项 portal 到它原来的 DOM 容器。 */
+/** 每个装配项出错时的中文区域名：只用于 fallback 文案，不展示英文堆栈。 */
+const BOUNDARY_LABELS: Record<string, string> = {
+  cardsRoot: '卡片页',
+  readerRoot: '文章页',
+  aiRoot: '探索页',
+  settingsRoot: '设置',
+  cmdkRoot: '命令面板',
+  overlaysRoot: '浮层',
+  mobileTabbarRoot: '导航',
+  scrollTopRoot: '回到顶部',
+};
+
+/** 单一 root 的内容：把每个装配项 portal 到它原来的 DOM 容器。
+ *  每个视图单独罩一层错误边界：一处渲染抛错只降级那一块，不拖垮整棵树。 */
 function App() {
   useSyncExternalStore(subscribeLazy, getLazySnapshot);
   return (
@@ -104,7 +118,13 @@ function App() {
         if (!host) return null;
         const Component = m.lazy ? loadedLazy.get(m.id) : m.component;
         if (!Component) return null;
-        return createPortal(<Component />, host, m.id);
+        return createPortal(
+          <ErrorBoundary label={BOUNDARY_LABELS[m.id] || '页面'}>
+            <Component />
+          </ErrorBoundary>,
+          host,
+          m.id,
+        );
       })}
     </>
   );
@@ -142,9 +162,11 @@ export function mountAll() {
   rootInstance = createRoot(host);
   rootInstance.render(
     <React.StrictMode>
-      <QueryProvider>
-        <App />
-      </QueryProvider>
+      <ErrorBoundary scope="app" label="页面">
+        <QueryProvider>
+          <App />
+        </QueryProvider>
+      </ErrorBoundary>
     </React.StrictMode>,
   );
   provide('mountSettings', openSettings);

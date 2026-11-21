@@ -87,7 +87,7 @@ export const ChannelList = memo(function ChannelList({
 
   // 这两个取名函数必须在 groupsView 之前声明：过滤要按频道名匹配，写成 const 箭头函数
   // 就是暂时性死区 —— 一旦搜索词非空，groupsView 求值时抛 ReferenceError，
-  // 无错误边界时整个 ReaderView 根被卸载（白屏）。
+  // 渲染期一抛即使有错误边界也会降级整个文章页（白屏是引入边界前的旧行为）。
   const nameOf = (f: Feed) =>
     s.shortFeedName ? s.shortFeedName(s.feedTitle ? s.feedTitle(f) : f.title) : f.title;
   const titleOf = (f: Feed) => (s.feedTitle ? s.feedTitle(f) : f.title);

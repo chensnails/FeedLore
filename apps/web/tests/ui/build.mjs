@@ -28,6 +28,7 @@ const TARGETS = [
   ['mount-cards.jsx', '.build/mount-cards.cjs'],
   ['mount-reader.jsx', '.build/mount-reader.cjs'],
   ['mount-overlays.jsx', '.build/mount-overlays.cjs'],
+  ['mount-error-boundary.jsx', '.build/mount-error-boundary.cjs'],
   ['kernel-entry.js', '.build/kernel.cjs'],
   ['ui-entry.js', '.build/ui.cjs'],
 ];
