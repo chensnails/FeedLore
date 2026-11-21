@@ -289,23 +289,37 @@ try {
   await evalJs("document.querySelector('#settingsClose')?.click()");
   check(await waitFor("!document.querySelector('.modal-mask:not([hidden])')"), '设置弹层可关闭');
 
-  /* 7) 窄屏：频道抽屉是手机端唯一入口，桌面断点下打不开就是死路 */
+  /* 7) 窄屏：频道抽屉是手机端唯一入口，桌面断点下打不开就是死路。
+     开触摸模拟：真机是 touch 而非 mouse，纯 .click() 会漏掉「触屏才触发」的回归。 */
   await send('Emulation.setDeviceMetricsOverride', {
     width: 390,
     height: 844,
     deviceScaleFactor: 3,
     mobile: true,
   });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await sleep(600);
   const menuVisible = await evalJs(`(() => {
     const b = document.querySelector('#readerMenuBtn');
     return !!b && getComputedStyle(b).display !== 'none';
   })()`);
   check(menuVisible, '390px 下频道抽屉按钮可见');
-  await evalJs("document.querySelector('#readerMenuBtn')?.click()");
+  /* 用真实 touch 事件（CDP dispatchTouchEvent）点开抽屉，而非合成 DOM click：
+     确保触屏命中区 / pointer 事件这条路径真的通。 */
+  const menuRect = await evalJs(`(() => {
+    const r = document.querySelector('#readerMenuBtn')?.getBoundingClientRect();
+    return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+  })()`);
+  if (menuRect) {
+    await send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: menuRect.x, y: menuRect.y }],
+    });
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
   check(
     await waitFor("document.body.classList.contains('reader-drawer-open')"),
-    '点按钮后 body 进入抽屉态',
+    'touch 点按钮后 body 进入抽屉态',
   );
   /* 抽屉是 transition 滑入的，class 先到、位移后到，要等它真正进到视口里。 */
   check(
@@ -331,6 +345,65 @@ try {
   await shot('ui-phone-drawer.png');
   await evalJs("document.querySelector('#readerSideClose')?.click()");
   check(await waitFor("!document.body.classList.contains('reader-drawer-open')"), '抽屉可收起');
+
+  /* 7b) 窄屏输入字号：iOS 聚焦 <16px 输入框会放大整页且缩不回。
+       走真实⋮→设置，读设置面板文本输入的 computed font-size。 */
+  await evalJs("document.querySelector('.overflow-btn')?.click()");
+  check(await waitFor("!!document.querySelector('.overflow-menu')"), '窄屏 ⋮ 菜单可展开');
+  await evalJs(`[...document.querySelectorAll('.overflow-menu .overflow-item')]
+    .find((b) => b.innerText.trim() === '设置')?.click()`);
+  await waitFor(
+    "!!document.querySelector('.settings-modal :is(input, textarea):not([type=checkbox]):not([type=radio])')",
+    6000,
+  );
+  const fsPx =
+    (await evalJs(`(() => {
+      const el = document.querySelector('.settings-modal :is(input, textarea):not([type=checkbox]):not([type=radio])');
+      return el ? parseFloat(getComputedStyle(el).fontSize) : 0;
+    })()`)) ?? 0;
+  check(fsPx >= 16, `窄屏设置输入字号 ${fsPx}px ≥16（iOS 聚焦不缩放）`);
+  await evalJs("document.querySelector('#settingsClose')?.click()");
+  check(
+    await waitFor("!document.querySelector('.modal-mask:not([hidden])')"),
+    '窄屏设置弹层可关闭',
+  );
+
+  /* 7c) 窄屏确认框几何：V5 曾把 .modal 用 Portal 甩出遮罩，长页面被推到视口外只剩黑遮罩。
+       ⋮ 菜单里的「全部已读」只在文章页且有未读时出现，数据状态会变——所以这里软触发：
+       能触发就断言矩形在视口内（守回归），触发不到只记提示、不算失败（避免数据被标光时假红）。 */
+  {
+    await evalJs("document.querySelector('.overflow-btn')?.click()");
+    await waitFor("!!document.querySelector('.overflow-menu')", 5000);
+    const readAllClicked = await evalJs(`(() => {
+      const b = [...document.querySelectorAll('.overflow-menu .overflow-item')]
+        .find((x) => x.innerText.includes('全部已读'));
+      if (!b) return false;
+      b.click();
+      return true;
+    })()`);
+    if (readAllClicked) {
+      await waitFor("!!document.querySelector('#confirmBox')", 6000);
+      const cg =
+        (await evalJs(`(() => {
+          const el = document.querySelector('#confirmBox');
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0 ? { top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight } : null;
+        })()`)) ?? null;
+      check(
+        !!cg && cg.top >= 0 && cg.top < cg.vh && cg.bottom > 0 && cg.bottom <= cg.vh + 1,
+        `窄屏确认框在视口内（top ${cg?.top ?? '-'} / bottom ${cg?.bottom ?? '-'} / vh ${cg?.vh ?? '-'}）`,
+      );
+      await shot('ui-phone-confirm.png');
+      await evalJs("document.querySelector('.confirm-foot .btn-ghost')?.click()");
+      check(await waitFor("!document.querySelector('#confirmBox')"), '窄屏确认框可取消');
+    } else {
+      console.log('  - 当前视图无「全部已读」入口，跳过确认框几何断言（数据/视图依赖）');
+      await evalJs("document.querySelector('.overflow-menu .overflow-item')?.click()"); // 关菜单
+    }
+  }
+
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false });
   await send('Emulation.clearDeviceMetricsOverride');
 
   /* 8) 控制台：真机上不该有任何未捕获错误 */
