@@ -362,6 +362,18 @@ body { overflow: hidden; }
   gap: var(--head-gap);
   margin-left: auto;
 }
+/* v3.0.1：顶栏两层语义。左簇是「我在看什么」（频道入口 + 当前标题），右簇是
+   「我能做什么」（动作 + 搜索 + 视图 + ⋮）。此前两簇只靠 auto 外边距拉开，视觉
+   权重相同。给右簇一条主题派生的淡分隔与微内距，让两层的边界一眼可辨；不新增
+   DOM、不改控件顺序与命中区，只加一条 1px 的语义分隔。窄屏仍靠 auto 贴右，
+   这条分隔在窄屏由逐项收进 ⋮ 的既有逻辑消化，不额外占位。 */
+@media (min-width: 821px) {
+  .page-head > .page-tools,
+  .view-toolbar > .reader-head-tools {
+    border-left: var(--divider-w) solid var(--border);
+    padding-left: var(--sp-3);
+  }
+}
 /* v1.6.0：右簇末端（搜索 + ⋮ 菜单）。margin-left:auto 把整簇推到最右。
    卡片页 / AI 页它是 .page-head 的直接子元素；文章页它嵌在 .reader-head-tools 里，
    auto 同样把「搜索 + ⋮」推到动作组右侧。 */

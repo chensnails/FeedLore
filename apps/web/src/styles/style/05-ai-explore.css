@@ -25,6 +25,20 @@
   outline: none;
 }
 @keyframes dsIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* v3.0.1：宽屏「列表 + 详情」并列。桌面详情层本就是右侧抽屉（列表仍可见），但
+   .ds-mask 的半透明背景 + 整块点击区让用户误以为左边列表不可碰。≥1100px 时把遮罩
+   改成透明、只让详情抽屉自身接收指针，左侧列表照常可点可对照；关闭仍走 × / Esc。
+   窄屏（≤820px，07-responsive 的贴底弹层）不受影响，遮罩点击关闭保持原样。 */
+@media (min-width: 1100px) {
+  .settings-modal .ds-mask {
+    background: transparent;
+    pointer-events: none;
+  }
+  .settings-modal .ds-sheet {
+    pointer-events: auto;
+    width: min(52%, 480px);
+  }
+}
 .ds-head {
   display: flex; align-items: flex-start; gap: var(--sp-2);
   flex: 0 0 auto;

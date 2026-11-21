@@ -247,6 +247,8 @@
   .card-title { font-size: var(--fs-md); margin-bottom:var(--sp-1); line-height: 1.4; height: calc(1.4em * 2); }
   .card-desc { font-size: var(--fs-sm); margin-bottom:var(--sp-2); line-height: 1.55; -webkit-line-clamp: 5; }
   .card-has-media .card-desc { -webkit-line-clamp: 2; }
+  /* 来源徽记带跟随窄屏内边距，避免负边距溢出卡片 */
+  .card-meta { margin: calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3)) var(--sp-2); padding: var(--sp-2) var(--sp-3); }
   .card-media-actions { right: 8px; bottom: 8px; gap:var(--sp-2); }
 }
 
@@ -476,12 +478,20 @@
 }
 .toast-stack .toast.show { transform: none; }
 
-/* ---------- 无图卡片的紧凑信息行 ---------- */
+/* ---------- 无图卡片的紧凑信息行 ----------
+   v3.0.1：无图卡与带图卡混排时，带图卡的图片区是明确的「内容起点」，无图卡却只有一行
+   极淡的小字，视觉重心掉到卡片下半截，同一排看起来参差。这里给来源行一条与主色派生的
+   徽记带背景，让无图卡顶端也有一个稳定的视觉锚；纯装饰，DOM 与读屏语义不变。 */
 .card-meta {
   display: flex; align-items: center; gap:var(--sp-2);
   margin-bottom:var(--sp-2);
   font-size: var(--fs-sm);
   min-width: 0;
+  /* 负外边距把徽记带铺到与 card-body 内边距齐边，不额外吃掉卡片高度 */
+  margin: calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4)) var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--accent-soft);
+  border-bottom: var(--divider-w) solid var(--border);
 }
 .src-pill {
   color: var(--chip-text);

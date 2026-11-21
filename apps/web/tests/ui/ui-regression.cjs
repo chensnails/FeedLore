@@ -9105,6 +9105,37 @@ const withEFP = (el, fn) => {
       throw new Error('缺「有图无摘要」的卡片余高处理');
     }
   });
+  // v3.0.1 视觉层次优化的三条契约：无图卡来源徽记带 / 设置宽屏并列 / 顶栏两层语义分隔
+  t('视觉层次：无图卡来源徽记带锚定内容起点（含窄屏跟随内边距）', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const metas = [...css.matchAll(/\.card-meta \{([^}]*)\}/g)].map((m) => m[1]);
+    const base = metas.find((body) => /background:\s*var\(--accent-soft\)/.test(body));
+    if (!base) throw new Error('无图卡来源行缺主题派生的徽记带背景');
+    if (!/margin:\s*calc\(-1 \* var\(--sp-4\)\)/.test(base))
+      throw new Error('徽记带没有负边距铺齐卡边');
+    // 窄屏 card-body 内边距是 sp-3，徽记带必须跟随，否则左右溢出
+    const narrow = css.slice(css.indexOf('@media (max-width: 720px)'));
+    if (!/\.card-meta \{ margin: calc\(-1 \* var\(--sp-3\)\)/.test(narrow))
+      throw new Error('窄屏徽记带没有跟随 sp-3 内边距');
+  });
+  t('布局结构：设置详情层宽屏并列、窄屏贴底弹层不受影响', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const wide = css.match(/@media \(min-width: 1100px\) \{([\s\S]*?)\n\}/);
+    if (!wide || !/pointer-events:\s*none/.test(wide[1]) || !/width:\s*min\(52%/.test(wide[1]))
+      throw new Error('≥1100px 详情遮罩应透传指针、详情抽屉加宽实现并列');
+    // 窄屏贴底弹层规则必须仍在（不被宽屏并列吞掉）
+    if (!/\.ds-mask \{ align-items: flex-end/.test(css))
+      throw new Error('窄屏详情贴底弹层规则丢失');
+  });
+  t('布局结构：顶栏右簇在桌面有语义分隔，命中区不变', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    const wide = css.match(
+      /@media \(min-width: 821px\) \{([\s\S]*?)\.page-head > \.page-tools[\s\S]*?border-left:\s*var\(--divider-w\)/,
+    );
+    if (!wide) throw new Error('桌面顶栏右簇缺左侧语义分隔');
+    if (!/\.view-toolbar > \.reader-head-tools/.test(css))
+      throw new Error('文章页顶栏右簇未纳入同一分层');
+  });
   // 触屏上卡片的两组操作按钮尺寸要一致（浮层 40px，底部操作条不能还是 32px）
   t('style.css：触屏卡片底部操作条与浮层按钮同为 40px', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
