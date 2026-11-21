@@ -17,7 +17,15 @@ export interface ToastItem extends ToastState {
 export const TOAST_QUEUE_MAX = 3;
 /** 带动作的提示默认停留 6 秒，给用户留出反应时间；没有动作仍是最短的 1.9 秒。 */
 export const TOAST_ACTION_MS = 6000;
+export const TOAST_ACTION_MAX_MS = 10000;
 export const TOAST_PLAIN_MS = 1900;
+
+/** 带动作的提示窗口：单条 6s；批量按条数放宽，最多 10s，给大批量误操作留出反悔时间。
+ *  每多 4 条加 1s（8 条→7s，16 条→8.5s，40 条→10s 封顶）。 */
+export function undoWindowMs(count = 1): number {
+  if (!Number.isFinite(count) || count <= 4) return TOAST_ACTION_MS;
+  return Math.min(TOAST_ACTION_MAX_MS, Math.round(TOAST_ACTION_MS + ((count - 4) / 4) * 1000));
+}
 
 /* 保留旧的导出名：诊断脚本与既有断言用 toastTimer / toastState 观察主提示。 */
 export let toastTimer: ReturnType<typeof setTimeout> | null = null;

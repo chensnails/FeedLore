@@ -16,6 +16,7 @@ import {
   NET_TIMEOUT_MS,
   NET_WRITE_TIMEOUT_MS,
   parseRetryAfter,
+  undoWindowMs,
 } from '../src/core/util.ts';
 
 /** 模拟「上游一直不回」：只有 abort 时才 reject，且抛的是浏览器那句底层英文。 */
@@ -66,6 +67,15 @@ test('AI 长任务的上限要覆盖服务端的 180s', () => {
   // 其余请求维持原状：GET 8s、写 30s
   assert.equal(NET_TIMEOUT_MS, 8000);
   assert.equal(NET_WRITE_TIMEOUT_MS, 30000);
+});
+
+test('撤销窗口按批量条数动态放宽，10s 封顶', () => {
+  assert.equal(undoWindowMs(1), 6000);
+  assert.equal(undoWindowMs(4), 6000);
+  assert.equal(undoWindowMs(8), 7000);
+  assert.equal(undoWindowMs(16), 9000);
+  assert.equal(undoWindowMs(40), 10000);
+  assert.equal(undoWindowMs(1000), 10000);
 });
 
 test('Retry-After 解析：秒数 / HTTP 日期 / 无效值 / 上限', () => {

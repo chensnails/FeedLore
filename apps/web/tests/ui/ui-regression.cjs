@@ -12963,6 +12963,20 @@ const withEFP = (el, fn) => {
     if (!/codes\.length, 95/.test(codeTest)) throw new Error('错误码快照未覆盖 95 码');
   });
 
+  t('撤销窗口按批量条数动态放宽（6s 起、10s 封顶），批量撤销并行并汇总失败', () => {
+    const root = path.join(__dirname, '..', '..');
+    const toastSrc = fs.readFileSync(path.join(root, 'src', 'core', 'util.toast.ts'), 'utf8');
+    if (!/export function undoWindowMs/.test(toastSrc)) throw new Error('缺动态窗口工具');
+    if (!/TOAST_ACTION_MAX_MS = 10000/.test(toastSrc)) throw new Error('缺 10s 上限');
+    const bulk = fs
+      .readFileSync(path.join(root, 'src', 'settings', 'SourcePane.bulk.ts'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    if (!/undoWindowMs\(targets\.length\)/.test(bulk) && !/undoWindowMs\(ids\.length\)/.test(bulk))
+      throw new Error('批量撤销没用动态窗口');
+    if (!/Promise\.all\(/.test(bulk)) throw new Error('批量撤销仍逐条串行');
+    if (!/重试剩余/.test(bulk)) throw new Error('缺「重试剩余」出口');
+  });
+
   await pending;
   let fail = 0;
   results.forEach(([s, n]) => {

@@ -2,8 +2,46 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { useState } from 'react';
 import type { EntityId, Feed } from '../core/types.ts';
+import { undoWindowMs } from '../core/util.toast.ts';
 import type { FeedGroup, FeedSnapshot } from './SourcePane.types.ts';
 import { patchInit, S, snapshotFeed } from './SourcePane.utils.ts';
+
+/** 并发跑一批恢复动作，失败不中断其它项；返回失败项供「重试剩余」用。 */
+async function parallelWithFailures<T>(
+  items: readonly T[],
+  run: (item: T) => Promise<void>,
+): Promise<T[]> {
+  const settled = await Promise.all(
+    items.map(async (item) => {
+      try {
+        await run(item);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
+  );
+  return items.filter((_item, i) => !settled[i]);
+}
+
+/** 撤销结果反馈：全成给成功提示；部分失败给中文失败数并挂「重试剩余」动作。 */
+function reportUndoResult(
+  s: ReturnType<typeof S>,
+  failed: number,
+  total: number,
+  okText: string,
+  retry: () => Promise<void>,
+) {
+  if (!failed) {
+    s.toast(okText);
+    return;
+  }
+  s.toast(`已撤销 ${total - failed} 项，${failed} 项未成功`, false, {
+    actionText: '重试剩余',
+    ms: undoWindowMs(failed),
+    action: retry,
+  });
+}
 
 /** 批量选择相关的状态、派生与动作。feeds/displayGroups 由主 controller 传入。 */
 export function useSourceBulk(opts: {
@@ -72,17 +110,24 @@ export function useSourceBulk(opts: {
       if (s.loadPage) await s.loadPage(true);
       s.toast(`已${label} ${targets.length} 个频道`, true, {
         actionText: '撤销',
-        ms: 6000,
+        ms: undoWindowMs(targets.length),
         action: async () => {
-          try {
-            for (const f of targets)
-              await s.apiFetch('/api/feeds/' + f.id, patchInit({ [key]: !next }));
-            await reloadFeeds();
-            if (s.loadPage) await s.loadPage(true);
-            s.toast('已撤销');
-          } catch (e) {
-            s.toast('撤销失败：' + (e.message || e), false);
-          }
+          const failed = await parallelWithFailures(targets, (f) =>
+            s.apiFetch('/api/feeds/' + f.id, patchInit({ [key]: !next })).then((res) => {
+              if (!res.ok) throw new Error('HTTP ' + res.status);
+            }),
+          );
+          await reloadFeeds().catch(() => {});
+          if (s.loadPage) await s.loadPage(true);
+          reportUndoResult(s, failed.length, targets.length, '已撤销', async () => {
+            const left = await parallelWithFailures(failed, (f) =>
+              s.apiFetch('/api/feeds/' + f.id, patchInit({ [key]: !next })).then((res) => {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+              }),
+            );
+            await reloadFeeds().catch(() => {});
+            s.toast(left.length ? `仍有 ${left.length} 个未撤销` : '已撤销剩余项', left.length > 0);
+          });
         },
       });
     } catch (err) {
@@ -118,16 +163,24 @@ export function useSourceBulk(opts: {
         true,
         {
           actionText: '撤销',
-          ms: 6000,
+          ms: undoWindowMs(targets.length),
           action: async () => {
-            try {
-              for (const f of targets)
-                await s.apiFetch('/api/feeds/' + f.id, patchInit({ groupName: f.groupName || '' }));
-              await reloadFeeds();
-              s.toast('已撤销');
-            } catch (e) {
-              s.toast('撤销失败：' + (e.message || e), false);
-            }
+            const run = (f: Feed) =>
+              s
+                .apiFetch('/api/feeds/' + f.id, patchInit({ groupName: f.groupName || '' }))
+                .then((res) => {
+                  if (!res.ok) throw new Error('HTTP ' + res.status);
+                });
+            const failed = await parallelWithFailures(targets, run);
+            await reloadFeeds().catch(() => {});
+            reportUndoResult(s, failed.length, targets.length, '已撤销', async () => {
+              const left = await parallelWithFailures(failed, run);
+              await reloadFeeds().catch(() => {});
+              s.toast(
+                left.length ? `仍有 ${left.length} 个未撤销` : '已撤销剩余项',
+                left.length > 0,
+              );
+            });
           },
         },
       );
@@ -163,16 +216,20 @@ export function useSourceBulk(opts: {
       if (s.loadPage) await s.loadPage(true);
       s.toast(`已删除 ${ids.length} 个订阅`, true, {
         actionText: '撤销',
-        ms: 6000,
+        ms: undoWindowMs(ids.length),
         action: async () => {
-          try {
-            for (const snap of snaps) await restoreFeed(snap);
-            await reloadFeeds();
+          const failed = await parallelWithFailures(snaps, restoreFeed);
+          await reloadFeeds().catch(() => {});
+          if (s.loadPage) await s.loadPage(true);
+          reportUndoResult(s, failed.length, snaps.length, '已恢复订阅', async () => {
+            const left = await parallelWithFailures(failed, restoreFeed);
+            await reloadFeeds().catch(() => {});
             if (s.loadPage) await s.loadPage(true);
-            s.toast('已恢复订阅');
-          } catch (e) {
-            s.toast('撤销失败：' + (e.message || e), false);
-          }
+            s.toast(
+              left.length ? `仍有 ${left.length} 个未恢复` : '已恢复剩余订阅',
+              left.length > 0,
+            );
+          });
         },
       });
     } catch (err) {
