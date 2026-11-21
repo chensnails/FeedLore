@@ -725,6 +725,10 @@ body.is-scrolling .card-media-actions { transition: none; }
 .art-meta .src-pill { max-width: 180px; }
 .art-size { color: var(--text-muted); background: var(--accent-soft); border-radius: var(--radius-pill); padding:2px var(--sp-2); font-weight: 600; }
 .art-date { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+/* v3.0.1 三档字阶：标题 --fs-lg(15) / 来源与元信息 --fs-sm(12) / 时间 --fs-2xs(11)。
+   此前日期与来源同为 12px，梯度在长列表里被压平；时间降一档后标题重新成为锚点。
+   只动字号不动颜色，已读日期 4.96:1 的对比度语义不变。 */
+.art-meta .art-date { font-size: var(--fs-2xs); }
 /* 智能去重（T-B）：「N 重复」提示，弱化处理，不抢标题行视线 */
 
 /* ---------- 展开体 ---------- */
@@ -1066,6 +1070,10 @@ body.is-scrolling .card-media-actions { transition: none; }
   font-variant-numeric: tabular-nums; }
 .entry-ai-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--text-faint);
   padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; }
+/* v3.0.1 语义分组：标签是写入型动作（落库），与只读的摘要/要点/翻译/解释分开。
+   左侧一道分隔把它推到组尾，明确「这一枚会改数据」；按钮尺寸与命中区不变。 */
+.entry-ai-write { margin-left: var(--sp-2); border-left: 1px solid var(--line);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding-left: var(--sp-3); }
 .entry-ai-result { display: flex; flex-direction: column; gap: var(--sp-2);
   background: var(--surface-2, var(--bg-soft)); border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--sp-4); }
 .entry-ai-res-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);

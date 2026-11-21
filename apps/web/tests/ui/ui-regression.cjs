@@ -9136,6 +9136,41 @@ const withEFP = (el, fn) => {
     if (!/\.view-toolbar > \.reader-head-tools/.test(css))
       throw new Error('文章页顶栏右簇未纳入同一分层');
   });
+  // v3.0.1 P1：三档字阶 / 阅读态降噪 / AI 写入动作分组
+  t('操作流程：三档字阶拉开标题与元信息梯度，不动颜色', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    if (!/\.art-meta \.art-date \{ font-size: var\(--fs-2xs\)/.test(css))
+      throw new Error('文章行时间未降到第三档字阶');
+    if (!/\.art-meta \{[\s\S]{0,160}font-size:\s*var\(--fs-sm\)/.test(css))
+      throw new Error('元信息第二档字阶丢失');
+  });
+  t('响应式：阅读态频道条降噪但 44px 命中与几何不变', () => {
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    if (
+      !/\.reader-main:has\(\.art-item\.open\) \.chan-tab:not\(\.active\) \{ color: var\(--text-faint\)/.test(
+        css,
+      )
+    )
+      throw new Error('阅读态未给未选中频道降噪');
+    // 不能出现压缩高度的规则（会破坏 44px 命中与偏移契约）
+    if (/reader-main:has\(\.art-item\.open\) \.chan-tabs \{[^}]*height:/.test(css))
+      throw new Error('阅读态频道条不应改几何，44px 命中与偏移契约优先');
+    if (!/\.chan-tab \{[\s\S]{0,120}min-height:\s*44px/.test(css))
+      throw new Error('频道标签 44px 命中区丢失');
+  });
+  t('操作流程：AI 写入型动作（标签）与只读生成分组', () => {
+    const comp = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'src', 'ui', 'EntryAiBar.tsx'),
+      'utf8',
+    );
+    if (!/className="btn btn-ghost btn-sm entry-ai-write"/.test(comp))
+      throw new Error('AI 标签按钮未标出写入型 class');
+    if (!/aria-label="AI 标签（会保存标签到本文）"/.test(comp))
+      throw new Error('AI 标签缺少写入语义的可访问名');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+    if (!/\.entry-ai-write \{[^}]*border-left: 1px solid var\(--line\)/.test(css))
+      throw new Error('写入型动作缺视觉分隔');
+  });
   // 触屏上卡片的两组操作按钮尺寸要一致（浮层 40px，底部操作条不能还是 32px）
   t('style.css：触屏卡片底部操作条与浮层按钮同为 40px', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');

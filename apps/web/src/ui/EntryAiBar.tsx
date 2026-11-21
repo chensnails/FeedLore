@@ -188,13 +188,15 @@ export function EntryAiBar({ entryId }: EntryAiBarProps) {
             </button>
           ),
         )}
+        {/* 写入型动作与只读生成分组：标签会落库，视觉上单独隔开，避免误当成「另一种摘要」。
+            只读动作（摘要/要点/翻译/解释）在前，写入动作（标签）用边框与左分隔标出。 */}
         <button
           key="tags"
           type="button"
-          className="btn btn-ghost btn-sm"
+          className="btn btn-ghost btn-sm entry-ai-write"
           disabled={anyBusy}
           aria-busy={busyKey === 'tags' ? 'true' : undefined}
-          aria-label="AI 标签"
+          aria-label="AI 标签（会保存标签到本文）"
           onClick={runTags}
         >
           {busyKey === 'tags' ? '…' : '标签'}

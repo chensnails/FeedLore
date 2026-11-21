@@ -103,6 +103,12 @@
     background: var(--bg);
     pointer-events: none;
   }
+  /* v3.0.1 阅读态频道条降噪：有文章展开时，未选中的频道标签降低视觉权重，
+     让视线回到正文。只改颜色，不改高度 / 44px 命中区 / 横滑能力 / 读屏语义；
+     选中的当前频道仍保持原对比度，切换频道一目了然。readerHeadOffset 实测的
+     几何完全不变，展开标题的偏移契约不受影响。 */
+  .reader-main:has(.art-item.open) .chan-tab:not(.active) { color: var(--text-faint); }
+  .reader-main:has(.art-item.open) .chan-tab.active { color: var(--text); }
 }
 
 /* ============================================================
