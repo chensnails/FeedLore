@@ -6,6 +6,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { AI_INTERNAL_ERROR_CODES, API_ERROR_CODES } from '../../../packages/contract/src/errors.ts';
 import { errorText } from '../src/core/errorText.ts';
 
 test('命中的错误码出中文', () => {
@@ -93,6 +94,28 @@ test('Error 实例的 message 里带码也能翻译（二次 errText 不再吐�
     errorText(new Error('signal is aborted without reason')),
     'signal is aborted without reason',
   );
+});
+
+test('95 个已知错误码全部有中文文案（快照）', () => {
+  const codes = [...API_ERROR_CODES, ...AI_INTERNAL_ERROR_CODES];
+  assert.equal(codes.length, 95, `码表数量变了：${codes.length}（快照需同步）`);
+  const missing = [];
+  const snapshot = {};
+  for (const code of codes) {
+    const text = errorText({ error: code, message: 'Upstream error' });
+    if (text === code || /^Upstream/.test(text)) missing.push(code);
+    snapshot[code] = text;
+  }
+  assert.deepEqual(missing, [], '这些码掉回英文/裸码：' + missing.join(', '));
+  // 固化一批关键码的文案，误改即红灯
+  for (const [code, expected] of Object.entries({
+    E_DB_NOT_READY: '数据库未就绪',
+    E_RATE_LIMITED: '登录尝试过于频繁，请稍后再试',
+    E_PASSWORD_CHANGE_REQUIRED: '请先修改初始密码，改完才能继续使用',
+    E_AI_NO_MODELS: '上游没有返回任何模型，请手动填写模型名称',
+  })) {
+    assert.equal(snapshot[code], expected, `${code} 文案漂移：${snapshot[code]}`);
+  }
 });
 
 test('没在码表里的值按原样回退', () => {

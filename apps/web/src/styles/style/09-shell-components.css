@@ -390,7 +390,9 @@ body { overflow: hidden; }
   border-radius: var(--radius-sm);
 }
 .overflow-item:hover { background: var(--state-hover); outline: none; }
-.overflow-item:focus-visible { background: var(--state-focus); outline: none; }
+/* 全局基线用 outline；这里原先只关环不补画，键盘焦点落在菜单项上等于没提示。
+   改成 inset 实色环：既有底色变化留着，再给一条满足 WCAG 的可见边界。 */
+.overflow-item:focus-visible { background: var(--state-focus); outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .overflow-item.is-active { color: var(--accent-text); }
 .overflow-item > span { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
 .overflow-item .ico { width: var(--ico-ctl); height: var(--ico-ctl); font-size: var(--ico-ctl); opacity: .8; flex: 0 0 auto; }

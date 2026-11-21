@@ -253,7 +253,8 @@
 }
 .scroll-top:hover { color: var(--accent-text); border-color: var(--accent-text); }
 /* 回顶钮是浮动按钮：光环之外保留 2px 实色 outline，光环变柔后键盘焦点仍清晰 */
-.scroll-top:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; box-shadow: var(--float-shadow), 0 0 0 3px var(--focus-halo); }
+/* 只留一条焦点环：原先 outline + 3px halo 叠成双环，与全局基线不一致。 */
+.scroll-top:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; box-shadow: var(--float-shadow); }
 .scroll-top .ico { width: 20px; height: 20px; }
 @keyframes scrollTopIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 /* toast 和回顶钮共用同一条底部高度带；长文案会一直延伸到右侧。

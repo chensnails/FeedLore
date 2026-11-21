@@ -12909,6 +12909,30 @@ const withEFP = (el, fn) => {
     if (/methods.*retry/.test(src)) throw new Error('不该按方法放宽重试');
   });
 
+  t('可访问性：全局 focus-visible 基线存在，关环控件有替代、双环已归一', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
+    const baseline = /:focus-visible\s*\{\s*outline:\s*2px solid var\(--accent\);/.test(css);
+    if (!baseline) throw new Error('缺全局 2px 实色 focus-visible 基线');
+    const section = (sel) => {
+      const i = css.indexOf(sel + ' {');
+      if (i < 0) throw new Error('缺规则 ' + sel);
+      return css.slice(i, css.indexOf('}', i) + 1);
+    };
+    const overflow = section('.overflow-item:focus-visible');
+    if (
+      /outline:\s*none/.test(overflow) ||
+      !/outline:\s*2px solid var\(--focus-ring\)/.test(overflow)
+    )
+      throw new Error('菜单项关了焦点环却没有替代');
+    const scrollTop = section('.scroll-top:focus-visible');
+    if (/--focus-halo/.test(scrollTop)) throw new Error('回顶按钮仍有 outline + halo 双环');
+    const codeTest = fs
+      .readFileSync(path.join(root, 'tests', 'error-text.test.mjs'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    if (!/codes\.length, 95/.test(codeTest)) throw new Error('错误码快照未覆盖 95 码');
+  });
+
   await pending;
   let fail = 0;
   results.forEach(([s, n]) => {
