@@ -11542,7 +11542,7 @@ const withEFP = (el, fn) => {
     }
   });
 
-  // 后台标签页不给排帧：只等 rAF 的启动收口会卡住，12s 看门狗于是把
+  // 后台标签页不给排帧：只等 rAF 的启动收口会卡住，20s 看门狗于是把
   // 「用户还在别的标签页」误报成「加载时间超出预期」（真机 / 隐藏页都复现过）。
   t('启动收口不依赖渲染帧：bootReady、末帧等待、首屏主题都要有定时兜底', () => {
     const root = path.join(__dirname, '..', '..');
@@ -12879,6 +12879,23 @@ const withEFP = (el, fn) => {
     if (!viewWrap) throw new Error('缺视图级错误边界');
     const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8').replace(/\r\n/g, '\n');
     if (!/\.eb-fallback\s*\{/.test(css)) throw new Error('fallback 样式未进聚合产物');
+  });
+  t('文档与实现一致：看门狗 20s、卡片详情无下滑出口、安装入口只在账号面板', () => {
+    const root = path.join(__dirname, '..', '..');
+    const read = (p) => fs.readFileSync(path.join(root, p), 'utf8').replace(/\r\n/g, '\n');
+    const boot = read('src/core/bootstrap.ts');
+    if (/12s 看门狗|12 秒看门狗/.test(boot)) throw new Error('bootstrap 仍写 12s 看门狗');
+    if (!/20s 看门狗/.test(boot)) throw new Error('bootstrap 未注明 20s 看门狗');
+    if (!/Date\.now\(\) - t0 < 12000/.test(boot))
+      throw new Error('首 paint 轮询上限不应被误改成看门狗值');
+    const design = read('DESIGN.md');
+    if (/12 秒看门狗/.test(design)) throw new Error('DESIGN 仍写 12 秒看门狗');
+    const detail = read('src/views/CardDetail.tsx');
+    if (/往下拖/.test(detail)) throw new Error('卡片详情又写出已下线的下滑出口');
+    const pwa = read('src/core/ui.pwa.ts');
+    if (/顶栏.*installReady/.test(pwa)) throw new Error('PWA 注释仍指向已移除的顶栏按钮');
+    const menu = read('src/ui/OverflowMenu.tsx');
+    if (/installReady/.test(menu)) throw new Error('溢出菜单残留 installReady 字段');
   });
 
   await pending;

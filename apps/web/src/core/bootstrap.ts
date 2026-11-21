@@ -35,7 +35,7 @@ setTimeout(bootThemeAndView, 300);
    而不是留一片白屏 + 一条很快消失的 toast。 */
 function bootReady() {
   /* 帧信号 + 定时兜底双通道：不可见页面不排帧（后台标签页里 rAF 永不触发），
-     只等帧的话 12s 看门狗会把「用户还在别的标签页」误报成「加载超时」。
+     只等帧的话 20s 看门狗会把「用户还在别的标签页」误报成「加载超时」。
      index.html 的 dismiss 自带 done 幂等，谁先到算谁。
      __boot 由 index.html 首屏同步注入（见 global.d.ts），此处无需再判空。 */
   requestAnimationFrame(() => window.__boot.ready());
@@ -177,7 +177,7 @@ async function waitViewFirstPaint(tab: ViewTab) {
 
   // 首屏列表统一由 switchView 触发（唯一入口），这里**不再 await 数据请求**。
   // 旧实现在卡片页先串行等完列表请求才切视图：弱网下请求一挂住，整条启动链
-  // 就停在 await 上，bootReady 永远不来，12s 看门狗把「还在等数据」误报成启动失败，
+  // 就停在 await 上，bootReady 永远不来，20s 看门狗把「还在等数据」误报成启动失败，
   // 错误层盖住整页，连应用内那个带「重试」的错误空态都没机会渲染（实测复现）。
   // 启动层只负责「外壳已经画出来」；数据的骨架 / 失败态 / 重试交给应用内自己负责。
   await switchView(tab);

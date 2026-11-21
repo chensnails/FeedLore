@@ -24,7 +24,6 @@ interface ShellSnap {
   view?: ViewTab;
   themeLabel?: string;
   themeIco?: string;
-  installReady?: boolean;
   digestVisible?: boolean;
 }
 

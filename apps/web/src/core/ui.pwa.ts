@@ -26,7 +26,7 @@ export let deferredInstall: BeforeInstallPromptEvent | null = null; // 捕获到
 window.addEventListener('beforeinstallprompt', (ev) => {
   ev.preventDefault();
   deferredInstall = ev as BeforeInstallPromptEvent;
-  emitShell(); // 顶栏「添加到手机」按钮由 React 按 installReady 显隐
+  emitShell(); // 账号面板「一键安装」区据此刷新可用态（顶栏不再放安装按钮）
 });
 
 window.addEventListener('appinstalled', () => {
