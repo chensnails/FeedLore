@@ -224,10 +224,8 @@ try {
     return n;
   })();
   check(bodyLen > 20, `正文已渲染（${bodyLen} 字）`);
-  check(
-    await evalJs('/^#reader\\/art\\/.+/.test(location.hash)'),
-    `展开后 hash 指向条目（${await evalJs('location.hash')}）`,
-  );
+  const artHash = await evalJs('location.hash');
+  check(/^#reader\/art\/.+/.test(artHash), `展开后 hash 指向条目（${artHash}）`);
   await shot('ui-reader.png');
 
   /* 4) 卡片页：切过去有卡片，视图导航高亮跟着走 */
@@ -406,7 +404,58 @@ try {
   await send('Emulation.setTouchEmulationEnabled', { enabled: false });
   await send('Emulation.clearDeviceMetricsOverride');
 
-  /* 8) 控制台：真机上不该有任何未捕获错误 */
+  /* 8) 深链启动分派：真 reload 带 hash → bootstrap 按 hash 选视图并清筛选。
+   * 这是 V4.0 就标注的测试缺口：此前只有 util.hash / bootstrap 的源码文本守卫，
+   * 没有「hash 真的把视图切过去」的行为断言。纯函数 matchViewHash 已有 kernel 单测，
+   * 但 bootstrap 里的启动分派（hash → switchView + 清 rd* 筛选）此前无 DOM 覆盖。 */
+  const base = new URL(url).origin + new URL(url).pathname.replace(/\/$/, '');
+  /* 条目级深链用前面展开第一条时记下的 hash（真实存在的 id），重载后应自动展开。 */
+  const deepCases = [
+    [
+      '#cards',
+      '卡片页',
+      () => waitFor("!!document.querySelector('#grid .card, #grid .row-item')", 20000),
+    ],
+    [
+      '#ai',
+      'AI 页',
+      () => waitFor("(document.querySelector('#aiRoot')?.innerText.length ?? 0) > 10", 20000),
+    ],
+  ];
+  for (const [hash, label, ready] of deepCases) {
+    await send('Page.navigate', { url: base + hash });
+    check(await ready(), `深链 ${hash} reload → ${label}渲染`);
+    check(
+      await waitFor(
+        `[...document.querySelectorAll('.viewnav-btn[data-view="${hash.slice(1)}"]')]
+          .some((b) => b.classList.contains('active') && b.getBoundingClientRect().width > 0)`,
+        5000,
+      ),
+      `深链 ${hash} reload → ${label}导航高亮`,
+    );
+  }
+  /* 展开态 hash 为 #reader/art/<id>：重载后应自动展开该篇，且筛选被清空
+   * （rdScope=all / rdQ='' 等由源码守卫钉住，这里断言可观察的后果：条目可见且已展开）。 */
+  if (artHash && /^#reader\/art\/.+/.test(artHash)) {
+    await send('Page.navigate', { url: base + artHash });
+    check(
+      await waitFor("document.querySelectorAll('#readerList .art-item').length > 0", 20000),
+      '条目深链 reload → 文章列表加载',
+    );
+    check(
+      await waitFor(
+        "!!document.querySelector('#readerList .art-item.open .art-body .art-inner')",
+        20000,
+      ),
+      '条目深链 reload → 目标文章自动展开（筛选已让位）',
+    );
+    check(
+      await waitFor('!!document.querySelector(\'.viewnav-btn[data-view="reader"].active\')', 5000),
+      '条目深链 reload → 文章页导航高亮',
+    );
+  }
+
+  /* 控制台：真机上不该有任何未捕获错误 */
   const realErrors = errors.filter((e) => !/favicon/i.test(e));
   check(
     realErrors.length === 0,
