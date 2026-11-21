@@ -12977,6 +12977,21 @@ const withEFP = (el, fn) => {
     if (!/重试剩余/.test(bulk)) throw new Error('缺「重试剩余」出口');
   });
 
+  t('快捷键可发现：命令面板有帮助分组，只列真实键位且不抢 / 让位', () => {
+    const root = path.join(__dirname, '..', '..');
+    const cmds = fs
+      .readFileSync(path.join(root, 'src', 'cmdk', 'commands.ts'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    if (!/group: '帮助'/.test(cmds)) throw new Error('命令面板缺快捷键发现入口');
+    if (!/查看键盘快捷键/.test(cmds)) throw new Error('缺帮助项文案');
+    if (!/⌘K \/ Ctrl K 打开命令面板，\/ 聚焦搜索/.test(cmds))
+      throw new Error('键位说明与真实实现不一致');
+    const nav = fs
+      .readFileSync(path.join(root, 'src', 'core', 'ui.nav.ts'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    if (!/if \(ev\.key !== '\/'/.test(nav)) throw new Error('`/` 让位逻辑被改动');
+  });
+
   await pending;
   let fail = 0;
   results.forEach(([s, n]) => {

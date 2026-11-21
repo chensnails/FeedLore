@@ -33,6 +33,7 @@ export interface CommandsCore {
   isAdmin?: () => boolean;
   shortFeedName: (name: unknown) => string;
   feedTitle: (feed: unknown) => string;
+  toast?: (msg: string) => void;
   THEME_MODES: readonly string[];
   THEME_META: Record<string, { label: string }>;
 }
@@ -141,6 +142,18 @@ export function buildCommands(S: CommandsCore): Command[] {
       keywords: 'feed channel ' + (f.title || '') + ' ' + (f.groupName || ''),
       run: () => S.jumpToFeed(f.id),
     });
+  });
+  /* 快捷键发现入口：只列当前真实存在的键位，不恢复已下线的 j/k/o/s/u/?。
+   * 点这条只弹中文说明，不新增手势、不抢 `/` 让位逻辑。 */
+  cmds.push({
+    group: '帮助',
+    icon: 'settings',
+    label: '查看键盘快捷键',
+    hint: '?',
+    keywords: '快捷键 帮助 keyboard shortcut',
+    run: () => {
+      if (S.toast) S.toast('⌘K / Ctrl K 打开命令面板，/ 聚焦搜索，↑↓ 选择、↵ 执行、Esc 关闭');
+    },
   });
   // 预计算每个命令的拼音（全拼 + 首字母），供命令面板按拼音过滤
   cmds.forEach((c) => {
