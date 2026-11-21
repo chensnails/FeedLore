@@ -4,7 +4,7 @@
 > 多用户 · 无广告 · 无遥测 · 数据全在你自己的 PostgreSQL。
 
 **在线体验**：https://feedlore.669600.xyz （`demo` / `demo`）
-当前版本 **2.5.5** · [更新日志](CHANGELOG.md) · [快速开始](#快速开始)
+当前版本 **3.0.0** · [更新日志](CHANGELOG.md) · [快速开始](#快速开始)
 
 ## 核心功能
 
@@ -26,7 +26,7 @@ Docker 24+ 与 Compose v2，默认端口 `3210`。compose 文件存成默认名 
 ```bash
 mkdir -p feedlore && cd feedlore
 curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
-V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.5 docker compose up -d
+V2_IMAGE=ghcr.io/chensnails/feedlore:3.0.0 docker compose up -d
 ```
 
 **国内**（compose 走 gh-proxy，镜像走南京大学镜像站，不用再手动 pull + tag）
@@ -34,7 +34,7 @@ V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.5 docker compose up -d
 ```bash
 mkdir -p feedlore && cd feedlore
 curl -fsSL -o docker-compose.yml 'https://gh-proxy.org/https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml'
-V2_IMAGE=ghcr.nju.edu.cn/chensnails/feedlore:2.5.5 docker compose up -d
+V2_IMAGE=ghcr.nju.edu.cn/chensnails/feedlore:3.0.0 docker compose up -d
 ```
 
 打开 `http://<主机>:3210`：用户名 `admin`，初始密码 `Admin2026`。
@@ -46,10 +46,10 @@ V2_IMAGE=ghcr.nju.edu.cn/chensnails/feedlore:2.5.5 docker compose up -d
 ```bash
 cd feedlore
 curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/chensnails/FeedLore/main/docker-compose.v2.release.yml
-V2_IMAGE=ghcr.io/chensnails/feedlore:2.5.5 docker compose up -d
+V2_IMAGE=ghcr.io/chensnails/feedlore:3.0.0 docker compose up -d
 ```
 
-国内把镜像名换成 `ghcr.nju.edu.cn/chensnails/feedlore:2.5.5`、curl 换成 gh-proxy 那一条。
+国内把镜像名换成 `ghcr.nju.edu.cn/chensnails/feedlore:3.0.0`、curl 换成 gh-proxy 那一条。
 数据、密码、账号都不变，**老账号不会被要求改密**（强制改密只挂在全新部署创建的 `admin` 上）。
 
 > 想把这个版本固定下来，就把 `V2_IMAGE=...` 写进 `.env`；否则以后再执行不带该变量的
