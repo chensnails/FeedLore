@@ -12898,6 +12898,17 @@ const withEFP = (el, fn) => {
     if (/installReady/.test(menu)) throw new Error('溢出菜单残留 installReady 字段');
   });
 
+  t('弱网：429 重试采纳 Retry-After（秒/日期、上限 5s），写操作仍不重试', () => {
+    const root = path.join(__dirname, '..', '..');
+    const src = fs.readFileSync(path.join(root, 'src', 'core', 'util.fetch.ts'), 'utf8');
+    if (!/export function parseRetryAfter/.test(src)) throw new Error('缺 Retry-After 解析');
+    if (!/res\.status === 429.*Retry-After/.test(src)) throw new Error('429 分支没读响应头');
+    if (!/Math\.max\(NET_RETRY_DELAY_MS \* \(i \+ 1\), retryAfterMs\)/.test(src))
+      throw new Error('退避没与 Retry-After 取大');
+    if (!/NET_RETRY_AFTER_MAX_MS = 5000/.test(src)) throw new Error('缺 5s 上限');
+    if (/methods.*retry/.test(src)) throw new Error('不该按方法放宽重试');
+  });
+
   await pending;
   let fail = 0;
   results.forEach(([s, n]) => {

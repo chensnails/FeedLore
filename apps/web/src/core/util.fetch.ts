@@ -22,6 +22,23 @@ export const NET_WRITE_TIMEOUT_MS = 30000;
  * 留 20s 余量，保证「服务端先返回」的顺序。 */
 export const NET_AI_TIMEOUT_MS = 200000;
 export const NET_RETRY_DELAY_MS = 400;
+/* 限流恢复由服务端说了算：429 带 Retry-After 时以它为准（取它与固定退避的较大值），
+ * 但设 5s 上限，免得一个异常大的值把界面挂住。 */
+export const NET_RETRY_AFTER_MAX_MS = 5000;
+
+/** 解析 Retry-After（秒数或 HTTP 日期）；无效/过去的时间返回 0。 */
+export function parseRetryAfter(header: string | null, now = Date.now()): number {
+  if (!header) return 0;
+  const s = header.trim();
+  if (!s) return 0;
+  if (/^\d+$/.test(s)) {
+    const sec = Number(s);
+    return Number.isFinite(sec) && sec >= 0 ? Math.min(sec * 1000, NET_RETRY_AFTER_MAX_MS) : 0;
+  }
+  const t = Date.parse(s);
+  if (!Number.isFinite(t)) return 0;
+  return Math.max(0, Math.min(t - now, NET_RETRY_AFTER_MAX_MS));
+}
 
 /**
  * @param {*} [status]
@@ -119,6 +136,7 @@ export async function apiFetch(url: string, opts: ApiFetchOpts = {}): Promise<Re
         ? 0
         : o.timeoutMs || (idempotent ? NET_TIMEOUT_MS : NET_WRITE_TIMEOUT_MS);
   let lastErr = null;
+  let retryAfterMs = 0; // 仅 429 分支写入，下一次循环开始前消费
   for (let i = 0; i < attempts; i += 1) {
     try {
       const res = await fetchOnce(url, o, timeoutMs, o.signal);
@@ -143,6 +161,7 @@ export async function apiFetch(url: string, opts: ApiFetchOpts = {}): Promise<Re
       }
       if (i + 1 < attempts && idempotent && isRetryableStatus(res.status)) {
         lastErr = new Error('HTTP ' + res.status); // 不消费 body，留给最终那次响应
+        if (res.status === 429) retryAfterMs = parseRetryAfter(res.headers.get('Retry-After'));
       } else {
         return res;
       }
@@ -152,7 +171,9 @@ export async function apiFetch(url: string, opts: ApiFetchOpts = {}): Promise<Re
       lastErr = err;
       if (i + 1 >= attempts) throw err;
     }
-    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, NET_RETRY_DELAY_MS * (i + 1)));
+    const backoff = Math.max(NET_RETRY_DELAY_MS * (i + 1), retryAfterMs);
+    retryAfterMs = 0;
+    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, backoff));
   }
   throw lastErr || new Error('网络请求失败');
 }

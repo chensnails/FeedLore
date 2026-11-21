@@ -12,8 +12,10 @@ import test from 'node:test';
 import {
   apiFetch,
   NET_AI_TIMEOUT_MS,
+  NET_RETRY_AFTER_MAX_MS,
   NET_TIMEOUT_MS,
   NET_WRITE_TIMEOUT_MS,
+  parseRetryAfter,
 } from '../src/core/util.ts';
 
 /** 模拟「上游一直不回」：只有 abort 时才 reject，且抛的是浏览器那句底层英文。 */
@@ -64,4 +66,63 @@ test('AI 长任务的上限要覆盖服务端的 180s', () => {
   // 其余请求维持原状：GET 8s、写 30s
   assert.equal(NET_TIMEOUT_MS, 8000);
   assert.equal(NET_WRITE_TIMEOUT_MS, 30000);
+});
+
+test('Retry-After 解析：秒数 / HTTP 日期 / 无效值 / 上限', () => {
+  const now = Date.parse('2026-11-21T00:00:00Z');
+  assert.equal(parseRetryAfter('2', now), 2000);
+  assert.equal(parseRetryAfter(' 3 ', now), 3000);
+  assert.equal(parseRetryAfter(new Date(now + 2000).toUTCString(), now), 2000);
+  assert.equal(parseRetryAfter(new Date(now - 1000).toUTCString(), now), 0);
+  assert.equal(parseRetryAfter('not-a-date', now), 0);
+  assert.equal(parseRetryAfter(null, now), 0);
+  assert.equal(parseRetryAfter('999', now), NET_RETRY_AFTER_MAX_MS);
+});
+
+/** 429 桩：第一次带 Retry-After，第二次 200；记录两次请求间隔。 */
+function installRateLimitedFetch(holder, header) {
+  const real = globalThis.fetch;
+  let n = 0;
+  let firstAt = 0;
+  let gap = 0;
+  globalThis.fetch = () => {
+    n += 1;
+    if (n === 1) {
+      firstAt = Date.now();
+      return Promise.resolve({
+        status: 429,
+        headers: { get: (k) => (String(k).toLowerCase() === 'retry-after' ? header : null) },
+      });
+    }
+    gap = Date.now() - firstAt;
+    return Promise.resolve({ status: 200, ok: true });
+  };
+  holder.restore = () => {
+    globalThis.fetch = real;
+  };
+  holder.stats = () => ({ n, gap });
+}
+
+test('429 GET 重试采纳 Retry-After（秒数），但写操作仍不重试', async () => {
+  const h = {};
+  installRateLimitedFetch(h, '1');
+  try {
+    const res = await apiFetch('/api/entries');
+    assert.equal(res.status, 200);
+    const { n, gap } = h.stats();
+    assert.equal(n, 2, '429 应重试一次');
+    assert.ok(gap >= 900, `Retry-After=1s 未被采纳，实际只等了 ${gap}ms`);
+  } finally {
+    h.restore();
+  }
+
+  const w = {};
+  installRateLimitedFetch(w, '0');
+  try {
+    const res = await apiFetch('/api/entries', { method: 'POST', body: '{}' });
+    assert.equal(res.status, 429);
+    assert.equal(w.stats().n, 1, '写操作绝不自动重试');
+  } finally {
+    w.restore();
+  }
 });
