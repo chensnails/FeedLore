@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { qk } from '../kernel/query.ts';
 import { Dropdown } from '../views/Dropdown.tsx';
+import { useFormLoadGuard } from './primitives.tsx';
 
 const S = () => core;
 
@@ -103,6 +104,7 @@ export function useAiSettings() {
   const [loadError, setLoadError] = useState('');
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState<OpMsg | null>(null);
+  const guard = useFormLoadGuard();
 
   // V5：/api/prefs 交给 Query；queryFn 走 core.apiFetch 端口，测试桩照常生效。
   const prefsQuery = useQuery({
@@ -130,7 +132,9 @@ export function useAiSettings() {
       setLoadError('读取模型配置失败：' + String((err && err.message) || err));
       return;
     }
-    if (prefsQuery.data) applyData(prefsQuery.data);
+    if (!prefsQuery.data) return;
+    // 用户可能已在慢网首包回来前切了开关/分配：跳过回填，保留本地操作。
+    guard.apply(() => applyData(prefsQuery.data));
   }, [prefsQuery.data, prefsQuery.isPending, prefsQuery.isError, prefsQuery.error]);
 
   // 写后同步刷新：refetch 强制重拉（绕过 stale 缓存），回填仍走 applyData。
@@ -155,6 +159,7 @@ export function useAiSettings() {
   /* ---- 列表级即时动作：乐观更新 + 失败回滚 ---- */
   const routeAction = async (nextRoutes: LlmRoutes, body: PostBody, okText: string) => {
     if (busy) return;
+    guard.mark(); // 用户已改任务分配：后续首包不得覆盖这次乐观更新
     const prev = routes;
     setRoutes(nextRoutes);
     setBusy('routes');

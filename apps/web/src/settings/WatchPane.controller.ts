@@ -4,6 +4,7 @@ import type { Feed, PrefsResponse } from '@feedlore/contract';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { qk } from '../kernel/query.ts';
+import { useFormLoadGuard } from './primitives.tsx';
 import type { FilterDraft, ResultState, RuleDraft, SheetState } from './WatchPane.types.ts';
 import {
   blankFilter,
@@ -31,6 +32,7 @@ export function useWatchController(onDirtyChange?: (dirty: boolean) => void) {
   const [prefsError, setPrefsError] = useState(''); // /api/prefs 读取失败（面板级，编辑动作要禁用）
   const [sheet, setSheet] = useState<SheetState>(null); // { type: 'rule' | 'filter', value, isNew }
   const paneRef = useRef<HTMLDivElement>(null);
+  const guard = useFormLoadGuard();
 
   // 适用范围选择器要用的频道 / 分组清单
   const [feedsList, setFeedsList] = useState<Feed[]>([]);
@@ -70,9 +72,12 @@ export function useWatchController(onDirtyChange?: (dirty: boolean) => void) {
       return;
     }
     if (!prefsQuery.data) return;
-    setPrefsError('');
-    applyPrefs(prefsQuery.data);
-    setLoaded(true);
+    // 首包晚到时用户可能已在编辑 webhook / 天数 / 草稿：跳过回填，不覆盖输入。
+    guard.apply(() => {
+      setPrefsError('');
+      applyPrefs(prefsQuery.data);
+      setLoaded(true);
+    });
   }, [prefsQuery.data, prefsQuery.isPending, prefsQuery.isError, prefsQuery.error]);
 
   // 频道清单只有适用范围选择器用得到，失败时选择器里只剩「全部频道」（原 loadPrefs 后半段）。
@@ -143,8 +148,10 @@ export function useWatchController(onDirtyChange?: (dirty: boolean) => void) {
     else s.toast('撤销失败：' + out.error, false);
   };
 
-  const openRule = (r: RuleDraft | null, isNew: boolean) =>
+  const openRule = (r: RuleDraft | null, isNew: boolean) => {
+    guard.mark(); // 用户已进入规则草稿编辑
     setSheet({ type: 'rule', value: isNew ? blankRule() : r!, isNew });
+  };
 
   const saveRuleDraft = async (draft: RuleDraft) => {
     const exists = rules.some((r) => r.id === draft.id);
@@ -263,8 +270,10 @@ export function useWatchController(onDirtyChange?: (dirty: boolean) => void) {
     else s.toast('撤销失败：' + out.error, false);
   };
 
-  const openFilter = (f: FilterDraft | null, isNew: boolean) =>
+  const openFilter = (f: FilterDraft | null, isNew: boolean) => {
+    guard.mark(); // 用户已进入过滤草稿编辑
     setSheet({ type: 'filter', value: isNew ? blankFilter() : f!, isNew });
+  };
 
   const saveFilterDraft = async (draft: FilterDraft) => {
     const exists = filters.some((f) => f.id === draft.id);
@@ -407,13 +416,23 @@ export function useWatchController(onDirtyChange?: (dirty: boolean) => void) {
     }
   };
 
+  // 视图层直接写这两个输入；包一层 mark，让晚到的首包不能覆盖用户输入。
+  const markWebhook: typeof setWebhook = (v) => {
+    guard.mark();
+    setWebhook(v);
+  };
+  const markExpireDays: typeof setExpireDays = (v) => {
+    guard.mark();
+    setExpireDays(v);
+  };
+
   return {
     rules,
     filters,
     webhook,
-    setWebhook,
+    setWebhook: markWebhook,
     expireDays,
-    setExpireDays,
+    setExpireDays: markExpireDays,
     loaded,
     busy,
     result,

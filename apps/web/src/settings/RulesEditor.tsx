@@ -12,7 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { invalidate, qk } from '../kernel/query.ts';
 import { Dropdown } from '../views/Dropdown.tsx';
-import { Section } from './primitives.tsx';
+import { Section, useFormLoadGuard } from './primitives.tsx';
 
 const S = () => core;
 
@@ -104,6 +104,7 @@ export function RulesEditor() {
   const [error, setError] = useState('');
   const [result, setResult] = useState<ResultState>(null);
   const [busy, setBusy] = useState(false);
+  const guard = useFormLoadGuard();
 
   // V5：服务端数据交给 Query 管理（去重 / stale / 写后失效）；queryFn 仍走 core.apiFetch
   // 这个 I/O 端口，行为测试桩照常生效。面板条件挂载，refetchOnMount:'always' 保住
@@ -130,17 +131,28 @@ export function RulesEditor() {
       return;
     }
     if (!prefsQuery.data) return;
-    setError('');
     const list = Array.isArray(prefsQuery.data.rules) ? prefsQuery.data.rules.map(toDraft) : [];
-    setDrafts(list);
-    setSaved(JSON.stringify(list));
-    setLoading(false);
+    // 慢网下首包晚到时用户可能已经在编辑：跳过这次回填，别把草稿整块覆盖掉。
+    guard.apply(() => {
+      setError('');
+      setDrafts(list);
+      setSaved(JSON.stringify(list));
+      setLoading(false);
+    });
   }, [prefsQuery.data, prefsQuery.isPending, prefsQuery.isError, prefsQuery.error]);
 
-  const update = (id: string, patch: Partial<RuleDraft>) =>
+  const update = (id: string, patch: Partial<RuleDraft>) => {
+    guard.mark();
     setDrafts((list) => list.map((d) => (d.id === id ? { ...d, ...patch } : d)));
-  const remove = (id: string) => setDrafts((list) => list.filter((d) => d.id !== id));
-  const add = () => setDrafts((list) => [...list, blank()]);
+  };
+  const remove = (id: string) => {
+    guard.mark();
+    setDrafts((list) => list.filter((d) => d.id !== id));
+  };
+  const add = () => {
+    guard.mark();
+    setDrafts((list) => [...list, blank()]);
+  };
 
   async function onSave() {
     if (busy) return;

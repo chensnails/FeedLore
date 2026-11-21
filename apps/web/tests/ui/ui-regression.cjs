@@ -12470,19 +12470,49 @@ const withEFP = (el, fn) => {
     if (!/export function useFormLoadGuard/.test(prim)) throw new Error('缺共享的回填守卫');
     if (!/if \(touched\.current\) return false/.test(prim))
       throw new Error('守卫没有拦住已编辑表单的回填');
-    for (const f of ['DigestPane.tsx']) {
+    /* 有首包回填 + 用户可编辑的面板全集：Digest / 数据源配置 / 自动化规则 /
+       关注屏蔽 / AI 能力。ModelPane 是列表 + 详情层，没有整页回填，明确排除。 */
+    const guarded = [
+      ['DigestPane.tsx', 'setForm(next)'],
+      ['SourcePane.controller.ts', 'setCfg(next)'],
+      ['RulesEditor.tsx', 'setDrafts(list)'],
+      ['WatchPane.controller.ts', 'applyPrefs(prefsQuery.data)'],
+      ['AiCapabilities.tsx', 'applyData(prefsQuery.data)'],
+    ];
+    for (const [f, backfillCall] of guarded) {
       const src = fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r\n/g, '\n');
-      if (!/const guard = useFormLoadGuard\(\)/.test(src)) throw new Error(f + ' 未接入守卫');
-      if (!/guard\.mark\(\)/.test(src)) throw new Error(f + ' 用户输入没有标记 touched');
-      const iApply = src.indexOf('guard.apply(');
+      if (!/const (guard|cfgGuard) = useFormLoadGuard\(\)/.test(src))
+        throw new Error(f + ' 未接入守卫');
+      // 数据源配置的 mark 在 actions.ts（controller 只持有 guard 并传给 hook）
+      const markSrc =
+        f === 'SourcePane.controller.ts'
+          ? fs.readFileSync(path.join(dir, 'SourcePane.actions.ts'), 'utf8').replace(/\r\n/g, '\n')
+          : src;
+      if (!/(guard|cfgGuard)\.mark\(\)/.test(markSrc))
+        throw new Error(f + ' 用户输入没有标记 touched');
+      // 数据源配置的 apply 在 config.ts（controller 只传入 cfgGuard）
+      const applyFile = f === 'SourcePane.controller.ts' ? 'SourcePane.config.ts' : f;
+      const applySrc =
+        applyFile === f
+          ? src
+          : fs.readFileSync(path.join(dir, applyFile), 'utf8').replace(/\r\n/g, '\n');
+      const iApply =
+        applySrc.indexOf('guard.apply(') >= 0
+          ? applySrc.indexOf('guard.apply(')
+          : applySrc.indexOf('cfgGuard.apply(');
       if (iApply < 0) throw new Error(f + ' 回填没走守卫');
-      // V5：回填从 async load() 迁进 useQuery 数据的 useEffect。定位守卫所在那段
-      // 回填作用域（最近的 useEffect 起点 → guard.apply），只拦「进守卫之前就无条件覆盖」。
-      const blockStart = src.lastIndexOf('useEffect(() => {', iApply);
+      // V5：回填在 useQuery 数据的 useEffect 里。定位守卫所在的作用域
+      //（最近的 useEffect 起点 → guard.apply），只拦「进守卫之前就无条件覆盖」。
+      const blockStart = applySrc.lastIndexOf('useEffect(() => {', iApply);
       if (blockStart < 0) throw new Error(f + ' 找不到异步回填块');
-      if (/setForm\(next\)/.test(src.slice(blockStart, iApply)))
-        throw new Error(f + ' 仍在无条件覆盖表单');
+      if (applySrc.slice(blockStart, iApply).includes(backfillCall))
+        throw new Error(f + ' 仍在无条件回填：' + backfillCall);
+      // gcTime:0 防旧缓存破坏「未加载完禁止保存」（数据源配置在 config.ts）
     }
+    const cfg = fs
+      .readFileSync(path.join(dir, 'SourcePane.config.ts'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    if (!/gcTime:\s*0/.test(cfg)) throw new Error('数据源配置丢了 gcTime:0，旧缓存会破坏回填守卫');
     // 模型页已改为列表 + 详情层：字段在开层时用当前行初始化，没有异步回填可覆盖
     const model = fs.readFileSync(path.join(dir, 'ModelPane.tsx'), 'utf8').replace(/\r\n/g, '\n');
     if (/useFormLoadGuard/.test(model)) throw new Error('ModelPane 已无整页表单，不该再挂回填守卫');
