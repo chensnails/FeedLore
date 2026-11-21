@@ -26,6 +26,13 @@ export const NET_RETRY_DELAY_MS = 400;
  * 但设 5s 上限，免得一个异常大的值把界面挂住。 */
 export const NET_RETRY_AFTER_MAX_MS = 5000;
 
+/** 超时文案的唯一口径：主站网络层与 login.html / change-password.html 两个独立文档共用。
+ *  两个独立页拿不到模块，由 login-main.ts 把本函数挂到 window.netTimeout.text。
+ *  改文案只改这里，不要在各页内联脚本里另写一套「xx 秒无响应」。 */
+export function timeoutText(timeoutMs: number): string {
+  return `网络请求超时（${Math.round(timeoutMs / 1000)} 秒），请稍后重试`;
+}
+
 /** 解析 Retry-After（秒数或 HTTP 日期）；无效/过去的时间返回 0。 */
 export function parseRetryAfter(header: string | null, now = Date.now()): number {
   if (!header) return 0;
@@ -87,7 +94,7 @@ function fetchOnce(
              * 反过来的话，abort 会让 fetch 立刻 reject 一个底层英文
              * （Chrome 是 `signal is aborted without reason`），它抢在中文提示前面，
              * 用户看到的就是这句天书 —— 实测线上截图就是这个。 */
-            const err = new Error(`网络请求超时（${Math.round(timeoutMs / 1000)} 秒），请稍后重试`);
+            const err = new Error(timeoutText(timeoutMs));
             err.name = 'TimeoutError';
             timeoutErr = err;
             reject(err);

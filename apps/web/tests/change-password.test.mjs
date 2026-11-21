@@ -19,11 +19,12 @@ const HTML = fs.readFileSync(path.join(HERE, '..', 'change-password.html'), 'utf
 
 /**
  * 载入改密页并执行其内联脚本。
- * @param {{session?: any, postStatus?: number, postBody?: any, fetchImpl?: Function}} opts
+ * @param {{session?: any, postStatus?: number, postBody?: any, fetchImpl?: Function, netTimeout?: any}} opts
  */
 async function mount(opts = {}) {
   const nav = [];
   const jsdomErrors = [];
+  const timeouts = [];
   const session =
     opts.session === undefined
       ? { authenticated: true, mustChangePassword: true, username: 'admin' }
@@ -54,6 +55,17 @@ async function mount(opts = {}) {
       w.__nav = (u) => nav.push(u);
       w.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
       w.fetch = fetchImpl;
+      // 独立页的 module 脚本在 jsdom 里不会执行，手动挂上主站网络层的超时口径。
+      w.netTimeout = opts.netTimeout || {
+        getMs: 8000,
+        writeMs: 30000,
+        text: (ms) => '网络请求超时（' + Math.round(ms / 1000) + ' 秒），请稍后重试',
+      };
+      // jsdom 没有 AbortSignal.timeout：桩住并记下传入毫秒数，验证页面确实读了统一常量。
+      w.AbortSignal.timeout = (ms) => {
+        timeouts.push(ms);
+        return new w.AbortController().signal;
+      };
       // 真词典：验证 code → 中文这条链路，而不是测一个恒返回的桩
       w.errText = (input, fallback) => {
         const code = typeof input === 'string' ? input : input && input.code;
@@ -72,6 +84,7 @@ async function mount(opts = {}) {
     nav,
     jsdomErrors,
     fetchCalls,
+    timeouts,
     d,
     form: d.getElementById('changeForm'),
     btn: d.getElementById('submitBtn'),
@@ -197,7 +210,7 @@ test('提交：403 错误码转中文，按钮恢复可重试', async () => {
   x.dom.window.close();
 });
 
-test('提交：15 秒超时显示中文文案，不漏 AbortError 英文', async () => {
+test('提交：超时提示与主站同口径，不漏 AbortError 英文', async () => {
   const timeoutErr = Object.assign(new Error('aborted'), { name: 'TimeoutError' });
   const x = await mount({
     fetchImpl: async (u) => {
@@ -214,8 +227,30 @@ test('提交：15 秒超时显示中文文案，不漏 AbortError 英文', async
   x.next2.value = 'newpass9';
   x.submit();
   await new Promise((r) => setTimeout(r, 20));
-  assert.match(x.err(), /保存超时（15 秒无响应）/);
+  assert.match(x.err(), /网络请求超时（30 秒）/);
   assert.doesNotMatch(x.err(), /abort|TimeoutError/i);
   assert.equal(x.btn.disabled, false);
+  assert.deepEqual(x.timeouts, [30000], '超时上限必须取自主站写超时常量');
+  x.dom.window.close();
+});
+
+test('提交：超时上限读 window.netTimeout 而非硬编码；session guard 仍走裸 fetch', async () => {
+  const x = await mount({
+    netTimeout: {
+      getMs: 8000,
+      writeMs: 45000,
+      text: (ms) => '网络请求超时（' + Math.round(ms / 1000) + ' 秒），请稍后重试',
+    },
+  });
+  // guard 在 mount 时就跑完了：它没有走 apiFetch（无 signal / retry 等请求选项）
+  const sessions = x.fetchCalls.filter((c) => c.url === '/api/session');
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].init, undefined);
+  x.cur.value = 'Admin2026';
+  x.next.value = 'newpass9';
+  x.next2.value = 'newpass9';
+  x.submit();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(x.timeouts, [45000], '改常量后页面时间值要跟着变');
   x.dom.window.close();
 });

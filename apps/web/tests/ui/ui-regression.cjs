@@ -12268,6 +12268,31 @@ const withEFP = (el, fn) => {
       throw new Error('调用方主动取消时不能继续重试');
     if (!/export async function uploadArchive[\s\S]*?timeoutMs: 0/.test(src))
       throw new Error('大文件上传不能被 30s 写超时误杀');
+    if (!/export function timeoutText/.test(src))
+      throw new Error('超时文案必须收成单一函数，供独立登录页共用');
+  });
+
+  t('弱网：登录 / 改密独立页共用主站超时口径，不硬编码 15s', () => {
+    const root = path.join(__dirname, '..', '..');
+    const bridge = fs
+      .readFileSync(path.join(root, 'src', 'login-main.ts'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    if (!/window\.netTimeout = \{/.test(bridge)) throw new Error('登录桥未挂统一超时口径');
+    if (!/writeMs: NET_WRITE_TIMEOUT_MS/.test(bridge) || !/text: timeoutText/.test(bridge))
+      throw new Error('统一超时口径必须直接取自主站网络层');
+    for (const name of ['login.html', 'change-password.html']) {
+      const html = fs.readFileSync(path.join(root, name), 'utf8').replace(/\r\n/g, '\n');
+      if (/AbortSignal\.timeout\(15000\)|秒无响应/.test(html))
+        throw new Error(name + ' 仍有硬编码 15s 超时');
+      if (!/window\.netTimeout/.test(html) || !/AbortSignal\.timeout\(NT\.writeMs\)/.test(html))
+        throw new Error(name + ' 未读主站统一超时常量');
+      if (!/NT\.text\(NT\.writeMs\)/.test(html)) throw new Error(name + ' 超时文案未走统一口径');
+    }
+    const cp = fs
+      .readFileSync(path.join(root, 'change-password.html'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    if (!/fetch\('\/api\/session'\)/.test(cp))
+      throw new Error('改密页必须保留自身 session guard（裸 fetch，不经 apiFetch）');
   });
 
   t('弱网：启动层不等数据请求，失败时也不锁死页面', () => {

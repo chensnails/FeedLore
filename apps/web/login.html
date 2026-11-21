@@ -82,6 +82,13 @@
   const btn = document.getElementById('submitBtn');
   const errBox = document.getElementById('error');
 
+  /* 超时上限与文案都出自主站网络层（login-main.ts 挂到 window.netTimeout），
+     不再各写各的 15s。module 脚本若加载失败，留一份同口径兜底。 */
+  const NT = window.netTimeout || {
+    writeMs: 30000,
+    text: (ms) => '网络请求超时（' + Math.round(ms / 1000) + ' 秒），请稍后重试',
+  };
+
   /* ---------- 主题切换（与主站共用 feedlore.appearance.v2 的 theme 字段，四档一致） ---------- */
   const THEME_KEY = 'feedlore.appearance.v2';
   const THEME_MODES = ['auto', 'light', 'dark', 'github'];
@@ -181,11 +188,12 @@
     let entering = false;
 
     try {
-      /* 15s 硬超时：弱网 / 反代挂起时，没有这个上限按钮会永久停在「登录中…」，
+      /* 写操作硬超时：上限来自主站网络层（window.netTimeout.writeMs，当前 30s）。
+         弱网 / 反代挂起时，没有这个上限按钮会永久停在「登录中…」，
          用户既进不去也点不动，只能刷新。AbortSignal.timeout 不支持的旧内核由
          catch 兜住（当作网络异常处理，同样会恢复按钮）。 */
       const signal = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout)
-        ? AbortSignal.timeout(15000)
+        ? AbortSignal.timeout(NT.writeMs)
         : undefined;
       const res = await fetch('/api/login', {
         method: 'POST',
@@ -214,7 +222,7 @@
       showError(window.errText(data, '登录失败'));
     } catch (e) {
       showError((e && e.name === 'TimeoutError')
-        ? '登录超时（15 秒无响应），请检查网络后重试'
+        ? NT.text(NT.writeMs)
         : '网络异常，请重试');
     } finally {
       if (!entering) {

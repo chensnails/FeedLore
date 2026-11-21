@@ -16,6 +16,7 @@ import {
   NET_TIMEOUT_MS,
   NET_WRITE_TIMEOUT_MS,
   parseRetryAfter,
+  timeoutText,
   undoWindowMs,
 } from '../src/core/util.ts';
 
@@ -59,6 +60,12 @@ test('超时文案是中文，不漏底层 abort 英文', async () => {
   } finally {
     h.restore();
   }
+});
+
+test('超时文案是单一口径：主站与独立登录页共用同一个函数', () => {
+  assert.equal(timeoutText(30000), '网络请求超时（30 秒），请稍后重试');
+  assert.equal(timeoutText(15000), '网络请求超时（15 秒），请稍后重试');
+  assert.equal(timeoutText(1250), '网络请求超时（1 秒），请稍后重试');
 });
 
 test('AI 长任务的上限要覆盖服务端的 180s', () => {

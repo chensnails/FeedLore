@@ -26,8 +26,14 @@ declare global {
     __settingsOpen?: boolean;
     /** 首屏主题模式，见 index.html 内联脚本 */
     __themeBoot?: unknown;
-    /** 全局错误文案函数，见 login-main.js（登录页独立文档） */
+    /** 全局错误文案函数，见 login-main.ts（登录页独立文档） */
     errText?: (input: unknown, fallbackText?: string) => string;
+    /** 网络超时单一口径，见 login-main.ts / util.fetch.ts（登录与改密独立文档共用） */
+    netTimeout?: {
+      getMs: number;
+      writeMs: number;
+      text: (timeoutMs: number) => string;
+    };
   }
 }
 
