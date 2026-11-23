@@ -377,6 +377,16 @@ export async function restoreReaderArt(id: EntityId) {
     await loadReader();
     el = findArtItemEl(want);
   }
+  if (!el) {
+    /* hash 深链常来自 popstate：事件到得比列表重拉早，此刻目标还没进 DOM，
+       上面那轮翻页也就扑空了。给列表一个落地的窗口再找一次——
+       真不在列表里（被筛选掉 / 已删）才放弃，别把「稍后到」误判成「找不到」。 */
+    const deadline = Date.now() + 3000;
+    while (!el && Date.now() < deadline) {
+      await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
+      el = findArtItemEl(want);
+    }
+  }
   if (!el) return false;
   const saved = readSavedOffset(want);
   await expandReaderArt(want);
