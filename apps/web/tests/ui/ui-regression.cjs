@@ -11980,13 +11980,19 @@ const withEFP = (el, fn) => {
     }
   });
 
-  t('篇内阅读位置：sessionStorage 记录、恢复前清置顶、按文章高度 clamp', () => {
+  t('篇内阅读位置：localStorage 本机记录、旧会话级数据迁移、恢复前清置顶、按文章高度 clamp', () => {
     const root = path.join(__dirname, '..', '..');
     const r = fs.readFileSync(path.join(root, 'src', 'core', 'reader.articles.ts'), 'utf8');
-    if (!/const READ_POS_KEY = 'feedlore\.readPos\.v1'/.test(r))
-      throw new Error('缺阅读位置的会话级存储键');
-    if (!/sessionStorage\.setItem\(READ_POS_KEY/.test(r))
-      throw new Error('阅读位置应存 sessionStorage（换标签/新会话不假装记得）');
+    if (!/const READ_POS_KEY = 'feedlore\.readPos\.v2'/.test(r))
+      throw new Error('缺阅读位置的本机存储键');
+    if (!/localStorage\.setItem\(READ_POS_KEY/.test(r))
+      throw new Error('阅读位置应存 localStorage（换标签 / 重开 PWA 仍接得上）');
+    if (
+      !/sessionStorage\.getItem\(READ_POS_LEGACY_KEY\)[\s\S]{0,300}localStorage\.setItem\(READ_POS_KEY/.test(
+        r,
+      )
+    )
+      throw new Error('旧版会话级阅读位置应迁移一次，不能让用户读了一半的位置丢掉');
     if (!/if \(state\.tab !== 'reader' \|\| readerPinnedId != null\) return;/.test(r)) {
       throw new Error('置顶自己写的 scrollTop 不能当成阅读位置记下来');
     }

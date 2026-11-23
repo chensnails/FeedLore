@@ -42,11 +42,12 @@ export function readerToggleAccordion() {
 /* ---------- 篇内阅读位置（刷新 / 深链回到同一篇时恢复） ----------
  * 地址栏 hash 只记到文章 id，刷新后 restoreReaderArt 一律从标题开始 ——
  * 长文读一半刷新（手机上更常见：PWA 被系统回收后重开）就得重新找。
- * 这里按文章记「标题行已滚出视口多少」，放 sessionStorage：
- *   · 只在同一标签页生命周期内有效，换标签 / 新会话不假装记得；
+ * 这里按文章记「标题行已滚出视口多少」，放本机 localStorage：
+ *   · 同一浏览器换标签 / 重开 PWA 仍接得上；旧版会话级 v1 首次读取时迁移过来；
  *   · 只给 hash 恢复用；从列表点一篇仍然置顶，不改变既有入口策略；
  *   · 偏移按文章高度 clamp，正文和图片异步撑开也不会滚到文章外。 */
-const READ_POS_KEY = 'feedlore.readPos.v1';
+const READ_POS_KEY = 'feedlore.readPos.v2';
+const READ_POS_LEGACY_KEY = 'feedlore.readPos.v1';
 const READ_POS_MAX = 60; // 最多记 60 篇，够覆盖一次连续阅读，又不让本地存储无限长
 const READ_POS_MIN = 24; // 还在标题附近不值得恢复（否则等于把「置顶」又挪了一下）
 let readPosCache: Record<string, unknown> | null = null;
@@ -54,7 +55,19 @@ let readPosCache: Record<string, unknown> | null = null;
 function readPosMap(): Record<string, unknown> {
   if (readPosCache) return readPosCache;
   try {
-    const raw = sessionStorage.getItem(READ_POS_KEY);
+    let raw = localStorage.getItem(READ_POS_KEY);
+    // 旧版是会话级存储：迁移一次即可，别让已经读了一半的长文在新版里丢掉位置。
+    if (!raw) {
+      const legacy = sessionStorage.getItem(READ_POS_LEGACY_KEY);
+      if (legacy) {
+        const parsedLegacy: unknown = JSON.parse(legacy);
+        if (parsedLegacy && typeof parsedLegacy === 'object') {
+          localStorage.setItem(READ_POS_KEY, legacy);
+          sessionStorage.removeItem(READ_POS_LEGACY_KEY);
+          raw = legacy;
+        }
+      }
+    }
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     readPosCache = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
   } catch (_) {
@@ -65,7 +78,7 @@ function readPosMap(): Record<string, unknown> {
 
 function persistReadPos() {
   try {
-    sessionStorage.setItem(READ_POS_KEY, JSON.stringify(readPosMap()));
+    localStorage.setItem(READ_POS_KEY, JSON.stringify(readPosMap()));
   } catch (_) {
     /* 隐私模式 / 配额满：忽略 */
   }
