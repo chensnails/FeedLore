@@ -37,6 +37,7 @@ import { type NormalizedItem, normalizeItem, parseFeed } from './rss';
 import { applyRulesToFresh } from './rules';
 import { scopeAllows } from './scope';
 import { getSource, type SourceConfig, sourceSnapshot } from './settings';
+import { invalidateTagCounts } from './tagCountsCache';
 import { classify, notifyRuleNames, type WatchVerdict } from './watch';
 import { expireWatchTags } from './watch-expire';
 
@@ -387,6 +388,9 @@ export async function upsertEntries(
         publishedAt: sql`excluded.published_at`,
       },
     });
+
+  // 新条目/新标签会改变标签云：让列表接口的 10 秒聚合缓存立刻失效
+  if (fresh.length) invalidateTagCounts();
 
   return { inserted: fresh.length, fresh };
 }

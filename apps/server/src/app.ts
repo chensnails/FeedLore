@@ -14,9 +14,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AuthInstance } from '@feedlore/auth';
 import type { Db } from '@feedlore/db';
-import { users } from '@feedlore/db';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { compress } from 'hono/compress';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -174,12 +172,8 @@ export async function injectBootLayout(
   const session = await deps.auth.api.getSession({ headers: c.req.raw.headers }).catch(() => null);
   if (!session) return html;
 
-  const rows = await deps.db
-    .select({ prefs: users.prefs })
-    .from(users)
-    .where(eq(users.id, session.user.id))
-    .limit(1);
-  const prefs = rows[0]?.prefs ?? null;
+  // prefs 已作为 additionalFields 随 session 带回，首页不必再查一次 users 表。
+  const prefs = (session.user as { prefs?: Record<string, unknown> | null }).prefs ?? null;
 
   /* `<` 转义：分组名是用户输入，直接拼进 <script> 会提前闭合标签。 */
   const json = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');

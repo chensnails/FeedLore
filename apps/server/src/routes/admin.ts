@@ -472,6 +472,13 @@ export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
                   detail: (e as Error)?.message ?? e,
                 });
               }
+              /* better-auth 的 10 秒 session cookieCache 里仍是旧的
+               * mustChangePassword=true：显式作废旧缓存，下一跳立即放行。 */
+              const secure = new URL(c.req.url).protocol === 'https:' ? '; Secure' : '';
+              c.header(
+                'Set-Cookie',
+                `better-auth.session_data=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`,
+              );
             } catch (e) {
               return apiError(c, 'E_PASSWORD_UPDATE_FAILED', {
                 detail: (e as Error)?.message ?? e,

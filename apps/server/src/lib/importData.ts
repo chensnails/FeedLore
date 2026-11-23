@@ -51,6 +51,7 @@ import { ApiException } from './apiError';
 import { safeRoutes } from './llm';
 import { vendorLabel } from './llmProviders';
 import { assertPublicHost } from './net';
+import { invalidateTagCounts } from './tagCountsCache';
 import { isSafeImageKey } from './tar-read';
 
 const FORMAT = 'feedlore-backup';
@@ -612,6 +613,7 @@ export async function importUserArchive(
         .returning({ id: entries.id });
       entryCount.inserted += inserted.length;
       entryCount.skipped += batch.length - inserted.length;
+      if (inserted.length) invalidateTagCounts();
       batch = [];
     };
 
@@ -769,6 +771,7 @@ async function insertEntries(tx: Db, dir: string, files: string[]): Promise<numb
     if (!batch.length) return;
     await tx.insert(entries).values(batch);
     total += batch.length;
+    invalidateTagCounts();
     batch = [];
   };
   for (const name of files) {

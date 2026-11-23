@@ -32,6 +32,7 @@ import { toCard, toEntryDetail } from '../lib/dto';
 import { CARD_COLUMNS, entryConditions, parseFeedIds, relevanceScore } from '../lib/entriesQuery';
 import { type PrefsBag, userWatchRules } from '../lib/prefs';
 import { scopeAllows } from '../lib/scope';
+import { tagCountsCacheGet, tagCountsCacheKey, tagCountsCacheSet } from '../lib/tagCountsCache';
 import { assertResponse, BadRequest } from '../lib/validate';
 import { classify } from '../lib/watch';
 import { type AppEnv, requireAuth } from '../middleware/auth';
@@ -136,7 +137,12 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
           const hasMore = rows.length > q.limit;
           const page = hasMore ? rows.slice(0, q.limit) : rows;
 
-          const tagRows = await tagCounts(db, uid, feedIds);
+          /* 标签云是「全账号条目展开聚合」，一页 50 条却每次都全表扫。
+           * 10 秒短缓存足够吃掉翻页/切频道的重复调用；写路径会显式失效。 */
+          const tagKey = tagCountsCacheKey(uid, feedIds);
+          const cachedTags = tagCountsCacheGet(tagKey);
+          const tagRows = cachedTags ?? (await tagCounts(db, uid, feedIds));
+          if (!cachedTags) tagCountsCacheSet(tagKey, tagRows);
 
           const payload = assertResponse(
             entriesListResponse,

@@ -128,6 +128,12 @@ export function createAuth(opts: CreateAuthOptions) {
       // 只替换 verify：新密码仍用 better-auth 默认 scrypt(r=16) 生成
       password: { verify: verifyPasswordHash },
     },
+    /* 一屏几十张图片会各带同一枚会话 Cookie；开启 10 秒签名缓存后这些请求
+     * 不再每次都查 sessions + users 两张表。改密路由会显式作废旧缓存 Cookie，
+     * 因此 mustChangePassword 的即时放行语义不变。 */
+    session: {
+      cookieCache: { enabled: true, maxAge: 10, strategy: 'compact' },
+    },
     /* 业务字段：首次登录必须改密。
      *
      * 放在 additionalFields 而不是每次请求查库：getSession 会把它一起带回来，
@@ -140,6 +146,13 @@ export function createAuth(opts: CreateAuthOptions) {
           type: 'boolean',
           required: false,
           defaultValue: false,
+          input: false,
+        },
+        /* 布局偏好随 session 一起带回：首页 HTML 注入不必再单独查一次 users.prefs。
+         * input:false 与 mustChangePassword 同理，客户端不能借更新用户接口改它。 */
+        prefs: {
+          type: 'json',
+          required: false,
           input: false,
         },
       },
