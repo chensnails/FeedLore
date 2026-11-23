@@ -397,19 +397,33 @@ try {
       check(await waitFor("!document.querySelector('#confirmBox')"), '窄屏确认框可取消');
     } else {
       console.log('  - 当前视图无「全部已读」入口，跳过确认框几何断言（数据/视图依赖）');
-      await evalJs("document.querySelector('.overflow-menu .overflow-item')?.click()"); // 关菜单
+      // 不能点第一个菜单项来关菜单：那是「刷新」，会触发一次列表重拉，
+      // 后面的 7d 有时正好撞上重拉中的空菜单。Esc 才是菜单自己的关闭路径。
+      await evalJs(
+        "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))",
+      );
+      await waitFor("!document.querySelector('.overflow-menu')", 3000);
     }
   }
 
-  /* 7d) 模态与抽屉手势互斥：弹层打开时右滑不能把背后的频道抽屉拉出来。 */
-  await evalJs("document.querySelector('.overflow-btn')?.click()");
-  await waitFor("!!document.querySelector('.overflow-menu')", 5000);
-  await evalJs(`[...document.querySelectorAll('.overflow-menu .overflow-item')]
-    .find((b) => b.innerText.trim() === '设置')?.click()`);
-  check(
-    await waitFor("!!document.querySelector('.modal-mask:not([hidden]) .settings-modal')", 6000),
-    '模态守门：设置弹层已打开',
-  );
+  /* 7d) 模态与抽屉手势互斥：弹层打开时右滑不能把背后的频道抽屉拉出来。
+       只等 .overflow-menu 存在不够：7c 的刷新重拉期会留下空菜单壳，必须等菜单项真的渲染出来。 */
+  let modalOpened = false;
+  for (let attempt = 0; attempt < 2 && !modalOpened; attempt += 1) {
+    await evalJs(`(() => {
+      const b = [...document.querySelectorAll('.overflow-btn')].find((x) => x.getClientRects().length && !x.disabled);
+      b?.click();
+      return !!b;
+    })()`);
+    await waitFor("document.querySelectorAll('.overflow-menu .overflow-item').length > 0", 4000);
+    await evalJs(`[...document.querySelectorAll('.overflow-menu .overflow-item')]
+      .find((b) => b.innerText.trim() === '设置')?.click()`);
+    modalOpened = await waitFor(
+      "!!document.querySelector('.modal-mask:not([hidden]) .settings-modal')",
+      6000,
+    );
+  }
+  check(modalOpened, '模态守门：设置弹层已打开');
   await send('Input.dispatchTouchEvent', {
     type: 'touchStart',
     touchPoints: [{ x: 40, y: 600 }],

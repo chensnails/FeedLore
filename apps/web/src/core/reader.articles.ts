@@ -380,6 +380,19 @@ export async function restoreReaderArt(id: EntityId) {
   if (!el) return false;
   const saved = readSavedOffset(want);
   await expandReaderArt(want);
+  /* 深链可能来自 hashchange/popstate（真浏览器切 hash 不重载页面）：此时 switchView
+     的首屏 loadReader({reset:true}) 和这次展开会交错，落地后把 rdExpanded 整批清掉，
+     表现为地址栏指着一篇、列表里却只有收起的行。与 focusReaderArt 同一套兜底：
+     等加载与排队重置都安静后再确认一次，目标还在列表里就补展开。 */
+  for (let guard = 0; guard < 200 && (state.rdLoading || readerPendingReset); guard++) {
+    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 25));
+  }
+  if (
+    !state.rdExpanded.has(want) &&
+    state.rdEntries.some(/** @param {*} [e] */ (e) => String(e.id) === want)
+  ) {
+    await expandReaderArt(want);
+  }
   /* 同一篇刷新/重开：回到上次读到的位置（正文已落地、布局稳定后再对）。
    * 换了一篇时 saveReadPos 里根本没有它的记录，仍然走「进入即置顶」。 */
   if (saved != null && saved >= READ_POS_MIN) {
