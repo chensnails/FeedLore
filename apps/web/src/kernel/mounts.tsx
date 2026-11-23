@@ -25,7 +25,7 @@ import { ScrollTop } from '../ui/ScrollTop.tsx';
 import { ViewNav } from '../ui/ViewNav.tsx';
 import { CardsView } from '../views/CardsView.tsx';
 import { ReaderView } from '../views/ReaderView.tsx';
-import { get, provide } from './bridge.ts';
+import { get, provide, revoke } from './bridge.ts';
 import { MOUNT_POINTS } from './mount-points.ts';
 import { QueryProvider } from './QueryProvider.tsx';
 
@@ -145,7 +145,9 @@ function openAi() {
   return loadMount('aiRoot');
 }
 
-/** ⌘K 的懒加载引导：模块还没下载时先拉取，再把这次按键补发给组件自己的监听。
+/** ⌘K 的懒加载引导：模块还没下载时先拉取，并记下这次打开意图，由 CommandPalette
+ *  挂载后主动消费补开。不能靠合成 keydown 补发 —— 组件用 effect 注册监听，晚于
+ *  loadMount 的 microtask，首次按键会被丢掉（第二次才生效）。
  *  已加载后这里直接放行，开合与弹层优先级仍由 CommandPalette 单点判定，不会双触发。 */
 function installCmdkShortcut(): void {
   document.addEventListener(
@@ -154,14 +156,8 @@ function installCmdkShortcut(): void {
       if (!(ev.metaKey || ev.ctrlKey) || (ev.key !== 'k' && ev.key !== 'K')) return;
       if (loadedLazy.has('cmdkRoot') || loading.has('cmdkRoot')) return;
       ev.preventDefault();
-      const { metaKey, ctrlKey } = ev;
-      void loadMount('cmdkRoot')
-        .then(() => {
-          document.dispatchEvent(
-            new KeyboardEvent('keydown', { key: 'k', metaKey, ctrlKey, bubbles: true }),
-          );
-        })
-        .catch(() => undefined);
+      provide('cmdkPending', true);
+      void loadMount('cmdkRoot').catch(() => revoke('cmdkPending'));
     },
     { capture: true },
   );

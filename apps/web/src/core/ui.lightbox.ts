@@ -1,8 +1,11 @@
 /* 图片灯箱状态与键盘/点击监听。从 ui.ts 抽出（深度重组），ui.ts 通过 export * 保持外部链不变。 */
 
+import { lightboxDisplaySrc } from './lightboxSrc.ts';
 import { lockPageScroll, unlockPageScroll } from './state.ts';
 import type { LightboxState } from './types.ts';
 import { emitOverlays } from './util.ts';
+
+export { lightboxDisplaySrc } from './lightboxSrc.ts';
 
 /* ---------- 图片灯箱 ----------
  * index.html 与 style.css 里一直有 .lightbox，但之前没有任何 JS 接上它，
@@ -68,11 +71,10 @@ document.addEventListener(
     const img = ev.target.closest('.art-img');
     if (!img) return;
     // 同一篇正文内的图算一组：卡片详情 / 文章页正文 / 列表展开体。
-    // 用浏览器实际选中的 currentSrc（srcset 命中的 ?w=640/960 变体），别回退到
-    // src 里的 base URL —— 那是一个新缓存键，点开大图必然再回源一次。
+    // currentSrc 用来认「点的是哪张」，展示地址归一到大图档（见 lightboxDisplaySrc）。
     const pickSrc = (el: Element): string => {
       const node = el as HTMLImageElement;
-      return node.currentSrc || node.getAttribute('src') || '';
+      return lightboxDisplaySrc(node.currentSrc || node.getAttribute('src') || '');
     };
     const scope = img.closest('.art-body, .cd-body, .cd-modal, .art-item') || document;
     const list = Array.from(scope.querySelectorAll('.art-img'))

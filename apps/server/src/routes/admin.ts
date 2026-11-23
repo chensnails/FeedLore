@@ -473,12 +473,23 @@ export function adminAccountRoutes(db: Db | null, auth: AuthInstance | null) {
                 });
               }
               /* better-auth 的 10 秒 session cookieCache 里仍是旧的
-               * mustChangePassword=true：显式作废旧缓存，下一跳立即放行。 */
+               * mustChangePassword=true：显式作废旧缓存，下一跳立即放行。
+               * cookie 名前缀由 baseURL 决定（better-auth createCookieGetter：
+               * baseURL 以 https 开头时签发 __Secure- 前缀），生产 HTTPS 下必须
+               * 连前缀一起过期，否则删的是空名字、旧缓存再活 10 秒继续 403。
+               * 两个名字都过期（删不存在的 cookie 无害），append 避免覆盖别的 Set-Cookie。 */
               const secure = new URL(c.req.url).protocol === 'https:' ? '; Secure' : '';
-              c.header(
-                'Set-Cookie',
-                `better-auth.session_data=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secure}`,
-              );
+              for (const name of [
+                'better-auth.session_data',
+                '__Secure-better-auth.session_data',
+              ]) {
+                const nameSecure = name.startsWith('__Secure-') ? '; Secure' : secure;
+                c.header(
+                  'Set-Cookie',
+                  `${name}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${nameSecure}`,
+                  { append: true },
+                );
+              }
             } catch (e) {
               return apiError(c, 'E_PASSWORD_UPDATE_FAILED', {
                 detail: (e as Error)?.message ?? e,

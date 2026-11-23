@@ -13,7 +13,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { provide, revoke } from '../kernel/bridge.ts';
+import { get, provide, revoke } from '../kernel/bridge.ts';
 import { hasLayerAbove } from '../ui/layers.ts';
 import { NO_AUTOFILL_PROPS, useNoAutofillName } from '../ui/noAutofill.ts';
 import { buildCommands, type Command, cmdkFilter } from './commands.ts';
@@ -47,6 +47,15 @@ export function CommandPalette() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // 懒加载补开：入口在模块下载前记下了 cmdkPending，宿主挂载后消费一次。
+  // 合成 keydown 会早于本 effect 的监听注册而丢失，所以改为组件主动读取意图。
+  // StrictMode 会重复跑 effect：revoke 在前，开启状态在重复挂载之间保留。
+  useEffect(() => {
+    if (!get('cmdkPending')) return;
+    revoke('cmdkPending');
+    if (!hasLayerAbove('cmdk')) setOpen(true);
   }, []);
 
   // 开合状态同步给旧 app（命令面板开着时屏蔽页面级键盘交互）

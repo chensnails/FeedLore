@@ -390,17 +390,16 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
       if (l2) {
         l1Set(key, l2);
         const hit = inm === imageEtag(key, l2.stamp);
-        if (fresh || hit) return hit ? notModified(l2, key) : imageResponse(l2, key);
-
-        // 过期：先给旧图（用户不等待），后台静默刷新。
-        // 静默刷新也走去重表，避免「十个标签页同时打开过期图」把上游打十次。
-        if (!inFlight.has(key)) {
+        // 过期就该刷新，与 ETag 是否命中无关：immutable + 旧 ETag 会一直拿 304，
+        // 若在这里短路返回，stamp 永远不前进，源图换了也永远看不到。
+        // 过期时仍先把旧图发出去（用户不等待），刷新走后台去重表。
+        if (!fresh && !inFlight.has(key)) {
           const job = fetchAndCache(db, key, url, width)
             .catch(() => null)
             .finally(() => inFlight.delete(key));
           inFlight.set(key, job);
         }
-        return imageResponse(l2, key);
+        return hit ? notModified(l2, key) : imageResponse(l2, key);
       }
 
       // ③.5 失败负缓存：只在 L1/L2 都没有时拦。

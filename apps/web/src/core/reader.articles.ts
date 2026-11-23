@@ -157,11 +157,11 @@ function rememberReadingPos() {
       hi = mid - 1;
     }
   }
-  let pick: HTMLElement | null = at >= 0 ? (items[at] ?? null) : null;
-  // 二分只看顶边；个别条目高度很小且整条在视口上方时，再往后挪一条。
-  if (pick && pick.getBoundingClientRect().bottom <= mainTop) {
-    pick = at + 1 < items.length ? (items[at + 1] ?? null) : null;
-  }
+  const pick: HTMLElement | null = at >= 0 ? (items[at] ?? null) : null;
+  // 二分只看顶边：at 已是「顶边越过上沿的最后一条」，若它整条已滚出视口，
+  // 下一条的顶边必然还在 mainTop+2 之外 —— 视口里此刻没有任何一篇的正文。
+  // 旧补偿挪到 at+1 会算出负 offset 走 dropReadPos，把用户实际读到的位置清掉。
+  if (pick && pick.getBoundingClientRect().bottom <= mainTop) return;
   if (!pick) return;
   const id = pick.dataset.id;
   if (!id) return;

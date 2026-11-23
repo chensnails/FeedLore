@@ -16,6 +16,7 @@ import { type BridgeValue, bridgeDelete, bridgeGet, bridgeSet } from './store.ts
 
 export const BRIDGE = Object.freeze({
   cmdkOpen: '__cmdkOpen', // boolean，命令面板是否展开
+  cmdkPending: '__cmdkPending', // boolean，模块未挂载时记下的 ⌘K 意图，宿主挂载后补开
   confirmOpen: '__confirmOpen', // boolean，统一确认框是否展开
   settingsOpen: '__settingsOpen', // boolean，设置弹层是否展开
   settingsHost: '__settingsHost', // { open, setRoleFlag, setAdminFlag, ... }
