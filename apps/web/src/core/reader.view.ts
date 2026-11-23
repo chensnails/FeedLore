@@ -4,6 +4,7 @@
  * ============================================================ */
 
 import { EVENT, emit } from '../kernel/events.ts';
+import { rememberChannelDrawerScroll, restoreChannelDrawerScroll } from './channelDrawerScroll.ts';
 import { groupFeeds, loadFeeds, loadPage } from './feeds.ts';
 import { loadReader, readerFilterParams, renderReader } from './reader.flow.ts';
 import {
@@ -208,10 +209,15 @@ export function setReaderDrawer(open: boolean) {
   if (on) {
     lockPageScroll();
     readerDrawerLocked = true;
-    // 焦点跟着抽屉走：键盘用户打开后仍停在背景按钮上，Tab 会先走完屏外内容
+    // 恢复上次的频道列表位置，并让当前选中的频道可见；否则切一次频道回到顶
+    restoreChannelDrawerScroll('reader');
+    // 焦点跟着抽屉走：键盘用户打开后仍停在背景按钮上，Tab 会先走完屏外内容。
+    // preventScroll 必须有：否则浏览器把顶部关闭按钮滚进可视区，刚恢复的位置又没了
     const close = document.getElementById('readerSideClose');
-    if (close && close.focus) close.focus();
+    if (close && close.focus) close.focus({ preventScroll: true });
   } else {
+    // 收起前记住滚动位置：切频道也会走这条路径，下次打开接着看
+    rememberChannelDrawerScroll('reader');
     if (readerDrawerLocked) {
       readerDrawerLocked = false;
       unlockPageScroll();

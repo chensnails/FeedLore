@@ -7,6 +7,7 @@
 
 import { EVENT, emit } from '../kernel/events.ts';
 import { cachedGet, qk } from '../kernel/query.ts';
+import { rememberChannelDrawerScroll, restoreChannelDrawerScroll } from './channelDrawerScroll.ts';
 import {
   forgetViewScroll,
   layoutPref,
@@ -348,10 +349,14 @@ export function setCardsDrawer(open: boolean) {
   if (on) {
     lockPageScroll();
     cardsDrawerLocked = true;
-    // 焦点跟着抽屉走，别让键盘用户的 Tab 从屏外的频道栏开始
+    // 恢复频道列表位置并让选中频道可见，别让切频道变成「回到顶」
+    restoreChannelDrawerScroll('cards');
+    // preventScroll：否则顶部关闭按钮被滚进可视区，刚恢复的位置立刻丢失
     const close = document.getElementById('cardsSideClose');
-    if (close && close.focus) close.focus();
+    if (close && close.focus) close.focus({ preventScroll: true });
   } else {
+    // 收起前记住位置（切频道 / 分组都会走这里）
+    rememberChannelDrawerScroll('cards');
     if (cardsDrawerLocked) {
       cardsDrawerLocked = false;
       unlockPageScroll();

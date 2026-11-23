@@ -2452,6 +2452,46 @@ const withEFP = (el, fn) => {
       throw new Error('≤1080px 应把频道下拉收起（抽屉代替）');
   });
 
+  // 频道抽屉滚动位置记忆（两页共用）：切频道收起 → 再打开不该回到顶部。
+  // 两个真因各钉一条：焦点把顶部关闭按钮滚进可视区；列表没有 scrollTop 记忆。
+  t('频道抽屉：两页共用滚动位置记忆 + 选中项可见校正 + focus preventScroll', () => {
+    const root = path.join(__dirname, '..', '..');
+    const read = (p) => fs.readFileSync(path.join(root, p), 'utf8').replace(/\r\n/g, '\n');
+    const helper = read('src/core/channelDrawerScroll.ts');
+    const rv = read('src/core/reader.view.ts');
+    const fd = read('src/core/feeds.ts');
+
+    // 共用模块：关闭前 remember、打开后 restore；只认两个 variant，不许两页各写一份
+    if (!/export function rememberChannelDrawerScroll/.test(helper))
+      throw new Error('缺 rememberChannelDrawerScroll');
+    if (!/export function restoreChannelDrawerScroll/.test(helper))
+      throw new Error('缺 restoreChannelDrawerScroll');
+    if (!/export function revealScrollTop/.test(helper)) throw new Error('缺选中项可见纯函数');
+    if (/scrollIntoView\s*\(/.test(helper.replace(/\/\/.*$/gm, '')))
+      throw new Error('抽屉聚焦不能用 scrollIntoView（会连带滚祖先 / 抢手势）');
+
+    for (const [name, src, variant] of [
+      ['文章页', rv, 'reader'],
+      ['卡片页', fd, 'cards'],
+    ]) {
+      const open = src.indexOf('if (on) {');
+      const close = src.indexOf('} else {', open);
+      const openSeg = src.slice(open, close);
+      const closeSeg = src.slice(close, close + 500);
+      if (!openSeg.includes(`restoreChannelDrawerScroll('${variant}')`))
+        throw new Error(name + '打开抽屉未恢复滚动位置');
+      if (!closeSeg.includes(`rememberChannelDrawerScroll('${variant}')`))
+        throw new Error(name + '收起抽屉未记滚动位置');
+      if (!/focus\(\{ preventScroll: true \}\)/.test(openSeg))
+        throw new Error(name + '打开时焦点未 preventScroll：关闭按钮会被滚进可视区');
+    }
+
+    // 唯一实现：helper 里只认两个 side id，两页 core 不再各自读写 scrollTop
+    if ((helper.match(/sideId\s*=|'readerSide'|'cardsSide'/g) || []).length < 3)
+      throw new Error('抽屉容器 id 映射不完整');
+    if (!/getBoundingClientRect/.test(helper)) throw new Error('选中项可见校正需读几何');
+  });
+
   // 窄屏卡片页顶栏压成一行 + 排序收成图标按钮（v1.3.11）：
   // 两行顶栏在手机上白吃一张卡片的高度；「最新发布 ▾」这种带文字的方块在 360px 下把标题挤没。
   t('style.css + sprite：卡片页窄屏一行顶栏、排序图标模式', () => {

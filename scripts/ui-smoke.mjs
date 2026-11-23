@@ -341,8 +341,75 @@ try {
     `抽屉宽度合理（${sideRect?.w ?? 0}px，left ${sideRect?.left ?? '-'}）`,
   );
   await shot('ui-phone-drawer.png');
-  await evalJs("document.querySelector('#readerSideClose')?.click()");
-  check(await waitFor("!document.body.classList.contains('reader-drawer-open')"), '抽屉可收起');
+
+  /* 7a) 频道抽屉滚动位置：滚到中段 → 切频道（抽屉会收起）→ 再打开，位置不该回顶，
+       且当前选中的频道要完整落在可视区里。真因有两个：打开时焦点把顶部关闭按钮
+       滚进可视区；重绘时 scrollTop 被夹掉。这里用真浏览器的 scrollTop 断言两条都修好。 */
+  const drawerGeom = () =>
+    evalJs(`(() => {
+      const side = document.querySelector('#readerSide');
+      if (!side) return null;
+      const active = side.querySelector('.rd-ch.active');
+      const sr = side.getBoundingClientRect();
+      const ar = active ? active.getBoundingClientRect() : null;
+      return {
+        top: side.scrollTop,
+        max: Math.max(0, side.scrollHeight - side.clientHeight),
+        activeVisible: ar ? ar.top >= sr.top - 1 && ar.bottom <= sr.bottom + 1 : false,
+        activeName: active ? active.textContent.trim().slice(0, 12) : '',
+      };
+    })()`);
+  // 先滚到中段（真设 scrollTop），再点此刻可见的频道：这样「切换后保留位置」才有意义
+  const scrolled = await evalJs(`(() => {
+    const side = document.querySelector('#readerSide');
+    if (!side) return 0;
+    const max = Math.max(0, side.scrollHeight - side.clientHeight);
+    side.scrollTop = Math.min(max, Math.round(max * 0.7));
+    return side.scrollTop;
+  })()`);
+  const g0 = await drawerGeom();
+  if (g0 && g0.max > 60 && scrolled > 0) {
+    // 点当前可视区内的另一个频道（切换后 active 变化，但滚动位置应保留）
+    const picked = await evalJs(`(() => {
+      const side = document.querySelector('#readerSide');
+      const sr = side.getBoundingClientRect();
+      const rows = [...side.querySelectorAll('.rd-ch[data-feed]')];
+      const target = rows.find((b) => {
+        const r = b.getBoundingClientRect();
+        return r.top >= sr.top && r.bottom <= sr.bottom && !b.classList.contains('active');
+      });
+      if (!target) return false;
+      target.click();
+      return true;
+    })()`);
+    check(!!picked, '抽屉滚动：找到可视频道用于切换');
+    check(
+      await waitFor("!document.body.classList.contains('reader-drawer-open')"),
+      '抽屉滚动：切频道后收起（维持现状）',
+    );
+    // 模拟用户重新打开抽屉
+    await evalJs("document.querySelector('#readerMenuBtn')?.click()");
+    check(
+      await waitFor("document.body.classList.contains('reader-drawer-open')"),
+      '抽屉滚动：再打开',
+    );
+    await waitFor(
+      `(() => { const s = document.querySelector('#readerSide'); return !!s && s.scrollTop > 0; })()`,
+      4000,
+    );
+    const g1 = await drawerGeom();
+    check(!!g1 && g1.top > 0, `抽屉滚动：再打开保留位置（top ${g0?.top ?? 0} → ${g1?.top ?? 0}）`);
+    check(!!g1 && g1.activeVisible, `抽屉滚动：选中频道「${g1?.activeName ?? ''}」在可视区`);
+    await evalJs("document.querySelector('#readerSideClose')?.click()");
+    check(
+      await waitFor("!document.body.classList.contains('reader-drawer-open')"),
+      '抽屉滚动：收起复位',
+    );
+  } else {
+    console.log('  - 抽屉内容不足一屏，跳过滚动位置断言（数据依赖）');
+    await evalJs("document.querySelector('#readerSideClose')?.click()");
+    check(await waitFor("!document.body.classList.contains('reader-drawer-open')"), '抽屉可收起');
+  }
 
   /* 7b) 窄屏输入字号：iOS 聚焦 <16px 输入框会放大整页且缩不回。
        走真实⋮→设置，读设置面板文本输入的 computed font-size。 */
