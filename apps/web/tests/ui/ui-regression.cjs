@@ -10009,6 +10009,20 @@ const withEFP = (el, fn) => {
       c2.cardsCloseDrawer();
       if (doc.body.classList.contains('cards-drawer-open')) throw new Error('卡片页抽屉关不上');
 
+      // 任意模态打开时，右滑应完全让位，不能把弹窗背后的频道抽屉拉出来。
+      const modal = doc.createElement('div');
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      doc.body.appendChild(modal);
+      doc.body.classList.remove('cards-drawer-open');
+      touch('touchstart', 40, 400);
+      touch('touchmove', 110, 402);
+      touch('touchmove', 200, 404);
+      touch('touchend', 260, 404);
+      if (doc.body.classList.contains('cards-drawer-open'))
+        throw new Error('模态弹层打开时右滑仍拉出了抽屉');
+      modal.remove();
+
       // 焦点契约（收起态的 visibility:hidden 由 CSS 守）：打开进抽屉、关闭回开关
       const mkBtn = (id, parent) => {
         const el = doc.createElement('button');
@@ -10051,6 +10065,21 @@ const withEFP = (el, fn) => {
       if (doc.activeElement !== rClose) throw new Error('打开文章页抽屉应把焦点移到关闭键');
       c2.readerCloseDrawer();
       if (doc.activeElement !== rMenu) throw new Error('关闭文章页抽屉应把焦点还给「频道」开关');
+    });
+
+    t('抽屉手势：任意模态打开时让位（不误拉弹窗背后的频道抽屉）', () => {
+      const root = path.join(__dirname, '..', '..');
+      const src = fs
+        .readFileSync(path.join(root, 'src/core/drawer.ts'), 'utf8')
+        .replace(/\r\n/g, '\n');
+      const start = src.indexOf("'touchstart'");
+      const move = src.indexOf("'touchmove'");
+      const seg = start >= 0 && move > start ? src.slice(start, move) : '';
+      if (!/anyModalOpen\(\)/.test(seg)) throw new Error('touchstart 未调用 anyModalOpen 守卫');
+      if (!/aria-modal/.test(src)) throw new Error('模态判定不能只靠三个桥状态');
+      if (!/closest\('\[hidden\]'\)/.test(src)) throw new Error('未排除关闭态仍挂载的隐藏弹层');
+      if (/isOn\('settingsOpen'\)\s*\|\|\s*isOn\('cmdkOpen'\)\)\s*return/.test(seg))
+        throw new Error('旧的仅设置/命令面板守卫回潮');
     });
 
     // ---- 「再次点击同一频道 → 回到该频道最新信息」 ----

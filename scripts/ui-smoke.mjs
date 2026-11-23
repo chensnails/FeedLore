@@ -401,6 +401,38 @@ try {
     }
   }
 
+  /* 7d) 模态与抽屉手势互斥：弹层打开时右滑不能把背后的频道抽屉拉出来。 */
+  await evalJs("document.querySelector('.overflow-btn')?.click()");
+  await waitFor("!!document.querySelector('.overflow-menu')", 5000);
+  await evalJs(`[...document.querySelectorAll('.overflow-menu .overflow-item')]
+    .find((b) => b.innerText.trim() === '设置')?.click()`);
+  check(
+    await waitFor("!!document.querySelector('.modal-mask:not([hidden]) .settings-modal')", 6000),
+    '模态守门：设置弹层已打开',
+  );
+  await send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: 40, y: 600 }],
+  });
+  for (const x of [110, 180, 260]) {
+    await send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x, y: 602 }],
+    });
+  }
+  await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  check(
+    !(await evalJs(
+      "document.body.classList.contains('reader-drawer-open') || document.body.classList.contains('cards-drawer-open')",
+    )),
+    '模态守门：右滑没有拉出背后的频道抽屉',
+  );
+  await evalJs("document.querySelector('#settingsClose')?.click()");
+  check(
+    await waitFor("!document.querySelector('.modal-mask:not([hidden])')"),
+    '模态守门：设置弹层可关闭',
+  );
+
   await send('Emulation.setTouchEmulationEnabled', { enabled: false });
   await send('Emulation.clearDeviceMetricsOverride');
 

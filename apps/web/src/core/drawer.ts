@@ -11,7 +11,7 @@
  * 已打开时，向左横滑即可收回；竖滑交给页面自己滚动，互不干扰。识别区比旧版 60px 左边缘宽，
  * 单手更易够到；同时做了一组冲突规避：
  *   - 宽屏并排布局（>720px）/ 其它页面没有抽屉，不拦截（避免误锁页面滚动）；
- *   - 设置 / 命令面板开着时不拦截；
+ *   - 设置 / 命令面板 / 任意模态弹层开着时不拦截；
  *   - 触摸点在可横向滚动的容器内（如 <pre> 代码块）时，让容器自己滚，不抢抽屉手势；
  *   - 关闭态下的左滑直接放弃，避免把抽屉反向误拉出。
  * ============================================================ */
@@ -47,6 +47,14 @@ function target(): DrawerTarget | null {
 }
 
 const SIDE_W = () => Math.min(272, window.innerWidth * 0.84);
+
+/** 任意模态是否已打开：桥状态是快路径，语义 DOM 兜住 CardDetail / DetailSheet / Dropdown / Lightbox。
+ *  SettingsModal / ConfirmDialog 关闭后 DOM 仍在、hidden 挂在祖先上，必须查 closest('[hidden]')。 */
+const MODAL_SEL = '[role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]';
+function anyModalOpen(): boolean {
+  if (isOn('settingsOpen') || isOn('cmdkOpen') || isOn('confirmOpen')) return true;
+  return Array.from(document.querySelectorAll(MODAL_SEL)).some((el) => !el.closest('[hidden]'));
+}
 
 /** target() 描述当前页面用哪套抽屉：两侧面板 id、body 上的开合类名、开合 setter。 */
 interface DrawerTarget {
@@ -109,7 +117,11 @@ document.addEventListener(
       active = null;
       return;
     }
-    if (isOn('settingsOpen') || isOn('cmdkOpen')) return;
+    if (anyModalOpen()) {
+      dragging = false;
+      active = null;
+      return;
+    }
     const open = document.body.classList.contains(cur.cls);
     // 关闭态：仅在左 2/3 区域内可起手（右滑拉出）；其余区域交给内容本身
     if (!open && t.clientX > OPEN_ZONE()) {
