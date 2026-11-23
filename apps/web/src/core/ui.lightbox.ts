@@ -67,12 +67,18 @@ document.addEventListener(
     if (!(ev.target instanceof Element)) return;
     const img = ev.target.closest('.art-img');
     if (!img) return;
-    // 同一篇正文内的图算一组：卡片详情 / 文章页正文 / 列表展开体
+    // 同一篇正文内的图算一组：卡片详情 / 文章页正文 / 列表展开体。
+    // 用浏览器实际选中的 currentSrc（srcset 命中的 ?w=640/960 变体），别回退到
+    // src 里的 base URL —— 那是一个新缓存键，点开大图必然再回源一次。
+    const pickSrc = (el: Element): string => {
+      const node = el as HTMLImageElement;
+      return node.currentSrc || node.getAttribute('src') || '';
+    };
     const scope = img.closest('.art-body, .cd-body, .cd-modal, .art-item') || document;
     const list = Array.from(scope.querySelectorAll('.art-img'))
-      .map((el) => el.getAttribute('src'))
+      .map(pickSrc)
       .filter((s): s is string => !!s);
-    const src = img.getAttribute('src');
+    const src = pickSrc(img);
     if (!src) return;
     openLightbox(src, { list, opener: img as HTMLElement });
   },

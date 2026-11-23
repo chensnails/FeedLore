@@ -19,7 +19,6 @@
 import React, { type ComponentType, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
-import { CommandPalette } from '../cmdk/CommandPalette.tsx';
 import { ErrorBoundary } from '../ui/ErrorBoundary.tsx';
 import { Overlays } from '../ui/Overlays.tsx';
 import { ScrollTop } from '../ui/ScrollTop.tsx';
@@ -31,7 +30,6 @@ import { MOUNT_POINTS } from './mount-points.ts';
 import { QueryProvider } from './QueryProvider.tsx';
 
 const COMPONENTS = {
-  CommandPalette,
   CardsView,
   ReaderView,
   Overlays,
@@ -41,6 +39,7 @@ const COMPONENTS = {
 const LOADERS = {
   SettingsModal: () => import('../settings/SettingsModal'),
   AiView: () => import('../ai/AiView'),
+  CommandPalette: () => import('../cmdk/CommandPalette'),
 };
 
 /** 完整装配描述（数据 + 组件引用），供诊断与测试使用。 */
@@ -146,6 +145,28 @@ function openAi() {
   return loadMount('aiRoot');
 }
 
+/** ⌘K 的懒加载引导：模块还没下载时先拉取，再把这次按键补发给组件自己的监听。
+ *  已加载后这里直接放行，开合与弹层优先级仍由 CommandPalette 单点判定，不会双触发。 */
+function installCmdkShortcut(): void {
+  document.addEventListener(
+    'keydown',
+    (ev) => {
+      if (!(ev.metaKey || ev.ctrlKey) || (ev.key !== 'k' && ev.key !== 'K')) return;
+      if (loadedLazy.has('cmdkRoot') || loading.has('cmdkRoot')) return;
+      ev.preventDefault();
+      const { metaKey, ctrlKey } = ev;
+      void loadMount('cmdkRoot')
+        .then(() => {
+          document.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'k', metaKey, ctrlKey, bubbles: true }),
+          );
+        })
+        .catch(() => undefined);
+    },
+    { capture: true },
+  );
+}
+
 let rootInstance: Root | null = null;
 
 /** 唯一的启动入口：建一个 root 挂全部装配项，并把两个按需加载器登记到能力桥。 */
@@ -159,6 +180,7 @@ export function mountAll() {
     host.id = 'appRoot';
     document.body.appendChild(host);
   }
+  installCmdkShortcut();
   rootInstance = createRoot(host);
   rootInstance.render(
     <React.StrictMode>

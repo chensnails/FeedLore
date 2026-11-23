@@ -2324,6 +2324,32 @@ const withEFP = (el, fn) => {
     if (!m || m[1].indexOf('--bg:') < 0 || m[1].indexOf('background: var(--bg)') < 0)
       throw new Error('骨架缺主题变量/背景');
   });
+  t('首屏优化：内联骨架去注释、图片档位用白名单、灯箱复用已加载变体', () => {
+    const root = path.join(__dirname, '..', '..');
+    const vite = fs.readFileSync(path.join(root, 'vite.config.ts'), 'utf8');
+    if (vite.indexOf('[\\s\\S]*?') < 0 || vite.indexOf('/*') < 0)
+      throw new Error('内联骨架未去注释（20KB 里 22% 是维护说明）');
+    const thumb = fs.readFileSync(path.join(root, 'src', 'views', 'ReaderView.parts.tsx'), 'utf8');
+    if (!/widthSrcSet\(thumb, \[320, 640\]\)/.test(thumb) || /\[200, 400\]/.test(thumb))
+      throw new Error('缩略图不在服务端白名单档位上，会拉默认大图');
+    const ex = fs.readFileSync(path.join(root, 'src', 'ai', 'ExplorePane.tsx'), 'utf8');
+    if (!/widthVariant\(hit\.image, 320\)/.test(ex)) throw new Error('探索缩略图档位未归位');
+    const lb = fs.readFileSync(path.join(root, 'src', 'core', 'ui.lightbox.ts'), 'utf8');
+    if (!/currentSrc/.test(lb)) throw new Error('灯箱没有复用浏览器已选中的图片变体');
+  });
+  t('首屏优化：路由零外部依赖、命令面板按需加载', () => {
+    const root = path.join(__dirname, '..', '..');
+    const router = fs.readFileSync(path.join(root, 'src', 'kernel', 'router.ts'), 'utf8');
+    if (/from ['"]react-router-dom['"]/.test(router))
+      throw new Error('路由表不应再拉整个 react-router');
+    if (!/matchSegments/.test(router)) throw new Error('零依赖匹配器缺失');
+    const points = fs.readFileSync(path.join(root, 'src', 'kernel', 'mount-points.ts'), 'utf8');
+    if (!/id: 'cmdkRoot', lazy: true/.test(points)) throw new Error('命令面板未标记按需加载');
+    const mounts = fs.readFileSync(path.join(root, 'src', 'kernel', 'mounts.tsx'), 'utf8');
+    if (!/CommandPalette: \(\) => import\('\.\.\/cmdk\/CommandPalette'\)/.test(mounts))
+      throw new Error('命令面板懒加载器缺失');
+    if (!/installCmdkShortcut/.test(mounts)) throw new Error('⌘K 引导加载缺失');
+  });
   t('index.html：React 挂载点齐全', () => {
     // v1.6.0：全局顶栏并入各视图后不再有独立的 <header class="topbar"> 顶栏元素
     for (const id of [
@@ -12457,7 +12483,8 @@ const withEFP = (el, fn) => {
       if (!ids.includes(id)) throw new Error('缺挂载点 ' + id);
     }
     const lazy = k.MOUNT_POINTS.filter((p) => p.lazy);
-    if (lazy.length !== 2) throw new Error('按需加载项应为 2 个，实际 ' + lazy.length);
+    if (lazy.length !== 3) throw new Error('按需加载项应为 3 个，实际 ' + lazy.length);
+    if (!lazy.some((p) => p.id === 'cmdkRoot')) throw new Error('命令面板应按需加载，不能进首屏包');
     const main = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'main.tsx'), 'utf8');
     if (/createRoot\s*\(/.test(main))
       throw new Error('入口不应再直接 createRoot（装配已收口到 kernel/mounts.jsx）');

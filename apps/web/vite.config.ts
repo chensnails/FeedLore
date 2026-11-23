@@ -11,10 +11,11 @@ import { defineConfig, type Plugin } from 'vite';
  * 内联没改，首屏就会先闪一个旧颜色。同源抽取让两者永远一致，全量 CSS 到达时
  * 覆盖同值规则，用户看不到跳变。
  *
- * 骨架约 20KB，几乎全是三套主题 × 各强调色的 CSS 变量（392 行变量 + 1 条
- * `.wrap` 规则）—— 这是「首帧就按 localStorage 应用主题、不闪白」的必要成本，
- * 不是可以随手删的冗余。login.html / change-password.html **不注入**：它们是独立
- * 文档，自带 login.css 里的全套主题变量，注入整站骨架纯属重复下载。
+ * 骨架是三套主题 × 各强调色的 CSS 变量 + 基础排版 + `.wrap` 规则 —— 这是
+ * 「首帧就按 localStorage 应用主题、不闪白」的必要成本，不是可以随手删的冗余。
+ * 构建时去掉注释与连续空行（声明一字不动），把内联体积压下来。
+ * login.html / change-password.html **不注入**：它们是独立文档，自带 login.css
+ * 里的全套主题变量，注入整站骨架纯属重复下载。
  */
 function inlineCriticalShell(): Plugin {
   return {
@@ -33,7 +34,13 @@ function inlineCriticalShell(): Plugin {
             );
           const shell = m?.[1];
           if (!shell) return html;
-          const block = `<style id="criticalShell">\n${shell.trim()}\n</style>`;
+          // 骨架里的注释（主题说明、断点索引）是给维护者看的，浏览器不需要；
+          // 只去注释与多余空行，声明保持原样，首帧视觉完全不变。
+          const compact = shell
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+          const block = `<style id="criticalShell">\n${compact}\n</style>`;
           return html.replace('</head>', `  ${block}\n  </head>`);
         } catch {
           return html;

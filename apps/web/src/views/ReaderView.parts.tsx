@@ -142,7 +142,7 @@ export function ArtItemInner({
             <span className="art-thumb">
               <img
                 src={thumb}
-                srcSet={widthSrcSet(thumb, [200, 400])}
+                srcSet={widthSrcSet(thumb, [320, 640])}
                 sizes="104px"
                 alt=""
                 loading="lazy"

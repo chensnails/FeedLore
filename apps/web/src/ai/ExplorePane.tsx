@@ -90,7 +90,7 @@ function RefCard({ ref: hit }: { ref: ExploreRef }) {
       <img
         className="ex-ref-thumb"
         loading="lazy"
-        src={widthVariant(hit.image, 160) || hit.image}
+        src={widthVariant(hit.image, 320) || hit.image}
         alt=""
         onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
         onError={() => {

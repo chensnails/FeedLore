@@ -27,6 +27,7 @@
  *    那会变成同源 XSS）。
  */
 
+import dns from 'node:dns/promises';
 import type { AuthInstance } from '@feedlore/auth';
 import { img as imgSpec } from '@feedlore/contract';
 import { type Db, imageCache } from '@feedlore/db';
@@ -67,8 +68,30 @@ const ttlMs = (): number => Math.max(1, sourceSnapshot()?.imgTtlDays ?? 7) * 86_
 /** 库内保留天数：更老的直接删（由 `pruneImageCache` 在调度 tick 里清）。 */
 export const imgKeepDays = (): number => Math.max(1, sourceSnapshot()?.imgKeepDays ?? 90);
 
-/** 浏览器缓存时长：一天。图片内容基本不变，本地再多存也没坏处。 */
-const BROWSER_CACHE = 'public, max-age=86400';
+/** 浏览器缓存时长：一天（内容按 key + 刷新时间戳打 ETag，过期后可 304 复用）。 */
+const BROWSER_CACHE = 'public, max-age=86400, immutable';
+
+/** 出网预检的 DNS 结果短缓存：一屏几十张图不必每张都解析一次。
+ *  只用于路由层的第一次出网判定；safeFetch 仍逐跳重新 assertPublicHost，
+ *  「每跳重校验 / 防 DNS rebinding」的安全语义不变。 */
+const LOOKUP_TTL_MS = 30_000;
+const LOOKUP_MAX = 512;
+const lookupCache = new Map<
+  string,
+  { at: number; rows: Array<{ address: string; family: number }> }
+>();
+
+export async function cachedImageLookup(
+  host: string,
+  opts: { all: true },
+): Promise<Array<{ address: string; family: number }>> {
+  const hit = lookupCache.get(host);
+  if (hit && Date.now() - hit.at < LOOKUP_TTL_MS) return hit.rows;
+  const rows = (await dns.lookup(host, opts)) as Array<{ address: string; family: number }>;
+  if (lookupCache.size >= LOOKUP_MAX) lookupCache.clear();
+  lookupCache.set(host, { at: Date.now(), rows });
+  return rows;
+}
 
 const UA = `Mozilla/5.0 (compatible; FeedLore/${APP_VERSION})`;
 
@@ -79,6 +102,8 @@ const UA = `Mozilla/5.0 (compatible; FeedLore/${APP_VERSION})`;
 interface Cached {
   type: string;
   buf: Buffer;
+  /** 本次内容落缓存的时间：刷新后 ETag 随之变化，浏览器不会一直拿旧图。 */
+  stamp: number;
 }
 
 /** L1：内存。重启即失，只为扛住「同一张图一屏出现 5 次」这种热路径。 */
@@ -109,6 +134,7 @@ const inFlight = new Map<string, Promise<Cached | null>>();
 export function resetImageCache(): void {
   l1.clear();
   inFlight.clear();
+  lookupCache.clear();
   resetNegativeCache();
 }
 
@@ -209,7 +235,9 @@ async function fetchAndCache(
       maxDim,
       quality: snap?.imgQuality,
     });
-    const out: Cached = comp ? { type: comp.contentType, buf: comp.buf } : { type, buf: raw };
+    const out: Cached = comp
+      ? { type: comp.contentType, buf: comp.buf, stamp: Date.now() }
+      : { type, buf: raw, stamp: Date.now() };
 
     if (db) {
       try {
@@ -256,24 +284,37 @@ async function fetchAndCache(
  * 响应
  * ==========================================================================*/
 
-function imageResponse(v: Cached): Response {
+/** 强校验 ETag：缓存键（URL+档位的 sha256）+ 本次内容时间戳。
+ *  刷新后时间戳变化，If-None-Match 不会把旧图当成新图永远 304。 */
+export function imageEtag(key: string, stamp: number): string {
+  return `"${key}-${stamp.toString(36)}"`;
+}
+
+function imageHeaders(v: Cached, key: string): Headers {
+  return new Headers({
+    ETag: imageEtag(key, v.stamp),
+    'Cache-Control': BROWSER_CACHE,
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    // 图片本身不需要任何站点权限
+    'Referrer-Policy': 'no-referrer',
+  });
+}
+
+function imageResponse(v: Cached, key: string): Response {
   // 必须切出独立 ArrayBuffer：Buffer 常是池化切片，直接给 buffer 会带出无关字节
   const ab = v.buf.buffer.slice(
     v.buf.byteOffset,
     v.buf.byteOffset + v.buf.byteLength,
   ) as ArrayBuffer;
-  return new Response(ab, {
-    status: 200,
-    headers: {
-      'Content-Type': v.type,
-      'Content-Length': String(v.buf.length),
-      'Cache-Control': BROWSER_CACHE,
-      'X-Content-Type-Options': 'nosniff',
-      'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
-      // 图片本身不需要任何站点权限
-      'Referrer-Policy': 'no-referrer',
-    },
-  });
+  const headers = imageHeaders(v, key);
+  headers.set('Content-Type', v.type);
+  headers.set('Content-Length', String(v.buf.length));
+  return new Response(ab, { status: 200, headers });
+}
+
+function notModified(v: Cached, key: string): Response {
+  return new Response(null, { status: 304, headers: imageHeaders(v, key) });
 }
 
 /* ============================================================================
@@ -305,14 +346,17 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
         throw new ApiException('E_IMAGE_DATA_URI_REJECTED');
       }
 
-      // ① 出网判定（含 DNS 解析，内网/回环直接 400）
-      const info = await assertPublicHost(cleaned);
+      // ① 出网判定（含 DNS 解析，内网/回环直接 400）。
+      // 预检用 30s DNS 短缓存省掉「每张图一次解析」；真正回源的 safeFetch 不受影响。
+      const info = await assertPublicHost(cleaned, { lookup: cachedImageLookup });
       const url = info.url;
       const key = imageVariantKey(url, width);
+      const inm = c.req.header('If-None-Match');
 
       // ② L1
       const hot = l1Get(key);
-      if (hot) return imageResponse(hot);
+      if (hot)
+        return inm === imageEtag(key, hot.stamp) ? notModified(hot, key) : imageResponse(hot, key);
 
       // 负缓存按**源图**记、不带宽度：上游 404 与要哪个档位无关，而浏览器首屏请求的是
       // `?w=320` 变体、前端重试的 `?r=1` 又不带 w —— 按宽度记的话重试必然穿透。
@@ -333,8 +377,9 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
             .where(eq(imageCache.key, key))
             .limit(1);
           if (row) {
-            l2 = { type: row.contentType, buf: row.data };
-            fresh = Date.now() - new Date(row.createdAt).getTime() < ttlMs();
+            const stamp = new Date(row.createdAt).getTime();
+            l2 = { type: row.contentType, buf: row.data, stamp };
+            fresh = Date.now() - stamp < ttlMs();
           }
         } catch (e) {
           // 库抖一下不该让图片全挂：当作未命中，直接回源
@@ -344,7 +389,8 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
 
       if (l2) {
         l1Set(key, l2);
-        if (fresh) return imageResponse(l2);
+        const hit = inm === imageEtag(key, l2.stamp);
+        if (fresh || hit) return hit ? notModified(l2, key) : imageResponse(l2, key);
 
         // 过期：先给旧图（用户不等待），后台静默刷新。
         // 静默刷新也走去重表，避免「十个标签页同时打开过期图」把上游打十次。
@@ -354,7 +400,7 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
             .finally(() => inFlight.delete(key));
           inFlight.set(key, job);
         }
-        return imageResponse(l2);
+        return imageResponse(l2, key);
       }
 
       // ③.5 失败负缓存：只在 L1/L2 都没有时拦。
@@ -384,7 +430,7 @@ export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
       }
       if (!out) throw new ApiException('E_IMAGE_FETCH_FAILED');
 
-      return imageResponse(out);
+      return inm === imageEtag(key, out.stamp) ? notModified(out, key) : imageResponse(out, key);
     },
   );
 }

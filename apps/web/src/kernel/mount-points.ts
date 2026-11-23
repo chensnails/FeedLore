@@ -15,7 +15,8 @@ export interface MountPoint {
 }
 
 export const MOUNT_POINTS: readonly MountPoint[] = Object.freeze([
-  { id: 'cmdkRoot', component: 'CommandPalette' },
+  /* 命令面板只有按 ⌘K 才会用：与设置/AI 一样按需下载，入口不再背这一块。 */
+  { id: 'cmdkRoot', lazy: true, exportName: 'CommandPalette' },
   { id: 'cardsRoot', component: 'CardsView' },
   { id: 'readerRoot', component: 'ReaderView' },
   { id: 'overlaysRoot', component: 'Overlays' },
