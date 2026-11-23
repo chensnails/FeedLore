@@ -14,7 +14,9 @@ import { isImgFailed, markImgFailed } from '../imgFail.ts';
 import { widthSrcSet, widthVariant } from '../imgSrc.ts';
 import { BrandLogo } from '../ui/BrandLogo.tsx';
 import { CopyButton, copyableLinks, OpenButton } from '../ui/EntryActions.tsx';
+import { HighlightText } from '../ui/HighlightText.tsx';
 import { Icon } from '../ui/Icon.tsx';
+import { SavedSearches } from '../ui/SavedSearches.tsx';
 import { CardDetail } from './CardDetail.tsx';
 import type { EmptyAction } from './CardsView.hooks.ts';
 
@@ -88,12 +90,15 @@ export function LazyImg({
 export interface CardTileProps {
   e: CardData;
   onOpen: (e: CardData) => void;
+  /** 搜索词只用于切文本高亮；卡片的 aria-label / title 保持原文。 */
+  query?: string;
   priority?: boolean;
 }
 
 export interface RowProps {
   e: CardData;
   onOpen: (e: CardData) => void;
+  query?: string;
 }
 
 /** 点卡片空白处打开详情；卡内的按钮 / 链接 / 标签有自己的动作，不劫持它们。 */
@@ -107,7 +112,7 @@ function openFromClick(
   onOpen(e);
 }
 
-export function CardInner({ e, onOpen, priority }: CardTileProps) {
+export function CardInner({ e, onOpen, query, priority }: CardTileProps) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const hasImg = !!e.image;
@@ -179,10 +184,14 @@ export function CardInner({ e, onOpen, priority }: CardTileProps) {
             aria-label={(unread ? '未读，' : '') + (e.name || '卡片')}
             onClick={() => onOpen(e)}
           >
-            {e.name}
+            <HighlightText text={e.name} query={query} />
           </button>
         </h3>
-        {e.desc ? <p className="card-desc">{e.desc}</p> : null}
+        {e.desc ? (
+          <p className="card-desc">
+            <HighlightText text={e.desc} query={query} />
+          </p>
+        ) : null}
         {showMedia || !hasActions ? null : (
           <div className="card-foot">
             {copyBtn}
@@ -194,7 +203,7 @@ export function CardInner({ e, onOpen, priority }: CardTileProps) {
   );
 }
 
-export function RowInner({ e, onOpen }: RowProps) {
+export function RowInner({ e, onOpen, query }: RowProps) {
   const s = S();
   const srcName = e.feedName ? (s.shortFeedName ? s.shortFeedName(e.feedName) : e.feedName) : '';
   const fmtDate = s.fmtDate || ((d: unknown) => (d ? String(d) : ''));
@@ -230,7 +239,7 @@ export function RowInner({ e, onOpen }: RowProps) {
               aria-label={(unread ? '未读，' : '') + (e.name || '卡片')}
               onClick={() => onOpen(e)}
             >
-              {e.name}
+              <HighlightText text={e.name} query={query} />
             </button>
           </h3>
           <span className="row-facts">
@@ -238,7 +247,11 @@ export function RowInner({ e, onOpen }: RowProps) {
             <span className="row-date">{fmtDate(e.date)}</span>
           </span>
         </div>
-        {e.desc ? <p className="row-desc">{e.desc}</p> : null}
+        {e.desc ? (
+          <p className="row-desc">
+            <HighlightText text={e.desc} query={query} />
+          </p>
+        ) : null}
         {metaHas ? (
           <div className="row-tags">
             <span className="src-pill" title={e.feedName}>
@@ -360,6 +373,7 @@ export function CardsMain({
   onAiTag,
   onOpenCard,
   onSearchClear,
+  onApplySearch,
 }: {
   s: ReturnType<typeof S>;
   st: AppState;
@@ -382,6 +396,7 @@ export function CardsMain({
   onAiTag: (t: string) => void;
   onOpenCard: (e: CardData) => void;
   onSearchClear: () => void;
+  onApplySearch: (q: string) => void;
 }) {
   let emptyMsg: string | null = null;
   let emptyAction: EmptyAction | null = null;
@@ -442,6 +457,9 @@ export function CardsMain({
               「{st.q}」找到 {st.total} 条结果
             </span>
           ) : null}
+          {st.q && st.sort === 'relevance' ? (
+            <span className="count-chip">按相关度排序</span>
+          ) : null}
           {st.tag ? (
             <span className="count-chip">
               标签：{st.tag}
@@ -478,6 +496,7 @@ export function CardsMain({
           ) : null}
         </div>
       ) : null}
+      <SavedSearches view="cards" q={st.q || ''} onApply={onApplySearch} />
       {showSkeleton ? (
         <div id="skeleton" className={'grid' + (view === 'list' ? ' list-mode' : '')}>
           {skeletons}
@@ -489,9 +508,15 @@ export function CardsMain({
           {list.map(
             /** @param {*} [e] @param {*} [i] */ (e, i) =>
               view === 'list' ? (
-                <RowComp e={e} onOpen={onOpenCard} key={e.id} />
+                <RowComp e={e} onOpen={onOpenCard} query={st.q || ''} key={e.id} />
               ) : (
-                <CardComp e={e} onOpen={onOpenCard} priority={i < 6} key={e.id} />
+                <CardComp
+                  e={e}
+                  onOpen={onOpenCard}
+                  query={st.q || ''}
+                  priority={i < 6}
+                  key={e.id}
+                />
               ),
           )}
         </div>

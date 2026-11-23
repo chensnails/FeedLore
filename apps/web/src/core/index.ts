@@ -131,6 +131,10 @@ export const core = {
     S.state.q = v;
     S.state.tag = null;
     S.state.aiTag = null;
+    /* 搜索默认按相关度：标题 > 标签 > 摘要 > 正文，避免「正文中偶然而命中」排在标题命中前面。
+     * 走 setLayout 而不是只给本次请求塞参数，是为了让排序菜单如实显示当前档位，
+     * 用户也能随时改回最新 / 最早 / 名称；没词时 relevance 档等价于最新。 */
+    if (v && S.state.sort !== 'relevance') S.setLayout('sort', 'relevance');
     const p = F.loadPage(true);
     S.scrollActiveTop('auto');
     return p;

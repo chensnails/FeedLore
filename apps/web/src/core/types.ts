@@ -37,7 +37,7 @@ export type {
 export type ViewTab = 'reader' | 'cards' | 'ai';
 export type ThemeMode = 'auto' | 'light' | 'dark' | 'github';
 export type ViewMode = 'grid' | 'list';
-export type SortMode = 'new' | 'old' | 'name';
+export type SortMode = 'new' | 'old' | 'name' | 'relevance';
 export type ReaderScope = 'all' | 'unread' | 'favorite';
 export type WatchFilter = 'watch' | 'block';
 

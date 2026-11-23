@@ -55,6 +55,7 @@ export function CardsView() {
     onSearchInput,
     onSearchKey,
     onSearchClear,
+    onApplySearch,
     toggleSearch,
     onOpenCard,
     onTag,
@@ -293,6 +294,7 @@ export function CardsView() {
           onAiTag={onAiTag}
           onOpenCard={onOpenCard}
           onSearchClear={onSearchClear}
+          onApplySearch={onApplySearch}
         />
         <footer className="foot">笺川 · FeedLore</footer>
       </main>

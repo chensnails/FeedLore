@@ -14,6 +14,7 @@ import { ArtActions } from '../ui/EntryActions.tsx';
 import { EntryAiBar } from '../ui/EntryAiBar.tsx';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.ts';
 import { OverflowMenu } from '../ui/OverflowMenu.tsx';
+import { SavedSearches } from '../ui/SavedSearches.tsx';
 import { ViewNav } from '../ui/ViewNav.tsx';
 import type { ChannelGroup } from './ChannelList.tsx';
 import { ChannelList } from './ChannelList.tsx';
@@ -262,12 +263,21 @@ export function ReaderView() {
             onClearAiTag={() => s.readerSetTag('', true)}
           />
         ) : null}
+        <SavedSearches
+          view="reader"
+          q={q}
+          onApply={(word) => {
+            const c = S();
+            if (c.readerSearch) c.readerSearch(word);
+          }}
+        />
         <div className="reader-list" id="readerList">
           {entries.map(
             /** @param {*} [e] */ (e) => (
               <ArtItem
                 key={e.id}
                 e={e}
+                query={q}
                 expanded={expanded.has(e.id)}
                 full={bodyMap.get(e.id)}
                 bodyErr={bodyErrSet.has(e.id)}

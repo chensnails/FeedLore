@@ -94,3 +94,56 @@
   box-shadow: inset 0 0 0 1px var(--hig-separator), 0 0 0 2px var(--hig-tint);
 }
 
+
+/* 保存的搜索词：与计数 chip 同族的小胶囊，两页计数行之后共用一份。
+   删除键给 26px 命中区（列表里的次级按钮，不占 44px 主操作预算），
+   词本身限宽省略，长词不会把「保存此搜索」挤出去。 */
+.saved-searches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.saved-search-add,
+.saved-search-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hig-separator);
+  background: var(--hig-fill-2);
+  font-size: var(--fs-2xs);
+  font-weight: 500;
+}
+.saved-search-add {
+  gap: 4px;
+  padding: 0 10px;
+  color: var(--hig-tint-text);
+  cursor: pointer;
+}
+.saved-search-add .ico { width: 14px; height: 14px; }
+.saved-search-chip { overflow: hidden; border-color: var(--hig-separator-strong); }
+.saved-search-apply {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 2px 0 10px;
+  border: 0;
+  background: none;
+  color: var(--hig-label);
+  cursor: pointer;
+}
+.saved-search-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.saved-search-add:active, .saved-search-chip:active { transform: scale(var(--hig-press-scale)); }

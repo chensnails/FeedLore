@@ -250,10 +250,10 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
       .catch(undefined)
       .describe('all = 全部频道（默认）；cards = 仅开启卡片页的频道'),
     sort: z
-      .enum(['new', 'old', 'name'])
+      .enum(['new', 'old', 'name', 'relevance'])
       .optional()
       .catch(undefined)
-      .describe('默认 new（发布时间倒序）'),
+      .describe('默认 new（发布时间倒序）；relevance = 搜索词相关度优先'),
     offset: looseInt(0, 100_000, 0).optional(),
     limit: looseInt(1, 50, 20)
       .optional()

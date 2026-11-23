@@ -432,7 +432,9 @@ export const entriesQuery = z.object({
   /* name = 按标题排。契约里必须有这一档：LEGACY 的 layout.sort 就写着 new/old/name，
    * 只让服务端支持前两档的话，存了 name 的账号会静默退回「新→旧」——
    * 设置里显示「按名称」而列表按时间排，是最难查的那类不一致。 */
-  sort: z.enum(['new', 'old', 'name']).optional(),
+  /* relevance = 搜索相关度：标题 > 标签 > 摘要 > 正文，再按发布时间 / id 兜底。
+   * 无 q 时各条同分，退化成「新→旧」，所以老账号存了这一档也不会得到乱序列表。 */
+  sort: z.enum(['new', 'old', 'name', 'relevance']).optional(),
 });
 export type EntriesQuery = z.infer<typeof entriesQuery>;
 

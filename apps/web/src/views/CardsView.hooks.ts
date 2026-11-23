@@ -134,6 +134,16 @@ export function useCardsVm() {
     if (s.cardsSearch) s.cardsSearch('');
     if (searchOpen && searchRef.current) searchRef.current.focus();
   };
+  /* 从保存的搜索 chip 回用：输入框和 st.q 一起对齐，避免框里是旧词、列表是新词。 */
+  const onApplySearch = useCallback(
+    (word: string) => {
+      const v = String(word ?? '').trim();
+      setQDraft(v);
+      clearTimeout(debounceRef.current);
+      if (s.cardsSearch) s.cardsSearch(v);
+    },
+    [s],
+  );
   const toggleSearch = () => {
     if (!searchOpen) {
       setSearchOpen(true);
@@ -228,6 +238,7 @@ export function useCardsVm() {
     onSearchInput,
     onSearchKey,
     onSearchClear,
+    onApplySearch,
     toggleSearch,
     onOpenCard,
     onTag,

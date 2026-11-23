@@ -29,7 +29,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { ApiException, apiError } from '../lib/apiError';
 import { toCard, toEntryDetail } from '../lib/dto';
-import { CARD_COLUMNS, entryConditions, parseFeedIds } from '../lib/entriesQuery';
+import { CARD_COLUMNS, entryConditions, parseFeedIds, relevanceScore } from '../lib/entriesQuery';
 import { type PrefsBag, userWatchRules } from '../lib/prefs';
 import { scopeAllows } from '../lib/scope';
 import { assertResponse, BadRequest } from '../lib/validate';
@@ -100,8 +100,16 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
            * 那边是浏览器里的拼音序，这里只能拿到数据库的码点序（PG 容器默认 collation 不带
            * zh-ICU）。为什么不在前端排：列表是**服务端分页**的，前端只能排当前这一页 ——
            * 「第一页内部有序、翻页后整体乱序」比码点序难看得多。 */
-          const order =
-            q.fav === '1'
+          /* 搜索相关度优先于收藏时间：用户明确选了「相关度」，就不该在收藏视图里
+           * 被收藏时刻盖掉。q 为空时打分函数为 null，退回原来的时间 / 名称排序。 */
+          const relevance = q.sort === 'relevance' ? relevanceScore(q.q) : null;
+          const order: SQL[] = relevance
+            ? [
+                sql`${relevance} desc`,
+                sql`${entriesTable.publishedAt} desc nulls last`,
+                desc(entriesTable.id),
+              ]
+            : q.fav === '1'
               ? [sql`${entriesTable.favoritedAt} desc nulls last`, desc(entriesTable.id)]
               : q.sort === 'old'
                 ? [sql`${entriesTable.publishedAt} asc nulls last`, asc(entriesTable.id)]

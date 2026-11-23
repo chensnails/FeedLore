@@ -98,6 +98,30 @@ export function entryConditions(db: Db, uid: string, f: EntryFilter): SQL[] {
   return conds;
 }
 
+/**
+ * `sort=relevance` 的分层打分（只在 q 非空时调用；无 q 由路由退回新→旧）。
+ *
+ * 关键词口径必须与上面的 ilike 条件一致：这里用**原始词**做 strpos，不把
+ * `%`/`_`/`\` 的 LIKE 转义串带进来，否则搜「100%」会把转义符一起比，永远 0 分。
+ * 层级：标题（前缀命中再加成） > 标签 > 摘要 > 正文。正文只占 10 分：
+ * 它很长、几乎什么都命中，权重给高了会把「标题就是这个词」的那条压下去。
+ * 同分再用发布时间 / id 稳定兜底，保证分页不重不漏。
+ */
+export function relevanceScore(q: string | undefined): SQL | null {
+  const kw = String(q ?? '')
+    .trim()
+    .toLowerCase();
+  if (!kw) return null;
+  return sql`(case when strpos(lower(coalesce(${entries.title}, '')), ${kw}) > 0
+                then 100 + case when strpos(lower(${entries.title}), ${kw}) = 1 then 20 else 0 end
+                else 0 end)
+            + (case when exists (
+                 select 1 from unnest(${entries.tags}) as tg where strpos(lower(tg), ${kw}) > 0
+               ) then 60 else 0 end)
+            + (case when strpos(lower(coalesce(${entries.description}, '')), ${kw}) > 0 then 30 else 0 end)
+            + (case when strpos(lower(coalesce(${entries.content}, '')), ${kw}) > 0 then 10 else 0 end)`;
+}
+
 /** 防止调用方漏 and()：单发也很常见，这里给个便捷包装。 */
 export function entryWhere(db: Db, uid: string, f: EntryFilter) {
   return and(...entryConditions(db, uid, f));

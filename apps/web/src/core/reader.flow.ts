@@ -101,7 +101,12 @@ export function readerFilterParams() {
   if (state.rdWatch === 'watch' || state.rdWatch === 'block') params.set('watch', state.rdWatch);
   if (state.rdScope === 'unread') params.set('unread', '1');
   if (state.rdScope === 'favorite') params.set('fav', '1');
-  if (state.rdQ) params.set('q', state.rdQ);
+  if (state.rdQ) {
+    params.set('q', state.rdQ);
+    // 搜索按相关度（标题 > 标签 > 摘要 > 正文）；阅读页没有排序菜单，
+    // 所以这里直接给参数，不动卡片页那份按账号持久化的 sort。
+    params.set('sort', 'relevance');
+  }
   // 标签筛选：与卡片页同一套服务端参数，手动标签走 tag、AI 标签走 aiTag（两表物理隔离）。
   // 阅读页看的是「全部内容」（上面 scope=all），不会被卡片的 cardEnabled 开关漏掉条目。
   if (state.rdTag) params.set('tag', state.rdTag);

@@ -1673,6 +1673,8 @@ w.feedlore = {
   cardsSearch: (v) => {
     w.feedlore.state.q = v;
     w.feedlore.state.tag = null;
+    // 与 core/index.ts 同口径：搜索默认按相关度，之后用户仍可从 ⋮ 菜单改档
+    if (v && w.feedlore.state.sort !== 'relevance') w.feedlore.state.sort = 'relevance';
     return cardsLoad(true);
   },
   cardsFilterFeed: (v) => {
@@ -2013,6 +2015,7 @@ async function cardsLoad(reset) {
       offset: String(s.state.offset || 0),
     });
     if (s.state.q) qs.set('q', s.state.q);
+    qs.set('sort', s.state.sort || 'new');
     // 与 core/feeds.ts 的 loadPage 同口径：分组优先于频道
     if (s.state.cardGroup != null) {
       const ids = (s.state.feedList || [])
@@ -7619,8 +7622,39 @@ const withEFP = (el, fn) => {
     if (!hits.length) throw new Error('未带 q 重拉');
     if (cardIds().join(',') !== 'e1') throw new Error('过滤后 ' + cardIds().join(','));
   });
+  t('搜索命中高亮 + 相关度标注：高亮只切文本节点，不覆盖原 title', () => {
+    const marks = CA('#grid .card-title mark.hl');
+    if (marks.length !== 1 || marks[0].textContent !== '条目一')
+      throw new Error('命中高亮 ' + marks.map((m) => m.textContent).join(','));
+    if (C('#grid .card-title').getAttribute('title') !== '条目一')
+      throw new Error('aria/title 应保持原文');
+    if (!CA('.list-count .count-chip').some((n) => n.textContent.indexOf('按相关度排序') >= 0))
+      throw new Error('搜索态没标出相关度排序');
+  });
+  C('#cardsSavedSearchAdd').click();
+  await sleep(30);
+  t('保存搜索：当前词变成可回用的本机 chip', () => {
+    const chip = C('.saved-search-chip .saved-search-apply');
+    if (!chip || chip.textContent !== '条目一') throw new Error('未落 chip');
+  });
   setVal(C('#searchInput'), '');
   await sleep(520);
+  t('清除搜索后 chip 仍在（本机保存，不随筛选清空）', () => {
+    if (!C('.saved-search-chip .saved-search-apply')) throw new Error('chip 被清掉了');
+  });
+  C('.saved-search-chip .saved-search-apply').click();
+  await sleep(40);
+  t('点 chip 回用：搜索框与列表一起回到该词', () => {
+    if (C('#searchInput').value !== '条目一') throw new Error('输入框没回填');
+    if (cardIds().join(',') !== 'e1') throw new Error('列表没按 chip 重拉');
+  });
+  C('#searchClear').click();
+  await sleep(40);
+  C('.saved-search-chip .saved-search-remove').click();
+  await sleep(30);
+  t('删除保存词：chip 消失且不影响当前列表', () => {
+    if (C('.saved-search-chip')) throw new Error('删除没生效');
+  });
 
   // v1.6.0：顶部标签栏已移除，标签筛选入口下线（标签内容仅保留在文章正文）。
 
@@ -8688,6 +8722,22 @@ const withEFP = (el, fn) => {
   t('清除 → readerSearch("")', () => {
     if (!callsOf('readerSearch').some((c) => c[1] === '')) throw new Error('未触发');
   });
+
+  // 高亮与相关度：搜索词命中条目标题时只包文本节点，aria-label 仍读原文
+  setVal(R('#readerSearch'), '文章一');
+  await sleep(360);
+  t('阅读页搜索：命中高亮 + 相关度标注，aria-label 不被富文本污染', () => {
+    const marks = RA('#readerList .art-title mark.hl');
+    if (marks.length !== 1 || marks[0].textContent !== '文章一')
+      throw new Error('高亮 ' + marks.map((m) => m.textContent).join(','));
+    const head = R('#readerList .art-head');
+    if (!head || head.getAttribute('aria-label').indexOf('文章一') < 0)
+      throw new Error('aria-label 丢了原文');
+    if (!RA('.list-count .count-chip').some((n) => n.textContent.indexOf('按相关度排序') >= 0))
+      throw new Error('阅读页没标出相关度排序');
+  });
+  R('#readerSearchClear').click();
+  await sleep(40);
 
   // 空态（未读）
   w.feedlore.state.rdScope = 'unread';
@@ -13191,6 +13241,66 @@ const withEFP = (el, fn) => {
       .readFileSync(path.join(root, 'src', 'core', 'ui.nav.ts'), 'utf8')
       .replace(/\r\n/g, '\n');
     if (!/if \(ev\.key !== '\/'/.test(nav)) throw new Error('`/` 让位逻辑被改动');
+  });
+
+  t('搜索增强：高亮/保存词/相关度四层真源齐全，且高亮不碰 innerHTML', () => {
+    const root = path.join(__dirname, '..', '..');
+    const read = (p) => fs.readFileSync(path.join(root, p), 'utf8').replace(/\r\n/g, '\n');
+    const hl = read('src/ui/HighlightText.tsx');
+    if (/dangerouslySetInnerHTML\s*[=:]/.test(hl)) throw new Error('高亮不能拼 HTML');
+    if (!/lowerHay\.indexOf\(lowerNeedle/.test(hl)) throw new Error('高亮没用 indexOf 切文本');
+    const saved = read('src/core/savedSearches.ts');
+    if (!/feedlore\.savedSearches\.v1/.test(saved)) throw new Error('保存词键名漂移');
+    if (!/SAVED_SEARCH_LIMIT = 20/.test(saved)) throw new Error('保存词缺条数上限');
+    const ui = read('src/ui/SavedSearches.tsx');
+    if (!/useSyncExternalStore/.test(ui)) throw new Error('保存词没接稳定快照订阅');
+    if (!/view \+ 'SavedSearchAdd'/.test(ui))
+      throw new Error('两页同时挂载，保存按钮 id 必须带视图前缀');
+    const menu = read('src/ui/OverflowMenu.tsx');
+    if (!/v: 'relevance', label: '相关度'/.test(menu)) throw new Error('排序菜单缺相关度档');
+    const flow = read('src/core/reader.flow.ts');
+    if (!/params\.set\('sort', 'relevance'\)/.test(flow)) throw new Error('阅读页搜索没按相关度拉');
+    const idx = read('src/core/index.ts');
+    if (!/if \(v && S\.state\.sort !== 'relevance'\) S\.setLayout\('sort', 'relevance'\)/.test(idx))
+      throw new Error('卡片页搜索没切到相关度档');
+    const contract = read('../../packages/contract/src/endpoints.ts');
+    if (!/z\.enum\(\['new', 'old', 'name', 'relevance'\]\)/.test(contract))
+      throw new Error('列表契约不接受 sort=relevance');
+    const prefs = read('../../apps/server/src/lib/prefs.ts');
+    if (!/sort: \['new', 'old', 'name', 'relevance'\]/.test(prefs))
+      throw new Error('服务端布局白名单会洗掉 relevance');
+    const local = read('src/core/state.layout.ts');
+    if (!/sort: \['new', 'old', 'name', 'relevance'\]/.test(local))
+      throw new Error('前端布局白名单会洗掉 relevance');
+    const css = read('src/styles/hig/04-content.css') + read('src/styles/hig/03-controls.css');
+    if (!/mark\.hl \{/.test(css) || !/\.saved-search-chip \{/.test(css))
+      throw new Error('高亮 / 保存词样式缺片');
+    if (/dangerouslySetInnerHTML/.test(read('src/views/CardsView.parts.tsx')))
+      throw new Error('卡片列表不该拼 HTML');
+  });
+
+  t('服务端相关度：标题 > 标签 > 摘要 > 正文，关键词不把 LIKE 转义带进 strpos', () => {
+    const root = path.join(__dirname, '..', '..');
+    const q = fs
+      .readFileSync(path.join(root, '..', 'server', 'src', 'lib', 'entriesQuery.ts'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    if (!/export function relevanceScore/.test(q)) throw new Error('缺相关度打分真源');
+    if (!/strpos\(lower\(/.test(q)) throw new Error('没用 strpos 分层打分');
+    const seg = q.slice(q.indexOf('export function relevanceScore'), q.indexOf('/** 防止调用方漏'));
+    if (/const esc\b/.test(seg)) throw new Error('把 LIKE 转义串带进 strpos 会漏命中');
+    const weights = [100, 60, 30, 10].filter((n) => seg.indexOf('then ' + n) >= 0);
+    if (weights.length !== 4) throw new Error('字段权重不齐：' + weights.join(','));
+    const route = fs
+      .readFileSync(path.join(root, '..', 'server', 'src', 'routes', 'entries.ts'), 'utf8')
+      .replace(/\r\n/g, '\n');
+    if (!/const relevance = q\.sort === 'relevance' \? relevanceScore\(q\.q\) : null/.test(route))
+      throw new Error('列表路由没接相关度排序');
+    const orderSeg = route.slice(route.indexOf('const relevance'), route.indexOf('const [rows'));
+    if (
+      orderSeg.indexOf("q.fav === '1'") >= 0 &&
+      orderSeg.indexOf("q.fav === '1'") < orderSeg.indexOf('? [')
+    )
+      throw new Error('收藏时间分支不能再盖掉相关度');
   });
 
   await pending;

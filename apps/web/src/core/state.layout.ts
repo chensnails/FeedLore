@@ -99,7 +99,7 @@ export const LAYOUT_DEFAULTS: LayoutPref = {
 export const LAYOUT_VALUES: LayoutValues = {
   view: ['grid', 'list'],
   tab: ['reader', 'cards', 'ai'],
-  sort: ['new', 'old', 'name'],
+  sort: ['new', 'old', 'name', 'relevance'],
   rdScope: ['all', 'unread', 'favorite'],
 };
 /**

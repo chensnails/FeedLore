@@ -42,3 +42,14 @@
 }
 .src-pill { background: var(--hig-fill-2); }
 
+
+/* 搜索命中：主色同源淡底 + 继承正文色，跟随 light/dark × 6 档主色自动换色。
+   只给命中片段上色，不写死黄底（暗色下会刺眼），也不改字重避免列表抖动。 */
+mark.hl {
+  background: var(--hig-tint-soft);
+  color: inherit;
+  border-radius: 4px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}

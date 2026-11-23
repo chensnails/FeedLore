@@ -235,7 +235,7 @@ export const LayoutSchema = z
     accordion: z.boolean(),
     /** 设置页各分组的展开状态：{ [key]: boolean } */
     sections: z.record(z.string(), z.boolean()),
-    sort: z.enum(['new', 'old', 'name']),
+    sort: z.enum(['new', 'old', 'name', 'relevance']),
     rdScope: z.enum(['all', 'unread', 'favorite']),
     rdCollapsedGroups: z.array(z.string()),
     /** 阅读页频道栏宽度（px，180~400，服务端夹取） */

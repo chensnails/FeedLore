@@ -377,6 +377,57 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal(other.total, 0);
     });
 
+    await t.test('sort=relevance：标题 > 摘要 > 正文，同分按发布时间兜底', async () => {
+      const [feed] = await db
+        .insert(feedsTable)
+        .values({
+          ownerId: userId,
+          url: 'https://example.com/itest-relevance.xml',
+          title: '相关度测试频道',
+          sortOrder: 11,
+        })
+        .returning({ id: feedsTable.id });
+      assert.ok(feed);
+      await db.insert(entriesTable).values([
+        {
+          feedId: feed.id,
+          guid: 'itest-rel-desc',
+          title: '摘要里有词',
+          description: '关键词只在这里出现',
+          publishedAt: new Date('2026-03-03T00:00:00Z'),
+        },
+        {
+          feedId: feed.id,
+          guid: 'itest-rel-title-old',
+          title: '关键词在标题',
+          publishedAt: new Date('2026-03-01T00:00:00Z'),
+        },
+        {
+          feedId: feed.id,
+          guid: 'itest-rel-body',
+          title: '正文里有词',
+          content: '正文关键词',
+          publishedAt: new Date('2026-03-02T00:00:00Z'),
+        },
+      ]);
+
+      const qs = `/api/entries?scope=all&q=${encodeURIComponent('关键词')}&sort=relevance&limit=10`;
+      const res = await call(qs);
+      assert.equal(res.status, 200);
+      const body = parse(entriesListResponse, await res.json(), 'GET /api/entries sort=relevance');
+      assert.deepEqual(
+        body.entries.map((e) => e.name),
+        ['关键词在标题', '摘要里有词', '正文里有词'],
+      );
+      // 无 q 时 relevance 档退回新→旧，不能把老账号存的这一档变成乱序
+      const plain = parse(
+        entriesListResponse,
+        await (await call('/api/entries?sort=relevance&limit=10')).json(),
+        'GET /api/entries sort=relevance 无 q',
+      );
+      assert.ok(plain.entries.length >= 3);
+    });
+
     /* 批量已读的撤销：回执给一个批次时间戳，撤销只命中「仍是这一批」的行。
      * 不能按「最近 N 秒标记的全部回滚」：用户可能在这期间单独标了别的文章。 */
     await t.test('批量已读：回执带批次时间戳，撤销只回滚这一批', async () => {

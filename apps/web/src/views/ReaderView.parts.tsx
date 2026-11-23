@@ -12,6 +12,7 @@ import type { Card, EntityId, EntryDetail } from '../core/types.ts';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
 import { widthSrcSet } from '../imgSrc.ts';
 import { BrandLogo } from '../ui/BrandLogo.tsx';
+import { HighlightText } from '../ui/HighlightText.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import type { EmptyAction } from './ReaderView.hooks.ts';
 // ArtBody 是 ReaderView.tsx 的函数声明（渲染期取值），此处回引不构成初始化期环。
@@ -22,6 +23,8 @@ const S = () => core;
 /** ArtItem 的 props。 */
 export interface ArtItemProps {
   e: Card;
+  /** 当前搜索词：只用来切文本节点做高亮，不进 aria-label（读屏读原文）。 */
+  query?: string;
   expanded: boolean;
   full?: EntryDetail;
   bodyErr: boolean;
@@ -39,6 +42,7 @@ export interface ArtItemProps {
  *  外层由 ReaderView 的 `const ArtItem = memo(...)` 包裹，props 引用稳定才不会无谓重渲染。 */
 export function ArtItemInner({
   e,
+  query,
   expanded,
   full,
   bodyErr,
@@ -118,8 +122,14 @@ export function ArtItemInner({
             <use href="#i-chevron-right" />
           </svg>
           <span className="art-text">
-            <span className="art-title">{e.name}</span>
-            {desc ? <span className="art-sum">{desc}</span> : null}
+            <span className="art-title">
+              <HighlightText text={e.name} query={query} />
+            </span>
+            {desc ? (
+              <span className="art-sum">
+                <HighlightText text={desc} query={query} />
+              </span>
+            ) : null}
             <span className="art-meta">
               {src ? <span className="src-pill">{src}</span> : null}
               {e.size ? <span className="art-size">{e.size}</span> : null}
@@ -434,6 +444,7 @@ export function ReaderCountChip({
           「{q}」找到 {total} 篇文章
         </span>
       ) : null}
+      {q ? <span className="count-chip">按相关度排序</span> : null}
       {tag ? (
         <span className="count-chip">
           标签：{tag}

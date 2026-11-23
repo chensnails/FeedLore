@@ -57,6 +57,8 @@ const SORTS: ReadonlyArray<{ v: SortMode; label: string }> = [
   { v: 'new', label: '最新' },
   { v: 'old', label: '最早' },
   { v: 'name', label: '名称' },
+  // 搜索提交时会自动切到这一档；也可手动选。无搜索词时等价于「最新」。
+  { v: 'relevance', label: '相关度' },
 ];
 
 function readShell(): ShellSnap {
