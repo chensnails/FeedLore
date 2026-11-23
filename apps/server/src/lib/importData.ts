@@ -886,6 +886,60 @@ async function insertEntryAiTags(tx: Db, dir: string, files: string[]): Promise<
   return total;
 }
 
+/**
+ * 整站还原前的包级预检：只读文件，不碰数据库。
+ *
+ * 行级字段校验仍由 restoreSiteArchive 在事务内做；这里提前拦住最常见、也最不该
+ * 等到「自动备份已生成」之后才炸的结构错误：格式/版本/kind、必需 JSON、
+ * 缺用户、批次文件名不合法。失败码沿用 E_IMPORT_INVALID，前端文案无需新增。
+ */
+export async function precheckSiteArchive(
+  dir: string,
+): Promise<{ kind: 'site'; counts: Record<string, number> }> {
+  const manifest = await readManifest(dir);
+  if (manifest.kind === 'user') throw new ApiException('E_ARCHIVE_IS_USER_EXPORT');
+  if (manifest.kind !== 'site') throw invalid(`unknown archive kind "${String(manifest.kind)}"`);
+
+  const users = asArray(await readJson(dir, 'users.json'), 'users.json');
+  if (!users.length) throw invalid('backup contains no users');
+  // 这些文件 restoreSiteArchive 必读；提前 JSON.parse 一次，坏包在留底前就失败。
+  for (const name of [
+    'accounts.json',
+    'feeds.json',
+    'digests.json',
+    'user_llm.json',
+    'settings.json',
+    'image_cache.json',
+  ]) {
+    asArray(await readJson(dir, name), name);
+  }
+  for (const name of ['llm_vendors.json', 'llm_providers.json', 'mcp_tokens.json']) {
+    asArray((await readOptionalJson(dir, name)) ?? [], name);
+  }
+  await listBatches(dir, /^entries-\d{4}\.jsonl$/);
+  await listBatches(dir, /^entry_ai_tags-\d{4}\.jsonl$/);
+  await listBatches(dir, /^article_cache-\d{4}\.jsonl$/);
+
+  const rawCounts = asRecord(manifest.counts) ?? {};
+  const counts: Record<string, number> = {};
+  for (const key of [
+    'users',
+    'accounts',
+    'feeds',
+    'entries',
+    'digests',
+    'images',
+    'articles',
+    'aiTags',
+    'mcpTokens',
+    'aiUsage',
+    'aiRequestLog',
+  ]) {
+    counts[key] = intOr(rawCounts[key], 0);
+  }
+  return { kind: 'site', counts };
+}
+
 export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteRestoreResult> {
   const manifest = await readManifest(dir);
   if (manifest.kind === 'user') throw new ApiException('E_ARCHIVE_IS_USER_EXPORT');

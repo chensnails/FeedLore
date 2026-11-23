@@ -1106,6 +1106,14 @@ export const importApi = {
         aiUsage: z.number().int().nonnegative(),
         aiRequestLog: z.number().int().nonnegative(),
       }),
+      /** 还原前服务端自动留底的文件名；容器重建会丢，不能替代日常备份下载。 */
+      autoBackup: z
+        .object({
+          file: z.string().min(1),
+          bytes: z.number().int().nonnegative(),
+          createdAt: z.string().min(1),
+        })
+        .optional(),
     }),
   },
 } as const satisfies Record<string, EndpointSpec>;

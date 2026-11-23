@@ -455,7 +455,7 @@ export function useAccountController(onDirtyChange?: (dirty: boolean) => void) {
     if (!step1) return;
     const step2 = await s.confirm({
       title: '确认清空并还原整站？',
-      desc: '当前全站数据会被包内数据整体替换，不做合并；所有登录会话立即失效，还原后需要重新登录。此操作不可撤销。',
+      desc: '当前全站数据会被包内数据整体替换，不做合并；服务端会先自动生成一份当前站点备份留底，所有登录会话立即失效，还原后需要重新登录。此操作不可撤销。',
       confirmText: '清空并还原',
       danger: true,
     });
@@ -467,7 +467,10 @@ export function useAccountController(onDirtyChange?: (dirty: boolean) => void) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(s.errText(data, 'HTTP ' + res.status));
       const c = data.counts || {};
-      s.toast(`整站还原完成：${c.users || 0} 个账号、${c.entries || 0} 篇文章，请重新登录`);
+      const b = data.autoBackup;
+      s.toast(
+        `整站还原完成：${c.users || 0} 个账号、${c.entries || 0} 篇文章${b?.file ? `，自动留底 ${b.file}` : ''}，请重新登录`,
+      );
       setTimeout(() => s.goLogin(), 800);
     } catch (err) {
       setRestoreMsg({ ok: false, msg: '还原失败：' + String((err && err.message) || err) });

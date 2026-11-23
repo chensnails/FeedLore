@@ -5576,6 +5576,8 @@ const withEFP = (el, fn) => {
     if (cs.length !== 2 || !cs[0][1].danger || !cs[1][1].danger)
       throw new Error('确认次数/危险标记不符: ' + cs.length);
     if (!cs[1][1].title.includes('清空并还原')) throw new Error('第二次确认文案不符');
+    if (!String(cs[1][1].desc).includes('自动'))
+      throw new Error('第二次确认应说明服务端会自动留底');
     const up = lastCall('uploadArchive');
     if (!up || up[1] !== '/api/restore' || up[2] !== 'site.tar.gz')
       throw new Error('uploadArchive: ' + JSON.stringify(up));
@@ -5585,6 +5587,23 @@ const withEFP = (el, fn) => {
   await sleep(900);
   t('整站还原成功：跳转登录页', () => {
     if (!callsOf('goLogin').length) throw new Error('未回登录页');
+  });
+
+  t('整站还原前自动留底：预检 → 备份 → 还原顺序固定，且与手工备份共锁', () => {
+    const root = path.join(__dirname, '..', '..');
+    const read = (f) => fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n');
+    const imp = read(path.join(root, '..', 'server', 'src', 'routes', 'import.ts'));
+    const pre = imp.indexOf('precheckSiteArchive(dir)');
+    const bak = imp.indexOf('createAutoSiteBackup(db)');
+    const restore = imp.indexOf('restoreSiteArchive(db, dir)');
+    if (!(pre > 0 && bak > pre && restore > bak))
+      throw new Error('还原顺序错：必须先预检，再自动留底，最后才动库');
+    const exp = read(path.join(root, '..', 'server', 'src', 'routes', 'export.ts'));
+    if (!/tryAcquireBackupLock\(\)/.test(exp))
+      throw new Error('手工整站备份未与还原前自动留底共锁');
+    const backup = read(path.join(root, '..', 'server', 'src', 'lib', 'siteBackup.ts'));
+    if (!/mode: 0o600/.test(backup) || !/KEEP = 3/.test(backup))
+      throw new Error('自动留底文件权限或保留策略回潮');
   });
 
   // 规则面板（A 方案）：关注 / 屏蔽 + 入库前过滤都是「紧凑列表 + 详情层」

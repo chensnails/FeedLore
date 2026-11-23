@@ -24,9 +24,10 @@ import { importApi } from '@feedlore/contract';
 import type { Db } from '@feedlore/db';
 import { type Context, Hono } from 'hono';
 import { ApiException, apiError } from '../lib/apiError';
-import { importUserArchive, restoreSiteArchive } from '../lib/importData';
+import { importUserArchive, precheckSiteArchive, restoreSiteArchive } from '../lib/importData';
 import { log } from '../lib/logger';
 import { reloadSource, resetSourceSnapshot } from '../lib/settings';
+import { createAutoSiteBackup, releaseBackupLock, tryAcquireBackupLock } from '../lib/siteBackup';
 import { extractTarGz } from '../lib/tar-read';
 import { assertResponse } from '../lib/validate';
 import { type AppEnv, requireAuth } from '../middleware/auth';
@@ -99,14 +100,22 @@ export function importRoutes(db: Db | null, auth: AuthInstance | null) {
       .post(importApi.siteRestore.path, requireAuth(auth, 'admin'), async (c) => {
         if (!db) return apiError(c, 'E_DB_NOT_READY');
         if (restoreBusy || activeImports > 0) return apiError(c, 'E_RESTORE_IN_PROGRESS');
+        // 还原前要扫全库做自动留底；与 GET /api/backup 共用锁，避免并发压垮数据库。
+        if (!tryAcquireBackupLock()) return apiError(c, 'E_BACKUP_IN_PROGRESS');
 
         restoreBusy = true;
+        let backupLockHeld = true;
         let tmp = '';
         try {
           tmp = await mkdtemp(join(tmpdir(), 'feedlore-restore-'));
           const archive = await receiveUpload(c, tmp);
           const dir = join(tmp, 'data');
           await extractTarGz(archive, dir);
+          // 结构错误在留底前就失败；行级校验仍在还原事务内，失败整笔回滚。
+          const precheck = await precheckSiteArchive(dir);
+          log.info('[restore] archive precheck passed', JSON.stringify(precheck.counts));
+          const autoBackup = await createAutoSiteBackup(db);
+          log.info('[restore] auto backup saved', autoBackup.file);
           const result = await restoreSiteArchive(db, dir);
 
           /* 包里带了站点设置（含加密主密钥）与采集参数：进程内快照必须立刻失效，
@@ -117,10 +126,18 @@ export function importRoutes(db: Db | null, auth: AuthInstance | null) {
 
           log.info('[restore] site restore finished', JSON.stringify(result.counts));
           return c.json(
-            assertResponse(importApi.siteRestore.response, result, 'POST /api/restore'),
+            assertResponse(
+              importApi.siteRestore.response,
+              { ...result, autoBackup },
+              'POST /api/restore',
+            ),
           );
         } finally {
           restoreBusy = false;
+          if (backupLockHeld) {
+            releaseBackupLock();
+            backupLockHeld = false;
+          }
           if (tmp) await rm(tmp, { recursive: true, force: true });
         }
       })

@@ -17,6 +17,7 @@ import { Hono } from 'hono';
 import { apiError } from '../lib/apiError';
 import { writeSiteExport, writeUserExport } from '../lib/exportData';
 import { log } from '../lib/logger';
+import { releaseBackupLock, tryAcquireBackupLock } from '../lib/siteBackup';
 import { createTarGz } from '../lib/tar';
 import { type AppEnv, requireAuth } from '../middleware/auth';
 
@@ -27,9 +28,6 @@ function safeName(raw: string): string {
 }
 
 const today = (): string => new Date().toISOString().slice(0, 10);
-
-/** 整站备份互斥：模块级状态即可，容器内只有一个进程。 */
-let siteBackupBusy = false;
 
 export function exportRoutes(db: Db | null, auth: AuthInstance | null) {
   return (
@@ -74,13 +72,16 @@ export function exportRoutes(db: Db | null, auth: AuthInstance | null) {
       /* ---------------- GET /api/backup：整站备份（管理员） ---------------- */
       .get(exportApi.siteBackup.path, requireAuth(auth, 'admin'), async (c) => {
         if (!db) return apiError(c, 'E_DB_NOT_READY');
-        if (siteBackupBusy) return apiError(c, 'E_BACKUP_IN_PROGRESS');
-        siteBackupBusy = true;
+        if (!tryAcquireBackupLock()) return apiError(c, 'E_BACKUP_IN_PROGRESS');
+        // 与还原前自动留底共用一把锁：两者都要扫全库，并发会拖垮数据库。
+        let released = false;
+        const release = () => {
+          if (released) return;
+          released = true;
+          releaseBackupLock();
+        };
 
         const ar = createTarGz();
-        const release = () => {
-          siteBackupBusy = false;
-        };
         ar.readable.on('error', (err) => {
           log.error('[backup] site archive stream failed:', (err as Error)?.message ?? err);
           release();

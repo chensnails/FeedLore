@@ -193,7 +193,8 @@ export function AccountPane({ onDirtyChange }: { onDirtyChange?: (dirty: boolean
               上传整站备份包，用它<b>整体替换</b>
               当前全站数据：账号（含密码）、订阅源与文章、日报、模型配置、站点设置与图片缓存。
               <br />
-              <b>影响</b>：还原期间站点短暂不可用，结束后所有登录会话失效。
+              <b>影响</b>
+              ：还原期间站点短暂不可用；服务端会先自动生成一份当前站点备份留底，结束后所有登录会话失效。
             </p>
             <div className="dev-actions">
               <button
@@ -216,7 +217,7 @@ export function AccountPane({ onDirtyChange }: { onDirtyChange?: (dirty: boolean
             </div>
             <Result id="restoreResult" result={c.restoreMsg} />
             <small className="form-tip">
-              还原不做合并，先清空再写入，不可撤销；建议先下载当前整站备份留底。只接受本系统导出的
+              还原不做合并，先清空再写入，不可撤销；服务端自动留底保存在容器临时目录（容器重建会丢，不能替代日常备份下载）。只接受本系统导出的
               tar.gz。 这里只收「整站备份」，账号导出包请到上方「数据导入」上传。
               还原后建议重启一次服务，让进程加载包内的站点设置（含登录签名密钥）。
             </small>
