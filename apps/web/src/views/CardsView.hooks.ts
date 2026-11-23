@@ -115,25 +115,32 @@ export function useCardsVm() {
   const showGrid = !showSkeleton && !showEmpty;
   const showLoadingMore = !!st.loading && !firstLoad;
 
-  const onSearchInput = (ev: ReactSyntheticEvent<HTMLInputElement>) => {
-    const v = ev.currentTarget.value;
-    setQDraft(v);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      if (s.cardsSearch) s.cardsSearch(v.trim());
-    }, 300);
-  };
-  const onSearchKey = (ev: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (ev.key !== 'Enter') return;
-    clearTimeout(debounceRef.current);
-    if (s.cardsSearch) s.cardsSearch(String((ev.target as HTMLInputElement).value).trim());
-  };
-  const onSearchClear = () => {
+  /* 搜索回调引用稳定：列表项已 memo，每次输入都换函数会让整列白重绘一遍。 */
+  const onSearchInput = useCallback(
+    (ev: ReactSyntheticEvent<HTMLInputElement>) => {
+      const v = ev.currentTarget.value;
+      setQDraft(v);
+      clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        if (s.cardsSearch) s.cardsSearch(v.trim());
+      }, 300);
+    },
+    [s],
+  );
+  const onSearchKey = useCallback(
+    (ev: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (ev.key !== 'Enter') return;
+      clearTimeout(debounceRef.current);
+      if (s.cardsSearch) s.cardsSearch(String((ev.target as HTMLInputElement).value).trim());
+    },
+    [s],
+  );
+  const onSearchClear = useCallback(() => {
     clearTimeout(debounceRef.current);
     setQDraft('');
     if (s.cardsSearch) s.cardsSearch('');
     if (searchOpen && searchRef.current) searchRef.current.focus();
-  };
+  }, [s, searchOpen]);
   /* 从保存的搜索 chip 回用：输入框和 st.q 一起对齐，避免框里是旧词、列表是新词。 */
   const onApplySearch = useCallback(
     (word: string) => {
@@ -144,14 +151,14 @@ export function useCardsVm() {
     },
     [s],
   );
-  const toggleSearch = () => {
+  const toggleSearch = useCallback(() => {
     if (!searchOpen) {
       setSearchOpen(true);
       return;
     }
     if (qDraft || st.q) onSearchClear();
     setSearchOpen(false);
-  };
+  }, [searchOpen, qDraft, st.q, onSearchClear]);
 
   const onOpenCard = useCallback((e: CardData) => setDetailId(e.id), []);
   const onTag = useCallback((t: string) => {

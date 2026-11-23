@@ -95,7 +95,7 @@ export function openLinkMenu(anchor: HTMLElement, urls: string[], onPick: (url: 
   setTimeout(() => {
     document.addEventListener('click', onLinkMenuDocClick, true);
     document.addEventListener('keydown', onLinkMenuKey, true);
-    window.addEventListener('resize', closeLinkMenu);
-    window.addEventListener('scroll', closeLinkMenu, true);
+    window.addEventListener('resize', closeLinkMenu, { passive: true });
+    window.addEventListener('scroll', closeLinkMenu, { capture: true, passive: true });
   }, 0);
 }

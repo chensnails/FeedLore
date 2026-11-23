@@ -2350,6 +2350,22 @@ const withEFP = (el, fn) => {
       throw new Error('命令面板懒加载器缺失');
     if (!/installCmdkShortcut/.test(mounts)) throw new Error('⌘K 引导加载缺失');
   });
+  t('交互性能：深链/展开等待改事件驱动，不再 25ms 空轮询', () => {
+    const root = path.join(__dirname, '..', '..', 'src', 'core', 'reader.articles.ts');
+    const src = fs.readFileSync(root, 'utf8');
+    if (!/function waitUntil\(/.test(src) || !/on\(EVENT\.READER/.test(src))
+      throw new Error('等待逻辑未接列表重绘事件');
+    if (/setTimeout\(r, 25\)/.test(src)) throw new Error('25ms 固定轮询回潮');
+    const hub = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'src', 'core', 'scrollSentinel.ts'),
+      'utf8',
+    );
+    if (!/requestAnimationFrame\(flush\)/.test(hub)) throw new Error('哨兵滚动未按帧合并');
+    for (const f of ['src/core/reader.flow.ts', 'src/views/CardsView.tsx']) {
+      const s = fs.readFileSync(path.join(__dirname, '..', '..', f), 'utf8');
+      if (!/registerSentinelCheck/.test(s)) throw new Error(f + ' 未接入统一滚动调度');
+    }
+  });
   t('index.html：React 挂载点齐全', () => {
     // v1.6.0：全局顶栏并入各视图后不再有独立的 <header class="topbar"> 顶栏元素
     for (const id of [
@@ -12661,7 +12677,10 @@ const withEFP = (el, fn) => {
     if (!/if \(!reset && state\.rdReadError && !state\.rdEntries\.length\) return/.test(reader)) {
       throw new Error('文章页数据层没有拦住「错误态下的翻页」');
     }
-    if (!/st\.loadError \|\| !\(st\.entries \|\| \[\]\)\.length/.test(cards)) {
+    if (
+      !/gate\.loadError \|\| !gate\.count/.test(cards) ||
+      !/loadError: st\.loadError,[\s\S]{0,120}count: \(st\.entries \|\| \[\]\)\.length/.test(cards)
+    ) {
       throw new Error('CardsView 滚动哨兵仍会在首屏失败时无限重拉');
     }
   });

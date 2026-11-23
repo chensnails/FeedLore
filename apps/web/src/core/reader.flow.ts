@@ -5,6 +5,7 @@
 
 import { EVENT, emit, on } from '../kernel/events.ts';
 import { clearReaderPin, readerPinnedAt, readerPinnedId } from './reader.articles.ts';
+import { registerSentinelCheck } from './scrollSentinel.ts';
 import { state } from './state.ts';
 import type { EntityId } from './types.ts';
 import { apiFetch, httpError, NET_TIMEOUT_MS, noteListStale } from './util.ts';
@@ -246,6 +247,17 @@ export function readerScroller(): HTMLElement | null {
 let headRO: ResizeObserver | null = null;
 let headROEl: Element | null = null;
 
+/* 头部高度在置顶收敛的十几帧里基本不变，但每帧都读 rect + getComputedStyle
+ * 是典型的 forced reflow。短缓存只覆盖一次收敛窗口；结构真变了由 RO / 事件清掉。 */
+let headOffsetCache: { at: number; value: number } | null = null;
+const HEAD_OFFSET_TTL_MS = 150;
+function invalidateHeadOffset() {
+  headOffsetCache = null;
+}
+on(EVENT.READER, invalidateHeadOffset);
+on(EVENT.VIEW, invalidateHeadOffset);
+window.addEventListener('resize', invalidateHeadOffset, { passive: true });
+
 function trackReaderHeadChange(main: HTMLElement) {
   if (typeof ResizeObserver !== 'function') return;
   const head = main.querySelector('.reader-head');
@@ -253,6 +265,7 @@ function trackReaderHeadChange(main: HTMLElement) {
   if (headRO) headRO.disconnect();
   headROEl = head;
   headRO = new ResizeObserver(() => {
+    invalidateHeadOffset();
     // 切到卡片页时头部被隐藏（尺寸 0），别把回退值写进阅读页的变量
     if (state.tab === 'reader') readerHeadOffset();
   });
@@ -270,6 +283,10 @@ function trackReaderHeadChange(main: HTMLElement) {
 function readerHeadOffset() {
   const main = readerScroller();
   if (!main) return 56;
+  const now = Date.now();
+  if (headOffsetCache && now - headOffsetCache.at < HEAD_OFFSET_TTL_MS) {
+    return headOffsetCache.value;
+  }
   trackReaderHeadChange(main);
   const mainTop = main.getBoundingClientRect().top;
   let bottom = 0;
@@ -290,6 +307,7 @@ function readerHeadOffset() {
   (main as HTMLElement).style.setProperty('--reader-head-h', Math.round(bottom) + 'px');
   const offset = Math.round(bottom) + 8;
   (main as HTMLElement).style.setProperty('--reader-sticky-offset', offset + 'px');
+  headOffsetCache = { at: now, value: offset };
   return offset;
 }
 
@@ -482,13 +500,8 @@ export async function readerAutoLoad() {
  * 这就是自动加载失灵的根因。scroll 事件不冒泡但**能被捕获**，document 上挂捕获监听
  * 一处收齐所有滚动容器的滚动（侧栏 / 列表 / 窗口），命中与否交给哨兵几何判定，
  * 判定本身用 getBoundingClientRect，天然与「谁在滚」无关。 */
-document.addEventListener(
-  'scroll',
-  () => {
-    if (state.tab !== 'reader') return;
-    if (state.rdLoading || !state.rdHasMore || state.rdLoadMoreErr || !state.rdEntries.length)
-      return;
-    if (readerSentinelNear()) readerAutoLoad();
-  },
-  { capture: true, passive: true },
-);
+registerSentinelCheck(() => {
+  if (state.tab !== 'reader') return;
+  if (state.rdLoading || !state.rdHasMore || state.rdLoadMoreErr || !state.rdEntries.length) return;
+  if (readerSentinelNear()) readerAutoLoad();
+});

@@ -161,17 +161,21 @@ export function useReaderVm() {
     }
   }
 
-  const onSearchInput = (ev: ReactSyntheticEvent<HTMLInputElement>) => {
-    const v = ev.currentTarget.value;
-    const box = searchRef.current;
-    if (box) box.dataset.hasval = v ? '1' : '';
-    setQDraft(v);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      if (s.readerSearch) s.readerSearch(v.trim());
-    }, 300);
-  };
-  const onSearchClear = () => {
+  /* 与卡片页同理：搜索相关回调保持稳定引用，避免一次输入让整列 memo 项重绘。 */
+  const onSearchInput = useCallback(
+    (ev: ReactSyntheticEvent<HTMLInputElement>) => {
+      const v = ev.currentTarget.value;
+      const box = searchRef.current;
+      if (box) box.dataset.hasval = v ? '1' : '';
+      setQDraft(v);
+      clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        if (s.readerSearch) s.readerSearch(v.trim());
+      }, 300);
+    },
+    [s],
+  );
+  const onSearchClear = useCallback(() => {
     if (searchRef.current) {
       searchRef.current.value = '';
       searchRef.current.dataset.hasval = '';
@@ -179,28 +183,31 @@ export function useReaderVm() {
     setQDraft('');
     if (s.readerSearch) s.readerSearch('');
     bump((x) => x + 1);
-  };
-  const onSearchKey = (ev: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (ev.key === 'Enter') {
-      clearTimeout(debounceRef.current);
-      if (s.readerSearch) s.readerSearch(String((ev.target as HTMLInputElement).value).trim());
-    }
-    if (ev.key === 'Escape') {
-      ev.stopPropagation();
-      if (qDraft) onSearchClear();
-      setSearchOpen(false);
-      const toggle = document.querySelector<HTMLElement>('.reader-search-toggle');
-      if (toggle && toggle.focus) toggle.focus();
-    }
-  };
-  const toggleSearch = () => {
+  }, [s]);
+  const onSearchKey = useCallback(
+    (ev: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (ev.key === 'Enter') {
+        clearTimeout(debounceRef.current);
+        if (s.readerSearch) s.readerSearch(String((ev.target as HTMLInputElement).value).trim());
+      }
+      if (ev.key === 'Escape') {
+        ev.stopPropagation();
+        if (qDraft) onSearchClear();
+        setSearchOpen(false);
+        const toggle = document.querySelector<HTMLElement>('.reader-search-toggle');
+        if (toggle && toggle.focus) toggle.focus();
+      }
+    },
+    [s, qDraft, onSearchClear],
+  );
+  const toggleSearch = useCallback(() => {
     if (!searchOpen) {
       setSearchOpen(true);
       return;
     }
     if (qDraft || q) onSearchClear();
     setSearchOpen(false);
-  };
+  }, [searchOpen, qDraft, q, onSearchClear]);
 
   // 侧栏回调稳定化（memo 的前提是 props 引用稳定）
   const cbScope = useCallback((k: ReaderScope) => S().readerSetScope(k), []);

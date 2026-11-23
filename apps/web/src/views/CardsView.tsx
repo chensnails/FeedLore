@@ -3,6 +3,7 @@
 
 import { core } from '@core';
 import { memo, useEffect, useRef } from 'react';
+import { registerSentinelCheck } from '../core/scrollSentinel.ts';
 import { EVENT, on } from '../kernel/events.ts';
 import { useTopbarHeight } from '../shell/useTopbarHeight.ts';
 import { ChannelTabs } from '../ui/ChannelTabs.tsx';
@@ -104,12 +105,30 @@ export function CardsView() {
     autoLoadArmed.current = false;
   }, [st.listEpoch]);
 
+  /* 自动翻页的闸门状态用 ref 读：翻页时 loading/hasMore 反复变化，
+     若作为 effect 依赖会让 scroll 监听反复摘挂，边界时机容易漏判。 */
+  const autoLoadGate = useRef({
+    loading: st.loading,
+    hasMore: st.hasMore,
+    loadMoreErr: st.loadMoreErr,
+    loadError: st.loadError,
+    count: 0,
+  });
+  autoLoadGate.current = {
+    loading: st.loading,
+    hasMore: st.hasMore,
+    loadMoreErr: st.loadMoreErr,
+    loadError: st.loadError,
+    count: (st.entries || []).length,
+  };
+
   // 滚动到底部自动加载：#cardsSentinel 的视口坐标判定，document 捕获收齐所有容器；
   // 视图隐藏时不拉（几何归零会误判到底）；切回视图补一次判定。
   useEffect(() => {
     if (!st.hasMore) return undefined;
     const check = () => {
-      if (st.loading || !st.hasMore || st.loadMoreErr || st.loadError || !(st.entries || []).length)
+      const gate = autoLoadGate.current;
+      if (gate.loading || !gate.hasMore || gate.loadMoreErr || gate.loadError || !gate.count)
         return;
       const host = document.getElementById('cardsView');
       if (host && host.hidden) return;
@@ -121,18 +140,18 @@ export function CardsView() {
         if (s.cardsLoadMore) s.cardsLoadMore();
       }
     };
-    document.addEventListener('scroll', check, { capture: true, passive: true });
+    const stopScroll = registerSentinelCheck(check);
     const onView = () => {
       setTimeout(check, 0);
     };
     const stopView = on(EVENT.VIEW, onView);
     const t = setTimeout(check, 350);
     return () => {
-      document.removeEventListener('scroll', check, { capture: true });
+      stopScroll();
       stopView();
       clearTimeout(t);
     };
-  }, [st.hasMore, st.loading, st.loadMoreErr]);
+  }, [st.hasMore]);
 
   useTopbarHeight(headRef);
 

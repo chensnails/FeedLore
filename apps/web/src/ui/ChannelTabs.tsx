@@ -10,7 +10,13 @@
  */
 
 import { core } from '@core';
-import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from 'react';
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { EntityId, Feed, ReaderScope, WatchFilter } from '../core/types.ts';
 import type { ChannelGroup } from '../views/ChannelList.tsx';
 
@@ -47,9 +53,13 @@ export function ChannelTabs({
   const navRef = useRef<HTMLElement | null>(null);
   const [atEnd, setAtEnd] = useState(false);
 
-  // 分组里的频道摊平：标签条是一维的，分组层级留在抽屉里
-  const feeds: Feed[] = [];
-  for (const g of groups || []) for (const f of g.feeds || []) feeds.push(f);
+  // 分组里的频道摊平：标签条是一维的，分组层级留在抽屉里。
+  // 摊平结果 memo 化，否则每次切换都重建数组与每个 tab 的点击闭包，击穿下游 memo。
+  const feeds: Feed[] = useMemo(() => {
+    const out: Feed[] = [];
+    for (const g of groups || []) for (const f of g.feeds || []) out.push(f);
+    return out;
+  }, [groups]);
 
   // 卡片页的「全部」是空字符串（cardsFilterFeed 的约定），两种空值按同一个语义算
   const feedId = activeFeedId == null || activeFeedId === '' ? null : activeFeedId;
@@ -91,7 +101,7 @@ export function ChannelTabs({
     const update = () => setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 4);
     update();
     el.addEventListener('scroll', update, { passive: true });
-    window.addEventListener('resize', update);
+    window.addEventListener('resize', update, { passive: true });
     return () => {
       el.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);

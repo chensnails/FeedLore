@@ -3,7 +3,7 @@
  * 与加载 / 滚动定位（reader.flow.ts）通过少量 import 组合。
  * ============================================================ */
 
-import { EVENT, emit } from '../kernel/events.ts';
+import { EVENT, emit, on } from '../kernel/events.ts';
 import {
   findArtItemEl,
   loadReader,
@@ -25,6 +25,32 @@ export let readerPinnedAt = 0;
 export function clearReaderPin() {
   readerPinnedId = null;
   readerPinnedAt = 0;
+}
+
+/** 等条件成立：以列表重绘 / 视图切换事件为主，100ms 心跳只作兜底。
+ *  旧写法是 25ms 一轮的固定轮询（最长 5s = 200 次定时回调）；深链恢复、
+ *  展开确认都走这里，改事件驱动后主线程少一大串空转定时器。 */
+function waitUntil(ok: () => boolean, maxMs: number): Promise<void> {
+  if (ok()) return Promise.resolve();
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearInterval(beat);
+      clearTimeout(deadline);
+      stopReader();
+      stopView();
+      resolve();
+    };
+    const tick = () => {
+      if (ok()) finish();
+    };
+    const stopReader = on(EVENT.READER, tick);
+    const stopView = on(EVENT.VIEW, tick);
+    const beat = setInterval(tick, 100);
+    const deadline = setTimeout(finish, maxMs);
+  });
 }
 
 /* ---------- 手风琴模式 ---------- */
@@ -114,13 +140,27 @@ function rememberReadingPos() {
   const main = readerScroller();
   if (!main) return;
   const mainTop = main.getBoundingClientRect().top;
-  const items = document.querySelectorAll<HTMLElement>('#readerList .art-item');
-  let pick: HTMLElement | null = null;
-  for (const el of items) {
-    const r = el.getBoundingClientRect();
-    if (r.bottom <= mainTop) continue;
-    if (r.top > mainTop + 2) break; // 第一篇标题还在下方：视口里还没有任何一篇的正文
-    pick = el;
+  const items = Array.from(document.querySelectorAll<HTMLElement>('#readerList .art-item'));
+  /* 列表项按文档顺序竖排，顶边单调：二分找「顶边已越过视口上沿的最后一篇」。
+     原来每次停滚都要逐条读 rect（上百条 = 上百次强制布局），现在只测 log2(n) 次。 */
+  let lo = 0;
+  let hi = items.length - 1;
+  let at = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const el = items[mid];
+    if (!el) break;
+    if (el.getBoundingClientRect().top <= mainTop + 2) {
+      at = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  let pick: HTMLElement | null = at >= 0 ? (items[at] ?? null) : null;
+  // 二分只看顶边；个别条目高度很小且整条在视口上方时，再往后挪一条。
+  if (pick && pick.getBoundingClientRect().bottom <= mainTop) {
+    pick = at + 1 < items.length ? (items[at + 1] ?? null) : null;
   }
   if (!pick) return;
   const id = pick.dataset.id;
@@ -321,9 +361,7 @@ export async function focusReaderArt(id: EntityId) {
   // 目标文章可能正赶上一次在途加载（switchView 的自动加载 / jumpToFeed 排队的重置）。
   // 此刻列表还是旧的甚至空的，直接找会误判「找不到」。加载是串行的（rdLoading 一次性封锁），
   // 轮询到它落地再找即可；最多等约 5s，避免极端情况下死等。
-  for (let guard = 0; state.rdLoading && guard < 200; guard++) {
-    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 25));
-  }
+  await waitUntil(() => !state.rdLoading, 5000);
   let el = findArtItemEl(want);
   for (let i = 0; !el && i < FOCUS_MAX_PAGES && state.rdHasMore; i++) {
     await loadReader();
@@ -344,9 +382,7 @@ export async function focusReaderArt(id: EntityId) {
      用户点「在文章页查看」要的结果是「看到这篇的正文」，所以等加载彻底安静后确认一次：
      目标还在列表里就补展开；换成别的频道（目标已不在）则说明是用户的新意图，不抢。
      这道确认是给入口竞态兜底，不替代 jumpToFeed 里「只发一次首屏请求」的修正。 */
-  for (let guard = 0; guard < 200 && (state.rdLoading || readerPendingReset); guard++) {
-    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 25));
-  }
+  await waitUntil(() => !state.rdLoading && !readerPendingReset, 5000);
   if (
     !state.rdExpanded.has(want) &&
     state.rdEntries.some(/** @param {*} [e] */ (e) => String(e.id) === want)
@@ -369,9 +405,7 @@ export async function focusReaderArt(id: EntityId) {
  */
 export async function restoreReaderArt(id: EntityId) {
   const want = String(id);
-  for (let guard = 0; state.rdLoading && guard < 200; guard++) {
-    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 25));
-  }
+  await waitUntil(() => !state.rdLoading, 5000);
   let el = findArtItemEl(want);
   for (let i = 0; !el && i < FOCUS_MAX_PAGES && state.rdHasMore; i++) {
     await loadReader();
@@ -381,11 +415,8 @@ export async function restoreReaderArt(id: EntityId) {
     /* hash 深链常来自 popstate：事件到得比列表重拉早，此刻目标还没进 DOM，
        上面那轮翻页也就扑空了。给列表一个落地的窗口再找一次——
        真不在列表里（被筛选掉 / 已删）才放弃，别把「稍后到」误判成「找不到」。 */
-    const deadline = Date.now() + 3000;
-    while (!el && Date.now() < deadline) {
-      await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 50));
-      el = findArtItemEl(want);
-    }
+    await waitUntil(() => !!findArtItemEl(want), 3000);
+    el = findArtItemEl(want);
   }
   if (!el) return false;
   const saved = readSavedOffset(want);
@@ -394,9 +425,7 @@ export async function restoreReaderArt(id: EntityId) {
      的首屏 loadReader({reset:true}) 和这次展开会交错，落地后把 rdExpanded 整批清掉，
      表现为地址栏指着一篇、列表里却只有收起的行。与 focusReaderArt 同一套兜底：
      等加载与排队重置都安静后再确认一次，目标还在列表里就补展开。 */
-  for (let guard = 0; guard < 200 && (state.rdLoading || readerPendingReset); guard++) {
-    await new Promise(/** @param {*} [r] */ (r) => setTimeout(r, 25));
-  }
+  await waitUntil(() => !state.rdLoading && !readerPendingReset, 5000);
   if (
     !state.rdExpanded.has(want) &&
     state.rdEntries.some(/** @param {*} [e] */ (e) => String(e.id) === want)
