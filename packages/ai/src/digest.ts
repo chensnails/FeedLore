@@ -226,7 +226,8 @@ async function collect(
     .from(entries)
     .innerJoin(feeds, eq(feeds.id, entries.feedId))
     .where(and(...where))
-    .orderBy(desc(entries.publishedAt), desc(entries.id))
+    // 与 entries_pub_idx 的 NULLS LAST 顺序对齐，避免反向扫描选错索引。
+    .orderBy(sql`${entries.publishedAt} desc nulls last`, desc(entries.id))
     .limit(COLLECT_LIMIT);
 
   return rows.map((r) => ({

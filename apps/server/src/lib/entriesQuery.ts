@@ -65,7 +65,8 @@ export function entryConditions(db: Db, uid: string, f: EntryFilter): SQL[] {
     inArray(entries.feedId, db.select({ id: feeds.id }).from(feeds).where(eq(feeds.ownerId, uid))),
   ];
   if (f.feedIds !== null) conds.push(inArray(entries.feedId, f.feedIds));
-  if (f.tag) conds.push(sql`${f.tag} = any(${entries.tags})`);
+  // @> 才能利用 entries_tags_idx；= ANY(tags) 会退化成全表筛选。
+  if (f.tag) conds.push(sql`${entries.tags} @> ARRAY[${f.tag}]::text[]`);
   if (f.aiTag) {
     // AI 标签在独立表，且必须按 owner 取本人那份——和 CARD_COLUMNS.aiTags 的取值口径一致。
     // 用 exists 而不是 join：列表/UPDATE 共用这套条件，join 会放大行数、让 "all read" 误伤。
