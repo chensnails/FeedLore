@@ -240,6 +240,11 @@ corepack pnpm -r run typecheck                     # 类型
 corepack pnpm --filter @feedlore/web run build     # 构建
 node scripts/verify-dist.mjs                       # 产物事实：PWA / 哈希 / CSS 关键规则 / 模糊预算
 DATABASE_URL='' corepack pnpm -r run test          # 契约 + 服务端 + jsdom UI 回归
+corepack pnpm --filter @feedlore/web exec playwright install chromium
+corepack pnpm --filter @feedlore/web run test:browser
+  # CI 门禁：构建产物 + 本地 mock API + 真实 Chromium，固定 720px 触控几何/手势与 721px 断点
+BROWSER_CHANNEL=msedge corepack pnpm --filter @feedlore/web run test:browser
+  # 本机没有 Playwright Chromium 时可改用已安装的 Edge
 node .workbuddy/ui-lab/verify.mjs --only=all --shots --no-build
   # 真实浏览器：计算样式 / 几何 / 对比度 / 内核 / HIG / 手势 / 自动填充 / 长文一次铺开（文章页 + 卡片页）/ 频道搜索 / 多视口截图
 node .workbuddy/ui-lab/weaknet.mjs --scenario=all  # 弱网专项：悬挂 / 慢响应 / 503 / 连点

@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"tests/**/*.test.mjs\" && node tests/ui/build.mjs && node tests/ui/ui-regression.cjs",
-    "test:ui": "node tests/ui/build.mjs && node tests/ui/ui-regression.cjs"
+    "test:ui": "node tests/ui/build.mjs && node tests/ui/ui-regression.cjs",
+    "fixture:browser": "node tests/browser/fixture-server.mjs",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@feedlore/contract": "workspace:*",
@@ -22,6 +24,7 @@
     "zustand": "^5.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^4.3.4",

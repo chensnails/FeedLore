@@ -7,7 +7,7 @@ name: Verify
 # 发布侧不受约束）。这里保持**单一定义**，谁调用都跑一样的检查。
 #
 # 内容包括：六个包 tsc、纯函数单测 + 契约自检、真库迁移 + 接口级集成测试、
-# 前端构建 + 产物校验、镜像构建 + 产物/Node 运行时下限校验。
+# 前端构建 + 产物校验、真实 Chromium 720px 触控回归、镜像构建 + 产物/Node 运行时下限校验。
 on:
   workflow_call:
 
@@ -103,6 +103,16 @@ jobs:
       # 触屏媒体查询有没有被工具链吞掉。单测跑源码，这些它看不到。
       - name: 校验前端产物
         run: node scripts/verify-dist.mjs
+
+      # jsdom 看不到真实 CSS 几何、触摸事件和浏览器手势。对构建产物跑固定 mock API，
+      # 在 Chromium 中验证 720px 断点、抽屉、卡片两列与弹层边界；CI 和 Release 共用此闸门。
+      - name: 安装 Chromium 及系统依赖
+        run: pnpm --filter @feedlore/web exec playwright install --with-deps chromium
+
+      - name: 720px 真实浏览器回归
+        run: pnpm --filter @feedlore/web run test:browser
+        env:
+          CI: "true"
 
       # 发布同时出 amd64 与 arm64 镜像；只在这里构建 tag 才做的架构，坏了要等到
       # 发布才发现。arm64 用 QEMU 模拟构建（只验证可构建，不 load）；缓存按架构
