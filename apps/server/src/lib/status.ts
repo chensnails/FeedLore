@@ -12,7 +12,16 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import { auth as authSpec } from '@feedlore/contract';
-import { type Db, digests, feeds, getPool, users } from '@feedlore/db';
+import {
+  aiJobs,
+  type Db,
+  digests,
+  feeds,
+  getPool,
+  getPoolMetrics,
+  statementTimeoutMs,
+  users,
+} from '@feedlore/db';
 import { sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { GITHUB_REPO } from '../env';
@@ -23,6 +32,8 @@ import { assertResponse } from './validate';
 export { GITHUB_REPO };
 
 import { APP_VERSION } from '../env';
+import { aiTagSchedulerMetrics } from './aiTag';
+import { digestSchedulerMetrics } from './digest';
 import { condPenalties } from './feedCond';
 import {
   type FeedRow,
@@ -31,6 +42,7 @@ import {
   getLastRun,
   getRefreshProgress,
   inFlightCount,
+  rssSchedulerMetrics,
 } from './fetcher';
 import { userDigest, userLayout } from './prefs';
 
@@ -164,6 +176,12 @@ export async function buildStatus(
 ): Promise<z.infer<typeof authSpec.status.response>> {
   const now = Date.now();
   const mem = process.memoryUsage();
+  const operations = {
+    rss: rssSchedulerMetrics.snapshot(),
+    aiTags: aiTagSchedulerMetrics.snapshot(),
+    digest: digestSchedulerMetrics.snapshot(),
+    aiJobs: { queued: 0, running: 0, failed24h: 0, oldestQueuedMs: 0 },
+  };
 
   /* ---------------- 数据库 ---------------- */
   const dbInfo: {
@@ -176,7 +194,14 @@ export async function buildStatus(
       waiting: number;
       max: number;
       longQueries: number;
+      longestQueryMs: number;
       statsHealthy: boolean;
+      healthy: boolean;
+      connectionsCreated: number;
+      idleConnectionErrors: number;
+      acquisitions: number;
+      releases: number;
+      removed: number;
     } | null;
     tables: Record<string, number> | null;
     sizeBytes: number | null;
@@ -213,23 +238,33 @@ export async function buildStatus(
           waiting: p.waitingCount,
           max: p.options.max ?? Number(process.env.PG_POOL_MAX || 10),
           longQueries: 0,
+          longestQueryMs: 0,
           statsHealthy: true,
+          healthy: true,
+          connectionsCreated: 0,
+          idleConnectionErrors: 0,
+          acquisitions: 0,
+          releases: 0,
+          removed: 0,
         };
+        Object.assign(dbInfo.pool, getPoolMetrics(p));
         /* 僵尸查询与统计损坏的可观测信号：
-         * longQueries = 跑超 60s 的活跃查询数（>0 即有查询占着连接池）；
+         * longQueries = 超过 statement_timeout 的活跃查询数（>0 即有查询占着连接池）；
          * statsHealthy = entries.reltuples 是否为有限值（Infinity/-1 会让优化器产出
          * cost=Infinity 的笛卡尔计划，是本次僵尸查询的根因）。
          * 两项各自 try/catch：权限不足或版本差异不该拖垮整页。 */
         try {
           const q = await db.execute(sql`
-            select count(*)::int as n
+            select count(*)::int as n,
+                   coalesce(max(extract(epoch from (now() - query_start)) * 1000), 0)::float8 as longest_ms
             from pg_stat_activity
             where state = 'active' and pid <> pg_backend_pid()
               and datname = current_database()
-              and query_start < now() - interval '60 seconds'
+              and query_start < now() - ${statementTimeoutMs()} * interval '1 millisecond'
           `);
-          const v = ((q.rows as unknown as Row[])[0] ?? {}).n;
-          dbInfo.pool.longQueries = v === undefined ? 0 : Number(v);
+          const row = ((q.rows as unknown as Row[])[0] ?? {}) as Row;
+          dbInfo.pool.longQueries = Number(row.n ?? 0);
+          dbInfo.pool.longestQueryMs = Math.max(0, Number(row.longest_ms ?? 0));
         } catch {
           /* 留 0 */
         }
@@ -244,6 +279,27 @@ export async function buildStatus(
         } catch {
           /* 留 true：没权限判定时不误报警 */
         }
+        dbInfo.pool.healthy =
+          dbInfo.ready && dbInfo.pool.waiting === 0 && dbInfo.pool.longQueries === 0;
+      }
+      try {
+        const q = await db.execute(sql`
+          select count(*) filter (where status = 'queued')::int as queued,
+                 count(*) filter (where status = 'running')::int as running,
+                 count(*) filter (where status = 'failed' and finished_at >= now() - interval '24 hours')::int as failed_24h,
+                 coalesce(max(extract(epoch from (now() - created_at)) * 1000)
+                   filter (where status = 'queued'), 0)::float8 as oldest_queued_ms
+          from ${aiJobs}
+        `);
+        const row = ((q.rows as unknown as Row[])[0] ?? {}) as Row;
+        operations.aiJobs = {
+          queued: Number(row.queued ?? 0),
+          running: Number(row.running ?? 0),
+          failed24h: Number(row.failed_24h ?? 0),
+          oldestQueuedMs: Math.max(0, Number(row.oldest_queued_ms ?? 0)),
+        };
+      } catch {
+        /* 旧库缺表时保留零值 */
       }
     }
   } else {
@@ -456,6 +512,7 @@ export async function buildStatus(
         cpuCount: os.cpus().length,
       },
       db: dbInfo,
+      operations,
       rss: {
         refreshMinutes: cfg.refreshMinutes,
         keepPerFeed: cfg.keepPerFeed,

@@ -36,6 +36,18 @@ export const loginBody = z.object({
 });
 export type LoginBody = z.infer<typeof loginBody>;
 
+const schedulerMetricsSchema = z.object({
+  runs: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  lastStartedAt: C.IsoDateTime.nullable(),
+  lastFinishedAt: C.IsoDateTime.nullable(),
+  lastDurationMs: z.number().nonnegative().nullable(),
+  maxDurationMs: z.number().nonnegative(),
+  backlog: z.number().int().nonnegative().nullable(),
+});
+
 export const auth = {
   health: {
     method: 'get',
@@ -108,14 +120,32 @@ export const auth = {
             idle: z.number(),
             waiting: z.number(),
             max: z.number(),
-            /** 跑超 60s 的活跃查询数；>0 说明有查询占着连接池 */
+            /** 超过 statement_timeout 的活跃查询数；>0 说明有查询占着连接池 */
             longQueries: z.number(),
+            longestQueryMs: z.number(),
             /** entries.reltuples 是否为有限非负值；false = 统计损坏，优化器可能产出僵尸计划 */
             statsHealthy: z.boolean(),
+            healthy: z.boolean(),
+            connectionsCreated: z.number().int().nonnegative(),
+            idleConnectionErrors: z.number().int().nonnegative(),
+            acquisitions: z.number().int().nonnegative(),
+            releases: z.number().int().nonnegative(),
+            removed: z.number().int().nonnegative(),
           })
           .nullable(),
         tables: z.unknown().nullable(),
         sizeBytes: z.number().nullable(),
+      }),
+      operations: z.object({
+        rss: schedulerMetricsSchema,
+        aiTags: schedulerMetricsSchema,
+        digest: schedulerMetricsSchema,
+        aiJobs: z.object({
+          queued: z.number().int().nonnegative(),
+          running: z.number().int().nonnegative(),
+          failed24h: z.number().int().nonnegative(),
+          oldestQueuedMs: z.number().nonnegative(),
+        }),
       }),
       rss: z.object({
         refreshMinutes: z.number(),

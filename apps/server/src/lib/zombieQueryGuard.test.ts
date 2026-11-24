@@ -67,9 +67,11 @@ test('迁移 0021: 补 description / content 的 coalesce 表达式 trgm 索引'
 
 test('status: 暴露慢查询计数与 reltuples 健康度，且契约同步', () => {
   const src = read('apps/server/src/lib/status.ts');
-  assert.match(src, /longQueries/, 'status 要暴露 >60s 活跃查询数');
+  assert.match(src, /longQueries/, 'status 要暴露超时活跃查询数');
+  assert.match(src, /longestQueryMs/, 'status 要暴露最长活跃查询耗时');
   assert.match(src, /statsHealthy/, 'status 要暴露 reltuples 健康度');
-  assert.match(src, /interval '60 seconds'/, '慢查询阈值与 statement_timeout 保持一致');
+  assert.match(src, /statementTimeoutMs\(\)/, '慢查询阈值必须跟随 statement_timeout');
+  assert.doesNotMatch(src, /interval '60 seconds'/, '不能再把慢查询阈值硬编码成 60 秒');
   assert.match(src, /'entries'::regclass/, '必须查 entries 表的 reltuples');
   const contract = read('packages/contract/src/endpoints.ts');
   assert.match(
@@ -77,5 +79,10 @@ test('status: 暴露慢查询计数与 reltuples 健康度，且契约同步', (
     /longQueries:\s*z\.number\(\)/,
     '契约要声明 longQueries，否则被 assertResponse 剥掉',
   );
+  assert.match(contract, /longestQueryMs:\s*z\.number\(\)/);
   assert.match(contract, /statsHealthy:\s*z\.boolean\(\)/, '契约要声明 statsHealthy');
+  assert.match(contract, /healthy:\s*z\.boolean\(\)/);
+  assert.match(contract, /connectionsCreated:\s*z\.number\(\)/);
+  assert.match(contract, /operations:\s*z\.object\(/);
+  assert.match(contract, /oldestQueuedMs:\s*z\.number\(\)/);
 });

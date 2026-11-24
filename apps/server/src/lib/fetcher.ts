@@ -31,6 +31,7 @@ import { classifyCond, condFactor, condHost, noteCond } from './feedCond';
 import { applyFilters } from './filter';
 import { enhanceWithFullText, pruneArticleCache } from './fulltext';
 import { log } from './logger';
+import { createSchedulerMetrics } from './metrics';
 import { safeFetch } from './net';
 import { userFilters, userRules, userWatchRules, userWebhook } from './prefs';
 import { type NormalizedItem, normalizeItem, parseFeed } from './rss';
@@ -902,19 +903,31 @@ export const inFlightCount = (): number => inFlight.size;
 const TICK_MS = 60_000;
 let timer: ReturnType<typeof setInterval> | null = null;
 let ticking = false;
+export const rssSchedulerMetrics = createSchedulerMetrics();
 
 /** 定时 tick：只抓「到期」的频道（跨用户）。每分钟检查一次，效果上每个频道各按自己的间隔。 */
 export async function tickRefresh(db: Db): Promise<RefreshSummary | null> {
-  if (ticking) return null; // 上一轮还没抓完（源站慢），本轮直接跳过
+  if (ticking) {
+    rssSchedulerMetrics.skipped();
+    return null; // 上一轮还没抓完（源站慢），本轮直接跳过
+  }
   ticking = true;
+  const startedAt = rssSchedulerMetrics.start();
+  let outcome: 'success' | 'failure' = 'success';
+  let backlog: number | null = null;
   try {
     // 先确保快照新鲜：`dueFeeds` 用的是全局间隔，读到旧值会漏抓/多抓
     await getSource(db);
     const all = await db.select().from(feeds).where(eq(feeds.enabled, true));
     const due = dueFeeds(all);
+    backlog = due.length;
     if (!due.length) return null;
     return await refreshFeeds(db, due, 'scheduled');
+  } catch (e) {
+    outcome = 'failure';
+    throw e;
   } finally {
+    rssSchedulerMetrics.finish(startedAt, outcome, backlog);
     ticking = false;
   }
 }

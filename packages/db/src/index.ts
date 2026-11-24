@@ -26,6 +26,55 @@ export type Db = NodePgDatabase<typeof schema>;
 
 let _pool: pg.Pool | null = null;
 
+export interface PoolMetricSnapshot {
+  connectionsCreated: number;
+  idleConnectionErrors: number;
+  acquisitions: number;
+  releases: number;
+  removed: number;
+}
+
+type PoolMetricState = PoolMetricSnapshot;
+
+const poolMetricStates = new WeakMap<pg.Pool, PoolMetricState>();
+
+function emptyPoolMetrics(): PoolMetricState {
+  return {
+    connectionsCreated: 0,
+    idleConnectionErrors: 0,
+    acquisitions: 0,
+    releases: 0,
+    removed: 0,
+  };
+}
+
+function observePool(pool: pg.Pool): void {
+  if (poolMetricStates.has(pool)) return;
+  const state = emptyPoolMetrics();
+  poolMetricStates.set(pool, state);
+  pool.on('connect', () => {
+    state.connectionsCreated += 1;
+  });
+  pool.on('acquire', () => {
+    state.acquisitions += 1;
+  });
+  pool.on('release', () => {
+    state.releases += 1;
+  });
+  pool.on('remove', () => {
+    state.removed += 1;
+  });
+  pool.on('error', (e) => {
+    state.idleConnectionErrors += 1;
+    console.error('[db] idle connection error:', e?.message ?? e);
+  });
+}
+
+export function getPoolMetrics(pool: pg.Pool | null = _pool): PoolMetricSnapshot | null {
+  if (!pool) return null;
+  return { ...(poolMetricStates.get(pool) ?? emptyPoolMetrics()) };
+}
+
 /** 单条 SQL 兜底超时（毫秒）。0 = 关闭（仅用于测试/特殊部署）；默认 60s。
  *  纯函数便于单测，避免把 pg 启动参数解析塞进 createPool 里难验证。 */
 export function statementTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
@@ -48,7 +97,7 @@ export function createPool(connectionString: string): pg.Pool {
      * 注意 0 在 pg 客户端是 falsy、不会下发，必须显式 0 时走 options 或 SET LOCAL。 */
     statement_timeout: statementTimeoutMs(),
   });
-  pool.on('error', (e) => console.error('[db] idle connection error:', e?.message ?? e));
+  observePool(pool);
   return pool;
 }
 

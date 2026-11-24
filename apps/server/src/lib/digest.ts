@@ -15,6 +15,7 @@ import { eq, sql } from 'drizzle-orm';
 import { recordAiUsage } from './aiUsage';
 import { isCapabilityEnabled, resolveLlmForTask } from './llm';
 import { log } from './logger';
+import { createSchedulerMetrics } from './metrics';
 import { safeFetch } from './net';
 import { userDigest, userLayout } from './prefs';
 
@@ -86,75 +87,96 @@ async function markAutoDone(db: Db, uid: string, today: string): Promise<void> {
  * 只把 `digest.auto = true` 的账号捞出来（用 SQL 过滤），否则每分钟要把全表 prefs
  * 拉回 JS 再判断——单用户无所谓，几十个账号时纯属浪费。
  */
+let ticking = false;
+export const digestSchedulerMetrics = createSchedulerMetrics();
+
 export async function runDigestTick(db: Db, now: Date = new Date()): Promise<number> {
-  const today = shanghaiDate(now);
-  const hhmm = shanghaiHhmm(now);
-
-  const rows = await db
-    .select({ id: users.id, prefs: users.prefs })
-    .from(users)
-    .where(sql`${users.prefs}->'digest'->>'auto' = 'true'`);
-
-  if (!rows.length) return 0;
-
-  let done = 0;
-
-  for (const u of rows) {
-    try {
-      // 关掉了日报入口的账号，定时也不该替他烧额度
-      if (userLayout(u.prefs).digestEnabled === false) continue;
-
-      const cfg = userDigest(u.prefs);
-      if (!cfg.auto || cfg.time !== hhmm || cfg.lastAuto === today) continue;
-      // 「自动任务」开关：关掉后定时调度不烧额度（手动生成仍可用，由 digest 开关管）
-      if (!(await isCapabilityEnabled(db, u.id, 'auto'))) continue;
-      if (!(await isCapabilityEnabled(db, u.id, 'digest'))) continue;
-
-      await markAutoDone(db, u.id, today);
-
-      const llm = await resolveLlmForTask(db, u.id, 'digest');
-
-      if (!llmComplete(llm)) {
-        log.info(
-          `[digest] user ${u.id}: scheduled time reached but LLM config is incomplete, skipping (no retry today)`,
-        );
-        continue;
-      }
-
-      const scope = await resolveDigestScope(db, u.id, null, cfg);
-      const started = Date.now();
-      const r = await generateDigest({
-        db,
-        ownerId: u.id,
-        feedIds: scope,
-        force: true,
-        llm,
-        style: cfg.style,
-        limits: { maxPerFeed: cfg.maxPerFeed, maxTotal: cfg.maxTotal, keepDays: cfg.keepDays },
-        fetchImpl: safeFetch,
-      });
-
-      if (!r.cached && r.usage.calls > 0) {
-        await recordAiUsage(db, u.id, 'digest', r.usage, true, r.usage.calls, {
-          model: llm.model,
-          label: `日报 ${r.digest.date}（定时）`,
-          durationMs: Date.now() - started,
-        });
-      }
-      done += 1;
-      log.info(
-        `[digest] user ${u.id} generated digest for ${r.digest.date}: ` +
-          `${r.digest.stats.kept}/${r.digest.stats.collected} items, ${r.digest.stats.feeds} feeds` +
-          (r.digest.fallback ? ' (rule fallback)' : ` (${r.digest.model})`),
-      );
-    } catch (e) {
-      log.error(
-        `[digest] auto-generation failed for user ${u.id}: ` + ((e as Error)?.message ?? e),
-      );
-    }
+  if (ticking) {
+    digestSchedulerMetrics.skipped();
+    return 0;
   }
+  ticking = true;
+  const startedAt = digestSchedulerMetrics.start();
+  let outcome: 'success' | 'failure' = 'success';
+  let backlog: number | null = null;
+  try {
+    const today = shanghaiDate(now);
+    const hhmm = shanghaiHhmm(now);
 
-  return done;
+    const rows = await db
+      .select({ id: users.id, prefs: users.prefs })
+      .from(users)
+      .where(sql`${users.prefs}->'digest'->>'auto' = 'true'`);
+
+    if (!rows.length) return 0;
+
+    let done = 0;
+    backlog = 0;
+
+    for (const u of rows) {
+      try {
+        // 关掉了日报入口的账号，定时也不该替他烧额度
+        if (userLayout(u.prefs).digestEnabled === false) continue;
+
+        const cfg = userDigest(u.prefs);
+        if (!cfg.auto || cfg.time !== hhmm || cfg.lastAuto === today) continue;
+        // 「自动任务」开关：关掉后定时调度不烧额度（手动生成仍可用，由 digest 开关管）
+        if (!(await isCapabilityEnabled(db, u.id, 'auto'))) continue;
+        if (!(await isCapabilityEnabled(db, u.id, 'digest'))) continue;
+
+        backlog += 1;
+        await markAutoDone(db, u.id, today);
+
+        const llm = await resolveLlmForTask(db, u.id, 'digest');
+
+        if (!llmComplete(llm)) {
+          log.info(
+            `[digest] user ${u.id}: scheduled time reached but LLM config is incomplete, skipping (no retry today)`,
+          );
+          continue;
+        }
+
+        const scope = await resolveDigestScope(db, u.id, null, cfg);
+        const started = Date.now();
+        const r = await generateDigest({
+          db,
+          ownerId: u.id,
+          feedIds: scope,
+          force: true,
+          llm,
+          style: cfg.style,
+          limits: { maxPerFeed: cfg.maxPerFeed, maxTotal: cfg.maxTotal, keepDays: cfg.keepDays },
+          fetchImpl: safeFetch,
+        });
+
+        if (!r.cached && r.usage.calls > 0) {
+          await recordAiUsage(db, u.id, 'digest', r.usage, true, r.usage.calls, {
+            model: llm.model,
+            label: `日报 ${r.digest.date}（定时）`,
+            durationMs: Date.now() - started,
+          });
+        }
+        done += 1;
+        log.info(
+          `[digest] user ${u.id} generated digest for ${r.digest.date}: ` +
+            `${r.digest.stats.kept}/${r.digest.stats.collected} items, ${r.digest.stats.feeds} feeds` +
+            (r.digest.fallback ? ' (rule fallback)' : ` (${r.digest.model})`),
+        );
+      } catch (e) {
+        log.error(
+          `[digest] auto-generation failed for user ${u.id}: ` + ((e as Error)?.message ?? e),
+        );
+      }
+    }
+
+    return done;
+  } catch (e) {
+    outcome = 'failure';
+    throw e;
+  } finally {
+    digestSchedulerMetrics.finish(startedAt, outcome, backlog);
+    ticking = false;
+  }
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
