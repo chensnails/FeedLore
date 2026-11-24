@@ -42,6 +42,7 @@ import pg from 'pg';
 import { z } from 'zod';
 import { createApp } from './app';
 import { migrateV2 } from './bootstrap';
+import { closeFetchCoordinator } from './lib/fetchCoordinator';
 import { resetLoginAttempts } from './lib/rate-limit';
 import { createTarGz } from './lib/tar';
 
@@ -114,6 +115,10 @@ async function rebuildArchive(files: Map<string, Buffer>): Promise<Buffer> {
 
 test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) => {
   const db = createDb(DATABASE_URL);
+  t.after(async () => {
+    await closeFetchCoordinator(db);
+    await db.$client.end();
+  });
 
   /* 启动器已负责迁移；这里必须见到当前 schema 的表，避免连错库后一路跑出 500。 */
   const probe = (await db.execute(
