@@ -75,7 +75,7 @@ test('设置弹层与确认框是两个选择器，确认框不会被当成设�
   // 选择器本身就排除了 .confirm-mask，这里确认这张表没写错
   assert.match(LAYER_SELECTORS.modal, /:not\(\.confirm-mask\)/);
   assert.match(LAYER_SELECTORS.modal, /:not\(\[hidden\]\)/);
-  assert.equal(LAYER_SELECTORS.confirm, '.confirm-mask');
+  assert.equal(LAYER_SELECTORS.confirm, '.confirm-mask:not([hidden])');
 });
 
 test('没有 document（SSR / 单测环境）时不抛错', () => {

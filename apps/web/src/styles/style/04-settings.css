@@ -266,7 +266,7 @@
   .modal.settings-modal { height: 94dvh; }
   .settings-modal.mobile-home .modal-body { display: none; }
   .settings-modal.mobile-pane .settings-nav { display: none; }
-  .settings-modal.mobile-pane .settings-back { display: inline-flex; }
+  .settings-modal.mobile-pane .settings-back { display: inline-flex; width: 44px; height: 44px; }
   .settings-modal.mobile-home .settings-nav { flex: 1 1 auto; min-height: 0; }
   .settings-modal.mobile-home .settings-search { margin: var(--sp-2) var(--sp-3) var(--sp-1); }
   .settings-modal.mobile-home .tabs {

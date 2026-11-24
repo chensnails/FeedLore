@@ -239,9 +239,15 @@ export function CardsView() {
                   /** @param {*} [ev] */ (ev) => {
                     if (ev.key === 'Escape') {
                       ev.stopPropagation();
-                      toggleSearch();
-                      const toggle = document.querySelector<HTMLElement>('.cards-search-toggle');
-                      if (toggle && toggle.focus) toggle.focus();
+                      if (window.matchMedia?.('(max-width: 720px)').matches) {
+                        toggleSearch();
+                        requestAnimationFrame(() => {
+                          document.querySelector<HTMLElement>('.cards-search-toggle')?.focus();
+                        });
+                      } else {
+                        onSearchClear();
+                        searchRef.current?.focus();
+                      }
                       return;
                     }
                     onSearchKey(ev);

@@ -89,8 +89,8 @@
 
 /* 7) 过滤规则输入框的聚焦光环已并入设置面板统一控件规则 */
 
-/* 8) 卡片内标签与筛选 chip 同属「标签」，字号并到同一档 */
-.mini-tag { font-size: var(--fs-2xs); border-radius: var(--radius-xs); }
+/* 8) 卡片内标签与筛选 chip 同属「标签」，字号并到同一档；圆角由 hig 层统一 */
+.mini-tag { font-size: var(--fs-2xs); }
 
 /* 9) 链接选择菜单：桌面未锁滚动，与下拉面板同一套「实底」语言（禁用模糊） */
 .link-menu {

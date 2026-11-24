@@ -7738,6 +7738,35 @@ const withEFP = (el, fn) => {
     if (C('.saved-search-chip')) throw new Error('删除没生效');
   });
 
+  setVal(C('#searchInput'), '条目一');
+  C('#searchInput').focus();
+  keydown(C('#searchInput'), 'Escape');
+  await sleep(60);
+  t('桌面搜索 Esc：清空搜索并保持输入框焦点', () => {
+    if (C('#searchInput').value !== '') throw new Error('搜索词未清空');
+    if (w.document.activeElement !== C('#searchInput')) throw new Error('焦点离开桌面搜索框');
+  });
+
+  const searchMatchMedia = w.matchMedia;
+  w.matchMedia = (q) => ({
+    matches: /max-width:\s*720px/.test(q),
+    addEventListener() {},
+    removeEventListener() {},
+  });
+  if (!C('.cards-head .page-search').classList.contains('is-open')) {
+    C('#cardsSearchToggle').click();
+    await sleep(40);
+  }
+  C('#searchInput').focus();
+  keydown(C('#searchInput'), 'Escape');
+  await sleep(80);
+  t('移动搜索 Esc：收起搜索并把焦点还给放大镜', () => {
+    if (C('.cards-head .page-search').classList.contains('is-open'))
+      throw new Error('移动搜索未收起');
+    if (w.document.activeElement !== C('#cardsSearchToggle')) throw new Error('焦点未回到放大镜');
+  });
+  w.matchMedia = searchMatchMedia;
+
   // v1.6.0：顶部标签栏已移除，标签筛选入口下线（标签内容仅保留在文章正文）。
 
   // 列表行同样有未读圆点：e1 设为已读、e2 留未读用于对照（清搜索框会重新拉列表，读态得在这里重摆）
@@ -9273,14 +9302,23 @@ const withEFP = (el, fn) => {
     if (!/\.card-meta \{ margin: calc\(-1 \* var\(--sp-3\)\)/.test(narrow))
       throw new Error('窄屏徽记带没有跟随 sp-3 内边距');
   });
-  t('布局结构：设置详情层宽屏并列、窄屏贴底弹层不受影响', () => {
-    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
+  t('布局结构：设置详情层宽屏并列、≤820px 贴底弹层', () => {
+    const root = path.join(__dirname, '..', '..');
+    const css = fs.readFileSync(path.join(root, 'src', 'style.css'), 'utf8');
     const wide = css.match(/@media \(min-width: 1100px\) \{([\s\S]*?)\n\}/);
     if (!wide || !/pointer-events:\s*none/.test(wide[1]) || !/width:\s*min\(52%/.test(wide[1]))
       throw new Error('≥1100px 详情遮罩应透传指针、详情抽屉加宽实现并列');
-    // 窄屏贴底弹层规则必须仍在（不被宽屏并列吞掉）
-    if (!/\.ds-mask \{ align-items: flex-end/.test(css))
-      throw new Error('窄屏详情贴底弹层规则丢失');
+    const tablet = [...css.matchAll(/@media \(max-width: 820px\) \{([\s\S]*?)\n\}/g)].find((m) =>
+      /\.ds-mask \{ align-items: flex-end/.test(m[1]),
+    );
+    if (!tablet || !/\.ds-sheet \{[\s\S]*?width:\s*100%/.test(tablet[1]))
+      throw new Error('≤820px 详情层应贴底并铺满设置内容区');
+    const phone = [...css.matchAll(/@media \(max-width: 720px\) \{([\s\S]*?)\n\}/g)];
+    if (phone.some((m) => /\.ds-mask|\.ds-sheet/.test(m[1])))
+      throw new Error('详情层不应再挂在 720px 导航断点上');
+    const detail = fs.readFileSync(path.join(root, 'src', 'settings', 'DetailSheet.tsx'), 'utf8');
+    if (!/hasLayerAbove\(root\)/.test(detail) || /querySelector\('\.confirm-mask'\)/.test(detail))
+      throw new Error('详情层 Esc 必须走可见层真源，不能被隐藏确认框挡住');
   });
   t('布局结构：顶栏右簇在桌面有语义分隔，命中区不变', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
@@ -9353,13 +9391,13 @@ const withEFP = (el, fn) => {
     if (!/已撤销 \$\{total - failed\} 项，\$\{failed\} 项未成功/.test(src))
       throw new Error('失败汇总量化丢失');
   });
-  // 触屏上卡片的两组操作按钮尺寸要一致（浮层 40px，底部操作条不能还是 32px）
-  t('style.css：触屏卡片底部操作条与浮层按钮同为 40px', () => {
+  // 触屏上卡片的两组操作按钮尺寸要一致，且实盒达到 44px，不再用视觉尺寸冒充命中区。
+  t('style.css：触屏卡片底部操作条与浮层按钮同为 44px', () => {
     const css = fs.readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8');
     const block = css.match(/@media \(pointer: coarse\), \(max-width: 720px\) \{([\s\S]*?)\n\}/);
     if (!block) throw new Error('缺触屏命中区媒体段');
-    if (!/\.card-foot \.btn-copy[\s\S]{0,200}width:\s*40px;\s*height:\s*40px/.test(block[1])) {
-      throw new Error('文字卡底部操作条没有跟着抬到 40px');
+    if (!/\.card-foot \.btn-copy[\s\S]{0,200}width:\s*44px;\s*height:\s*44px/.test(block[1])) {
+      throw new Error('文字卡底部操作条没有跟着抬到 44px');
     }
   });
   // 目录树层级：组头贴左，频道行缩进到组名起线（折叠键 18 + 间隙 4 = 22px）。
@@ -11503,7 +11541,7 @@ const withEFP = (el, fn) => {
     }
   });
 
-  t('style.css：≤560 卡片动作只留复制链接，命中区仍 ≥36', () => {
+  t('style.css：≤560 卡片动作只留复制链接，命中区仍为 44px', () => {
     const css = fs
       .readFileSync(path.join(__dirname, '..', '..', 'src', 'style.css'), 'utf8')
       .replace(/\r\n/g, '\n');
@@ -11517,10 +11555,14 @@ const withEFP = (el, fn) => {
     ]) {
       if (!hide.some((r) => r.includes(sel))) throw new Error('≤560 未收起「打开原文」：' + sel);
     }
-    const copy = block.match(/\.card-media-actions \.btn-copy,[\s\S]*?\{([^}]*)\}/);
-    if (!copy || !/width: 36px/.test(copy[1]) || !/height: 36px/.test(copy[1])) {
-      throw new Error('≤560 复制链接应收到 36px 方块（再小就不像能按的地方）');
-    }
+    if (/\.btn-copy[^{}]*\{[^}]*width:\s*(?:30|36|40)px/.test(block))
+      throw new Error('≤560 不应把复制链接命中区缩回 40px 以下');
+    const touch = css.match(/@media \(pointer: coarse\), \(max-width: 720px\) \{([\s\S]*?)\n\}/);
+    if (
+      !touch ||
+      !/\.card-foot \.btn-copy[\s\S]{0,200}width:\s*44px;\s*height:\s*44px/.test(touch[1])
+    )
+      throw new Error('≤560 复制链接应继承 44px 命中区');
   });
 
   // 「恢复上次位置」只属于视图导航：筛选 / 深链 / 命令面板换了列表，沿用旧位置会停在半截。
@@ -11733,12 +11775,14 @@ const withEFP = (el, fn) => {
     if (/className="toast-act"[^>]*tabIndex=\{-1\}/.test(ov)) {
       throw new Error('toast 撤销按钮不能移出 Tab 序列：键盘用户无法撤销');
     }
-    if (
-      !/\.toast-act::after/.test(css) ||
-      !/\.dd-group-filter::after/.test(css) ||
-      !/\.rd-ch-filter::after/.test(css)
-    ) {
-      throw new Error('行内动作 / 分组漏斗 / 频道漏斗缺 44px 命中补偿');
+    if (!/\.toast-act::after/.test(css) || !/\.dd-group-filter::after/.test(css)) {
+      throw new Error('行内动作 / 分组漏斗缺 44px 命中补偿');
+    }
+    const channelFilter = css.match(
+      /\.rd-ch-filter \{[^}]*position:\s*relative;[^}]*width:\s*44px;[^}]*height:\s*44px/,
+    );
+    if (!channelFilter) {
+      throw new Error('频道漏斗触屏应使用 44px 实盒，不再依赖伪元素');
     }
     if (
       !/matchMedia\('\(hover: hover\) and \(pointer: fine\)'\)/.test(om) ||
@@ -12321,10 +12365,29 @@ const withEFP = (el, fn) => {
     const ov = fs.readFileSync(path.join(root, 'ui', 'Overlays.tsx'), 'utf8');
     if (!/role=\{toast\.ok \? 'status' : 'alert'\}/.test(ov))
       throw new Error('toast 失败时未切到 role=alert');
+    for (const [file, marker] of [
+      ['views/ReaderView.parts.tsx', '正文加载失败'],
+      ['views/CardDetail.tsx', '正文加载失败'],
+      ['settings/McpPane.tsx', 'listError'],
+    ]) {
+      const source = fs.readFileSync(path.join(root, file), 'utf8');
+      if (!new RegExp('role="alert"[\\s\\S]{0,180}' + marker).test(source))
+        throw new Error(file + ' 的异步失败态未播报');
+    }
     const acc = fs.readFileSync(path.join(root, 'settings', 'AccountPane.tsx'), 'utf8');
     for (const id of ['exportBtn', 'backupBtn', 'importBtn', 'restoreBtn']) {
       const btn = new RegExp('id="' + id + '"[^>]*aria-busy=');
       if (!btn.test(acc)) throw new Error(id + ' 缺 aria-busy');
+    }
+    for (const [file, ids] of [
+      ['settings/SourcePane.tsx', ['refreshAllFeedsBtn', 'saveSourceBtn']],
+      ['settings/DigestPane.tsx', ['digSaveBtn']],
+    ]) {
+      const source = fs.readFileSync(path.join(root, file), 'utf8');
+      for (const id of ids) {
+        const btn = new RegExp('id="' + id + '"[^>]*aria-busy=');
+        if (!btn.test(source)) throw new Error(file + ' 的 ' + id + ' 缺 aria-busy');
+      }
     }
     const css = fs.readFileSync(path.join(root, 'style.css'), 'utf8');
     if (!/\.btn\[aria-busy="true"\]::after/.test(css)) throw new Error('置忙按钮缺转圈指示');
@@ -12339,6 +12402,39 @@ const withEFP = (el, fn) => {
     if (/font-weight:\s*(450|550|620|650)\b/.test(css))
       throw new Error('仍有 450/550/620/650 字重，跨平台渲染会各差一档');
     if (!/--hit-min:\s*44px/.test(css)) throw new Error('缺 --hit-min: 44px 令牌');
+    const shell = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'src', 'styles', 'style', '09-shell-components.css'),
+      'utf8',
+    );
+    const hig = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'src', 'styles', 'hig', '04-content.css'),
+      'utf8',
+    );
+    if (/\.mini-tag \{[^}]*border-radius/.test(shell))
+      throw new Error('mini-tag 圆角不应在布局层重复声明');
+    if (
+      !/\.src-pill, \.meta-size, \.mini-tag, \.badge-size, \.count-chip \{[^}]*border-radius:\s*var\(--radius-pill\)/.test(
+        hig,
+      )
+    )
+      throw new Error('mini-tag 应归入 hig 层统一胶囊圆角');
+    const touch = css.match(/@media \(pointer: coarse\), \(max-width: 720px\) \{([\s\S]*?)\n\}/);
+    const narrow = [...css.matchAll(/@media \(max-width: 720px\) \{([\s\S]*?)\n\}/g)]
+      .map((m) => m[1])
+      .join('\n');
+    if (!touch) throw new Error('缺触屏命中区媒体段');
+    const hit = touch[1] + '\n' + narrow;
+    for (const sel of [
+      '.reader-side-fold',
+      '.reader-side-close',
+      '.rd-ch-filter',
+      '.feed-group-rename',
+      '.feed-icon-btn',
+      '.feed-order',
+    ]) {
+      const rule = hit.match(new RegExp('\\' + sel + ' \\{([^}]*)\\}'));
+      if (!rule || !/44px/.test(rule[1])) throw new Error(sel + ' 的触屏实盒未达到 44px');
+    }
     for (const sel of [
       'reader-search-clear',
       'search-clear',

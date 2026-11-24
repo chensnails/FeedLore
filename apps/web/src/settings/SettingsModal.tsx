@@ -2,8 +2,8 @@
  *
  * 渐进式迁移策略（与命令面板一致的混合期方案）：
  * - 弹层外壳（遮罩 / 标题 / tab 栏 / 关闭）由 React 渲染；
- * - 全部七个面板均已 React 化（本目录 SourcePane / ModelPane / DigestPane /
- *   AppearancePane / AboutPane / AccountPane / StatusPane，P2d 起账号与状态迁出）；
+ * - 九个面板均已 React 化（Source / Watch / Account / Mcp / Model / Digest /
+ *   Appearance / Status / About）；
  * - 旧 #legacyPanes 隐藏容器与 legacy-slot 搬运机制随 P2d 一并退役。
  * - 旧 app.js 的 openSettings/closeSettings 委托给本组件注册的宿主。
  */

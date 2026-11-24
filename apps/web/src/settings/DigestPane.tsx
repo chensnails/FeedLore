@@ -541,6 +541,7 @@ export function DigestPane({ onDirtyChange }: { onDirtyChange?: (dirty: boolean)
           id="digSaveBtn"
           type="button"
           disabled={busy || !dirty}
+          aria-busy={busy ? 'true' : undefined}
           onClick={onSave}
         >
           {busy ? '保存中…' : '保存日报设置'}

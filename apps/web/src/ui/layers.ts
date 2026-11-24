@@ -11,7 +11,7 @@
 export const LAYER_SELECTORS = {
   sheet: '.dd-mask:not([hidden])', // 移动端整屏抽屉
   cmdk: '.cmdk-mask', // 命令面板（仅在打开时渲染）
-  confirm: '.confirm-mask', // 统一确认框（同上）
+  confirm: '.confirm-mask:not([hidden])', // 统一确认框（关闭时仍常驻 DOM）
   lightbox: '.lightbox', // 图片灯箱（同上）
   modal: '.modal-mask:not([hidden]):not(.confirm-mask)', // 设置弹层
 };

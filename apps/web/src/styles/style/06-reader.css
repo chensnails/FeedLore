@@ -243,14 +243,9 @@
   /* 触屏：漏斗没有悬停可依赖，就回到排版里占一格，未读徽标往左让位。
      底色去掉（填充方块在每行挂一颗太抢眼），平时只用弱化色的裸图标，
      命中筛选态才亮 accent + 底色，让「哪一组在筛选」一眼可见。 */
-  /* relative 仍占排版位（等价于 static），但能给 44px 命中伪元素当定位参照；
-     right/top 必须一起清掉，否则桌面绝对定位的偏移会在触屏把漏斗推走。 */
-  .rd-ch-filter { position: relative; right: auto; top: auto; transform: none; opacity: 1; pointer-events: auto; background: transparent; }
-  .rd-ch-filter::after {
-    content: ''; position: absolute; left: 50%; top: 50%;
-    width: var(--hit-min); height: var(--hit-min);
-    transform: translate(-50%, -50%);
-  }
+  /* relative 回到排版流并占满 44px 命中区；right/top 必须一起清掉，
+     否则桌面绝对定位的偏移会在触屏把漏斗推走。 */
+  .rd-ch-filter { position: relative; right: auto; top: auto; transform: none; width: 44px; height: 44px; opacity: 1; pointer-events: auto; background: transparent; }
   .rd-ch-filter.is-active { background: var(--hover); }
   .rd-ch-group-row:is(:hover, :focus-within) :is(.rd-ch-n, .rd-ch-group-empty, .rd-ch-group-n) { opacity: 1; }
 }

@@ -363,7 +363,7 @@ export function McpPane() {
         >
           {tokens === null && !listError ? <div className="hint">正在读取令牌…</div> : null}
           {listError ? (
-            <div className="hint pane-msg">
+            <div className="hint pane-msg" role="alert">
               {listError}
               <button className="btn btn-ghost btn-sm" type="button" onClick={load}>
                 重试

@@ -546,13 +546,15 @@ body:has(.toast.show) .scroll-top { opacity: 0; pointer-events: none; transition
 /* 触屏命中区（v1.6.0-test3）：WCAG 2.2 SC 2.5.8 要求 ≥24×24，iOS HIG 建议 44×44。
    390px 实测 .reader-side-fold 仅 22×22、.reader-side-close 31×19、.rd-ch-filter 22×22、
    ⋮ 菜单项高 33px，手指都够不着。这里给的是真实盒子尺寸、不用伪元素虚扩命中区 ——
-   折叠键与关闭键只隔 4px，虚扩会互相抢点击。命中条件同时收 coarse 指针与 ≤720px：
-   前者是真手指，后者是窄窗口（headless 模拟不出 coarse，靠宽度这一条才验得到）。 */
+   折叠键与关闭键只隔 4px，这里用真实盒子尺寸而不是伪元素虚扩，避免互相抢点击。
+   命中条件同时收 coarse 指针与 ≤720px：前者是真手指，后者是窄窗口
+   （headless 模拟不出 coarse，靠宽度这一条才验得到）。 */
 @media (pointer: coarse), (max-width: 720px) {
-  .reader-side-fold { width: 40px; height: 40px; }
+  .reader-side-fold { width: 44px; height: 44px; }
   .reader-side-fold .ico { width: 1rem; height: 1rem; }
-  .reader-side-close { min-width: 40px; min-height: 40px; padding: 0 var(--sp-2); }
-  .rd-ch-filter { width: 30px; height: 30px; }
+  .reader-side-close { min-width: 44px; min-height: 44px; padding: 0 var(--sp-2); }
+  .rd-ch-filter { width: 44px; height: 44px; }
+  .feed-group-rename { width: 44px; height: 44px; }
   .overflow-item { min-height: 44px; }
   /* 文章列表右侧的星标 / 标为未读：真实盒子抬到 44×44，图标视觉尺寸不变。
      两枚动作在 grid 第二列竖排，列宽由内容自动算出，文字不再需要任何让位宽度。 */
@@ -562,14 +564,14 @@ body:has(.toast.show) .scroll-top { opacity: 0; pointer-events: none; transition
   .art-actions .btn-open,
   .art-actions .btn-fav,
   .art-actions .btn-jump { width: 44px; height: 44px; }
-  /* 卡面浮层按钮：图片上留白有限，40px 已可稳定点中。
-     文字卡底部操作条同样抬到 40px —— 同一张卡上的复制/打开不该大小不一。 */
+  /* 卡面浮层按钮与文字卡底部动作统一为 44px 实盒，图标视觉尺寸不变。
+     两枚动作在 172px 卡宽内仍留得下；极窄屏只留复制，不再把命中区缩到 36px。 */
   .card-media-actions .btn-copy,
   .card-media-actions .btn-open,
   .card-foot .btn-copy,
   .card-foot .btn-open,
   .row-actions .btn-copy,
-  .row-actions .btn-open { width: 40px; height: 40px; }
+  .row-actions .btn-open { width: 44px; height: 44px; }
 
   /* 触屏上两枚按钮必须常显（没有悬停可依赖），但实心主色 + 描边各占一块，
      375px 屏的卡宽只有约 172px，两枚按钮加间距吃掉图片一半以上宽度，
@@ -623,16 +625,13 @@ body:has(.toast.show) .scroll-top { opacity: 0; pointer-events: none; transition
 .watch-empty { padding: var(--sp-4) 0; text-align: center; color: var(--text-faint); font-size: var(--fs-sm); }
 .watch-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-2); }
 
-/* 小屏卡片动作瘦身（v2.4.0）：卡宽约 172px 时，两枚 40px 方块加间距要占掉
+/* 小屏卡片动作瘦身（v2.4.0）：卡宽约 172px 时，两枚按钮加间距会占掉
    一半以上；卡片本身点击即进详情，详情里复制 / 打开都在。这里只保留更常用的
-   「复制链接」这一枚，并把视觉尺寸收到 36px，让标题和图片重新成为主体。 */
+   「复制链接」这一枚，命中区仍保持 44px，让标题和图片重新成为主体。 */
 @media (max-width: 560px) {
   .card-media-actions .btn-open,
   .card-foot .btn-open,
   .row-actions .btn-open { display: none; }
-  .card-media-actions .btn-copy,
-  .card-foot .btn-copy,
-  .row-actions .btn-copy { width: 36px; height: 36px; }
 }
 
 /* ============================================================

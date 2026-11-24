@@ -49,6 +49,29 @@ async function boot(page: Page) {
   await expect(page.locator('#readerTitle')).toContainText('全部');
 }
 
+async function waitForMotion(page: Page, selector: string) {
+  await page.locator(selector).evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished));
+  });
+}
+
+async function openSettings(page: Page) {
+  await page.locator('.overflow-btn:visible').first().click();
+  await page.locator('.overflow-menu .overflow-item', { hasText: /^设置$/ }).click();
+  await expect(page.locator('.settings-modal')).toBeVisible();
+}
+
+async function openFirstFeed(page: Page) {
+  const group = page.locator('.feed-group-head').first();
+  await expect(group).toBeVisible();
+  if ((await group.getAttribute('class'))?.includes('collapsed')) await group.click();
+  const row = page.locator('.feed-row').first();
+  await expect(row).toBeVisible();
+  await row.click();
+  await expect(page.locator('.ds-sheet')).toBeVisible();
+  await waitForMotion(page, '.ds-sheet');
+}
+
 test.beforeEach(async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -78,6 +101,11 @@ test('720px 文章页：触控展开正文、频道抽屉与底栏均在视口�
   expect(drawer.left).toBeGreaterThanOrEqual(0);
   expect(drawer.right).toBeLessThanOrEqual(720);
   expect(drawer.width).toBeLessThan(720);
+  for (const selector of ['.reader-side-fold', '#readerSideClose', '.rd-ch-filter:visible']) {
+    const target = await rect(page, selector);
+    expect(target.width, selector).toBeGreaterThanOrEqual(44);
+    expect(target.height, selector).toBeGreaterThanOrEqual(44);
+  }
 
   await page.locator('#readerSideClose').tap();
   await expect(page.locator('body')).not.toHaveClass(/reader-drawer-open/);
@@ -105,6 +133,9 @@ test('720px 卡片页保持至少两列，详情层不溢出', async ({ page }) 
   });
   expect(columns).toBeGreaterThanOrEqual(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const copy = await rect(page, '.card-foot .btn-copy');
+  expect(copy.width).toBeGreaterThanOrEqual(44);
+  expect(copy.height).toBeGreaterThanOrEqual(44);
 
   await page.locator('#grid > .card .title-btn').first().tap();
   await expect(page.locator('.cd-modal')).toBeVisible();
@@ -158,5 +189,89 @@ test('721px 越过断点：频道回到常驻侧栏，底栏隐藏', async ({ pa
   const side = await rect(page, '#readerSide');
   expect(side.left).toBeGreaterThanOrEqual(0);
   expect(side.width).toBeGreaterThan(150);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('桌面键盘：关闭确认框后 Ctrl+K 可打开，卡片搜索 Esc 不失焦', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await boot(page);
+  await page.locator('#readerReadAllBtn').click();
+  await expect(page.locator('.confirm-mask')).toBeVisible();
+  await page.locator('.confirm-foot .btn-ghost').click();
+  await expect(page.locator('.confirm-mask')).toBeHidden();
+
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('.cmdk-mask')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cmdk-mask')).toBeHidden();
+
+  await page.locator('.viewnav-btn[data-view="cards"]:visible').click();
+  await expect(page.locator('#searchInput')).toBeVisible();
+  await page.locator('#searchInput').fill('条目');
+  await page.locator('#searchInput').press('Escape');
+  await expect(page.locator('#searchInput')).toHaveValue('');
+  await expect(page.locator('#searchInput')).toBeFocused();
+});
+
+for (const width of [760, 820]) {
+  test(`${width}px 设置详情：贴底铺满内容区`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await boot(page);
+    await openSettings(page);
+    await expect(page.locator('.settings-modal')).toHaveClass(/mobile-home/);
+    await page.locator('.tab[data-tab="source"]').click();
+    await expect(page.locator('.settings-modal')).toHaveClass(/mobile-pane/);
+    await openFirstFeed(page);
+
+    const panel = await rect(page, '#settingsPanel');
+    const sheet = await rect(page, '.ds-sheet');
+    expect(Math.abs(sheet.left - panel.left)).toBeLessThanOrEqual(2);
+    expect(Math.abs(sheet.right - panel.right)).toBeLessThanOrEqual(2);
+    expect(Math.abs(sheet.bottom - panel.bottom)).toBeLessThanOrEqual(2);
+    expect(sheet.width).toBeGreaterThan(panel.width * 0.98);
+    await page.locator('.ds-close').click();
+    await expect(page.locator('.ds-sheet')).toHaveCount(0);
+  });
+}
+
+test('821px 设置详情：恢复桌面右侧抽屉', async ({ page }) => {
+  await page.setViewportSize({ width: 821, height: 900 });
+  await boot(page);
+  await openSettings(page);
+  await expect(page.locator('.settings-modal')).not.toHaveClass(/mobile-home/);
+  await page.locator('.tab[data-tab="source"]').click();
+  await openFirstFeed(page);
+
+  const panel = await rect(page, '#settingsPanel');
+  const sheet = await rect(page, '.ds-sheet');
+  expect(sheet.width).toBeLessThanOrEqual(420);
+  expect(sheet.left).toBeGreaterThan(panel.left);
+  expect(Math.abs(sheet.right - panel.right)).toBeLessThanOrEqual(2);
+  expect(Math.abs(sheet.bottom - panel.bottom)).toBeLessThanOrEqual(2);
+});
+
+test('844×390 粗指针横屏：复用移动抽屉与底栏，命中区不压缩', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await boot(page);
+  await expect(page.locator('#readerMenuBtn')).toBeVisible();
+  await expect(page.locator('#mobileTabbarRoot .viewnav')).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--head-h').trim(),
+    ),
+  ).toBe('38px');
+
+  await page.locator('#readerMenuBtn').tap();
+  await expect(page.locator('body')).toHaveClass(/reader-drawer-open/);
+  await expect.poll(async () => (await rect(page, '#readerSide')).left).toBeGreaterThanOrEqual(0);
+  const drawer = await rect(page, '#readerSide');
+  expect(drawer.width).toBeLessThanOrEqual(272);
+  for (const selector of ['.reader-side-fold', '#readerSideClose', '.rd-ch-filter:visible']) {
+    const target = await rect(page, selector);
+    expect(target.width, selector).toBeGreaterThanOrEqual(44);
+    expect(target.height, selector).toBeGreaterThanOrEqual(44);
+  }
+  await page.locator('#readerSideClose').tap();
+  await expect(page.locator('body')).not.toHaveClass(/reader-drawer-open/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

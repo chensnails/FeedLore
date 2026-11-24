@@ -239,6 +239,7 @@ export function SourcePane({
               id="refreshAllFeedsBtn"
               type="button"
               disabled={c.busy === 'all'}
+              aria-busy={c.busy === 'all' ? 'true' : undefined}
               onClick={onRefreshAll}
             >
               {c.busy === 'all'
@@ -253,6 +254,7 @@ export function SourcePane({
               type="button"
               hidden={!c.admin}
               disabled={c.busy === 'save' || (c.cfgLoaded && !c.cfgDirty)}
+              aria-busy={c.busy === 'save' ? 'true' : undefined}
               onClick={c.onSaveCfg}
             >
               {c.busy === 'save' ? '保存中…' : '保存设置'}

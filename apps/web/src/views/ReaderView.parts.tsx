@@ -87,7 +87,7 @@ export function ArtItemInner({
     else if (bodyErr) {
       inner = (
         <div className="art-inner">
-          <div className="hint">
+          <div className="hint" role="alert">
             正文加载失败
             <button type="button" className="btn btn-sm" onClick={() => onRetryBody(e.id)}>
               重试

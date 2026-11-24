@@ -163,7 +163,7 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: CardDetailProps) {
   let inner = null;
   if (err) {
     inner = (
-      <div className="hint">
+      <div className="hint" role="alert">
         正文加载失败
         <button type="button" className="btn btn-sm" onClick={() => bodyQuery.refetch()}>
           重试

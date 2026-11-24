@@ -2,8 +2,8 @@
  *
  * 列表 + 详情两层：列表只留紧凑行（头像 / 标题 / 状态 / 快捷开关），点行打开这一层，
  * 全部编辑控件收在里面。两种形态共用同一份 DOM：
- *  - 桌面（>720px）：设置弹层内容区右侧抽屉，左边的列表仍可见、可对照；
- *  - 移动（≤720px）：贴底整宽弹层；出口是 × / Esc，下滑关闭已下线（真机收起会闪屏）。
+ *  - 桌面（>820px）：设置弹层内容区右侧抽屉，左边的列表仍可见、可对照；
+ *  - 移动（≤820px）：贴底整宽弹层；出口是 × / Esc，下滑关闭已下线（真机收起会闪屏）。
  *
  * 层内多数修改「即改即生效」；规则/过滤这类带草稿的编辑在关闭时保存，
  * 用 saveHint 明说，免得用户把 Esc 当成取消。
@@ -14,6 +14,7 @@
 
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
+import { hasLayerAbove } from '../ui/layers.ts';
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
@@ -73,7 +74,7 @@ export function DetailSheet({
     const onKey = (ev: KeyboardEvent) => {
       const root = panelRef.current;
       if (!root) return;
-      if (document.querySelector('.confirm-mask') || document.querySelector('.lightbox')) return;
+      if (hasLayerAbove(root)) return;
       const t = ev.target instanceof Element ? ev.target : null;
       if (t && t.closest('.rule-scope-pop')) return;
       if (ev.key === 'Escape') {
