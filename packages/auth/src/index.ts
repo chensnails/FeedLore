@@ -128,9 +128,8 @@ export function createAuth(opts: CreateAuthOptions) {
       // 只替换 verify：新密码仍用 better-auth 默认 scrypt(r=16) 生成
       password: { verify: verifyPasswordHash },
     },
-    /* 一屏几十张图片会各带同一枚会话 Cookie；开启 10 秒签名缓存后这些请求
-     * 不再每次都查 sessions + users 两张表。改密路由会显式作废旧缓存 Cookie，
-     * 因此 mustChangePassword 的即时放行语义不变。 */
+    /* better-auth 自身的无状态端点可使用签名缓存；FeedLore 的业务鉴权与
+     * /api/session 显式 disableCookieCache，确保降级、改密和会话吊销立即生效。 */
     session: {
       cookieCache: { enabled: true, maxAge: 10, strategy: 'compact' },
     },

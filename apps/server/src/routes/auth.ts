@@ -182,7 +182,12 @@ export function authRoutes(db: Db | null, auth: AuthInstance | null) {
 
       /* ---------------- GET /api/session ---------------- */
       .get(authSpec.session.path, async (c) => {
-        const session = auth ? await auth.api.getSession({ headers: c.req.raw.headers }) : null;
+        const session = auth
+          ? await auth.api.getSession({
+              headers: c.req.raw.headers,
+              query: { disableCookieCache: true },
+            })
+          : null;
 
         let dbReady = false;
         if (db) {

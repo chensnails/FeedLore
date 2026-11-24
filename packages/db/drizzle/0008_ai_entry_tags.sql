@@ -12,6 +12,6 @@ CREATE TABLE "entry_ai_tags" (
 	CONSTRAINT "entry_ai_tags_user_entry_key" UNIQUE("user_id","entry_id")
 );
 --> statement-breakpoint
-ALTER TABLE "entry_ai_tags" ADD CONSTRAINT "entry_ai_tags_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "entry_ai_tags" ADD CONSTRAINT "entry_ai_tags_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "entry_ai_tags" ADD CONSTRAINT "entry_ai_tags_entry_id_entries_id_fk" FOREIGN KEY ("entry_id") REFERENCES "public"."entries"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "entry_ai_tags" ADD CONSTRAINT "entry_ai_tags_entry_id_entries_id_fk" FOREIGN KEY ("entry_id") REFERENCES "entries"("id") ON DELETE cascade ON UPDATE no action;

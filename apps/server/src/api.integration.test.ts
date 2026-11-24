@@ -113,15 +113,11 @@ async function rebuildArchive(files: Map<string, Buffer>): Promise<Buffer> {
 test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) => {
   const db = createDb(DATABASE_URL);
 
-  /* 迁移是否跑过：没跑就 skip 而不是让 30 个断言一起炸成「500」，
-   * 那样报错信息只会说「期望 200 实际 500」，看不出是忘了 migrate。 */
+  /* 启动器已负责迁移；这里必须见到当前 schema 的表，避免连错库后一路跑出 500。 */
   const probe = (await db.execute(
-    sql`select to_regclass('public.users')::text as t`,
-  )) as unknown as { rows?: Array<{ t: string | null }> };
-  if (!probe.rows?.[0]?.t) {
-    t.skip('库里没有 users 表 —— 先跑 pnpm --filter @feedlore/db migrate');
-    return;
-  }
+    sql`select current_schema() as schema, to_regclass('users')::text as t`,
+  )) as unknown as { rows?: Array<{ schema: string; t: string | null }> };
+  assert.ok(probe.rows?.[0]?.t, `迁移未覆盖当前 schema：${JSON.stringify(probe.rows?.[0])}`);
 
   const auth = createAuth({
     db,
@@ -377,7 +373,7 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
       assert.equal(other.total, 0);
     });
 
-    await t.test('sort=relevance：标题 > 摘要 > 正文，同分按发布时间兜底', async () => {
+    await t.test('sort=relevance：标题 > 摘要 > 正文，同分按发布时间兜底', async (t) => {
       const [feed] = await db
         .insert(feedsTable)
         .values({
@@ -388,6 +384,9 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
         })
         .returning({ id: feedsTable.id });
       assert.ok(feed);
+      t.after(async () => {
+        await db.execute(sql`delete from feeds where id = ${feed.id}`);
+      });
       await db.insert(entriesTable).values([
         {
           feedId: feed.id,

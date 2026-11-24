@@ -165,12 +165,9 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
   const db = createDb(DATABASE_URL);
 
   const probe = (await db.execute(
-    sql`select to_regclass('public.users')::text as t`,
-  )) as unknown as { rows?: Array<{ t: string | null }> };
-  if (!probe.rows?.[0]?.t) {
-    t.skip('库里没有 users 表 —— 先跑 migrate');
-    return;
-  }
+    sql`select current_schema() as schema, to_regclass('users')::text as t`,
+  )) as unknown as { rows?: Array<{ schema: string; t: string | null }> };
+  assert.ok(probe.rows?.[0]?.t, `迁移未覆盖当前 schema：${JSON.stringify(probe.rows?.[0])}`);
 
   const auth = createAuth({
     db,
@@ -261,6 +258,21 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
   let longId = 0;
   let emptyId = 0;
   let foreignId = 0;
+
+  async function drainOwnerJobs(): Promise<void> {
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const [row] = (
+        await db.execute(sql`
+          select count(*)::int as n from ai_jobs
+          where user_id = ${ownerId} and status in ('queued', 'running')
+        `)
+      ).rows as Array<{ n: number }>;
+      if ((row?.n ?? 0) === 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.fail('后台任务在 15s 内没有结束');
+  }
 
   try {
     /* ---------------- 准备：三个账号（主 / 他人 / 只读） ---------------- */
@@ -913,6 +925,8 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
         assert.equal(ok + busy, 8, '每个请求都应明确 200 或 429');
         assert.ok((row?.n ?? 0) <= 4, `落库任务应 ≤4，实际 ${row?.n}`);
       } finally {
+        fake.mode = 'ok';
+        await drainOwnerJobs();
         await db.delete(aiJobs).where(sql`user_id = ${ownerId}`);
       }
     });
@@ -1268,7 +1282,15 @@ test('AI 动作条接口级：鉴权 / 参数 / 正常 / 模型异常 / 记账 /
       },
     );
   } finally {
-    fakeServer?.close();
+    fake.mode = 'ok';
+    try {
+      await drainOwnerJobs();
+    } catch (e) {
+      console.error('[entryAi-itest] failed to drain jobs before cleanup:', (e as Error).message);
+    }
+    if (fakeServer) {
+      await new Promise<void>((resolve) => fakeServer!.close(() => resolve()));
+    }
     try {
       await db.execute(sql`delete from users where username like 'itestai\_%'`);
     } catch (e) {

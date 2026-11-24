@@ -62,7 +62,10 @@ export function requireAuth(
       return apiError(c, 'E_AUTH_NOT_READY');
     }
 
-    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    const session = await auth.api.getSession({
+      headers: c.req.raw.headers,
+      query: { disableCookieCache: true },
+    });
     if (!session) return apiError(c, 'E_UNAUTHORIZED');
 
     const u = session.user as unknown as AuthUserLike;

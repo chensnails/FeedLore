@@ -49,6 +49,9 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
+      - name: 生产依赖安全审计
+        run: pnpm audit --prod --registry=https://registry.npmjs.org --audit-level=moderate
+
       # V3.4：lint + format 单一入口。全仓一次性格式化后作为硬门禁；
       # CSS 被 biome.json 排除（其源码文本守卫按字面匹配，格式化会误伤）。
       - name: 代码规范检查（Biome）

@@ -1,19 +1,20 @@
 /**
  * 分层测试入口（V3.2）。
  *
- * 背景：原来用一个递归 glob 扫 src 下全部 .test.ts，靠 DATABASE_URL
- * 是否为空来决定接口级用例「跳过还是真跑」。结果本地单测阶段会把集成用例静默
- * 跳过，而 CI 真库阶段又只显式点名 api.integration.test.ts —— entryAi 那份
- * 从未在 CI 跑过。这里把分层做成显式命令，文件清单由目录遍历生成，
- * 不依赖 shell glob（Windows 的 cmd.exe 不认识引号里的 glob）。
+ * 单元测试与接口级测试显式分层；接口级测试按文件创建独立 Postgres schema，
+ * 各自迁移、执行、删除。整站还原会清空整库，不能与其它测试共用 public schema。
  */
 
 import { spawnSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import pg from 'pg';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const tier = process.argv[2] || 'unit';
 
 if (!['unit', 'integration', 'all'].includes(tier)) {
@@ -21,7 +22,6 @@ if (!['unit', 'integration', 'all'].includes(tier)) {
   process.exit(2);
 }
 
-/** 递归收集 src 下所有 *.test.ts，路径统一成正斜杠便于打印。 */
 function collectTests(dir) {
   const out = [];
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
@@ -44,29 +44,100 @@ if (!selected.length) {
 }
 
 if ((tier === 'integration' || tier === 'all') && !process.env.DATABASE_URL) {
-  console.error('[test:integration] 缺少 DATABASE_URL：接口级测试需要已跑过迁移的 Postgres。');
+  console.error('[test:integration] 缺少 DATABASE_URL：接口级测试需要 Postgres。');
   console.error('  本地只跑纯单测请用：pnpm --filter @feedlore/server test:unit');
   process.exit(1);
 }
 
-const names = selected.map((f) => relative(root, f).split(sep).join('/'));
 console.log(`[test:${tier}] ${selected.length} 个文件`);
 if (tier === 'unit') {
   console.log(
     `[test:unit] 已排除 ${integration.length} 个接口级用例（需 DATABASE_URL，见 test:integration）`,
   );
-} else {
-  console.log(`[test:${tier}] ${names.join(', ')}`);
 }
 
-// 集成用例共用同一个测试库：默认的文件级并发会让两套账号互相污染
-// （整站还原断言「只剩 1 个账号」却看到另一套测试的 3 个）。必须串行。
-const r = spawnSync(
-  process.execPath,
-  ['--import', 'tsx', '--test', '--test-concurrency=1', ...selected],
-  {
-    cwd: root,
-    stdio: 'inherit',
-  },
-);
-process.exit(r.status ?? 1);
+function runNode(files, env = process.env) {
+  return spawnSync(
+    process.execPath,
+    ['--import', 'tsx', '--test', '--test-concurrency=1', ...files],
+    { cwd: root, env, stdio: 'inherit' },
+  );
+}
+
+function schemaUrl(databaseUrl, schema) {
+  const url = new URL(databaseUrl);
+  url.searchParams.set('options', `-csearch_path=${schema}`);
+  return url.toString();
+}
+
+async function migrateSchema(connectionString, schema) {
+  const client = new pg.Client({ connectionString });
+  try {
+    await client.connect();
+    await migrate(drizzle(client), {
+      migrationsFolder: join(repoRoot, 'packages/db/drizzle'),
+      migrationsSchema: schema,
+    });
+  } finally {
+    await client.end();
+  }
+}
+
+async function runIntegrationFile(file, index) {
+  const databaseUrl = process.env.DATABASE_URL;
+  const schema = `itest_${process.pid}_${index}`;
+  const name = relative(root, file).split(sep).join('/');
+  console.log(`[test:integration] ${name} → schema ${schema}`);
+
+  const admin = new pg.Client({ connectionString: databaseUrl });
+  try {
+    await admin.connect();
+    await admin.query(`create schema "${schema}"`);
+  } catch (e) {
+    console.error(`[test:integration] 无法创建 ${schema}：`, e?.message ?? e);
+    return 1;
+  } finally {
+    await admin.end().catch(() => {});
+  }
+
+  const env = {
+    ...process.env,
+    DATABASE_URL: schemaUrl(databaseUrl, schema),
+    FEEDLORE_TEST_SCHEMA: schema,
+    PGOPTIONS: `-csearch_path=${schema}`,
+    TZ: 'UTC',
+  };
+
+  try {
+    await migrateSchema(schemaUrl(databaseUrl, schema), schema);
+    const result = runNode([file], env);
+    return result.status ?? 1;
+  } finally {
+    const cleanup = new pg.Client({ connectionString: databaseUrl });
+    try {
+      await cleanup.connect();
+      await cleanup.query(`drop schema if exists "${schema}" cascade`);
+    } catch (e) {
+      console.error(`[test:integration] 无法删除 ${schema}：`, e?.message ?? e);
+    } finally {
+      await cleanup.end().catch(() => {});
+    }
+  }
+}
+
+let failed = false;
+if (tier === 'unit') {
+  const result = runNode(unit);
+  failed = (result.status ?? 1) !== 0;
+} else {
+  if (tier === 'all') {
+    console.log(`[test:all] 先跑 ${unit.length} 个单元测试文件`);
+    const result = runNode(unit, { ...process.env, DATABASE_URL: '' });
+    failed = (result.status ?? 1) !== 0;
+  }
+  for (const [index, file] of integration.entries()) {
+    if ((await runIntegrationFile(file, index)) !== 0) failed = true;
+  }
+}
+
+process.exitCode = failed ? 1 : 0;
