@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
     "typescript": "catalog:"
   }
 }

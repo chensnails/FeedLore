@@ -38,8 +38,10 @@ import {
 } from '@feedlore/contract';
 import { createDb, entries as entriesTable, feeds as feedsTable, users } from '@feedlore/db';
 import { eq, sql } from 'drizzle-orm';
+import pg from 'pg';
 import { z } from 'zod';
 import { createApp } from './app';
+import { migrateV2 } from './bootstrap';
 import { resetLoginAttempts } from './lib/rate-limit';
 import { createTarGz } from './lib/tar';
 
@@ -118,6 +120,36 @@ test('接口级：真库 + 真鉴权 + 契约校验', { skip: SKIP }, async (t) 
     sql`select current_schema() as schema, to_regclass('users')::text as t`,
   )) as unknown as { rows?: Array<{ schema: string; t: string | null }> };
   assert.ok(probe.rows?.[0]?.t, `迁移未覆盖当前 schema：${JSON.stringify(probe.rows?.[0])}`);
+
+  await t.test('启动迁移：空 schema 可建表且重复执行幂等', async () => {
+    const schema = `itest_boot_${process.pid}`;
+    const admin = new pg.Client({ connectionString: DATABASE_URL });
+    try {
+      await admin.connect();
+      await admin.query(`create schema "${schema}"`);
+      const url = new URL(DATABASE_URL);
+      url.searchParams.set('options', `-csearch_path=${schema},public`);
+
+      await migrateV2(url.toString(), schema);
+      const first = await admin.query('select to_regclass($1)::text as users', [`${schema}.users`]);
+      assert.equal(first.rows[0]?.users, `${schema}.users`);
+
+      const firstHistory = await admin.query(
+        `select count(*)::int as n from "${schema}"."__drizzle_migrations"`,
+      );
+      const migrationCount = Number(firstHistory.rows[0]?.n);
+      assert.ok(migrationCount > 0, '迁移历史必须落在当前测试 schema');
+
+      await migrateV2(url.toString(), schema);
+      const history = await admin.query(
+        `select count(*)::int as n from "${schema}"."__drizzle_migrations"`,
+      );
+      assert.equal(Number(history.rows[0]?.n), migrationCount, '重复执行不得重复写入迁移历史');
+    } finally {
+      await admin.query(`drop schema if exists "${schema}" cascade`).catch(() => {});
+      await admin.end().catch(() => {});
+    }
+  });
 
   const auth = createAuth({
     db,

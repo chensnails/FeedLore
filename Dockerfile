@@ -42,9 +42,8 @@ COPY apps/server ./apps/server
 # 同上：lockfile 里的 apps/web importer 必须存在，否则 --frozen-lockfile 会判定不一致
 COPY apps/web/package.json ./apps/web/package.json
 
-# 只装生产依赖：镜像不携带 typescript / vite / jsdom / @types 等仅构建期需要的东西。
-# 启动自举要跑 `pnpm --filter @feedlore/db migrate`，所以 drizzle-kit 被放在
-# packages/db 的 dependencies（而不是 devDependencies）—— 它在这套架构里是运行时工具。
+# 只装生产依赖：镜像不携带 typescript / vite / jsdom / @types / drizzle-kit 等仅开发期工具。
+# 启动自举直接调用 drizzle-orm 的编程式迁移器，不再通过 pnpm 子进程执行 CLI。
 # dangerouslyAllowAllBuilds 已在 pnpm-workspace.yaml 开启，否则 esbuild 的 postinstall
 # 被拦截会让 install 返回退出码 1，直接打断构建。
 RUN pnpm install --prod --frozen-lockfile

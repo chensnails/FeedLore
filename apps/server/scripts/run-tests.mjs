@@ -66,7 +66,7 @@ function runNode(files, env = process.env) {
 
 function schemaUrl(databaseUrl, schema) {
   const url = new URL(databaseUrl);
-  url.searchParams.set('options', `-csearch_path=${schema}`);
+  url.searchParams.set('options', `-csearch_path=${schema},public`);
   return url.toString();
 }
 
@@ -74,6 +74,8 @@ async function migrateSchema(connectionString, schema) {
   const client = new pg.Client({ connectionString });
   try {
     await client.connect();
+    // pg_trgm 是数据库级单例；各隔离 schema 共享 public 扩展，业务表仍只建在自身 schema。
+    await client.query('create extension if not exists pg_trgm with schema public');
     await migrate(drizzle(client), {
       migrationsFolder: join(repoRoot, 'packages/db/drizzle'),
       migrationsSchema: schema,
@@ -104,7 +106,7 @@ async function runIntegrationFile(file, index) {
     ...process.env,
     DATABASE_URL: schemaUrl(databaseUrl, schema),
     FEEDLORE_TEST_SCHEMA: schema,
-    PGOPTIONS: `-csearch_path=${schema}`,
+    PGOPTIONS: `-csearch_path=${schema},public`,
     TZ: 'UTC',
   };
 

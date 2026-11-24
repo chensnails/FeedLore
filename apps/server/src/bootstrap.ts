@@ -16,12 +16,14 @@
  * 「设置 → 数据 → 导出」+ 本站的「设置 → 数据 → 导入」。
  */
 
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { INITIAL_ADMIN_PASSWORD } from '@feedlore/contract';
 import { createDb, createPool, sessions, users } from '@feedlore/db';
 import { eq, sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import pg from 'pg';
 import { getAuth } from './auth';
 import { getAdminPass, getAdminUser, STRICT_BOOT } from './env';
 import { ensureAuthSecret } from './lib/auth-secret';
@@ -215,18 +217,25 @@ async function ensureTargetDatabase(targetUrl: string): Promise<void> {
  *    能跑的站点弄成起不来 —— 这是 2.x 一直保留的宽容，不因工程化改造而改变。
  *  - STRICT_BOOT=1：迁移失败即退出，用于自托管有 DDL 权限、要求「启动即结构一致」的部署。
  */
-function migrateV2(url: string): void {
+export async function migrateV2(url: string, migrationsSchema?: string): Promise<void> {
   log('Database schema migration (drizzle, idempotent)');
-  const r = spawnSync('pnpm', ['--filter', '@feedlore/db', 'migrate'], {
-    cwd: REPO_ROOT,
-    stdio: 'inherit',
-    env: { ...process.env, TZ: 'UTC', DATABASE_URL: url },
-  });
-  if (r.error || r.status !== 0) {
-    const detail = r.error
-      ? `could not start (${r.error.message})`
-      : `failed (exit code ${r.status})`;
-    const hint = 'run pnpm --filter @feedlore/db migrate manually, then restart';
+  let failure: unknown;
+  const client = new pg.Client({ connectionString: url });
+  try {
+    await client.connect();
+    await migrate(drizzle(client), {
+      migrationsFolder: path.join(REPO_ROOT, 'packages/db/drizzle'),
+      ...(migrationsSchema ? { migrationsSchema } : {}),
+    });
+  } catch (e) {
+    failure = e;
+  } finally {
+    await client.end().catch(() => {});
+  }
+
+  if (failure) {
+    const detail = `failed (${(failure as Error)?.message ?? failure})`;
+    const hint = 'run pnpm --filter @feedlore/db migrate from a source checkout, then restart';
     if (STRICT_BOOT) {
       throw new Error(`Schema migration ${detail} with STRICT_BOOT=1, refusing to start; ${hint}`);
     }
@@ -341,7 +350,7 @@ export async function bootstrap(): Promise<void> {
   if (target !== source) process.env.DATABASE_URL = target;
 
   await ensureTargetDatabase(target);
-  migrateV2(target);
+  await migrateV2(target);
   await ensureAuthSecret(target);
   await ensureDefaultAdmin();
 }
