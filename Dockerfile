@@ -44,8 +44,7 @@ COPY apps/web/package.json ./apps/web/package.json
 
 # 只装生产依赖：镜像不携带 typescript / vite / jsdom / @types / drizzle-kit 等仅开发期工具。
 # 启动自举直接调用 drizzle-orm 的编程式迁移器，不再通过 pnpm 子进程执行 CLI。
-# dangerouslyAllowAllBuilds 已在 pnpm-workspace.yaml 开启，否则 esbuild 的 postinstall
-# 被拦截会让 install 返回退出码 1，直接打断构建。
+# 只放行已审查的 esbuild 平台二进制安装脚本；新增未审查脚本会让构建失败。
 RUN pnpm install --prod --frozen-lockfile
 
 # 前端产物由阶段 1 拷入；WEB_ROOT 让 Hono 托管它（同源，无需 CORS）

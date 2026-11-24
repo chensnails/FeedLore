@@ -20,10 +20,9 @@ catalog:
 overrides:
   "@esbuild-kit/core-utils>esbuild": "0.25.12"
 
-# ⚠️ pnpm 12 会因「Ignored build scripts」让 install 返回退出码 1，直接打断 Docker 构建。
-# 被拦截的全是 esbuild（tsx / drizzle-kit 的传递依赖），其 postinstall 仅安装平台二进制，
-# 不放行则 tsx 无法运行。依赖集很小且可信，故统一放行；如将来引入可疑依赖需改回白名单模式。
-dangerouslyAllowAllBuilds: true
+# 仅允许 esbuild 安装平台二进制；未经审查的新构建脚本默认让安装失败。
+allowBuilds:
+  esbuild: true
 
 minimumReleaseAgeExclude:
   - "@hono/node-server@2.1.6"
