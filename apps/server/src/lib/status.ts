@@ -170,7 +170,14 @@ export async function buildStatus(
     ready: boolean;
     error: string | null;
     latencyMs: number | null;
-    pool: { total: number; idle: number; waiting: number; max: number } | null;
+    pool: {
+      total: number;
+      idle: number;
+      waiting: number;
+      max: number;
+      longQueries: number;
+      statsHealthy: boolean;
+    } | null;
     tables: Record<string, number> | null;
     sizeBytes: number | null;
   } = { ready: false, error: null, latencyMs: null, pool: null, tables: null, sizeBytes: null };
@@ -205,7 +212,38 @@ export async function buildStatus(
           idle: p.idleCount,
           waiting: p.waitingCount,
           max: p.options.max ?? Number(process.env.PG_POOL_MAX || 10),
+          longQueries: 0,
+          statsHealthy: true,
         };
+        /* 僵尸查询与统计损坏的可观测信号：
+         * longQueries = 跑超 60s 的活跃查询数（>0 即有查询占着连接池）；
+         * statsHealthy = entries.reltuples 是否为有限值（Infinity/-1 会让优化器产出
+         * cost=Infinity 的笛卡尔计划，是本次僵尸查询的根因）。
+         * 两项各自 try/catch：权限不足或版本差异不该拖垮整页。 */
+        try {
+          const q = await db.execute(sql`
+            select count(*)::int as n
+            from pg_stat_activity
+            where state = 'active' and pid <> pg_backend_pid()
+              and datname = current_database()
+              and query_start < now() - interval '60 seconds'
+          `);
+          const v = ((q.rows as unknown as Row[])[0] ?? {}).n;
+          dbInfo.pool.longQueries = v === undefined ? 0 : Number(v);
+        } catch {
+          /* 留 0 */
+        }
+        try {
+          const q = await db.execute(sql`
+            select reltuples::float8 as n from pg_class where oid = 'entries'::regclass
+          `);
+          const v = ((q.rows as unknown as Row[])[0] ?? {}).n;
+          // reltuples = -1 表示从未 analyze；非有限值（Infinity/NaN）是坏统计
+          dbInfo.pool.statsHealthy =
+            v !== undefined && Number.isFinite(Number(v)) && Number(v) >= 0;
+        } catch {
+          /* 留 true：没权限判定时不误报警 */
+        }
       }
     }
   } else {

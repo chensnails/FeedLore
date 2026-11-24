@@ -573,6 +573,9 @@ export async function importUserArchive(
   let llmOutcome: LlmImportOutcome = llmPlan.outcome === 'url-blocked' ? 'url-blocked' : 'absent';
 
   await db.transaction(async (tx) => {
+    // 整站/账号导入是管理员主动触发的长事务：放宽单条 SQL 超时到 300s，
+    // 既能容纳大批量插入，又不取消兜底（不等于无限，仍有上限防僵尸）。
+    await tx.execute(sql`SET LOCAL statement_timeout = '300s'`);
     const existing = await tx
       .select({ id: feeds.id, url: feeds.url })
       .from(feeds)
@@ -985,6 +988,8 @@ export async function restoreSiteArchive(db: Db, dir: string): Promise<SiteResto
   if (!userRows.length) throw invalid('backup contains no users');
 
   const counts = await db.transaction(async (tx) => {
+    // 整站还原 truncate + 大批量插回 27 万行，放宽到 300s（仍有上限，非无限）。
+    await tx.execute(sql`SET LOCAL statement_timeout = '300s'`);
     await tx.execute(sql`
       truncate table users, sessions, accounts, verifications, feeds, entries,
         digests, user_llm, llm_vendors, llm_providers, settings, image_cache, article_cache

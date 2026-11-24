@@ -148,6 +148,13 @@
       "when": 1795430564380,
       "tag": "0020_query_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795516800000,
+      "tag": "0021_search_trgm_expr",
+      "breakpoints": true
     }
   ]
 }

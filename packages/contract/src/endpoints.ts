@@ -103,7 +103,16 @@ export const auth = {
         error: z.string().nullable(),
         latencyMs: z.number().nullable(),
         pool: z
-          .object({ total: z.number(), idle: z.number(), waiting: z.number(), max: z.number() })
+          .object({
+            total: z.number(),
+            idle: z.number(),
+            waiting: z.number(),
+            max: z.number(),
+            /** 跑超 60s 的活跃查询数；>0 说明有查询占着连接池 */
+            longQueries: z.number(),
+            /** entries.reltuples 是否为有限非负值；false = 统计损坏，优化器可能产出僵尸计划 */
+            statsHealthy: z.boolean(),
+          })
           .nullable(),
         tables: z.unknown().nullable(),
         sizeBytes: z.number().nullable(),

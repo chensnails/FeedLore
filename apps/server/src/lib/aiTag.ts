@@ -16,7 +16,7 @@ import {
   suggestEntryTags,
 } from '@feedlore/ai';
 import { type Db, entries, entryAiTags, feeds, userLlm, users } from '@feedlore/db';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { recordAiUsage } from './aiUsage';
 import { isCapabilityEnabled, resolveLlmForTask } from './llm';
 import { log } from './logger';
@@ -32,7 +32,16 @@ interface UntaggedEntry {
   content: string | null;
 }
 
-/** 取该用户「还没有 AI 标签」的若干条目（owner 隔离 + 按发布时间倒序）。 */
+/** 取该用户「还没有 AI 标签」的若干条目（owner 隔离 + 按发布时间倒序）。
+ *
+ *  原实现用 `entries ⋈ feeds left join entry_ai_tags … where tag.id is null`：
+ *  一旦 entries 的 pg_class.reltuples 损坏成 Infinity（本项目真实踩过），优化器会把
+ *  cost 估算成 Infinity，退化成 46 × 27万 × 4.9万 的嵌套循环，单条查询挂数小时、占死
+ *  连接池。改为 `feed_id in (本人频道) and not exists (本人标签)`：
+ *  - owner 隔离仍由「本人频道子查询」+ tag 的 (user_id, entry_id) 唯一索引双重保证；
+ *  - 走 entries_pub_idx 倒序 + 命中即停（实测 241ms → 1.4ms，扫 28 行凑够 20 条），
+ *    且对统计信息损坏不敏感（Index Scan 的启动代价不受 reltuples 无穷大影响）。
+ *  NOT EXISTS 而非 LEFT JOIN IS NULL：后者在坏统计下会选 hash anti join 全表扫。 */
 export async function findUntaggedEntries(
   db: Db,
   uid: string,
@@ -41,9 +50,18 @@ export async function findUntaggedEntries(
   return db
     .select({ id: entries.id, title: entries.title, content: entries.content })
     .from(entries)
-    .innerJoin(feeds, eq(feeds.id, entries.feedId))
-    .leftJoin(entryAiTags, and(eq(entryAiTags.entryId, entries.id), eq(entryAiTags.userId, uid)))
-    .where(and(eq(feeds.ownerId, uid), isNull(entryAiTags.id)))
+    .where(
+      and(
+        inArray(
+          entries.feedId,
+          db.select({ id: feeds.id }).from(feeds).where(eq(feeds.ownerId, uid)),
+        ),
+        sql`not exists (
+          select 1 from ${entryAiTags}
+          where ${entryAiTags.entryId} = ${entries.id} and ${entryAiTags.userId} = ${uid}
+        )`,
+      ),
+    )
     .orderBy(sql`${entries.publishedAt} desc nulls last`, desc(entries.id))
     .limit(limit);
 }
