@@ -8,7 +8,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { fetchFeedRaw } from '../src/lib/fetcher';
+import { fetchFeedRaw } from '../src/lib/fetchNetwork';
 import { log } from '../src/lib/logger';
 import { normalizeItem, parseFeed } from '../src/lib/rss';
 

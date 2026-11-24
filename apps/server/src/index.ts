@@ -22,7 +22,7 @@ import { APP_VERSION, getDatabaseUrl, getPublicUrl, HOST, PORT, validateConfig }
 import { markInterruptedJobs } from './lib/aiJobs';
 import { startAiTagScheduler } from './lib/aiTag';
 import { startDigestScheduler } from './lib/digest';
-import { startScheduler } from './lib/fetcher';
+import { startScheduler } from './lib/fetchScheduler';
 import { log } from './lib/logger';
 import { undiciVersionMismatch, undiciVersions } from './lib/net';
 import { reloadSource } from './lib/settings';
@@ -185,8 +185,7 @@ async function main(): Promise<void> {
     });
   }
 
-  /* 抓取器：进程内调度（每分钟检查一次到期频道）。
-   * 不用外部队列是刻意的 P5 决策——单进程足够、少一个故障点；多实例时才需要 BullMQ。 */
+  /* 抓取器：每分钟检查到期频道；调度轮与同 URL 回源由 PostgreSQL advisory lock 跨实例协调。 */
   if (db) startScheduler(db);
 
   /* 日报调度：每分钟检查一次「谁的 08:00 到了」。与抓取器同款进程内调度，

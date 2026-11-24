@@ -36,14 +36,14 @@ import { aiTagSchedulerMetrics } from './aiTag';
 import { digestSchedulerMetrics } from './digest';
 import { condPenalties } from './feedCond';
 import {
-  type FeedRow,
-  feedIntervalMs,
   getLastRefreshAt,
   getLastRun,
   getRefreshProgress,
   inFlightCount,
   rssSchedulerMetrics,
-} from './fetcher';
+} from './fetchRuntime';
+import { feedIntervalMs } from './fetchScheduler';
+import type { FeedRow } from './fetchTypes';
 import { userDigest, userLayout } from './prefs';
 
 /* ============================================================================

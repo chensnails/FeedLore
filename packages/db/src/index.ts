@@ -22,7 +22,7 @@ pg.types.setTypeParser(1700, (v) => (v === null ? null : Number(v))); // numeric
 export * from './schema';
 export { schema };
 
-export type Db = NodePgDatabase<typeof schema>;
+export type Db = NodePgDatabase<typeof schema> & { readonly $client: pg.Pool };
 
 let _pool: pg.Pool | null = null;
 

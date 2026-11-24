@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dedupeByGuid } from './fetcher';
+import { dedupeByGuid } from './fetchStore';
 import type { NormalizedItem } from './rss';
 
 const item = (guid: string, title = guid): NormalizedItem => ({

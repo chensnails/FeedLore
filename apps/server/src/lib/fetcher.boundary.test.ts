@@ -17,7 +17,9 @@ import { createServer, type Server } from 'node:http';
 import test from 'node:test';
 import { apiErrorKey } from './apiError';
 import { COND_MISS_LIMIT, condFactor, condHost, noteCond, resetCondForTest } from './feedCond';
-import { dueFeeds, type FeedRow, feedIntervalMs, fetchFeedRaw } from './fetcher';
+import { fetchFeedRaw } from './fetchNetwork';
+import { dueFeeds, feedIntervalMs } from './fetchScheduler';
+import type { FeedRow } from './fetchTypes';
 
 const RSS =
   '<?xml version="1.0"?><rss version="2.0"><channel><title>t</title><link>http://x</link><description>d</description></channel></rss>';
