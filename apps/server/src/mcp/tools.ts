@@ -302,7 +302,7 @@ export function buildMcpServer(db: Db, user: McpUser): McpServer {
         }
 
         const where = and(
-          ...entryConditions(db, uid, {
+          ...entryConditions(uid, {
             feedIds,
             q: args.q,
             tag: args.tag,

@@ -6,7 +6,7 @@
  * 抽到 lib 让 HTTP 路由与 MCP 工具共同 import，避免第二份真源悄悄走样。
  */
 
-import { type Db, entries, entryAiTags, feeds } from '@feedlore/db';
+import { entries, entryAiTags, feeds } from '@feedlore/db';
 import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 
 /** 条目查询公共列（详情另加 content）。字段名与 CardRow 一一对应。 */
@@ -59,10 +59,12 @@ export function parseFeedIds(raw: string | undefined): number[] | null {
     .map((n) => Math.trunc(n));
 }
 
-/** 筛选条件（列表与「全部已读」共用）。owner 走子查询，因此 UPDATE 也能直接用。 */
-export function entryConditions(db: Db, uid: string, f: EntryFilter): SQL[] {
+/** 筛选条件（列表与「全部已读」共用）。owner 走 ARRAY 子查询，因此 UPDATE 也能直接用。 */
+export function entryConditions(uid: string, f: EntryFilter): SQL[] {
   const conds: SQL[] = [
-    inArray(entries.feedId, db.select({ id: feeds.id }).from(feeds).where(eq(feeds.ownerId, uid))),
+    // ANY(ARRAY(...)) 让 owner 过滤成为一次 InitPlan；写成 IN (subquery) 时
+    // 规划器会把 feeds 放到过滤之后做 join，逐行多付一次 join 成本。
+    sql`${entries.feedId} = ANY(ARRAY(SELECT ${feeds.id} FROM ${feeds} WHERE ${feeds.ownerId} = ${uid}))`,
   ];
   if (f.feedIds !== null) conds.push(inArray(entries.feedId, f.feedIds));
   // @> 才能利用 entries_tags_idx；= ANY(tags) 会退化成全表筛选。
@@ -124,6 +126,6 @@ export function relevanceScore(q: string | undefined): SQL | null {
 }
 
 /** 防止调用方漏 and()：单发也很常见，这里给个便捷包装。 */
-export function entryWhere(db: Db, uid: string, f: EntryFilter) {
-  return and(...entryConditions(db, uid, f));
+export function entryWhere(uid: string, f: EntryFilter) {
+  return and(...entryConditions(uid, f));
 }

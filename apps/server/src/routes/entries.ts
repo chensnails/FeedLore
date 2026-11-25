@@ -84,7 +84,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
           }
 
           const where = and(
-            ...entryConditions(db, uid, {
+            ...entryConditions(uid, {
               feedIds,
               q: q.q,
               tag: q.tag,
@@ -206,7 +206,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
           }
 
           const conds = [
-            ...entryConditions(db, uid, {
+            ...entryConditions(uid, {
               feedIds,
               q: body.q,
               tag: body.tag,
@@ -258,7 +258,7 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
             return c.json({ ok: true, reverted: 0 });
           }
 
-          const conds = entryConditions(db, uid, {
+          const conds = entryConditions(uid, {
             feedIds,
             q: body.q,
             tag: body.tag,

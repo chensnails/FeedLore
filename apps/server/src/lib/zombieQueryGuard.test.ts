@@ -56,6 +56,12 @@ test('findUntaggedEntries: 用 not exists + 本人频道子查询，不用 LEFT 
   assert.doesNotMatch(fn, /isNull/, '不能再使用 isNull 判断');
 });
 
+test('owner 过滤：= ANY(ARRAY(...)) 一次 InitPlan，避免逐行 join', () => {
+  const src = read('apps/server/src/lib/entriesQuery.ts');
+  assert.match(src, /ANY\(ARRAY\(SELECT/);
+  assert.doesNotMatch(src, /inArray\(\s*entries\.feedId,\s*db\.select/, '不能退回 IN (subquery)');
+});
+
 test('搜索索引：不建重型 trigram GIN，启动迁移保持轻量', () => {
   const m20 = read('packages/db/drizzle/0020_query_indexes.sql');
   assert.doesNotMatch(m20, /USING gin/i, '0020 不建 GIN 索引');

@@ -652,7 +652,7 @@ export async function execExplore(
   // entryConditions 的 q 只吃一个关键词；把每个词的完整条件（含 owner 子查询）
   // 用 OR 串起来，owner 隔离不会因 OR 失效——每个分支都限定本人频道。
   // 不按时间 limit 截断：命中集整批取回（上限防泛词撑爆），再分时段取样。
-  const kwRows = terms.map((kw) => and(...entryConditions(db, uid, { feedIds: null, q: kw })));
+  const kwRows = terms.map((kw) => and(...entryConditions(uid, { feedIds: null, q: kw })));
   const keywordRows = kwRows.length
     ? await db
         .select(CARD_COLUMNS)
@@ -670,7 +670,7 @@ export async function execExplore(
           .select(CARD_COLUMNS)
           .from(entriesTable)
           .innerJoin(feeds, eq(feeds.id, entriesTable.feedId))
-          .where(and(...entryConditions(db, uid, { feedIds: null })))
+          .where(and(...entryConditions(uid, { feedIds: null })))
           .orderBy(desc(entriesTable.publishedAt), desc(entriesTable.id))
           .limit(EXPLORE_RECENT_SEED);
 

@@ -99,7 +99,7 @@ function listQuery(
     .select(CARD_COLUMNS)
     .from(entries)
     .innerJoin(feeds, eq(feeds.id, entries.feedId))
-    .where(entryWhere(db, ownerId, { feedIds, ...filter }))
+    .where(entryWhere(ownerId, { feedIds, ...filter }))
     .orderBy(
       favoriteOrder
         ? sql`${entries.favoritedAt} desc nulls last`
@@ -175,7 +175,7 @@ test('核心查询：EXPLAIN 执行计划与耗时预算', async () => {
         .select({ n: sql<number>`count(*)::int` })
         .from(entries)
         .innerJoin(feeds, eq(feeds.id, entries.feedId))
-        .where(entryWhere(db, ownerId, { feedIds }))
+        .where(entryWhere(ownerId, { feedIds }))
         .toSQL(),
       500,
     );
