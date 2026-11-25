@@ -10,7 +10,7 @@ import { statementTimeoutMs } from '@feedlore/db';
  * 根因回顾：entries 的 pg_class.reltuples 损坏成 Infinity → 优化器选出
  * cost=Infinity 的笛卡尔计划 → 单条查询挂数小时占死连接池 → 所有 API 8s 超时。
  * 四层防御：① statement_timeout 兜底 ② 打标签查询改 NOT EXISTS
- * ③ trigram 表达式索引与 coalesce(...) 查询匹配 ④ status 暴露慢查询/统计健康度。
+ * ③ 搜索不建重型 trigram GIN（构建开销与查询收益不匹配） ④ status 暴露慢查询/统计健康度。
  * 这些改动都依赖「具体写法」，行为测试覆盖不到，用源码守卫钉住。
  */
 
@@ -56,19 +56,16 @@ test('findUntaggedEntries: 用 not exists + 本人频道子查询，不用 LEFT 
   assert.doesNotMatch(fn, /isNull/, '不能再使用 isNull 判断');
 });
 
-test('重型 trigram 索引：启动迁移不建，改由监听后 CONCURRENTLY 补建', () => {
+test('搜索索引：不建重型 trigram GIN，启动迁移保持轻量', () => {
   const m20 = read('packages/db/drizzle/0020_query_indexes.sql');
-  assert.doesNotMatch(m20, /USING gin/i, '0020 不能再同步建 GIN 索引');
+  assert.doesNotMatch(m20, /USING gin/i, '0020 不建 GIN 索引');
   const m21 = read('packages/db/drizzle/0021_search_trgm_expr.sql');
   assert.doesNotMatch(m21, /^\s*CREATE INDEX/im, '0021 不能阻塞启动');
-
-  const perf = read('apps/server/src/lib/perfIndexes.ts');
-  assert.match(perf, /coalesce\("description", ''\) gin_trgm_ops/);
-  assert.match(perf, /coalesce\("content", ''\) gin_trgm_ops/);
-  assert.match(perf, /CREATE INDEX CONCURRENTLY IF NOT EXISTS/g);
-  assert.match(perf, /pg_try_advisory_lock/, '多实例只允许一个构建');
-  assert.match(perf, /indisvalid/, '要能识别并自愈上次中断留下的无效索引');
-  assert.match(read('apps/server/src/index.ts'), /startPerfIndexBuilder\(databaseUrl\)/);
+  assert.doesNotMatch(
+    read('apps/server/src/index.ts'),
+    /startPerfIndexBuilder/,
+    '启动链路不能再触发后台建索引',
+  );
 
   const journal = JSON.parse(read('packages/db/drizzle/meta/_journal.json'));
   assert.ok(journal.entries.some((e: { tag: string }) => e.tag === '0021_search_trgm_expr'));

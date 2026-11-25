@@ -11,8 +11,10 @@ CREATE INDEX IF NOT EXISTS "entries_unread_pub_idx"
 -- 幂等导入/去重按 guid 单独点查（原只有 (feed_id, guid) 复合唯一，不能用 guid 前缀）。
 CREATE INDEX IF NOT EXISTS "entries_guid_idx" ON "entries" USING btree ("guid");--> statement-breakpoint
 
--- 搜索用的 description trigram GIN 已移到监听后的后台任务
--- （apps/server/src/lib/perfIndexes.ts）；大表建 GIN 会扫全表数分钟，不能阻塞启动。
+-- 搜索用的 trigram GIN 不在这里建，也不再另起后台任务：
+-- 实测 28 万行库上三只 GIN 合计约 1.4GB、构建需十余分钟，而搜索条件里的
+-- tags 子查询会让整个 OR 走时间索引扫表，规划器并不会用它们。
+-- 保留既有的 entries_title_trgm（0001）即可。
 
 -- AI 任务并发上限查询：where user_id=? and status in ('queued','running')。
 CREATE INDEX IF NOT EXISTS "ai_jobs_user_status_idx"

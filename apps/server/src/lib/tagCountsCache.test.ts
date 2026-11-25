@@ -44,8 +44,5 @@ test('会话缓存与查询索引配置齐全', () => {
   ]) {
     assert.ok(migration.includes(idx), `缺索引 ${idx}`);
   }
-  // 重型 trigram 索引不能留在启动迁移里：大表建 GIN 会阻塞监听。
-  const perf = readFileSync(new URL('./perfIndexes.ts', import.meta.url), 'utf8');
-  assert.match(perf, /entries_desc_trgm/);
-  assert.match(perf, /CREATE INDEX CONCURRENTLY IF NOT EXISTS/);
+  // 搜索用的重型 trigram GIN 已整体移除：构建开销远超收益。
 });
