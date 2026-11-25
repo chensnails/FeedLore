@@ -39,9 +39,13 @@ test('会话缓存与查询索引配置齐全', () => {
   for (const idx of [
     'entries_unread_pub_idx',
     'entries_guid_idx',
-    'entries_desc_trgm',
     'ai_jobs_user_status_idx',
+    'sessions_user_updated_idx',
   ]) {
     assert.ok(migration.includes(idx), `缺索引 ${idx}`);
   }
+  // 重型 trigram 索引不能留在启动迁移里：大表建 GIN 会阻塞监听。
+  const perf = readFileSync(new URL('./perfIndexes.ts', import.meta.url), 'utf8');
+  assert.match(perf, /entries_desc_trgm/);
+  assert.match(perf, /CREATE INDEX CONCURRENTLY IF NOT EXISTS/);
 });

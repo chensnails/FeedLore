@@ -56,11 +56,20 @@ test('findUntaggedEntries: 用 not exists + 本人频道子查询，不用 LEFT 
   assert.doesNotMatch(fn, /isNull/, '不能再使用 isNull 判断');
 });
 
-test('迁移 0021: 补 description / content 的 coalesce 表达式 trgm 索引', () => {
-  const sql = read('packages/db/drizzle/0021_search_trgm_expr.sql');
-  assert.match(sql, /coalesce\("description", ''\) gin_trgm_ops/);
-  assert.match(sql, /coalesce\("content", ''\) gin_trgm_ops/);
-  assert.match(sql, /IF NOT EXISTS/g);
+test('重型 trigram 索引：启动迁移不建，改由监听后 CONCURRENTLY 补建', () => {
+  const m20 = read('packages/db/drizzle/0020_query_indexes.sql');
+  assert.doesNotMatch(m20, /USING gin/i, '0020 不能再同步建 GIN 索引');
+  const m21 = read('packages/db/drizzle/0021_search_trgm_expr.sql');
+  assert.doesNotMatch(m21, /^\s*CREATE INDEX/im, '0021 不能阻塞启动');
+
+  const perf = read('apps/server/src/lib/perfIndexes.ts');
+  assert.match(perf, /coalesce\("description", ''\) gin_trgm_ops/);
+  assert.match(perf, /coalesce\("content", ''\) gin_trgm_ops/);
+  assert.match(perf, /CREATE INDEX CONCURRENTLY IF NOT EXISTS/g);
+  assert.match(perf, /pg_try_advisory_lock/, '多实例只允许一个构建');
+  assert.match(perf, /indisvalid/, '要能识别并自愈上次中断留下的无效索引');
+  assert.match(read('apps/server/src/index.ts'), /startPerfIndexBuilder\(databaseUrl\)/);
+
   const journal = JSON.parse(read('packages/db/drizzle/meta/_journal.json'));
   assert.ok(journal.entries.some((e: { tag: string }) => e.tag === '0021_search_trgm_expr'));
 });

@@ -25,6 +25,7 @@ import { startDigestScheduler } from './lib/digest';
 import { startScheduler } from './lib/fetchScheduler';
 import { log } from './lib/logger';
 import { undiciVersionMismatch, undiciVersions } from './lib/net';
+import { startPerfIndexBuilder } from './lib/perfIndexes';
 import { reloadSource } from './lib/settings';
 import { pruneImageCache } from './routes/img';
 
@@ -232,6 +233,10 @@ async function main(): Promise<void> {
      * 后续重启（账号已存在）不会再印横幅 —— 那时密码是用户自己的，没得可印。 */
     const firstRun = consumeStartupAdmin();
     if (firstRun) printFirstRunBanner(firstRun, info.port);
+
+    /* 重型 trigram 索引放到监听之后慢慢建：启动迁移只保留轻量 DDL，
+     * 大表建 GIN 不再把 app 挡在监听之前（3.0.1 生产 502 事故）。 */
+    if (databaseUrl) startPerfIndexBuilder(databaseUrl);
   });
 }
 
