@@ -22,6 +22,9 @@ const MAX_BLOCKS = 300;
  *  图片也是块，已经和正文共用 MAX_BLOCKS / MAX_JSON 两道兜底；这里只留一道同样宽的
  *  防线，绝不再单独砍到 20 —— 周刊 / 图集常有 30+ 张图，旧值会把第 21 张起连块一起丢掉。 */
 const MAX_IMAGES = MAX_BLOCKS;
+/** entries.images（卡片 / 图集缩略图）保留上限。正文图仍全部在 body_json 里，
+ *  这里只管列表侧的最大枚数：旧值 12 会把周刊后半段图集整段砍掉。 */
+export const MAX_ENTRY_IMAGES = 60;
 /** 内联标签嵌套深度上限 */
 const MAX_DEPTH = 20;
 /** 列表 / 引用嵌套深度上限（防止病态 HTML 递归过深） */
@@ -228,14 +231,31 @@ export interface ArticleParseOptions {
   baseUrl?: string | null;
   /** 第二基准（频道站点地址），baseUrl 缺失时使用 */
   siteUrl?: string | null;
+  /** 正文没有 <img> 时，用这些 feed 元数据图片（media:* / enclosure）补成块 */
+  fallbackImages?: readonly string[];
 }
 
 export interface ParsedArticle {
   blocks: ArticleBlock[];
-  /** 正文图片绝对地址（按出现顺序去重） */
+  /** 正文图片绝对地址（按出现顺序去重，且一定在 bodyJson 里） */
   images: string[];
   /** 序列化后的块 JSON；没有块时为 null（保证是合法 JSON） */
   bodyJson: string | null;
+}
+
+/** 收集最终保留块里的图片地址（含 figure / 列表 / 引用），用来同步 images 列。 */
+function keptImageSources(blocks: ArticleBlock[]): Set<string> {
+  const out = new Set<string>();
+  const visit = (list: ArticleBlock[]): void => {
+    for (const b of list) {
+      if (b.t === 'img') out.add(b.src);
+      else if (b.t === 'figure') out.add(b.img.src);
+      else if (b.t === 'list') for (const items of b.items) visit(items);
+      else if (b.t === 'quote') visit(b.blocks);
+    }
+  };
+  visit(blocks);
+  return out;
 }
 
 class Parser {
@@ -244,9 +264,11 @@ class Parser {
   private readonly base: string | null;
   private readonly images: string[] = [];
   private readonly imgSeen = new Set<string>();
+  private readonly fallbackImages: string[];
 
   constructor(opts: ArticleParseOptions) {
     this.base = this.validBase(opts.baseUrl) ?? this.validBase(opts.siteUrl);
+    this.fallbackImages = [...(opts.fallbackImages ?? [])];
   }
 
   run(html: string): ParsedArticle {
@@ -255,8 +277,29 @@ class Parser {
       decodeEntities: true,
     }) as unknown as DomNode;
     this.walk(doc.children ?? [], 0);
-    const blocks = this.prune(this.blocks);
-    return { blocks, images: this.images, bodyJson: serialize(blocks) };
+    // 图片型 RSS（相册 / 图集）常把图只放在 media:content / enclosure 里，正文一个 <img> 都没有。
+    // 这时把外部图补成正文块，灯箱 / 原图工具才有对象可用；正文里有图则完全不插手。
+    if (!this.images.length) {
+      for (const u of this.fallbackImages) this.addExternalImage(u);
+    }
+    const { kept, json } = serialize(this.prune(this.blocks));
+    const keptSrcs = keptImageSources(kept);
+    return {
+      blocks: kept,
+      // 尾部块因 64KB 上限被丢时，images 必须跟着裁掉 —— 否则卡片有图、正文没图。
+      images: this.images.filter((u) => keptSrcs.has(u)),
+      bodyJson: json,
+    };
+  }
+
+  /** 从 feed 元数据补一张图（media:* / enclosure），复用同一套去重与协议校验。 */
+  private addExternalImage(raw: string | null | undefined): void {
+    if (this.images.length >= MAX_IMAGES || this.total >= MAX_BLOCKS) return;
+    const src = this.abs(raw ?? undefined);
+    if (!src || !/^https?:/i.test(src) || this.imgSeen.has(src)) return;
+    this.imgSeen.add(src);
+    this.images.push(src);
+    this.push({ t: 'img', src });
   }
 
   private validBase(u: string | null | undefined): string | null {
@@ -731,15 +774,16 @@ class Parser {
   }
 }
 
-/** 序列化并保证 JSON 合法：超长时从尾部丢块，绝不截断字符串 */
-function serialize(blocks: ArticleBlock[]): string | null {
+/** 序列化并保证 JSON 合法：超长时从尾部丢块，绝不截断字符串。
+ *  同时返回真正保留下来的块，供 images 列同步（不能留“卡片有图、正文没图”）。 */
+function serialize(blocks: ArticleBlock[]): { kept: ArticleBlock[]; json: string | null } {
   let arr = blocks;
   while (arr.length) {
     const json = JSON.stringify(arr);
-    if (json.length <= MAX_JSON) return json;
+    if (json.length <= MAX_JSON) return { kept: arr, json };
     arr = arr.slice(0, -1);
   }
-  return null;
+  return { kept: [], json: null };
 }
 
 /** 把 feed item 的正文 HTML 解析成结构化块。 */

@@ -40,10 +40,12 @@ import { ApiException } from '../lib/apiError';
 import {
   compressImage,
   IMG_MAX_BYTES,
+  imageFileName,
   imageVariantKey,
   isImageType,
   normalizeImageWidth,
 } from '../lib/image';
+import { IMAGE_FETCH_ATTEMPTS, imageFetchHeaders } from '../lib/imageFetch';
 import {
   negativeCacheDelete,
   negativeCacheGet,
@@ -59,7 +61,10 @@ import { type AppEnv, requireAuth } from '../middleware/auth';
  * 参数
  * ==========================================================================*/
 
-const UPSTREAM_TIMEOUT_MS = 15_000;
+/** 回源超时：旧值 15s 对跨境 CDN / 大图偏紧，放宽到 25s（可用 IMG_TIMEOUT_MS 覆盖）。 */
+const TIMEOUT_ENV = Number(process.env.IMG_TIMEOUT_MS);
+const UPSTREAM_TIMEOUT_MS =
+  Number.isFinite(TIMEOUT_ENV) && TIMEOUT_ENV > 0 ? Math.min(TIMEOUT_ENV, 60_000) : 25_000;
 const L1_MAX = 500;
 
 /** 缓存新鲜期：超过就转后台刷新（但**仍然先返回旧图**）。 */
@@ -152,30 +157,30 @@ const upstreamError = (message: string, status: number): UpstreamError =>
 /**
  * 回源取图。
  *
- * 403 时的 Referer 重试是刻意的：一部分国内站点（以及部分对象存储的防盗链配置）
- * 只在「完全无 Referer」时才拦，另一些只在「Referer 不是自家域名」时放行。
- * 先不带，被拒了再带图片自身的 origin —— 两种情况都能过，且不多发请求。
+ * 403 时的请求头升级是刻意的：一部分国内站点（以及部分对象存储的防盗链配置）
+ * 只在「完全无 Referer」时才拦，另一些要求自家 Referer 或完整浏览器 UA。
+ * 先不带，被拒了再逐级升级（见 lib/imageFetch.ts）；正常图一次请求就够。
  */
 async function fetchUpstream(
   url: string,
   signal: AbortSignal,
 ): Promise<{ buf: Buffer; type: string; origSize: number }> {
-  const base = {
-    'User-Agent': UA,
-    Accept: 'image/avif,image/webp,image/*,*/*;q=0.8',
-  };
-
-  let resp = await safeFetch(url, { headers: base, signal });
-
-  if (resp.status === 403) {
+  // 403 时逐级升级请求头：无 Referer → 带 origin → 浏览器 UA + Referer。
+  // 只有被拒才多跑一次，正常图仍是一次请求。
+  let resp: Response | null = null;
+  for (let attempt = 0; attempt < IMAGE_FETCH_ATTEMPTS; attempt += 1) {
+    resp = await safeFetch(url, {
+      headers: imageFetchHeaders(url, attempt, UA),
+      signal,
+    });
+    if (resp.status !== 403) break;
     try {
       await resp.body?.cancel();
     } catch {
       /* noop */
     }
-    const origin = new URL(url).origin + '/';
-    resp = await safeFetch(url, { headers: { ...base, Referer: origin }, signal });
   }
+  if (!resp) throw upstreamError('fetch failed', 502);
 
   /* 上游明确应答了 4xx/5xx → **原样透传状态码**。
    * legacy v2.2.1 的教训：全包成 502 之后，排查时以为是代理/缓存坏了，
@@ -325,112 +330,178 @@ function notModified(v: Cached, key: string): Response {
  *  这里用 z.url() 会先于安全判定返回 400，报错文案也就变成 zod 的英文串。
  *  `w` 也按字符串收：非法值不该让整张图 400，交给 normalizeImageWidth 回落到默认图。 */
 const imgQuery = z.object({ u: z.string().min(1).max(4000), w: z.string().optional() });
+const rawQuery = z.object({ u: z.string().min(1).max(4000), dl: z.string().optional() });
+
+/** 原图不入库缓存（可能 20MB），只在浏览器短缓存一小时。 */
+const RAW_BROWSER_CACHE = 'private, max-age=3600';
+
+function rawResponse(buf: Buffer, type: string, url: string, download: boolean): Response {
+  const name = imageFileName(url, type);
+  const headers = new Headers({
+    'Cache-Control': RAW_BROWSER_CACHE,
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    'Referrer-Policy': 'no-referrer',
+    'Content-Type': type,
+  });
+  // filename* 兼容非 ASCII；filename 是清洗过的 ASCII 回退。浏览器保存时用服务端命名，
+  // 前端 <a> 不写 download 属性（沿用 core.downloadUrl 的约定）。
+  headers.set(
+    'Content-Disposition',
+    `${download ? 'attachment' : 'inline'}; filename="${name}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+  );
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  headers.set('Content-Length', String(buf.length));
+  return new Response(ab, { status: 200, headers });
+}
 
 export function imgRoutes(db: Db | null, auth: AuthInstance | null) {
   // ⚠️ 链式返回，否则 hc<AppType> 看不到本路由（见 health.ts 注释）
-  return new Hono<AppEnv>().get(
-    imgSpec.proxy.path,
-    requireAuth(auth, 'user'),
-    zValidator('query', imgQuery),
-    async (c) => {
-      const { u: raw, w } = c.req.valid('query');
-      // 只接受白名单档位；其余值忽略（当作默认 1280 长边），不因此报错
-      const width = normalizeImageWidth(w);
+  return (
+    new Hono<AppEnv>()
+      .get(
+        imgSpec.proxy.path,
+        requireAuth(auth, 'user'),
+        zValidator('query', imgQuery),
+        async (c) => {
+          const { u: raw, w } = c.req.valid('query');
+          // 只接受白名单档位；其余值忽略（当作默认 1280 长边），不因此报错
+          const width = normalizeImageWidth(w);
 
-      /* 重复协议头归一：个别源把图标写成 `https:https://...`，
-       * 直接 new URL 会解析出主机名 "https:"，注定抓不到（legacy v2.2.5 修过）。 */
-      const cleaned = raw.replace(/^(https?):\1:\/\//i, '$1://');
+          /* 重复协议头归一：个别源把图标写成 `https:https://...`，
+           * 直接 new URL 会解析出主机名 "https:"，注定抓不到（legacy v2.2.5 修过）。 */
+          const cleaned = raw.replace(/^(https?):\1:\/\//i, '$1://');
 
-      if (/^data:/i.test(cleaned)) {
-        // data URI 本身是完整资源，不需要也没有意义过代理；前端应当直通。
-        throw new ApiException('E_IMAGE_DATA_URI_REJECTED');
-      }
-
-      // ① 出网判定（含 DNS 解析，内网/回环直接 400）。
-      // 预检用 30s DNS 短缓存省掉「每张图一次解析」；真正回源的 safeFetch 不受影响。
-      const info = await assertPublicHost(cleaned, { lookup: cachedImageLookup });
-      const url = info.url;
-      const key = imageVariantKey(url, width);
-      const inm = c.req.header('If-None-Match');
-
-      // ② L1
-      const hot = l1Get(key);
-      if (hot)
-        return inm === imageEtag(key, hot.stamp) ? notModified(hot, key) : imageResponse(hot, key);
-
-      // 负缓存按**源图**记、不带宽度：上游 404 与要哪个档位无关，而浏览器首屏请求的是
-      // `?w=320` 变体、前端重试的 `?r=1` 又不带 w —— 按宽度记的话重试必然穿透。
-      const negKey = imageVariantKey(url, 0);
-
-      // ③ L2
-      let l2: Cached | null = null;
-      let fresh = false;
-      if (db) {
-        try {
-          const [row] = await db
-            .select({
-              contentType: imageCache.contentType,
-              data: imageCache.data,
-              createdAt: imageCache.createdAt,
-            })
-            .from(imageCache)
-            .where(eq(imageCache.key, key))
-            .limit(1);
-          if (row) {
-            const stamp = new Date(row.createdAt).getTime();
-            l2 = { type: row.contentType, buf: row.data, stamp };
-            fresh = Date.now() - stamp < ttlMs();
+          if (/^data:/i.test(cleaned)) {
+            // data URI 本身是完整资源，不需要也没有意义过代理；前端应当直通。
+            throw new ApiException('E_IMAGE_DATA_URI_REJECTED');
           }
-        } catch (e) {
-          // 库抖一下不该让图片全挂：当作未命中，直接回源
-          log.warn('[img] image cache table read failed:', (e as Error)?.message ?? e);
-        }
-      }
 
-      if (l2) {
-        l1Set(key, l2);
-        const hit = inm === imageEtag(key, l2.stamp);
-        // 过期就该刷新，与 ETag 是否命中无关：immutable + 旧 ETag 会一直拿 304，
-        // 若在这里短路返回，stamp 永远不前进，源图换了也永远看不到。
-        // 过期时仍先把旧图发出去（用户不等待），刷新走后台去重表。
-        if (!fresh && !inFlight.has(key)) {
-          const job = fetchAndCache(db, key, url, width)
-            .catch(() => null)
-            .finally(() => inFlight.delete(key));
-          inFlight.set(key, job);
-        }
-        return hit ? notModified(l2, key) : imageResponse(l2, key);
-      }
+          // ① 出网判定（含 DNS 解析，内网/回环直接 400）。
+          // 预检用 30s DNS 短缓存省掉「每张图一次解析」；真正回源的 safeFetch 不受影响。
+          const info = await assertPublicHost(cleaned, { lookup: cachedImageLookup });
+          const url = info.url;
+          const key = imageVariantKey(url, width);
+          const inm = c.req.header('If-None-Match');
 
-      // ③.5 失败负缓存：只在 L1/L2 都没有时拦。
-      // 不能提到 L2 之前 —— 否则「新宽度变体 404」会把已缓存的其它宽度真图一起遮住。
-      const failedStatus = negativeCacheGet(negKey);
-      if (failedStatus) {
-        throw new ApiException('E_IMAGE_UPSTREAM_ERROR', { status: failedStatus });
-      }
+          // ② L1
+          const hot = l1Get(key);
+          if (hot)
+            return inm === imageEtag(key, hot.stamp)
+              ? notModified(hot, key)
+              : imageResponse(hot, key);
 
-      // ④ 未命中：并发去重后再回源
-      let job = inFlight.get(key);
-      if (!job) {
-        job = fetchAndCache(db, key, url, width).finally(() => inFlight.delete(key));
-        inFlight.set(key, job);
-      }
+          // 负缓存按**源图**记、不带宽度：上游 404 与要哪个档位无关，而浏览器首屏请求的是
+          // `?w=320` 变体、前端重试的 `?r=1` 又不带 w —— 按宽度记的话重试必然穿透。
+          const negKey = imageVariantKey(url, 0);
 
-      let out: Cached | null;
-      try {
-        out = await job;
-      } catch (e) {
-        // 上游给了明确状态码就透传（403/404 让前端一眼看出是谁的问题），否则 504
-        const st = Number((e as UpstreamError)?.status);
-        const status = st >= 400 && st <= 599 ? st : 504;
-        // 只有 404/410 会真正落进负缓存（其余状态码由 negativeCacheSet 自行忽略）
-        negativeCacheSet(negKey, status);
-        throw new ApiException('E_IMAGE_UPSTREAM_ERROR', { status });
-      }
-      if (!out) throw new ApiException('E_IMAGE_FETCH_FAILED');
+          // ③ L2
+          let l2: Cached | null = null;
+          let fresh = false;
+          if (db) {
+            try {
+              const [row] = await db
+                .select({
+                  contentType: imageCache.contentType,
+                  data: imageCache.data,
+                  createdAt: imageCache.createdAt,
+                })
+                .from(imageCache)
+                .where(eq(imageCache.key, key))
+                .limit(1);
+              if (row) {
+                const stamp = new Date(row.createdAt).getTime();
+                l2 = { type: row.contentType, buf: row.data, stamp };
+                fresh = Date.now() - stamp < ttlMs();
+              }
+            } catch (e) {
+              // 库抖一下不该让图片全挂：当作未命中，直接回源
+              log.warn('[img] image cache table read failed:', (e as Error)?.message ?? e);
+            }
+          }
 
-      return inm === imageEtag(key, out.stamp) ? notModified(out, key) : imageResponse(out, key);
-    },
+          if (l2) {
+            l1Set(key, l2);
+            const hit = inm === imageEtag(key, l2.stamp);
+            // 过期就该刷新，与 ETag 是否命中无关：immutable + 旧 ETag 会一直拿 304，
+            // 若在这里短路返回，stamp 永远不前进，源图换了也永远看不到。
+            // 过期时仍先把旧图发出去（用户不等待），刷新走后台去重表。
+            if (!fresh && !inFlight.has(key)) {
+              const job = fetchAndCache(db, key, url, width)
+                .catch(() => null)
+                .finally(() => inFlight.delete(key));
+              inFlight.set(key, job);
+            }
+            return hit ? notModified(l2, key) : imageResponse(l2, key);
+          }
+
+          // ③.5 失败负缓存：只在 L1/L2 都没有时拦。
+          // 不能提到 L2 之前 —— 否则「新宽度变体 404」会把已缓存的其它宽度真图一起遮住。
+          const failedStatus = negativeCacheGet(negKey);
+          if (failedStatus) {
+            throw new ApiException('E_IMAGE_UPSTREAM_ERROR', { status: failedStatus });
+          }
+
+          // ④ 未命中：并发去重后再回源
+          let job = inFlight.get(key);
+          if (!job) {
+            job = fetchAndCache(db, key, url, width).finally(() => inFlight.delete(key));
+            inFlight.set(key, job);
+          }
+
+          let out: Cached | null;
+          try {
+            out = await job;
+          } catch (e) {
+            // 上游给了明确状态码就透传（403/404 让前端一眼看出是谁的问题），否则 504
+            const st = Number((e as UpstreamError)?.status);
+            const status = st >= 400 && st <= 599 ? st : 504;
+            // 只有 404/410 会真正落进负缓存（其余状态码由 negativeCacheSet 自行忽略）
+            negativeCacheSet(negKey, status);
+            throw new ApiException('E_IMAGE_UPSTREAM_ERROR', { status });
+          }
+          if (!out) throw new ApiException('E_IMAGE_FETCH_FAILED');
+
+          return inm === imageEtag(key, out.stamp)
+            ? notModified(out, key)
+            : imageResponse(out, key);
+        },
+      )
+      /* 原图透传：与 /api/img 共用出网校验、403 升级、体积/超时上限，但绝不压缩、
+       * 不写 image_cache（避免把 20MB 原图塞进缓存表）。错误负缓存仍共用源图键。 */
+      .get(
+        imgSpec.raw.path,
+        requireAuth(auth, 'user'),
+        zValidator('query', rawQuery),
+        async (c) => {
+          const { u: raw, dl } = c.req.valid('query');
+          const cleaned = raw.replace(/^(https?):\1:\/\//i, '$1://');
+          if (/^data:/i.test(cleaned)) throw new ApiException('E_IMAGE_DATA_URI_REJECTED');
+
+          const info = await assertPublicHost(cleaned, { lookup: cachedImageLookup });
+          const url = info.url;
+          const negKey = imageVariantKey(url, 0);
+          const failedStatus = negativeCacheGet(negKey);
+          if (failedStatus) {
+            throw new ApiException('E_IMAGE_UPSTREAM_ERROR', { status: failedStatus });
+          }
+
+          const ctl = new AbortController();
+          const timer = setTimeout(() => ctl.abort(), UPSTREAM_TIMEOUT_MS);
+          try {
+            const got = await fetchUpstream(url, ctl.signal);
+            negativeCacheDelete(negKey);
+            return rawResponse(got.buf, got.type, url, dl === '1');
+          } catch (e) {
+            const st = Number((e as UpstreamError)?.status);
+            const status = st >= 400 && st <= 599 ? st : 504;
+            negativeCacheSet(negKey, status);
+            throw new ApiException('E_IMAGE_UPSTREAM_ERROR', { status });
+          } finally {
+            clearTimeout(timer);
+          }
+        },
+      )
   );
 }
 

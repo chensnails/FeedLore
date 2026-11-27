@@ -4429,6 +4429,19 @@ body.is-scrolling .card-media-actions { transition: none; }
 }
 .lightbox-nav:hover { background: rgba(255, 255, 255, .28); }
 .lightbox-nav .ico { width: 1.25rem; height: 1.25rem; }
+/* 原图工具：常显（触屏没有 hover），44px 命中区；不使用模糊背景 */
+.lightbox-tools {
+  position: absolute; top: var(--sp-4); left: var(--sp-4);
+  display: flex; gap: 8px; z-index: 1;
+}
+.lightbox-tool {
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border-radius: 50%; background: rgba(255, 255, 255, .14); color: var(--lightbox-text);
+  text-decoration: none; cursor: pointer;
+  transition: background var(--dur-fast), transform var(--dur-fast);
+}
+.lightbox-tool:hover { background: rgba(255, 255, 255, .28); transform: scale(1.06); }
+.lightbox-tool .ico { width: 1.25rem; height: 1.25rem; }
 .lightbox-nav.is-prev { left: var(--sp-4); }
 .lightbox-nav.is-prev .ico { transform: rotate(180deg); }
 .lightbox-nav.is-next { right: var(--sp-4); }

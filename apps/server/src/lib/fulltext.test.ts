@@ -63,6 +63,21 @@ test('抽取正文：相对链接与图片补成绝对地址', () => {
   assert.ok(!json.includes('"/rel"'));
 });
 
+test('抽取正文：图集页文字不足 120 字但图片够多时放行', () => {
+  const pics = Array.from(
+    { length: 8 },
+    (_, i) => `<p><img src="https://cdn.example.com/g${i}.jpg" alt="图 ${i}"></p>`,
+  ).join('');
+  const html =
+    `<!doctype html><html><head><title>城市图集</title></head><body><main><article>` +
+    `<h1>城市图集</h1><p>本期图集共八张图片，记录了这个月的城市漫步与街角光影，欢迎慢慢看。</p>` +
+    pics +
+    `</article></main></body></html>`;
+  const got = extractArticleFromHtml(html, { url: 'https://news.example.com/gallery/1' });
+  assert.ok(got, '纯图文章应被识别');
+  assert.equal(got.images.length, 8);
+});
+
 test('抽取正文：纯 JS 页面 / 太短 / 空 HTML 返回 null', () => {
   assert.equal(extractArticleFromHtml(''), null);
   assert.equal(extractArticleFromHtml('<html><body><div id="app"></div></body></html>'), null);
@@ -73,6 +88,28 @@ test('替换判定：只有明显更长才覆盖订阅正文', () => {
   assert.equal(shouldApplyFullText('x'.repeat(500), 'y'.repeat(600)), false);
   assert.equal(shouldApplyFullText('x'.repeat(500), 'y'.repeat(1200)), true);
   assert.equal(shouldApplyFullText('', 'y'.repeat(120)), false);
+  // 图片型文章：文字增益不够，但多出 8 张图时可以替换
+  assert.equal(
+    shouldApplyFullText('x'.repeat(500), 'y'.repeat(120), {
+      currentImages: 0,
+      extractedImages: 8,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldApplyFullText('x'.repeat(500), 'y'.repeat(10), {
+      currentImages: 0,
+      extractedImages: 8,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldApplyFullText('x'.repeat(500), 'y'.repeat(120), {
+      currentImages: 10,
+      extractedImages: 12,
+    }),
+    false,
+  );
 });
 
 test('摘要判定：短于 1200 字符算摘要', () => {

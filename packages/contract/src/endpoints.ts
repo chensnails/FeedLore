@@ -1175,6 +1175,19 @@ export const img = {
     response: z.unknown(),
     binary: true,
   },
+  /** 原图透传：不压缩、不重编码，返回上游原始字节与 Content-Type。
+   *  `dl=1` 时带 Content-Disposition: attachment，用于「下载原图」。 */
+  raw: {
+    method: 'get',
+    path: '/api/img/raw',
+    auth: 'user',
+    query: z.object({
+      u: z.string().url(),
+      dl: z.string().optional(),
+    }),
+    response: z.unknown(),
+    binary: true,
+  },
 } as const satisfies Record<string, EndpointSpec>;
 
 /* ============================ MCP 接口令牌 ============================ */

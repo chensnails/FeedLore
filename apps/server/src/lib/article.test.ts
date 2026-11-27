@@ -230,6 +230,36 @@ test('上限：图片与正文共享 300 块，超过 20 张不再丢图，超�
   assert.doesNotThrow(() => JSON.parse(out.bodyJson ?? ''));
 });
 
+test('fallbackImages: 正文无图时用 media/enclosure 图补块，正文有图则不插手', () => {
+  const out = parseArticleHtml('<p>图集说明</p>', {
+    fallbackImages: [
+      'https://cdn.example.com/1.jpg',
+      'data:image/png;base64,AAA',
+      '/relative-without-base.jpg',
+    ],
+  });
+  assert.deepEqual(out.images, ['https://cdn.example.com/1.jpg']);
+  const blocks = JSON.parse(out.bodyJson ?? '[]') as ArticleBlock[];
+  assert.equal(blocks.filter((b) => b.t === 'img').length, 1);
+
+  const withBody = parseArticleHtml('<img src="https://cdn.example.com/body.jpg">', {
+    fallbackImages: ['https://cdn.example.com/1.jpg'],
+  });
+  assert.deepEqual(withBody.images, ['https://cdn.example.com/body.jpg']);
+});
+
+test('images 与 bodyJson 同步：64KB 上限丢掉的尾部图不留在 images', () => {
+  const html = Array.from(
+    { length: 300 },
+    (_, i) => `<img src="https://a.com/${i}.jpg" alt="${'x'.repeat(300)}">`,
+  ).join('');
+  const out = parseArticleHtml(html);
+  const blocks = JSON.parse(out.bodyJson ?? '[]') as Array<{ t: string; src?: string }>;
+  const kept = blocks.filter((b) => b.t === 'img').map((b) => b.src ?? '');
+  assert.ok(kept.length > 0 && kept.length < 300);
+  assert.deepEqual(out.images, kept);
+});
+
 test('空正文 / 只有空白：没有块，bodyJson 为 null', () => {
   assert.deepEqual(parseArticleHtml(''), { blocks: [], images: [], bodyJson: null });
   assert.deepEqual(parseArticleHtml('<div>   </div>').blocks, []);

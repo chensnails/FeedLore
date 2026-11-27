@@ -16,6 +16,7 @@ import { core } from '@core';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
 import React, { type FormEvent, useEffect, useRef, useState } from 'react';
+import { originalImageDownloadSrc, originalImageSrc } from '../core/imageOriginal.ts';
 import type { LightboxState, ToastState } from '../core/types.ts';
 import { provide, revoke } from '../kernel/bridge.ts';
 import { EVENT, on } from '../kernel/events.ts';
@@ -189,6 +190,8 @@ function ConfirmDialog({ c }: { c: OverlayConfirmState }) {
 function Lightbox({ box, close }: { box: LightboxState; close: () => void }) {
   const list = Array.isArray(box.list) ? box.list : [];
   const multi = list.length > 1;
+  const original = originalImageSrc(box.src);
+  const download = originalImageDownloadSrc(box.src);
   const step = (d: number) => {
     const s = S();
     if (s && s.stepLightbox) s.stepLightbox(d);
@@ -217,6 +220,36 @@ function Lightbox({ box, close }: { box: LightboxState; close: () => void }) {
               {multi ? `图片预览，第 ${box.index + 1} 张，共 ${list.length} 张` : '图片预览'}
             </Dialog.Title>
             <img className="lightbox-img" src={box.src} alt="" />
+            {/* 原图工具：图片型 RSS 的正文图同样是 .art-img，点开后这里一定可用。
+                .lightbox 是「点任意处关闭」，工具条必须 stopPropagation。 */}
+            {original ? (
+              <div
+                className="lightbox-tools"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                }}
+              >
+                <a
+                  className="lightbox-tool"
+                  href={original}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="在新标签页打开原图"
+                  title="在新标签页打开原图"
+                >
+                  <svg className="ico" aria-hidden="true" focusable="false">
+                    <use href="#i-external" />
+                  </svg>
+                  <span className="sr-only">在新标签页打开原图</span>
+                </a>
+                <a className="lightbox-tool" href={download} aria-label="下载原图" title="下载原图">
+                  <svg className="ico" aria-hidden="true" focusable="false">
+                    <use href="#i-download" />
+                  </svg>
+                  <span className="sr-only">下载原图</span>
+                </a>
+              </div>
+            ) : null}
             {multi ? (
               <React.Fragment>
                 <button

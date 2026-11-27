@@ -41,6 +41,23 @@ test('normalizeItem：产出 v2 正文块，图片按正文顺序且相对地址
   assert.equal(blocks[1].src, 'https://example.com/a.jpg');
 });
 
+test('normalizeItem：只有 media:content 的图集进正文，且不再砍到 12 张', () => {
+  const pics = Array.from(
+    { length: 15 },
+    (_, i) => `<media:content url="https://cdn.example.com/p${i}.jpg" medium="image"/>`,
+  ).join('');
+  const feed = parseFeed(
+    `<?xml version="1.0"?><rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">` +
+      `<channel><title>图集</title><link>https://example.com</link>` +
+      `<item><guid>g-media</guid><title>图集</title><link>https://example.com/p/1</link>` +
+      `<description>图集说明</description>${pics}</item></channel></rss>`,
+  );
+  const it = normalizeItem(feed.items[0]!, '图集', { siteUrl: 'https://example.com' });
+  assert.equal(it.images.length, 15);
+  const blocks = JSON.parse(it.bodyJson ?? '[]') as Array<{ t: string }>;
+  assert.equal(blocks.filter((b) => b.t === 'img').length, 15);
+});
+
 test('normalizeItem：纯文本帖子的换行仍是独立段落', () => {
   const it = normalizeItem(
     {

@@ -15,7 +15,7 @@ import { articleCache, type Db } from '@feedlore/db';
 import { Readability } from '@mozilla/readability';
 import { inArray, sql } from 'drizzle-orm';
 import { parseHTML } from 'linkedom';
-import { parseArticleHtml } from './article';
+import { MAX_ENTRY_IMAGES, parseArticleHtml } from './article';
 import { log } from './logger';
 import { safeFetch } from './net';
 import type { NormalizedItem } from './rss';
@@ -34,6 +34,10 @@ const MIN_ARTICLE_CHARS = 120;
 const THIN_CONTENT_CHARS = 1200;
 /** 抽出正文至少要比现有长这么多、且长 30% 以上才替换 */
 const MIN_GAIN_CHARS = 400;
+/** 图片型正文：图集往往只有几十字说明，靠「图片数明显增加」判定是否替换 */
+const MIN_IMAGE_ONLY_CHARS = 20;
+const MIN_IMAGE_ONLY_IMAGES = 4;
+const MIN_IMAGE_GAIN = 4;
 /** article_cache 有效期 */
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** 每轮每个频道最多发起多少次原文抓取（缓存命中不计；防止开全文后刷新卡太久） */
@@ -112,11 +116,19 @@ export function extractArticleFromHtml(
     }
   }
 
-  let article: ReturnType<Readability['parse']> = null;
-  try {
-    article = new Readability(document, { charThreshold: MIN_ARTICLE_CHARS }).parse();
-  } catch {
-    return null;
+  const parseWith = (threshold: number): ReturnType<Readability['parse']> => {
+    try {
+      return new Readability(document, { charThreshold: threshold }).parse();
+    } catch {
+      return null;
+    }
+  };
+  let article = parseWith(MIN_ARTICLE_CHARS);
+  // 图集页文字很少，Readability 的默认门槛会直接放弃整页。低门槛重试一次，
+  // 但只在后面确认「图够多」时才接受，避免把登录墙 / 短碎片页当正文。
+  if (!article?.content || String(article.textContent ?? '').trim().length < MIN_ARTICLE_CHARS) {
+    const loose = parseWith(1);
+    if (loose?.content) article = loose;
   }
   if (!article?.content) return null;
 
@@ -125,12 +137,14 @@ export function extractArticleFromHtml(
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
-  if (text.length < MIN_ARTICLE_CHARS) return null;
 
   const parsed = parseArticleHtml(article.content, {
     baseUrl: opts.url ?? null,
     siteUrl: opts.siteUrl ?? null,
   });
+  const imageRich =
+    parsed.images.length >= MIN_IMAGE_ONLY_IMAGES && text.length >= MIN_IMAGE_ONLY_CHARS;
+  if (text.length < MIN_ARTICLE_CHARS && !imageRich) return null;
 
   return {
     title: article.title?.trim() || null,
@@ -223,12 +237,25 @@ export function isThinContent(item: Pick<NormalizedItem, 'content'>): boolean {
 /**
  * 只有抽出的正文**明显更长**才替换：有些 RSS 本来就给全文，Readability 反而可能
  * 漏掉图片说明 / 附录；没有足够增益就保留订阅原文。
+ * 图片型文章例外：文字只有几十字但多出好几张图时也算明显增益。
  */
-export function shouldApplyFullText(current: string | null, extracted: string): boolean {
+export function shouldApplyFullText(
+  current: string | null,
+  extracted: string,
+  opts: { currentImages?: number; extractedImages?: number } = {},
+): boolean {
   const len = String(current ?? '').trim().length;
   const next = String(extracted ?? '').trim().length;
-  if (next < MIN_ARTICLE_CHARS) return false;
-  return next >= len + MIN_GAIN_CHARS && next >= len * 1.3;
+  if (next >= MIN_ARTICLE_CHARS && next >= len + MIN_GAIN_CHARS && next >= len * 1.3) {
+    return true;
+  }
+  const curImgs = Math.max(0, Number(opts.currentImages) || 0);
+  const extImgs = Math.max(0, Number(opts.extractedImages) || 0);
+  return (
+    extImgs >= MIN_IMAGE_ONLY_IMAGES &&
+    extImgs >= curImgs + MIN_IMAGE_GAIN &&
+    next >= MIN_IMAGE_ONLY_CHARS
+  );
 }
 
 /** 应用抽取结果（调用方保证 bodyJson 非空且增益足够）。 */
@@ -238,7 +265,10 @@ export function applyFullText(
   bodyJson: string,
   images: string[],
 ): NormalizedItem {
-  const merged = [...new Set([...images, ...item.images].filter(Boolean))].slice(0, 12);
+  const merged = [...new Set([...images, ...item.images].filter(Boolean))].slice(
+    0,
+    MAX_ENTRY_IMAGES,
+  );
   return {
     ...item,
     content: text.slice(0, ENTRY_TEXT_CHARS),
@@ -301,7 +331,15 @@ export async function enhanceWithFullText(
   for (const c of candidates) {
     const hit = cached.get(c.url);
     const fresh = hit && now - hit.fetchedAt.getTime() <= ttl;
-    if (hit && fresh && hit.bodyJson && shouldApplyFullText(c.item.content, hit.content ?? '')) {
+    if (
+      hit &&
+      fresh &&
+      hit.bodyJson &&
+      shouldApplyFullText(c.item.content, hit.content ?? '', {
+        currentImages: c.item.images.length,
+        extractedImages: hit.images?.length ?? 0,
+      })
+    ) {
       out[c.index] = applyFullText(c.item, hit.content ?? '', hit.bodyJson, hit.images ?? []);
       continue;
     }
@@ -348,7 +386,13 @@ export async function enhanceWithFullText(
           log.error('[fulltext] failed to write article cache: ', (e as Error)?.message ?? e);
         });
 
-      if (got.bodyJson && shouldApplyFullText(c.item.content, got.text)) {
+      if (
+        got.bodyJson &&
+        shouldApplyFullText(c.item.content, got.text, {
+          currentImages: c.item.images.length,
+          extractedImages: got.images.length,
+        })
+      ) {
         out[c.index] = applyFullText(c.item, got.text, got.bodyJson, got.images);
       }
     }

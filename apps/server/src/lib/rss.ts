@@ -11,7 +11,7 @@
  * 纯函数才可能被单元测试覆盖，也才能在「同一 URL 多用户订阅」时安全复用同一份解析结果。
  */
 
-import { parseArticleHtml } from './article';
+import { MAX_ENTRY_IMAGES, parseArticleHtml } from './article';
 
 /* ============================================================================
  * 1. XML 解析
@@ -214,12 +214,44 @@ function pickLink(node: XmlNode | null): string | null {
   return (alt ?? scored[0])?.href ?? null;
 }
 
+/** Media RSS / Atom 里只以 media:* 给出的图（正文没有 <img> 时靠它出图）。 */
+function mediaImages(it: XmlNode | null): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string | undefined): void => {
+    const u = String(raw ?? '').trim();
+    if (!/^https?:\/\//i.test(u) || seen.has(u)) return;
+    seen.add(u);
+    out.push(u);
+  };
+  const collect = (node: XmlNode | null): void => {
+    if (!node) return;
+    for (const n of children(node, 'content')) {
+      const u = n.attrs.url || n.attrs.href || textOf(n, 'url');
+      const kind = String(n.attrs.type || n.attrs.medium || '');
+      if (u && (/^image/i.test(kind) || /\.(?:jpe?g|png|webp|gif|avif)(?:[?#]|$)/i.test(u))) {
+        add(u);
+      }
+    }
+    for (const n of children(node, 'thumbnail')) {
+      add(n.attrs.url || n.attrs.href || textOf(n, 'url'));
+    }
+    // 播客类源把封面放在 itunes:image href
+    for (const n of children(node, 'image')) add(n.attrs.href || n.attrs.url);
+    for (const g of children(node, 'group')) collect(g);
+  };
+  collect(it);
+  return out;
+}
+
 export interface RawItem {
   guid: string;
   title: string;
   url: string | null;
   content: string;
   enclosure: string | null;
+  /** 可选：正文之外的媒体图片（旧调用方构造 RawItem 时不必给） */
+  mediaImages?: string[];
   dateStr: string;
 }
 
@@ -290,6 +322,7 @@ export function parseFeed(xml: string): ParsedFeed {
         url: pickLink(it),
         content: body,
         enclosure: enc?.attrs.url ?? null,
+        mediaImages: mediaImages(it),
         dateStr,
       };
     })
@@ -446,13 +479,15 @@ export function normalizeItem(
   const article = parseArticleHtml(content, {
     baseUrl: raw.url ?? link ?? null,
     siteUrl: opts.siteUrl ?? null,
+    // 只有 media:* / enclosure 图片的条目：补成正文图块，灯箱与原图工具才有对象
+    fallbackImages: [...(raw.mediaImages ?? []), ...(raw.enclosure ? [raw.enclosure] : [])],
   });
 
   // 配图：正文里的所有图片（多图文章需要）按出现顺序，其次 enclosure。
-  // 最多 12 张，避免图集 / 追踪像素把卡片撑爆。
+  // 图片型 RSS 的图集不再砍到 12 张；正文仍受 300 块 / 64KB 两道兜底约束。
   const imgSet = new Set<string>(article.images);
   if (raw.enclosure && /^https?:\/\//i.test(raw.enclosure)) imgSet.add(raw.enclosure);
-  const images = [...imgSet].slice(0, 12);
+  const images = [...imgSet].slice(0, MAX_ENTRY_IMAGES);
   const image = images[0] ?? null; // 单图（卡片/缩略图）沿用第一张
 
   // 文章内所有可复制的链接：主链接排第一，其余按出现顺序（href → 网盘直链 → 正文里的纯文本 URL）
@@ -556,8 +591,8 @@ export function normalizeItem(
     bodyVersion: 2,
     size: size ? size.slice(0, 40) : null,
     tags,
-    image: image ? image.slice(0, 1000) : null,
-    images: images.map((u) => u.slice(0, 1000)),
+    image: image ? image.slice(0, 2000) : null,
+    images: images.map((u) => u.slice(0, 2000)),
     links: links.map((u) => u.slice(0, 1000)),
     sourceUrl: validUrl(raw.url ?? '') ? String(raw.url).slice(0, 1000) : null,
     publishedAt: parseDate(raw.dateStr) ?? new Date(),

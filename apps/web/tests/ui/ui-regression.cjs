@@ -9558,6 +9558,36 @@ const withEFP = (el, fn) => {
     if (!callsOf('closeLightbox').length) throw new Error('未触发');
   });
 
+  // 原图工具：正文图（含图片型 RSS 的图块）走压缩代理，灯箱里须给出真原图出口
+  const rawU = encodeURIComponent('https://example.com/a.png');
+  overlayState.box = {
+    src: '/api/img?u=' + rawU + '&w=960&r=1',
+    show: true,
+    list: ['/api/img?u=' + rawU + '&w=960&r=1'],
+    index: 0,
+  };
+  overlaysTick();
+  await sleep(20);
+  t('灯箱：原图工具给出新标签页打开与下载两个出口', () => {
+    const tools = Array.from(w.document.querySelectorAll('.lightbox-tool'));
+    if (tools.length !== 2) throw new Error('工具数不对：' + tools.length);
+    const open = tools.find((el) => el.getAttribute('aria-label') === '在新标签页打开原图');
+    const dl = tools.find((el) => el.getAttribute('aria-label') === '下载原图');
+    if (!open || !dl) throw new Error('缺原图工具');
+    if (open.getAttribute('href') !== '/api/img/raw?u=' + rawU) throw new Error('原图地址未去档位');
+    if (open.getAttribute('target') !== '_blank') throw new Error('原图未在新标签页打开');
+    if (dl.getAttribute('href') !== '/api/img/raw?u=' + rawU + '&dl=1')
+      throw new Error('下载未带 dl=1');
+  });
+  const closeBeforeTool = callsOf('closeLightbox').length;
+  const openTool = w.document.querySelector('.lightbox-tool');
+  openTool.addEventListener('click', (ev) => ev.preventDefault()); // jsdom 不实现导航
+  openTool.click();
+  await sleep(10);
+  t('灯箱：点原图工具不会关闭预览', () => {
+    if (callsOf('closeLightbox').length !== closeBeforeTool) throw new Error('点工具把灯箱关掉了');
+  });
+
   // v1.6.0-test4：同一篇正文多图时给 ← → 与序号；点翻页不能把灯箱关掉（stopPropagation）
   overlayState.box = {
     src: 'https://example.com/b.png',

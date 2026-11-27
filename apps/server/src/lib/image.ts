@@ -12,8 +12,13 @@
 import crypto from 'node:crypto';
 import sharp from 'sharp';
 
-/** 单个图片字节上限：超过直接放弃（不是压缩，是真的一张 50MB 的扫描件）。 */
-export const IMG_MAX_BYTES = 8 * 1024 * 1024;
+/** 单个图片字节上限：超过直接放弃。旧值 8MB 会把超清图 / 扫描件挡在门外；
+ *  放宽到 20MB（可用 IMG_MAX_BYTES 覆盖，硬顶 64MB），仍先查 content-length 再收 body。 */
+const ENV_MAX_BYTES = Number(process.env.IMG_MAX_BYTES);
+export const IMG_MAX_BYTES =
+  Number.isFinite(ENV_MAX_BYTES) && ENV_MAX_BYTES > 0
+    ? Math.min(ENV_MAX_BYTES, 64 * 1024 * 1024)
+    : 20 * 1024 * 1024;
 
 const MAX_DIM = Number(process.env.IMG_MAX_DIM) > 0 ? Number(process.env.IMG_MAX_DIM) : 1280;
 const WEBP_QUALITY =
@@ -131,4 +136,39 @@ export async function compressImage(
 /** 图片类型的「能不能直接当 img src 用」判定（代理拒绝非图片上游）。 */
 export function isImageType(contentType: string | null | undefined): boolean {
   return /^image\//i.test(String(contentType ?? ''));
+}
+
+const EXT_BY_TYPE: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+  'image/svg+xml': 'svg',
+  'image/bmp': 'bmp',
+  'image/tiff': 'tiff',
+};
+
+/** 下载 / 新标签打开时的文件名：只取 URL 路径末段，清洗成安全 ASCII；
+ *  没扩展名时按 Content-Type 补。调用方写进 Content-Disposition，不能有引号/控制字符。 */
+export function imageFileName(url: string, contentType: string): string {
+  let raw = '';
+  try {
+    const x = new URL(String(url ?? ''));
+    raw = decodeURIComponent(x.pathname.split('/').pop() ?? '');
+  } catch {
+    raw = (String(url ?? '').split(/[?#]/)[0] ?? '').split('/').pop() ?? '';
+  }
+  const base = raw
+    .replace(/[^\w.-]+/g, '_')
+    .replace(/^\.+/, '')
+    .slice(0, 80);
+  const ext =
+    EXT_BY_TYPE[
+      String(contentType ?? '')
+        .toLowerCase()
+        .split(';')[0] ?? ''
+    ] ?? 'img';
+  if (/\.[a-z0-9]{2,5}$/i.test(base)) return base;
+  return base ? `${base}.${ext}` : `image.${ext}`;
 }
