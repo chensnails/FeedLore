@@ -17,6 +17,13 @@ test('灯箱：w 在中间或末尾都能去掉，且不误伤 u 参数里的 &w
   assert.equal(lightboxDisplaySrc('/api/img?u=a%26w%3D5&w=320'), '/api/img?u=a%26w%3D5');
 });
 
+test('灯箱：currentSrc 是绝对地址时同样去掉 &w=', () => {
+  assert.equal(
+    lightboxDisplaySrc('http://172.26.1.2:3210/api/img?u=https%3A%2F%2Fex.com%2Fa.jpg&w=960'),
+    'http://172.26.1.2:3210/api/img?u=https%3A%2F%2Fex.com%2Fa.jpg',
+  );
+});
+
 test('灯箱：外链原图 / data URI / 空值原样返回（不造新缓存键）', () => {
   assert.equal(lightboxDisplaySrc('https://ex.com/a.jpg'), 'https://ex.com/a.jpg');
   assert.equal(lightboxDisplaySrc('data:image/png;base64,AAAA'), 'data:image/png;base64,AAAA');

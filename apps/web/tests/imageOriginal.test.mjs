@@ -10,6 +10,11 @@ test('原图地址：代理压缩图去档位 / 重试参数，改走 /api/img/r
   assert.equal(originalImageDownloadSrc(cur), '/api/img/raw?u=' + encodeURIComponent(U) + '&dl=1');
 });
 
+test('原图地址：currentSrc 绝对地址不会把代理地址再包一层', () => {
+  const cur = 'http://172.26.1.2:3210/api/img?u=' + encodeURIComponent(U) + '&w=960';
+  assert.equal(originalImageSrc(cur), '/api/img/raw?u=' + encodeURIComponent(U));
+});
+
 test('原图地址：原始外链也走同源代理，避免防盗链 / 混合内容', () => {
   assert.equal(originalImageSrc(U), '/api/img/raw?u=' + encodeURIComponent(U));
 });

@@ -9560,12 +9560,9 @@ const withEFP = (el, fn) => {
 
   // 原图工具：正文图（含图片型 RSS 的图块）走压缩代理，灯箱里须给出真原图出口
   const rawU = encodeURIComponent('https://example.com/a.png');
-  overlayState.box = {
-    src: '/api/img?u=' + rawU + '&w=960&r=1',
-    show: true,
-    list: ['/api/img?u=' + rawU + '&w=960&r=1'],
-    index: 0,
-  };
+  // 真浏览器里 currentSrc 是绝对地址，工具必须认得出来
+  const proxied = 'http://localhost/api/img?u=' + rawU + '&w=960&r=1';
+  overlayState.box = { src: proxied, show: true, list: [proxied], index: 0 };
   overlaysTick();
   await sleep(20);
   t('灯箱：原图工具给出新标签页打开与下载两个出口', () => {

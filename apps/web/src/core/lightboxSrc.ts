@@ -5,6 +5,9 @@
  *  currentSrc 是列表缩略档（sizes=104px 实际选中 ?w=320），原样放大只会糊。
  *  代理图去掉 &w= 档位参数即为服务端默认大图键；外链图 / data URI 原样返回。 */
 export function lightboxDisplaySrc(cur: string): string {
-  if (!cur.startsWith('/api/img?')) return cur;
-  return cur.replace(/&w=\d+(?=&|$)/, '');
+  const s = String(cur ?? '');
+  // currentSrc 是浏览器解析后的绝对地址（http://host/api/img?…），
+  // 历史数据 / 测试桩里也可能是相对地址，两种都要归一到默认大图档。
+  if (!/^(?:https?:\/\/[^/]+)?\/api\/img\?/i.test(s)) return s;
+  return s.replace(/&w=\d+(?=&|$)/, '');
 }
