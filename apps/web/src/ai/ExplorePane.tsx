@@ -10,10 +10,10 @@
 
 import { core } from '@core';
 import type { ExploreHistoryTurn, ExploreRef, ExploreResult } from '@feedlore/contract';
-import { type HTMLAttributes, useEffect, useRef, useState } from 'react';
+import { type HTMLAttributes, type SyntheticEvent, useEffect, useRef, useState } from 'react';
 import type { EntityId } from '../core/types.ts';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
-import { widthVariant } from '../imgSrc.ts';
+import { widthVariant, withRetryParam } from '../imgSrc.ts';
 import { Icon } from '../ui/Icon.tsx';
 
 const S = () => core;
@@ -85,15 +85,25 @@ const hhmm = (ts?: string | number | null) => {
 function RefCard({ ref: hit }: { ref: ExploreRef }) {
   const s = S();
   const [imgFailed, setImgFailed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const triedRef = useRef(false);
+  const baseSrc = hit.image ? widthVariant(hit.image, 320) || hit.image : '';
+  const thumbSrc = retrying ? withRetryParam(baseSrc) : baseSrc;
   const thumb =
     hit.image && !imgFailed && !isImgFailed(hit.image) ? (
       <img
         className="ex-ref-thumb"
         loading="lazy"
-        src={widthVariant(hit.image, 320) || hit.image}
+        src={thumbSrc}
         alt=""
         onLoad={/** @param {*} [ev] */ (ev) => ev.currentTarget.classList.add('img-ready')}
-        onError={() => {
+        onError={(ev: SyntheticEvent<HTMLImageElement>) => {
+          if (ev.currentTarget.complete && ev.currentTarget.naturalWidth > 0) return;
+          if (!triedRef.current) {
+            triedRef.current = true;
+            setRetrying(true);
+            return;
+          }
           markImgFailed(hit.image);
           setImgFailed(true);
         }}

@@ -25,3 +25,11 @@ export function widthSrcSet(src: unknown, widths: number[]): string | undefined 
   }
   return list.length ? list.join(', ') : undefined;
 }
+
+/** 首次加载失败后的重试地址：data URI 原样返回，其余加 r=1。
+ *  服务端 canonicalImageUrl 会归一掉 r（缓存键不变），浏览器却会当成新请求重试一次；
+ *  不能拼到 data: 后面，否则整段 base64 被破坏。 */
+export function withRetryParam(src: string): string {
+  if (!src || /^data:/i.test(src)) return src;
+  return src + (src.includes('?') ? '&' : '?') + 'r=1';
+}

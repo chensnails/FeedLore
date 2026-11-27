@@ -11,7 +11,7 @@ import type {
 import { useRef, useState } from 'react';
 import type { AppState, Card as CardData, ViewMode } from '../core/types.ts';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
-import { widthSrcSet, widthVariant } from '../imgSrc.ts';
+import { widthSrcSet, widthVariant, withRetryParam } from '../imgSrc.ts';
 import { BrandLogo } from '../ui/BrandLogo.tsx';
 import { CopyButton, copyableLinks, OpenButton } from '../ui/EntryActions.tsx';
 import { HighlightText } from '../ui/HighlightText.tsx';
@@ -75,8 +75,7 @@ export function LazyImg({
         if (!triedRef.current) {
           triedRef.current = true;
           img.removeAttribute('srcset');
-          const u = (src.split('#')[0] || '') + (src.includes('?') ? '&' : '?') + 'r=1';
-          img.src = u;
+          img.src = withRetryParam(src.split('#')[0] || '');
           return;
         }
         markImgFailed(src);

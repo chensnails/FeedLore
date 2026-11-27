@@ -7,13 +7,16 @@
  * 弱网下这些请求会占满浏览器的 6 条并发连接，把真正该先到的首屏图片挤到后面。
  * 抽屉打开时由 IntersectionObserver 触发加载；用户看不到的东西不占带宽。
  */
-import { useEffect, useRef, useState } from 'react';
+import { type SyntheticEvent, useEffect, useRef, useState } from 'react';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
+import { withRetryParam } from '../imgSrc.ts';
 
 export function ChannelAvatar({ icon, name }: { icon?: string | null; name?: string | null }) {
   const [failed, setFailed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [visible, setVisible] = useState(false);
   const ref = useRef<HTMLSpanElement | null>(null);
+  const triedRef = useRef(false);
 
   // 元素进入视口（或已在视口内）才置为可见 → 才开始请求图片
   useEffect(() => {
@@ -47,11 +50,17 @@ export function ChannelAvatar({ icon, name }: { icon?: string | null; name?: str
       {visible ? (
         <img
           className="rd-ch-avatar"
-          src={icon}
+          src={retrying ? withRetryParam(icon) : icon}
           alt=""
           loading="lazy"
           decoding="async"
-          onError={() => {
+          onError={(ev: SyntheticEvent<HTMLImageElement>) => {
+            if (ev.currentTarget.complete && ev.currentTarget.naturalWidth > 0) return;
+            if (!triedRef.current) {
+              triedRef.current = true;
+              setRetrying(true);
+              return;
+            }
             markImgFailed(icon);
             setFailed(true);
           }}

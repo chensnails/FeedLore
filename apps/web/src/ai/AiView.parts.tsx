@@ -4,9 +4,9 @@
 import { core } from '@core';
 import type { Digest, DigestItem, DigestSection } from '@feedlore/contract';
 import type { SyntheticEvent } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
-import { widthVariant } from '../imgSrc.ts';
+import { widthVariant, withRetryParam } from '../imgSrc.ts';
 import { CopyIconButton, safeHref } from '../ui/EntryActions.tsx';
 import { Icon } from '../ui/Icon.tsx';
 import { StateBlock } from '../ui/StateBlock.tsx';
@@ -20,17 +20,28 @@ type DigestEntry = DigestSection['items'][number];
 export function DgItem({ it }: { it: DigestEntry }) {
   const e: Partial<DigestItem> = it.item || {};
   const [imgFailed, setImgFailed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const triedRef = useRef(false);
+  const baseSrc = e.image ? widthVariant(e.image, 320) || e.image : '';
+  // 首错先重试一次（r=1 只让浏览器重发，代理缓存键会归一掉它），再失败才进负缓存。
+  const thumbSrc = retrying ? withRetryParam(baseSrc) : baseSrc;
   const thumb =
     e.image && !imgFailed && !isImgFailed(e.image) ? (
       <img
         className="dg-item-thumb"
         loading="lazy"
-        src={widthVariant(e.image, 320) || e.image}
+        src={thumbSrc}
         alt=""
         onLoad={(ev: SyntheticEvent<HTMLImageElement>) =>
           ev.currentTarget.classList.add('img-ready')
         }
-        onError={() => {
+        onError={(ev: SyntheticEvent<HTMLImageElement>) => {
+          if (ev.currentTarget.complete && ev.currentTarget.naturalWidth > 0) return;
+          if (!triedRef.current) {
+            triedRef.current = true;
+            setRetrying(true);
+            return;
+          }
           markImgFailed(e.image);
           setImgFailed(true);
         }}

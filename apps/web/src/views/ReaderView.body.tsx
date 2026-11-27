@@ -6,7 +6,7 @@ import type { ReactNode, SyntheticEvent as ReactSyntheticEvent } from 'react';
 import { useRef, useState } from 'react';
 import type { Card, EntryDetail } from '../core/types.ts';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
-import { widthSrcSet } from '../imgSrc.ts';
+import { widthSrcSet, withRetryParam } from '../imgSrc.ts';
 import { safeHref } from '../ui/EntryActions.tsx';
 
 /** 正文块：v1 纯文本块与 v2 结构化块共用的形状（字段都可选，按 t 取用）。 */
@@ -203,7 +203,7 @@ function ArtImg({
   const url = proxied(src);
   if (failed || !url || isImgFailed(url)) return null;
   // 重试去掉 srcset 并加 r=1：服务端缓存键会归一掉 r，但浏览器会当成新请求重新验证。
-  const imgSrc = retrying ? url + (url.includes('?') ? '&' : '?') + 'r=1' : url;
+  const imgSrc = retrying ? withRetryParam(url) : url;
   return (
     <img
       className="art-img"
