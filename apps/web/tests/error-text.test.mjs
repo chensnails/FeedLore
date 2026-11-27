@@ -96,9 +96,9 @@ test('Error 实例的 message 里带码也能翻译（二次 errText 不再吐�
   );
 });
 
-test('95 个已知错误码全部有中文文案（快照）', () => {
+test('96 个已知错误码全部有中文文案（快照）', () => {
   const codes = [...API_ERROR_CODES, ...AI_INTERNAL_ERROR_CODES];
-  assert.equal(codes.length, 95, `码表数量变了：${codes.length}（快照需同步）`);
+  assert.equal(codes.length, 96, `码表数量变了：${codes.length}（快照需同步）`);
   const missing = [];
   const snapshot = {};
   for (const code of codes) {

@@ -514,6 +514,18 @@ export const entryFlagPatchBody = z.object({
 });
 export type EntryFlagPatchBody = z.infer<typeof entryFlagPatchBody>;
 
+/** 单篇手动重新抓取：只更新当前条目内容，不改列表字段 / 标记 / 其他条目。 */
+export const entryRefreshResponse = z.object({
+  ok: z.literal(true),
+  id: z.string(),
+  /** 内容是否真的发生变化（没变化也回完整详情，前端直接替换正文缓存） */
+  changed: z.boolean(),
+  images: z.number().int().nonnegative(),
+  refreshedAt: C.IsoDateTime,
+  entry: M.EntryDetailSchema,
+});
+export type EntryRefreshResponse = z.infer<typeof entryRefreshResponse>;
+
 export const entries = {
   list: {
     method: 'get',
@@ -565,6 +577,12 @@ export const entries = {
     path: '/api/entries/:id',
     auth: 'user',
     response: M.EntryDetailSchema,
+  },
+  refresh: {
+    method: 'post',
+    path: '/api/entries/:id/refresh',
+    auth: 'user',
+    response: entryRefreshResponse,
   },
   flagPatch: {
     method: 'patch',

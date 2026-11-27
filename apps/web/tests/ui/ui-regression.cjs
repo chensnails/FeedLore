@@ -13420,7 +13420,7 @@ const withEFP = (el, fn) => {
     const codeTest = fs
       .readFileSync(path.join(root, 'tests', 'error-text.test.mjs'), 'utf8')
       .replace(/\r\n/g, '\n');
-    if (!/codes\.length, 95/.test(codeTest)) throw new Error('错误码快照未覆盖 95 码');
+    if (!/codes\.length, 96/.test(codeTest)) throw new Error('错误码快照未覆盖 96 码');
   });
 
   t('撤销窗口按批量条数动态放宽（6s 起、10s 封顶），批量撤销并行并汇总失败', () => {

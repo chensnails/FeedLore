@@ -12,6 +12,7 @@ import { useTopbarHeight } from '../shell/useTopbarHeight.ts';
 import { ChannelTabs } from '../ui/ChannelTabs.tsx';
 import { ArtActions } from '../ui/EntryActions.tsx';
 import { EntryAiBar } from '../ui/EntryAiBar.tsx';
+import { EntryRefreshButton, type EntryRefreshPayload } from '../ui/EntryRefreshButton.tsx';
 import { NO_AUTOFILL_PROPS } from '../ui/noAutofill.ts';
 import { OverflowMenu } from '../ui/OverflowMenu.tsx';
 import { SavedSearches } from '../ui/SavedSearches.tsx';
@@ -38,12 +39,14 @@ interface ArtBodyProps {
   onTag?: (tag: string) => void;
   onAiTag?: (tag: string) => void;
   extraActions?: ReactNode;
+  /** 卡片详情传入自己的 refetch；文章页省略，正文缓存由 core 就地替换。 */
+  onRefreshed?: (payload: EntryRefreshPayload) => void | Promise<void>;
 }
 
 /** 正文（对应旧 artBodyHtml）：图文按原顺序内联；老数据回退为图集 + 段落。
  *  导出给卡片详情弹窗（src/views/CardDetail.tsx）复用，两处正文渲染保持一套。
  *  extraActions：弹窗会把「收藏 / 在文章页查看」也塞进这条动作行，保证一个弹窗只有一排按钮。 */
-export function ArtBody({ e, onTag, onAiTag, extraActions }: ArtBodyProps) {
+export function ArtBody({ e, onTag, onAiTag, extraActions, onRefreshed }: ArtBodyProps) {
   const s = S();
   const fmtFull = s.fmtFull || ((d: unknown) => (d ? String(d) : ''));
   const parts: ReactNode[] = [];
@@ -52,7 +55,8 @@ export function ArtBody({ e, onTag, onAiTag, extraActions }: ArtBodyProps) {
    * 要读完整篇才看得见入口（用户反馈后调整，别再挪回底部）。 */
   parts.push(<EntryAiBar key="ai" entryId={e.id} />);
   const blocks = parseBlocks(e.bodyJson);
-  for (const p of renderBodyContent(e, blocks, fmtFull, onTag, onAiTag)) parts.push(p);
+  const refreshSlot = <EntryRefreshButton key="refresh" entryId={e.id} onRefreshed={onRefreshed} />;
+  for (const p of renderBodyContent(e, blocks, fmtFull, onTag, onAiTag, refreshSlot)) parts.push(p);
   parts.push(<ArtActions key="acts" e={e} extraActions={extraActions} />);
   return <div className="art-inner">{parts}</div>;
 }

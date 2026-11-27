@@ -298,6 +298,37 @@ async function fetchReaderBody(id: EntityId) {
   }
 }
 
+/** 单篇手动重新抓取的超时：RSS 回源 25s + 全文抓取 20s，给足余量但不无限挂。 */
+const ENTRY_REFRESH_TIMEOUT_MS = 120_000;
+
+/**
+ * 单篇「重新抓取」：服务端只改这一条的内容字段，这里只替换当前正文缓存。
+ * 不刷新列表、不改 rdEntries，避免标题 / 时间 / 排序在用户眼前跳动。
+ * 服务端已对同一 (用户, 条目) 做并发去重，前端按钮仍会独立防重复点击。
+ */
+export async function readerRefreshEntry(id: EntityId) {
+  const res = await apiFetch('/api/entries/' + encodeURIComponent(id) + '/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+    timeoutMs: ENTRY_REFRESH_TIMEOUT_MS,
+  });
+  if (!res.ok) throw await httpError(res);
+  const payload = await res.json();
+  const detail = payload.entry;
+  state.rdBody.set(id, detail);
+  state.rdBodyErr.delete(id);
+  renderReader();
+  return payload as {
+    ok: true;
+    id: string;
+    changed: boolean;
+    images: number;
+    refreshedAt: string;
+    entry: import('./types.ts').EntryDetail;
+  };
+}
+
 /** 正文加载失败的「重试」：清掉错误标记再拉一次；成功后会解除展开体里的错误提示 */
 export async function readerRetryBody(id: EntityId) {
   if (!state.rdBodyErr.has(id)) return;

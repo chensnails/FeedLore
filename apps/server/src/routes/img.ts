@@ -61,10 +61,11 @@ import { type AppEnv, requireAuth } from '../middleware/auth';
  * 参数
  * ==========================================================================*/
 
-/** 回源超时：旧值 15s 对跨境 CDN / 大图偏紧，放宽到 25s（可用 IMG_TIMEOUT_MS 覆盖）。 */
+/** 回源超时：大图 / 跨境 CDN 继续放宽到 40s（可用 IMG_TIMEOUT_MS 覆盖，硬顶 90s）。
+ *  慢图片只影响这一张的后台刷新，不阻塞其余图片先返回。 */
 const TIMEOUT_ENV = Number(process.env.IMG_TIMEOUT_MS);
 const UPSTREAM_TIMEOUT_MS =
-  Number.isFinite(TIMEOUT_ENV) && TIMEOUT_ENV > 0 ? Math.min(TIMEOUT_ENV, 60_000) : 25_000;
+  Number.isFinite(TIMEOUT_ENV) && TIMEOUT_ENV > 0 ? Math.min(TIMEOUT_ENV, 90_000) : 40_000;
 const L1_MAX = 500;
 
 /** 缓存新鲜期：超过就转后台刷新（但**仍然先返回旧图**）。 */

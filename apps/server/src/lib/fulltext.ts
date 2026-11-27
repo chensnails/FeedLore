@@ -15,7 +15,7 @@ import { articleCache, type Db } from '@feedlore/db';
 import { Readability } from '@mozilla/readability';
 import { inArray, sql } from 'drizzle-orm';
 import { parseHTML } from 'linkedom';
-import { MAX_ENTRY_IMAGES, parseArticleHtml } from './article';
+import { MAX_ENTRY_IMAGES, MAX_IMAGE_URL_CHARS, parseArticleHtml } from './article';
 import { log } from './logger';
 import { safeFetch } from './net';
 import type { NormalizedItem } from './rss';
@@ -24,10 +24,11 @@ import type { NormalizedItem } from './rss';
  * 1. 限制参数
  * --------------------------------------------------------------------------*/
 
-/** 原文页 HTML 上限（超过就放弃，Readability 解析超长页面很吃内存） */
-const MAX_HTML_BYTES = 3 * 1024 * 1024;
-/** 单篇原文页抓取超时 */
-const FETCH_TIMEOUT_MS = 12_000;
+/** 原文页 HTML 上限（超过就放弃，Readability 解析超长页面很吃内存）。
+ *  默认从 3MB 放宽到 6MB：图片型周刊的内联 data / 懒加载配置常把页面撑大。 */
+const MAX_HTML_BYTES = 6 * 1024 * 1024;
+/** 单篇原文页抓取超时（正常频道刷新仍由 fetcher 传 12s，这里只给手动刷新 / 直接调用兜底） */
+const FETCH_TIMEOUT_MS = 20_000;
 /** 抽出少于这么多字视为「没找到正文」（登录墙 / 纯 JS 渲染 / 反爬页） */
 const MIN_ARTICLE_CHARS = 120;
 /** 订阅正文短于这么多字符才值得去抓全文 */
@@ -265,10 +266,9 @@ export function applyFullText(
   bodyJson: string,
   images: string[],
 ): NormalizedItem {
-  const merged = [...new Set([...images, ...item.images].filter(Boolean))].slice(
-    0,
-    MAX_ENTRY_IMAGES,
-  );
+  const merged = [...new Set([...images, ...item.images].filter(Boolean))]
+    .map((u) => String(u).slice(0, MAX_IMAGE_URL_CHARS))
+    .slice(0, MAX_ENTRY_IMAGES);
   return {
     ...item,
     content: text.slice(0, ENTRY_TEXT_CHARS),
@@ -295,6 +295,9 @@ export interface FullTextOptions {
   maxFetches?: number;
   /** 缓存有效期（毫秒） */
   ttlMs?: number;
+  /** 手动「重新抓取」专用：忽略 7 天缓存，强制回源并覆盖缓存。
+   *  默认 false，正常频道刷新路径一行不改。 */
+  force?: boolean;
 }
 
 /**
@@ -332,6 +335,7 @@ export async function enhanceWithFullText(
     const hit = cached.get(c.url);
     const fresh = hit && now - hit.fetchedAt.getTime() <= ttl;
     if (
+      !opts.force &&
       hit &&
       fresh &&
       hit.bodyJson &&

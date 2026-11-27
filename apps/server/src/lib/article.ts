@@ -16,29 +16,38 @@ import { parseDocument } from 'htmlparser2';
  * 1. 限制参数
  * --------------------------------------------------------------------------*/
 
-/** 单篇正文最多保留的块数（超长页面只取前 300 块） */
-const MAX_BLOCKS = 300;
+/** 读正整数环境覆盖：只在合法范围内生效，异常值回退默认值（别让一个错字把解析关掉）。 */
+function envLimit(name: string, fallback: number, min: number, max: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw >= min ? Math.min(raw, max) : fallback;
+}
+
+/** 单篇正文最多保留的块数。默认从 300 放宽到 600：图集 / 超长周刊的常见体量，
+ *  仍留硬顶防止异常源把内存打满。正常解析流程不变，只调阈值。 */
+const MAX_BLOCKS = envLimit('FEEDLORE_MAX_ARTICLE_BLOCKS', 600, 300, 2000);
 /** 单篇正文最多保留的图片数（去重后）。
- *  图片也是块，已经和正文共用 MAX_BLOCKS / MAX_JSON 两道兜底；这里只留一道同样宽的
- *  防线，绝不再单独砍到 20 —— 周刊 / 图集常有 30+ 张图，旧值会把第 21 张起连块一起丢掉。 */
+ *  图片也是块，和正文共用 MAX_BLOCKS / MAX_JSON 两道兜底，不另设更窄的防线。 */
 const MAX_IMAGES = MAX_BLOCKS;
 /** entries.images（卡片 / 图集缩略图）保留上限。正文图仍全部在 body_json 里，
- *  这里只管列表侧的最大枚数：旧值 12 会把周刊后半段图集整段砍掉。 */
-export const MAX_ENTRY_IMAGES = 60;
+ *  这里只管列表侧的最大枚数；默认从 60 放宽到 120。 */
+export const MAX_ENTRY_IMAGES = envLimit('FEEDLORE_MAX_ENTRY_IMAGES', 120, 60, 400);
+/** 单个图片 URL 保留长度。查询串签名 / CDN 参数常常很长，2000 会截断导致图片 404。 */
+export const MAX_IMAGE_URL_CHARS = envLimit('FEEDLORE_MAX_IMAGE_URL_CHARS', 4000, 2000, 8000);
 /** 内联标签嵌套深度上限 */
 const MAX_DEPTH = 20;
 /** 列表 / 引用嵌套深度上限（防止病态 HTML 递归过深） */
 const MAX_NEST = 6;
-/** 序列化后的 JSON 上限（保证 JSON 合法，超了就丢尾部块而不是截字符串） */
-const MAX_JSON = 64 * 1024;
+/** 序列化后的 JSON 上限（保证 JSON 合法，超了就丢尾部块而不是截字符串）。
+ *  默认从 64KB 放宽到 256KB，600 块正文 + 120 图仍有充足余量。 */
+const MAX_JSON = envLimit('FEEDLORE_MAX_ARTICLE_JSON_BYTES', 256 * 1024, 64 * 1024, 1024 * 1024);
 /** 单个文本 / 代码块长度上限 */
 const MAX_TEXT = 12_000;
 const MAX_CODE = 24_000;
 /** 表格上限：行 / 列（合并单元格不展开，按 1 格算） */
 const MAX_TABLE_ROWS = 80;
 const MAX_TABLE_COLS = 12;
-/** 原始 HTML 上限：再长也只解析前 2MB（防止异常源把内存打满） */
-const MAX_HTML = 2_000_000;
+/** 原始 HTML 上限：默认放宽到 4MB，仍只解析前 N 字节防止异常源把内存打满。 */
+const MAX_HTML = envLimit('FEEDLORE_MAX_ARTICLE_HTML_BYTES', 4_000_000, 2_000_000, 12_000_000);
 
 /* ----------------------------------------------------------------------------
  * 2. DOM 形状（不直接依赖 domhandler 类型，避免多一层包版本耦合）

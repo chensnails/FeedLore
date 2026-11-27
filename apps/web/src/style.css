@@ -4602,6 +4602,38 @@ body.is-scrolling .card-media-actions { transition: none; }
   .art-table td { padding: .42em .55em; }
 }
 
+/* 发布时间行右侧的单篇刷新入口：常驻可见（不是 hover 才出现），与正文工具同族小胶囊。
+ * 文章页与卡片详情共用 ArtBody，所以一处样式两处生效。 */
+.art-pub { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.art-pub-label { color: var(--text-faint); font-size: 12px; }
+.art-pub time { color: var(--text-2); font-size: 12px; }
+.art-pub-only-refresh { margin-top: 0; }
+.art-refresh-wrap { display: inline-flex; align-items: center; gap: var(--sp-2); margin-left: auto; }
+.art-refresh {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  min-height: 30px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--panel-2); color: var(--text-2);
+  font-size: 12px; line-height: 1; cursor: pointer;
+  transition: background .16s var(--ease), border-color .16s var(--ease), color .16s var(--ease);
+}
+.art-refresh .ico { width: 14px; height: 14px; flex: 0 0 auto; }
+.art-refresh:hover:not(:disabled) { background: var(--hover); border-color: var(--border-strong); color: var(--text); }
+.art-refresh:disabled { cursor: progress; }
+.art-refresh[data-state='loading'] .ico { animation: artRefreshSpin .9s linear infinite; }
+.art-refresh[data-state='success'] { color: var(--ok-text); border-color: var(--ok-border); background: var(--ok-bg); }
+.art-refresh[data-state='error'] { color: var(--err-text); border-color: var(--err-border); background: var(--err-bg); }
+@keyframes artRefreshSpin { to { transform: rotate(360deg); } }
+.art-refresh-msg { font-size: 12px; color: var(--text-faint); }
+.art-refresh-msg.is-error { color: var(--err-text); }
+.art-refresh-msg.is-success { color: var(--ok-text); }
+@media (hover: none), (pointer: coarse) {
+  .art-refresh { min-height: var(--hit-min); padding: 0 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .art-refresh[data-state='loading'] .ico { animation: none; }
+}
+
 .art-tags { display: flex; align-items: center; flex-wrap: wrap; gap:var(--sp-2); }
 .art-tags-label { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: var(--text-faint); }
 .art-tags-ai { margin-top: var(--sp-1); }

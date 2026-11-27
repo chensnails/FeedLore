@@ -428,6 +428,7 @@ export function renderBodyContent(
   fmtFull: (d: string | number | null | undefined) => string,
   onTag?: (tag: string) => void,
   onAiTag?: (tag: string) => void,
+  refreshSlot?: ReactNode,
 ): ReactNode[] {
   const parts: ReactNode[] = [];
   if (blocks) {
@@ -525,6 +526,13 @@ export function renderBodyContent(
       <p className="art-pub" key="pub">
         <span className="art-pub-label">发布时间</span>
         <time dateTime={iso}>{fmtFull(e.date)}</time>
+        {refreshSlot}
+      </p>,
+    );
+  } else if (refreshSlot) {
+    parts.push(
+      <p className="art-pub art-pub-only-refresh" key="pub">
+        {refreshSlot}
       </p>,
     );
   }

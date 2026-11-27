@@ -203,7 +203,7 @@ test('表格：单元格里的块按换行摊平，colspan/rowspan 不展开', (
   assert.equal(text(table.rows[0]?.[0] ?? []), '第一行\n项');
 });
 
-test('上限：图片与正文共享 300 块，超过 20 张不再丢图，超出后仍是合法 JSON', () => {
+test('上限：图片与正文共享 600 块，40/120 张图都保留，超出后仍是合法 JSON', () => {
   // 阮一峰周刊一类文章单篇 30+ 图：旧实现把第 21 张起连块一起砍掉，正文后半段整段消失。
   const imgs = B(
     Array.from({ length: 40 }, (_, i) => `<img src="https://a.com/${i}.jpg">`).join(''),
@@ -215,18 +215,26 @@ test('上限：图片与正文共享 300 块，超过 20 张不再丢图，超�
   assert.equal(parsed.images.length, 36);
   assert.equal(JSON.parse(parsed.bodyJson ?? '[]').length, 36);
 
-  const tooMany = B(
-    Array.from({ length: 400 }, (_, i) => `<img src="https://a.com/${i}.jpg">`).join(''),
+  // 放宽后的常用区间：120 张图集不再被 60 张砍掉。
+  const wide = parseArticleHtml(
+    Array.from({ length: 120 }, (_, i) => `<img src="https://a.com/${i}.jpg">`).join(''),
   );
-  assert.equal(tooMany.filter((b) => b.t === 'img').length, 300);
+  assert.equal(wide.images.length, 120);
+  assert.equal(JSON.parse(wide.bodyJson ?? '[]').length, 120);
+
+  const tooMany = B(
+    Array.from({ length: 800 }, (_, i) => `<img src="https://a.com/${i}.jpg">`).join(''),
+  );
+  assert.equal(tooMany.filter((b) => b.t === 'img').length, 600);
 
   const many = B(Array.from({ length: 400 }, (_, i) => `<p>段落 ${i}</p>`).join(''));
-  assert.equal(many.length, 300);
+  assert.equal(many.length, 400);
+  assert.equal(B(Array.from({ length: 800 }, (_, i) => `<p>段落 ${i}</p>`).join('')).length, 600);
 
-  const long = Array.from({ length: 300 }, (_, i) => `<p>${'长'.repeat(300)}${i}</p>`).join('');
+  const long = Array.from({ length: 900 }, (_, i) => `<p>${'长'.repeat(300)}${i}</p>`).join('');
   const out = parseArticleHtml(long);
   assert.ok(out.bodyJson);
-  assert.ok(out.bodyJson.length <= 64 * 1024);
+  assert.ok(out.bodyJson.length <= 256 * 1024);
   assert.doesNotThrow(() => JSON.parse(out.bodyJson ?? ''));
 });
 
@@ -248,15 +256,15 @@ test('fallbackImages: 正文无图时用 media/enclosure 图补块，正文有�
   assert.deepEqual(withBody.images, ['https://cdn.example.com/body.jpg']);
 });
 
-test('images 与 bodyJson 同步：64KB 上限丢掉的尾部图不留在 images', () => {
+test('images 与 bodyJson 同步：JSON 上限丢掉的尾部图不留在 images', () => {
   const html = Array.from(
-    { length: 300 },
+    { length: 800 },
     (_, i) => `<img src="https://a.com/${i}.jpg" alt="${'x'.repeat(300)}">`,
   ).join('');
   const out = parseArticleHtml(html);
   const blocks = JSON.parse(out.bodyJson ?? '[]') as Array<{ t: string; src?: string }>;
   const kept = blocks.filter((b) => b.t === 'img').map((b) => b.src ?? '');
-  assert.ok(kept.length > 0 && kept.length < 300);
+  assert.ok(kept.length > 0 && kept.length < 800);
   assert.deepEqual(out.images, kept);
 });
 

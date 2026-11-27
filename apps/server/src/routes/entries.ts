@@ -30,6 +30,7 @@ import { z } from 'zod';
 import { ApiException, apiError } from '../lib/apiError';
 import { toCard, toEntryDetail } from '../lib/dto';
 import { CARD_COLUMNS, entryConditions, parseFeedIds, relevanceScore } from '../lib/entriesQuery';
+import { refreshSingleEntry } from '../lib/entryRefresh';
 import { type PrefsBag, userWatchRules } from '../lib/prefs';
 import { scopeAllows } from '../lib/scope';
 import { tagCountsCacheGet, tagCountsCacheKey, tagCountsCacheSet } from '../lib/tagCountsCache';
@@ -442,6 +443,33 @@ export function entriesRoutes(db: Db | null, auth: AuthInstance | null) {
           return c.json(
             assertResponse(EntryDetailSchema, toEntryDetail(row), 'GET /api/entries/:id'),
           );
+        },
+      )
+
+      /* ---------------- POST /api/entries/:id/refresh ----------------
+       * 已入库文章的手动重新抓取。只动这一条的内容字段，不新增 / 删除其它条目，
+       * 也不改标题 / 发布时间 / 已读 / 收藏 / 关注状态，列表展示不会因此跳序。 */
+      .post(
+        entriesSpec.refresh.path,
+        requireAuth(auth, 'write'),
+        zValidator('param', idParam, (result) => {
+          if (!result.success)
+            throw new BadRequest('POST /api/entries/:id/refresh', result.error.issues);
+        }),
+        async (c) => {
+          if (!db) return apiError(c, 'E_DB_NOT_READY');
+
+          const uid = c.get('user').id;
+          const { id } = c.req.valid('param');
+          try {
+            return c.json(await refreshSingleEntry(db, uid, id));
+          } catch (e) {
+            if (e instanceof ApiException) {
+              const detail = e.apiParams?.detail;
+              return apiError(c, e.code, detail === undefined ? {} : { detail: String(detail) });
+            }
+            throw e;
+          }
         },
       )
 

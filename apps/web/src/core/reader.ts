@@ -19,6 +19,7 @@ export {
   readerAccordionOn,
   readerCollapseAll,
   readerMarkUnread,
+  readerRefreshEntry,
   readerReload,
   readerRetryBody,
   readerRetryMore,

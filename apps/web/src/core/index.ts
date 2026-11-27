@@ -221,6 +221,7 @@ export const core = {
   readerToggleFav: R.readerToggleFav,
   readerMarkUnread: R.readerMarkUnread,
   readerReload: R.readerReload,
+  readerRefreshEntry: R.readerRefreshEntry,
   readerRetryBody: R.readerRetryBody,
   readerRetryMore: R.readerRetryMore,
   readerSetTag: R.readerSetTag,

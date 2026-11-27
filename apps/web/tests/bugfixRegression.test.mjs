@@ -56,3 +56,35 @@ test('阅读位置：顶边越线的条目整条滚出视口时直接 return，�
     '不能补偿挪到 at+1 —— 它顶边还在视口下方，offset 必为负会误清位置',
   );
 });
+
+test('单篇刷新：入口锚在发布时间行，只替换正文缓存且按钮自带防重复点击', () => {
+  const body = read('apps/web/src/views/ReaderView.body.tsx');
+  const pub = body.slice(body.indexOf('if (e.date) {'), body.indexOf('if (e.tags'));
+  assert.ok(pub.includes('{refreshSlot}'), '刷新入口必须挂在发布时间这一行');
+  const core = read('apps/web/src/core/reader.articles.ts');
+  const fn = core.slice(
+    core.indexOf('export async function readerRefreshEntry'),
+    core.indexOf('/** 正文加载失败的「重试」'),
+  );
+  assert.ok(fn.includes('state.rdBody.set(id, detail)'), '只替换当前正文缓存');
+  assert.ok(!/rdEntries\s*=/.test(fn), '不许重排 / 覆盖列表数据');
+  assert.ok(!/isRead|isFavorite/.test(fn), '不许在刷新入口里改用户标记');
+  const btn = read('apps/web/src/ui/EntryRefreshButton.tsx');
+  assert.ok(btn.includes('if (busy.current) return;'), 'busy ref 必须先于状态拦连点');
+  assert.ok(btn.includes('data-state={status}'), '加载 / 成功 / 失败必须落到 DOM 状态');
+  assert.ok(btn.includes("disabled={status === 'loading'}"), '加载中必须禁用按钮');
+});
+
+test('单篇刷新后端：复用解析链但只写当前条目，不触发整轮订阅刷新', () => {
+  const s = read('apps/server/src/lib/entryRefresh.ts');
+  assert.ok(s.includes('loadFeed('), '必须真的回源拉订阅');
+  assert.ok(s.includes('enhanceWithFullText('), '全文增强复用同一条链路');
+  assert.ok(s.includes('force: true'), '手动刷新不能吃 7 天全文缓存');
+  assert.ok(!/\bupsertEntries\(/.test(s), '不能走整频道 upsert');
+  assert.ok(!/refreshFeeds\(/.test(s), '不能触发整轮刷新');
+  const write = s.slice(s.indexOf('.set({ ...merged'), s.indexOf('// 重读详情'));
+  assert.ok(
+    !/isRead|isFavorite|watchState|publishedAt|title:/.test(write),
+    '用户标记 / 标题 / 发布时间不在写回字段里',
+  );
+});

@@ -13,12 +13,13 @@ import crypto from 'node:crypto';
 import sharp from 'sharp';
 
 /** 单个图片字节上限：超过直接放弃。旧值 8MB 会把超清图 / 扫描件挡在门外；
- *  放宽到 20MB（可用 IMG_MAX_BYTES 覆盖，硬顶 64MB），仍先查 content-length 再收 body。 */
+ *  默认放宽到 32MB（可用 IMG_MAX_BYTES 覆盖，硬顶 128MB），仍先查 content-length 再收 body。
+ *  原图透传 `/api/img/raw` 共用这个上限，避免大图在代理层被静默截断。 */
 const ENV_MAX_BYTES = Number(process.env.IMG_MAX_BYTES);
 export const IMG_MAX_BYTES =
   Number.isFinite(ENV_MAX_BYTES) && ENV_MAX_BYTES > 0
-    ? Math.min(ENV_MAX_BYTES, 64 * 1024 * 1024)
-    : 20 * 1024 * 1024;
+    ? Math.min(ENV_MAX_BYTES, 128 * 1024 * 1024)
+    : 32 * 1024 * 1024;
 
 const MAX_DIM = Number(process.env.IMG_MAX_DIM) > 0 ? Number(process.env.IMG_MAX_DIM) : 1280;
 const WEBP_QUALITY =

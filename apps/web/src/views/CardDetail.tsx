@@ -182,7 +182,15 @@ export function CardDetail({ e, onClose, onTag, onAiTag }: CardDetailProps) {
     inner = (
       <div className="art-body cd-art">
         {/* 与文章页同一份 ArtBody：正文一次铺开，动作行在正文末尾（一个弹窗只有一排按钮） */}
-        <ArtBody e={full} onTag={onTag} onAiTag={onAiTag} extraActions={extraActions} />
+        <ArtBody
+          e={full}
+          onTag={onTag}
+          onAiTag={onAiTag}
+          extraActions={extraActions}
+          onRefreshed={() => {
+            void bodyQuery.refetch();
+          }}
+        />
       </div>
     );
   } else

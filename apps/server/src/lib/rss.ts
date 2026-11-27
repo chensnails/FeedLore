@@ -11,7 +11,7 @@
  * 纯函数才可能被单元测试覆盖，也才能在「同一 URL 多用户订阅」时安全复用同一份解析结果。
  */
 
-import { MAX_ENTRY_IMAGES, parseArticleHtml } from './article';
+import { MAX_ENTRY_IMAGES, MAX_IMAGE_URL_CHARS, parseArticleHtml } from './article';
 
 /* ============================================================================
  * 1. XML 解析
@@ -484,7 +484,7 @@ export function normalizeItem(
   });
 
   // 配图：正文里的所有图片（多图文章需要）按出现顺序，其次 enclosure。
-  // 图片型 RSS 的图集不再砍到 12 张；正文仍受 300 块 / 64KB 两道兜底约束。
+  // 图片型 RSS 的图集不再砍到 12 张；正文仍受块数与 JSON 两道兜底约束。
   const imgSet = new Set<string>(article.images);
   if (raw.enclosure && /^https?:\/\//i.test(raw.enclosure)) imgSet.add(raw.enclosure);
   const images = [...imgSet].slice(0, MAX_ENTRY_IMAGES);
@@ -591,8 +591,8 @@ export function normalizeItem(
     bodyVersion: 2,
     size: size ? size.slice(0, 40) : null,
     tags,
-    image: image ? image.slice(0, 2000) : null,
-    images: images.map((u) => u.slice(0, 2000)),
+    image: image ? image.slice(0, MAX_IMAGE_URL_CHARS) : null,
+    images: images.map((u) => u.slice(0, MAX_IMAGE_URL_CHARS)),
     links: links.map((u) => u.slice(0, 1000)),
     sourceUrl: validUrl(raw.url ?? '') ? String(raw.url).slice(0, 1000) : null,
     publishedAt: parseDate(raw.dateStr) ?? new Date(),
