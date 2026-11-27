@@ -18,8 +18,10 @@ import { parseDocument } from 'htmlparser2';
 
 /** 单篇正文最多保留的块数（超长页面只取前 300 块） */
 const MAX_BLOCKS = 300;
-/** 单篇正文最多保留的图片数（去重后） */
-const MAX_IMAGES = 20;
+/** 单篇正文最多保留的图片数（去重后）。
+ *  图片也是块，已经和正文共用 MAX_BLOCKS / MAX_JSON 两道兜底；这里只留一道同样宽的
+ *  防线，绝不再单独砍到 20 —— 周刊 / 图集常有 30+ 张图，旧值会把第 21 张起连块一起丢掉。 */
+const MAX_IMAGES = MAX_BLOCKS;
 /** 内联标签嵌套深度上限 */
 const MAX_DEPTH = 20;
 /** 列表 / 引用嵌套深度上限（防止病态 HTML 递归过深） */

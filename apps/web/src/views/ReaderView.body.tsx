@@ -3,7 +3,7 @@
 
 import type { ArticleInline } from '@feedlore/contract';
 import type { ReactNode, SyntheticEvent as ReactSyntheticEvent } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Card, EntryDetail } from '../core/types.ts';
 import { isImgFailed, markImgFailed } from '../imgFail.ts';
 import { widthSrcSet } from '../imgSrc.ts';
@@ -184,7 +184,8 @@ const proxied = (u: unknown): string => {
   return '';
 };
 
-/** 正文图片：加载失败直接移除（旧行为）；点开走全局灯箱（app.js 的 document 委托）。 */
+/** 正文图片：和卡片墙 LazyImg 一样先重试一次再移除；点开走全局灯箱。
+ *  正文图此前首错即 markImgFailed + 移除，一次上游抖动就会让整篇图消失 10 分钟。 */
 function ArtImg({
   src,
   alt,
@@ -197,13 +198,17 @@ function ArtImg({
   h?: number;
 }) {
   const [failed, setFailed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const triedRef = useRef(false);
   const url = proxied(src);
   if (failed || !url || isImgFailed(url)) return null;
+  // 重试去掉 srcset 并加 r=1：服务端缓存键会归一掉 r，但浏览器会当成新请求重新验证。
+  const imgSrc = retrying ? url + (url.includes('?') ? '&' : '?') + 'r=1' : url;
   return (
     <img
       className="art-img"
-      src={url}
-      srcSet={widthSrcSet(url, [640, 960])}
+      src={imgSrc}
+      srcSet={retrying ? undefined : widthSrcSet(url, [640, 960])}
       sizes="(max-width: 720px) 92vw, 720px"
       alt={alt || ''}
       width={w || undefined}
@@ -214,7 +219,13 @@ function ArtImg({
       onLoad={(ev: ReactSyntheticEvent<HTMLImageElement>) =>
         ev.currentTarget.classList.add('img-ready')
       }
-      onError={() => {
+      onError={(ev: ReactSyntheticEvent<HTMLImageElement>) => {
+        if (ev.currentTarget.complete && ev.currentTarget.naturalWidth > 0) return;
+        if (!triedRef.current) {
+          triedRef.current = true;
+          setRetrying(true);
+          return;
+        }
         markImgFailed(url);
         setFailed(true);
       }}

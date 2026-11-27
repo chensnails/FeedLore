@@ -203,11 +203,22 @@ test('表格：单元格里的块按换行摊平，colspan/rowspan 不展开', (
   assert.equal(text(table.rows[0]?.[0] ?? []), '第一行\n项');
 });
 
-test('上限：图片最多 20 张，块最多 300，超出后仍是合法 JSON', () => {
+test('上限：图片与正文共享 300 块，超过 20 张不再丢图，超出后仍是合法 JSON', () => {
+  // 阮一峰周刊一类文章单篇 30+ 图：旧实现把第 21 张起连块一起砍掉，正文后半段整段消失。
   const imgs = B(
     Array.from({ length: 40 }, (_, i) => `<img src="https://a.com/${i}.jpg">`).join(''),
   );
-  assert.equal(imgs.filter((b) => b.t === 'img').length, 20);
+  assert.equal(imgs.filter((b) => b.t === 'img').length, 40);
+  const parsed = parseArticleHtml(
+    Array.from({ length: 36 }, (_, i) => `<img src="https://a.com/${i}.jpg">`).join(''),
+  );
+  assert.equal(parsed.images.length, 36);
+  assert.equal(JSON.parse(parsed.bodyJson ?? '[]').length, 36);
+
+  const tooMany = B(
+    Array.from({ length: 400 }, (_, i) => `<img src="https://a.com/${i}.jpg">`).join(''),
+  );
+  assert.equal(tooMany.filter((b) => b.t === 'img').length, 300);
 
   const many = B(Array.from({ length: 400 }, (_, i) => `<p>段落 ${i}</p>`).join(''));
   assert.equal(many.length, 300);
